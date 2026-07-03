@@ -1,16 +1,19 @@
-**Sunfront Sunhawk** is a wide, flat Duneforged gunship aircraft with two
-spinning rotors and an underslung forward cannon. This asset-generation case asks
-a model to sculpt *and rig* it as a 64×36×64 opaque-voxel model using only the
-`voxel-anim` tool, one operation at a time: a broad brass fuselage (the fixed
-root), a rotor out on each wing stub, and an iron cannon beneath the nose. The
-rig's required, game-facing contract is a caller-driven **`cannon_pitch`**
-joint — a rotation that tilts the underslung cannon up and down about its
-mount — while the two rotors spin on their own through the auto-driven
-**`rotor_left_spin`** and **`rotor_right_spin`** joints. There is no target
-model — the model sculpts and rigs toward a written brief, and may add its own
-extra parts and joints on top. The recorded per-part operations are regenerated
-into a rigged 3D model the frontend
-renders with a live `cannon_pitch` control and a `strafe` animation, and a
-reviewer judges it against the brief: that it reads as a gunship, the cannon aims
-on the correct mount without detaching, the hull stays fixed, and the rotors and
-cannon stay attached are what they weigh.
+**Sunfront Sunhawk** is a wide, flat Duneforged **gunship aircraft** with two
+spinning rotors and an underslung forward cannon, rendered as an opaque-voxel
+model. This asset-generation case asks a model to sculpt *and rig* it as a
+64×36×64 opaque-voxel model using only the `voxel-anim` tool, one operation at a
+time: it paints discrete opaque cells to build a broad brass fuselage, a rotor out
+on each side, and an iron cannon beneath the nose. Crucially, the case does **not**
+hand the model a rig: it fixes only the three animations the model must author — a
+self-playing rotor blur **`rotor_spin`**, a playable **`hover`** movement, and a
+playable **`strafe`** gun-run — and leaves the parts, joints, and articulation that
+realize them entirely to the model, so the test measures whether a model can work out
+the pieces a hovering, firing gunship needs, attach them where they belong, and
+animate them convincingly (rotors that whirl on their own, a cannon that sweeps down
+to rake the ground and tips back up, a whole craft that bobs as it holds station).
+There is no target model — the model sculpts and rigs toward a written brief. The
+recorded per-part operations are regenerated into a rigged 3D model the frontend
+renders with the play-back animations, and a reviewer judges it against the brief:
+that it reads as a wide, flat gunship, the cannon aims under `strafe` without
+detaching, the rotors spin on their own, the craft hovers, and the hull holds station
+while only the intended parts move.

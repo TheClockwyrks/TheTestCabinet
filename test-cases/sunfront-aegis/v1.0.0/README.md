@@ -2,74 +2,45 @@
 
 This is version `v1.0.0` of the **Sunfront Aegis** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a colossal Duneforged **six-legged walking fortress** — a
+sculpt *and rig* a colossal Duneforged **multi-legged walking fortress** — a
 tiered, prowed multi-gun war-fortress that dwarfs every buildable unit and
-strides on six **independent three-segment legs** (thigh + shin + flat foot) —
-as an 88×80×104 opaque-voxel model using only the `voxel-anim` tool, one recorded
-operation at a time, authoring its walk and weapon animations as F-curves.
+strides on legs — as an 88×80×104 opaque-voxel model using only the `voxel-anim`
+tool, one recorded operation at a time, authoring its walk and weapon animations
+as F-curves.
 
 `sunfront-aegis` is the catalog slug for this case. It is one of the
 `sunfront-*` Duneforged voxel roster and shares the faction's brass-and-bronze
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]`
-table — **twenty-four parts** (the hull, six three-segment legs, the main
-turret + cannon, two side turrets, and the radar):
+This case does **not** hand the model a rig. The brief fixes only *what the Aegis
+is* (a colossal armored citadel raised on walking legs, a big main turret with a
+dominant forward cannon, a side-mounted turret out on each flank, and a decorative
+radar vane that sweeps on its own — in the Duneforged palette with a solar-amber
+accent) and *how it must move*. **The parts, joints, pivots, and articulation are
+entirely the model's to invent** — the test measures whether it can work out the
+pieces a walking, firing fortress needs, attach them where they belong, and
+animate them convincingly. The model defines its own parts and joints through the
+`voxel-anim` rig subcommands.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `chassis` | *(root)* | `[0, 0, 0]` | The armored fortress hull, raised on legs |
-| `thigh_lf` / `shin_lf` / `foot_lf` | `chassis` / `thigh_lf` / `shin_lf` | `[14,30,78]` / `[10,14,78]` / `[8,4,78]` | Left-front thigh + shin + foot |
-| `thigh_lm` / `shin_lm` / `foot_lm` | `chassis` / `thigh_lm` / `shin_lm` | `[14,30,52]` / `[10,14,52]` / `[8,4,52]` | Left-middle leg |
-| `thigh_lr` / `shin_lr` / `foot_lr` | `chassis` / `thigh_lr` / `shin_lr` | `[14,30,26]` / `[10,14,26]` / `[8,4,26]` | Left-rear leg |
-| `thigh_rf` / `shin_rf` / `foot_rf` | `chassis` / `thigh_rf` / `shin_rf` | `[73,30,78]` / `[77,14,78]` / `[79,4,78]` | Right-front leg |
-| `thigh_rm` / `shin_rm` / `foot_rm` | `chassis` / `thigh_rm` / `shin_rm` | `[73,30,52]` / `[77,14,52]` / `[79,4,52]` | Right-middle leg |
-| `thigh_rr` / `shin_rr` / `foot_rr` | `chassis` / `thigh_rr` / `shin_rr` | `[73,30,26]` / `[77,14,26]` / `[79,4,26]` | Right-rear leg |
-| `main_turret` | `chassis` | `[44, 60, 56]` | The big central turret |
-| `main_gun` | `main_turret` | `[44, 66, 74]` | The main cannon on the turret front |
-| `left_turret` | `chassis` | `[12, 44, 52]` | The rotating left-side turret, on its sponson |
-| `right_turret` | `chassis` | `[75, 44, 52]` | The rotating right-side turret, on its sponson |
-| `radar` | `chassis` | `[44, 72, 40]` | The decorative sweeping radar vane |
+The one fixed part of the rig is the set of **three required animations**, declared
+in `test-case.toml`'s `[model]` table as name + `loop` + `auto_play` only (no
+parts, joints, or keyframes); the model authors their F-curves at run time with
+`voxel-anim define-animation` / `add-keyframe`:
 
-The joints — **eighteen auto leg joints**, **four caller gun joints**, and **one
-auto radar joint** — and the deliberate drive of each:
+- **`march`** (`auto_play = false`) — the WALK: a game-triggered playable that
+  strides the fortress forward on its legs with a planted, flat, still stance
+  phase, so a reviewer sees how it walks.
+- **`bombardment`** (`auto_play = false`) — the WEAPON showcase: a game-triggered
+  playable that works the main cannon (aiming forward and elevating) and the two
+  side turrets (each covering its own flank) while the fortress stands its ground.
+- **`radar_spin`** (`auto_play = true`) — the decorative self-playing radar sweep,
+  turning on its own under both playables and at idle.
 
-- **`hip_*`** / **`knee_*`** / **`foot_*`** (auto, rotation about `x`) — eighteen
-  leg joints, a hip, a knee, and an ankle for each of the six legs
-  (`lf, lm, lr, rf, rm, rr`). The hip sweeps the leg fore-and-aft (`-0.5..0.5`);
-  the knee folds the shin the reverse/digitigrade way (`-1.4..0.2`, **rest
-  `-0.7` — a bent knee**) to lift the foot clear; the ankle (`-0.3..0.3`) keeps
-  the foot flat. Each leg is an independent three-segment chain on its own hip
-  above its own foot — so no single pivot drags a bank of feet below ground.
-  Auto-driven by the model-authored `march` walk.
-- **`main_turret_yaw`** (caller, rotation about `y`, `-0.35..0.35`) — a narrow
-  forward cone that keeps the main cannon pointed forward; the fortress turns
-  its hull to aim.
-- **`main_gun_pitch`** (caller, rotation about `x`, `-0.2..0.8`) — elevates the
-  main cannon about its mount.
-- **`left_turret_yaw`** (caller, rotation about `y`, `-1.6..0.0`) /
-  **`right_turret_yaw`** (caller, rotation about `y`, `0.0..1.6`) — traverse the
-  two **side-mounted** turrets so each swings independently to cover only its
-  own flank.
-- **`radar_spin`** (auto, rotation about `y`, `-π..π`) — sweeps the decorative
-  radar vane on its own forever, driven by the self-playing `radar_spin`
-  animation.
-
-The `[model]` table declares **three required animations** as declarations only
-(name, period, loop/auto_play, and the joints each drives — **no keyframes**);
-the model authors their F-curves at run time with `voxel-anim define-animation`
-/
-`add-keyframe`. **`march`** (`auto_play = false`) drives the eighteen leg joints
-in a two-tripod gait with a planted, flat, still stance phase and an `ease-in`
-foot-plant — so a reviewer sees how the fortress strides. **`bombardment`**
-(`auto_play = false`) drives only the four gun joints — the main cannon lobs
-forward while the side turrets sweep their own flanks — while the legs hold
-planted. **`radar_spin`** (`auto_play = true`) is the decorative self-playing
-radar sweep. The model may add its own extra parts, joints, and animations on
-top, but must not drop or contradict the required interface.
+The model may add its own extra parts, joints, and animations on top, but must
+produce these three animations by these names and must not contradict them.
 
 ## Contents
 
@@ -83,9 +54,9 @@ top, but must not drop or contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts, joints, and animation declarations (so the
-contract exists from the first operation). There is no target model and no
-operations schema — the binary's `--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists
+from the first operation). There is no target model and no operations schema — the
+binary's `--help` is the contract.
 
 ## Variants
 

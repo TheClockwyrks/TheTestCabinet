@@ -1,6 +1,14 @@
-Sculpt and rig the **Sunfront Sentinel**, an upright bipedal war-mech whose
-right-arm rifle aims up and down while its legs walk, as a 44x64x40 opaque-voxel
-model using only the voxel-anim tool.
+Sculpt and rig the **Sunfront Sentinel**, an upright bipedal war-mech that strides
+on two legs, aims a rifle carried on its right arm up and down, and stands its
+ground to fire — as a 44x64x40 opaque-voxel model using only the `voxel-anim` tool.
+You build it by **painting discrete opaque cells** — one recorded operation at a
+time — and you **author its walk and weapon animations** as F-curves.
+
+This test measures **creativity and craft**, not instruction-following: the brief
+tells you *what the Sentinel is* and *how it must move*, but the parts you build,
+how you break the mech into moving pieces, where you place the joints, and how you
+shape every form are **entirely yours to invent**. Work out the pieces a walking,
+firing mech needs.
 
 ## How sculpting and rigging works
 
@@ -16,27 +24,35 @@ Every voxel operation targets a **part** with `--part <name>`; each part is
 sculpted **separately** in its own preview and log. The volume starts **empty**.
 Voxels are **opaque** `#rrggbb` colors — there is no transparency. After each call
 the binary re-renders that part's isometric preview to `parts/<part>.png` and
-appends the operation to that part's log. Blank starting previews, empty per-part
-logs, and a pre-seeded `rig.json` holding the required parts and joints are already
-in place at `{{workspace}}`.
+appends the operation to that part's log.
+
+**You invent the rig.** Define whatever parts you need with `define-part` (giving
+each a parent and a pivot), place joints on them with `define-joint`, and author
+the required animations with `define-animation`/`add-keyframe`. Every voxel
+operation targets a **part** with `--part <name>`, so define a part before you
+sculpt into it; each part is a **separate** field sculpted in the shared volume's
+coordinates. The field starts **empty**.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
+voxel-anim define-part --name torso
 voxel-anim fill-box --part torso --x0 12 --y0 26 --z0 12 --x1 31 --y1 54 --z1 27 --color "#c69a4b"
 ```
 
+(The part name above is just an example — name your own parts however you like.)
 Run `voxel-anim --help` to list every operation **and** the rig subcommands
 (defining parts, setting pivots, defining joints, and defining animations with
 `define-animation`/`add-keyframe`), and `voxel-anim <operation> --help` for one
-operation's exact flags — that help text is the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
-part's progress, **and read the assembled-scene previews under `scene/`
-(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
-whole mech composed from all your parts, re-rendered after every operation. The
-scene views are how you confirm the parts actually fit together: that the legs seat
-under the torso's hips and the rifle meets the right shoulder. Because each part is
-sculpted in the shared volume's coordinates, position each part where it belongs on
-the finished mech; the scene simply composes them there.
+operation's exact flags — that help text is the authoritative contract. **Read
+`parts/<part>.png` after your calls** to see that part's progress, **and read the
+assembled-scene previews under `scene/` (`scene/iso.png`, `scene/front.png`,
+`scene/side.png`, `scene/top.png`)** — the whole mech composed from all your parts,
+re-rendered after every operation. The scene views are how you confirm the parts
+actually fit together: that the legs seat under the body and reach the ground and
+the rifle meets the right shoulder. Because each part is sculpted in the shared
+volume's coordinates, position each part where it belongs on the finished mech; the
+scene simply composes them there.
 
 ## What to read first
 
@@ -48,25 +64,20 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the mech, the required parts and their pivots, the required caller
-`weapon_pitch` joint, the six auto leg joints, and the two required animations you
-must author (`walk` and `fire`). Run `voxel-anim --help` for the exact operation,
-rig, and animation contract.
+form of the mech, and — the fixed contract — the two animations you must author:
+**`walk`** (the walk) and **`fire`** (the rifle recoil). It does **not** hand you a
+parts list or joint angles; that is the point. Run `voxel-anim --help` for the exact
+operation, rig, and animation subcommands.
 
 ## What to deliver
 
 Build and rig the mech up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: an upright torso and head on two independent
-three-segment legs (thigh, shin, flat foot), with a rifle carried on the right
-arm. The required interface is a caller-driven **`weapon_pitch`** joint that aims
-the rifle up and down about its shoulder mount, plus the six auto leg joints
-(`hip_l`/`knee_l`/`foot_l`, `hip_r`/`knee_r`/`foot_r`) — and you must **author**
-the two required animations with `define-animation`/`add-keyframe`: a **`walk`**
-that strides the legs with a planted-flat stance phase and an eased foot-plant
-(the legs in opposite phase), and a **`fire`** recoil on `weapon_pitch`, both as
-weight-carrying **F-curves** rather than linear slides. Produce **every** required
-part, joint, and animation; you may add your own extra parts, joints, or
-animations on top, but do not drop or contradict the required interface. When you
-are satisfied, stop: the recorded per-part logs and `rig.json` are your finished
-submission.
+correctly, and the rig is complete: an upright body and head standing on two legs,
+carrying a rifle on the right arm. **Author the two required animations** as
+F-curves with the `voxel-anim` animation subcommands: `walk` (a walk whose feet
+plant flat and still, then lift and swing — with weight, not a weightless slide,
+the legs in opposite phase) and `fire` (a quick rifle recoil while the mech stands).
+The animations are the fixed contract — produce both, by those names; the parts and
+joints that realize them are yours. When you are satisfied, stop: the recorded
+per-part logs and `rig.json` are your finished submission.

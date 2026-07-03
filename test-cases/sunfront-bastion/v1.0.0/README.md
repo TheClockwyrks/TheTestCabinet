@@ -11,35 +11,30 @@ and shares the faction's brass-and-sandstone palette and solar-amber team accent
 There is no target model — the model builds toward the seeded brief and is
 reviewed subjectively against it.
 
-## The rig
+## The contract (animations only)
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]`
-table —
-parts, joints, and the three required animations (declared, but authored by the
-model as F-curves):
+This case does **not** prescribe a rig. `test-case.toml`'s `[model]` table fixes
+only the set of **named animations** the model must author; the parts, joints,
+pivots, and ranges that realize them are the model's to invent, and the test judges
+whether it works out the right pieces, attaches them where they belong, and animates
+them convincingly.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The fortress keep and its ramparts |
-| `solar_crown` | `base` | `[36, 76, 36]` | The solar collector crown |
-| `gate` | `base` | `[36, 22, 70]` | The gate in the front wall |
-| `beacon` | `base` | `[36, 84, 36]` | The signal beacon atop the spire |
+The three required animations (declared, but authored by the model as F-curves):
 
-- **`crown_spin`** (auto, rotation about `y`, `-π..π`) — the collector crown turns
-  a full revolution, driven by the `crown_spin` auto-play animation.
-- **`gate_raise`** (auto, translation along `y`, `0..16`) — the gate lifts
-  straight up, holds, and lowers, driven by the `gate_raise` auto-play animation.
-- **`beacon_spin`** (auto, rotation about `y`, `-π..π`) — the beacon turns slowly
-  a full revolution, driven by the `beacon_spin` auto-play animation.
+- **`crown_spin`** (self-playing idle, `loop = true`) — turns the solar collector
+  crown ringing the summit a full revolution on its own.
+- **`gate_raise`** (self-playing idle, `loop = true`) — lifts the gate in the front
+  wall straight up, holds it open, and lowers it back down on its own.
+- **`beacon_spin`** (self-playing idle, `loop = true`) — turns the beacon crowning
+  the central spire slowly a full revolution on its own.
 
-All three required joints are `auto`-driven, each by one required decorative
-**auto-play** animation (`crown_spin` period 4000 ms, `gate_raise` 3600 ms,
-`beacon_spin` 5000 ms; all `loop = true`). The manifest declares each animation's
-identity and intent only — **no keyframes**; the model authors the motion as
-F-curves with `voxel-anim`'s `define-animation`/`add-keyframe` subcommands. The
-bastion cycles on its own with no caller. The model may add its own extra parts,
-joints, and animations on top, but must not drop or contradict the required
-interface.
+Each animation is a **declaration only** — name, `loop`, and `auto_play`, with **no
+keyframes** and no joint bindings; the model authors the motion as F-curves with
+`voxel-anim`'s `define-animation`/`add-keyframe` subcommands, and invents whatever
+parts and joints drive it (defined with `define-part`/`define-joint`). All three are
+self-playing, so the bastion cycles on its own with no caller while the keep base
+stays fixed. The model may add its own extra parts, joints, and animations on top,
+but must not drop or contradict the three required animations.
 
 ## Contents
 
@@ -53,9 +48,9 @@ interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation); it carries no parts or joints — the model invents those. There
+is no target model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 

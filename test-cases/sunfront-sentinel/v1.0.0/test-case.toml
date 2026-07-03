@@ -4,11 +4,11 @@ difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
 Sculpt and rig the Sunfront Sentinel: a 44x64x40 opaque-voxel bipedal war-mech \
-whose right-arm rifle aims up and down on a caller-driven weapon_pitch joint while \
-it strides on two independent three-segment legs (a hip, a reverse knee, and a \
-flat foot each) — built and rigged one recorded operation at a time, with a \
-model-authored walk that plants each foot and a rifle-recoil the reviewer can play \
-back."""
+that strides on two legs, aims a right-arm rifle up and down, and stands its \
+ground to fire — built not from a fixed skeleton but by painting opaque cells with \
+the voxel-anim tool one recorded operation at a time. The model invents whatever \
+parts and joints it needs; the fixed contract is two animations it must author — a \
+walking `walk` and a rifle-recoil `fire` — the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -45,191 +45,35 @@ preview = "parts/{part}.png"
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts, these joints, AND these animations; at run time
-# it MAY add further parts, joints, and animations of its own (recorded in
-# rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel
-# coordinates. `rig.json` is pre-seeded from this table so the contract exists from
-# the first operation.
-#
-# The rig has two kinds of moving part, and the drive of each is deliberate:
-#   * The right-arm rifle's `weapon_pitch` is `caller` — a game (and the review
-#     viewer's `fire` animation) drives it by name to aim the rifle.
-#   * The six leg joints are `auto` — they hold at their rest pose (a planted,
-#     bent-knee stand) until the `walk` animation drives them, so the walk can
-#     stride the legs while the rifle holds and `fire` can pose the rifle while the
-#     legs stand.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton a walking, firing mech needs and is judged on whether it works
+# out the right pieces, attaches them where they belong, and animates them
+# convincingly. What is fixed is the set of NAMED ANIMATIONS the model must author
+# (a game plays them by name) and whether each is a game-triggered playable or a
+# self-playing idle. The model authors each animation's F-curves at run time with
+# the voxel-anim `define-animation`/`add-keyframe` subcommands; `rig.json` is
+# pre-seeded with these declarations so the contract exists from the first
+# operation.
 [model]
 
-# The mech's upper body and head: the root part (no parent), fixed to the world.
-[[model.part]]
-name = "torso"
-pivot = [0, 0, 0]
-
-# --- The two legs. Each leg is an INDEPENDENT three-segment chain — a thigh, a
-# shin, and a short flat foot — on its OWN hip directly above its OWN foot (x and z
-# held constant down the chain; only y descends), so no shared pivot drags a foot
-# through the ground. Two joints bend each leg (a hip and a reverse/digitigrade
-# knee) plus a small ankle tilt that keeps the foot flat. Left (l) and right (r),
-# stepping in opposite phase. ---
-
-# Left thigh, hung from the left hip under the torso.
-[[model.part]]
-name = "thigh_l"
-parent = "torso"
-pivot = [14, 26, 20]
-
-# Left shin, hung from the left knee down toward the foot.
-[[model.part]]
-name = "shin_l"
-parent = "thigh_l"
-pivot = [14, 14, 20]
-
-# Left foot: a short, FLAT foot hung from the left ankle.
-[[model.part]]
-name = "foot_l"
-parent = "shin_l"
-pivot = [14, 3, 20]
-
-# Right leg, mirroring the left.
-[[model.part]]
-name = "thigh_r"
-parent = "torso"
-pivot = [30, 26, 20]
-
-[[model.part]]
-name = "shin_r"
-parent = "thigh_r"
-pivot = [30, 14, 20]
-
-[[model.part]]
-name = "foot_r"
-parent = "shin_r"
-pivot = [30, 3, 20]
-
-# The right-arm rifle, mounted at the shoulder. It aims up and down on the
-# caller-driven `weapon_pitch`.
-[[model.part]]
-name = "weapon"
-parent = "torso"
-pivot = [30, 40, 24]
-
-# --- Joints ---
-
-# The required caller-driven joint: a game addresses `weapon_pitch` by name to aim
-# the right-arm rifle up and down about its shoulder mount. `rest = 0` levels the
-# rifle straight forward (+z); `min`/`max` tilt it down and up. Only the weapon
-# moves on this joint.
-[[model.joint]]
-name = "weapon_pitch"
-part = "weapon"
-kind = "rotation"
-axis = "x"
-pivot = [30, 40, 24]
-min = -0.7
-max = 0.7
-rest = 0.0
-drive = "caller"
-
-# The left leg's three auto joints, driven by the `walk` animation. The hip makes
-# the big fore/aft sweep; the knee is a reverse (digitigrade) fold that rests
-# clearly BENT (rest = -0.7), never a straight column; the ankle tilts only ±~15°
-# to keep the foot flat.
-[[model.joint]]
-name = "hip_l"
-part = "thigh_l"
-kind = "rotation"
-axis = "x"
-pivot = [14, 26, 20]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "knee_l"
-part = "shin_l"
-kind = "rotation"
-axis = "x"
-pivot = [14, 14, 20]
-min = -1.4
-max = 0.2
-rest = -0.7
-drive = "auto"
-
-[[model.joint]]
-name = "foot_l"
-part = "foot_l"
-kind = "rotation"
-axis = "x"
-pivot = [14, 3, 20]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-# The right leg's three auto joints, mirroring the left and stepping a half period
-# out of phase.
-[[model.joint]]
-name = "hip_r"
-part = "thigh_r"
-kind = "rotation"
-axis = "x"
-pivot = [30, 26, 20]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "knee_r"
-part = "shin_r"
-kind = "rotation"
-axis = "x"
-pivot = [30, 14, 20]
-min = -1.4
-max = 0.2
-rest = -0.7
-drive = "auto"
-
-[[model.joint]]
-name = "foot_r"
-part = "foot_r"
-kind = "rotation"
-axis = "x"
-pivot = [30, 3, 20]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-# --- Required animations (declarations only — the model authors the F-curves) ---
-# Each declares the animation's identity and intent; the model authors the motion
-# (the keyframes and their F-curve interpolation) at run time with the voxel-anim
-# `define-animation`/`add-keyframe` subcommands. NO keyframes live here.
-
-# `walk`: the WALK. It drives all six leg joints — the two hips sweep fore-and-aft,
-# the two reverse knees fold to lift each foot on its swing, and the two ankles
-# counter-rotate to hold the foot flat — in a two-phase gait (a planted stance
-# where the foot is flat and still on the ground while the mech passes over it,
-# then a swing that lifts, carries forward, and plants), the legs in opposite
-# phase. It touches NO weapon joint, so the rifle holds at rest.
+# `walk` — the WALK. A game-triggered playable (not self-playing) that strides the
+# mech forward on its two legs: each foot plants flat and still on the ground while
+# the body passes over it, then lifts, swings forward, and plants again, so the
+# machine pushes itself forward rather than flailing. The legs move; the rifle
+# holds.
 [[model.animation]]
 name = "walk"
-period_ms = 800
 loop = true
 auto_play = false
-joints = ["hip_l", "knee_l", "foot_l", "hip_r", "knee_r", "foot_r"]
 
-# `fire`: the WEAPON showcase. It drives only `weapon_pitch` so the reviewer can
-# watch the rifle snap into a quick recoil nod, overshoot back, and settle without
-# dragging the joint slider by hand. It touches NO leg joint, so the legs stand.
+# `fire` — the WEAPON showcase. A game-triggered playable that snaps the right-arm
+# rifle into a quick recoil nod and settles while the mech stands its ground — the
+# legs stay planted.
 [[model.animation]]
 name = "fire"
-period_ms = 500
 loop = true
 auto_play = false
-joints = ["weapon_pitch"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -240,56 +84,59 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Sentinel and \
-poses correctly — a bipedal war-mech whose right-arm rifle aims up and down on its \
-shoulder mount without detaching while it strides on two independent three-segment \
-legs whose feet lift clear and plant flat on the ground (never dragged, never \
-flailing) and the torso stays put, with a clear solar-amber visor accent and the \
+poses correctly — a bipedal war-mech that strides on two legs whose feet lift \
+clear and plant flat on the ground (never dragged, never flailing), a right-arm \
+rifle that aims up and down and recoils on its shoulder mount without detaching, \
+and a body that stays put — with a clear solar-amber visor accent and the \
 disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-mech"
 title = "Reads as a bipedal war-mech"
 text = """
-From more than one angle the model reads unmistakably as a walking war-mech: an \
-upright torso with a head on top, a pair of jointed legs planted beneath the hips, \
-and a rifle carried on the right arm. It is a bipedal fighting machine, not an \
-abstract stack of boxes."""
+From more than one angle the model reads unmistakably as an upright walking \
+war-mech: a standing body with a head on top, a pair of jointed legs planted \
+beneath it, and a rifle carried on the right arm. It is a bipedal fighting \
+machine, not an abstract stack of boxes on legs."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "legs-walk"
-title = "Legs stride with planted feet; rifle aims"
+title = "Legs stride on planted feet without clipping the ground"
 text = """
-Playing `walk` strides the mech on its two independent legs: each leg swings on its \
-own `hip_*` joint, folds at its own reverse `knee_*`, and keeps its foot flat on its \
-own `foot_*` — the feet plant flat and still on the ground during stance (the mech \
-passing over them) and lift clear on the swing, stepping in opposite phase, NOT \
-dragged through the ground or flailing in a continuous arc. Driving `weapon_pitch` \
-(and playing `fire`) tilts the right-arm rifle cleanly up and down about its \
-shoulder mount, with no voxel of the weapon tearing away from the arm or clipping \
-into the torso across the full range."""
+Playing `walk` strides the mech forward on its two legs. Each foot has a clear \
+PLANTED STANCE — flat and still on the ground while the mech passes over it — then \
+lifts clear, swings forward, and plants again with weight; the two legs step in \
+opposite phase so the machine is always supported and pushes itself forward, NOT \
+flailing its legs in a continuous arc. The feet stay flat as they carry the body \
+(they don't tip onto toe or heel), no foot is dragged or driven down through the \
+ground, and the legs stay attached to the body across the whole cycle. The model \
+had to invent an articulated leg (more than one segment and joint) for this to \
+read as walking rather than swinging rigid poles."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "torso-fixed"
-title = "Torso stays fixed"
+id = "rifle-aims"
+title = "Right-arm rifle aims and recoils on a clean hinge"
 text = """
-Only the moving parts move: the rifle when `weapon_pitch` is driven or `fire` plays, \
-and the legs when `walk` plays. The torso and head stay put — they are the fixed \
-root of the rig, not carried along by the weapon or the legs."""
+The rifle is carried on the mech's right arm and points FORWARD when level. \
+Playing `fire` works it convincingly: it snaps into a quick recoil nod — tilting \
+up and down about its shoulder mount — and settles, aiming cleanly up and down \
+across its range rather than spinning or sliding, with no part of the weapon \
+tearing away from the arm or clipping into the body as it moves."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "parts-attached"
-title = "Legs and rifle stay attached"
+id = "body-fixed"
+title = "The body stays put; only the moving parts move"
 text = """
-Each child stays attached across its joint's range: each leg's shin stays attached \
-to its thigh and each thigh to the torso at the hip, and the rifle meets the right \
-shoulder, with no gap and never floating free or detaching as the legs stride and \
-the rifle pitches."""
+The mech's body is the fixed base of the machine: it stays put, never carried \
+along by the legs or the rifle. When `fire` plays, the rifle works while the legs \
+stay planted; when `walk` plays, the legs stride while the rifle holds. Nothing \
+but the moving parts moves."""
 weight = 2
 domain = "fidelity"
 
@@ -297,7 +144,7 @@ domain = "fidelity"
 id = "palette"
 title = "Duneforged palette discipline"
 text = """
-Uses only the Duneforged colors from the brief (brass torso, sandstone panels, iron \
+Uses only the Duneforged colors from the brief (brass body, sandstone panels, iron \
 rifle and legs, and the solar-amber visor accent) with a clear amber visor on the \
 head, no out-of-palette colors, and no stray voxels drifting off the parts."""
 weight = 1

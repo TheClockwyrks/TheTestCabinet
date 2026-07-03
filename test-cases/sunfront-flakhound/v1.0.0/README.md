@@ -11,45 +11,32 @@ time.
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## Animations-only contract — the model invents the rig
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table.
-Each of the four legs is a three-part chain (`thigh_*` → `shin_*` → `foot_*`) on
-its own hip, directly above its own foot (`x`,`z` held constant down the chain):
+This case does **not** prescribe a rig. It fixes only **what the Flakhound is** (a
+squat armored body on four legs, a traversing back turret, and twin elevating flak
+barrels) and **the animations it must move by** — the parts, joints, pivots, and pose
+angles that realize them are entirely the model's to invent. That is the point: the
+case measures whether a model can work out the pieces a walking, target-tracking
+anti-air platform needs, attach them where they belong, and animate them convincingly,
+rather than following a fixed parts list.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `body` | *(root)* | `[0, 0, 0]` | The armored body and hull |
-| `thigh_{lf,lr,rf,rr}` | `body` | `[{12\|40}, 14, {38\|18}]` | Each leg's upper thigh |
-| `shin_{lf,lr,rf,rr}` | `thigh_*` | `[{12\|40}, 8, {38\|18}]` | Each leg's lower shin |
-| `foot_{lf,lr,rf,rr}` | `shin_*` | `[{12\|40}, 2, {38\|18}]` | Each leg's short flat foot |
-| `turret` | `body` | `[26, 30, 28]` | The traversing flak turret |
-| `barrel` | `turret` | `[26, 36, 34]` | The twin elevating flak barrels |
+The required, game-facing contract declared in `test-case.toml`'s `[model]` table is
+**two animations** (declarations only — the model authors the F-curve keyframes at run
+time):
 
-(Left legs at `x = 12`, right at `x = 40`; front legs at `z = 38`, rear at
-`z = 18`.)
+- **`walk`** (loops, `auto_play = false`) — a game-triggered playable that strides the
+  walker forward on its legs: each foot plants flat and still while the body passes
+  over it, then lifts, swings, and plants again (a stable, diagonal-pair gait), so the
+  machine pushes itself forward rather than flailing. The weapon holds while it plays.
+- **`flak_track`** (loops, `auto_play = false`) — a game-triggered playable that works
+  the anti-air weapon: the back turret traverses onto a bearing and the twin barrels
+  elevate and depress to track a target across the sky, while the walker stands its
+  ground and its legs stay planted.
 
-- **`turret_yaw`** (caller, rotation about `y`, `-π..π`) — the game-facing
-  control: traverses the turret, and the barrels with it, about its vertical mount.
-- **`barrel_pitch`** (caller, rotation about `x`, `0..1.3`) — the game-facing
-  control: elevates the twin barrels up toward the air about their hinge.
-- **`hip_*`** (auto, rotation about `x`, `-0.5..0.5`, rest `0`), **`knee_*`**
-  (auto, rotation about `x`, `-1.4..0.2`, rest `-0.5` — a bent, reverse/digitigrade
-  knee), and **`foot_*`** (auto, rotation about `x`, `-0.3..0.3`, rest `0` — a flat
-  ankle tilt) — the twelve leg joints, driven by the `walk` animation.
-
-The `[model]` table also **requires two animations** (declarations only — the model
-authors the F-curve keyframes at run time):
-
-- **`walk`** (period 650 ms, loops, `auto_play = false`) — drives the twelve leg
-  joints in a diagonal-pair gait (`lf`/`rr` together, `rf`/`lr` a half period out
-  of phase) with a planted, flat-footed stance phase and an eased plant.
-- **`flak_track`** (period 4000 ms, loops, `auto_play = false`) — sweeps
-  `turret_yaw` while raising and lowering `barrel_pitch`, so a reviewer can watch
-  the walker track a target without dragging the sliders.
-
-The model may add its own extra parts, joints, and animations on top, but must not
-drop or contradict the required interface.
+The model must produce both animations, by these names; it may add its own extra parts,
+joints, and animations on top, but must not drop or contradict the required
+animations.
 
 ## Contents
 
@@ -63,9 +50,9 @@ drop or contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts, joints, and animation declarations (so the
-contract exists from the first operation). There is no target model and no
-operations schema — the binary's `--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation). There is no target model and no operations schema — the binary's
+`--help` is the contract.
 
 ## Variants
 

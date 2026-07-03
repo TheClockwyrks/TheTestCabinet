@@ -1,11 +1,16 @@
 # Sunfront Reliquary — sculpting and rigging brief
 
 You are sculpting and rigging the **Sunfront Reliquary**, a tall, precious
-monument that cradles a glowing solar core, encircled by a turning orbital ring
-and crowned by counter-rotating guardian fins, as a **3D voxel model** with a
-small **rig** a game can pose at runtime. There is no target model to copy: build
-something that reads unmistakably as this revered, holy monument and runs
-correctly from the description below.
+monument that cradles a **glowing solar core**, encircled by a **turning orbital
+ring** and crowned by **counter-rotating guardian fins**, as a **3D voxel model**
+with a **rig** a game runs at runtime. There is no target model to copy: build
+something that reads unmistakably as this revered, holy monument and satisfies the
+animation contract below.
+
+This brief fixes **what the Reliquary is** and **how it must move**. It
+deliberately does **not** give you a parts list, joint placements, or pivots —
+**working out how to split the monument into a fixed body and its moving pieces,
+where they attach, and how they turn and rise is the test.** Invent the rig.
 
 ## The volume and coordinate system
 
@@ -23,8 +28,39 @@ correctly from the description below.
   the whole form reads as precious and holy.
 - Each part is sculpted **separately** with `voxel-anim --part <name>`, in this
   same volume's coordinates, positioned where the part sits on the assembled
-  monument (the core already cradled at its heart, the ring already encircling it,
-  the fins already crowning it).
+  monument (the core cradled at its heart, the ring encircling it, the fins
+  crowning it).
+
+## What the Reliquary is (and what is yours to invent)
+
+Fixed — the monument must read unmistakably as **all** of these:
+
+- A **tall, blocky masonry plinth and cradle** — the fixed body of the monument —
+  rooted to the ground and rising into a cradle that holds the core aloft near
+  mid-height. Sculpt it in the brass and bronze plating (bronze on its underside
+  and in the shadowed seams, sandstone panels for lighter structure), opening the
+  cradle around the core so the core reads as **enshrined**, and flesh out the
+  structure where the ring encircles it and where the fins crown it so those pieces
+  have something to seat against.
+- A **glowing solar core** cradled at the heart of the monument — a bright, rounded
+  mass built up in the **solar-amber** and **solar-hot** accents so it reads as
+  precious and radiant, cradled with no gap and sized to rise and settle without
+  touching the cradle walls.
+- An **orbital ring** standing proud around the core — a toothless iron band,
+  centered on the vertical axis so it reads as an orbiting halo and turns cleanly
+  about its center.
+- A set of **guardian fins** crowning the monument above the core — iron blades
+  radiating outward from a hub on the vertical axis, standing proud above the core
+  so they read as a protective crown and turn cleanly about their hub.
+- A clear **solar-amber** accent and the palette below.
+
+**Everything else is yours to invent** — the exact silhouette, proportions, how
+the plinth is tiered and prowed, how the core, ring, and fins are shaped, and — the
+heart of the test — **how you break the monument into rig parts and place its
+joints**: which piece is the fixed body, which three pieces move, and where each
+turns or rises. Nothing here prescribes a shape or a skeleton; the test rewards a
+bold, characterful design that is unmistakably the Reliquary and animates
+convincingly.
 
 ## Palette
 
@@ -46,107 +82,43 @@ clear amber **energy accent** with a **solar-hot** highlight at the core — a
 brilliant, glowing solar core at its heart — so the accent reads as precious from
 multiple angles.
 
-## The parts
+## The required animations — the fixed contract
 
-The reliquary is a **rig** of four required parts in a parent/child hierarchy.
-Sculpt each in its own local coordinates within the shared volume, positioned
-where it sits on the finished monument:
-
-| Part | Parent | Attaches at (pivot) | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The monument plinth and core cradle |
-| `orbital_ring` | `base` | `[30, 60, 30]` | The ring encircling the core |
-| `core` | `base` | `[30, 56, 30]` | The glowing solar core |
-| `guardian_fins` | `base` | `[30, 78, 30]` | The crowning guardian fins |
-
-- **`base`** is the **root** — the fixed monument. Sculpt a tall, blocky masonry
-  plinth in the brass and bronze plating (bronze on its underside and in the
-  shadowed seams, sandstone panels for lighter structure) sitting on the ground
-  from `y = 0`, filling most of the width and depth at the foundation and rising
-  into a cradle that holds the core aloft near mid-height. Open the cradle around
-  the core's mount so the core reads as enshrined, and flesh out the structure
-  where the ring encircles it and where the fins crown it so the children have
-  something to seat against.
-- **`core`** attaches at the heart of the cradle at **`[30, 56, 30]`**. Sculpt a
-  bright, glowing solar core — a rounded mass built up in the **solar-amber** and
-  **solar-hot** accents so it reads as precious and radiant, cradled in the
-  monument with no gap, and sized to rise and settle within its cradle without
-  touching its walls.
-- **`orbital_ring`** attaches encircling the core at **`[30, 60, 30]`**. Sculpt
-  a toothless iron ring (a horizontal band centered on that pivot) standing proud
-  around the core so it reads as an orbiting halo, centered on the vertical axis
-  so it turns cleanly about its center.
-- **`guardian_fins`** attach at the crown at **`[30, 78, 30]`**. Sculpt a set of
-  iron guardian fins (blades radiating outward from that hub above the core)
-  centered on the vertical axis so they turn cleanly about their hub, standing
-  proud above the core so they read as a protective crown.
-
-## The required joints
-
-All three animated elements **run on their own** — each carries an
-**auto**-driven joint, so the monument cycles without any caller. There are **no**
-caller joints.
-
-- **`ring_spin`** — a **rotation** about the **y** (up) axis, through the ring's
-  center at pivot **`[30, 60, 30]`**, **`drive = "auto"`**. Its range is a full
-  turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the ring so it rotates
-  plausibly about its center without any voxel tearing away.
-- **`core_pulse`** — a **translation** along the **y** (up) axis, through the core
-  mount at pivot **`[30, 56, 30]`**, **`drive = "auto"`**. Its range is
-  **`min = 0` (settled, at rest) to `max = 6` (top of the rise)**, resting at `0`.
-  Sculpt the core so it slides plausibly up and down about that mount without any
-  voxel tearing away or clipping the cradle walls.
-- **`fins_spin`** — a **rotation** about the **y** (up) axis, through the fins'
-  hub at pivot **`[30, 78, 30]`**, **`drive = "auto"`**. Its range is a full turn,
-  `min = -π`, `max = +π`, resting at `0`. Sculpt the fins so they rotate plausibly
-  about their hub without any voxel tearing away.
-
-## The required animations
-
-You must also **author the motion** for three required animations — the timeline
-curves that turn the ring, breathe the core, and counter-rotate the fins. The case
-declares each animation's identity and intent; **you author its F-curves** with
-the
-`voxel-anim` animation subcommands (`define-animation` to declare it, then
-`add-keyframe` per keyframe). Each is **`auto_play`** (a decorative idle that plays
-continuously on its own) and **loops**. Give each motion **weight through its
-curves** — set each keyframe's interpolation (`--interp
+`rig.json` is pre-seeded with **three required animation declarations** by name
+(you author the motion). Each is **self-playing** (a decorative idle that plays
+continuously on its own) and **loops**, so the monument cycles with no caller.
+Author each with `voxel-anim define-animation` then `add-keyframe`, choosing the
+period and setting each keyframe's interpolation (`--interp
 constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
-`--out-handle`/`--in-handle` bezier handles) rather than sliding linearly:
+`--out-handle`/`--in-handle` bezier handles) so motion **carries weight** rather
+than sliding linearly:
 
-- **`ring_spin`** — `period_ms = 3000`, `loop`, `auto_play`, drives the
-  **`ring_spin`** joint. One smooth, steady full revolution of the orbital ring
-  about `y`; a constant-speed orbit reads best with even, near-linear pacing.
-- **`core_pulse`** — `period_ms = 2000`, `loop`, `auto_play`, drives the
-  **`core_pulse`** joint. A slow breathing rise-and-settle of the solar core: lift
-  it up, hold near the top, and ease it back down — use eased curves so the breath
-  feels weighted, not a mechanical sawtooth.
-- **`fins_spin`** — `period_ms = 3400`, `loop`, `auto_play`, drives the
-  **`fins_spin`** joint. One smooth full revolution of the guardian fins about `y`
-  in the **opposite direction to the ring**, so they visibly counter-rotate.
+- **`ring_spin`** — the orbital ring's continuous spin. One smooth, steady full
+  revolution of the ring about the vertical axis; a constant-speed orbit reads best
+  with even, near-linear pacing. The ring moves; the plinth and fins hold.
+- **`core_pulse`** — the solar core's breathing rise-and-fall. A slow rise-and-settle
+  of the core: lift it up, hold near the top, and ease it back down — use eased
+  curves so the breath feels weighted, not a mechanical sawtooth. The core moves; the
+  plinth, ring, and fins hold.
+- **`fins_spin`** — the guardian fins' continuous counter-spin. One smooth full
+  revolution of the fins about the vertical axis in the **opposite direction to the
+  ring**, so they visibly counter-rotate. The fins move; the plinth and core hold.
 
-You **may add** your own extra parts, joints, or auto-play animations on top of
-this
-(for example a second inner ring, glinting facets, or extra masonry buttresses),
-but you must **not drop or contradict** the required parts, the three auto
-`ring_spin`, `core_pulse`, and `fins_spin` joints, or the three required
-animations.
+You **may add** extra parts, joints, and self-playing animations of your own (for
+example a second inner ring, glinting facets, or extra masonry buttresses); you
+must produce these three animations, by these names, and must not contradict them
+(e.g. don't turn the ring the same way as the fins, or move the plinth under any of
+them).
 
 ## Working the tool
 
-Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
-the plinth and its cradle, then the core, then the ring, then the fins, checking
-each part's preview as you go. Define the parts, pivots, and the three auto
-`ring_spin`, `core_pulse`, and `fins_spin` joints through the tool's rig
-subcommands (the required parts and joints are already pre-seeded in `rig.json`,
-but confirm they match this brief and adjust pivots to your sculpt), then author
-the three required `ring_spin`, `core_pulse`, and `fins_spin` animations with the
-animation subcommands (`define-animation`, then `add-keyframe` per keyframe). Run
-`voxel-anim --help` for the available operations (setting and clearing single
-voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane), the
-rig
-subcommands, and the animation subcommands, and `voxel-anim <operation> --help`
-for
-each one's exact flags.
-Call `voxel-anim` once per operation and read `parts/<part>.png` between calls to
-judge each part against this brief.
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the three animations'
+keyframes — reading `parts/<part>.png` and the `scene/*.png` previews between calls
+to confirm the parts fit, the core sits cradled with room to rise, the ring
+encircles it, the fins crown it, and the animations read with weight. Run
+`voxel-anim --help` for the available voxel operations (setting and clearing single
+voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane), the rig
+subcommands, and the animation subcommands, and `voxel-anim <operation> --help` for
+each one's exact flags. Call `voxel-anim` once per operation. The recorded per-part
+logs and `rig.json` are your scored submission.

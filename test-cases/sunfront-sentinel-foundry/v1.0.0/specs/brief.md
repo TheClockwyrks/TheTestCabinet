@@ -3,8 +3,29 @@
 You are sculpting and rigging the **Sunfront Sentinel Foundry**, a tall assembly
 tower with a hammering stamping press and a turning drive gear, as a **3D voxel
 model** with a small **rig** a game can pose at runtime. There is no target model
-to copy: build something that reads unmistakably as this working foundry building
-and runs correctly from the description below.
+to copy: it must read unmistakably as this working foundry building and satisfy the
+animation contract below.
+
+This brief fixes **what the Foundry is** and **how it must move**. It deliberately
+does **not** give you a parts list, joint placements, or pivots — **working out the
+pieces a hammering, spinning foundry needs, where they attach, and how they
+articulate is the test.** Invent the rig.
+
+## How the tool works (paint cells, one op at a time)
+
+`voxel-anim` places **discrete opaque cells**. You build each part by painting cells
+into it:
+
+- **Set and clear** single voxels, **fill** and **stroke** boxes, draw **3D lines**
+  and **spheres**, and use a **mirror** plane — each op takes an opaque `#rrggbb`
+  color. There is no transparency.
+- Global **`--part <name>`** selects the part an op paints; **each part is its own
+  volume**, previewed on its own. Create a part with `define-part` before you paint
+  into it.
+
+Build **one operation at a time**. `voxel-anim` re-renders `parts/<part>.png` and the
+assembled `scene/*.png` — **read them between calls**. `voxel-anim --help` is the
+contract.
 
 ## The volume and coordinate system
 
@@ -19,9 +40,29 @@ and runs correctly from the description below.
   throat.
 - The foundry is deliberately **tall and blocky** — a heavy masonry assembly
   tower rooted to the ground, filling most of the width and depth at its base.
-- Each part is sculpted **separately** with `voxel-anim --part <name>`, in this
-  same volume's coordinates, positioned where the part sits on the assembled
-  tower (the press already up in its throat, the gear already on the flank).
+- Each part is sculpted in these shared coordinates, positioned where it sits on the
+  assembled tower.
+
+## What the Foundry is (and what is yours to invent)
+
+Fixed — the foundry must read unmistakably as **all** of these:
+
+- A **tall, blocky masonry tower** — a heavy assembly stronghold rooted to the
+  ground, filling most of the width and depth at its foundation and rising most of
+  the height, **not a plain box**.
+- A **throat** opened up the tower's center for the **stamping press** to hammer in.
+- A heavy **stamping press head** riding in that throat, sized to hammer straight
+  down and back up without touching the throat walls.
+- A **toothed drive gear** (a disc with teeth around its rim) mounted **on the
+  flank**, standing proud so its teeth read, turning cleanly about its hub.
+- A clear **solar-amber energy accent** — a glowing forge-mouth or vent at the press
+  throat — set so it reads from many angles.
+
+**Everything else is yours to invent** — the exact silhouette, proportions, how the
+tower is massed and tiered, how the throat is cut, how the press and gear are shaped,
+and how you break the foundry into rig parts and place its joints. Nothing here
+prescribes a shape; the test rewards a bold, characterful design that is unmistakably
+the Foundry and animates convincingly.
 
 ## Palette
 
@@ -41,95 +82,39 @@ The **solar-amber** accent is the team-tint region: give the foundry a clear amb
 **energy accent** — a glowing forge-mouth or vent at the press throat — so the
 accent reads from multiple angles.
 
-## The parts
+## The required animations — the fixed contract
 
-The foundry is a **rig** of three required parts in a parent/child hierarchy.
-Sculpt each in its own local coordinates within the shared volume, positioned
-where it sits on the finished tower:
+`rig.json` is pre-seeded with **two required animation declarations** by name (you
+author the motion). Both are **self-playing** and **looping**, so the foundry runs
+continuously on its own with no caller. Author each with `voxel-anim
+define-animation` then `add-keyframe`, choosing the period and setting each key's
+`--interp` (`constant`/`linear`/`bezier` or `ease-in`/`ease-out`/`ease-in-out`, with
+optional `--in-handle`/`--out-handle`) so motion **carries weight** — the press is
+heavy iron, so ease it rather than sliding linearly, and give the bottom of the stamp
+a sharp `ease-in` for a satisfying thump.
 
-| Part | Parent | Attaches at (pivot) | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The foundry tower and its foundation |
-| `piston` | `base` | `[28, 50, 28]` | The stamping press head |
-| `gear` | `base` | `[42, 40, 20]` | The drive gear on the flank |
+- **`piston_stamp`** — the STAMPING PRESS (a self-playing idle). Hammers the press
+  head straight **down** to the bottom of its stroke and eases back **up** to rest,
+  once per loop, riding in the tower's throat without touching its walls. Give it a
+  weighty hammer — `ease-in` into the bottom of the stamp so it lands with a thump,
+  then `ease-out` back up — rather than a constant-speed glide.
+- **`gear_spin`** — the DRIVE GEAR (a self-playing idle). Turns the drive gear a
+  **full revolution** continuously and loops seamlessly, at a steady rate, so the
+  gear reads as a driven flywheel.
 
-- **`base`** is the **root** — the fixed foundry tower. Sculpt a tall, blocky
-  masonry tower in the brass and bronze plating (bronze on its underside and in
-  the shadowed seams, sandstone panels for lighter structure) sitting on the
-  ground from `y = 0`, filling most of the width and depth at the foundation and
-  rising most of the height. Open a **throat** up its center for the press to
-  hammer in, and set the **solar-amber energy accent** — a forge-mouth or vent —
-  at the throat so it glows. Flesh out the flank where the gear mounts and the
-  throat walls where the press rides so the children have something to seat
-  against.
-- **`piston`** attaches in the tower's throat at **`[28, 50, 28]`**. Sculpt a
-  heavy iron stamping-press head centered in the throat, sitting up near the top
-  of the tower, sized to hammer straight down and back up within the throat
-  without touching its walls. It meets the throat at its mount with no gap.
-- **`gear`** attaches to the tower's flank at **`[42, 40, 20]`**. Sculpt a
-  toothed iron drive gear (a disc with teeth around its rim) centered on that hub,
-  standing proud of the flank so its teeth read, meeting the tower at the hub with
-  no gap. Shape it so it turns cleanly about its hub.
-
-## The required joints and animations
-
-Both animated elements **run on their own** — each carries an **auto**-driven
-joint, moved by a required, continuously **auto-playing** animation you must
-author, so the foundry cycles without any caller. There are **no** caller joints.
-
-- **`piston_stamp`** — a joint that is a **translation** along the **y** (up)
-  axis, through the press mount at pivot **`[28, 50, 28]`**, **`drive = "auto"`**.
-  Its range is **`min = -8` (bottom of the stamp) to `max = 0` (fully raised, at
-  rest)**, resting at `0`. Sculpt the press so it slides plausibly down and up
-  about that mount without any voxel tearing away or clipping the throat walls.
-- **`gear_spin`** — a joint that is a **rotation** about the **z** (front-to-back)
-  axis, through the gear hub at pivot **`[42, 40, 20]`**, **`drive = "auto"`**.
-  Its
-  range is a full turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the gear
-  so
-  it rotates plausibly about its hub without any voxel tearing away from the flank.
-
-You must **author** the two required animations that move these joints — both
-looping, both **auto-playing** (they run continuously by default, so the foundry
-idles on its own with no caller):
-
-- **`piston_stamp`** — period **1200 ms**, `loop`, `auto_play`, driving the
-  `piston_stamp` joint. The press hammers straight **down** to the bottom of the
-  stamp and back **up** to rest, once per loop.
-- **`gear_spin`** — period **1800 ms**, `loop`, `auto_play`, driving the
-  `gear_spin` joint. The gear turns a **full revolution** (from `-π` to `+π`) and
-  loops seamlessly.
-
-Author each animation's motion as **F-curves**, not linear slides — the motion
-must carry weight. Use `voxel-anim define-animation` to create the animation
-(its `--period-ms`, `--loop`, `--auto-play`), then `voxel-anim add-keyframe` to
-set each keyframe's time and value with an `--interp`
-(`constant` | `linear` | `bezier` | `ease-in` | `ease-out` | `ease-in-out`, with
-optional `--out-handle`/`--in-handle` Bézier tangents). Give the **press** a
-weighty hammer — `ease-in` into the bottom of the stamp so it lands with a thump,
-then `ease-out` back up — rather than a constant-speed glide. Keep the **gear**
-turning at a steady rate so its revolution loops seamlessly. Read `voxel-anim
---help` and `voxel-anim define-animation --help` / `voxel-anim add-keyframe
---help` for the exact flags.
-
-You **may add** your own extra parts, joints, or auto-playing animations on top
-of
-this (for example a second gear, a puff vent, or extra pipework), but you must
-**not drop or contradict** the required parts, the two auto `piston_stamp` and
-`gear_spin` joints, or the two required animations that drive them.
+You **may add** extra parts, joints, and self-playing animations of your own (for
+example a second gear, a puff vent, or extra pipework); you must produce these two
+animations, by these names, and must not contradict them — the tower itself never
+moves; only the press and the gear do.
 
 ## Working the tool
 
-Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
-the tower base and its throat, then the press, then the gear, checking each part's
-preview as you go. Define the parts, pivots, and the two auto `piston_stamp` and
-`gear_spin` joints through the tool's rig subcommands (the required parts, joints,
-and animations are already pre-seeded in `rig.json`, but confirm they match this
-brief and adjust pivots to your sculpt), then **author the two required animations**
-(`piston_stamp` and `gear_spin`) with `define-animation` and `add-keyframe` as
-described above. Run `voxel-anim --help` for the available operations (setting and
-clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a mirror
-plane), the rig subcommands, and the animation subcommands, and `voxel-anim
-<operation> --help` for each one's exact flags. Call `voxel-anim` once per
-operation and read `parts/<part>.png` between calls to judge each part against
-this brief.
+Define your parts with `define-part`, paint each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — reading `parts/<part>.png` and the `scene/*.png` previews between calls to
+confirm the parts fit, the press rides centered in the throat, the gear seats on the
+flank, and the animations read with weight. The recorded per-part logs and `rig.json`
+are your scored submission. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres,
+and a mirror plane), the rig subcommands, and the animation subcommands, and
+`voxel-anim <operation> --help` for each one's exact flags.

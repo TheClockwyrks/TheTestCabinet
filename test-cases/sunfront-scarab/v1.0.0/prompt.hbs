@@ -1,6 +1,14 @@
-Sculpt and rig the **Sunfront Scarab**, a low, wide four-legged war-beetle whose
-front mandibles snap while it walks on four independent, two-jointed legs, as a
-48x28x56 opaque-voxel model using only the voxel-anim tool.
+Sculpt and rig the **Sunfront Scarab**, a low, wide four-legged war-beetle that
+walks on its legs and snaps its front mandibles on demand, as a 48x28x56
+opaque-voxel model using only the `voxel-anim` tool. You build it by **painting
+opaque cells** one operation at a time, and you **author its walk and bite
+animations** as F-curves.
+
+This test measures **creativity and craft**, not instruction-following: the brief
+tells you *what the Scarab is* and *how it must move*, but the parts you build, how
+you break the beetle into moving pieces, where you place the joints, and how you
+shape every form are **entirely yours to invent**. Work out the pieces a walking,
+biting beetle needs.
 
 ## How sculpting and rigging works
 
@@ -12,32 +20,34 @@ operation at a time**, and the ordered operations you issue — recorded per par
 another way (writing files directly, editing a preview by hand) is discarded and
 flagged; only the recorded operations and the rig count.
 
-Every voxel operation targets a **part** with `--part <name>`; each part is
-sculpted **separately** in its own preview and log. The volume starts **empty**.
-Voxels are **opaque** `#rrggbb` colors — there is no transparency. After each call
-the binary re-renders that part's isometric preview to `parts/<part>.png` and
-appends the operation to that part's log. Blank starting previews, empty per-part
-logs, and a pre-seeded `rig.json` holding the required parts and joints are already
-in place at `{{workspace}}`.
+**You invent the rig.** Define whatever parts you need with `define-part` (giving
+each a parent and a pivot), place joints on them with `define-joint`, and author the
+required animations with `define-animation`/`add-keyframe`. Every voxel operation
+targets a **part** with `--part <name>`, so define a part before you sculpt into it;
+each part is sculpted **separately** in its own preview and log. The volume starts
+**empty**. Voxels are **opaque** `#rrggbb` colors — there is no transparency. After
+each call the binary re-renders that part's isometric preview to `parts/<part>.png`
+and appends the operation to that part's log.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
+voxel-anim define-part --name body
 voxel-anim fill-box --part body --x0 6 --y0 4 --z0 6 --x1 41 --y1 20 --z1 49 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints, and defining/keyframing
-animations), and `voxel-anim <operation> --help` for one operation's exact flags —
-that help text is the authoritative contract. **Read `parts/<part>.png` after your
-calls** to see that part's progress, **and read the assembled-scene previews under
-`scene/` (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** —
-the whole beetle composed from all your parts, re-rendered after every operation.
-The scene views are how you confirm the parts actually fit together: that each leg's
-thigh/shin/foot chain seats under its own corner of the body and the mandibles meet
-the head. Because each part is sculpted in the shared volume's coordinates, position
-each part where it belongs on the finished beetle; the scene simply composes them
-there.
+(The part name above is just an example — name your own parts however you like.) Run
+`voxel-anim --help` to list every operation **and** the rig subcommands (defining
+parts, setting pivots, defining joints, and defining/keyframing animations), and
+`voxel-anim <operation> --help` for one operation's exact flags — that help text is
+the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+part's progress, **and read the assembled-scene previews under `scene/`
+(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
+whole beetle composed from all your parts, re-rendered after every operation. The
+scene views are how you confirm the parts actually fit together: that each leg's
+chain seats under its own corner of the body and the mandibles meet the head.
+Because each part is sculpted in the shared volume's coordinates, position each part
+where it belongs on the finished beetle; the scene simply composes them there.
 
 ## What to read first
 
@@ -49,23 +59,23 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the beetle, the required parts and their pivots, the caller `mandibles_snap`
-joint, the twelve auto leg joints, and the two required animations (`walk`, `bite`)
-you must author as F-curves. Run `voxel-anim --help` for the exact operation and rig
-contract.
+form of the beetle, and — the fixed contract — the two animations you must author:
+**`walk`** (the walk) and **`bite`** (the jaws). It does **not** hand you a parts
+list or joint angles; that is the point. Run `voxel-anim --help` for the exact
+operation, rig, and animation subcommands.
 
 ## What to deliver
 
 Build and rig the beetle up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a domed carapace body on four independent,
-two-jointed legs (each a thigh/shin/foot chain with a bent-knee standing rest), with
-a pair of snapping mandibles at the head. The required interface is the twelve auto
-leg joints (`hip_*`, `knee_*`, `foot_*`) plus the caller-driven **`mandibles_snap`**
-joint, and the two required animations you author with the animation subcommands: a
-**`walk`** (diagonal-pair gait, a planted stance phase, feet lifting clear and
-planting flat) driving all twelve leg joints, and a **`bite`** driving
-`mandibles_snap`. Produce **every** required part, joint, and animation; you may add
-your own extra parts, joints, or animations on top, but do not drop or contradict
-the required interface. When you are satisfied, stop: the recorded per-part logs and
+correctly, and the rig is complete: a domed carapace body (the fixed root) on four
+independent, articulated legs (each a chain with a bent-knee standing rest), with a
+pair of snapping mandibles at the head. **Author the two required animations** as
+F-curves with the `voxel-anim` animation subcommands: a **`walk`** (a diagonal-pair
+gait whose feet plant flat and still, then lift and swing — with weight, not a
+weightless slide) and a **`bite`** (the mandibles snapping open and shut while the
+legs stay planted). The animations are the fixed contract — produce both, by those
+names; the parts and joints that realize them are yours. You may add your own extra
+parts, joints, or animations on top, but do not drop or contradict the required
+`walk` and `bite`. When you are satisfied, stop: the recorded per-part logs and
 `rig.json` are your finished submission.

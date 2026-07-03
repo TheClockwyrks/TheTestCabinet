@@ -2,9 +2,28 @@
 
 You are sculpting and rigging the **Sunfront Skyworks**, an open launch-pad
 hangar with a fast spinning turbine and a raising launch door, as a **3D voxel
-model** with a small **rig** a game can pose at runtime. There is no target
-model to copy: build something that reads unmistakably as this launch-pad
-building and runs correctly from the description below.
+model** with a **rig** a game can pose at runtime. There is no target model to
+copy: build something that reads unmistakably as this launch-pad building and
+runs correctly from the description below.
+
+This brief fixes **what the Skyworks is** and **how it must move**. It
+deliberately does **not** give you a parts list, joint placements, or ranges —
+**working out the pieces a launch pad with a spinning turbine and a raising door
+needs, where they attach, and how they articulate is the test.** Invent the rig.
+
+## How the tool works
+
+`voxel-anim` places **discrete opaque cubes** — it is a cube/voxel tool, not a
+mesh tool. You paint cells with `set-voxel`, `fill-box`, box strokes, 3D lines,
+and spheres, clear them, and mirror across a plane. Voxels are **opaque**
+`#rrggbb` colors — there is no transparency.
+
+- Global **`--part <name>`** selects the part an op sculpts; **each part is its
+  own model**, previewed and logged on its own. Create a part with `define-part`
+  before you sculpt into it.
+- Build **one operation at a time**. `voxel-anim` re-renders `parts/<part>.png`
+  and the assembled `scene/*.png` — **read them between calls**. `voxel-anim
+  --help` is the contract.
 
 ## The volume and coordinate system
 
@@ -16,13 +35,33 @@ building and runs correctly from the description below.
   +y.
 - Build the pad **symmetric about the lengthwise vertical centerplane between
   `x = 31` and `x = 32`** where the form allows, with the turbine centered over
-  the mast and the door centered in the front face.
-- The Skyworks is a **broad, open launch pad** — a heavy masonry hangar rooted
-  to the ground, filling most of the width and depth at its base, open above so
-  the turbine reads high overhead.
-- Each part is sculpted **separately** with `voxel-anim --part <name>`, in this
-  same volume's coordinates, positioned where the part sits on the assembled pad
-  (the turbine already up on its mast, the door already in the front face).
+  its mast and the door centered in the front face.
+- Each part is sculpted in these shared coordinates, positioned where it sits on
+  the assembled pad (the turbine already up on its mast, the door already in the
+  front face).
+
+## What the Skyworks is (and what is yours to invent)
+
+Fixed — the pad must read unmistakably as **all** of these:
+
+- A **broad, open launch pad** — a heavy masonry hangar rooted to the ground,
+  filling most of the width and depth at its base, open above so the turbine
+  reads high overhead. It is a **building**, not a plain box.
+- A **center mast** rising up the pad's middle for the turbine to mount and spin
+  on.
+- A **bladed turbine** high on that mast (a hub with blades around its rim) that
+  **spins** on its own (see the animations), reading clearly from above the open
+  pad.
+- A **heavy launch door** set in the pad's **front face** that **slides up and
+  back down** on its own (see the animations).
+- A clear **solar-amber energy accent** and the palette below.
+
+**Everything else is yours to invent** — the exact silhouette, proportions, how
+the hangar is massed and tiered, the design of the mast, the shape and blade
+count of the turbine, how the door and its runners are built, and how you break
+the pad into rig parts and place its joints. Nothing here prescribes a shape; the
+test rewards a bold, characterful design that is unmistakably the Skyworks and
+animates convincingly.
 
 ## Palette
 
@@ -42,95 +81,44 @@ The **solar-amber** accent is the team-tint region: give the pad a clear amber
 **energy accent** — a glowing pad ring, launch lights, or a hub glow at the
 turbine — so the accent reads from multiple angles.
 
-## The parts
+## The required animations — the fixed contract
 
-The Skyworks is a **rig** of three required parts in a parent/child hierarchy.
-Sculpt each in its own local coordinates within the shared volume, positioned
-where it sits on the finished pad:
+`rig.json` is pre-seeded with **two required animation declarations** by name
+(you author the motion). Author each with `voxel-anim define-animation` then
+`add-keyframe`, choosing the period and setting each key's `--interp`
+(`constant | linear | bezier | ease-in | ease-out | ease-in-out`, with the
+optional `--in-handle` / `--out-handle` handles) so the motion carries **weight
+as F-curves** and never just slides linearly. Both are **decorative idles**
+(`auto_play = true`): they play continuously on their own so the Skyworks runs
+without any caller.
 
-| Part | Parent | Attaches at (pivot) | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The launch-pad hangar and its foundation |
-| `turbine` | `base` | `[32, 50, 32]` | The spinning turbine on the center mast |
-| `launch_door` | `base` | `[32, 20, 50]` | The launch door in the front face |
+- **`turbine_spin`** — the turbine sweep. Spins the turbine a **full revolution**
+  overhead about its vertical axis, evenly and looping, so the pad runs on its
+  own. The turbine spins as one solid piece about its hub, never tearing away
+  from the mast; nothing else moves. Reads best as an even `linear` loop.
+- **`launch_door_raise`** — the launch-door cycle. Slides the door **straight up
+  in the front face, holds it open, then lowers it back**, looping on its own.
+  Give it weight: `ease-in` / `ease-out` around the open hold rather than sliding
+  linearly. The door slides as one solid piece within its runners, never tearing
+  away or clipping the front face; nothing else moves.
 
-- **`base`** is the **root** — the fixed launch pad. Sculpt a broad, open
-  hangar in the brass and bronze plating (bronze on its underside and in the
-  shadowed seams, sandstone panels for lighter structure) sitting on the ground
-  from `y = 0`, filling most of the width and depth at the foundation. Raise a
-  **center mast** up its middle for the turbine to spin on, and leave the pad
-  open above so the turbine reads high overhead. Set the **solar-amber energy
-  accent** — a glowing pad ring or launch lights — so it glows. Flesh out the
-  front face where the door rides and the mast top where the turbine mounts so
-  the children have something to seat against.
-- **`turbine`** attaches to the top of the center mast at **`[32, 50, 32]`**.
-  Sculpt a bladed iron turbine (a hub with blades around its rim) centered on
-  that hub, standing high over the pad so its blades read, meeting the mast at
-  the hub with no gap. Shape it so it spins cleanly about its vertical axis.
-- **`launch_door`** attaches in the pad's front face at **`[32, 20, 50]`**.
-  Sculpt a heavy iron launch door centered in the front face, sized to slide
-  straight up and back down within its runners, meeting the pad at its runners
-  with no gap.
-
-## The required joints
-
-Both animated elements **run on their own** — each carries an **auto**-driven
-joint that its required animation drives, so the Skyworks cycles without any
-caller. There are **no** caller joints.
-
-- **`turbine_spin`** — a **rotation** about the **y** (up) axis, through the
-  turbine hub at pivot **`[32, 50, 32]`**, **`drive = "auto"`**. Its range is a
-  full turn, `min = -π`, `max = +π`, resting at `0`. Sculpt the turbine so it
-  rotates plausibly about its hub without any voxel tearing away from the mast.
-- **`launch_door_raise`** — a **translation** along the **y** (up) axis, through
-  the door mount at pivot **`[32, 20, 50]`**, **`drive = "auto"`**. Its range is
-  **`min = 0` (fully closed, at rest) to `max = 16` (fully raised)**, resting at
-  `0`. Sculpt the door so it slides plausibly up and down in its runners without
-  any voxel tearing away or clipping the front face.
-
-## The required animations
-
-The rig ships **two required animations** you must author. Each is pre-declared
-in
-`rig.json` as a name, its loop/`auto_play` intent, and the single joint it drives;
-you supply its **motion** by authoring its F-curves. Both are **decorative
-idles** (`auto_play = true`): they play continuously on their own so the Skyworks
-runs without any caller.
-
-- **`turbine_spin`** (period `700 ms`, `loop = true`, `auto_play = true`, drives
-  the `turbine_spin` joint) — spins the turbine a **full revolution fast** and
-  loops. Author a continuous, even rotation from `-π` back around to `+π`.
-- **`launch_door_raise`** (period `3400 ms`, `loop = true`, `auto_play = true`,
-  drives the `launch_door_raise` joint) — slides the door **up, holds it open,
-  then lowers it back**. Give it weight: ease the door into and out of the open
-  hold rather than sliding it linearly.
-
-Author each animation with the `voxel-anim` animation subcommands —
-`define-animation` to declare it, then `add-keyframe` to place its keys (see
-`voxel-anim --help`). Set each keyframe's interpolation with `--interp`
-(`constant | linear | bezier | ease-in | ease-out | ease-in-out`), and shape the
-curve with the optional `--out-handle` / `--in-handle` handles, so the motion
-carries **weight as F-curves** and never just slides linearly. The turbine's spin
-reads best as an even `linear` loop; the door should `ease-in` / `ease-out` around
-its open hold.
-
-You **may add** your own extra parts, joints, or auto-play animations on top of
-this (for example a second door panel, a beacon, or extra pipework), but you must
-**not drop or contradict** the required parts, the two auto `turbine_spin` and
-`launch_door_raise` joints, or their two required animations.
+You **may add** extra parts, joints, and auto-play animations of your own (a
+second door panel, a beacon, extra pipework); you must produce **these two
+animations, by these names**, and must not contradict them (e.g. don't drag the
+pad along under either, or move the door under `turbine_spin`).
 
 ## Working the tool
 
 Sculpt each part up in sensible layers, selecting it with `--part <name>` —
 finish the pad base and its mast, then the turbine, then the door, checking each
-part's preview as you go. Define the parts, pivots, the two auto `turbine_spin`
-and `launch_door_raise` joints, and the two required animations' F-curves through
-the tool's rig and animation subcommands (the required parts, joints, and
-animation declarations are already pre-seeded in `rig.json`, but confirm they
-match this brief, adjust pivots to your sculpt, and author each animation's
-keyframes). Run `voxel-anim --help` for the available operations (setting and
+part's `parts/<part>.png` and the assembled `scene/*.png` previews between calls
+to confirm the parts fit, the turbine seats on its mast, and the door seats in
+the front face. Define your parts with `define-part`, set pivots with
+`set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — reading the previews between calls to confirm the animations read
+with weight. Run `voxel-anim --help` for the available operations (setting and
 clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
 mirror plane), the rig subcommands, and the animation subcommands
-(`define-animation`, `add-keyframe`), and `voxel-anim <operation> --help` for each
-one's exact flags. Call `voxel-anim` once per operation and read
-`parts/<part>.png` between calls to judge each part against this brief.
+(`define-animation`, `add-keyframe`), and `voxel-anim <operation> --help` for
+each one's exact flags. Call `voxel-anim` once per operation. The recorded
+per-part logs and `rig.json` are your scored submission.

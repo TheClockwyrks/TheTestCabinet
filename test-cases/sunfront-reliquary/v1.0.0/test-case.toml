@@ -3,10 +3,12 @@ name = "Sunfront Reliquary"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Reliquary: a 60x96x60 opaque-voxel monument \
-cradling a glowing solar core, whose orbital ring turns, core rises and falls, \
-and guardian fins counter-rotate on their own auto-play animations while the base \
-stays fixed, built and rigged one recorded operation at a time."""
+Sculpt and rig the Sunfront Reliquary: a 60x96x60 opaque-voxel monument cradling a \
+glowing solar core — built not from a fixed skeleton but by painting discrete cells \
+one recorded operation at a time. Its ring turns, its core breathes, and its guardian \
+fins counter-rotate while the plinth holds still. The model invents whatever parts and \
+joints it needs; the fixed contract is three self-playing animations it must author — a \
+`ring_spin`, a `core_pulse`, and a `fins_spin` — the reviewer can watch cycle."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,116 +45,38 @@ preview = "parts/{part}.png"
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts, these joints, and the required animations; at run
-# time it MAY add further parts, joints, and animations of its own (recorded in
-# rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel
-# coordinates. `rig.json` is pre-seeded from this table so the contract exists from
-# the first operation.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. All three here are self-playing
+# idles, so the monument runs on its own with no caller. The model authors each
+# animation's F-curves at run time with the `voxel-anim`
+# `define-animation`/`add-keyframe` subcommands; `rig.json` is pre-seeded with these
+# declarations so the contract exists from the first operation.
 [model]
 
-# The monument plinth and its cradle: the root part (no parent), fixed to the
-# world.
-[[model.part]]
-name = "base"
-pivot = [0, 0, 0]
-
-# The orbital ring, encircling the core high on the monument. It turns steadily
-# about the vertical axis on the auto-driven `ring_spin`.
-[[model.part]]
-name = "orbital_ring"
-parent = "base"
-pivot = [30, 60, 30]
-
-# The glowing solar core, cradled at the heart of the monument. It rises and falls
-# in a slow breathing pulse on the auto-driven `core_pulse`.
-[[model.part]]
-name = "core"
-parent = "base"
-pivot = [30, 56, 30]
-
-# The guardian fins, crowning the monument above the core. They counter-rotate
-# against the ring on the auto-driven `fins_spin`.
-[[model.part]]
-name = "guardian_fins"
-parent = "base"
-pivot = [30, 78, 30]
-
-# The orbital ring's own looping spin. An `auto` joint driven by the `ring_spin`
-# auto_play animation, a full rotation about `y` so the ring turns on its own
-# without a caller.
-[[model.joint]]
-name = "ring_spin"
-part = "orbital_ring"
-kind = "rotation"
-axis = "y"
-pivot = [30, 60, 30]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "auto"
-
-# The solar core's own looping rise-and-fall pulse. An `auto` joint driven by the
-# `core_pulse` auto_play animation, an upward translation along `y` so the core
-# breathes on its own without a caller. `rest = 0` is the settled height; `max = 6`
-# is the top of the rise.
-[[model.joint]]
-name = "core_pulse"
-part = "core"
-kind = "translation"
-axis = "y"
-pivot = [30, 56, 30]
-min = 0.0
-max = 6.0
-rest = 0.0
-drive = "auto"
-
-# The guardian fins' own looping spin. An `auto` joint driven by the `fins_spin`
-# auto_play animation, a full rotation about `y` in the OPPOSITE direction to the
-# ring so the fins counter-rotate on their own without a caller.
-[[model.joint]]
-name = "fins_spin"
-part = "guardian_fins"
-kind = "rotation"
-axis = "y"
-pivot = [30, 78, 30]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "auto"
-
-# The required decorative animations — one per animated part, so the monument runs
-# on its own. Each is a DECLARATION only (name, period, loop, auto_play, joints); it
-# carries NO keyframes. The model authors each motion as F-curves at run time with
-# the `voxel-anim` animation subcommands, and the produced rig.json carries the
-# curves. `auto_play = true` means the animation plays continuously by default (a
-# decorative idle), so the ring turns, the core breathes, and the fins counter-rotate
-# on their own with no caller.
-
-# The orbital ring's continuous spin — one full revolution about `y`.
+# `ring_spin` — the orbital ring's continuous spin. A self-playing idle that turns the
+# ring steadily on its own, at rest and with no caller.
 [[model.animation]]
 name = "ring_spin"
-period_ms = 3000
 loop = true
 auto_play = true
-joints = ["ring_spin"]
 
-# The solar core's breathing pulse — a rise-and-settle translation along `y`.
+# `core_pulse` — the solar core's breathing rise-and-fall. A self-playing idle that
+# lifts the core and settles it back in a slow pulse on its own, with no caller.
 [[model.animation]]
 name = "core_pulse"
-period_ms = 2000
 loop = true
 auto_play = true
-joints = ["core_pulse"]
 
-# The guardian fins' continuous counter-spin — a full revolution about `y` the
-# OTHER way from the ring.
+# `fins_spin` — the guardian fins' continuous counter-spin. A self-playing idle that
+# turns the fins the OPPOSITE way from the ring on their own, with no caller.
 [[model.animation]]
 name = "fins_spin"
-period_ms = 3400
 loop = true
 auto_play = true
-joints = ["fins_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -165,8 +89,8 @@ description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Reliquary \
 and runs correctly — a tall, precious monument cradling a glowing solar core, \
 whose orbital ring turns, core rises and falls, and guardian fins counter-rotate \
-on their own auto-play animations while the base stays put, with a heavy solar-hot \
-and amber core glow and the disciplined Duneforged palette."""
+on their own self-playing animations while the plinth stays put, with a heavy \
+solar-hot and amber core glow and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-reliquary"
@@ -184,24 +108,26 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Ring turns, core pulses, and fins counter-rotate on their own"
 text = """
-The three animated elements cycle on their own via their auto-play animations \
-while the `base` stays fixed: the `ring_spin` joint turns the orbital ring a full \
-revolution about the vertical axis, the `core_pulse` joint lifts the solar core \
-up and settles it back in a breathing rise and fall, and the `fins_spin` joint \
-turns the guardian fins a full revolution the opposite way. Across each cycle no \
-voxel of the ring, core, or fins tears away from its mount or clips the monument \
-— each moves as one solid piece about the correct axis."""
+The three animated elements cycle on their own, each on its self-playing animation, \
+while the plinth stays fixed: playing `ring_spin` turns the orbital ring a full \
+revolution about the vertical axis, `core_pulse` lifts the solar core up and settles \
+it back in a breathing rise and fall, and `fins_spin` turns the guardian fins a full \
+revolution the opposite way, so the ring and fins visibly counter-rotate. Across each \
+cycle no voxel of the ring, core, or fins tears away from its mount or clips the \
+monument — each moves as one solid piece about a clean, sensible axis. The model had \
+to work out where to split the monument into a fixed body and these three independently \
+moving pieces for this to read at all."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "base-fixed"
-title = "Base stays fixed"
+title = "The monument's body stays fixed"
 text = """
-Only the moving parts move: the orbital ring as it turns, the core as it rises \
-and falls, and the guardian fins as they counter-rotate. The monument plinth and \
-its cradle stay put — they are the fixed root of the rig, not carried along by \
-the ring, core, or fins."""
+Only the moving elements move: the orbital ring as it turns, the core as it rises \
+and falls, and the guardian fins as they counter-rotate. The monument plinth and its \
+cradle are the fixed root of the machine — they stay put throughout, never carried \
+along or dragged by the ring, the core, or the fins."""
 weight = 2
 domain = "fidelity"
 
@@ -209,10 +135,10 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Ring, core, and fins stay attached"
 text = """
-Each child stays attached to the base across its joint's range: the orbital ring \
-stays centered on its pivot as it turns, the core stays cradled in the monument \
-as it rises and falls, and the guardian fins stay seated on their crown as they \
-counter-rotate, with no gap and never floating free or detaching."""
+Each moving element stays attached to the monument across its whole cycle: the orbital \
+ring stays centered as it turns, the core stays cradled in the monument as it rises \
+and falls, and the guardian fins stay seated on their crown as they counter-rotate — \
+with no gap opening up and nothing floating free or detaching."""
 weight = 2
 domain = "fidelity"
 

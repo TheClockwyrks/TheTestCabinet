@@ -5,8 +5,10 @@ tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Monolith Forge: a 68x84x68 opaque-voxel great forge \
 whose massive hammer stamps down and back up and whose gear crown turns on their \
-own auto-play animations while the base stays fixed, built and rigged one recorded \
-operation at a time."""
+own self-playing animations while the tower stays fixed, painted cell by cell with \
+the voxel-anim tool. The model invents whatever parts and joints it needs; the \
+fixed contract is two self-playing animations it must author — a `hammer_stamp` and \
+a `crown_spin` — that the reviewer can watch cycle."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,81 +45,33 @@ preview = "parts/{part}.png"
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play animations of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton the forge needs and is judged on whether it works out the right
+# pieces, attaches them where they belong, and animates them convincingly. What is
+# fixed is the set of NAMED ANIMATIONS the model must author (a game plays them by
+# name) and whether each is a game-triggered playable or a self-playing idle. The
+# model authors each animation's F-curves at run time with the voxel-anim
+# `define-animation`/`add-keyframe` subcommands; `rig.json` is pre-seeded with these
+# declarations so the contract exists from the first operation.
 [model]
 
-# The great forge and its foundation: the root part (no parent), fixed to the world.
-[[model.part]]
-name = "base"
-pivot = [0, 0, 0]
-
-# The massive forge hammer, riding in the forge's throat. It stamps straight down
-# and back up on the auto-driven `hammer_stamp`.
-[[model.part]]
-name = "hammer"
-parent = "base"
-pivot = [34, 58, 34]
-
-# The gear crown, mounted atop the forge. It turns on its own on the auto-driven
-# `crown_spin`.
-[[model.part]]
-name = "gear_crown"
-parent = "base"
-pivot = [34, 74, 34]
-
-# The forge hammer's own looping stamp. An `auto` joint driven by the decorative
-# `hammer_stamp` animation the model authors, a deep downward translation along `y`
-# so the hammer pounds on its own without a caller. `rest = 0` is fully raised;
-# `min = -18` is the bottom of the stamp.
-[[model.joint]]
-name = "hammer_stamp"
-part = "hammer"
-kind = "translation"
-axis = "y"
-pivot = [34, 58, 34]
-min = -18.0
-max = 0.0
-rest = 0.0
-drive = "auto"
-
-# The gear crown's own looping spin. An `auto` joint driven by the decorative
-# `crown_spin` animation the model authors, a full rotation about `y` so the crown
-# turns on its own without a caller.
-[[model.joint]]
-name = "crown_spin"
-part = "gear_crown"
-kind = "rotation"
-axis = "y"
-pivot = [34, 74, 34]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "auto"
-
-# The required animations — one decorative, self-playing motion per animated part,
-# so the forge runs on its own. Each is a DECLARATION only (name, period, loop,
-# auto_play, and the joints it must drive); the case ships NO keyframes. The model
-# authors each F-curve at run time with the voxel-anim `define-animation`/
-# `add-keyframe` subcommands. Both are `auto_play = true` decorative idles: the
-# hammer drops deep and rises back, and the gear crown turns a full revolution and
-# loops.
+# `hammer_stamp` — the STAMP. A self-playing idle that pounds the great hammer
+# straight down deep into the forge's throat and back up to rest, on its own, so the
+# forge works without a caller. It should land with weight — an eased drop, not a
+# weightless linear slide.
 [[model.animation]]
 name = "hammer_stamp"
-period_ms = 1600
 loop = true
 auto_play = true
-joints = ["hammer_stamp"]
 
+# `crown_spin` — the CROWN TURN. A self-playing idle that turns the toothed gear
+# crown atop the forge one full, steady revolution about its vertical axis,
+# continuously and seamlessly, on its own.
 [[model.animation]]
 name = "crown_spin"
-period_ms = 2600
 loop = true
 auto_play = true
-joints = ["crown_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -129,8 +83,8 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Monolith \
 Forge and runs correctly — a towering great forge whose massive hammer stamps down \
-and back up while the gear crown turns on their own auto-play animations and the \
-base stays put, with a clear solar-amber energy accent and the disciplined \
+and back up while the gear crown turns on their own self-playing animations and the \
+tower stays put, with a clear solar-amber energy accent and the disciplined \
 Duneforged palette."""
 
 [[review_item]]
@@ -148,22 +102,22 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Hammer stamps and crown spins on their own"
 text = """
-The animated elements cycle on their own via their auto-play animations while the \
-`base` stays fixed: the `hammer_stamp` joint drives the great hammer straight down \
-and back up in its throat, and the `crown_spin` joint turns the gear crown a full \
-revolution atop the forge. Across each cycle no voxel of the hammer or crown tears \
-away from its mount or clips into the tower — each moves as one solid piece about \
-the correct axis."""
+The animated elements cycle on their own via their self-playing animations while \
+the forge tower stays fixed: `hammer_stamp` drives the great hammer straight down \
+deep into its throat and back up, landing with weight, and `crown_spin` turns the \
+gear crown a full, steady revolution atop the forge. Across each cycle no part of \
+the hammer or the crown tears away from its mount or clips into the tower — each \
+moves as one solid piece about the correct axis."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "base-fixed"
-title = "Base stays fixed"
+title = "Forge tower stays fixed"
 text = """
-Only the moving parts move: the hammer as it stamps and the gear crown as it \
-spins. The forge base and its foundation stay put — they are the fixed root of the \
-rig, not carried along by the hammer or the crown."""
+Only the moving elements move: the hammer as it stamps and the gear crown as it \
+spins. The forge tower and its foundation stay put — the fixed base of the \
+structure, never carried along by the hammer or the crown."""
 weight = 2
 domain = "fidelity"
 
@@ -171,10 +125,10 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Hammer and crown stay attached"
 text = """
-Each child stays attached to the base across its joint's range: the hammer meets \
-the forge's throat at its mount as it pounds up and down, and the gear crown meets \
-the forge's crest at its hub as it turns, with no gap and never floating free or \
-detaching."""
+Each moving element stays attached to the forge across its full motion: the hammer \
+meets the forge's throat at its mount as it pounds up and down, and the gear crown \
+meets the forge's crest at its hub as it turns, with no gap and never floating free \
+or detaching."""
 weight = 2
 domain = "fidelity"
 

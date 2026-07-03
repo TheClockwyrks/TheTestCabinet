@@ -12,32 +12,25 @@ brass-and-sandstone palette and solar-amber team accent. There is no target mode
 — the model builds toward the seeded brief and is reviewed subjectively against
 it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** prescribe a rig. The `[model]` table in `test-case.toml`
+declares **only the two animations** the model must author (by name); the parts,
+joints, and pivots that realize them are entirely the model's to invent, and working
+them out is the test. Both are looping, self-playing idles, so the foundry cycles on
+its own with no caller:
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The tower shaft and its footing |
-| `rail_arm` | `base` | `[22, 50, 22]` | The sliding mid-shaft rail-arm |
-| `focus_ring` | `base` | `[22, 68, 22]` | The spinning focus-ring at the crown |
+- **`rail_arm_slide`** — rides a heavy rail-arm smoothly up its shaft and back down.
+- **`focus_ring_spin`** — turns a machined focus-ring a full revolution about the
+  vertical axis.
 
-This is a **structure**: it has no caller-driven controls. Both moving parts
-animate on their own through auto joints, each driven by a required auto-play
-animation the model authors:
-
-- **`rail_arm_slide`** (auto, translation along `y`, `0..10`) — rides the rail-arm
-  up and down its shaft, driven by the required `rail_arm_slide` animation
-  (`period_ms = 1600`, loop, auto_play).
-- **`focus_ring_spin`** (auto, rotation about `y`, `-π..π`) — turns the
-  focus-ring a full revolution, driven by the required `focus_ring_spin` animation
-  (`period_ms = 2000`, loop, auto_play).
-
-The two `[[model.animation]]` entries are **declarations only** — no keyframes:
-the model authors each motion as an F-curve at run time with the `voxel-anim`
-`define-animation`/`add-keyframe` subcommands. The `base` stays fixed. The model
-may add its own extra parts, joints, and animations on top, but must not drop or
-contradict the required interface.
+The two `[[model.animation]]` entries carry only `name`, `loop`, and `auto_play` —
+**declarations only**, no keyframes and no joints: the model authors each motion as an
+F-curve at run time with the `voxel-anim` `define-animation`/`add-keyframe`
+subcommands, and defines its own parts and joints with `define-part`/`define-joint`.
+The base tower stays fixed while only the rail-arm and focus-ring move. The model may
+add further parts, joints, and animations on top, but must produce these two
+animations by these names and must not contradict them.
 
 ## Contents
 
@@ -51,10 +44,9 @@ contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts, joints, and animation declarations (so the
-contract exists from the first operation). There is no target model and no
-operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the two required animation declarations (so the contract exists
+from the first operation) — but no parts or joints, which the model invents. There is
+no target model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 

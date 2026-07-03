@@ -1,16 +1,20 @@
 **Sunfront Lumen Spire** is a slim Duneforged beacon spire with a spinning halo
 ring and a pulsing solar lens. This asset-generation case asks a model to sculpt
 *and rig* it as a 44×88×44 opaque-voxel model using only the `voxel-anim` tool,
-one operation at a time: a slender brass masonry spire (the fixed root) rising to
-a crown, an iron halo ring encircling that crown, and a bright solar lens seated
-atop its tip. The rig's required contract is two auto-driven joints — a
-**`halo_ring_spin`** rotation that turns the ring a full revolution, and a
-**`lens_pulse`** translation that bobs the lens up and back down — so the spire
-runs on its own while the `base` stays fixed. There is no target model — the model
-sculpts and rigs toward a written brief, and may add its own extra parts and
+one recorded operation at a time: a slender brass masonry tower rising to a crown,
+an iron halo ring encircling that crown, and a bright solar lens seated atop its
+tip, all painted cell by cell. Crucially, the case does **not** hand the model a
+rig: it fixes only the two self-playing animations the model must author — a
+**`halo_ring_spin`** that turns the halo ring a full revolution about the spire's
+vertical axis, and a **`lens_pulse`** that bobs the solar lens up off its seat and
+back down — and leaves the parts, joints, and articulation that realize them
+entirely to the model, so the test measures whether a model can work out the pieces
+a spinning, pulsing beacon needs, attach them where they belong, and animate them
+convincingly (a steady spin that wraps seamlessly, an eased bob that hangs and
+settles with weight) while the tower stays fixed. There is no target model — the
+model sculpts and rigs toward a written brief, and may add its own extra parts and
 joints on top. The recorded per-part operations are regenerated into a rigged 3D
-model the frontend renders with the ring and lens cycling on their auto-play
-animations, and a
-reviewer judges it against the brief: that it reads as a beacon spire, the ring
-spins and lens pulses on the correct axes without detaching, the base stays fixed,
-and the ring and lens stay attached are what they weigh.
+model the frontend renders with the ring and lens cycling on their self-playing
+animations, and a reviewer judges it against the brief: that it reads as a beacon
+spire, the ring spins and lens pulses on the correct axes without detaching, the
+tower stays fixed, and the ring and lens stay attached.

@@ -1,23 +1,58 @@
 # Ironward Siege Tank — sculpting and rigging brief
 
-You are sculpting and rigging the **Ironward Siege Tank**, a heavy tracked tank
-with a swiveling turret, as a **3D voxel model** with a small **rig** a game can
-pose at runtime. There is no target model to copy: build something that reads
-unmistakably as this tank and poses correctly from the description below.
+You are sculpting and rigging the **Ironward Siege Tank**, a **heavy tracked
+tank** with a **swiveling turret** and a **long forward gun** — as a **rigged 3D
+voxel model** a game poses at runtime. There is no target model to copy: it must
+read unmistakably as the Ironward and satisfy the animation contract below.
+
+This brief fixes **what the Ironward is** and **how it must move**. It
+deliberately does **not** give you a parts list, joint placements, or pose
+angles — **working out the pieces a tracked, turret-swiveling tank needs, where
+they attach, and how they articulate is the test.** Invent the rig.
+
+## How the tool works
+
+`voxel-anim` paints **discrete opaque cells** into a shared volume. You build the
+model by:
+
+- **Placing material** with the tool's fill/stroke/line/sphere/box operations
+  (each an opaque `#rrggbb` color), and clearing it where you overreach.
+- Selecting the **part** an op sculpts with the global **`--part <name>`**; each
+  part is its **own** preview and log. Create a part with `define-part` before you
+  sculpt into it.
+
+Build **one operation at a time**. `voxel-anim` re-renders `parts/<part>.png` and
+the assembled `scene/*.png` — **read them between calls**. `voxel-anim --help` is
+the contract.
 
 ## The volume and coordinate system
 
-- The volume is **60 wide (x) x 40 tall (y) x 80 deep (z)**, in opaque voxels. It
-  starts **empty**.
-- **x** runs across the tank, `0`-`59`. **y** runs up, `0` (bottom, the ground)
-  to `39` (top). **z** runs front-to-back, `0`-`79`.
-- **Forward is +z:** the gun points toward `z = 79` (the front) when the turret
-  is at rest. Up is +y.
-- Build the tank **symmetric about the lengthwise vertical centerplane between
-  `x = 29` and `x = 30`** — the two tracks mirror each other, and the turret and
-  barrel are centered on it.
-- Each part is sculpted **separately** with `voxel-anim --part <name>`, in this
-  same volume's coordinates, positioned where the part sits on the assembled tank.
+- The volume is **60 wide (x) × 40 tall (y) × 80 deep (z)**, in opaque voxels,
+  starting **empty**.
+- **x** runs across the tank, `0`–`59`. **y** runs up, `0` (ground) to `39` (top).
+  **z** runs front-to-back, `0`–`79`. **Forward is +z:** the gun points toward
+  higher `z` at rest.
+- Build the tank roughly **symmetric left-to-right** about the lengthwise vertical
+  centerplane (between `x = 29` and `x = 30`).
+- Each part is sculpted in these shared coordinates, where it sits on the assembled
+  tank.
+
+## What the Ironward is (and what is yours to invent)
+
+Fixed — the tank must read unmistakably as **all** of these:
+
+- A **low, boxy armored hull** riding on a **pair of tracks** down its sides,
+  running most of the length — a tracked fighting vehicle, **not a plain box**.
+- A **turret** sitting on top of the hull that **swivels** to aim (see the
+  animation).
+- A **long gun** projecting **forward** from the turret, swinging with it.
+- A clear **warm accent** and the palette below.
+
+**Everything else is yours to invent** — the exact silhouette and proportions, how
+the hull is shaped and how the tracks are detailed, how the turret and gun are
+formed, and how you break the tank into rig parts and place its joints. Nothing
+here prescribes a shape; the test rewards a bold, characterful design that is
+unmistakably the Ironward and animates convincingly.
 
 ## Palette
 
@@ -29,93 +64,43 @@ off-palette colors and stray voxels count against you):
 | Hull (olive) | `#5d6b3a` |
 | Underside (dark olive) | `#3b4526` |
 | Tracks (dark) | `#2a2c2e` |
-| Barrel & fittings (gunmetal) | `#6b7078` |
+| Gun & fittings (gunmetal) | `#6b7078` |
 | Accent (warm) | `#b5502a` |
 
-## The parts
+Set a clear **warm accent** (a hatch, cupola, or running-light detail) so it shows
+from many angles.
 
-The tank is a **rig** of three required parts in a parent/child hierarchy. Sculpt
-each in its own local coordinates within the shared volume, positioned where it
-sits on the finished tank:
+## The required animation — the fixed contract
 
-| Part | Parent | Attaches at (pivot) | What it is |
-| --- | --- | --- | --- |
-| `chassis` | *(root)* | `[0, 0, 0]` | The tank body and its two tracks |
-| `turret` | `chassis` | `[30, 20, 40]` | The rotating turret on top |
-| `barrel` | `turret` | `[30, 28, 50]` | The main gun, on the turret front |
+`rig.json` is pre-seeded with **one required animation declaration** by name (you
+author the motion). Author it with `voxel-anim define-animation` then
+`add-keyframe`, choosing the period and setting each key's interpolation
+(`--interp constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
+`--out-handle`/`--in-handle` for bezier) so the motion **carries weight** — a heavy
+turret slows as it reaches each extreme and rolls back, rather than sliding
+linearly at a constant rate.
 
-- **`chassis`** is the **root** — the fixed base of the tank. Sculpt a low, boxy
-  hull in the olive hull color (dark olive on its underside) sitting on the ground
-  (from `y = 0`), running most of the depth. Down each side, along the full length,
-  sculpt a **track** in the track color, standing a little taller than the hull
-  floor. Keep the hull top flat around `y = 20` so the turret has a mount to rest
-  on.
-- **`turret`** attaches to the top-center of the chassis at **`[30, 20, 40]`**.
-  Sculpt a compact turret box (a hatch or cupola in the accent color reads well)
-  centered over that mount, sitting from about `y = 20` up. It must sit **on** the
-  chassis, meeting it at the mount with no gap and no voxel poking down into the
-  hull.
-- **`barrel`** attaches to the front of the turret at **`[30, 28, 50]`**. Sculpt
-  a long, straight gun barrel in the gunmetal color projecting **forward (+z)**
-  from the turret's front face, centered on the centerplane. It must meet the
-  turret with no gap.
+- **`turret_sweep`** — the TURRET traverse (a game-triggered playable). Swings the
+  turret smoothly through its full traverse — center → left → center → right →
+  center — and loops, aiming the gun across its arc. The turret (and the gun with
+  it) moves; the hull stays put. It is a **named playable**, not an idle that
+  starts on its own.
 
-## The required joint
+Design the turret so this motion reads correctly: it should swing as one solid
+piece about a single vertical axis without any part tearing away from its mount or
+clipping into the hull, and the gun should ride the turret's rotation so it always
+stays attached.
 
-A consuming game drives the rig by joint name. The **required** joint is:
-
-- **`turret_yaw`** — a **rotation** about the **y** (up) axis, through the turret's
-  vertical mount at pivot **`[30, 20, 40]`**, driven by the **caller** (the game).
-  Its range is a **full half-turn each way**, `min = -π`, `max = +π`, resting at
-  `0` (facing straight forward). Driving it must **swing the whole turret — and
-  the barrel with it — left and right about that mount**, so the tank can aim in
-  any direction. Sculpt the turret so it rotates plausibly about that vertical axis:
-  no voxel of the turret should tear away from the mount or clip into the hull as
-  it turns.
-
-Design the turret and barrel so this motion reads correctly: the barrel is a child
-of the turret, so it swings along with it and always stays attached.
-
-## The required animation
-
-You must also **author** one required animation — the review viewer plays it as
-a
-button so a reviewer can watch the turret work without dragging the slider by hand:
-
-- **`turret_sweep`** — a **looping**, 4000 ms animation driving the **`turret_yaw`**
-  joint. It swings the turret center → left → center → right → center and loops
-  smoothly back. It is a **named playable** (not an idle that starts on its own).
-
-The case declares this animation's identity and intent only — **you author its
-motion as F-curves** with the `voxel-anim` animation subcommands: `define-animation`
-to create `turret_sweep`, then `add-keyframe` to place each keyframe on the
-`turret_yaw` track. Give each keyframe an interpolation (`--interp
-constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
-`--out-handle`/`--in-handle` for bezier), so the sweep **eases** at the ends of
-its
-travel and carries weight — a heavy turret slowing as it reaches each extreme and
-rolling back — rather than sliding linearly at a constant rate. Run `voxel-anim
---help` for the exact animation subcommands and flags.
-
-You **may add** your own extra parts, joints, or auto-play animations on top of
-this
-(for example an optional caller joint **`barrel_pitch`** — a rotation about the
-**x** axis through the barrel's mount that elevates and depresses the gun — or a
-subtle decorative idle), but you must **not drop or contradict** the required parts,
-the required `turret_yaw` joint, or the required `turret_sweep` animation.
+You **may add** extra parts, joints, and animations of your own (for example a gun
+that elevates and depresses, or a subtle decorative idle); you must produce this
+one animation, by this name, and must not contradict it (e.g. don't drive the hull
+under `turret_sweep`).
 
 ## Working the tool
 
-Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish
-the chassis and its tracks, then the turret, then the barrel, checking each
-part's preview as you go. Define the parts, pivots, and the `turret_yaw` joint,
-and author the
-`turret_sweep` animation, through the
-tool's rig and animation subcommands (the required parts, joint, and animation
-declaration are already pre-seeded in
-`rig.json`, but confirm they match this brief and adjust pivots to your sculpt).
-Run `voxel-anim --help` for the available operations (setting and clearing single
-voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the
-rig subcommands, and `voxel-anim <operation> --help` for each one's exact flags.
-Call `voxel-anim` once per operation and read `parts/<part>.png` between calls to
-judge each part against this brief.
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the required
+animation's keyframes — reading `parts/<part>.png` and the `scene/*.png` previews
+between calls to confirm the parts fit, the turret seats on the hull, the gun meets
+the turret's front, and the animation reads with weight. The recorded per-part logs
+and `rig.json` are your scored submission.

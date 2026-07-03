@@ -4,11 +4,11 @@ difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
 Sculpt and rig the Sunfront Lancer: a 44x64x64 opaque-voxel bipedal marksman-mech \
-whose long center rail-lance aims up and down on a caller-driven weapon_pitch joint \
-while it strides on two independent two-jointed legs (a hip and a knee each) whose \
-feet lift clear of the ground — built and rigged one recorded operation at a time, \
-with the walk and a weapon-only fire the model authors as F-curves and the reviewer \
-can play back."""
+whose long center rail-lance aims up and down at the chest while it strides on two \
+legs whose feet lift clear of the ground and plant flat — built by painting voxel \
+cells one recorded operation at a time. The model invents whatever parts and joints \
+it needs; the fixed contract is two animations it must author as F-curves — a \
+striding `walk` and a weapon-only `fire` recoil — the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -39,208 +39,41 @@ background = "transparent"
 binary = "voxel-anim"
 preview = "parts/{part}.png"
 
-# The recorded action logs — one per part (the `{part}` token expands to each
-# declared part name), the authoritative output each part's regenerated model is
+# The recorded action logs — one per part (the `{part}` token expands to each part
+# the model defines), the authoritative output each part's regenerated model is
 # rebuilt from.
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts, these joints, and these animations; at run time it
-# MAY add further parts, joints, and animations of its own (recorded in rig.json)
-# beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates.
-# `rig.json` is pre-seeded from this table so the contract exists from the first
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton the mech needs and is judged on whether it works out the right pieces,
+# attaches them where they belong, and animates them convincingly. What is fixed is the
+# set of NAMED ANIMATIONS the model must author (a game plays them by name) and whether
+# each is a game-triggered playable or a self-playing idle. The model authors each
+# animation's F-curves at run time with `voxel-anim define-animation`/`add-keyframe`;
+# `rig.json` is pre-seeded with these declarations so the contract exists from the first
 # operation.
-#
-# The rig has two kinds of moving part, and the drive of each is deliberate:
-#   * The rail-lance is `caller` — a game (and the review viewer's `fire` animation)
-#     drives `weapon_pitch` by name; at rest the lance holds level so the walk can
-#     stride the legs while the lance stays put.
-#   * The six leg joints are `auto` — an animation (the `walk`) drives them; at rest
-#     they hold the bent-knee stance so the `fire` animation can pose the lance while
-#     the legs stand planted.
 [model]
 
-# The mech's upper body and head: the root part (no parent), fixed to the world.
-[[model.part]]
-name = "torso"
-pivot = [0, 0, 0]
-
-# --- The two legs. Each leg is THREE parts (an upper thigh + a lower shin + a
-# short flat foot) with three pivots (a hip on the torso, a knee between thigh and
-# shin, an ankle between shin and foot), so the knee bends to lift the foot clear of
-# the ground on its swing instead of dragging it and the ankle keeps the foot flat.
-# The legs are INDEPENDENT — each leg's own chain on its own hip directly above its
-# own foot (x,z held constant down the chain; only y descends) — so no shared pivot
-# drags a fore-and-aft spread of feet below ground. Left (l), right (r). ---
-
-# Left thigh, hung from the left hip under the torso.
-[[model.part]]
-name = "thigh_l"
-parent = "torso"
-pivot = [14, 26, 24]
-
-# Left shin, hung from the left knee down toward the foot.
-[[model.part]]
-name = "shin_l"
-parent = "thigh_l"
-pivot = [14, 14, 24]
-
-# Left foot: a short, FLAT foot hung from the ankle.
-[[model.part]]
-name = "foot_l"
-parent = "shin_l"
-pivot = [14, 3, 24]
-
-# Right thigh, mirroring the left.
-[[model.part]]
-name = "thigh_r"
-parent = "torso"
-pivot = [30, 26, 24]
-
-# Right shin.
-[[model.part]]
-name = "shin_r"
-parent = "thigh_r"
-pivot = [30, 14, 24]
-
-# Right foot.
-[[model.part]]
-name = "foot_r"
-parent = "shin_r"
-pivot = [30, 3, 24]
-
-# The long center rail-lance, mounted at the chest and projecting forward. It aims
-# up and down on the caller-driven `weapon_pitch`.
-[[model.part]]
-name = "weapon"
-parent = "torso"
-pivot = [22, 44, 30]
-
-# --- Joints ---
-
-# The two hip joints: each swings its whole leg fore-and-aft about the hip — the big
-# stride sweep. `auto` so the `walk` animation drives them; at rest 0 the leg hangs
-# straight down from the hip. rot x, range ±0.5.
-[[model.joint]]
-name = "hip_l"
-part = "thigh_l"
-kind = "rotation"
-axis = "x"
-pivot = [14, 26, 24]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "hip_r"
-part = "thigh_r"
-kind = "rotation"
-axis = "x"
-pivot = [30, 26, 24]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-# The two knee joints: each bends the shin to fold the leg and lift the foot on its
-# swing. `auto`, driven by the `walk`. `rest = -0.7` is a clearly BENT knee (a
-# reverse/digitigrade fold, shin swept rearward) — never a straight column, so the
-# foot can stay planted as the body passes over it. rot x, range -1.4..0.2. If the
-# sculpt makes the knee fold "inside-out", flip the SIGN of the animated values.
-[[model.joint]]
-name = "knee_l"
-part = "shin_l"
-kind = "rotation"
-axis = "x"
-pivot = [14, 14, 24]
-min = -1.4
-max = 0.2
-rest = -0.7
-drive = "auto"
-
-[[model.joint]]
-name = "knee_r"
-part = "shin_r"
-kind = "rotation"
-axis = "x"
-pivot = [30, 14, 24]
-min = -1.4
-max = 0.2
-rest = -0.7
-drive = "auto"
-
-# The two ankle joints: each tilts its foot only a little (±~15°) to keep the foot
-# FLAT — counter-rotating against the shin — so the mech never walks on its toes or
-# heels. `auto`, driven by the `walk`. rot x, range ±0.3, rest 0.
-[[model.joint]]
-name = "foot_l"
-part = "foot_l"
-kind = "rotation"
-axis = "x"
-pivot = [14, 3, 24]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "foot_r"
-part = "foot_r"
-kind = "rotation"
-axis = "x"
-pivot = [30, 3, 24]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-# The required caller-driven joint: a game addresses `weapon_pitch` by name to aim
-# the rail-lance up and down about its chest mount. `rest = 0` levels the lance
-# straight forward (+z); `min`/`max` tilt it down and up. Only the weapon moves on
-# this joint.
-[[model.joint]]
-name = "weapon_pitch"
-part = "weapon"
-kind = "rotation"
-axis = "x"
-pivot = [22, 44, 30]
-min = -0.6
-max = 0.6
-rest = 0.0
-drive = "caller"
-
-# --- Required animations (the model MUST author these; declarations only — no
-# keyframes here). The case fixes each animation's identity and intent; the model
-# authors the motion as F-curves with the voxel-anim `define-animation` /
-# `add-keyframe` subcommands, and the produced rig.json carries the keyframes. ---
-
-# `walk`: the WALK. It drives only the six leg joints — the two hips sweep
-# fore-and-aft, the two knees fold to lift each foot, the two ankles keep the feet
-# flat — with the legs in OPPOSITE phase (left and right a half period apart) so one
-# foot is always planted. Each leg must have a planted-flat stance segment (foot
-# still on the ground, translating backward under the body) then a swing (lift,
-# forward, plant), landing with an `ease-in` for weight. It touches NO weapon joint,
-# so the rail-lance holds level while the mech strides.
+# `walk` — the WALK. A game-triggered playable (not self-playing) that strides the mech
+# forward on its two legs: the feet plant flat and still on the ground while the body
+# passes over them, then lift clear, swing forward, and plant again, the two legs in
+# opposite phase so one foot is always planted — the machine pushing itself forward
+# rather than flailing. The legs move; the rail-lance holds level.
 [[model.animation]]
 name = "walk"
-period_ms = 800
 loop = true
 auto_play = false
-joints = ["hip_l", "knee_l", "foot_l", "hip_r", "knee_r", "foot_r"]
 
-# `fire`: the WEAPON showcase — a viewer play button so a reviewer can watch the
-# lance recoil through its range without dragging the slider. It drives only the
-# caller `weapon_pitch`: a quick recoil nod, an overshoot back, and a settle. It
-# touches NO leg joint, so the legs hold their bent-knee stance while the lance
-# recoils.
+# `fire` — the WEAPON showcase. A game-triggered playable (a viewer play button so a
+# reviewer can watch the lance work without dragging a slider) that recoils the
+# rail-lance about its chest mount: a quick recoil nod off level, an overshoot back, and
+# a settle. Only the lance moves; the legs hold their stance.
 [[model.animation]]
 name = "fire"
-period_ms = 500
 loop = true
 auto_play = false
-joints = ["weapon_pitch"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -252,34 +85,33 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Lancer and \
 poses correctly — a bipedal marksman-mech whose long center rail-lance aims up and \
-down on its chest mount without detaching while it strides on two independent \
-two-jointed legs whose feet lift clear of the ground and plant flat, and the torso \
-stays put, with a clear solar-amber charge-coil accent and the disciplined \
-Duneforged palette."""
+down at its chest mount without detaching while it strides on two articulated legs \
+whose feet lift clear of the ground and plant flat, and the body stays put, with a \
+clear solar-amber charge-coil accent and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-lancer"
 title = "Reads as a bipedal rail-lance marksman"
 text = """
 From more than one angle the model reads unmistakably as a long-range walking mech: \
-an upright torso with a head on top, a pair of jointed legs planted beneath the hips \
-(each a thigh, a shin, and a short flat foot with a clearly bent knee), and a long, \
-slender rail-lance carried forward on the centerline. It is a bipedal fighting \
-machine, not an abstract stack of boxes."""
+an upright body with a head on top, a pair of articulated legs planted beneath it, \
+and a long, slender rail-lance carried forward on the centerline. It is a bipedal \
+fighting machine, not an abstract stack of boxes."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "legs-walk"
-title = "Legs stride independently without clipping the ground"
+title = "Legs stride on planted feet without clipping the ground"
 text = """
-Playing `walk` strides the mech on its two legs: each leg swings on its own `hip_*` \
-joint, bends at its own `knee_*` so the foot lifts clear of the ground on its swing \
-and plants again, and tilts on its own `foot_*` so the foot stays flat — the legs \
-step in opposite phase, NOT as one rigid bank, and no foot is dragged or driven down \
-through the ground. There is a planted stance segment where the foot is flat and \
-still on the ground while the body passes over it. Each shin stays attached to its \
-thigh, each foot to its shin, and each thigh to the torso across the whole range."""
+Playing `walk` strides the mech forward on its two legs. Each foot has a clear \
+PLANTED STANCE — flat and still on the ground while the body passes over it — then \
+lifts clear, swings forward, and plants again with weight; the two legs step in \
+OPPOSITE phase so one foot is always down, NOT flailing as one rigid bank. The feet \
+stay flat as they carry the body (they don't tip onto toe or heel), no foot is \
+dragged or driven down through the ground, and the legs stay attached across the \
+whole cycle. The model had to invent an articulated leg (more than one segment and \
+joint) for this to read as walking rather than swinging rigid poles."""
 weight = 3
 domain = "fidelity"
 
@@ -287,21 +119,22 @@ domain = "fidelity"
 id = "weapon-pitches"
 title = "Rail-lance aims and recoils"
 text = """
-Driving the `weapon_pitch` joint (and playing `fire`) tilts the rail-lance cleanly \
-up and down about its chest mount, with no voxel of the weapon tearing away from the \
-frame or clipping into the torso across the full range. When `fire` plays only the \
-lance recoils and the legs stay planted; when `walk` plays only the legs move and \
-the lance holds level."""
+The rail-lance tilts cleanly up and down about its chest mount, and playing `fire` \
+recoils it convincingly — with no voxel of the weapon tearing away from the frame or \
+clipping into the body across the full range. When `fire` plays only the lance \
+moves and the legs stay planted; when `walk` plays only the legs move and the lance \
+holds level."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "torso-fixed"
-title = "Torso stays fixed"
+title = "Body stays fixed; only the moving parts move"
 text = """
-Only the moving parts move: the rail-lance when `weapon_pitch` is driven or `fire` \
-plays, and the legs as they stride under `walk`. The torso and head stay put — they \
-are the fixed root of the rig, not carried along by the weapon or the legs."""
+The upright body and head are the fixed core of the mech: they stay put, never \
+carried along by the rail-lance or the legs. When `fire` plays, the lance recoils \
+while the legs hold their stance; when `walk` plays, the legs stride while the lance \
+holds level. Nothing but the moving parts moves."""
 weight = 2
 domain = "fidelity"
 
@@ -309,10 +142,10 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Legs and rail-lance stay attached"
 text = """
-Each child stays attached across its joint's range: each leg's thigh meets the hip, \
-its shin meets the thigh at the knee, and its foot meets the shin at the ankle, and \
-the rail-lance meets the chest — with no gap and never floating free or detaching as \
-the legs stride and the lance pitches."""
+Every moving piece stays attached across its full range: each leg's segments meet \
+their neighbours cleanly as the leg folds and extends, and the rail-lance meets the \
+body at its mount — with no gap and never floating free or detaching as the legs \
+stride and the lance pitches."""
 weight = 2
 domain = "fidelity"
 

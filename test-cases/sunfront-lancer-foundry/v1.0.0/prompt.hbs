@@ -1,6 +1,13 @@
 Sculpt and rig the **Sunfront Lancer Foundry**, a tall, slender spire whose
-rail-arm slides up and down and whose focus-ring spins, as a 44x84x44
-opaque-voxel model using only the voxel-anim tool.
+rail-arm slides up and down its shaft and whose focus-ring spins at the crown, as a
+44x84x44 opaque-voxel model using only the `voxel-anim` tool. You paint discrete
+opaque cells to build it and **author its two self-playing animations** as F-curves.
+
+This test measures **creativity and craft**, not instruction-following: the brief
+tells you *what the foundry is* and *how it must move*, but the parts you sculpt, how
+you break the spire into moving pieces, where you place the joints, and how you shape
+every form are **entirely yours to invent**. Work out the pieces a spire with a
+sliding arm and a spinning ring needs.
 
 ## How sculpting and rigging works
 
@@ -16,27 +23,35 @@ Every voxel operation targets a **part** with `--part <name>`; each part is
 sculpted **separately** in its own preview and log. The volume starts **empty**.
 Voxels are **opaque** `#rrggbb` colors — there is no transparency. After each call
 the binary re-renders that part's isometric preview to `parts/<part>.png` and
-appends the operation to that part's log. Blank starting previews, empty per-part
-logs, and a pre-seeded `rig.json` holding the required parts and joints are already
-in place at `{{workspace}}`.
+appends the operation to that part's log.
+
+**You invent the rig.** Define whatever parts you need with `define-part` (giving each
+a parent and a pivot), place joints on them with `define-joint`, and author the
+required animations with `define-animation`/`add-keyframe`. Every voxel operation
+targets a **part** with `--part <name>`, so define a part before you sculpt into it.
+A blank workspace and a pre-seeded `rig.json` holding the two required animation
+declarations are already in place at `{{workspace}}`.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
-voxel-anim fill-box --part base --x0 14 --y0 0 --z0 14 --x1 29 --y1 60 --z1 29 --color "#c69a4b"
+voxel-anim define-part --name shaft
+voxel-anim fill-box --part shaft --x0 14 --y0 0 --z0 14 --x1 29 --y1 60 --z1 29 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints, and authoring animations with
+(The part name above is just an example — name your own parts however you like.) Run
+`voxel-anim --help` to list every operation **and** the rig subcommands (defining
+parts, setting pivots, defining joints, and authoring animations with
 `define-animation`/`add-keyframe`), and `voxel-anim <operation> --help` for one
-operation's exact flags — that help text is the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
-part's progress, **and read the assembled-scene previews under `scene/`
-(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
-whole spire composed from all your parts, re-rendered after every operation. The
-scene views are how you confirm the parts actually fit together: that the rail-arm
-sets into the mid-shaft and the focus-ring seats on the crown. Because each part
-is sculpted in the shared volume's coordinates, position each part where it
-belongs on the finished spire; the scene simply composes them there.
+operation's exact flags — that help text is the authoritative contract. **Read
+`parts/<part>.png` after your calls** to see that part's progress, **and read the
+assembled-scene previews under `scene/` (`scene/iso.png`, `scene/front.png`,
+`scene/side.png`, `scene/top.png`)** — the whole spire composed from all your parts,
+re-rendered after every operation. The scene views are how you confirm the parts
+actually fit together: that the sliding arm sets into the mid-shaft and the ring
+seats on the crown. Because each part is sculpted in the shared volume's coordinates,
+position each part where it belongs on the finished spire; the scene simply composes
+them there.
 
 ## What to read first
 
@@ -48,21 +63,25 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the spire, the required parts and their pivots, the two auto joints that
-slide the rail-arm and spin the focus-ring, and the two required auto-play
-animations you must author to drive them. Run `voxel-anim --help` for the exact
-operation and rig contract.
+form of the spire, and — the fixed contract — the two self-playing animations you
+must author: **`rail_arm_slide`** (the arm riding up and down) and
+**`focus_ring_spin`** (the ring turning a full revolution). It does **not** hand you a
+parts list or joint placements; that is the point. Run `voxel-anim --help` for the
+exact operation, rig, and animation subcommands.
 
 ## What to deliver
 
 Build and rig the spire up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a fixed masonry base tower, a rail-arm set
-into the mid-shaft, and a focus-ring crowning the top. This is a structure with no
-caller controls: the interface is the two auto joints — **`rail_arm_slide`** that
-rides the arm up and down, and **`focus_ring_spin`** that turns the ring a full
-revolution — each driven by a looping auto-play animation **you author** as an
-F-curve, while the base stays fixed. Produce **every** required part, joint, and
-animation; you may add your own extra parts, joints, or auto-play animations on
-top, but do not drop or contradict the required interface. When you are satisfied,
-stop: the recorded per-part logs and `rig.json` are your finished submission.
+correctly, and the rig is complete: a fixed masonry base tower, a heavy rail-arm set
+into the mid-shaft, and a machined focus-ring crowning the top. This is a structure
+with no caller controls — it runs on its own. **Author the two required animations**
+as F-curves with the `voxel-anim` animation subcommands: **`rail_arm_slide`** (the arm
+riding smoothly up its shaft and back down, easing into the top and bottom of the
+stroke so it settles with weight rather than snapping) and **`focus_ring_spin`** (the
+ring turning one full, continuous revolution at a steady pace), while the base stays
+fixed. The animations are the fixed contract — produce both, by those names; the parts
+and joints that realize them are yours. You may add your own extra parts, joints, or
+self-playing animations on top, but do not contradict these two. When you are
+satisfied, stop: the recorded per-part logs and `rig.json` are your finished
+submission.

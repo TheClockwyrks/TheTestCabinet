@@ -4,9 +4,11 @@ difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
 Sculpt and rig the Sunfront Lumen: a 40x56x40 opaque-voxel floating beacon drone \
-whose front emitter tilts on a caller-driven emitter_pitch joint while its two \
-counter-rotating rings spin on their own around a solar-hot core, built and rigged \
-one recorded operation at a time."""
+with a glowing solar-hot core, two counter-rotating rings, and a forward beam \
+emitter, painted cell by cell with the voxel-anim tool one recorded operation at a \
+time. The model invents whatever parts and joints it needs; the fixed contract is \
+three animations it must author — a self-playing ring_spin, a hover, and an emitter \
+pulse — the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -37,134 +39,46 @@ background = "transparent"
 binary = "voxel-anim"
 preview = "parts/{part}.png"
 
-# The recorded action logs — one per part (the `{part}` token expands to each
-# declared part name), the authoritative output each part's regenerated model is
+# The recorded action logs — one per part (the `{part}` token expands to each part
+# the model defines), the authoritative output each part's regenerated model is
 # rebuilt from.
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play clips of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton it needs and is judged on whether it works out the right pieces,
+# attaches them where they belong, and animates them convincingly. What is fixed is
+# the set of NAMED ANIMATIONS the model must author (a game plays them by name) and
+# whether each is a game-triggered playable or a self-playing idle. The model
+# authors each animation's F-curves at run time with `voxel-anim
+# define-animation`/`add-keyframe`; `rig.json` is pre-seeded with these declarations
+# so the contract exists from the first operation.
 [model]
 
-# The floating core hull with its solar-hot heart: the root part (no parent),
-# fixed to the world.
-[[model.part]]
-name = "core"
-pivot = [0, 0, 0]
-
-# The left ring, orbiting the core on the left side. It spins on `ring_left_spin`.
-[[model.part]]
-name = "ring_left"
-parent = "core"
-pivot = [10, 34, 20]
-
-# The right ring, mirroring the left. It spins on `ring_right_spin` in the opposite
-# direction.
-[[model.part]]
-name = "ring_right"
-parent = "core"
-pivot = [30, 34, 20]
-
-# The front beam projector, mounted below the core face. It tilts up and down on
-# the caller-driven `emitter_pitch`.
-[[model.part]]
-name = "emitter"
-parent = "core"
-pivot = [20, 26, 30]
-
-# The required caller-driven joint: a game addresses `emitter_pitch` by name to
-# tilt the front beam projector up and down about its mount. `rest = 0` aims level
-# and forward; the range tilts the beam a little each way. Only the emitter moves
-# on this joint.
-[[model.joint]]
-name = "emitter_pitch"
-part = "emitter"
-kind = "rotation"
-axis = "x"
-pivot = [20, 26, 30]
-min = -0.6
-max = 0.6
-rest = 0.0
-drive = "caller"
-
-# The left ring's own looping spin. An `auto` joint the case drives with a
-# `[[model.clip]]`, so the ring turns on its own without a caller. It rotates about
-# the depth axis (z), like a wheel facing forward.
-[[model.joint]]
-name = "ring_left_spin"
-part = "ring_left"
-kind = "rotation"
-axis = "z"
-pivot = [10, 34, 20]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "auto"
-
-# The right ring's spin, turning in the opposite direction to the left.
-[[model.joint]]
-name = "ring_right_spin"
-part = "ring_right"
-kind = "rotation"
-axis = "z"
-pivot = [30, 34, 20]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "auto"
-
-# The hover bob: an `auto` joint on the root `core` that translates the whole drone
-# gently up and down along y, so the required `hover` movement animation reads as
-# the craft floating in place (this air unit has no legs). An animation drives it;
-# there is no caller.
-[[model.joint]]
-name = "hover_bob"
-part = "core"
-kind = "translation"
-axis = "y"
-pivot = [20, 28, 20]
-min = -2.0
-max = 2.0
-rest = 0.0
-drive = "auto"
-
-# The REQUIRED animations the model must AUTHOR at run time. The case declares each
-# animation's identity and intent only — name, period, loop, whether it auto-plays,
-# and the joints it must drive. It declares NO keyframes: the model authors the
-# motion as F-curves with the `voxel-anim` `define-animation`/`add-keyframe`
-# subcommands, and the produced `rig.json` carries the curves the reviewer scores.
-
-# `ring_spin` — the continuous decorative idle: the two rings counter-rotate on
-# their own around the core. `auto_play = true`, so it plays without a caller.
+# `ring_spin` — the continuous decorative idle: the drone's rings turn on their own
+# around the core, in opposite directions. A self-playing idle (`auto_play = true`),
+# so it plays without a caller, under the playables and at rest.
 [[model.animation]]
 name = "ring_spin"
-period_ms = 1600
 loop = true
 auto_play = true
-joints = ["ring_left_spin", "ring_right_spin"]
 
 # `hover` — the movement state a game triggers (parallel to a walker's `walk`): the
-# whole craft bobs up and down on `hover_bob` so it reads as hovering. Playable, so
-# `auto_play = false`.
+# whole legless craft bobs gently up and down so it reads as floating in place. A
+# game-triggered playable, so `auto_play = false`.
 [[model.animation]]
 name = "hover"
-period_ms = 2600
 loop = true
 auto_play = false
-joints = ["hover_bob"]
 
-# `pulse` — a playable emitter animation a reviewer can trigger to watch the beam
-# nod up, back to level, down, and level again on the caller `emitter_pitch` joint.
+# `pulse` — the emitter showcase a reviewer can trigger: the front beam emitter nods
+# up, back to level, down, and level again about its mount. A game-triggered
+# playable, so `auto_play = false`.
 [[model.animation]]
 name = "pulse"
-period_ms = 2000
 loop = true
 auto_play = false
-joints = ["emitter_pitch"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -175,9 +89,11 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Lumen and \
-poses correctly — a floating beacon drone whose front emitter tilts on its mount \
-while its two rings counter-rotate on their own around a fixed core, with a bright \
-solar-hot core accent and the disciplined Duneforged palette."""
+poses correctly — a floating beacon drone whose front emitter nods on its mount \
+while its two rings counter-rotate on their own around a glowing solar-hot core and \
+the whole legless craft bobs in place, with a bright solar-hot core accent and the \
+disciplined Duneforged palette. The model invents the rig; the fixed contract is \
+the three animations it authors."""
 
 [[review_item]]
 id = "reads-as-lumen"
@@ -191,34 +107,38 @@ weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "emitter-tilts"
-title = "Emitter tilts and rings spin"
+id = "emitter-nods"
+title = "Emitter nods and rings spin"
 text = """
-Driving the `emitter_pitch` joint tilts the front beam projector up and down about \
-its mount cleanly, with no voxel of the emitter tearing away from the core or \
-clipping into it across the full range. The two rings spin on their own through \
-the `ring_left_spin` and `ring_right_spin` auto joints, turning in opposite \
-directions."""
+Playing `pulse` tilts the front beam emitter up and down about its mount cleanly, \
+with no part of the emitter tearing away from the core or clipping into it across \
+the full range — the beam projector moving as one solid piece. The two rings turn \
+on their own through `ring_spin`, spinning in opposite directions around the core. \
+The model had to invent a hinge for the emitter and a spin axis for each ring for \
+these to read."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "core-fixed"
-title = "Core stays fixed"
+id = "hovers-in-place"
+title = "Hovers in place with weight"
 text = """
-Only the moving parts move: the emitter when `emitter_pitch` is driven and the \
-rings as they spin. The core hull stays put — it is the fixed root of the rig, not \
-carried along by the emitter's tilt or the rings' rotation."""
+Playing `hover` bobs the whole legless craft gently up and down so it reads as \
+floating in place — a weighted rise and settle that eases rather than sliding in a \
+straight saw-tooth. The craft hovers as one body without shedding, tearing, or \
+distorting its parts."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "parts-attached"
-title = "Rings and emitter stay attached"
+id = "body-fixed-attached"
+title = "Body stays put; rings and emitter stay attached"
 text = """
-Each child stays attached to the core across its joint's range: the two rings hold \
-their orbit at their mounts as they spin and the emitter meets the core face, with \
-no gap and never floating free or detaching as the rings turn and the beam tilts."""
+Only the moving parts move on their own: the emitter nods under `pulse` and the \
+rings spin under `ring_spin` without dragging the core body around with them. Each \
+moving piece stays attached across its full range — the rings hold their orbit at \
+the sides as they spin and the emitter meets the core face, with no gap and never \
+floating free or detaching as the rings turn and the beam tilts."""
 weight = 2
 domain = "fidelity"
 

@@ -1,29 +1,64 @@
-# Sunfront Flakhound — sculpting and rigging brief
+# Sunfront Flakhound — sculpting-and-rigging brief
 
-You are sculpting and rigging the **Sunfront Flakhound**, a four-legged anti-air
-**walker** with a traversing back turret and twin elevating flak barrels, as a
-**3D voxel model** with a small **rig** a game can pose at runtime — and you must
-**author its animations** as motion curves. There is no target model to copy:
-build something that reads unmistakably as this striding flak platform and both
-poses and *moves* correctly from the description below.
+You are sculpting and rigging the **Sunfront Flakhound**, a **four-legged anti-air
+walker** that strides on **legs** — a squat armored platform carrying a
+**traversing back turret** and **twin elevating flak barrels** it aims at the sky.
+Build it with **`voxel-anim`** (each part painted as **discrete opaque cells**) as a
+**rigged 3D model** a game poses at runtime. There is no target model to copy: it
+must read unmistakably as the Flakhound and satisfy the animation contract below.
+
+This brief fixes **what the Flakhound is** and **how it must move**. It deliberately
+does **not** give you a parts list, joint placements, or pose angles — **working out
+the pieces a walking, target-tracking anti-air platform needs, where they attach, and
+how they articulate is the test.** Invent the rig.
+
+## How the tool works (this is a cube tool)
+
+`voxel-anim` paints **discrete opaque voxel cells** — it is not a mesh or SDF tool.
+Each part's geometry is a solid of painted cells you build up op by op:
+
+- **Set/clear** single voxels, **fill/stroke** boxes, draw **3D lines** and
+  **spheres**, and **mirror** across a plane — each voxel an opaque `#rrggbb` color
+  (there is no transparency).
+- Global **`--part <name>`** selects the part an op sculpts; **each part is its own
+  volume**, previewed on its own. Create a part with `define-part` before you sculpt
+  into it.
+
+Build **one operation at a time**. `voxel-anim` re-renders `parts/<part>.png` and the
+assembled `scene/*.png` — **read them between calls**. `voxel-anim --help` is the
+contract.
 
 ## The volume and coordinate system
 
-- The volume is **52 wide (x) x 48 tall (y) x 56 deep (z)**, in opaque voxels. It
-  starts **empty**.
-- **x** runs across the walker, `0`-`51`. **y** runs up, `0` (bottom, the ground)
-  to `47` (top). **z** runs front-to-back, `0`-`55`.
-- **Forward is +z:** the walker faces toward `z = 55` (the front), and the barrels
-  point that way when the turret is at rest. Up is +y.
-- Build the walker **symmetric about the lengthwise vertical centerplane between
-  `x = 25` and `x = 26`** — the four legs mirror left/right, and the body,
-  turret, and barrels are centered on it.
-- The walker is a squat, sturdy striding platform: a compact armored body carried
-  on four legs, with the turret raised on its back so the barrels clear the body.
-- Each part is sculpted **separately** with `voxel-anim --part <name>`, in this
-  same volume's coordinates, positioned where the part sits on the assembled
-  walker (a leg already under its corner, the turret already up on the back, the
-  barrels already out front of the turret).
+- The volume is **52 wide (x) × 48 tall (y) × 56 deep (z)**, in opaque voxels,
+  starting **empty**.
+- **x** runs across the walker, `0`–`51`. **y** runs up, `0` (bottom, the ground) to
+  `47` (top). **z** runs front-to-back, `0`–`55`. **Forward is +z:** the walker faces
+  toward `z = 55`, and the barrels point that way when the turret is at rest.
+- Build it roughly **symmetric left-to-right** — a squat, sturdy striding platform: a
+  compact armored body carried on its legs, with the turret raised on its back so the
+  barrels clear the body.
+- Each part is sculpted in these shared coordinates, where it sits on the assembled
+  walker.
+
+## What the Flakhound is (and what is yours to invent)
+
+Fixed — the walker must read unmistakably as **all** of these:
+
+- A **squat, compact armored body** — the fixed core of the machine — riding
+  **raised off the ground on legs**.
+- **Four legs** (one at each corner) that carry it and **walk** (see the animations).
+- A **turret up on its back** that **traverses** to swing onto a bearing.
+- **Twin flak barrels** on that turret, raked **upward** toward the sky, that
+  **elevate** to track a target.
+- A clear **solar-amber targeting eye** on the turret, facing forward between the
+  barrels, and the palette below.
+
+**Everything else is yours to invent** — the exact silhouette, proportions, number of
+segments in each leg and how it folds, how the body is massed, how the turret and
+barrels are shaped, and how you break the walker into rig parts and place its joints.
+Nothing here prescribes a shape; the test rewards a bold, characterful design that is
+unmistakably the Flakhound and animates convincingly.
 
 ## Palette
 
@@ -38,184 +73,76 @@ off-palette colors and stray voxels count against you):
 | Deep recesses, shadow (dark iron) | `#31353b` |
 | Targeting-eye accent (solar amber) | `#ff9d2e` |
 
-The **solar-amber** accent is the team-tint region: give the walker a clear amber
-**targeting eye on the turret**, facing forward between the barrels, so the accent
-reads from multiple angles.
+Set a clear **solar-amber** targeting eye on the turret, facing forward between the
+barrels, so the accent reads from many angles.
 
-## The parts
+## Making the legs walk (the hard part — design them to work)
 
-The walker is a **rig of sixteen required parts** in a parent/child hierarchy.
-Sculpt each in its own local coordinates within the shared volume, positioned
-where it sits on the finished walker. **Each of the four legs is three parts** —
-an upper `thigh_*`, a lower `shin_*`, and a short flat `foot_*` — so the leg bends
-at the knee and keeps a flat foot.
+The single thing most models get wrong is the walk. You are judged on whether the legs
+read as a **machine pushing itself forward**, not flailing. To get there you will
+almost certainly need each leg to be an **articulated chain** — more than one segment
+and more than one joint — because a single rigid leg swung from one pivot cannot both
+lift its foot clear and hold it planted. Concretely:
 
-| Part | Parent | Attaches at (pivot) | What it is |
-| --- | --- | --- | --- |
-| `body` | *(root)* | `[0, 0, 0]` | The armored body and hull |
-| `thigh_lf` | `body` | `[12, 14, 38]` | Left-front thigh (upper leg) |
-| `shin_lf` | `thigh_lf` | `[12, 8, 38]` | Left-front shin (lower leg) |
-| `foot_lf` | `shin_lf` | `[12, 2, 38]` | Left-front foot (short, flat) |
-| `thigh_lr` | `body` | `[12, 14, 18]` | Left-rear thigh |
-| `shin_lr` | `thigh_lr` | `[12, 8, 18]` | Left-rear shin |
-| `foot_lr` | `shin_lr` | `[12, 2, 18]` | Left-rear foot |
-| `thigh_rf` | `body` | `[40, 14, 38]` | Right-front thigh |
-| `shin_rf` | `thigh_rf` | `[40, 8, 38]` | Right-front shin |
-| `foot_rf` | `shin_rf` | `[40, 2, 38]` | Right-front foot |
-| `thigh_rr` | `body` | `[40, 14, 18]` | Right-rear thigh |
-| `shin_rr` | `thigh_rr` | `[40, 8, 18]` | Right-rear shin |
-| `foot_rr` | `shin_rr` | `[40, 2, 18]` | Right-rear foot |
-| `turret` | `body` | `[26, 30, 28]` | The traversing flak turret |
-| `barrel` | `turret` | `[26, 36, 34]` | The twin elevating flak barrels |
+- **Independent legs.** Give each leg its **own** chain on its **own** hip directly
+  above its **own** foot. Do **not** hang a fore-and-aft row of feet on one shared
+  pivot — rotating that bank drives the rear feet down through the ground while the
+  front feet lift.
+- **A planted stance.** Every leg must have a phase where its foot is **flat and still
+  on the ground** while the body travels forward over it, then lifts, swings forward,
+  and plants again. A foot that is in a continuous arc the whole time — never still on
+  the ground — reads as flailing, not walking.
+- **Keep the foot flat *in the world*.** As the leg folds and extends through the
+  stride, the foot must stay **level with the ground**, not tip onto toe or heel. This
+  is the subtle part: a joint angle is applied **relative to its parent segment**, so
+  holding the foot flat in the *world* means the ankle must **counter-rotate against
+  the combined rotation of the hip and knee above it** — not just sit at a fixed local
+  angle. Design the ankle with enough range to cancel that accumulated rotation across
+  the whole cycle.
+- **Bend the knee the right way.** Rest the leg as a **clearly bent** chain (not a
+  straight column — a straight leg has no room to fold and extend), and bend the knee
+  the way a beast-like walker's does (a reverse/digitigrade knee, folding the shin
+  rearward). If it bends inside-out when the walk plays, fix the sign of the motion.
+- **Phase the legs** so the machine is always supported — for four legs, step them as
+  **diagonal pairs** — never all feet lifting at once.
 
-- **`body`** is the **root** — the fixed core of the walker. Sculpt a squat,
-  armored body in the brass plating color (bronze on its underside and in the
-  shadowed seams) sitting up off the ground on the legs, running most of the depth
-  and width. Keep its back (around `y = 30`) fleshed out and roughly flat so the
-  turret has a mount to sit on, and keep the belly solid around `y = 14` where the
-  four leg hips mount.
+Design guidance on believable walker legs and gaits lives in the docs
+([Rigging and animating walkers](../../../../../apps/docs/src/content/docs/testing/asset-generation/rigging-walkers.md));
+note that the example angles there are given in **world space** and are illustrative —
+you must translate them into your own rig's joints, accounting for how each segment is
+attached.
 
-### The legs (four legs, each a `thigh_*` + `shin_*` + `foot_*` chain)
+## The required animations — the fixed contract
 
-The walker stands on **four independent legs** — one at each corner (front `f`,
-rear `r`, on the left `l` and right `r` sides). Sculpt each leg as a
-**three-segment articulated chain** — a thigh, a shin, and a short flat foot on
-**two moving joints** (a hip and a knee) plus an ankle — so it walks like a real
-beast, not a stick swung from a hip:
+`rig.json` is pre-seeded with **two required animation declarations** by name (you
+author the motion). Author each with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and setting each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so
+motion **carries weight** — legs and barrels are heavy, so ease the motion rather than
+sliding linearly, and give a foot-plant a sharp `ease-in` for a satisfying thump.
 
-- The **`thigh_*`** hangs from its **hip** on the body's belly (pivot around
-  `y = 14`, tucked under its corner) down to the knee. Sculpt it in the iron color
-  as a thick upper leg.
-- The **`shin_*`** hangs from the **knee** (pivot around `y = 8`) down to the
-  ankle. Sculpt it in iron as the lower leg.
-- The **`foot_*`** is a short, **flat foot** on the **ankle** (pivot around
-  `y = 2`) planted on the ground near `y = 0`. Sculpt it in iron as a broad, level
-  foot — the part that carries the walker's weight on the ground. Keep it flat and
-  wide, not a toe.
-- **Rest pose is a clearly BENT knee, never a straight column.** Sculpt the thigh
-  and shin so that at rest (knee folded to about `-0.5` rad) the leg reads as
-  visibly bent — a squat, crouched stance. A near-straight leg has no room to
-  extend and fold, so its foot cannot stay planted while the body passes over it.
-- Each leg is its **own chain of three parts**, mounted on its **own hip directly
-  above its own foot** — the left legs around `x = 12`, the right legs around
-  `x = 40`, with `x` and `z` **held constant down each chain** so only `y`
-  descends. Do **NOT** sculpt the legs as one shared slab per side, and do **not**
-  put a fore-and-aft spread of feet on one shared pivot: they must move
-  independently, or rotating a bank drives the rear feet through the ground while
-  the front feet lift.
-- Each segment meets the next at the hip, knee, and ankle with **no gap**, across
-  the whole range of motion.
+- **`walk`** — the WALK (a game-triggered playable). Strides the walker forward on its
+  legs with the planted-stance gait described above: feet plant flat and still, then
+  lift, swing, and plant. Step the four legs as diagonal pairs. The legs move; the
+  turret and barrels hold at rest.
+- **`flak_track`** — the WEAPON showcase (a game-triggered playable). Traverses the
+  turret onto a bearing and elevates and depresses the twin barrels to track a target
+  across the sky, while the walker stands its ground — the legs stay planted. Use eased
+  curves so the traverse slows and reverses smoothly at the extremes rather than
+  snapping.
 
-**Reverse (digitigrade) knee.** The knee folds the shin **rearward** — a
-backward-bending, beast-like leg. Sculpt the shin so that folding it (the negative
-knee direction) tucks the foot back and up, *behind* the knee, not forward. If your
-sculpt makes the knee bend "inside-out" when the walk plays, **flip the sign of
-the
-knee's animated values** — fix the direction, not just the range.
-
-## The required joints
-
-A consuming game drives the rig by joint name. The joints are of two kinds.
-
-**The turret and barrels — two caller joints** (the procedural aim interface a
-game drives per frame):
-
-- **`turret_yaw`** — a **rotation** about the **y** (up) axis, through the
-  turret's vertical mount at pivot **`[26, 30, 28]`**, driven by the **caller**.
-  Its range is a **full half-turn each way**, `min = -π`, `max = +π`, resting at
-  `0` (facing straight forward). Driving it must **swing the whole turret — and
-  the barrels with it — about that mount**, so the walker can traverse onto any
-  bearing.
-- **`barrel_pitch`** — a **rotation** about the **x** (across) axis, through the
-  barrel hinge at pivot **`[26, 36, 34]`**, driven by the **caller**. Its range
-  is
-  **`min = 0` (level, forward) to `max = 1.3` (steeply skyward)**, resting at
-  `0.5` (a raised idle elevation). Driving it must **elevate and depress the twin
-  barrels as one solid piece** about that hinge, so the walker can aim at the air.
-
-**The four legs — twelve auto joints (a hip, a knee, and a foot per leg).** These
-are **`drive = "auto"`**: they hold the standing pose at rest and are driven by
-the
-`walk` animation you author (below). For each leg `X` (one of `lf, lr, rf, rr`),
-using that leg's pivots from the parts table:
-
-- **`hip_X`** — a **rotation** about **x** through the hip pivot, `min = -0.5`,
-  `max = 0.5`, rest `0`. It swings the whole leg fore-and-aft.
-- **`knee_X`** — a **rotation** about **x** through the knee pivot, `min = -1.4`,
-  `max = 0.2`, rest **`-0.5`** (the folded, bent-knee stance). It folds the shin
-  rearward to lift the foot on the swing and extends to plant it.
-- **`foot_X`** — a **rotation** about **x** through the ankle pivot, `min = -0.3`,
-  `max = 0.3`, rest `0`. A small ±~15° ankle tilt that **counter-rotates against
-  the shin to keep the foot flat** through the whole cycle (never walking on toes
-  or heels).
-
-## The required animations — author these as motion curves
-
-You must **author two animations** with the `voxel-anim` animation subcommands
-(run `voxel-anim --help`): use `define-animation` to create each, then `add-keyframe`
-to place its keyframes. Each keyframe carries an **F-curve** interpolation via
-`--interp` (`constant` | `linear` | `bezier` | `ease-in` | `ease-out` |
-`ease-in-out`), with optional `--out-handle`/`--in-handle` Bézier tangents. The
-motion must **carry weight** — eased, curved motion, never a flat linear slide.
-
-Both animations are already declared in the seeded `rig.json` as required
-contracts (name, period, loop, `auto_play`, and the joints they must drive); your
-job is to author their keyframes so they read correctly.
-
-### `walk` (period 650 ms, loops) — the walk cycle
-
-Drives **all twelve leg joints**. Design a real quadruped step for each leg, then
-phase them in a **diagonal-pair gait**: legs **`lf` and `rr` step together**, and
-legs **`rf` and `lr` step together a half period (325 ms) out of phase**, so the
-walker always has a stable diagonal of feet down.
-
-Author each leg's step as a **planted stance** followed by a **swing**:
-
-- **Stance** — the foot stays **flat and still on the ground** and translates
-  straight **backward relative to the body** (the machine passes over the planted
-  foot). Sweep the hip from forward to back across the stance while the knee
-  extends/folds subtly to hold the foot at a fixed ground point, and the ankle
-  (`foot_X`) counter-rotates to keep the foot flat. This still, flat, planted
-  segment is essential — no continuous-arc flailing.
-- **Swing** — **lift** the foot clear (fold the knee toward its `min`), carry it
-  **forward**, then **plant** it. Land the plant with an **`ease-in`** into the
-  foot-contact keyframe so the step lands with weight — a light, skittering "thump"
-  suits this low, quick scuttler.
-
-Design the **foot's ground path first**, then solve the hip/knee/ankle angles to
-it, then set the eased keys. The rest pose (`hip` 0, `knee` -0.5, `foot` 0) is the
-mid-stance standing crouch.
-
-### `flak_track` (period 4000 ms, loops) — the anti-air track
-
-Drives only the two caller weapon joints. Sweep **`turret_yaw`** smoothly
-left→right→left across a wide bearing while **`barrel_pitch`** raises and lowers
-the barrels, so a reviewer can watch the walker track a target across the sky. Use
-eased curves (`ease-in-out` at the sweep extremes) so the traverse slows and
-reverses smoothly rather than snapping. It touches no leg joint, so the legs hold
-their standing pose while it plays.
-
-You **may add** your own extra parts, joints, or animations on top of this (an ammo
-feed, spent-casing chutes, extra decorative detail), but you must **not drop or
-contradict** the required parts, the caller `turret_yaw` and `barrel_pitch`
-joints, the twelve auto leg joints, or the two required animations.
+You **may add** extra parts, joints, and animations of your own; you must produce these
+two animations, by these names, and must not contradict them (e.g. don't move the legs
+under `flak_track` or the weapon under `walk`).
 
 ## Working the tool
 
-The only way to place a voxel and edit the rig is the `voxel-anim` binary already
-on your `PATH`. Sculpt each part up in sensible layers, selecting it with
-`--part <name>` — finish the armored body, then each leg's thigh, shin, and foot,
-then the turret, then the barrels, checking each part's preview as you go. Define
-the parts, pivots, and joints through the tool's rig subcommands, then author the
-`walk` and `flak_track` animations with `define-animation`/`add-keyframe` (the
-required parts, joints, and animation declarations are already pre-seeded in
-`rig.json`, but confirm they match this brief and adjust pivots to your sculpt).
-Run `voxel-anim --help` for the available operations (setting and clearing single
-voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the
-rig and animation subcommands, and `voxel-anim <operation> --help` for each one's
-exact flags. Call `voxel-anim` once per operation, read `parts/<part>.png` after
-your calls to judge each part, and read the assembled-scene previews under `scene/`
-(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`) — the whole
-walker composed from all your parts — to confirm the parts fit: the four legs
-seated under the body and bent to the ground, the turret on the back, and the
-barrels meeting the turret's front.
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
+`set-pivot`, place joints with `define-joint`, and author the two animations' keyframes
+— reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm
+the parts fit, the legs seat under the body and reach the ground, the turret sits on
+the back and the barrels meet its front, and the animations read with weight. Run
+`voxel-anim --help` for the available operations (setting and clearing single voxels,
+filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the rig and
+animation subcommands, and `voxel-anim <operation> --help` for each one's exact flags.
+The recorded per-part logs and `rig.json` are your scored submission.

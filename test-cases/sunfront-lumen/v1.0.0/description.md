@@ -2,15 +2,17 @@
 counter-rotating rings around a glowing core. This asset-generation case asks a
 model to sculpt *and rig* it as a 40×56×40 opaque-voxel model using only the
 `voxel-anim` tool, one operation at a time: a hovering brass core carrying a
-solar-hot heart (the fixed root), two iron rings orbiting it, and a beam emitter
-projecting from the core face. The rig's required, game-facing contract is a
-caller-driven **`emitter_pitch`** joint — a rotation that tilts the front beam
-projector up and down about its mount — while the two rings spin on their own
-through the auto-driven **`ring_left_spin`** and **`ring_right_spin`** joints,
-turning in opposite directions. There is no target model — the model sculpts and
-rigs toward a written brief, and may add its own extra parts and joints on top.
-The recorded per-part operations are regenerated into a rigged 3D model the
-frontend renders with a live `emitter_pitch` control and a `pulse` animation, and
-a reviewer judges it against the brief: that it reads as a floating beacon drone,
-the emitter tilts on the correct hinge without detaching, the core stays fixed,
-and the rings and emitter stay attached are what they weigh.
+solar-hot heart, two iron rings orbiting it, and a beam emitter projecting from the
+core face. Crucially, the case does **not** hand the model a rig: it fixes only the
+three animations the model must author — a self-playing **`ring_spin`** (the rings
+counter-rotating on their own), a **`hover`** (the whole legless craft bobbing in
+place), and a **`pulse`** (the front emitter nodding up and down) — and leaves the
+parts, joints, and articulation that realize them entirely to the model, so the
+test measures whether a model can work out the pieces a hovering, ring-spinning,
+beam-nodding drone needs, attach them where they belong, and animate them
+convincingly. There is no target model — the model sculpts and rigs toward a
+written brief. The recorded per-part operations are regenerated into a rigged 3D
+model the frontend renders with the play-back animations, and a reviewer judges it
+against the brief: that it reads as a floating beacon drone, the emitter nods on its
+mount without detaching, the rings spin on their own in opposite directions, the
+craft hovers with weight, and only the moving parts move.

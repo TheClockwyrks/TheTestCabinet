@@ -10,31 +10,27 @@ using only the `voxel-anim` tool, one recorded operation at a time.
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** prescribe a rig. The only thing fixed in `test-case.toml`'s
+`[model]` table is the set of **named animations** the model must author; the model
+invents whatever parts and joints it needs to realize them.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The mortar-works tower and foundation |
-| `crane_arm` | `base` | `[30, 52, 30]` | The overhead crane arm |
-| `piston` | `base` | `[16, 30, 40]` | The loading piston head |
+- **`crane_swing`** (`loop`, `auto_play`) — a self-playing idle that rocks the
+  overhead crane arm fore and aft over the works on its own.
+- **`piston_bob`** (`loop`, `auto_play`) — a self-playing idle that bobs the loading
+  piston straight down and back up in its flank on its own.
 
-- **`crane_swing`** (auto, rotation about `x`, `-0.4..0.4`) — the crane arm rocks
-  fore and aft over the works on its own via its auto-play animation.
-- **`piston_bob`** (auto, translation along `y`, `-6..0`) — the loading piston bobs
-  straight down and back up in its flank on its own via its auto-play animation.
+Both animations are declared in the `[model]` table by identity only (`name`,
+`loop`, `auto_play = true`) — the model authors their F-curve keyframes at run time
+with the `voxel-anim` `define-animation`/`add-keyframe` subcommands, and defines the
+parts and joints they drive with `define-part`/`define-joint`.
 
-Both required **animations** are declared in the `[model]` table by identity only
-(`name`, `period_ms`, `loop`, `auto_play = true`, and the single joint each
-drives) — the model authors their F-curve keyframes at run time with the
-`voxel-anim` `define-animation`/`add-keyframe` subcommands.
-
-This is a STRUCTURE-class case: it has **no caller joints and no playable
-animations** — both required animations are decorative `auto_play` idles. Both
-moving parts cycle on their own while the `base` stays fixed. The model may add
-its own extra parts, joints, and animations on top, but must not drop or
-contradict the required interface.
+This is a STRUCTURE-class case: it has **no caller controls and no playable
+animations** — both required animations are self-playing idles. Both moving elements
+cycle on their own while the masonry works body stays fixed. The model may add its
+own extra parts, joints, and animations on top, but must produce both required
+animations by name and must not contradict them.
 
 ## Contents
 
@@ -48,9 +44,9 @@ contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation). There is no target model and no operations schema — the
+binary's `--help` is the contract.
 
 ## Variants
 

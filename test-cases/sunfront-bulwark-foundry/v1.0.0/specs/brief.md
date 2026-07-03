@@ -1,10 +1,15 @@
 # Sunfront Bulwark Foundry — sculpting and rigging brief
 
 You are sculpting and rigging the **Sunfront Bulwark Foundry**, a heavy armored
-bunker-forge with a raising blast door and a turning drive flywheel, as a **3D
-voxel model** with a small **rig** that animates on its own. There is no target
-model to copy: build something that reads unmistakably as this fortified forge
-and animates correctly from the description below.
+bunker-forge with a **raising blast door** and a **turning drive flywheel**, as a
+**3D voxel model** with a small **rig** that animates on its own. There is no
+target model to copy: build something that reads unmistakably as this fortified
+forge and animates correctly from the description below.
+
+This brief fixes **what the Foundry is** and **how it must move**. It deliberately
+does **not** give you a parts list, joint placements, or pivots — **working out the
+pieces a bunker-forge with a raising door and a turning wheel needs, where they
+attach, and how they articulate is the test.** Invent the rig.
 
 ## The volume and coordinate system
 
@@ -18,8 +23,7 @@ and animates correctly from the description below.
   depth and sits flat on the ground from `y = 0`.
 - Each part is sculpted **separately** with `voxel-anim --part <name>`, in this
   same volume's coordinates, positioned where the part sits on the assembled
-  building (the door already set into the front wall, the flywheel already on
-  the flank).
+  building.
 
 ## Palette
 
@@ -40,92 +44,62 @@ The **solar-amber** accent is the team-tint region: give the foundry a clear
 amber **forge glow** — a molten seam behind the blast door and a hot core in the
 building — so the accent reads from multiple angles.
 
-## The parts
+## What the Foundry is (and what is yours to invent)
 
-The foundry is a **rig** of three required parts in a parent/child hierarchy.
-Sculpt each in its own local coordinates within the shared volume, positioned
-where it sits on the finished building:
+Fixed — the foundry must read unmistakably as **all** of these:
 
-| Part | Parent | Attaches at (pivot) | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The armored bunker-forge building |
-| `blast_door` | `base` | `[30, 24, 58]` | The raising front blast door |
-| `flywheel` | `base` | `[46, 44, 24]` | The turning drive flywheel |
+- A **squat, thick-walled armored bunker-forge** — a heavy fortified building in
+  the brass armor color (bronze on its underside and shadowed seams, sandstone
+  masonry for secondary walls and trim), sitting on the ground and filling most of
+  the width and depth. It is the **fixed body** of the foundry.
+- A **broad blast door** set into the **front** of the building, filling a wide
+  door opening, with a molten **solar-amber forge glow** showing behind it.
+- A **great drive flywheel** — a large, round wheel (a rim with spokes to a hub)
+  standing upright on the **flank**, its face visible from the side.
+- A clear **solar-amber** forge accent and the palette above.
 
-- **`base`** is the **root** — the fixed body of the foundry. Sculpt a squat,
-  thick-walled fortified block in the brass armor color (bronze on its underside
-  and shadowed seams, sandstone masonry for secondary walls and trim), sitting on
-  the ground and filling most of the width and depth. At the front, frame a broad
-  **door opening** for the blast door, with a molten **solar-amber forge glow**
-  showing behind it. On the right flank, build an **axle housing** for the
-  flywheel to seat against. Keep the front frame and the flank housing fleshed
-  out so the children have something to mount to.
-- **`blast_door`** attaches at the front door frame at **`[30, 24, 58]`**. Sculpt
-  a broad, heavy slab door in the iron color filling the front opening, centered
-  on the centerplane, meeting its frame with no gap. Shape it so it can slide
-  **straight up and down** within the frame like a portcullis.
-- **`flywheel`** attaches to the right-flank axle at **`[46, 44, 24]`**. Sculpt
-  a large, round drive wheel in the iron color — a rim with spokes to a hub —
-  standing upright on the flank so its face is visible from the side, centered on
-  its axle at the mount with no gap. Shape it so it can turn about that axle.
+**Everything else is yours to invent** — the exact silhouette, proportions, how the
+bunker is massed and detailed, how the door and its frame are shaped, how the
+flywheel and its axle housing are built, and how you break the foundry into rig
+parts and place its joints. Nothing here prescribes a shape; the test rewards a
+bold, characterful design that is unmistakably the Foundry and animates
+convincingly. Keep the front opening and the flank fleshed out so the door and the
+wheel have something to mount to, and shape each moving element so it can travel
+about its mount without detaching from the body.
 
-## The required joints
+## The required animations — the fixed contract
 
-This foundry has **no caller controls** — both moving parts **animate on their
-own** through **auto**-driven joints you drive with the animations below:
+`rig.json` is pre-seeded with **two required animation declarations** by name (you
+author the motion). Both are **decorative self-playing idles** (`auto_play` — they
+play continuously on their own, with no caller). This foundry has **no caller
+controls**. Author each with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and giving each keyframe an `--interp` (`constant`, `linear`,
+`bezier`, `ease-in`, `ease-out`, or `ease-in-out`) and, where it helps,
+`--out-handle`/`--in-handle`, so the motion **carries weight** through eased curves
+rather than sliding linearly.
 
-- **`blast_door_raise`** — a **translation** along the **y** (up) axis, through
-  the door mount at pivot **`[30, 24, 58]`**, **`drive = "auto"`**. Its range is
-  **`min = 0` (shut, at rest) to `max = 14` (fully raised)**, resting at `0`. It
-  lifts the whole door straight up and drops it back down, so the door opens and
-  closes on its own. No voxel of the door should tear away or leave its frame as
-  it travels.
-- **`flywheel_spin`** — a **rotation** about the **z** (front-to-back) axis,
-  through the axle pivot **`[46, 44, 24]`**, **`drive = "auto"`**. Its range is
-  a full turn each way, `min = -π`, `max = +π`, resting at `0`. It turns the whole
-  wheel steadily about its axle. No voxel of the wheel should tear away from the
-  hub or clip into the base as it turns.
+- **`blast_door_raise`** — the door cycle. Raises the heavy front blast door
+  **straight up** off its shut rest, **holds it open** at the top for a beat, then
+  **eases it back down** and settles it shut — a weighty portcullis cycle. The door
+  travels along a clean vertical track and stays within its frame; no voxel tears
+  away or leaves the opening as it moves.
+- **`flywheel_spin`** — the drive wheel. Turns the great flank flywheel **steadily**
+  about its axle, a **full continuous revolution** each loop, reading as smooth
+  rotation with no jerk at the loop seam. No voxel of the wheel tears away from the
+  hub or clips into the building as it turns.
 
-Sculpt each part so it moves plausibly about its mount without detaching from the
-base.
-
-## The required animations
-
-You must **author the motion** for both auto joints. Each animation is a
-**decorative idle** (`auto_play` — it plays continuously on its own, with no
-caller). The rig is pre-seeded with these animations' identities; you author
-their **F-curves** with the `voxel-anim` animation subcommands
-(`define-animation`, then `add-keyframe` per keyframe). Give each keyframe an
-`--interp` (`constant`, `linear`, `bezier`, `ease-in`, `ease-out`, or
-`ease-in-out`) and, where it helps, `--out-handle`/`--in-handle` — the motion
-must carry **weight** through eased curves, not slide linearly.
-
-- **`blast_door_raise`** — period **3200 ms**, `loop = true`, drives the
-  `blast_door_raise` joint. The heavy door **eases up** off its rest, **holds
-  open** at the top for a beat, then **eases back down** and settles shut — a
-  weighty portcullis cycle, not a constant-speed slide.
-- **`flywheel_spin`** — period **2400 ms**, `loop = true`, drives the
-  `flywheel_spin` joint. The great wheel turns a **full, steady revolution** each
-  loop (sweep the rotation from `-π` to `+π`), reading as continuous rotation with
-  no jerk at the loop seam.
-
-You **may add** your own extra parts, joints, or auto-play animations on top of
-this (for example a venting stack, a smaller gear, or a subtle glow flicker), but
-you must **not drop or contradict** the required parts, the two auto joints
-`blast_door_raise` and `flywheel_spin`, or their two required animations.
+You **may add** your own extra parts, joints, or auto-play animations on top of this
+(for example a venting stack, a smaller gear, or a subtle glow flicker), but you must
+produce these two animations, by these names, and must not contradict them.
 
 ## Working the tool
 
-Sculpt each part up in sensible layers, selecting it with `--part <name>` —
-finish the armored base and its door frame and axle housing, then the blast door,
-then the flywheel, checking each part's preview as you go. Define the parts,
-pivots, the two auto joints, and the two required animations' F-curves through the
-tool's rig subcommands (the required parts, joints, and animation identities are
-already pre-seeded in `rig.json`, but confirm they match this brief, adjust pivots
-to your sculpt, and author each animation's keyframes). Run `voxel-anim --help`
-for the
-available operations (setting and clearing single voxels, filling and stroking
-boxes, 3D lines, spheres, and a mirror plane) and the rig subcommands, and
-`voxel-anim <operation> --help` for each one's exact flags. Call `voxel-anim`
-once per operation and read `parts/<part>.png` between calls to judge each part
-against this brief.
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — reading `parts/<part>.png` and the `scene/*.png` previews between calls to
+confirm the parts fit, the door sits square in its front opening, the flywheel seats
+on its flank, and the animations read with weight. Run `voxel-anim --help` for the
+available operations (setting and clearing single voxels, filling and stroking boxes,
+3D lines, spheres, and a mirror plane) and the rig subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation.
+The recorded per-part logs and `rig.json` are your scored submission.

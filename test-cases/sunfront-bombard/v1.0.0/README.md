@@ -11,43 +11,33 @@ Duneforged voxel roster and shares the faction's brass-and-sandstone palette and
 solar-amber team accent. There is no target model — the model builds toward the
 seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** prescribe a rig. `test-case.toml`'s `[model]` table fixes only
+the **animations** the model must author; the parts, joints, pivots, and ranges that
+realize them are the model's to invent, and it is judged on whether it works out the
+right pieces, attaches them where they belong, and animates them convincingly. This
+is deliberate: fixing a full skeleton turned the test into instruction-following and
+made every model produce near-identical output.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `body` | *(root)* | `[0, 0, 0]` | The armored hull |
-| `thigh_lf` / `shin_lf` / `foot_lf` | chain from `body` | `[13,16,56]` / `[13,9,56]` / `[13,2,56]` | Left-front leg (thigh → shin → flat foot) |
-| `thigh_lr` / `shin_lr` / `foot_lr` | chain from `body` | `[13,16,24]` / `[13,9,24]` / `[13,2,24]` | Left-rear leg |
-| `thigh_rf` / `shin_rf` / `foot_rf` | chain from `body` | `[43,16,56]` / `[43,9,56]` / `[43,2,56]` | Right-front leg |
-| `thigh_rr` / `shin_rr` / `foot_rr` | chain from `body` | `[43,16,24]` / `[43,9,24]` / `[43,2,24]` | Right-rear leg |
-| `turret` | `body` | `[28, 30, 44]` | The rotating turret on top |
-| `barrel` | `turret` | `[28, 38, 56]` | The long mortar barrel, on the turret front |
+The subject stays fixed — a four-legged siege mortar walker: a low armored hull
+raised on legs, four legs that carry and walk it, a turret on top that swivels to
+aim, and a long mortar barrel projecting forward that elevates to lob high, with a
+solar-amber muzzle glow and the Duneforged palette.
 
-Each leg is an **independent three-segment chain** (thigh → shin → foot) on its
-own
-hip directly above its own foot — no shared leg-bank part.
+The rig declares two **required animations the model must author** as F-curves (no
+keyframes in the manifest), both game-triggered playables:
 
-- **`turret_yaw`** (caller, rotation about `y`, `-π..π`) — the game-facing
-  control: swings the turret, and the barrel with it, a full half-turn each way
-  about its vertical mount.
-- **`barrel_pitch`** (caller, rotation about `x`, `-0.2..1.0`, rest `0.4`) — the
-  second game-facing control: elevates and depresses the mortar barrel so it can
-  lob high.
-- **`hip_*`** / **`knee_*`** / **`foot_*`** (auto, rotation about `x`, one set per
-  leg `lf, lr, rf, rr`) — the twelve leg joints driven by the `walk` animation:
-  a
-  hip sweep (±0.5), a reverse knee (`-1.4..0.2`, bent-knee rest `-0.7`), and a flat
-  foot tilt (±0.3).
+- **`walk`** — a four-legged gait that strides the walker forward on planted flat
+  feet in a diagonal-pair pattern (feet plant flat and still, then lift, swing, and
+  plant), while the turret and barrel hold.
+- **`bombard_fire`** — the weapon showcase: the mortar barrel kicks up in a quick
+  recoil-lob and settles, while the legs hold planted.
 
-The rig also declares two **required animations the model must author** as F-curves
-(no keyframes in the manifest): **`walk`** (period 650 ms, drives all twelve leg
-joints in a diagonal-pair gait with a planted stance phase and flat feet) and
-**`bombard_fire`** (period 1000 ms, drives `barrel_pitch` in a quick recoil-lob).
 The model authors both with the `voxel-anim` `define-animation`/`add-keyframe`
-subcommands. The model may add its own extra parts, joints, and animations on top,
-but must not drop or contradict the required interface.
+subcommands, defining its own parts and joints (`define-part`, `set-pivot`,
+`define-joint`) as it goes. It may add extra parts, joints, and animations on top,
+but must produce these two animations by these names.
 
 ## Contents
 
@@ -61,9 +51,9 @@ but must not drop or contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation); the parts and joints start empty for the model to define. There
+is no target model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 

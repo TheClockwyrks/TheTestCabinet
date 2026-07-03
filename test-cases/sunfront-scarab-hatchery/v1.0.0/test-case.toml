@@ -37,89 +37,37 @@ background = "transparent"
 binary = "voxel-anim"
 preview = "parts/{part}.png"
 
-# The recorded action logs — one per part (the `{part}` token expands to each
-# declared part name), the authoritative output each part's regenerated model is
-# rebuilt from.
+# The recorded action logs — one per part (the `{part}` token expands to each part
+# the model defines), the authoritative output each part's regenerated model is
+# rebuilt from. The composited rig rides in `rig.json`, so it is not named here.
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts, these joints, and these animations; at run time it
-# MAY add further parts, joints, and animations of its own (recorded in rig.json)
-# beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates.
-# `rig.json` is pre-seeded from this table so the contract exists from the first
-# operation.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton it needs and is judged on whether it works out the right pieces,
+# attaches them where they belong, and animates them convincingly. What is fixed is
+# the set of NAMED ANIMATIONS the model must author (a game plays them by name) and
+# whether each is a game-triggered playable or a self-playing idle. The model authors
+# each animation's F-curves at run time with `voxel-anim`
+# `define-animation`/`add-keyframe`; `rig.json` is pre-seeded with these declarations
+# so the contract exists from the first operation.
 [model]
 
-# The hive-mound foundation and shell: the root part (no parent), fixed to the
-# world. Everything else mounts on it.
-[[model.part]]
-name = "base"
-pivot = [0, 0, 0]
-
-# The central iris hatch crowning the mound. It slowly rotates on its own via the
-# auto `hatch_turn` joint, driven by the decorative `hatch_turn` animation.
-[[model.part]]
-name = "hatch"
-parent = "base"
-pivot = [28, 20, 40]
-
-# A side exhaust vent low on the mound. It bobs up and down on its own via the
-# auto `vent_bob` joint, driven by the decorative `vent_bob` animation.
-[[model.part]]
-name = "vent"
-parent = "base"
-pivot = [28, 10, 16]
-
-# The hatch's own looping iris turn. An `auto` joint driven by the decorative
-# `hatch_turn` animation, so the hatch rotates on its own without a caller. A full
-# turn about the vertical axis; `rest = 0` faces forward.
-[[model.joint]]
-name = "hatch_turn"
-part = "hatch"
-kind = "rotation"
-axis = "y"
-pivot = [28, 20, 40]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "auto"
-
-# The vent's own looping vertical bob. An `auto` joint driven by the decorative
-# `vent_bob` animation, so the vent rises and settles on its own. A translation up
-# the y (up) axis; `rest = 0` is fully seated.
-[[model.joint]]
-name = "vent_bob"
-part = "vent"
-kind = "translation"
-axis = "y"
-pivot = [28, 10, 16]
-min = 0.0
-max = 6.0
-rest = 0.0
-drive = "auto"
-
-# The required animations — one decorative auto-play motion per animated sub-part,
-# so the hatchery cycles on its own with no caller. Each is a DECLARATION only
-# (name, period, loop, auto_play, and the joints it must drive) — it carries NO
-# keyframes. The model authors each animation's motion as F-curves at run time with
-# the `voxel-anim` `define-animation`/`add-keyframe` subcommands; the produced
-# rig.json carries the curves and the reviewer scores them. `auto_play = true`
-# marks each as a continuously-playing decorative idle. The hatch sweeps a full turn
-# each cycle; the vent rises then settles.
+# `hatch_turn` — the central iris hatch's sweep. A self-playing idle that turns the
+# hatch crowning the mound continuously about its vertical axis, on its own, with no
+# caller — a slowly rotating iris.
 [[model.animation]]
 name = "hatch_turn"
-period_ms = 2600
 loop = true
 auto_play = true
-joints = ["hatch_turn"]
 
+# `vent_bob` — the side vent's bob. A self-playing idle that lifts the exhaust vent
+# up off its seat and settles it back, continuously, on its own.
 [[model.animation]]
 name = "vent_bob"
-period_ms = 1400
 loop = true
 auto_play = true
-joints = ["vent_bob"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -150,21 +98,23 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Hatch turns and vent bobs on their own"
 text = """
-The animated elements cycle on their own via their decorative auto-play animations \
-while the `base` stays fixed: the central hatch rotates smoothly through a full \
-turn about its vertical axis on `hatch_turn`, and the side vent rises and settles \
-on `vent_bob`, each looping continuously with weight-carrying motion and no voxel \
-tearing away from its mount across the cycle."""
+The animated elements cycle on their own via their self-playing animations. Playing \
+`hatch_turn`, the central iris hatch crowning the mound rotates smoothly and \
+continuously through a full turn about its vertical axis, like a slowly turning iris. \
+Playing `vent_bob`, the side vent rises up off its seat and settles back, looping \
+continuously. Both read as steady, weight-carrying motion — eased, not a flat linear \
+slide — with no geometry tearing away from its mount across the cycle."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "base-fixed"
-title = "Base stays fixed"
+title = "The mound stays put; only the moving parts move"
 text = """
-Only the moving parts move: the hatch as it turns and the vent as it bobs. The \
-hive-mound base stays put — it is the fixed root of the rig, not carried along by \
-the hatch's rotation or the vent's bob."""
+The hive-mound body is the fixed base of the building: it stays put, never carried \
+along by the turning hatch or the bobbing vent. When `hatch_turn` plays the hatch \
+turns while the rest of the mound holds; when `vent_bob` plays the vent bobs while \
+the rest of the mound holds. Nothing but the moving elements moves."""
 weight = 2
 domain = "fidelity"
 
@@ -172,9 +122,10 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Hatch and vent stay attached"
 text = """
-Each sub-part stays attached to the base across its joint's range: the hatch meets \
-the crown of the mound at its mount and the vent meets the mound's side, with no \
-gap and never floating free or detaching as the hatch turns and the vent bobs."""
+The moving elements stay attached to the mound across their whole range of motion: \
+the iris hatch meets the crown of the mound where it is mounted, and the vent meets \
+the mound's side, with no gap and never floating free or detaching as the hatch turns \
+under `hatch_turn` and the vent bobs under `vent_bob`."""
 weight = 2
 domain = "fidelity"
 

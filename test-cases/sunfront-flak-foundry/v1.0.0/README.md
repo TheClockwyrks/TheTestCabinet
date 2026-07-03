@@ -10,31 +10,26 @@ only the `voxel-anim` tool, one recorded operation at a time.
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+This case does **not** prescribe a rig — no parts, joints, or pivots. The model
+invents whatever skeleton it needs and is judged on whether it works out the right
+pieces, attaches them where they belong, and animates them convincingly. The **only**
+thing fixed in `test-case.toml`'s `[model]` table is the set of named **animations**
+the model must author:
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The foundry works and its foundation |
-| `dish` | `base` | `[28, 64, 28]` | The radar dish crowning the works |
-| `piston` | `base` | `[40, 34, 24]` | The charging piston on the flank |
+- **`dish_sweep`** (self-playing, `loop = true`, `auto_play = true`) — the crowning
+  radar dish turns a full revolution about its vertical axis on its own.
+- **`piston_bob`** (self-playing, `loop = true`, `auto_play = true`) — the flank
+  piston bobs straight down and back up on its own.
 
-- **`dish_sweep`** (auto, rotation about `y`, `-π..π`) — the radar dish turns a
-  full revolution.
-- **`piston_bob`** (auto, translation along `y`, `-5..0`) — the piston bobs
-  straight down and back up.
-
-Both required joints are `auto`-driven by two required decorative **animations**
-(same names, `auto_play = true`, `loop = true`): `dish_sweep` (`period_ms = 3000`)
-and `piston_bob` (`period_ms = 1200`). The animations are **declarations only**
-in
-`test-case.toml` — name, period, loop, auto_play, and the joint each drives, with
-**no keyframes**; the model authors each one's F-curves at run time with the
-`voxel-anim` `define-animation`/`add-keyframe` subcommands. The foundry cycles on
-its own with no caller. The model may add its own extra parts, joints, and
-auto-play animations on top, but must not drop or contradict the required
-interface.
+Each animation is a **declaration only** — name, loop, and auto_play, with **no
+keyframes and no bound joints**; the model defines its own parts and joints with
+`voxel-anim define-part`/`define-joint` and authors each animation's F-curves at run
+time with the `voxel-anim` `define-animation`/`add-keyframe` subcommands. Both are
+self-playing idles, so the foundry cycles on its own with no caller while the works
+body stays fixed. The model may add its own extra parts, joints, and animations on
+top, but must not drop or contradict these two required animations.
 
 ## Contents
 
@@ -48,8 +43,8 @@ interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts, joints, and animation declarations (so the
-contract exists from the first operation). There is no target model and no
+`rig.json` holding the required animation declarations with no parts or joints (so
+the contract exists from the first operation). There is no target model and no
 operations schema — the binary's `--help` is the contract.
 
 ## Variants

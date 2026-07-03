@@ -1,44 +1,57 @@
-Sculpt and rig the **Sunfront Bulwark Foundry**, a heavy armored bunker-forge
-whose blast door raises and whose flywheel turns on their own, as a 60x72x60
-opaque-voxel model using only the voxel-anim tool.
+Sculpt and rig the **Sunfront Bulwark Foundry**, a heavy armored bunker-forge whose
+blast door raises and whose flywheel turns on their own, as a 60x72x60 opaque-voxel
+model using only the `voxel-anim` tool. You build it by **painting discrete opaque
+cells** — one recorded operation at a time — and you **author its two self-playing
+animations** as F-curves.
+
+This test measures **creativity and craft**, not instruction-following: the brief
+tells you *what the Foundry is* and *how it must move*, but the parts you build, how
+you break the foundry into moving pieces, where you place the joints, and how you
+shape every form are **entirely yours to invent**. Work out the pieces a bunker-forge
+with a raising door and a turning wheel needs.
 
 ## How sculpting and rigging works
 
-The only way to place a voxel and edit the rig is the `voxel-anim` binary already
-on your `PATH`. It is the sole channel: you build the model by calling it **one
-operation at a time**, and the ordered operations you issue — recorded per part to
-`parts/<part>.actions.json` — together with the rig you define are the
-**authoritative output that is scored**, not the voxels on disk. Anything produced
-another way (writing files directly, editing a preview by hand) is discarded and
-flagged; only the recorded operations and the rig count.
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on
+your `PATH`. It is the sole channel: you build the model by calling it **one operation
+at a time**, and the ordered operations you issue — recorded per part to
+`parts/<part>.actions.json` — together with the rig you define are the **authoritative
+output that is scored**, not the voxels on disk. Anything produced another way (writing
+files directly, editing a preview by hand) is discarded and flagged; only the recorded
+operations and the rig count.
 
-Every voxel operation targets a **part** with `--part <name>`; each part is
-sculpted **separately** in its own preview and log. The volume starts **empty**.
-Voxels are **opaque** `#rrggbb` colors — there is no transparency. After each call
-the binary re-renders that part's isometric preview to `parts/<part>.png` and
-appends the operation to that part's log. Blank starting previews, empty per-part
-logs, and a pre-seeded `rig.json` holding the required parts and joints are already
-in place at `{{workspace}}`.
+Every voxel operation targets a **part** with `--part <name>`; each part is sculpted
+**separately** in its own preview and log. Voxels are **opaque** `#rrggbb` colors —
+there is no transparency. After each call the binary re-renders that part's isometric
+preview to `parts/<part>.png` and appends the operation to that part's log.
+
+**You invent the rig.** Define whatever parts you need with `define-part` (giving each
+a parent and a pivot), place joints on them with `define-joint`, and author the two
+required animations with `define-animation`/`add-keyframe`. Every voxel operation
+targets a **part** with `--part <name>`, so define a part before you sculpt into it;
+each part is a **separate field** sculpted in the shared volume's coordinates. The
+volume starts **empty**.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
-voxel-anim fill-box --part base --x0 6 --y0 0 --z0 6 --x1 53 --y1 44 --z1 53 --color "#c69a4b"
+voxel-anim define-part --name body
+voxel-anim fill-box --part body --x0 6 --y0 0 --z0 6 --x1 53 --y1 44 --z1 53 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints, and authoring animations'
-F-curve keyframes with `define-animation`/`add-keyframe`), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
-part's progress, **and read the assembled-scene previews under `scene/`
-(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
-whole foundry composed from all your parts, re-rendered after every operation. The
-scene views are how you confirm the parts actually fit together: that the blast
-door sits square in its front frame and the flywheel seats on its flank axle.
-Because each part is sculpted in the shared volume's coordinates, position each
-part where it belongs on the finished building; the scene simply composes them
-there.
+(The part name above is just an example — name your own parts however you like.) Run
+`voxel-anim --help` to list every operation **and** the rig subcommands (defining
+parts, setting pivots, defining joints, and authoring animations' F-curve keyframes
+with `define-animation`/`add-keyframe`), and `voxel-anim <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`parts/<part>.png` after your calls** to see that part's progress, **and read the
+assembled-scene previews under `scene/` (`scene/iso.png`, `scene/front.png`,
+`scene/side.png`, `scene/top.png`)** — the whole foundry composed from all your parts,
+re-rendered after every operation. The scene views are how you confirm the parts
+actually fit together: that the blast door sits square in its front opening and the
+flywheel seats on its flank. Because each part is sculpted in the shared volume's
+coordinates, position each part where it belongs on the finished building; the scene
+simply composes them there.
 
 ## What to read first
 
@@ -49,23 +62,24 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the foundry, the required parts and their pivots, the two auto joints
-`blast_door_raise` and `flywheel_spin`, and the two required auto-play animations
-whose F-curves you must author. Run `voxel-anim --help` for the exact operation
-and rig contract.
+`specs/brief.md` describes the volume and its coordinate system, the palette, the form
+of the foundry, and — the fixed contract — the two self-playing animations you must
+author: **`blast_door_raise`** (the door cycle) and **`flywheel_spin`** (the wheel).
+It does **not** hand you a parts list or joint placements; that is the point. Run
+`voxel-anim --help` for the exact operation, rig, and animation subcommands.
 
 ## What to deliver
 
 Build and rig the foundry up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a squat armored bunker-forge base with a broad
-blast door set into its front and a great drive flywheel on its flank. This
-foundry has no caller controls — its two moving parts animate on their own through
-the auto **`blast_door_raise`** joint that lifts and drops the door and the auto
-**`flywheel_spin`** joint that turns the wheel, while the `base` stays fixed. You
-author both animations' F-curves yourself with `define-animation`/`add-keyframe`.
-Produce **every** required part, joint, and animation; you may add your own extra
-parts, joints, or auto-play animations on top, but do not drop or contradict the
-required interface. When you are satisfied, stop: the recorded per-part logs and
-`rig.json` are your finished submission.
+correctly, and the rig is complete: a squat armored bunker-forge with a broad blast
+door set into its front and a great drive flywheel on its flank. **Author the two
+required animations** as F-curves with the `voxel-anim` animation subcommands:
+`blast_door_raise` (the heavy door easing up off its rest, holding open, then easing
+back down and settling shut — a weighty portcullis cycle, not a constant-speed slide)
+and `flywheel_spin` (the great wheel turning a full, steady revolution each loop with
+no jerk at the loop seam). Both are self-playing idles that run continuously on their
+own while the building body stays fixed. The animations are the fixed contract —
+produce both, by those names; the parts and joints that realize them are yours. When
+you are satisfied, stop: the recorded per-part logs and `rig.json` are your finished
+submission.

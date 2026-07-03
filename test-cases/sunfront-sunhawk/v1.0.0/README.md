@@ -11,36 +11,29 @@ Duneforged voxel roster and shares the faction's brass-and-sandstone palette and
 solar-amber team accent. There is no target model — the model builds toward the
 seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract — animations only
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+This case does **not** prescribe a rig. It fixes only *what the Sunhawk is* (a wide,
+flat armored fuselage, a rotor out on each side, and an underslung forward cannon)
+and the **named animations** the model must author; the parts, joints, pivots, and
+articulation that realize them are entirely the model's to invent. The model defines
+its own parts and joints with `voxel-anim define-part`/`define-joint` and authors each
+animation's F-curves with `define-animation`/`add-keyframe`. This is deliberate: the
+case measures whether a model can work out the pieces a hovering, firing gunship needs
+and animate them convincingly, rather than follow a prescribed skeleton.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `hull` | *(root)* | `[0, 0, 0]` | The wide, flat fuselage |
-| `rotor_left` | `hull` | `[14, 28, 32]` | The left rotor |
-| `rotor_right` | `hull` | `[50, 28, 32]` | The right rotor |
-| `cannon` | `hull` | `[32, 10, 44]` | The underslung forward cannon |
+The `[model]` table declares three **required animations** the model must **author**
+at run time as F-curves — the case ships no keyframes, only the declarations:
 
-- **`cannon_pitch`** (caller, rotation about `x`, `-0.9..0.3`, rest `-0.3`) — the
-  game-facing control: tilts the underslung cannon up and down about its mount.
-- **`rotor_left_spin`** / **`rotor_right_spin`** (auto, rotation about `y`,
-  `-π..π`) — the two rotors, driven by the decorative `rotor_spin` animation.
-- **`hover_bob`** (auto, translation along `y`, `-2.0..2.0`, rest `0`) — a small
-  vertical bob of the whole hull, driven by the `hover` movement animation.
+- **`rotor_spin`** (`auto_play = true`) — the self-playing rotor blur; whirls both
+  rotors continuously on their own.
+- **`hover`** (`auto_play = false`) — the playable up/down hover movement; bobs the
+  whole craft as it holds station.
+- **`strafe`** (`auto_play = false`) — the playable cannon gun-run; sweeps the
+  underslung cannon down to rake the ground and back up.
 
-The `[model]` table also declares three **required animations** the model must
-**author** at run time as F-curves (with the `voxel-anim`
-`define-animation`/`add-keyframe` subcommands) — the case ships no keyframes, only
-the declarations:
-
-- **`rotor_spin`** (`auto_play = true`, period 240 ms) — the continuous rotor blur.
-- **`hover`** (`auto_play = false`, period 2400 ms) — the up/down hover movement.
-- **`strafe`** (`auto_play = false`, period 2000 ms) — the cannon gun-run, drives
-  `cannon_pitch`.
-
-The model may add its own extra parts, joints, and animations on top, but must not
-drop or contradict the required interface.
+The model may add its own extra parts, joints, and animations on top, but must
+produce these three animations, by these names, without contradicting them.
 
 ## Contents
 
@@ -48,15 +41,15 @@ drop or contradict the required interface.
 | ---------------- | -------------- | ---------------------------------------------------------- |
 | `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.            |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the rig, and review. |
+| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the animations, and review. |
 | `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
 | `description.md` | No             | Site blurb.                                                |
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation, with empty `parts` and `joints` for the model to fill in). There
+is no target model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 

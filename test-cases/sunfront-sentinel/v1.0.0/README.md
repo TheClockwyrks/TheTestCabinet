@@ -12,44 +12,26 @@ toward the seeded brief and is reviewed subjectively against it.
 
 ## The rig
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table.
-Each leg is its own **three-segment** chain (thigh → shin → flat foot) on its own
-hip directly above its own foot:
+The case does **not** prescribe a rig. The `[model]` table in `test-case.toml`
+fixes only the **animations** the model must author, by name; the model invents
+whatever parts and joints a walking, firing mech needs and is judged on whether it
+works out the right pieces, attaches them where they belong, and animates them
+convincingly. The two **required animations** the model must **author** (name +
+intent only; the model lays down the F-curve keyframes at run time with
+`define-animation`/`add-keyframe`) are:
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `torso` | *(root)* | `[0, 0, 0]` | The upper body and head |
-| `thigh_l` | `torso` | `[14, 26, 20]` | Left thigh |
-| `shin_l` | `thigh_l` | `[14, 14, 20]` | Left shin |
-| `foot_l` | `shin_l` | `[14, 3, 20]` | Left flat foot |
-| `thigh_r` | `torso` | `[30, 26, 20]` | Right thigh |
-| `shin_r` | `thigh_r` | `[30, 14, 20]` | Right shin |
-| `foot_r` | `shin_r` | `[30, 3, 20]` | Right flat foot |
-| `weapon` | `torso` | `[30, 40, 24]` | The right-arm rifle |
-
-- **`weapon_pitch`** (caller, rotation about `x`, `-0.7..0.7`) — the game-facing
-  control: aims the right-arm rifle up and down about its shoulder mount.
-- **`hip_<id>`** / **`knee_<id>`** / **`foot_<id>`** for `<id>` in `{l, r}` (auto,
-  rotation about `x`) — the three joints of each leg: the hip sweep
-  (`-0.5..0.5`), a reverse/digitigrade knee resting clearly bent (`-1.4..0.2`,
-  rest `-0.7`), and a small flat-foot ankle tilt (`-0.3..0.3`). Driven by the
-  model-authored `walk` animation, not by the caller.
-
-The `[model]` table also declares two **required animations** the model must
-**author** (name + intent only; the model lays down the F-curve keyframes at run
-time with `define-animation`/`add-keyframe`):
-
-- **`walk`** (period 800 ms, loop, not auto-play) — drives all six leg joints in
-  a
-  two-phase gait: a planted-flat stance where the foot sits still on the ground
-  while the mech passes over it, then a swing that lifts, carries forward, and
-  plants (an `ease-in` into the foot-plant), the two legs in opposite phase.
-- **`fire`** (period 500 ms, loop, not auto-play) — drives only `weapon_pitch` in
-  a quick recoil nod so a reviewer can watch the rifle recoil without dragging the
-  slider.
+- **`walk`** (loop, not auto-play) — a game-triggered walk: the mech strides
+  forward on its two legs in a two-phase gait, a planted-flat stance where each
+  foot sits still on the ground while the mech passes over it, then a swing that
+  lifts, carries forward, and plants, the two legs in opposite phase. The legs
+  move; the rifle holds.
+- **`fire`** (loop, not auto-play) — a game-triggered weapon showcase: the
+  right-arm rifle snaps into a quick recoil nod, aiming up and down about its
+  shoulder mount and settling, while the mech stands its ground and the legs stay
+  planted.
 
 The model may add its own extra parts, joints, and animations on top, but must not
-drop or contradict the required interface.
+drop or contradict the required animations.
 
 ## Contents
 
@@ -63,9 +45,9 @@ drop or contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts, joints, and animation declarations (so the
-contract exists from the first operation). There is no target model and no
-operations schema — the binary's `--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation); the parts and joints are the model's to invent. There is no
+target model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 

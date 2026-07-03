@@ -11,34 +11,27 @@ Duneforged voxel roster and shares the faction's brass-and-sandstone palette and
 solar-amber team accent. There is no target model — the model builds toward the
 seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table.
-The body is the fixed root; each of the four legs is its own three-part chain (a
-thigh, a shin, and a short flat foot) on its own hip directly above its own foot;
-the mandibles hang at the head:
+This case fixes only **what the Scarab is** and **the animations it must author** —
+not the rig. The brief describes the subject (a domed brass carapace body, four iron
+legs, and a pair of snapping iron mandibles at the head) and how it must move; the
+model **invents whatever parts and joints it needs** and is judged on whether it
+works out the right pieces, attaches them where they belong, and animates them
+convincingly. Nothing prescribes a parts list, joint placements, or pose angles.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `body` | *(root)* | `[0, 0, 0]` | The domed carapace body and head |
-| `thigh_<id>` | `body` | hip | Upper leg for corner `<id>` (`lf`/`lr`/`rf`/`rr`) |
-| `shin_<id>` | `thigh_<id>` | knee | Lower leg |
-| `foot_<id>` | `shin_<id>` | ankle | Short flat foot |
-| `mandibles` | `body` | `[24, 8, 50]` | The snapping front jaws |
+The two required, model-authored animations (declared by name in
+`test-case.toml`'s `[model]` table with no keyframes; the model produces the
+F-curves) are:
 
-- **`hip_<id>`** / **`knee_<id>`** / **`foot_<id>`** (auto, rotation about `x`;
-  hip `±0.5`, knee `-1.4..0.2` rest `-0.5` bent, foot `±0.3`) — the twelve leg
-  joints the model-authored `walk` drives; at rest the legs hold a bent, planted
-  standing pose.
-- **`mandibles_snap`** (caller, rotation about `x`, `0..0.9`) — the game-facing
-  control: swings the front jaws open and shut about their hinge.
+- **`walk`** — a game-triggered playable that strides the beetle forward on its
+  legs in a diagonal-pair gait, each foot planting flat and still before it lifts,
+  swings, and plants again.
+- **`bite`** — a game-triggered playable that snaps the front mandibles wide open
+  and shut so a reviewer can watch the jaws work without dragging a slider.
 
-Both animations are **model-authored** (declared in `[[model.animation]]` with no
-keyframes; the model produces the F-curves): a **`walk`** (600 ms, diagonal-pair
-gait with a planted stance phase) driving all twelve leg joints, and a **`bite`**
-(500 ms) driving `mandibles_snap` so a reviewer can watch the jaws snap without
-dragging the slider. The model may add its own extra parts, joints, and animations
-on top, but must not drop or contradict the required interface.
+The model may add its own extra parts, joints, and animations on top, but must not
+drop or contradict the required `walk` and `bite`.
 
 ## Contents
 
@@ -46,15 +39,15 @@ on top, but must not drop or contradict the required interface.
 | ---------------- | -------------- | ---------------------------------------------------------- |
 | `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.            |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the rig, and review. |
+| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the contract, and review. |
 | `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
 | `description.md` | No             | Site blurb.                                                |
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation). There is no target model and no operations schema — the
+binary's `--help` is the contract.
 
 ## Variants
 

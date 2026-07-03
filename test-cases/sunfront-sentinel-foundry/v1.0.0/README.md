@@ -10,30 +10,27 @@ using only the `voxel-anim` tool, one recorded operation at a time.
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** prescribe a rig. `test-case.toml`'s `[model]` table fixes only
+the set of **named animations** the model must author — the parts, joints, pivots, and
+ranges that realize them are the model's to invent, and are what the test measures.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The foundry tower and its foundation |
-| `piston` | `base` | `[28, 50, 28]` | The stamping press head |
-| `gear` | `base` | `[42, 40, 20]` | The drive gear on the flank |
+The two required, self-playing (`auto_play`, looping) `[[model.animation]]`
+declarations:
 
-- **`piston_stamp`** (auto, translation along `y`, `-8..0`) — the press hammers
-  straight down and back up in the tower's throat.
-- **`gear_spin`** (auto, rotation about `z`, `-π..π`) — the drive gear turns a
-  full revolution.
+| Animation | Self-playing? | What it must show |
+| --- | --- | --- |
+| `piston_stamp` | Yes (idle) | The stamping press hammers straight down to the bottom of its stroke and eases back up in the tower's throat. |
+| `gear_spin` | Yes (idle) | The drive gear turns a full revolution continuously and loops seamlessly. |
 
-Both required joints are `auto`-driven, each moved by a required, continuously
-**auto-playing** `[[model.animation]]` of the same name (`piston_stamp`,
-period 1200 ms; `gear_spin`, period 1800 ms). The case declares each animation's
-identity and intent only — **no keyframes**; the model authors the motion as
-F-curves at run time with the `voxel-anim` `define-animation`/`add-keyframe`
-subcommands. The foundry cycles on its own with no caller. The model may add its
-own
-extra parts, joints, and animations on top, but must not drop or contradict the
-required interface.
+Each animation is a **declaration only** — no keyframes, no period, no bound joints;
+the model authors the motion as F-curves at run time with the `voxel-anim`
+`define-animation`/`add-keyframe` subcommands, and defines its own parts and joints
+with `define-part`/`define-joint`. The foundry cycles on its own with no caller, and
+the tower itself stays put — only the press and the gear move. The model may add its
+own extra parts, joints, and self-playing animations on top, but must produce both
+required animations, by those names, and must not contradict them.
 
 ## Contents
 
@@ -47,10 +44,9 @@ required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts, joints, and animation declarations (so the
-contract exists from the first operation). There is no target model and no
-operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations — no parts and no joints (so
+the animations-only contract exists from the first operation). There is no target
+model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 

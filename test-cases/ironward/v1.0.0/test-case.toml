@@ -4,8 +4,11 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
 summary = """
 Sculpt and rig the Ironward Siege Tank: a 60x40x80 opaque-voxel tank whose turret \
-swivels on a caller-driven turret_yaw joint, built and rigged one recorded \
-operation at a time."""
+swivels to aim its forward gun, built by painting discrete cells one recorded \
+operation at a time. The model invents whatever parts and joints it needs; the \
+fixed contract is a single animation it must author — a game-triggered \
+`turret_sweep` that swings the turret through its full traverse — the reviewer can \
+play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -42,56 +45,25 @@ preview = "parts/{part}.png"
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts, this joint, and the required animation; at run
-# time it MAY add further parts, joints, and auto-play animations of its own
-# (recorded in rig.json) beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton it needs and is judged on whether it works out the right pieces,
+# attaches them where they belong, and animates them convincingly. What is fixed is
+# the set of NAMED ANIMATIONS the model must author (a game plays them by name) and
+# whether each is a game-triggered playable or a self-playing idle. The model authors
+# each animation's F-curves at run time with `voxel-anim
+# define-animation`/`add-keyframe`; `rig.json` is pre-seeded with these declarations
+# so the contract exists from the first operation.
 [model]
 
-# The tank body and tracks: the root part (no parent), fixed to the world.
-[[model.part]]
-name = "chassis"
-pivot = [0, 0, 0]
-
-# The turret: mounted on top-center of the chassis. It swivels on `turret_yaw`.
-[[model.part]]
-name = "turret"
-parent = "chassis"
-pivot = [30, 20, 40]
-
-# The main gun: mounted at the front of the turret, so it swings with the turret.
-[[model.part]]
-name = "barrel"
-parent = "turret"
-pivot = [30, 28, 50]
-
-# The required caller-driven joint: a game addresses `turret_yaw` by name to swing
-# the turret (and the barrel with it) left and right about its vertical mount, a
-# full half-turn each way. `rest = 0` faces straight forward (+z).
-[[model.joint]]
-name = "turret_yaw"
-part = "turret"
-kind = "rotation"
-axis = "y"
-pivot = [30, 20, 40]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "caller"
-
-# A required animation the model must AUTHOR at run time: the review viewer offers
-# it as a play button so a reviewer can watch the turret sweep through its range
-# without dragging the joint slider by hand. This is a declaration only — the model
-# authors the F-curves itself with the `voxel-anim` animation subcommands
-# (`define-animation` then `add-keyframe`); the manifest carries no keyframes.
-# `turret_sweep` swings the turret center → left → center → right → center and loops.
+# `turret_sweep` — the TURRET traverse. A game-triggered playable (not self-playing)
+# that swings the turret smoothly through its full traverse — center → left → center
+# → right → center — and loops, so a reviewer can watch the gun aim across its arc
+# without dragging a slider. The gun swings with the turret; the hull stays put.
 [[model.animation]]
 name = "turret_sweep"
-period_ms = 4000
 loop = true
 auto_play = false
-joints = ["turret_yaw"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -102,16 +74,16 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Ironward siege tank \
-and poses correctly — a body with tracks, a turret that swivels on its mount \
-without detaching while the chassis stays put, a barrel that stays attached to the \
-turret, and the disciplined Ironward palette."""
+and poses correctly — a low, tracked hull carrying a turret that swivels on its \
+mount without detaching while the hull stays put, a long gun that stays attached to \
+the turret and swings with it, and the disciplined Ironward palette."""
 
 [[review_item]]
 id = "reads-as-tank"
 title = "Reads as a siege tank"
 text = """
 From more than one angle the model reads unmistakably as a heavy tank: a low, \
-boxy chassis riding on a pair of tracks down its sides, a turret sitting on top, \
+boxy hull riding on a pair of tracks down its sides, a turret sitting on top, \
 and a long gun barrel projecting forward from the turret. It is a tracked \
 fighting vehicle, not an abstract stack of boxes."""
 weight = 3
@@ -119,32 +91,34 @@ domain = "fidelity"
 
 [[review_item]]
 id = "turret-swivels"
-title = "Turret swivels on its pivot"
+title = "Turret swivels cleanly on its mount"
 text = """
-Driving the `turret_yaw` joint swings the turret cleanly left and right about its \
-vertical mount at the top-center of the chassis. Across the full range no voxel of \
-the turret tears away from its mount or clips down into the hull — the turret \
-rotates as one solid piece about the correct pivot."""
+Playing `turret_sweep` swings the turret smoothly left and right about a vertical \
+mount at the top-center of the hull, aiming the gun across its arc and easing at the \
+extremes rather than sliding at a constant rate. Across the full traverse no part of \
+the turret tears away from its mount or clips down into the hull — the turret and its \
+gun rotate together as one solid piece about a single vertical axis."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "chassis-fixed"
-title = "Chassis stays fixed"
+id = "hull-fixed"
+title = "Hull stays put; only the turret moves"
 text = """
-Only the turret (and the barrel with it) moves when `turret_yaw` is driven. The \
-chassis and its tracks stay put — they are the fixed root of the rig, not carried \
-along by the turret's rotation."""
+The tracked hull is the fixed base of the machine: it stays put, never carried along \
+by the turret. When `turret_sweep` plays, the turret (and the gun with it) swings \
+while the hull and its tracks hold still. Nothing but the moving turret assembly \
+moves."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "barrel-attached"
-title = "Barrel stays attached to the turret"
+id = "gun-attached"
+title = "Gun stays attached to the turret"
 text = """
-The barrel is a child of the turret: it projects from the front of the turret and \
-swings with it as `turret_yaw` turns, always meeting the turret's front face with \
-no gap and never floating free or detaching."""
+The long gun projects forward from the turret and swings with it as `turret_sweep` \
+plays — riding the turret's rotation as though bolted to it, always meeting the \
+turret with no gap and never floating free or detaching."""
 weight = 2
 domain = "fidelity"
 
@@ -153,7 +127,7 @@ id = "palette"
 title = "Ironward palette discipline"
 text = """
 Uses only the Ironward colors from the brief (olive hull, dark olive underside, \
-dark track, gunmetal barrel, and the warm accent) with no out-of-palette colors \
+dark track, gunmetal gun, and the warm accent) with no out-of-palette colors \
 and no stray voxels drifting off the parts."""
 weight = 1
 domain = "fidelity"

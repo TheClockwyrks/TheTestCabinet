@@ -11,37 +11,30 @@ time.
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table.
-Each leg is its own independent three-segment chain (thigh → shin → short flat
-foot) so it can lift and plant its foot rather than only swing:
+This case does **not** prescribe a rig. It fixes only **what the Monolith is** and
+the **animations** the model must author; the parts, joints, pivots, and ranges that
+realize them are the model's to invent, and working them out is the test. What is
+fixed:
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `torso` | *(root)* | `[0, 0, 0]` | The massive upper body and head |
-| `thigh_l` | `torso` | `[20, 34, 28]` | Left upper leg (hip) |
-| `shin_l` | `thigh_l` | `[20, 18, 28]` | Left lower leg (knee) |
-| `foot_l` | `shin_l` | `[20, 3, 28]` | Left short flat foot (ankle) |
-| `thigh_r` | `torso` | `[44, 34, 28]` | Right upper leg (hip) |
-| `shin_r` | `thigh_r` | `[44, 18, 28]` | Right lower leg (knee) |
-| `foot_r` | `shin_r` | `[44, 3, 28]` | Right short flat foot (ankle) |
-| `weapon` | `torso` | `[44, 52, 32]` | The giant right arm-cannon |
+- **The subject.** A super-heavy bipedal war-mech: a massive brass torso and head
+  (the fixed core), two thick iron legs planted beneath the hips, and a giant iron
+  cannon carried on the right arm that projects forward, aims up and down, and
+  recoils — with a solar-amber chest core and amber shoulder lights, in the
+  Duneforged palette.
+- **The animations.** The `[model]` table declares two **required animations** the
+  model must author as F-curves (no keyframes or joints ship in the manifest):
+  **`walk`** (loops, `auto_play = false`) — a slow, heavy, planted opposite-phase
+  stride that steps the two legs, one foot flat and still on the ground while the
+  body passes over it — and **`fire`** (loops, `auto_play = false`) — a weapon-only
+  recoil that snaps and settles the cannon while the legs hold, so a reviewer can
+  watch it play back.
 
-- **`weapon_pitch`** (caller, rotation about `x`, `-0.7..0.7`) — the game-facing
-  control: aims the giant right arm-cannon up and down about its shoulder mount.
-- **`hip_l`/`hip_r`** (auto, rotation `x`, `-0.5..0.5`), **`knee_l`/`knee_r`**
-  (auto, rotation `x`, `-1.4..0.2`, rest `-0.7` — a bent, reverse/digitigrade
-  knee), **`foot_l`/`foot_r`** (auto, rotation `x`, `-0.3..0.3`) — the six leg
-  joints the required `walk` animation drives.
-
-The `[model]` table also declares two **required animations** the model must
-author as F-curves (no keyframes ship in the manifest): **`walk`** (period 1100,
-loops, `auto_play = false`) — a slow, heavy, planted opposite-phase stride driving
-all six leg joints — and **`fire`** (period 600, loops, `auto_play = false`) — a
-weapon-only recoil driving `weapon_pitch` so a reviewer can watch the cannon
-recoil without dragging the slider. The model may add its own extra parts, joints,
-and animations on top, but must not drop or contradict the required interface.
+The model defines its own parts and joints with `voxel-anim define-part` /
+`define-joint` and authors the two animations by name. It may add any extra parts,
+joints, or animations on top (for example a live weapon-aim control), but must not
+drop or contradict the two required animations.
 
 ## Contents
 
@@ -55,10 +48,10 @@ and animations on top, but must not drop or contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts, joints, and animation declarations (so the
-contract exists from the first operation; the model authors each animation's
-F-curve keyframes). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation; the model defines its own parts and joints and authors each
+animation's F-curve keyframes). There is no target model and no operations schema —
+the binary's `--help` is the contract.
 
 ## Variants
 

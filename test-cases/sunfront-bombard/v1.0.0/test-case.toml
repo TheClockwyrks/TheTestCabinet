@@ -4,11 +4,11 @@ difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Bombard: a 56x52x80 opaque-voxel four-legged siege \
-mortar walker whose turret swivels on a caller-driven turret_yaw joint and whose \
-long mortar barrel lobs high on a caller-driven barrel_pitch joint, striding on \
-four independent, three-segment legs (a hip, a reverse knee, and a flat foot each) \
-under a model-authored `walk` gait — built and rigged one recorded operation at a \
-time, with a weapon-only `bombard_fire` the reviewer can play back."""
+mortar walker whose turret swivels and whose long mortar barrel lobs high — built \
+not from a fixed skeleton but by painting discrete opaque voxel cells one recorded \
+operation at a time. The model invents whatever parts and joints it needs; the fixed \
+contract is two animations it must author — a walking `walk` gait and a \
+weapon-showcase `bombard_fire` — the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -45,317 +45,33 @@ preview = "parts/{part}.png"
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts, these joints, and these animations; at run time it
-# MAY add further parts, joints, and animations of its own (recorded in rig.json)
-# beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates.
-# `rig.json` is pre-seeded from this table so the contract exists from the first
-# operation.
-#
-# The rig has two kinds of moving part, and the drive of each is deliberate:
-#   * The two gun controls (`turret_yaw`, `barrel_pitch`) are `caller` — a game
-#     drives them per frame by name, and the review viewer's `bombard_fire`
-#     animation poses the barrel; at rest they hold still.
-#   * The twelve leg joints are `auto` — the model-authored `walk` animation drives
-#     them; a game plays `walk` to stride the machine, and at idle they hold their
-#     bent-knee standing rest.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. The model authors each
+# animation's F-curves at run time with `voxel-anim define-animation`/`add-keyframe`;
+# `rig.json` is pre-seeded with these declarations so the contract exists from the
+# first operation.
 [model]
 
-# The walker's armored hull: the root part (no parent), fixed to the world. It
-# carries the turret ring and the four leg-hips, riding raised off the ground on the
-# legs.
-[[model.part]]
-name = "body"
-pivot = [0, 0, 0]
-
-# --- The four legs. Each leg is THREE parts (an upper thigh + a lower shin + a
-# short flat foot) with two moving joints (a hip on the body and a knee between the
-# segments) plus a foot/ankle tilt, so the knee can fold to lift the foot clear on
-# its swing and the foot stays flat. The legs are INDEPENDENT — each on its own hip
-# directly above its own foot (x and z held constant down the chain; only y
-# descends) — so no single shared pivot drags a fore-and-aft bank of feet through
-# the ground. One down each corner: left-front (lf), left-rear (lr), right-front
-# (rf), right-rear (rr). ---
-
-# Left-front thigh, hung from its hip under the left-front corner of the hull.
-[[model.part]]
-name = "thigh_lf"
-parent = "body"
-pivot = [13, 16, 56]
-
-# Left-front shin, hung from the left-front knee.
-[[model.part]]
-name = "shin_lf"
-parent = "thigh_lf"
-pivot = [13, 9, 56]
-
-# Left-front foot: a short, flat foot under the shin.
-[[model.part]]
-name = "foot_lf"
-parent = "shin_lf"
-pivot = [13, 2, 56]
-
-[[model.part]]
-name = "thigh_lr"
-parent = "body"
-pivot = [13, 16, 24]
-
-[[model.part]]
-name = "shin_lr"
-parent = "thigh_lr"
-pivot = [13, 9, 24]
-
-[[model.part]]
-name = "foot_lr"
-parent = "shin_lr"
-pivot = [13, 2, 24]
-
-[[model.part]]
-name = "thigh_rf"
-parent = "body"
-pivot = [43, 16, 56]
-
-[[model.part]]
-name = "shin_rf"
-parent = "thigh_rf"
-pivot = [43, 9, 56]
-
-[[model.part]]
-name = "foot_rf"
-parent = "shin_rf"
-pivot = [43, 2, 56]
-
-[[model.part]]
-name = "thigh_rr"
-parent = "body"
-pivot = [43, 16, 24]
-
-[[model.part]]
-name = "shin_rr"
-parent = "thigh_rr"
-pivot = [43, 9, 24]
-
-[[model.part]]
-name = "foot_rr"
-parent = "shin_rr"
-pivot = [43, 2, 24]
-
-# The turret: mounted on top-center of the body. It swivels on `turret_yaw`.
-[[model.part]]
-name = "turret"
-parent = "body"
-pivot = [28, 30, 44]
-
-# The long mortar barrel: mounted at the front of the turret, so it swings with
-# the turret and lobs up and down on `barrel_pitch`.
-[[model.part]]
-name = "barrel"
-parent = "turret"
-pivot = [28, 38, 56]
-
-# --- Joints ---
-
-# The four hip joints: each swings its whole leg fore-and-aft about the hip — the
-# big sweep of the stride. `auto` so the `walk` animation drives them; at rest they
-# hold at 0 (standing). rot x, range ±0.5, rest 0.
-[[model.joint]]
-name = "hip_lf"
-part = "thigh_lf"
-kind = "rotation"
-axis = "x"
-pivot = [13, 16, 56]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "hip_lr"
-part = "thigh_lr"
-kind = "rotation"
-axis = "x"
-pivot = [13, 16, 24]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "hip_rf"
-part = "thigh_rf"
-kind = "rotation"
-axis = "x"
-pivot = [43, 16, 56]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "hip_rr"
-part = "thigh_rr"
-kind = "rotation"
-axis = "x"
-pivot = [43, 16, 24]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-# The four knee joints: each folds the shin to lift the foot on its swing. This is a
-# REVERSE / digitigrade knee — it rests at a clearly bent -0.7 (never a straight
-# column), and folds further to lift, extending back toward rest to plant. `auto`,
-# driven by `walk`. rot x, range -1.4..0.2, rest -0.7.
-[[model.joint]]
-name = "knee_lf"
-part = "shin_lf"
-kind = "rotation"
-axis = "x"
-pivot = [13, 9, 56]
-min = -1.4
-max = 0.2
-rest = -0.7
-drive = "auto"
-
-[[model.joint]]
-name = "knee_lr"
-part = "shin_lr"
-kind = "rotation"
-axis = "x"
-pivot = [13, 9, 24]
-min = -1.4
-max = 0.2
-rest = -0.7
-drive = "auto"
-
-[[model.joint]]
-name = "knee_rf"
-part = "shin_rf"
-kind = "rotation"
-axis = "x"
-pivot = [43, 9, 56]
-min = -1.4
-max = 0.2
-rest = -0.7
-drive = "auto"
-
-[[model.joint]]
-name = "knee_rr"
-part = "shin_rr"
-kind = "rotation"
-axis = "x"
-pivot = [43, 9, 24]
-min = -1.4
-max = 0.2
-rest = -0.7
-drive = "auto"
-
-# The four foot/ankle joints: each tilts the flat foot only ±~15°, counter-rotating
-# against the shin to keep the foot flat on the ground through the stride. `auto`,
-# driven by `walk`. rot x, range ±0.3, rest 0.
-[[model.joint]]
-name = "foot_lf"
-part = "foot_lf"
-kind = "rotation"
-axis = "x"
-pivot = [13, 2, 56]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "foot_lr"
-part = "foot_lr"
-kind = "rotation"
-axis = "x"
-pivot = [13, 2, 24]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "foot_rf"
-part = "foot_rf"
-kind = "rotation"
-axis = "x"
-pivot = [43, 2, 56]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "foot_rr"
-part = "foot_rr"
-kind = "rotation"
-axis = "x"
-pivot = [43, 2, 24]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-# The required caller-driven turret swivel: a game addresses `turret_yaw` by name
-# to swing the turret (and the barrel with it) left and right about its vertical
-# mount, a full half-turn each way. `rest = 0` faces straight forward (+z).
-[[model.joint]]
-name = "turret_yaw"
-part = "turret"
-kind = "rotation"
-axis = "y"
-pivot = [28, 30, 44]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "caller"
-
-# The required caller-driven barrel elevation: `barrel_pitch` elevates and
-# depresses the mortar barrel about its horizontal mount so it can lob high.
-# `rest = 0.4` is a raised siege elevation; `max = 1.0` is a steep lob, `min = -0.2`
-# a shallow aim.
-[[model.joint]]
-name = "barrel_pitch"
-part = "barrel"
-kind = "rotation"
-axis = "x"
-pivot = [28, 38, 56]
-min = -0.2
-max = 1.0
-rest = 0.4
-drive = "caller"
-
-# --- Required animations the model must author (as F-curves, not keyframes here) ---
-
-# `walk`: the GAIT. The model must author this animation to drive all twelve leg
-# joints so the Bombard strides on its four legs in a diagonal-pair gait ({lf, rr}
-# together, {rf, lr} together, a half period apart). Each leg's cycle has a PLANTED
-# STANCE phase — the flat foot still on the ground, translating straight backward
-# relative to the body while the machine passes over it — then a swing (lift,
-# forward, plant), with an `ease-in` into the foot-plant. It touches NO gun joint.
+# `walk` — the GAIT. A game-triggered playable (not self-playing) that strides the
+# Bombard forward on its legs: feet plant flat and still on the ground while the body
+# passes over them, then lift, swing forward, and plant again, so the machine pushes
+# itself forward rather than flailing. The legs move; the guns hold.
 [[model.animation]]
 name = "walk"
-period_ms = 650
 loop = true
 auto_play = false
-joints = [
-  "hip_lf", "knee_lf", "foot_lf",
-  "hip_lr", "knee_lr", "foot_lr",
-  "hip_rf", "knee_rf", "foot_rf",
-  "hip_rr", "knee_rr", "foot_rr",
-]
 
-# `bombard_fire`: the WEAPON showcase. The model must author this animation to kick
-# the barrel up in a quick recoil-lob then settle, so a reviewer can watch the
-# mortar fire without dragging the slider by hand. It drives only `barrel_pitch`; it
-# touches NO leg joint, so the legs hold planted while the barrel fires.
+# `bombard_fire` — the WEAPON showcase. A game-triggered playable that kicks the
+# mortar barrel up in a quick recoil-lob then settles, so the reviewer can watch the
+# gun fire while the walker stands its ground on planted legs.
 [[model.animation]]
 name = "bombard_fire"
-period_ms = 1000
 loop = true
 auto_play = false
-joints = ["barrel_pitch"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -367,19 +83,19 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Bombard and \
 poses correctly — a four-legged siege-mortar walker: a low hull carried on four \
-independent three-segment legs whose flat feet plant and lift clear of the ground \
-under the model-authored `walk`, a turret that swivels on its mount without \
-detaching while the body stays put, and a long mortar barrel that stays attached to \
-the turret and lobs up and down, with a clear solar-amber muzzle glow and the \
-disciplined Duneforged palette."""
+articulated legs whose flat feet plant and lift clear of the ground under the \
+model-authored `walk`, a turret that reads as swiveling to aim while the body stays \
+put, and a long mortar barrel that stays attached to the turret and lobs up and \
+fires under `bombard_fire`, with a clear solar-amber muzzle glow and the disciplined \
+Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-bombard"
 title = "Reads as a four-legged siege-mortar walker"
 text = """
 From more than one angle the model reads unmistakably as a four-legged siege \
-mortar walker: a low, boxy hull carried on four legs — one at each corner, each a \
-jointed thigh/shin/foot chain, not a rigid bank — a turret sitting on top, and a \
+mortar walker: a low, boxy hull carried on four legs — one at each corner, each an \
+articulated jointed chain rather than a rigid pole — a turret sitting on top, and a \
 long mortar barrel projecting forward from the turret. It is a striding artillery \
 walker, not an abstract stack of boxes."""
 weight = 3
@@ -387,53 +103,42 @@ domain = "fidelity"
 
 [[review_item]]
 id = "legs-walk"
-title = "Legs stride independently without clipping the ground"
+title = "Legs stride on planted feet without clipping the ground"
 text = """
-Playing `walk` strides the Bombard on its four legs: each leg swings on its own \
-`hip_*` joint and folds at its own reverse `knee_*` so the flat foot lifts clear of \
-the ground on its swing and plants again, with a planted stance phase where the foot \
-sits still on the ground as the body passes over it — the legs step in a \
-diagonal-pair gait, NOT as one rigid bank, and no foot is dragged or driven down \
-through the ground. Each leg's shin stays attached to its thigh, each foot to its \
-shin, and each thigh to the hull across the whole range."""
+Playing `walk` strides the Bombard forward on its four legs. Each foot has a clear \
+PLANTED STANCE — flat and still on the ground while the body passes over it — then \
+lifts clear, swings forward, and plants again with weight; the four legs cycle in a \
+supported gait (diagonal pairs, not one rigid bank) so the machine is always carried \
+and pushes itself forward, NOT flailing its legs in a continuous arc. The feet stay \
+flat as they carry the body (they don't tip onto toe or heel), no foot is dragged or \
+driven down through the ground, and the legs stay attached to the hull across the \
+whole cycle. The model had to invent an articulated leg (more than one segment and \
+joint) for this to read as walking rather than swinging rigid poles."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "joints-move"
-title = "Turret swivels and barrel lobs"
+id = "turret-and-barrel"
+title = "Turret swivels and the barrel lobs and fires"
 text = """
-Driving the `turret_yaw` joint swings the turret cleanly left and right about its \
-vertical mount at the top-center of the body, and driving the `barrel_pitch` joint \
-raises and lowers the mortar barrel about its horizontal mount. Across both joints' \
-full ranges no voxel tears away from its mount or clips into the hull — each part \
-rotates as one solid piece about the correct pivot. Playing `bombard_fire` kicks the \
-barrel up in a recoil-lob and settles."""
+A distinct turret sits on top of the hull carrying a long mortar barrel that \
+projects forward from it. The turret reads as a piece that swivels to aim left and \
+right about a vertical mount, and the barrel elevates and depresses to lob high — \
+each moving as one solid piece about a believable mount, the barrel always meeting \
+the turret's front with no gap and never floating free. Playing `bombard_fire` kicks \
+the barrel up in a quick recoil-lob and settles, with no geometry tearing away from \
+its mount or clipping into the hull as it fires."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "body-fixed"
-title = "Body stays fixed"
+title = "Hull stays put; only the moving parts move"
 text = """
-Only the moving parts move: the turret (and the barrel with it) when the gun joints \
-are driven, and the legs as they stride under `walk`. The body stays put — it is the \
-fixed root of the rig, not carried along by the turret's swing, the barrel's lob, or \
-the legs' stride. When `walk` plays, only the legs move and the guns stay put; when \
-`bombard_fire` plays, only the barrel moves and the legs stay planted."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Barrel and legs stay attached"
-text = """
-Each child stays attached across its joint's range: the barrel is a child of the \
-turret, so it projects from the turret's front, swings with it as `turret_yaw` \
-turns, and pitches about its own mount as `barrel_pitch` drives, always meeting the \
-turret's front face with no gap and never floating free. Each leg's thigh meets the \
-hull at its hip, its shin meets the thigh at the knee, and its foot meets the shin \
-at the ankle, and none detach as the leg strides."""
+The armored hull is the fixed base of the machine: it stays put, never carried along \
+by the turret, the barrel, or the legs. When `bombard_fire` plays, the barrel works \
+while the legs stay planted; when `walk` plays, the legs stride while the gun holds. \
+Nothing but the moving parts moves."""
 weight = 2
 domain = "fidelity"
 

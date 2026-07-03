@@ -1,48 +1,54 @@
 Sculpt and rig the **Sunfront Aegis**, a colossal multi-gun walking fortress that
-strides on six independent legs — each a three-segment thigh/shin/flat-foot chain —
-whose main cannon aims forward, whose two side-mounted turrets each traverse to cover
-only their own flank, and whose radar vane sweeps on its own, as an 88x80x104
-opaque-voxel model using only the voxel-anim tool. You author its walk and weapon
-animations as F-curves.
+strides on legs, aims a dominant main cannon forward, works a side-mounted turret on
+each flank, and sweeps a radar vane — as an 88x80x104 opaque-voxel model using only
+the `voxel-anim` tool. You build it by **painting discrete voxel cells** — one recorded
+operation at a time — and you **author its walk and weapon animations** as F-curves.
+
+This test measures **creativity and craft**, not instruction-following: the brief tells
+you *what the Aegis is* and *how it must move*, but the parts you build, how you break
+the fortress into moving pieces, where you place the joints, and how you shape every
+form are **entirely yours to invent**. Work out the pieces a walking, firing fortress
+needs.
 
 ## How sculpting and rigging works
 
-The only way to place a voxel and edit the rig is the `voxel-anim` binary already
-on your `PATH`. It is the sole channel: you build the model by calling it **one
-operation at a time**, and the ordered operations you issue — recorded per part to
-`parts/<part>.actions.json` — together with the rig you define are the
-**authoritative output that is scored**, not the voxels on disk. Anything produced
-another way (writing files directly, editing a preview by hand) is discarded and
-flagged; only the recorded operations and the rig count.
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on
+your `PATH`. It is the sole channel: you build the model by calling it **one operation
+at a time**, and the ordered operations you issue — recorded per part to
+`parts/<part>.actions.json` — together with the rig you define are the **authoritative
+output that is scored**, not the voxels on disk. Anything produced another way (writing
+files directly, editing a preview by hand) is discarded and flagged; only the recorded
+operations and the rig count.
 
-Every voxel operation targets a **part** with `--part <name>`; each part is
-sculpted **separately** in its own preview and log. The volume starts **empty**.
-Voxels are **opaque** `#rrggbb` colors — there is no transparency. After each call
-the binary re-renders that part's isometric preview to `parts/<part>.png` and
-appends the operation to that part's log. Blank starting previews, empty per-part
-logs, and a pre-seeded `rig.json` holding the required parts and joints are already
-in place at `{{workspace}}`.
+Every voxel operation targets a **part** with `--part <name>`; each part is sculpted
+**separately** in its own preview and log, in the shared volume's coordinates. The
+volume starts **empty**. Voxels are **opaque** `#rrggbb` colors — there is no
+transparency. After each call the binary re-renders that part's isometric preview to
+`parts/<part>.png` and appends the operation to that part's log.
+
+**You invent the rig.** Define whatever parts you need with `define-part` (giving each
+a parent and a pivot), place joints on them with `define-joint`, and author the
+required animations with `define-animation`/`add-keyframe`. Every voxel operation
+targets a **part** with `--part <name>`, so define a part before you sculpt into it.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
+voxel-anim define-part --name chassis
 voxel-anim fill-box --part chassis --x0 8 --y0 30 --z0 8 --x1 79 --y1 60 --z1 96 --color "#c69a4b"
 ```
 
-Run `voxel-anim --help` to list every operation **and** the rig subcommands
-(defining parts, setting pivots, defining joints, and defining animations and their
-keyframes), and `voxel-anim
-<operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that
+(The part name above is just an example — name your own parts however you like.) Run
+`voxel-anim --help` to list every operation **and** the rig subcommands (defining
+parts, setting pivots, defining joints, and defining animations and their keyframes),
+and `voxel-anim <operation> --help` for one operation's exact flags — that help text is
+the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
 part's progress, **and read the assembled-scene previews under `scene/`
-(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
-whole fortress composed from all your parts, re-rendered after every operation. The
-scene views are how you confirm the parts actually fit together: that the six legs
-seat under the hull and reach the ground, the main turret sits centered on the
-citadel, the cannon meets the turret front, and each side turret seats out on its
-sponson. Because each part is sculpted in the shared volume's coordinates, position
-each part where it belongs on the finished fortress; the scene simply composes them
-there.
+(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole
+fortress composed from all your parts, re-rendered after every operation. The scene
+views are how you confirm the parts actually fit together and that the legs reach the
+ground. Because each part is sculpted in the shared volume's coordinates, position each
+part where it belongs on the finished fortress; the scene simply composes them there.
 
 ## What to read first
 
@@ -53,37 +59,22 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the volume and its coordinate system, the palette, the
-form of the fortress, the required parts and their pivots, the required joints, and
-the required animations. The joints: **eighteen auto leg joints** — a `hip_*`, a
-`knee_*`, and a `foot_*` per leg (`lf, lm, lr, rf, rm, rr`), each leg an independent
-three-segment chain (thigh + shin + flat foot) that plants its foot flat and lifts it
-clear of the ground; the four gun caller joints — `main_turret_yaw` and
-`main_gun_pitch` for the main turret and cannon, and `left_turret_yaw` /
-`right_turret_yaw` for the two independently traversing side turrets; and the one auto
-`radar_spin` joint. The animations you must **author** (as F-curves, with
-`voxel-anim define-animation` / `add-keyframe`): **`march`** (the two-tripod walk
-driving the eighteen leg joints), **`bombardment`** (the four gun joints), and the
-self-playing **`radar_spin`**. Run `voxel-anim --help` for the exact operation, rig,
-and animation contract.
+`specs/brief.md` describes the volume and its coordinate system, the palette, the form
+of the fortress, and — the fixed contract — the three animations you must author:
+**`march`** (the walk), **`bombardment`** (the guns), and the self-playing
+**`radar_spin`**. It does **not** hand you a parts list or joint angles; that is the
+point. Run `voxel-anim --help` for the exact operation, rig, and animation subcommands.
 
 ## What to deliver
 
 Build and rig the fortress up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a tiered, prowed armored citadel raised on six
-independent three-segment legs (thigh + shin + flat foot, bent-knee rest), carrying a
-big main turret and cannon, a side-mounted turret out on each sponson, and a sweeping
-radar vane. The required interface is **eighteen auto leg joints** (`hip_*` sweeps
-each leg, `knee_*` folds each shin the reverse/digitigrade way to lift the foot,
-`foot_*` keeps each foot flat), **four caller gun joints** (`main_turret_yaw`
-fine-aims within a narrow forward cone, `main_gun_pitch` elevates the cannon, and
-`left_turret_yaw` / `right_turret_yaw` traverse each side turret across its own
-flank), and **one auto joint**, `radar_spin`. You must also **author the three
-required animations** as F-curves with the `voxel-anim` animation subcommands:
-`march` (the two-tripod walk with a planted, flat, still stance phase and an
-`ease-in` foot-plant), `bombardment` (the guns), and the self-playing `radar_spin`.
-Produce **every** required part, joint, and animation; you may add your own extra
-parts, joints, or animations on top, but do not drop or contradict the required
-interface. When you are satisfied, stop: the recorded per-part logs and `rig.json`
-are your finished submission.
+correctly, and the rig is complete: a tiered, prowed armored citadel raised on legs,
+carrying a big main turret and forward cannon, a side-mounted turret out on each flank,
+and a sweeping radar vane. **Author the three required animations** as F-curves with
+the `voxel-anim` animation subcommands: `march` (a walk whose feet plant flat and
+still, then lift and swing — with weight, not a weightless slide), `bombardment` (the
+guns working while the fortress stands its ground), and the self-playing `radar_spin`.
+The animations are the fixed contract — produce all three, by those names; the parts
+and joints that realize them are yours. When you are satisfied, stop: the recorded
+per-part logs and `rig.json` are your finished submission.

@@ -10,32 +10,24 @@ model using only the `voxel-anim` tool, one recorded operation at a time.
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** prescribe a rig. It fixes only the **animations** the model
+must author — the model invents whatever parts and joints it needs and is judged on
+whether it works out the right pieces, attaches them where they belong, and
+animates them convincingly. The required animations declared in `test-case.toml`'s
+`[model]` table (declarations only — the model authors the F-curve keyframes at run
+time):
 
-| Part | Parent | Pivot | What it is |
+| Animation | loop | auto_play | What it must show |
 | --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The forge tower and its foundation |
-| `hammer` | `base` | `[34, 58, 34]` | The massive stamping hammer head |
-| `gear_crown` | `base` | `[34, 74, 34]` | The gear crown atop the forge |
+| `hammer_stamp` | yes | yes | The great hammer pounds straight down deep into the throat and back up, landing with weight. |
+| `crown_spin` | yes | yes | The gear crown turns one steady full revolution atop the forge and loops seamlessly. |
 
-- **`hammer_stamp`** (auto, translation along `y`, `-18..0`) — the great hammer
-  pounds straight down and back up in the forge's throat.
-- **`crown_spin`** (auto, rotation about `y`, `-π..π`) — the gear crown turns a
-  full revolution atop the forge.
-
-Both required joints are `auto`-driven by the case's two required animations
-(declarations only — the model authors the F-curve keyframes at run time):
-
-| Animation | Period | loop | auto_play | Drives |
-| --- | --- | --- | --- | --- |
-| `hammer_stamp` | 1600 ms | yes | yes | `hammer_stamp` |
-| `crown_spin` | 2600 ms | yes | yes | `crown_spin` |
-
-Both animations are `auto_play` decorative idles, so the forge cycles on its own
-with no caller. The model may add its own extra parts, joints, and animations on
-top, but must not drop or contradict the required interface.
+Both animations are `auto_play` self-playing idles, so the forge cycles on its own
+with no caller, while the forge tower stays fixed. The model may add its own extra
+parts, joints, and animations on top, but must produce both required animations by
+these names.
 
 ## Contents
 
@@ -49,10 +41,9 @@ top, but must not drop or contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts, joints, and animation declarations (so the
-contract exists from the first operation). There is no target model and no
-operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation); the parts and joints are the model's to invent. There is no
+target model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 

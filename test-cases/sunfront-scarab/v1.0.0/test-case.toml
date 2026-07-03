@@ -4,11 +4,11 @@ difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Scarab: a 48x28x56 opaque-voxel four-legged war-beetle \
-whose front mandibles snap on a caller-driven mandibles_snap joint while it walks on \
-four independent, two-jointed legs (a hip and a knee each, on a short flat foot) so \
-every foot lifts clear of the ground and plants flat — built and rigged one recorded \
-operation at a time, with a caller-driven bite and a model-authored walk the reviewer \
-can play back."""
+that walks on its legs so every foot lifts clear of the ground and plants flat, and \
+snaps its front mandibles on demand — painted cell by cell with the voxel-anim tool, \
+one recorded operation at a time. The model invents whatever parts and joints it \
+needs; the fixed contract is two animations it must author — a walking `walk` and a \
+weapon `bite` — the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
@@ -40,305 +40,38 @@ binary = "voxel-anim"
 preview = "parts/{part}.png"
 
 # The recorded action logs — one per part (the `{part}` token expands to each
-# declared part name), the authoritative output each part's regenerated model is
-# rebuilt from.
+# part the model defines), the authoritative output each part's regenerated model
+# is rebuilt from.
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts, joints, and animations; at run time it MAY add
-# further parts, joints, and animations of its own (recorded in rig.json) beyond
-# what this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json`
-# is pre-seeded from this table so the contract exists from the first operation.
-#
-# The rig has two kinds of moving part, and the drive of each is deliberate:
-#   * The four legs (a hip + a knee + a foot per leg) are `auto` — the `walk`
-#     animation the model authors drives them by name; at rest they hold a bent,
-#     planted standing pose so the beetle stands rather than flails.
-#   * The `mandibles_snap` jaw hinge is `caller` — a game (and the `bite` animation)
-#     drive it by name; at rest it holds shut, so the bite can pose the jaws while
-#     the legs stay planted and the walk can stride the legs while the jaws stay put.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton it needs and is judged on whether it works out the right pieces,
+# attaches them where they belong, and animates them convincingly. What is fixed is
+# the set of NAMED ANIMATIONS the model must author (a game plays them by name) and
+# whether each is a game-triggered playable or a self-playing idle. The model authors
+# each animation's F-curves at run time with `voxel-anim define-animation`/`add-keyframe`;
+# `rig.json` is pre-seeded with these declarations so the contract exists from the
+# first operation.
 [model]
 
-# The beetle's domed carapace body and head: the root part (no parent), fixed to
-# the world. It carries the four leg hips tucked under its flanks and the mandibles
-# out at the head.
-[[model.part]]
-name = "body"
-pivot = [0, 0, 0]
-
-# --- The four legs. Each leg is THREE parts (an upper thigh + a lower shin + a
-# short flat foot) with TWO moving joints (a hip on the body and a knee between the
-# segments) plus a small ankle tilt, so the knee can fold to lift the foot clear of
-# the ground on its swing and the foot stays flat on the ground during stance. The
-# legs are INDEPENDENT — one chain per leg, each on its own hip directly above its
-# own foot (x and z held constant down the chain, only y descends) — so no single
-# pivot drags a fore-and-aft spread of feet below the ground. One leg at each
-# corner: left-front (lf), left-rear (lr), right-front (rf), right-rear (rr). ---
-
-# Left-front thigh, hung from its hip under the left-front corner of the body.
-[[model.part]]
-name = "thigh_lf"
-parent = "body"
-pivot = [10, 12, 40]
-
-# Left-front shin, hung from the left-front knee down toward the foot.
-[[model.part]]
-name = "shin_lf"
-parent = "thigh_lf"
-pivot = [10, 7, 40]
-
-# Left-front foot: a short, flat foot hung from the ankle.
-[[model.part]]
-name = "foot_lf"
-parent = "shin_lf"
-pivot = [10, 1, 40]
-
-[[model.part]]
-name = "thigh_lr"
-parent = "body"
-pivot = [10, 12, 16]
-
-[[model.part]]
-name = "shin_lr"
-parent = "thigh_lr"
-pivot = [10, 7, 16]
-
-[[model.part]]
-name = "foot_lr"
-parent = "shin_lr"
-pivot = [10, 1, 16]
-
-[[model.part]]
-name = "thigh_rf"
-parent = "body"
-pivot = [38, 12, 40]
-
-[[model.part]]
-name = "shin_rf"
-parent = "thigh_rf"
-pivot = [38, 7, 40]
-
-[[model.part]]
-name = "foot_rf"
-parent = "shin_rf"
-pivot = [38, 1, 40]
-
-[[model.part]]
-name = "thigh_rr"
-parent = "body"
-pivot = [38, 12, 16]
-
-[[model.part]]
-name = "shin_rr"
-parent = "thigh_rr"
-pivot = [38, 7, 16]
-
-[[model.part]]
-name = "foot_rr"
-parent = "shin_rr"
-pivot = [38, 1, 16]
-
-# The front snapping jaws, mounted at the head. They open and close on the
-# caller-driven `mandibles_snap`.
-[[model.part]]
-name = "mandibles"
-parent = "body"
-pivot = [24, 8, 50]
-
-# --- Joints ---
-
-# The four hip joints: each swings its whole leg fore-and-aft about the hip. `auto`
-# (driven by `walk`); at rest they sit at 0 (planted, standing). rot x, range ±0.5,
-# rest 0.
-[[model.joint]]
-name = "hip_lf"
-part = "thigh_lf"
-kind = "rotation"
-axis = "x"
-pivot = [10, 12, 40]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "hip_lr"
-part = "thigh_lr"
-kind = "rotation"
-axis = "x"
-pivot = [10, 12, 16]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "hip_rf"
-part = "thigh_rf"
-kind = "rotation"
-axis = "x"
-pivot = [38, 12, 40]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "hip_rr"
-part = "thigh_rr"
-kind = "rotation"
-axis = "x"
-pivot = [38, 12, 16]
-min = -0.5
-max = 0.5
-rest = 0.0
-drive = "auto"
-
-# The four knee joints: each folds the shin to lift the foot on its swing so it
-# clears the ground, and holds a bent standing pose at rest — NEVER a straight
-# column, which cannot keep a foot planted as the body passes over it. `auto`
-# (driven by `walk`). The knee folds REVERSE/DIGITIGRADE (rearward); if the sculpt
-# bends inside-out, flip the sign of the animated values. rot x, range -1.4..0.2,
-# rest -0.5 (a clearly bent knee, softened for the scarab's short legs so the short
-# foot still reaches the ground).
-[[model.joint]]
-name = "knee_lf"
-part = "shin_lf"
-kind = "rotation"
-axis = "x"
-pivot = [10, 7, 40]
-min = -1.4
-max = 0.2
-rest = -0.5
-drive = "auto"
-
-[[model.joint]]
-name = "knee_lr"
-part = "shin_lr"
-kind = "rotation"
-axis = "x"
-pivot = [10, 7, 16]
-min = -1.4
-max = 0.2
-rest = -0.5
-drive = "auto"
-
-[[model.joint]]
-name = "knee_rf"
-part = "shin_rf"
-kind = "rotation"
-axis = "x"
-pivot = [38, 7, 40]
-min = -1.4
-max = 0.2
-rest = -0.5
-drive = "auto"
-
-[[model.joint]]
-name = "knee_rr"
-part = "shin_rr"
-kind = "rotation"
-axis = "x"
-pivot = [38, 7, 16]
-min = -1.4
-max = 0.2
-rest = -0.5
-drive = "auto"
-
-# The four foot/ankle joints: a small tilt that counter-rotates against the shin to
-# keep the foot FLAT on the ground (only ±~15° across the whole cycle — never
-# walking on toes or heels). `auto` (driven by `walk`). rot x, range ±0.3, rest 0.
-[[model.joint]]
-name = "foot_lf"
-part = "foot_lf"
-kind = "rotation"
-axis = "x"
-pivot = [10, 1, 40]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "foot_lr"
-part = "foot_lr"
-kind = "rotation"
-axis = "x"
-pivot = [10, 1, 16]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "foot_rf"
-part = "foot_rf"
-kind = "rotation"
-axis = "x"
-pivot = [38, 1, 40]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-[[model.joint]]
-name = "foot_rr"
-part = "foot_rr"
-kind = "rotation"
-axis = "x"
-pivot = [38, 1, 16]
-min = -0.3
-max = 0.3
-rest = 0.0
-drive = "auto"
-
-# The required caller-driven joint: a game addresses `mandibles_snap` by name to
-# open and close the front jaws about their hinge. `rest = 0` is fully closed;
-# `max = 0.9` is the widest gape. Only the mandibles move on this joint.
-[[model.joint]]
-name = "mandibles_snap"
-part = "mandibles"
-kind = "rotation"
-axis = "x"
-pivot = [24, 8, 50]
-min = 0.0
-max = 0.9
-rest = 0.0
-drive = "caller"
-
-# --- Required animations the model must AUTHOR (as F-curves, no keyframes here) ---
-
-# `walk`: the WALK. It drives all twelve leg joints — each leg's hip swings
-# fore-and-aft, its knee folds to lift and plant the foot, and its ankle keeps the
-# foot flat — in a DIAGONAL-PAIR gait (legs lf/rr step together, opposite rf/lr), so
-# three feet are supporting while one steps. Each cycle must include a PLANTED
-# STANCE phase (foot flat and still on the ground while the body passes over it),
-# then a swing (lift, forward, plant), with a snappy `ease-in` into each foot-plant
-# for the skittering beetle's weight. It touches NO caller joint, so the mandibles
-# hold at rest. The model authors the F-curves.
+# `walk` — the WALK. A game-triggered playable (not self-playing) that strides the
+# beetle forward on its legs: feet plant flat and still on the ground while the body
+# passes over them, then lift, swing forward, and plant again, so the beetle pushes
+# itself forward rather than flailing. The jaws hold shut while it walks.
 [[model.animation]]
 name = "walk"
-period_ms = 600
 loop = true
 auto_play = false
-joints = [
-  "hip_lf", "knee_lf", "foot_lf",
-  "hip_lr", "knee_lr", "foot_lr",
-  "hip_rf", "knee_rf", "foot_rf",
-  "hip_rr", "knee_rr", "foot_rr",
-]
 
-# `bite`: the WEAPON showcase — a play button so a reviewer can watch the jaws snap
-# through their range without dragging the slider. It drives only the caller-driven
-# `mandibles_snap`: the jaws snap wide open then closed and hold shut before looping.
-# It touches NO leg joint, so the legs stay planted. The model authors the F-curves.
+# `bite` — the WEAPON showcase. A game-triggered playable that snaps the front
+# mandibles wide open then shut and holds them shut, so a reviewer can watch the jaws
+# work without dragging a slider, while the legs stay planted.
 [[model.animation]]
 name = "bite"
-period_ms = 500
 loop = true
 auto_play = false
-joints = ["mandibles_snap"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -349,35 +82,34 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Scarab and \
-poses correctly — a low, wide four-legged war-beetle striding on four independent \
-two-jointed legs whose feet lift clear of the ground and plant flat, whose front \
-mandibles snap open and shut on their caller hinge without detaching, and whose body \
-stays put, with a clear solar-amber eye accent and the disciplined Duneforged \
-palette."""
+poses correctly — a low, wide four-legged war-beetle striding on independent legs \
+whose feet lift clear of the ground and plant flat, whose front mandibles snap open \
+and shut on demand without detaching, and whose body stays put, with a clear \
+solar-amber eye accent and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-scarab"
 title = "Reads as a war-beetle"
 text = """
 From more than one angle the model reads unmistakably as a scarab-like war-beetle: \
-a low, wide domed carapace body, four independent jointed legs splayed out at its \
-corners (each bending at a hip and a knee down to a flat foot), and a pair of \
-snapping mandibles projecting forward from the head. It is a scuttling insect \
-machine, not an abstract stack of boxes."""
+a low, wide domed carapace body, four jointed legs splayed out at its corners (each \
+bending down to a flat foot), and a pair of snapping mandibles projecting forward from \
+the head. It is a scuttling insect machine, not an abstract stack of boxes."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "legs-walk"
-title = "Legs stride independently without clipping the ground"
+title = "Legs stride on planted feet without clipping the ground"
 text = """
-Playing `walk` strides the beetle on its four legs: each leg swings on its own \
-`hip_*` joint and folds at its own `knee_*` so the foot lifts clear of the ground on \
-its swing and plants flat again — the legs step in a diagonal-pair gait (lf/rr \
-together, opposite rf/lr), NOT as one rigid bank, with a planted stance phase and no \
-foot dragged or driven down through the ground. Each leg's shin stays attached to \
-its thigh, each thigh to the body, and each foot stays flat across the whole \
-range."""
+Playing `walk` strides the beetle forward on its legs. Each foot has a clear PLANTED \
+STANCE — flat and still on the ground while the beetle passes over it — then lifts \
+clear, swings forward, and plants again with weight; the legs cycle so the beetle is \
+always supported and pushes itself forward, NOT flailing its legs as one rigid bank in \
+a continuous arc. The feet stay flat as they carry the body (they don't tip onto toe or \
+heel), no foot is dragged or driven down through the ground, and the legs stay attached \
+across the whole cycle. The model had to invent an articulated leg (more than one \
+segment and joint) for this to read as walking rather than swinging rigid poles."""
 weight = 3
 domain = "fidelity"
 
@@ -385,20 +117,20 @@ domain = "fidelity"
 id = "mandibles-snap"
 title = "Mandibles snap on their hinge"
 text = """
-Driving the `mandibles_snap` joint (and playing the `bite` animation) swings the \
-front jaws open and shut about their hinge cleanly, with no voxel of the mandibles \
-tearing away from the head or clipping into the body across the full range. Only the \
-mandibles move on this joint; the legs stay planted."""
+Playing `bite` swings the front jaws open and shut about their hinge cleanly, with no \
+voxel of the mandibles tearing away from the head or clipping into the body across the \
+full range. Only the mandibles move as they bite; the legs stay planted."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "body-fixed"
-title = "Body stays fixed"
+title = "Body stays fixed; only the moving parts move"
 text = """
-Only the moving parts move: the mandibles when `mandibles_snap` is driven or `bite` \
-plays, and the legs as they walk. The carapace body stays put — it is the fixed root \
-of the rig, not carried along by the jaws or the legs."""
+Only the moving parts move: the mandibles when `bite` plays, and the legs when `walk` \
+plays. The carapace body stays put — it is the fixed root of the rig, not carried along \
+by the jaws or the legs. When `bite` plays the jaws work while the legs stay planted; \
+when `walk` plays the legs stride while the jaws hold shut."""
 weight = 2
 domain = "fidelity"
 

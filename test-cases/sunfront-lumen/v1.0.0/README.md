@@ -11,32 +11,28 @@ solar-amber team accent, carried here by a bright solar-hot core. There is no
 target model — the model builds toward the seeded brief and is reviewed
 subjectively against it.
 
-## The rig
+## The animation contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** hand the model a rig. `test-case.toml`'s `[model]` table
+fixes only the set of **required animations** the model must **author** at run
+time as F-curves (`define-animation` / `add-keyframe`), declaring each animation's
+identity only — its name, whether it loops, and whether it self-plays — never its
+keyframes, and **no** parts, joints, pivots, or ranges. The three required
+animations are:
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `core` | *(root)* | `[0, 0, 0]` | The floating core hull and its heart |
-| `ring_left` | `core` | `[10, 34, 20]` | The left orbiting ring |
-| `ring_right` | `core` | `[30, 34, 20]` | The right orbiting ring |
-| `emitter` | `core` | `[20, 26, 30]` | The forward beam projector |
+- **`ring_spin`** (`auto_play = true`) — the self-playing decorative idle: the two
+  rings counter-rotate on their own, in opposite directions, around the core.
+- **`hover`** (`auto_play = false`) — a game-triggered playable movement bob: the
+  whole legless craft rises and settles gently so it reads as floating in place.
+- **`pulse`** (`auto_play = false`) — a game-triggered playable: the front beam
+  emitter nods up and down about its mount and settles.
 
-- **`emitter_pitch`** (caller, rotation about `x`, `-0.6..0.6`) — the game-facing
-  control: tilts the front beam projector up and down about its mount.
-- **`ring_left_spin`** / **`ring_right_spin`** (auto, rotation about `z`, `-π..π`)
-  — the two rings, driven by the `ring_spin` animation in opposite directions.
-- **`hover_bob`** (auto, translation along `y`, `-2..2`) — on the root `core`,
-  driven by the `hover` animation to bob the whole (legless) drone in place.
-
-The `[model]` table also declares three **required animations** the model must
-**author** at run time as F-curves (`define-animation` / `add-keyframe`): the
-decorative **`ring_spin`** (`auto_play = true`, the counter-rotating rings),
-**`hover`** (a playable movement bob), and **`pulse`** (a playable emitter nod).
-The manifest declares each animation's identity only — name, period, loop,
-`auto_play`, and the joints it must drive — never its keyframes. The model may add
-its own extra parts, joints, and animations on top, but must not drop or
-contradict the required interface.
+The model **invents whatever parts and joints it needs** to realize these — a
+hovering core with a solar-hot heart, two rings that spin, and a forward beam
+emitter that tilts — and is judged on whether it works out the right pieces,
+attaches them where they belong, and animates them convincingly. It may add its
+own extra parts, joints, and animations on top, but must not drop or contradict
+the three required animations.
 
 ## Contents
 
@@ -50,9 +46,10 @@ contradict the required interface.
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation); it declares no parts or joints — those are the model's to
+invent. There is no target model and no operations schema — the binary's `--help`
+is the contract.
 
 ## Variants
 

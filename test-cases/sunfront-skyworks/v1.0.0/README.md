@@ -10,27 +10,23 @@ model using only the `voxel-anim` tool, one recorded operation at a time.
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** prescribe a rig. `test-case.toml`'s `[model]` table fixes
+only the two **animations** the model must author (declared as name +
+loop/`auto_play` intent; the model authors their F-curves at run time) — there are
+no `[[model.part]]` or `[[model.joint]]` tables. The model invents whatever parts
+and joints it needs to realize them:
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The launch-pad hangar and its foundation |
-| `turbine` | `base` | `[32, 50, 32]` | The spinning turbine on the center mast |
-| `launch_door` | `base` | `[32, 20, 50]` | The launch door in the front face |
+- **`turbine_spin`** (`auto_play = true`, a self-playing idle) — turns the turbine
+  a full revolution overhead about its vertical axis, evenly and looping.
+- **`launch_door_raise`** (`auto_play = true`, a self-playing idle) — slides the
+  launch door up, holds it open, then lowers it back, looping on its own.
 
-- **`turbine_spin`** (auto, rotation about `y`, `-π..π`) — the turbine turns a
-  full revolution fast on its own decorative `turbine_spin` animation.
-- **`launch_door_raise`** (auto, translation along `y`, `0..16`) — the launch
-  door slides up, holds open, then lowers back on its own decorative
-  `launch_door_raise` animation.
-
-Both required joints are `auto`-driven by two required **animations**
-(`auto_play = true`, declared in `[model]` as name + intent; the model authors
-their F-curves at run time): the Skyworks cycles on its own with no caller. The
-model may add its own extra parts, joints, and animations on top, but must not
-drop or contradict the required interface.
+Both animations play on their own, so the Skyworks cycles with no caller while the
+pad itself stays fixed. The model is free to add its own extra parts, joints, and
+animations on top, but must produce these two animations by these names and not
+contradict them.
 
 ## Contents
 
@@ -38,15 +34,15 @@ drop or contradict the required interface.
 | ---------------- | -------------- | ---------------------------------------------------------- |
 | `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.            |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the rig, and review. |
+| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the animations, and review. |
 | `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
 | `description.md` | No             | Site blurb.                                                |
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
-`--help` is the contract.
+`rig.json` holding the required animation declarations (so the contract exists from
+the first operation). There is no target model and no operations schema — the
+binary's `--help` is the contract.
 
 ## Variants
 

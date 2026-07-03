@@ -11,31 +11,31 @@ time.
 palette and solar-amber team accent. There is no target model — the model builds
 toward the seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** prescribe a rig. `test-case.toml`'s `[model]` table fixes
+only the **named animations** the model must author; the model invents whatever
+parts, joints, and pivots the foundry needs and is scored on whether it works out
+the right pieces, attaches them where they belong, and animates them convincingly:
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `base` | *(root)* | `[0, 0, 0]` | The armored bunker-forge building |
-| `blast_door` | `base` | `[30, 24, 58]` | The raising front blast door |
-| `flywheel` | `base` | `[46, 44, 24]` | The turning drive flywheel |
-
-- **`blast_door_raise`** (auto, translation along `y`, `0..14`) — the front blast
-  door raises and drops on its own via its auto-play animation.
-- **`flywheel_spin`** (auto, rotation about `z`, `-π..π`) — the drive flywheel
-  turns steadily on its own via its auto-play animation.
+- **`blast_door_raise`** (self-playing idle, `loop`, `auto_play = true`) — the heavy
+  front blast door raises straight up, holds open, and drops back shut along a
+  vertical track, on its own.
+- **`flywheel_spin`** (self-playing idle, `loop`, `auto_play = true`) — the great
+  flank drive flywheel turns steadily about its axle, a full continuous revolution
+  each loop, on its own.
 
 Both required **animations** are declared in the `[model]` table by identity only
-(`name`, `period_ms`, `loop`, `auto_play = true`, and the single joint each
-drives) — the model authors their F-curve keyframes at run time with the
-`voxel-anim` `define-animation`/`add-keyframe` subcommands.
+(`name`, `loop`, `auto_play`) — the model authors their F-curve keyframes at run
+time with the `voxel-anim` `define-animation`/`add-keyframe` subcommands. There are
+**no `[[model.part]]` or `[[model.joint]]` tables**: `rig.json` is pre-seeded with
+just the two animation declarations, so the contract exists from the first
+operation.
 
-This is a STRUCTURE-class case: it has **no caller joints and no playable
-animations** — both required animations are decorative `auto_play` idles. Both
-moving parts cycle on their own while the `base` stays fixed. The model may add
-its own extra parts, joints, and animations on top, but must not drop or
-contradict the required interface.
+This is a STRUCTURE-class case: it has **no caller controls** — both required
+animations are decorative `auto_play` idles. Both moving elements cycle on their own
+while the building body stays fixed. The model may add its own extra parts, joints,
+and animations on top, but must not drop or contradict the two required animations.
 
 ## Contents
 

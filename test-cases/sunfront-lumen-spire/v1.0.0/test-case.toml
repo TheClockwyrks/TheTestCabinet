@@ -3,9 +3,11 @@ name = "Sunfront Lumen Spire"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Lumen Spire: a 44x88x44 opaque-voxel beacon spire \
-whose halo ring spins and solar lens pulses up and down on their own auto-play \
-animations while the base stays fixed, built and rigged one recorded operation at a time."""
+Sculpt and rig the Sunfront Lumen Spire: a slim 44x88x44 opaque-voxel beacon spire \
+painted cell by cell with the `voxel-anim` tool. The model invents whatever parts and \
+joints it needs; the fixed contract is two self-playing animations it must author — a \
+`halo_ring_spin` that turns the halo ring and a `lens_pulse` that bobs the solar lens \
+up and down — while the spire's tower stays fixed, built one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -36,87 +38,36 @@ background = "transparent"
 binary = "voxel-anim"
 preview = "parts/{part}.png"
 
-# The recorded action logs — one per part (the `{part}` token expands to each
-# declared part name), the authoritative output each part's regenerated model is
+# The recorded action logs — one per part (the `{part}` token expands to each part
+# the model defines), the authoritative output each part's regenerated model is
 # rebuilt from.
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts and these joints; at run time it MAY add further
-# parts, joints, and auto-play animations of its own (recorded in rig.json) beyond what
-# this table requires. `pivot` is `[x, y, z]` in voxel coordinates. `rig.json` is
-# pre-seeded from this table so the contract exists from the first operation.
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. The model authors each
+# animation's F-curves at run time with `voxel-anim define-animation`/`add-keyframe`;
+# `rig.json` is pre-seeded with these declarations so the contract exists from the
+# first operation.
 [model]
 
-# The spire tower and foundation: the root part (no parent), fixed to the world.
-[[model.part]]
-name = "base"
-pivot = [0, 0, 0]
-
-# The halo ring, encircling the spire near its crown. It turns on its own on the
-# auto-driven `halo_ring_spin`.
-[[model.part]]
-name = "halo_ring"
-parent = "base"
-pivot = [22, 66, 22]
-
-# The solar lens, riding atop the spire's crown. It bobs up and down on the
-# auto-driven `lens_pulse`.
-[[model.part]]
-name = "lens"
-parent = "base"
-pivot = [22, 74, 22]
-
-# The halo ring's own looping spin. An `auto` joint driven by the decorative
-# `halo_ring_spin` animation (below), a full rotation about `y` so the ring turns
-# on its own without a caller.
-[[model.joint]]
-name = "halo_ring_spin"
-part = "halo_ring"
-kind = "rotation"
-axis = "y"
-pivot = [22, 66, 22]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "auto"
-
-# The solar lens's own looping pulse. An `auto` joint driven by the decorative
-# `lens_pulse` animation (below), an upward translation along `y` so the lens bobs
-# on its own without a caller. `rest = 0` is seated; `max = 4` is the top of the pulse.
-[[model.joint]]
-name = "lens_pulse"
-part = "lens"
-kind = "translation"
-axis = "y"
-pivot = [22, 74, 22]
-min = 0.0
-max = 4.0
-rest = 0.0
-drive = "auto"
-
-# The required animations — decorative, self-playing idles so the spire runs on its
-# own. The case declares each animation's identity and intent only; the model AUTHORS
-# the motion (the F-curve keyframes) at run time with the `voxel-anim`
-# `define-animation`/`add-keyframe` subcommands, and the produced `rig.json` carries
-# it. Both are `auto_play = true` (they play continuously by default) and loop.
-
-# The halo ring's continuous spin: a full revolution about the ring's `y` axis.
+# `halo_ring_spin` — the halo sweep. A self-playing idle that turns the halo ring
+# continuously about the spire's vertical axis, on its own, under no caller.
 [[model.animation]]
 name = "halo_ring_spin"
-period_ms = 2200
 loop = true
 auto_play = true
-joints = ["halo_ring_spin"]
 
-# The solar lens's continuous pulse: rising off its seat and settling back down.
+# `lens_pulse` — the beacon bob. A self-playing idle that lifts the solar lens off its
+# seat and settles it back down, continuously and on its own, under no caller.
 [[model.animation]]
 name = "lens_pulse"
-period_ms = 1500
 loop = true
 auto_play = true
-joints = ["lens_pulse"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -128,7 +79,7 @@ name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Lumen Spire \
 and runs correctly — a slim beacon spire whose halo ring spins and solar lens \
-pulses up and down on their own auto-play animations while the base stays put, with a strong \
+pulses up and down on their own self-playing animations while the tower stays put, with a strong \
 solar-hot energy accent and the disciplined Duneforged palette."""
 
 [[review_item]]
@@ -146,22 +97,25 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Halo ring spins and lens pulses on their own"
 text = """
-The animated elements cycle on their own via their auto-play animations while the `base` \
-stays fixed: the `halo_ring_spin` joint turns the halo ring a full revolution \
-about the spire's vertical axis, and the `lens_pulse` joint bobs the solar lens \
-straight up and back down. Across each cycle no voxel of the ring or lens tears \
-away from its mount or clips into the spire — each moves as one solid piece about \
-the correct axis."""
+Both animated elements cycle on their own via their self-playing animations while the \
+spire's tower stays fixed: `halo_ring_spin` turns the halo ring a full, continuous \
+revolution about the spire's vertical axis, and `lens_pulse` bobs the solar lens \
+straight up off its seat and back down. Across each cycle no part of the ring or lens \
+tears away from its mount or clips into the spire — each moves as one solid piece about \
+the correct axis, and the motion carries weight (an eased bob that hangs at the top and \
+settles softly, a steady spin that never stalls at the wrap) rather than sliding \
+linearly."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "base-fixed"
-title = "Base stays fixed"
+title = "Tower stays fixed; only the moving elements move"
 text = """
-Only the moving parts move: the halo ring as it spins and the lens as it pulses. \
-The spire base and its foundation stay put — they are the fixed root of the rig, \
-not carried along by the ring or the lens."""
+Only the animated elements move: the halo ring as it spins and the solar lens as it \
+pulses. The spire tower and its foundation stay put — the fixed root of the machine, \
+never carried along by the ring or the lens. Both `halo_ring_spin` and `lens_pulse` \
+play continuously on their own; nothing but those two elements moves."""
 weight = 2
 domain = "fidelity"
 
@@ -169,10 +123,10 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Ring and lens stay attached"
 text = """
-Each child stays attached to the base across its joint's range: the halo ring \
-encircles the spire's crown at its mount as it turns, and the lens meets the \
-spire's tip at its seat as it bobs, with no gap and never floating free or \
-detaching."""
+The halo ring and the solar lens each stay attached to the spire across their whole \
+range of motion: the ring encircles the spire's crown at its mount as it turns, and the \
+lens meets the spire's tip at its seat as it bobs, with no gap and never floating free \
+or detaching."""
 weight = 2
 domain = "fidelity"
 

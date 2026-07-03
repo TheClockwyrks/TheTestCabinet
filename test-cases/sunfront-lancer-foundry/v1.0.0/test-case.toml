@@ -4,9 +4,11 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Lancer Foundry: a 44x84x44 opaque-voxel spire whose \
-rail-arm slides up and down and whose focus-ring spins, each on its own auto-play \
-animation the model authors, while the base stays fixed, built and rigged one \
-recorded operation at a time."""
+rail-arm slides up and down its shaft and whose focus-ring spins at the crown, each \
+on its own self-playing animation, while the base stays fixed — built by painting \
+opaque cells one recorded operation at a time. The model invents whatever parts and \
+joints it needs; the fixed contract is the two self-playing animations it must \
+author — a `rail_arm_slide` and a `focus_ring_spin` — the reviewer can play back."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
@@ -43,84 +45,31 @@ preview = "parts/{part}.png"
 [output]
 actions = "parts/{part}.actions.json"
 
-# The required rig — the stable, game-facing contract and the scoring targets. The
-# model must produce these parts, these joints, and these animations; at run time it
-# MAY add further parts, joints, and animations of its own (recorded in rig.json)
-# beyond what this table requires. `pivot` is `[x, y, z]` in voxel coordinates.
-# `rig.json` is pre-seeded from this table so the contract exists from the first
-# operation.
+# The required animation contract — and the ONLY thing this case fixes about the rig.
+# A case does NOT prescribe parts, joints, or pivots: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays each by name) and that each is a
+# self-playing idle. The model authors each animation's F-curves at run time with the
+# `voxel-anim` `define-animation`/`add-keyframe` subcommands; `rig.json` is pre-seeded
+# with these declarations so the contract exists from the first operation.
 [model]
 
-# The foundry tower and its footing: the root part (no parent), fixed to the
-# world. Everything else hangs off the base and moves against it.
-[[model.part]]
-name = "base"
-pivot = [0, 0, 0]
-
-# The sliding rail-arm: a heavy assembly rail set into the tower's mid-shaft that
-# rides up and down on its own. It slides on the auto `rail_arm_slide` joint.
-[[model.part]]
-name = "rail_arm"
-parent = "base"
-pivot = [22, 50, 22]
-
-# The focus-ring: a machined ring crowning the spire that spins on its own about
-# the vertical axis. It turns on the auto `focus_ring_spin` joint.
-[[model.part]]
-name = "focus_ring"
-parent = "base"
-pivot = [22, 68, 22]
-
-# The rail-arm's own looping slide. An `auto` joint driven by the required
-# `rail_arm_slide` animation, so the arm rides up and back down on its own without a
-# caller. A translation along `y` (voxels): `rest = 0` is seated at the bottom,
-# `max = 10` is fully raised.
-[[model.joint]]
-name = "rail_arm_slide"
-part = "rail_arm"
-kind = "translation"
-axis = "y"
-pivot = [22, 50, 22]
-min = 0.0
-max = 10.0
-rest = 0.0
-drive = "auto"
-
-# The focus-ring's own looping spin. An `auto` joint driven by the required
-# `focus_ring_spin` animation, so the ring turns on its own. A rotation about `y`
-# (radians) through a full turn, `rest = 0`.
-[[model.joint]]
-name = "focus_ring_spin"
-part = "focus_ring"
-kind = "rotation"
-axis = "y"
-pivot = [22, 68, 22]
-min = -3.14159265
-max = 3.14159265
-rest = 0.0
-drive = "auto"
-
-# The required auto-play animations — one per animated sub-part — so the foundry
-# works on its own while the base stays fixed. Each is a DECLARATION only (name,
-# period, loop, auto_play, joints): the case does NOT ship keyframes. The model
-# authors each animation's motion as F-curves at run time with the `voxel-anim`
-# `define-animation`/`add-keyframe` subcommands, and the produced rig.json carries
-# it. `auto_play = true` makes each a continuous decorative idle. The rail-arm
-# animation rides the arm up to +10 voxels and back down over 1.6s; the focus-ring
-# animation turns a full revolution over 2.0s.
+# `rail_arm_slide` — the sliding arm. A self-playing idle that rides the heavy rail-arm
+# smoothly up its shaft and back down on its own, looping without a caller while the
+# base stays put.
 [[model.animation]]
 name = "rail_arm_slide"
-period_ms = 1600
 loop = true
 auto_play = true
-joints = ["rail_arm_slide"]
 
+# `focus_ring_spin` — the spinning ring. A self-playing idle that turns the machined
+# focus-ring at the crown a full revolution on its own, looping continuously while the
+# base stays put.
 [[model.animation]]
 name = "focus_ring_spin"
-period_ms = 2000
 loop = true
 auto_play = true
-joints = ["focus_ring_spin"]
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -151,13 +100,13 @@ domain = "fidelity"
 id = "elements-cycle"
 title = "Rail-arm slides and focus-ring spins"
 text = """
-The animated elements cycle on their own via their auto-play animations: the \
-`rail_arm_slide` animation rides the `rail_arm` smoothly up and down its shaft on \
-the `rail_arm_slide` joint, and the `focus_ring_spin` animation turns the \
-`focus_ring` a full revolution on the `focus_ring_spin` joint, both looping \
-without a caller and moving with weight (eased F-curves, not a linear slide). \
-Across each joint's range no voxel of the moving part tears away from its mount or \
-clips through the shaft."""
+The animated elements cycle on their own via their self-playing animations: \
+`rail_arm_slide` rides the rail-arm smoothly up its shaft and back down, and \
+`focus_ring_spin` turns the focus-ring a full revolution — both looping without a \
+caller and moving with weight (eased F-curves, not a linear slide). Across the full \
+range of each motion nothing of the moving element tears away from its mount or clips \
+through the shaft. The model had to invent the pieces and pivots that make a vertical \
+slide and a clean spin about the vertical axis read plausibly."""
 weight = 3
 domain = "fidelity"
 
@@ -165,9 +114,9 @@ domain = "fidelity"
 id = "base-fixed"
 title = "Base stays fixed"
 text = """
-Only the moving parts move: the rail-arm as it slides and the focus-ring as it \
-spins. The base tower and its footing stay put — they are the fixed root of the \
-rig, not carried along by the arm or the ring."""
+Only the moving elements move: the rail-arm as it slides and the focus-ring as it \
+spins. The base tower and its footing stay put — they are the fixed foundation of the \
+spire, never carried along by the arm or the ring."""
 weight = 2
 domain = "fidelity"
 
@@ -175,9 +124,10 @@ domain = "fidelity"
 id = "parts-attached"
 title = "Rail-arm and focus-ring stay attached"
 text = """
-Each sub-part stays attached to the base across its joint's range: the rail-arm \
-meets the shaft along its rail and the focus-ring seats on the crown, with no gap \
-and never floating free or detaching as the arm slides and the ring spins."""
+The rail-arm and the focus-ring stay attached to the tower across the full range of \
+their motion: the rail-arm meets the shaft along its rail and the focus-ring seats on \
+the crown, with no gap and never floating free or detaching as the arm slides and the \
+ring spins."""
 weight = 2
 domain = "fidelity"
 

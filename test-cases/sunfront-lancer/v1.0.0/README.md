@@ -11,40 +11,26 @@ Duneforged voxel roster and shares the faction's brass-and-sandstone palette and
 solar-amber team accent. There is no target model — the model builds toward the
 seeded brief and is reviewed subjectively against it.
 
-## The rig
+## The contract
 
-The required, game-facing contract declared in `test-case.toml`'s `[model]` table:
+The case does **not** prescribe a rig. Its `test-case.toml` `[model]` table fixes
+only the two animations the model must author (by name); the model **invents**
+whatever parts and joints the mech needs and is judged on whether it works out the
+right pieces, attaches them where they belong, and animates them convincingly. This
+measures creativity and craft, not instruction-following.
 
-| Part | Parent | Pivot | What it is |
-| --- | --- | --- | --- |
-| `torso` | *(root)* | `[0, 0, 0]` | The upper body and head |
-| `thigh_l` | `torso` | `[14, 26, 24]` | The left upper leg |
-| `shin_l` | `thigh_l` | `[14, 14, 24]` | The left lower leg |
-| `foot_l` | `shin_l` | `[14, 3, 24]` | The left foot (short, flat) |
-| `thigh_r` | `torso` | `[30, 26, 24]` | The right upper leg |
-| `shin_r` | `thigh_r` | `[30, 14, 24]` | The right lower leg |
-| `foot_r` | `shin_r` | `[30, 3, 24]` | The right foot |
-| `weapon` | `torso` | `[22, 44, 30]` | The long center rail-lance |
+The two required, model-authored animations (declarations only — the model authors
+the F-curves) are both game-triggered playables (`auto_play = false`):
 
-Each leg is its **own** independent three-segment / two-joint chain (thigh +
-shin +
-short flat foot), on its own hip directly above its own foot, with a bent-knee rest
-pose so the foot can stay planted as the body passes over it.
+- **`walk`** — the walk: the two legs stride in opposite phase, each foot planting
+  flat and still on the ground then lifting clear, swinging forward, and planting
+  again with weight, so the mech pushes itself forward rather than flailing. The
+  legs move; the rail-lance holds level.
+- **`fire`** — the weapon showcase: the rail-lance recoils about its chest mount (a
+  quick nod off level, an overshoot, and a settle) while the legs hold their stance.
 
-- **`weapon_pitch`** (caller, rotation about `x`, `-0.6..0.6`) — the game-facing
-  control: aims the rail-lance up and down about its chest mount.
-- **`hip_l` / `knee_l` / `foot_l`** and **`hip_r` / `knee_r` / `foot_r`** (auto,
-  rotation about `x`) — the six leg joints the required `walk` animation drives:
-  a
-  big hip sweep (`-0.5..0.5`), a reverse/digitigrade knee fold (`-1.4..0.2`, rest
-  `-0.7`), and a small flat-foot ankle tilt (`-0.3..0.3`).
-
-The case requires two model-authored animations (declarations only — the model
-authors the F-curves): a playable **`walk`** (period 800 ms, the two legs in
-opposite phase with a planted stance phase and an eased foot-plant) and a
-weapon-only **`fire`** (period 500 ms, the lance recoil) the reviewer can play
-back. The model may add its own extra parts, joints, and animations on top, but
-must not drop or contradict the required interface.
+The model may add its own extra parts, joints, and animations on top, but must not
+drop or contradict these two required animations.
 
 ## Contents
 
@@ -52,14 +38,15 @@ must not drop or contradict the required interface.
 | ---------------- | -------------- | ---------------------------------------------------------- |
 | `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.            |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the rig, and review. |
+| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the animation contract, and review. |
 | `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
 | `description.md` | No             | Site blurb.                                                |
 | `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
-`rig.json` holding the required parts and joints (so the contract exists from the
-first operation). There is no target model and no operations schema — the binary's
+`rig.json` holding the two required animation declarations — no parts and no joints
+(so the animation contract exists from the first operation, and the model invents
+the skeleton). There is no target model and no operations schema — the binary's
 `--help` is the contract.
 
 ## Variants
