@@ -338,9 +338,10 @@ joints    = ["hip_l", "knee_l", "hip_r", "knee_r"]  # the joints the model MUST 
 A **meshed** case (`asset_kind` beginning `mc-`, `sn-`, or `dc-`) is identical in
 manifest shape to a cube case — it frames the same `[voxel]` volume, and its
 animated kinds carry the same `[model]` rig — but its `[tool].binary` is the
-corresponding **meshing binary** and its `[output]` names the emitted per-part
-**`mesh.json`** (the triangle mesh the surface extractor produces) rather than an
-op log:
+corresponding **meshing binary**. Its `[output]` names the **op log** the binary
+records — exactly like a cube case — while the extracted **`mesh.json`** triangle
+geometry the surface extractor produces is emitted to a path core provides
+automatically (it is not declared in the manifest):
 
 ```toml
 # A static meshed model (asset_kind = "dc-model"; mc-model / sn-model are identical
@@ -359,12 +360,13 @@ binary  = "dc"               # the meshing binary: mc | sn | dc (static),
 preview = "model.png"        # where the wgpu preview PNG is written (a {part} template for an animated kind)
 
 [output]
-mesh = "mesh.json"           # the emitted per-part mesh (a {part} template for an animated kind)
+actions = "actions.json"     # the recorded op log (as for a cube case); the extracted
+                             # mesh.json geometry is emitted automatically by core
 ```
 
 An **animated** meshed case (`mc-animation`, `sn-animation`, `dc-animation`) uses the
 `-anim` binary and, exactly like `voxel-animation`, makes `[tool].preview` and
-`[output].mesh` `{part}` templates and adds the `[model]` rig table:
+`[output].actions` `{part}` templates and adds the `[model]` rig table:
 
 ```toml
 # A rigged, animated meshed model (asset_kind = "sn-animation").
@@ -381,7 +383,7 @@ binary  = "sn-anim"          # required for sn-animation (mc-anim / dc-anim for 
 preview = "parts/{part}.png"    # {part} REQUIRED for an animated kind
 
 [output]
-mesh = "parts/{part}.mesh.json" # {part} REQUIRED for an animated kind
+actions = "parts/{part}.actions.json" # {part} REQUIRED for an animated kind
 
 # The REQUIRED rig — parts, joints, and animations — declared EXACTLY as for
 # voxel-animation (the [[model.part]] / [[model.joint]] / [[model.animation]]
@@ -403,9 +405,10 @@ mesh = "parts/{part}.mesh.json" # {part} REQUIRED for an animated kind
   `dc-anim` (animated) for the meshed kinds (see
   [The voxel binaries](/testing/asset-generation/voxel-binaries/)). Which binary a
   case names fixes the output's **character** — a cube volume, or an `mc` low-poly,
-  `sn` smooth, or `dc` sharp-edged surface — it is **not** a manifest knob. A cube
-  case's `[output]` names its `actions` op log; a meshed case's names the emitted
-  per-part `mesh` (`mesh.json`). For an **animated** kind — where each part is
+  `sn` smooth, or `dc` sharp-edged surface — it is **not** a manifest knob. Every
+  voxel case's `[output]` names its `actions` op log; for a meshed case core also
+  emits the extracted geometry automatically (`mesh.json`, or `meshes/{part}.json`
+  per part for an animated kind), so it is not manifest-declared. For an **animated** kind — where each part is
   authored, previewed, and emitted separately — `preview` and the `[output]` path
   **must** carry the `{part}` token (as a sheet's carry `{frame}`); for a **static**
   kind they name single files and must **not** carry `{part}`.

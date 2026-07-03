@@ -25,10 +25,10 @@ with **Surface Nets**: a **smooth, watertight, uniformly tessellated, rounded**
 mesh with no sharp edges. The brief tunes the Aegis to that character (heavy
 cast/molded armor, blended volumes), and a `[[review_item]]` scores whether the
 submission plays to it rather than fighting the algorithm for crisp edges it
-cannot deliver. Each part's authored field is emitted as a per-part `mesh.json`
-(the `[output].mesh` `{part}` template), which is the authoritative geometry a
-reviewer and the frontend read. The binary's `--help` is the contract; no
-operations schema is seeded.
+cannot deliver. Each part's authored field is emitted as a per-part mesh; core
+writes it to `meshes/{part}.json` automatically, and that is the authoritative
+geometry a reviewer and the frontend read. The binary's `--help` is the
+contract; no operations schema is seeded.
 
 ## The rig
 

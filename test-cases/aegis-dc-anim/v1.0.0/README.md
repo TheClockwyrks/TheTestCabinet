@@ -29,8 +29,8 @@ crisp or is rounded, independent of the blend radius. The brief tunes the Aegis
 to that character (crisp hard-surface armor with clean edges and defined panel
 seams, rounded forms only where chosen), and a `[[review_item]]` scores whether
 the submission plays to it rather than producing a uniformly rounded surface.
-Each part's authored field is emitted as a per-part `mesh.json` (the
-`[output].mesh` `{part}` template), which is the authoritative geometry a
+Each part's authored field is emitted as a per-part mesh; core writes it to
+`meshes/{part}.json` automatically, and that is the authoritative geometry a
 reviewer and the frontend read. The binary's `--help` is the contract; no
 operations schema is seeded.
 

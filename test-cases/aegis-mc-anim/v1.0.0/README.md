@@ -28,9 +28,9 @@ changes:
   `subtract-*` counterparts, an optional `--blend` radius, `replace-color`,
   `mirror`), **not** cell painting. `mc-anim --help` is the contract; no
   operations schema is seeded.
-- **Output:** `[output].mesh = "parts/{part}.mesh.json"` — the emitted per-part
-  triangle **mesh** Marching Cubes extracts, the authoritative scored geometry
-  (a meshed case names a `mesh`, not an `actions` op log).
+- **Output:** `[output].actions = "parts/{part}.actions.json"` — the recorded op
+  log (as for any voxel case); the per-part triangle **mesh** Marching Cubes extracts
+  is emitted automatically to `meshes/{part}.json`, the authoritative scored geometry.
 - **Character:** Marching Cubes fixes the surface as **bold, low-poly,
   faceted**. It is the binary's character, not a manifest knob — the brief tells
   the model to lean into it. (Surface Nets and Dual Contouring are the smooth
