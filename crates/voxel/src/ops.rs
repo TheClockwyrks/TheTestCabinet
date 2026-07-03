@@ -10,23 +10,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::VoxelSet;
+use crate::axis::Axis;
 use crate::color::Rgb;
-
-/// A principal axis, used as the plane normal of a [`Operation::Mirror`].
-///
-/// `y` is the up axis, matching the voxel volume's `height`; `x`/`z` are the two
-/// horizontal axes (`width`/`depth`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
-pub enum Axis {
-    /// The x axis (volume width).
-    X,
-    /// The y axis (volume height, up).
-    Y,
-    /// The z axis (volume depth).
-    Z,
-}
 
 /// A single sculpting operation the model issues through the `voxel` binary.
 ///

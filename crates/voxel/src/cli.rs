@@ -1,9 +1,13 @@
-//! Shared CLI plumbing for the voxel binaries.
+//! The cube tool's CLI support: the sculpting-operation subcommands and the cube
+//! backend that plugs into the generic record/preview plumbing.
 //!
 //! Both `voxel` (a single static model) and `voxel-anim` (a rigged model, one
-//! separate file per part) drive the **same** sculpting operations through `clap`;
-//! this module defines those operation subcommands and the file plumbing they
-//! share. The only difference between the binaries is whether an operation targets
+//! separate file set per part) drive the **same** cube sculpting operations through
+//! `clap`; this module defines those operation subcommands, the [`CubeBackend`] that
+//! turns a recorded log into a preview PNG and a `mesh.json`, and the cube-flavored
+//! wrappers over `test-cabinet-model-core`'s generic
+//! [`apply`](test_cabinet_model_core::record::apply)/[`init_target`](test_cabinet_model_core::record::init_target)
+//! loop. The only difference between the binaries is whether an operation targets
 //! one volume or one of many independent per-part volumes — the operations
 //! themselves, and how each one applies, are identical.
 //!
@@ -16,13 +20,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
-use serde::Deserialize;
+
+use test_cabinet_model_core::record;
+use test_cabinet_model_core::render as mesh_render;
+use test_cabinet_model_core::render::{MeshView, View};
 
 use crate::color::Rgb;
-use crate::{
-    Axis, Camera, Dims, Operation, PreviewBackground, SceneView, VoxelSet, rasterize,
-    rasterize_scene, render,
-};
+use crate::mesh::{PartMesh, build_part_mesh};
+use crate::{Axis, Dims, Operation, PreviewBackground, VoxelSet, render};
+
+// Re-export the generic config/record surface the binaries reach as
+// `test_cabinet_voxel::cli::…`, so the split is invisible to them.
+pub use test_cabinet_model_core::config::{AnimConfig, Config, LiveConfig, read_config};
+pub use test_cabinet_model_core::record::{ApplyResult, send_live_preview, write_actions};
 
 /// A single sculpting operation, expressed as a `clap` subcommand.
 ///
@@ -467,11 +477,130 @@ fn parse_color(value: &str) -> Result<Rgb, String> {
     Rgb::parse_hex(value).map_err(|err| err.to_string())
 }
 
+/// The cube [`SculptBackend`](record::SculptBackend): replays an [`Operation`] log
+/// into a [`VoxelSet`] and renders it to the isometric preview PNG and the
+/// face-culled `mesh.json`.
+pub struct CubeBackend {
+    /// The volume the operations sculpt within.
+    pub dims: Dims,
+    /// The preview clear color.
+    pub background: PreviewBackground,
+}
+
+impl record::SculptBackend for CubeBackend {
+    type Op = Operation;
+
+    fn render_target(
+        &self,
+        ops: &[Operation],
+        preview: &Path,
+        mesh: &Path,
+    ) -> Result<record::Rendered, String> {
+        let set = render(&self.dims, ops);
+
+        // The face-culled surface mesh is the single source of geometry: it is what
+        // the preview renderer draws and what every downstream consumer reads.
+        let part_mesh = build_part_mesh(&set);
+        let mesh_json =
+            serde_json::to_string(&part_mesh).map_err(|err| format!("serializing mesh: {err}"))?;
+        record::ensure_parent(mesh)?;
+        fs::write(mesh, mesh_json.as_bytes())
+            .map_err(|err| format!("writing mesh {}: {err}", mesh.display()))?;
+
+        let image = mesh_render::render_png(
+            &[mesh_view(&part_mesh)],
+            View::Iso,
+            self.background,
+            mesh_render::PREVIEW_SIZE,
+        )?;
+        record::ensure_parent(preview)?;
+        fs::write(preview, &image)
+            .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
+
+        Ok(record::Rendered {
+            image,
+            live_body: set.to_voxels_json(),
+        })
+    }
+}
+
+/// Borrow a [`PartMesh`]'s flat arrays as a [`MeshView`] for the preview renderer.
+fn mesh_view(mesh: &PartMesh) -> MeshView<'_> {
+    MeshView {
+        positions: &mesh.positions,
+        normals: &mesh.normals,
+        colors: &mesh.colors,
+        indices: &mesh.indices,
+    }
+}
+
+/// The [`Dims`] a `(width, height, depth)` extents triple describes.
+pub fn dims(extents: (u32, u32, u32)) -> Dims {
+    let (width, height, depth) = extents;
+    Dims {
+        width,
+        height,
+        depth,
+    }
+}
+
+/// Append one operation to `actions` and re-render the target's preview PNG and
+/// `mesh.json` from the whole log through the cube backend.
+pub fn apply(
+    dims: &Dims,
+    background: PreviewBackground,
+    actions: &Path,
+    preview: &Path,
+    mesh: &Path,
+    operation: Operation,
+) -> Result<ApplyResult, String> {
+    let backend = CubeBackend {
+        dims: *dims,
+        background,
+    };
+    record::apply(&backend, actions, preview, mesh, operation)
+}
+
+/// Initialize one target: write an empty action log and render its blank preview
+/// and `mesh.json`.
+pub fn init_target(
+    dims: &Dims,
+    background: PreviewBackground,
+    actions: &Path,
+    preview: &Path,
+    mesh: &Path,
+) -> Result<(), String> {
+    let backend = CubeBackend {
+        dims: *dims,
+        background,
+    };
+    record::init_target(&backend, actions, preview, mesh)
+}
+
+/// Read the cube action log, treating an absent file as an empty log so the first
+/// operation of a run does not need a separate `init`.
+pub fn read_actions(path: &Path) -> Result<Vec<Operation>, String> {
+    record::read_actions(path)
+}
+
+/// Render an arbitrary voxel set to preview PNG bytes with the isometric camera and
+/// the given background — the exact rendering the cube backend produces (mesh the
+/// set, then draw it through the shared renderer), exposed for callers holding a set
+/// directly.
+pub fn preview_bytes(set: &VoxelSet, background: PreviewBackground) -> Result<Vec<u8>, String> {
+    let part_mesh = build_part_mesh(set);
+    mesh_render::render_png(
+        &[mesh_view(&part_mesh)],
+        View::Iso,
+        background,
+        mesh_render::PREVIEW_SIZE,
+    )
+}
+
 /// The shared `render` subcommand: regenerate a preview from an action log without
-/// modifying it — the same rendering `crates/core` performs to produce the scored
-/// image. Identical for both binaries; it operates on one log and one output and
-/// needs no config, so authors can render any log (including a per-part target log)
-/// at an explicit size.
+/// modifying it. Identical for both binaries; it operates on one log and one output
+/// and needs no config, so authors can render any log (including a per-part target
+/// log) at an explicit size.
 #[derive(Debug, Args)]
 pub struct RenderArgs {
     /// Path to the action log JSON (an array of operations).
@@ -499,296 +628,22 @@ impl RenderArgs {
     pub fn run(&self) -> Result<(), String> {
         let background = PreviewBackground::parse(&self.background)
             .map_err(|err| format!("invalid background: {err}"))?;
-        let dims = Dims {
-            width: self.width,
-            height: self.height,
-            depth: self.depth,
-        };
+        let volume = dims((self.width, self.height, self.depth));
         let operations = read_actions(&self.actions)?;
-        let set = render(&dims, &operations);
-        let bytes = rasterize(&set, &Camera::PREVIEW, background);
-        ensure_parent(&self.out)?;
+        let set = render(&volume, &operations);
+        let bytes = preview_bytes(&set, background)?;
+        record::ensure_parent(&self.out)?;
         fs::write(&self.out, &bytes).map_err(|err| format!("writing {}: {err}", self.out.display()))
     }
 }
 
-/// The volume configuration the orchestrator seeds next to a single static-model
-/// run so `voxel`'s operations and `init` need no volume flags.
-#[derive(Debug, Deserialize)]
-pub struct Config {
-    /// Volume width in voxels.
-    pub width: u32,
-    /// Volume height in voxels.
-    pub height: u32,
-    /// Volume depth in voxels.
-    pub depth: u32,
-    /// Preview clear color: `transparent` or a hex color.
-    #[serde(default = "default_background")]
-    pub background: String,
-    /// Run-workspace-relative path of the recorded action log.
-    #[serde(default = "default_actions")]
-    pub actions: PathBuf,
-    /// Run-workspace-relative path the current preview is re-rendered to.
-    #[serde(default = "default_preview")]
-    pub preview: PathBuf,
-    /// The live-preview endpoint, when a viewer is observing this run. Absent for
-    /// an unobserved run (a plain `tcab run` or `tcab validate`).
-    #[serde(default)]
-    pub live: Option<LiveConfig>,
-}
-
-/// The live-preview endpoint seeded next to a run that a viewer is observing.
-///
-/// When present, the sculpting binary streams each re-rendered preview here so the
-/// viewer can watch the model take shape between operations. It is absent for an
-/// unobserved run, and streaming is always best-effort: a sculpting operation never
-/// fails because the live view is slow or unreachable, since the recorded action
-/// log — not these frames — is the run's authoritative output.
-#[derive(Debug, Clone, Deserialize)]
-pub struct LiveConfig {
-    /// The `host:port` the binary connects to. This is the run host, reachable from
-    /// inside the run container as `host.docker.internal`.
-    pub endpoint: String,
-    /// An opaque per-run token echoed with each update, so the listener accepts only
-    /// the frames belonging to its own run.
-    pub token: String,
-}
-
-impl Config {
-    /// The volume described by this config.
-    pub fn dims(&self) -> Dims {
-        Dims {
-            width: self.width,
-            height: self.height,
-            depth: self.depth,
-        }
-    }
-
-    /// The parsed preview background.
-    pub fn background(&self) -> Result<PreviewBackground, String> {
-        PreviewBackground::parse(&self.background)
-            .map_err(|err| format!("invalid background: {err}"))
-    }
-}
-
-/// The rig configuration the orchestrator seeds next to an animated-model run.
-///
-/// A rig's parts are **completely separate files**: each declared part has its own
-/// action log and preview, derived from the `{part}` templates below by
-/// substituting the part name. The volume dimensions describe the shared coordinate
-/// space all parts are sculpted in. The rig's structure (parts + joints) lives in
-/// [`Self::rig`] (`rig.json`), pre-seeded from the manifest's required contract.
-#[derive(Debug, Deserialize)]
-pub struct AnimConfig {
-    /// Volume width in voxels.
-    pub width: u32,
-    /// Volume height in voxels.
-    pub height: u32,
-    /// Volume depth in voxels.
-    pub depth: u32,
-    /// Preview clear color: `transparent` or a hex color.
-    #[serde(default = "default_background")]
-    pub background: String,
-    /// The part names this rig declares. `init` initializes each; an operation must
-    /// target one of these.
-    pub parts: Vec<String>,
-    /// Template for a part's action-log path, with `{part}` replaced by the part
-    /// name (for example `parts/{part}.actions.json`).
-    #[serde(default = "default_anim_actions")]
-    pub actions: String,
-    /// Template for a part's preview-image path, with `{part}` replaced by the part
-    /// name (for example `parts/{part}.png`).
-    #[serde(default = "default_anim_preview")]
-    pub preview: String,
-    /// Template for the **assembled-scene** preview path, with `{view}` replaced by
-    /// the view name (`iso`, `front`, `side`, `top`). The whole rig composed at rest
-    /// and re-rendered after every operation, so the model can check how its
-    /// separately sculpted parts fit together on the finished model. Not a scored
-    /// artifact (the per-part previews are); defaults to `scene/{view}.png`.
-    #[serde(default = "default_anim_scene")]
-    pub scene: String,
-    /// Run-workspace-relative path of the rig structure (`rig.json`).
-    #[serde(default = "default_rig")]
-    pub rig: PathBuf,
-    /// The live-preview endpoint, when a viewer is observing this run. See
-    /// [`Config::live`].
-    #[serde(default)]
-    pub live: Option<LiveConfig>,
-}
-
-impl AnimConfig {
-    /// The volume described by this config (the shared space all parts sculpt in).
-    pub fn dims(&self) -> Dims {
-        Dims {
-            width: self.width,
-            height: self.height,
-            depth: self.depth,
-        }
-    }
-
-    /// The parsed preview background.
-    pub fn background(&self) -> Result<PreviewBackground, String> {
-        PreviewBackground::parse(&self.background)
-            .map_err(|err| format!("invalid background: {err}"))
-    }
-
-    /// The action-log path for `part`.
-    pub fn actions_for(&self, part: &str) -> PathBuf {
-        PathBuf::from(self.actions.replace("{part}", part))
-    }
-
-    /// The preview-image path for `part`.
-    pub fn preview_for(&self, part: &str) -> PathBuf {
-        PathBuf::from(self.preview.replace("{part}", part))
-    }
-
-    /// The assembled-scene preview path for `view` (`iso`, `front`, `side`, `top`).
-    pub fn scene_for(&self, view: &str) -> PathBuf {
-        PathBuf::from(self.scene.replace("{view}", view))
-    }
-
-    /// Whether `part` is one of the declared parts.
-    pub fn has_part(&self, part: &str) -> bool {
-        self.parts.iter().any(|p| p == part)
-    }
-}
-
-fn default_background() -> String {
-    "transparent".to_string()
-}
-
-fn default_actions() -> PathBuf {
-    PathBuf::from("actions.json")
-}
-
-fn default_preview() -> PathBuf {
-    PathBuf::from("model.png")
-}
-
-fn default_anim_actions() -> String {
-    "parts/{part}.actions.json".to_string()
-}
-
-fn default_anim_preview() -> String {
-    "parts/{part}.png".to_string()
-}
-
-fn default_anim_scene() -> String {
-    "scene/{view}.png".to_string()
-}
-
-fn default_rig() -> PathBuf {
-    PathBuf::from("rig.json")
-}
-
-/// Read a JSON config file into `T`.
-pub fn read_config<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
-    let raw =
-        fs::read_to_string(path).map_err(|err| format!("reading {}: {err}", path.display()))?;
-    serde_json::from_str(&raw).map_err(|err| format!("invalid config {}: {err}", path.display()))
-}
-
-/// Read the action log, treating an absent file as an empty log so the first
-/// operation of a run does not need a separate `init`.
-pub fn read_actions(path: &Path) -> Result<Vec<Operation>, String> {
-    match fs::read_to_string(path) {
-        Ok(raw) => serde_json::from_str(&raw)
-            .map_err(|err| format!("invalid action log {}: {err}", path.display())),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(err) => Err(format!("reading {}: {err}", path.display())),
-    }
-}
-
-/// Write the action log as pretty JSON, creating parent directories as needed.
-pub fn write_actions(path: &Path, operations: &[Operation]) -> Result<(), String> {
-    ensure_parent(path)?;
-    let mut json = serde_json::to_string_pretty(operations)
-        .map_err(|err| format!("serializing action log: {err}"))?;
-    json.push('\n');
-    fs::write(path, json).map_err(|err| format!("writing {}: {err}", path.display()))
-}
-
-/// Re-render the whole log to `preview`, creating parent directories as needed.
-pub fn render_preview(
-    dims: &Dims,
-    background: PreviewBackground,
-    operations: &[Operation],
-    preview: &Path,
-) -> Result<(), String> {
-    ensure_parent(preview)?;
-    let set = render(dims, operations);
-    let bytes = rasterize(&set, &Camera::PREVIEW, background);
-    fs::write(preview, &bytes)
-        .map_err(|err| format!("writing preview {}: {err}", preview.display()))
-}
-
-/// Initialize one target: write an empty action log and render its blank preview
-/// (an empty volume), so the surface starts from a known, empty state.
-pub fn init_target(
-    dims: &Dims,
-    background: PreviewBackground,
-    actions: &Path,
-    preview: &Path,
-) -> Result<(), String> {
-    write_actions(actions, &[])?;
-    render_preview(dims, background, &[], preview)
-}
-
-/// Append one operation to `actions` and re-render `preview` from the **whole** log,
-/// keeping the recorded log the single source of truth and the preview a faithful
-/// reflection of it. Returns the new operation count and the PNG bytes the preview
-/// was written from, so a caller streaming a live view can forward the exact
-/// rendered frame without re-reading it from disk.
-pub fn apply(
-    dims: &Dims,
-    background: PreviewBackground,
-    actions: &Path,
-    preview: &Path,
-    operation: Operation,
-) -> Result<ApplyResult, String> {
-    let mut operations = read_actions(actions)?;
-    operations.push(operation);
-    write_actions(actions, &operations)?;
-    let set = render(dims, &operations);
-    let bytes = rasterize(&set, &Camera::PREVIEW, background);
-    ensure_parent(preview)?;
-    fs::write(preview, &bytes)
-        .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
-    Ok(ApplyResult {
-        count: operations.len(),
-        image: bytes,
-        voxels: set.to_voxels_json(),
-    })
-}
-
-/// The outcome of applying one operation: the running operation count, the
-/// re-rendered isometric preview PNG, and the current sparse `voxels.json` — the
-/// last of these fed to the live viewer so it can rebuild the 3D model as it takes
-/// shape (see [`send_live_preview`]).
-pub struct ApplyResult {
-    /// How many operations the part's action log now holds.
-    pub count: usize,
-    /// The re-rendered isometric preview PNG.
-    pub image: Vec<u8>,
-    /// The current occupied voxels in the sparse `voxels.json` shape core's
-    /// `VoxelsFile` reads.
-    pub voxels: String,
-}
-
-/// Rasterize an arbitrary voxel set to PNG bytes with the preview camera and the
-/// given background — the exact rendering `apply`/`render_preview` and core's
-/// validator produce, exposed for callers holding a set directly.
-pub fn preview_bytes(set: &VoxelSet, background: PreviewBackground) -> Vec<u8> {
-    rasterize(set, &Camera::PREVIEW, background)
-}
-
 /// The assembled-scene views the animated tool renders, as `(name, view)` pairs in
 /// output order. The name substitutes the `{view}` token of `AnimConfig::scene`.
-pub const SCENE_VIEWS: [(&str, SceneView); 4] = [
-    ("iso", SceneView::Iso),
-    ("front", SceneView::Front),
-    ("side", SceneView::Side),
-    ("top", SceneView::Top),
+pub const SCENE_VIEWS: [(&str, View); 4] = [
+    ("iso", View::Iso),
+    ("front", View::Front),
+    ("side", View::Side),
+    ("top", View::Top),
 ];
 
 /// Compose every part's action log into one assembled volume, posed at **rest**.
@@ -817,90 +672,28 @@ pub fn compose_scene(dims: &Dims, part_logs: &[Vec<Operation>]) -> VoxelSet {
 /// `scene` path. Returns the composed volume so a caller can reuse it. A scene view
 /// is a non-scored aid — the per-part previews remain the scored artifacts.
 pub fn render_scene(config: &AnimConfig) -> Result<VoxelSet, String> {
-    let dims = config.dims();
+    let volume = dims(config.extents());
     let background = config.background()?;
     let mut logs = Vec::with_capacity(config.parts.len());
     for part in &config.parts {
         logs.push(read_actions(&config.actions_for(part))?);
     }
-    let set = compose_scene(&dims, &logs);
+    let set = compose_scene(&volume, &logs);
+    // Mesh the composed rest-pose model once, then draw it from each scene view.
+    let part_mesh = build_part_mesh(&set);
     for (name, view) in SCENE_VIEWS {
         let path = config.scene_for(name);
-        ensure_parent(&path)?;
-        let bytes = rasterize_scene(&set, view, background);
+        record::ensure_parent(&path)?;
+        let bytes = mesh_render::render_png(
+            &[mesh_view(&part_mesh)],
+            view,
+            background,
+            mesh_render::PREVIEW_SIZE,
+        )?;
         fs::write(&path, &bytes)
             .map_err(|err| format!("writing scene {}: {err}", path.display()))?;
     }
     Ok(set)
-}
-
-/// Stream a just-rendered frame to the run's live-preview endpoint, best-effort.
-///
-/// A sculpting operation must never fail because the live view is unavailable, so
-/// every error here is swallowed — the recorded action log remains the run's
-/// authoritative output regardless of whether a frame reaches a viewer. The wire
-/// form is one JSON header line (`{ token, frame, operation, operationCount,
-/// length, voxelLength }`) followed by exactly `length` raw PNG bytes and then
-/// `voxelLength` bytes of the sparse `voxels.json` text; the listener validates the
-/// token before accepting the frame. `frame` carries the part index (0 for a single
-/// static model). The voxel body lets the live viewer rebuild the model in 3D — a
-/// PNG-only viewer simply ignores it.
-pub fn send_live_preview(
-    live: &LiveConfig,
-    frame: u32,
-    operation: &str,
-    operation_count: usize,
-    image: &[u8],
-    voxels: &str,
-) {
-    let _ = try_send_live_preview(live, frame, operation, operation_count, image, voxels);
-}
-
-fn try_send_live_preview(
-    live: &LiveConfig,
-    frame: u32,
-    operation: &str,
-    operation_count: usize,
-    image: &[u8],
-    voxels: &str,
-) -> std::io::Result<()> {
-    use std::io::{Error, ErrorKind, Write};
-    use std::net::{TcpStream, ToSocketAddrs};
-    use std::time::Duration;
-
-    // A short cap on every step so a stalled or absent listener can never hold up
-    // the sculpting operation that triggered the update.
-    const TIMEOUT: Duration = Duration::from_millis(750);
-    let addr =
-        live.endpoint.to_socket_addrs()?.next().ok_or_else(|| {
-            Error::new(ErrorKind::NotFound, "live endpoint resolved to no address")
-        })?;
-    let mut stream = TcpStream::connect_timeout(&addr, TIMEOUT)?;
-    stream.set_write_timeout(Some(TIMEOUT))?;
-    let voxel_bytes = voxels.as_bytes();
-    let mut header = serde_json::to_vec(&serde_json::json!({
-        "token": live.token,
-        "frame": frame,
-        "operation": operation,
-        "operationCount": operation_count,
-        "length": image.len(),
-        "voxelLength": voxel_bytes.len(),
-    }))?;
-    header.push(b'\n');
-    stream.write_all(&header)?;
-    stream.write_all(image)?;
-    stream.write_all(voxel_bytes)?;
-    stream.flush()
-}
-
-fn ensure_parent(path: &Path) -> Result<(), String> {
-    if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("creating {}: {err}", parent.display()))?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]

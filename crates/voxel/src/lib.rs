@@ -13,14 +13,20 @@
 
 #[cfg(feature = "cli")]
 pub mod cli;
-pub mod color;
+pub mod mesh;
 pub mod ops;
-pub mod raster;
-pub mod rig;
 
+// The generic model types live in `test-cabinet-model-core`. Re-export them (and
+// their modules) here so this crate's public surface — and its downstream consumers
+// like `crates/core`, which reach them as `test_cabinet_voxel::Rig`,
+// `test_cabinet_voxel::rig::Keyframe`, `test_cabinet_voxel::color::Rgb`, etc. — is
+// unchanged by the split.
+pub use test_cabinet_model_core::{axis, color, rig};
+
+pub use axis::Axis;
 pub use color::{ColorError, PreviewBackground, Rgb};
-pub use ops::{Axis, Operation};
-pub use raster::{Camera, SceneView, rasterize, rasterize_scene};
+pub use mesh::{PartMesh, build_part_mesh};
+pub use ops::Operation;
 pub use rig::{Animation, Drive, Interp, Joint, JointKind, Keyframe, Part, Rig, Track};
 
 /// The bounding volume the model sculpts within: extents along each axis, in
@@ -38,8 +44,9 @@ pub struct Dims {
 /// A dense, row-major voxel grid: `width * height * depth` cells, each either empty
 /// or a single opaque [`Rgb`].
 ///
-/// This is the working volume every [`Operation`] mutates and the thing
-/// [`rasterize`] projects to a preview. It is a deliberately small,
+/// This is the working volume every [`Operation`] mutates and the thing the cube
+/// mesher turns into the surface mesh the preview renderer draws. It is a
+/// deliberately small,
 /// dependency-light structure rather than a general voxel type so the sculpting
 /// logic stays trivial to reason about and identical between the binary and core.
 /// The volume always starts empty; there is no "background voxel". Cell `(x, y, z)`

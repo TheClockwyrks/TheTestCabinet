@@ -62,7 +62,7 @@ impl<'de> Deserialize<'de> for Rgb {
     }
 }
 
-/// The clear color behind the rasterized isometric preview PNG.
+/// The clear color behind the rendered preview PNG.
 ///
 /// This is **only** the background of the rendered image — the voxel volume itself
 /// always starts empty (there is no such thing as a "background voxel"). It is

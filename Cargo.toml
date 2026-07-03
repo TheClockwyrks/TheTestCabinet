@@ -5,7 +5,16 @@ members = [
 	"crates/cli",
 	"crates/contract-codegen",
 	"crates/draw",
+	"crates/model-core",
 	"crates/voxel",
+	"crates/voxel-anim",
+	"crates/voxel-mesh",
+	"crates/mc",
+	"crates/mc-anim",
+	"crates/sn",
+	"crates/sn-anim",
+	"crates/dc",
+	"crates/dc-anim",
 	"crates/foray-core",
 	"crates/foray-host",
 	"crates/foray-cli",
@@ -129,10 +138,24 @@ toml = "0.8"
 # they are never hard-coded into a specification.
 handlebars = "6"
 tempfile = "3"
-# PNG decoding for the validator's reference-comparison similarity score. The
-# `png` crate is a small, pure-Rust decoder with no system dependencies, keeping
-# the workspace buildable on minimal hosts.
+# PNG decoding for the validator's reference-comparison similarity score, and PNG
+# encoding for the drawing/voxel binaries and the shared mesh preview renderer. The
+# `png` crate is a small, pure-Rust decoder/encoder with no system dependencies,
+# keeping the workspace buildable on minimal hosts.
 png = "0.17"
+# The headless mesh preview renderer (`test-cabinet-model-core`'s `render` module,
+# behind its `cli` feature). `wgpu` targets Mesa lavapipe (software Vulkan) to draw
+# offscreen with no GPU or window; `glam` builds the camera matrices; `bytemuck`
+# casts vertex/uniform structs to GPU bytes; `pollster` blocks on wgpu's async
+# device/queue calls. Only the voxel-family binaries pull these in — the
+# backend/driver release builds link `model-core` without its `cli` feature.
+# On Linux the native Vulkan (Mesa lavapipe) and GLES backends are compiled in by
+# wgpu-hal's target defaults — they are not cargo features — so the default feature
+# set (which includes `wgsl` for the shader) is what the renderer needs.
+wgpu = "24"
+glam = "0.29"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
 # Base64 for inlining a live asset-generation preview frame into the JSON event the
 # driver streams (or the desktop shell emits) to the run monitor: the run host
 # receives the rendered PNG bytes from the drawing binary and base64-encodes them

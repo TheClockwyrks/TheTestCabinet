@@ -1,0 +1,57 @@
+[package]
+name = "test-cabinet-model-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The generic, domain-agnostic core shared by every voxel-family tool. It owns the
+# rig/animation model, the opaque-RGB color type, the principal-axis enum, the
+# seeded run-config shapes, and the generic CLI record/preview/live-preview
+# plumbing (append-to-log, re-render, stream a live frame) that is parameterized
+# over a `SculptBackend` — the one thing a concrete tool supplies to turn its
+# recorded operations into a preview and a mesh. It knows nothing about voxel cubes
+# or signed-distance fields; the `voxel` cube domain and the future meshing domains
+# each depend on this crate and plug in their own backend.
+[lib]
+name = "test_cabinet_model_core"
+path = "src/lib.rs"
+
+[features]
+# `cli` pulls in `clap` (for the `ValueEnum` derives on the rig/axis enums the tool
+# subcommands parse), `serde_json` (config/action-log/rig I/O), and the wgpu+Mesa
+# mesh preview renderer (`render`) plus its PNG/math/GPU-buffer support crates. It
+# is on by default for the binaries; a library consumer such as `crates/core` links
+# this crate with `default-features = false` to get only the pure model types (and
+# never compiles wgpu into the backend/driver release builds, where nothing renders).
+default = ["cli"]
+cli = [
+    "dep:clap",
+    "dep:serde_json",
+    "dep:wgpu",
+    "dep:glam",
+    "dep:bytemuck",
+    "dep:pollster",
+    "dep:png",
+]
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+# The headless mesh preview renderer's stack (`render`): `wgpu` drives Mesa
+# lavapipe (software Vulkan) to draw offscreen, `glam` builds the camera matrices,
+# `bytemuck` casts the vertex/uniform structs to GPU bytes, `pollster` blocks on
+# wgpu's async device/queue calls, and `png` encodes the read-back pixels.
+wgpu = { workspace = true, optional = true }
+glam = { workspace = true, optional = true }
+bytemuck = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
+png = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

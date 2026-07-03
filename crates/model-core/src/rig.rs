@@ -19,7 +19,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ops::Axis;
+use crate::axis::Axis;
 
 /// A complete rig: the parts to sculpt, the joints that pose them, and the
 /// model-authored animations.

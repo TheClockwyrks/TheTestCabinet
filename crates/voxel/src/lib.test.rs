@@ -3,8 +3,9 @@
 //! `voxels.json` serializes in the shape core's `VoxelsFile` reads.
 
 use super::*;
+use crate::axis::Axis;
 use crate::color::PreviewBackground;
-use crate::ops::{Axis, Operation};
+use crate::ops::Operation;
 
 const RED: Rgb = Rgb([0xff, 0, 0]);
 const BLUE: Rgb = Rgb([0, 0, 0xff]);

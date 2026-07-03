@@ -61,12 +61,13 @@ fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Init => {
             let config: Config = cli::read_config(&cli.config)?;
-            let dims = config.dims();
+            let dims = cli::dims(config.extents());
             cli::init_target(
                 &dims,
                 config.background()?,
                 &config.actions,
                 &config.preview,
+                &config.mesh,
             )?;
             println!(
                 "initialized {}x{}x{} volume",
@@ -77,23 +78,32 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Render(args) => args.run(),
         Command::Op(op) => {
             let config: Config = cli::read_config(&cli.config)?;
-            let dims = config.dims();
+            let dims = cli::dims(config.extents());
             let name = op.name();
             let cli::ApplyResult {
                 count,
                 image,
-                voxels,
+                live_body,
             } = cli::apply(
                 &dims,
                 config.background()?,
                 &config.actions,
                 &config.preview,
+                &config.mesh,
                 op.into_operation(),
             )?;
             // A single static model is part 0. Streaming is best-effort and a no-op
             // when the run has no live viewer (no `live` in the seeded config).
             if let Some(live) = &config.live {
-                cli::send_live_preview(live, 0, name, count, &image, &voxels);
+                cli::send_live_preview(
+                    &live.endpoint,
+                    &live.token,
+                    0,
+                    name,
+                    count,
+                    &image,
+                    &live_body,
+                );
             }
             println!(
                 "applied {name} ({count} operation{} recorded)",

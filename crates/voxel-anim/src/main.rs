@@ -21,9 +21,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use test_cabinet_model_core::rig::{Drive, Interp, Joint, JointKind, Keyframe, Rig};
 use test_cabinet_voxel::Axis;
 use test_cabinet_voxel::cli::{self, AnimConfig, OpCommand, RenderArgs};
-use test_cabinet_voxel::rig::{Drive, Interp, Joint, JointKind, Keyframe, Rig};
 
 /// The sculpting tool for rigged, animated asset-generation test cases.
 #[derive(Parser)]
@@ -270,7 +270,7 @@ fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Init => {
             let config: AnimConfig = cli::read_config(&cli.config)?;
-            let dims = config.dims();
+            let dims = cli::dims(config.extents());
             let background = config.background()?;
             for part in &config.parts {
                 cli::init_target(
@@ -278,6 +278,7 @@ fn run(cli: Cli) -> Result<(), String> {
                     background,
                     &config.actions_for(part),
                     &config.preview_for(part),
+                    &config.mesh_for(part),
                 )?;
             }
             // Render the (blank) assembled scene too, so every scene view exists
@@ -425,17 +426,18 @@ fn run(cli: Cli) -> Result<(), String> {
                     config.parts
                 ));
             }
-            let dims = config.dims();
+            let dims = cli::dims(config.extents());
             let name = op.name();
             let cli::ApplyResult {
                 count,
                 image,
-                voxels,
+                live_body,
             } = cli::apply(
                 &dims,
                 config.background()?,
                 &config.actions_for(&part),
                 &config.preview_for(&part),
+                &config.mesh_for(&part),
                 op.into_operation(),
             )?;
             // Stream this part's re-rendered preview and current voxels to the live
@@ -443,7 +445,15 @@ fn run(cli: Cli) -> Result<(), String> {
             // unobserved run.
             if let Some(live) = &config.live {
                 let index = config.parts.iter().position(|p| *p == part).unwrap_or(0) as u32;
-                cli::send_live_preview(live, index, name, count, &image, &voxels);
+                cli::send_live_preview(
+                    &live.endpoint,
+                    &live.token,
+                    index,
+                    name,
+                    count,
+                    &image,
+                    &live_body,
+                );
             }
             // Refresh the assembled scene so its views reflect this operation.
             cli::render_scene(&config)?;

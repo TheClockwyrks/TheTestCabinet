@@ -1,6 +1,26 @@
 //! Unit tests for the shared CLI plumbing: the operation subcommands map to the
 //! recorded wire form, the anim config templates per-part paths, `init` / `apply`
 //! keep the log and preview in step, and the rig helpers upsert cleanly.
+//!
+//! # Render-dependent tests (Vulkan required)
+//!
+//! Preview rendering now runs through the shared `wgpu` + Mesa **lavapipe** (software
+//! Vulkan) renderer, so the tests that write a preview PNG need a Vulkan adapter at
+//! runtime — present in the run-container images, absent from a bare dev box or CI
+//! runner. Those tests are marked `#[ignore]` so a plain `cargo test --workspace`
+//! stays green without a GPU/lavapipe. To run them, install Mesa's lavapipe ICD and
+//! opt the ignored tests back in:
+//!
+//! ```sh
+//! # Debian/Ubuntu: the software Vulkan driver + loader.
+//! apt-get install -y mesa-vulkan-drivers libvulkan1
+//! # Point the loader at lavapipe if it isn't the default adapter, then run them:
+//! VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json \
+//!   cargo test -p test-cabinet-voxel -- --ignored
+//! ```
+//!
+//! The mesh-generation tests (this crate's `mesh` module and `test-cabinet-voxel-mesh`)
+//! need no GPU and are never gated.
 
 use super::*;
 use crate::rig::{Drive, Interp, Joint, JointKind, Keyframe, Rig};
@@ -115,10 +135,11 @@ fn anim_config_templates_per_part_paths() {
         depth: 32,
         background: "transparent".to_string(),
         parts: vec!["chassis".to_string(), "turret".to_string()],
-        actions: default_anim_actions(),
-        preview: default_anim_preview(),
-        scene: default_anim_scene(),
-        rig: default_rig(),
+        actions: "parts/{part}.actions.json".to_string(),
+        preview: "parts/{part}.png".to_string(),
+        mesh: "parts/{part}.mesh.json".to_string(),
+        scene: "scene/{view}.png".to_string(),
+        rig: PathBuf::from("rig.json"),
         live: None,
     };
     assert_eq!(
@@ -128,6 +149,10 @@ fn anim_config_templates_per_part_paths() {
     assert_eq!(
         config.preview_for("chassis"),
         PathBuf::from("parts/chassis.png")
+    );
+    assert_eq!(
+        config.mesh_for("chassis"),
+        PathBuf::from("parts/chassis.mesh.json")
     );
     assert_eq!(config.scene_for("front"), PathBuf::from("scene/front.png"));
     assert!(config.has_part("chassis"));
@@ -165,6 +190,7 @@ fn compose_scene_unions_parts_in_order() {
 }
 
 #[test]
+#[ignore = "renders PNGs through wgpu + Mesa lavapipe (software Vulkan); needs a Vulkan adapter — run with `cargo test -p test-cabinet-voxel -- --ignored` where lavapipe is installed (see module docs)"]
 fn render_scene_writes_every_view() {
     let dir = tempdir();
     let config = AnimConfig {
@@ -178,6 +204,7 @@ fn render_scene_writes_every_view() {
             .to_string_lossy()
             .into(),
         preview: dir.join("parts/{part}.png").to_string_lossy().into(),
+        mesh: dir.join("parts/{part}.mesh.json").to_string_lossy().into(),
         scene: dir.join("scene/{view}.png").to_string_lossy().into(),
         rig: dir.join("rig.json"),
         live: None,
@@ -206,10 +233,12 @@ fn render_scene_writes_every_view() {
 }
 
 #[test]
+#[ignore = "renders a preview PNG through wgpu + Mesa lavapipe (software Vulkan); needs a Vulkan adapter — run with `cargo test -p test-cabinet-voxel -- --ignored` where lavapipe is installed (see module docs)"]
 fn apply_appends_to_the_log_and_renders_a_matching_preview() {
     let dir = tempdir();
     let actions = dir.join("actions.json");
     let preview = dir.join("model.png");
+    let mesh = dir.join("mesh.json");
     let dims = Dims {
         width: 4,
         height: 4,
@@ -217,16 +246,17 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
     };
     let bg = PreviewBackground::Transparent;
 
-    cli_init(&dims, bg, &actions, &preview);
+    cli_init(&dims, bg, &actions, &preview, &mesh);
     let ApplyResult {
         count,
         image: returned,
-        voxels,
+        live_body,
     } = apply(
         &dims,
         bg,
         &actions,
         &preview,
+        &mesh,
         Operation::SetVoxel {
             x: 1,
             y: 1,
@@ -237,22 +267,40 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
     .expect("apply");
     assert_eq!(count, 1);
 
-    // The log holds the one operation, and the preview is exactly what that log
-    // regenerates to — the property the post-run regeneration relies on. `apply`
-    // also returns those same bytes so a live viewer streams the rendered frame.
+    // The log holds the one operation, and the preview `apply` returned is exactly
+    // the bytes it wrote to disk, so a live viewer streams the same rendered frame.
+    // (Rendering runs through the shared wgpu+Mesa renderer, so this test needs a
+    // software Vulkan adapter — present in the container images — at runtime.)
     let logged = read_actions(&actions).expect("read back");
     assert_eq!(logged.len(), 1);
-    let expected = preview_bytes(&render(&dims, &logged), bg);
+    let expected = preview_bytes(&render(&dims, &logged), bg).expect("render preview");
     let on_disk = std::fs::read(&preview).expect("preview written");
     assert_eq!(on_disk, expected);
     assert_eq!(returned, expected);
 
-    // The returned voxels are the same sparse `voxels.json` the set regenerates to,
-    // so a live viewer can rebuild the model in 3D from the stream.
-    assert_eq!(voxels, render(&dims, &logged).to_voxels_json());
+    // The returned live body is the same sparse `voxels.json` the set regenerates
+    // to, so a live viewer can rebuild the model in 3D from the stream.
+    assert_eq!(live_body, render(&dims, &logged).to_voxels_json());
+
+    // A `mesh.json` is emitted alongside the preview, deserializing to the runtime's
+    // PartMesh shape (a face-culled surface with one quad → six indices per face).
+    let mesh_json = std::fs::read_to_string(&mesh).expect("mesh written");
+    let part_mesh: crate::mesh::PartMesh =
+        serde_json::from_str(&mesh_json).expect("valid PartMesh shape");
+    assert_eq!(
+        part_mesh.indices.len(),
+        36,
+        "one lone voxel: 6 faces * 6 indices"
+    );
+    assert_eq!(
+        part_mesh.positions.len(),
+        6 * 4 * 3,
+        "6 faces * 4 verts * 3 coords"
+    );
 }
 
 #[test]
+#[ignore = "renders a PNG through wgpu + Mesa lavapipe (software Vulkan); needs a Vulkan adapter — run with `cargo test -p test-cabinet-voxel -- --ignored` where lavapipe is installed (see module docs)"]
 fn render_args_regenerate_a_log_to_a_png() {
     let dir = tempdir();
     let actions = dir.join("log.json");
@@ -427,10 +475,11 @@ fn upsert_animation_preserves_tracks_and_add_keyframe_sorts_and_replaces() {
     );
 }
 
-fn cli_init(dims: &Dims, bg: PreviewBackground, actions: &Path, preview: &Path) {
-    init_target(dims, bg, actions, preview).expect("init");
+fn cli_init(dims: &Dims, bg: PreviewBackground, actions: &Path, preview: &Path, mesh: &Path) {
+    init_target(dims, bg, actions, preview, mesh).expect("init");
     assert_eq!(read_actions(actions).expect("empty log").len(), 0);
     assert!(preview.is_file(), "init renders a blank preview");
+    assert!(mesh.is_file(), "init writes a blank mesh");
 }
 
 /// A throwaway unique directory under the system temp dir. Avoids a dev-dependency

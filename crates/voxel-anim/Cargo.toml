@@ -1,0 +1,30 @@
+[package]
+name = "test-cabinet-voxel-anim"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `voxel-anim` binary: the cube sculpting tool for rigged, animated 3D
+# asset-generation cases. It is a thin CLI over `test-cabinet-voxel` (the cube
+# domain — the sculpting operations, the preview rasterizer, the mesher, and the
+# scene composer) and `test-cabinet-model-core` (the rig/animation model and the
+# record/preview plumbing): each part has its own action log, preview, and
+# `mesh.json`, all in the shared volume's coordinates, and the binary additionally
+# maintains the rig structure in `rig.json`. The static sibling `voxel` binary
+# lives in `crates/voxel`.
+[[bin]]
+name = "voxel-anim"
+path = "src/main.rs"
+
+[dependencies]
+# The cube domain, with its `cli` feature (clap subcommands, the cube backend, the
+# scene composer) enabled; this transitively enables `test-cabinet-model-core/cli`.
+test-cabinet-voxel = { path = "../voxel" }
+# The generic model + record/preview plumbing, with the `cli` feature for the rig
+# I/O and the `clap` value enums the rig subcommands parse.
+test-cabinet-model-core = { path = "../model-core" }
+clap = { workspace = true }
+
+[lints]
+workspace = true
