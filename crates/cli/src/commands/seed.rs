@@ -85,12 +85,13 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
         println!("  init (run-only): {init}");
     }
     let reference_count = test_case.references_for(variant).len();
+    let missing_references = reference_count - references.len();
     println!(
         "  reference imgs: {} of {}",
         references.len(),
         reference_count
     );
-    if references.len() < reference_count {
+    if missing_references > 0 {
         println!(
             "    (some references did not render; a headless browser is required \
              to produce the seeded reference images)"
@@ -101,6 +102,18 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
          rendered reference images. The reference source mockups are not seeded, \
          and the prompt is rendered separately (see `tcab prompt`)."
     );
+
+    // The repository was materialized, but a run mounts the rendered reference
+    // images too. If any failed to render the seed is incomplete, so exit
+    // non-zero even though the on-disk repository was written — a caller
+    // scripting `tcab seed` must be able to detect the partial result.
+    if missing_references > 0 {
+        anyhow::bail!(
+            "incomplete seed: {missing_references} of {reference_count} reference \
+             image(s) failed to render (a headless browser is required to produce \
+             the seeded reference images)"
+        );
+    }
 
     Ok(())
 }
