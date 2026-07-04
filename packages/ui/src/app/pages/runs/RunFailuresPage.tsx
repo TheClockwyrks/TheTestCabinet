@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { PublishProgress } from "../../../client/types";
 import { Link } from "react-router";
-import { Panel } from "@test-cabinet/ui";
+import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useGalleryData } from "../../data/galleryContext";
@@ -91,7 +91,9 @@ export function RunFailuresPage() {
           but guard anyway so it degrades to an empty state rather than offering
           a publish it cannot perform. */}
       {!canExecute || failures.length === 0 ? (
-        <p className={styles.empty}>No publishable failures awaiting publish.</p>
+        <p className={styles.empty}>
+          No publishable failures awaiting publish.
+        </p>
       ) : (
         <Panel>
           <ul className={styles.list}>
@@ -153,7 +155,9 @@ function FailureRow({
     setError(null);
     setStatus("Publishing…");
     try {
-      await onPublish((progress) => setStatus(`Publishing… ${progress.message}`));
+      await onPublish((progress) =>
+        setStatus(`Publishing… ${progress.message}`),
+      );
       onPublished();
     } catch (e) {
       setError(String(e));
@@ -170,7 +174,8 @@ function FailureRow({
           {testCaseName(subject.testCaseSlug)}
         </Link>
         <span className={styles.meta}>
-          {formatSlug(subject.variant)} · {model?.name ?? subject.modelId} ·{" "}
+          {formatSlug(subject.variant)} ·{" "}
+          {model?.name ?? canonicalModelId(subject.modelId)} ·{" "}
           {subject.harnessSlug}
         </span>
         {run.status.detail && (

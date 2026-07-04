@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
+import { canonicalModelId } from "../modelId";
 import { Chart } from "./Chart";
 import { Panel } from "./Panel";
 import { barChart } from "./plot/charts";
@@ -81,8 +82,10 @@ export function MetricChartWidget({
 }
 
 // Builds one labeled bar per run. Labels prefer the model id, disambiguating
-// with the harness slug when the same model ran the variant more than once. Runs
-// whose value is unknown (`null`) are dropped so they don't appear as zero bars.
+// with the harness slug when the same model ran the variant more than once. Model
+// ids are canonicalized first, so an `openrouter/`-prefixed run and its bare
+// equivalent count as the same model. Runs whose value is unknown (`null`) are
+// dropped so they don't appear as zero bars.
 function runBars(
   runs: RunRecord[],
   value: (run: RunRecord) => number | null,
@@ -90,12 +93,13 @@ function runBars(
 ): BarPoint[] {
   const counts = new Map<string, number>();
   for (const run of runs) {
-    counts.set(run.subject.modelId, (counts.get(run.subject.modelId) ?? 0) + 1);
+    const modelId = canonicalModelId(run.subject.modelId);
+    counts.set(modelId, (counts.get(modelId) ?? 0) + 1);
   }
   return runs.flatMap((run) => {
     const v = value(run);
     if (v === null) return [];
-    const modelId = run.subject.modelId;
+    const modelId = canonicalModelId(run.subject.modelId);
     return [
       {
         label:
@@ -110,9 +114,11 @@ function runBars(
 }
 
 // Builds one bar per model: the mean of `value` across that model's runs, i.e.
-// the average per run. Models keep their first-seen order. Runs whose value is
-// unknown (`null`) are excluded from the mean; a model with no known values gets
-// no bar at all rather than a misleading zero.
+// the average per run. Model ids are canonicalized first, so an
+// `openrouter/`-prefixed run and its bare equivalent aggregate into one bar.
+// Models keep their first-seen order. Runs whose value is unknown (`null`) are
+// excluded from the mean; a model with no known values gets no bar at all rather
+// than a misleading zero.
 function meanBars(
   runs: RunRecord[],
   value: (run: RunRecord) => number | null,
@@ -123,7 +129,7 @@ function meanBars(
   for (const run of runs) {
     const v = value(run);
     if (v === null) continue;
-    const model = run.subject.modelId;
+    const model = canonicalModelId(run.subject.modelId);
     const entry = totals.get(model);
     if (entry) {
       entry.sum += v;

@@ -1,6 +1,6 @@
 import type { RunRecord } from "@test-cabinet/run-record";
 import { Link } from "react-router";
-import { RatingBadge } from "@test-cabinet/ui";
+import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import { UnpublishedTag } from "./UnpublishedTag";
 import {
@@ -171,7 +171,7 @@ function ActiveRow({
       )}
       {showModel && (
         <span className={styles.model} data-label="Model">
-          {run.modelId}
+          {canonicalModelId(run.modelId)}
         </span>
       )}
       <span className={`${styles.num} ${styles.noRating}`} data-label="Tokens">
@@ -234,7 +234,7 @@ function RunRow({
       )}
       {showModel && (
         <span className={styles.model} data-label="Model">
-          {subject.modelId}
+          {canonicalModelId(subject.modelId)}
         </span>
       )}
       <span className={styles.num} data-label="Tokens">

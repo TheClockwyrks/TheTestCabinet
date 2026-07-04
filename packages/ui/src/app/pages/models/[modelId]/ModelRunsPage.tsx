@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pagination, Panel } from "@test-cabinet/ui";
+import { Pagination, Panel, canonicalModelId } from "@test-cabinet/ui";
 import { RunLog } from "../../../components/RunLog";
 import type { ModelSummary } from "../../../data/models";
 import { useRuns } from "../../../data/useRuns";
@@ -27,11 +27,12 @@ function RunsContent({ model }: { model: ModelSummary }) {
   const [page, setPage] = useState(0);
 
   // This model's runs, newest first. A model may cover several ids, so match any
-  // of them against the run's subject.
+  // of them against the run's subject — canonicalized on both sides so an
+  // `openrouter/`-prefixed run lands on the same model as its bare form.
   const modelRuns = useMemo(() => {
-    const ids = new Set(model.modelIds);
+    const ids = new Set(model.modelIds.map(canonicalModelId));
     return runs
-      .filter((run) => ids.has(run.subject.modelId))
+      .filter((run) => ids.has(canonicalModelId(run.subject.modelId)))
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   }, [model, runs]);
 
@@ -45,9 +46,7 @@ function RunsContent({ model }: { model: ModelSummary }) {
     return (
       <section className={styles.section}>
         <Panel>
-          <p className={styles.empty}>
-            No runs have used {model.name} yet.
-          </p>
+          <p className={styles.empty}>No runs have used {model.name} yet.</p>
         </Panel>
       </section>
     );

@@ -1,3 +1,4 @@
+import { canonicalModelId } from "../../modelId";
 import modelsData from "./models.json";
 
 // The published model catalog dataset. `tcab catalog` regenerates `models.json`
@@ -37,9 +38,13 @@ export interface ModelSummary {
 export const models: ModelSummary[] = modelsData as ModelSummary[];
 
 // Maps a run record's `modelId` to its catalog entry. A model may cover several
-// ids, so this scans `modelIds`. Returns undefined for ids not in the catalog.
-export function findModelByModelId(
-  modelId: string,
-): ModelSummary | undefined {
-  return models.find((model) => model.modelIds.includes(modelId));
+// ids, so this scans `modelIds`. Both sides are canonicalized so an
+// `openrouter/`-prefixed id resolves to the same entry as its bare form, even
+// when the catalog only declares one of them. Returns undefined for ids not in
+// the catalog.
+export function findModelByModelId(modelId: string): ModelSummary | undefined {
+  const canonical = canonicalModelId(modelId);
+  return models.find((model) =>
+    model.modelIds.some((id) => canonicalModelId(id) === canonical),
+  );
 }

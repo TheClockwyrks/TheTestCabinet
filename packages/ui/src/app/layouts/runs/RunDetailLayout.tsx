@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
-import { RatingBadge } from "@test-cabinet/ui";
+import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData } from "../../data/galleryContext";
@@ -147,9 +147,9 @@ export function RunDetailLayout({
         </div>
         <div className={styles.subjectRow}>
           <span className={styles.subject}>
-            {subject.modelId} &middot; test case {subject.testCaseVersion}{" "}
-            &middot; <span className={styles.variant}>{subject.variant}</span>{" "}
-            variant
+            {canonicalModelId(subject.modelId)} &middot; test case{" "}
+            {subject.testCaseVersion} &middot;{" "}
+            <span className={styles.variant}>{subject.variant}</span> variant
           </span>
           {subject.harnessVersion && (
             <span className={styles.harnessVersion}>

@@ -5,4 +5,5 @@
 // its backend/worker client interfaces live under the `./app` and `./client`
 // subpath exports.
 export * from "./ratings";
+export * from "./modelId";
 export * from "./primitives";

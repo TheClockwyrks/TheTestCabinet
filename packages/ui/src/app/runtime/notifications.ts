@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { canonicalModelId } from "../../modelId";
 import type { RunNotification } from "../../client/types";
 
 // The console's notification center: the bell's unread state, the slide-out
@@ -121,7 +122,8 @@ export const useNotifications = create<NotificationsState>()(
       clear: () => set({ items: [] }),
       openSidebar: () => set({ sidebarOpen: true }),
       closeSidebar: () => set({ sidebarOpen: false }),
-      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      toggleSidebar: () =>
+        set((state) => ({ sidebarOpen: !state.sidebarOpen })),
     }),
     {
       name: STORAGE_KEY,
@@ -142,7 +144,7 @@ export const selectUnreadCount = (state: NotificationsState): number =>
 // body is the run's identity for a completed run, or the failure reason. Kept
 // here so the SSE and Tauri paths produce identical notifications.
 export function notificationFromPush(push: RunNotification): AppNotification {
-  const identity = `${push.testCaseSlug} · ${push.harnessSlug} · ${push.variant} · ${push.modelId}`;
+  const identity = `${push.testCaseSlug} · ${push.harnessSlug} · ${push.variant} · ${canonicalModelId(push.modelId)}`;
   const completed = push.outcome === "completed";
   return {
     id: push.recordId ?? push.jobId,

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { RatingBadge } from "@test-cabinet/ui";
-import { Panel } from "@test-cabinet/ui";
+import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { useRuns } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
 import { findModelByModelId } from "../../../data/models";
@@ -71,8 +71,12 @@ function LeaderboardContent({
         review.checklist,
       );
       const candidate: Entry = {
-        modelId: run.subject.modelId,
-        modelName: findModelByModelId(run.subject.modelId)?.name ?? run.subject.modelId,
+        // Canonicalized so an `openrouter/`-prefixed run and its bare form rank
+        // as one model rather than two rows.
+        modelId: canonicalModelId(run.subject.modelId),
+        modelName:
+          findModelByModelId(run.subject.modelId)?.name ??
+          canonicalModelId(run.subject.modelId),
         earned,
         total,
         overall: worstRating(review.ratings.map((r) => r.rating)),
@@ -84,7 +88,14 @@ function LeaderboardContent({
       }
     }
     return [...best.values()].sort(byScoreThenRatingThenRecency);
-  }, [runs, localWriteups, findReview, testCase.slug, variant.slug, variant.reviewItems]);
+  }, [
+    runs,
+    localWriteups,
+    findReview,
+    testCase.slug,
+    variant.slug,
+    variant.reviewItems,
+  ]);
 
   if (entries.length === 0) {
     return (

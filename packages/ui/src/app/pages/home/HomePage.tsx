@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { RatingBadge } from "@test-cabinet/ui";
+import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { RunLog } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { findModelByModelId } from "../../data/models";
@@ -114,11 +114,16 @@ function FeaturedRun({
         <span className={styles.featureVariant}>{subject.variant}</span>
         <span className={styles.featureSep}>&middot;</span>
         {model ? (
-          <Link to={routes.modelDetail(model.slug)} className={styles.featureModel}>
+          <Link
+            to={routes.modelDetail(model.slug)}
+            className={styles.featureModel}
+          >
             {model.name}
           </Link>
         ) : (
-          <span className={styles.featureModel}>{subject.modelId}</span>
+          <span className={styles.featureModel}>
+            {canonicalModelId(subject.modelId)}
+          </span>
         )}
       </p>
 
@@ -145,13 +150,7 @@ function FeaturedRun({
   );
 }
 
-function Stat({
-  label,
-  value,
-}: {
-  label: string;
-  value: ReactNode;
-}) {
+function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className={styles.stat}>
       <dt className={styles.statLabel}>{label}</dt>
