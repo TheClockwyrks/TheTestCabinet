@@ -782,6 +782,15 @@ pub struct CaseMetadata {
     pub slug: String,
     pub version: String,
     pub name: String,
+    /// The case's test type, so the static gallery can scope its catalog tabs to
+    /// a single type (E2E / Sprite / Voxel / Adversarial / Performance) exactly
+    /// as the backend-connected consoles do. Without it the site cannot tell a
+    /// case's type and treats every case as end-to-end.
+    pub test_type: test_cabinet_core::TestType,
+    /// The asset shape an asset-generation case produces, so the gallery can split
+    /// its Sprite (2D) and Voxel (3D) tabs. Defaults to `sprite` for every
+    /// non-asset case (harmless — the split is only consulted for asset cases).
+    pub asset_kind: test_cabinet_core::AssetKind,
     pub difficulty: String,
     pub tags: Vec<String>,
     pub summary: Option<String>,
@@ -978,6 +987,8 @@ fn case_metadata(
         slug: manifest.slug.clone(),
         version: manifest.version.clone(),
         name: manifest.name.clone(),
+        test_type: manifest.test_type,
+        asset_kind: manifest.asset_kind,
         difficulty: manifest.difficulty.clone(),
         tags: manifest.tags.clone(),
         summary: manifest.summary.clone(),

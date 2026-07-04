@@ -1,4 +1,5 @@
 import type { Plugin } from "vite";
+import type { AssetKind, TestType } from "@test-cabinet/run-record";
 
 // Build-time data source: the public R2 snapshot.
 //
@@ -110,7 +111,11 @@ interface SnapshotCaseFile {
   name: string;
   // The case's test type. Optional for snapshots written before it was published;
   // defaults to "end-to-end" when absent.
-  testType?: "end-to-end" | "asset-generation" | "adversarial";
+  testType?: TestType;
+  // The asset shape an asset-generation case produces, splitting the catalog's
+  // Sprite (2D) and Voxel (3D) tabs. Optional for snapshots written before it was
+  // published; treated as `sprite` when absent.
+  assetKind?: AssetKind;
   difficulty: string;
   tags: string[];
   summary: string | null;
@@ -261,7 +266,10 @@ interface AssembledVariant {
 interface AssembledTestCase {
   slug: string;
   name: string;
-  testType: "end-to-end" | "asset-generation" | "adversarial";
+  testType: TestType;
+  // The asset shape (sprite/voxel family) an asset-generation case produces, so
+  // the catalog can split its Sprite and Voxel tabs. Null for a non-asset case.
+  assetKind: AssetKind | null;
   difficulty: string;
   tags: string[];
   summary: string | null;
@@ -441,6 +449,10 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     slug: file.slug,
     name: file.name,
     testType: file.testType ?? "end-to-end",
+    // Absent on snapshots written before it was published; the catalog treats a
+    // missing kind as a 2D sprite (the Rust default), so keep null here and let
+    // the classifier fall back.
+    assetKind: file.assetKind ?? null,
     difficulty: file.difficulty,
     tags: file.tags,
     summary: file.summary,

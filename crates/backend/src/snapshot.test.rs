@@ -424,6 +424,11 @@ async fn case_metadata_inlines_specs_and_description() {
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     assert_eq!(parsed["name"], "Carom");
     assert_eq!(parsed["description"], "## Carom");
+    // The type discriminators are carried so the static gallery can scope its
+    // catalog tabs; previously absent, which left every case reading as
+    // end-to-end on the site.
+    assert_eq!(parsed["testType"], "end-to-end");
+    assert_eq!(parsed["assetKind"], "sprite");
     assert_eq!(parsed["variants"][0]["slug"], "base");
     assert_eq!(parsed["checks"][0]["referenceView"], "title");
     // The prompt template itself never leaks (only its rendered prompt does).

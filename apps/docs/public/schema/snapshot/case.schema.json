@@ -1,5 +1,60 @@
 {
   "$defs": {
+    "AssetKind": {
+      "description": "Within an asset-generation case, the shape of the asset the model draws.\n\nA case is one of: a single 2D sprite, a 2D sprite sheet, a single static 3D\nvoxel model, or a rigged/animatable 3D voxel model — never a mix, and not a\nper-variant choice: it is a property of the whole version, chosen by the\n`asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a\n`[sheet]` table (the frame grid and the named animation sequences); the two\nvoxel kinds declare a `[voxel]` table (the bounding volume), and\n[`Self::VoxelAnimation`] additionally declares a `[model]` table (the parts,\njoints, and clips of the rig). Defaults to [`Self::Sprite`] so a manifest that\npredates the discriminator — and every non-asset-generation case — resolves\nunchanged.",
+      "oneOf": [
+        {
+          "const": "sprite",
+          "description": "One sprite drawn onto the whole canvas (the original asset-generation shape).",
+          "type": "string"
+        },
+        {
+          "const": "sprite-sheet",
+          "description": "A grid of animation frames drawn onto the canvas, sliced into the named\nsequences the `[sheet]` table declares.",
+          "type": "string"
+        },
+        {
+          "const": "voxel-model",
+          "description": "A single static 3D voxel model, drawn one voxel operation at a time with the\n`voxel` binary. Declares a `[voxel]` table (the bounding volume). Rendered as\nan auto-rotating 3D model.",
+          "type": "string"
+        },
+        {
+          "const": "voxel-animation",
+          "description": "A rigged, animatable 3D voxel model: named parts in a parent/child hierarchy\nwith named joints a consuming game drives at runtime (for example a tank's\n`turret_yaw`), drawn with the `voxel-anim` binary. Declares a `[voxel]` table\nand a `[model]` table (the required parts and joints the model must produce,\non top of which it may add its own).",
+          "type": "string"
+        },
+        {
+          "const": "mc-model",
+          "description": "A static surface-meshed 3D model built with the **marching cubes** `mc`\nbinary: the model composites a signed-distance field of CSG primitives, which\nthe mesher extracts to a per-model `.glb`. Declares a `[voxel]` table\n(the field bounds) and no `[model]`. Marching cubes yields a chunky, faceted\n**low-poly** surface.",
+          "type": "string"
+        },
+        {
+          "const": "mc-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **marching cubes**\n`mc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield extracted to its own `.glb`; declares a `[voxel]` and a `[model]`\ntable.",
+          "type": "string"
+        },
+        {
+          "const": "sn-model",
+          "description": "A static surface-meshed 3D model built with the **surface nets** `sn` binary.\nDeclares a `[voxel]` table and no `[model]`. Surface nets yields a smooth,\nwatertight mid-fidelity surface with uniform triangle density.",
+          "type": "string"
+        },
+        {
+          "const": "sn-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **surface nets**\n`sn-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield; declares a `[voxel]` and a `[model]` table.",
+          "type": "string"
+        },
+        {
+          "const": "dc-model",
+          "description": "A static surface-meshed 3D model built with the **dual contouring** `dc`\nbinary. Declares a `[voxel]` table and no `[model]`. Dual contouring yields a\nhigh-fidelity surface that preserves sharp edges and corners.",
+          "type": "string"
+        },
+        {
+          "const": "dc-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **dual contouring**\n`dc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield; declares a `[voxel]` and a `[model]` table.",
+          "type": "string"
+        }
+      ]
+    },
     "CaseCheckOut": {
       "description": "A declared validation check exposed in case metadata.",
       "properties": {
@@ -183,6 +238,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A case-metadata document (`cases/<slug>/<version>.json`): the site-facing slice\nof one ingested version — its identity, variants (with rendered prompts),\nchecks, reference baselines, reviewer checklist, and scoring domains.",
   "properties": {
+    "assetKind": {
+      "$ref": "#/$defs/AssetKind",
+      "description": "The asset shape an asset-generation case produces, so the gallery can split\nits Sprite (2D) and Voxel (3D) tabs. Defaults to `sprite` for every\nnon-asset case (harmless — the split is only consulted for asset cases)."
+    },
     "checks": {
       "items": {
         "$ref": "#/$defs/CaseCheckOut"
@@ -243,6 +302,10 @@
       },
       "type": "array"
     },
+    "testType": {
+      "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TestType",
+      "description": "The case's test type, so the static gallery can scope its catalog tabs to\na single type (E2E / Sprite / Voxel / Adversarial / Performance) exactly\nas the backend-connected consoles do. Without it the site cannot tell a\ncase's type and treats every case as end-to-end."
+    },
     "variants": {
       "items": {
         "$ref": "#/$defs/CaseVariantOut"
@@ -258,6 +321,8 @@
     "slug",
     "version",
     "name",
+    "testType",
+    "assetKind",
     "difficulty",
     "tags",
     "variants",

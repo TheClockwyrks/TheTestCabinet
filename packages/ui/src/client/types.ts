@@ -3,12 +3,17 @@
 // item) both produce and consume these. Fields are camelCase to match both the
 // backend HTTP API and the run-record contract.
 import type {
+  AssetKind,
   AssetSheet,
   MediaKind,
   ModelSpec,
   RunRecord,
   TestType,
 } from "@test-cabinet/run-record";
+
+// Re-exported so console code can keep importing the asset-kind type from the
+// client layer alongside the shapes it discriminates.
+export type { AssetKind };
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type { HarnessEvent } from "@test-cabinet/run-record/event";
 import type {
@@ -80,24 +85,6 @@ export interface VariantInfo {
   // always rated on exactly the domains that apply to its selected variant.
   domains: Domain[];
 }
-
-// The asset-generation shape a case produces, mirroring the Rust `AssetKind`
-// enum (crates/core/src/test_case.rs) serialized kebab-case. Hand-maintained
-// alongside the resolve-version wire shape (`ResolvedVersion` in httpBackend),
-// which is itself hand-mirrored rather than contract-generated. The two 2D
-// `sprite*` kinds are drawn on a canvas; the eight remaining kinds are the 3D
-// voxel/mesh family (see `isVoxelAssetKind`).
-export type AssetKind =
-  | "sprite"
-  | "sprite-sheet"
-  | "voxel-model"
-  | "voxel-animation"
-  | "mc-model"
-  | "mc-animation"
-  | "sn-model"
-  | "sn-animation"
-  | "dc-model"
-  | "dc-animation";
 
 // The 3D voxel/mesh asset kinds — everything except the two flat `sprite*`
 // kinds. Mirrors `AssetKind::is_voxel` on the Rust side.

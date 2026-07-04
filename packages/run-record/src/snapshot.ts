@@ -8,11 +8,13 @@
 // in the same pass.
 
 import type {
+  AssetKind,
   HarnessSlug,
   MediaKind,
   RunMetrics,
   RunRecord,
   RunState,
+  TestType,
 } from "./index";
 import type { Rating, Review } from "./review";
 
@@ -233,6 +235,19 @@ export type CaseMetadata = {
   slug: string;
   version: string;
   name: string;
+  /**
+   * The case's test type, so the static gallery can scope its catalog tabs to
+   * a single type (E2E / Sprite / Voxel / Adversarial / Performance) exactly
+   * as the backend-connected consoles do. Without it the site cannot tell a
+   * case's type and treats every case as end-to-end.
+   */
+  testType: TestType;
+  /**
+   * The asset shape an asset-generation case produces, so the gallery can split
+   * its Sprite (2D) and Voxel (3D) tabs. Defaults to `sprite` for every
+   * non-asset case (harmless — the split is only consulted for asset cases).
+   */
+  assetKind: AssetKind;
   difficulty: string;
   tags: Array<string>;
   summary: string | null;

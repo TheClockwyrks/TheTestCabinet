@@ -118,6 +118,32 @@ export type TestType =
   | "performance";
 
 /**
+ * Within an asset-generation case, the shape of the asset the model draws.
+ *
+ * A case is one of: a single 2D sprite, a 2D sprite sheet, a single static 3D
+ * voxel model, or a rigged/animatable 3D voxel model — never a mix, and not a
+ * per-variant choice: it is a property of the whole version, chosen by the
+ * `asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a
+ * `[sheet]` table (the frame grid and the named animation sequences); the two
+ * voxel kinds declare a `[voxel]` table (the bounding volume), and
+ * [`Self::VoxelAnimation`] additionally declares a `[model]` table (the parts,
+ * joints, and clips of the rig). Defaults to [`Self::Sprite`] so a manifest that
+ * predates the discriminator — and every non-asset-generation case — resolves
+ * unchanged.
+ */
+export type AssetKind =
+  | "sprite"
+  | "sprite-sheet"
+  | "voxel-model"
+  | "voxel-animation"
+  | "mc-model"
+  | "mc-animation"
+  | "sn-model"
+  | "sn-animation"
+  | "dc-model"
+  | "dc-animation";
+
+/**
  * The subject of a run: what was run, with what, against which model.
  */
 export type RunSubject = {

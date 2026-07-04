@@ -116,7 +116,7 @@ fn main() -> Result<()> {
             file: "index.ts",
             decls: ts_decls![&cfg;
                 rr::HarnessSlug, rr::RunState, rr::AuthMode, rr::RunEnvironment, rr::RunTooling,
-                tc::TestType, rr::RunSubject, m::TokenCounts, m::Cost, m::RunMetrics,
+                tc::TestType, tc::AssetKind, rr::RunSubject, m::TokenCounts, m::Cost, m::RunMetrics,
                 tc::MediaKind, val::ProofResult, val::CheckResult, val::StepResult,
                 val::AssetGenResult, val::AssetFrameResult, tc::SheetSpec, tc::SheetSequence,
                 val::VoxelGenResult, val::VoxelPartResult, tc::ModelSpec, tc::PartSpec,
