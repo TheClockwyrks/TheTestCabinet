@@ -3,12 +3,9 @@ Sculpt the **Skyshard Interceptor**, a symmetric forward-swept fighter jet, as a
 
 ## How sculpting works
 
-The only way to place a voxel is the `voxel` binary already on your `PATH`. It is
-the sole channel: you build the model by calling it **one operation at a time**,
-and the ordered list of operations you issue — recorded to `actions.json` — is the
-**authoritative output that is scored**, not the voxels on disk. A model produced
-any other way (editing `model.png` by hand, or writing geometry files directly) is
-discarded and flagged; only the recorded operations count.
+The only way to place a voxel is the `voxel` binary already on your `PATH`. You
+build the model by calling it **one operation at a time**, and the ordered list of
+operations you issue — recorded to `actions.json` — is your submission.
 
 The volume starts **empty**. Voxels are **opaque** `#rrggbb` colors — there is no
 transparency. Each call only appends the operation to `actions.json` and renders

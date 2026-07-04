@@ -31,8 +31,7 @@ Invent the rig.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -97,9 +96,8 @@ must not contradict them (never move the forge tower under either one).
 
 ## Working the tool
 
-Sculpt each part up in sensible layers, selecting it with `--part <name>` — finish the
-forge tower and its throat, then the hammer, then the gear crown, checking each part's
-preview as you go. Define your parts with `define-part`, set pivots with `set-pivot`,
+Sculpt each part by selecting it with `--part <name>`, checking each part's preview as
+you go. Define your parts with `define-part`, set pivots with `set-pivot`,
 place joints with `define-joint`, and author the two animations' keyframes with
 `define-animation`/`add-keyframe` — running `voxel-anim render` and reading
 `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the parts fit,
@@ -111,5 +109,5 @@ stroking boxes, 3D lines, spheres, and a mirror plane) and the rig subcommands, 
 before you finish so it emits the per-part `.glb` geometry your result is built from — an
 unrendered part scores as empty (`voxel-anim render --component <part>` renders one part;
 `voxel-anim render --time <ms> --animation <name>` renders the model posed at that instant
-to check the motion). The recorded per-part logs and `rig.json` are your scored
+to check the motion). The recorded per-part logs and `rig.json` are your
 submission.

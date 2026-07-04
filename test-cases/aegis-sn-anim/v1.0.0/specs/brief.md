@@ -68,8 +68,7 @@ design that is unmistakably the Aegis and animates convincingly.
 
 ## Palette
 
-Use only these **opaque** colors (off-palette colors and stray primitives count
-against you):
+Use only these **opaque** colors:
 
 | Role | Hex |
 | --- | --- |
@@ -113,4 +112,4 @@ reading `parts/<part>.png` and the `scene/*.png` previews between calls to confi
 the parts fit, the legs reach the ground, and the animations read with weight, and
 running `sn-anim render` once more before you finish so every part's `.glb` is
 emitted. The recorded operations, the per-part `.glb`, and `rig.json` are your
-scored submission.
+submission.

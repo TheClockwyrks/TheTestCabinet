@@ -3,13 +3,9 @@ as a **3D mesh** in a 120x110x150 volume using only the `mc` Marching Cubes tool
 
 ## How meshing works
 
-The only way to shape the surface is the `mc` binary already on your `PATH`. It is
-the sole channel: you build the model by calling it **one operation at a time**, and
-the ordered operations you issue are the
-**authoritative output that is scored**, not any pixels on disk (the mesh is
-extracted to `mesh.glb`). A model produced any other way (writing `mesh.glb`
-directly, editing `model.png` by hand) is discarded and flagged; only what the
-tool emits counts.
+The only way to shape the surface is the `mc` binary already on your `PATH`. You
+build the model by calling it **one operation at a time**, and the ordered
+operations you issue are your submission (the mesh is extracted to `mesh.glb`).
 
 `mc` maintains a **continuous signed-distance field** and extracts a triangle mesh
 from its surface. You shape that field by

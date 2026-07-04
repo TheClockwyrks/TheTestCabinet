@@ -4,21 +4,21 @@ only that tool.
 
 ## How sculpting works
 
-The only way to shape the surface is the `dc` binary already on your `PATH`. It is
-the sole channel: rather than placing discrete voxels, you composite a **continuous
+The only way to shape the surface is the `dc` binary already on your `PATH`. Rather
+than placing discrete voxels, you composite a **continuous
 signed-distance field** by calling `dc` **one operation at a time** — unioning
 material in with `add-box` / `add-sphere` / `add-ellipsoid` / `add-cylinder` and
 carving it away with the matching `subtract-*` primitives, each in an opaque
 `#rrggbb` color. `dc` is the **high-fidelity, sharp-feature-preserving** extractor:
 it keeps crisp edges and corners instead of rounding them, and it exposes a
 `--sharp` / `--smooth` tag on primitives (the low-poly and smooth extractors do
-not). Build through the tool — the surface it extracts is what is scored.
+not).
 
 The field starts **empty**. Colors are **opaque** `#rrggbb` — there is no
 transparency. Each call only records the operation and renders nothing; run
 `dc render` when you want to see the model — it composites the field, extracts the
 surface to `mesh.glb`, and draws the preview PNG `model.png`. The recorded operations
-are the authoritative output that is scored. An empty log is already in place at
+are your submission. An empty log is already in place at
 `{{workspace}}`; you produce the preview and mesh yourself by running `dc render`.
 
 Each operation is an ordinary subcommand with flags, for example:

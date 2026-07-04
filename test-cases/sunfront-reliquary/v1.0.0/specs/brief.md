@@ -70,8 +70,7 @@ the monument with no gap.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -110,13 +109,14 @@ never carried along by the ring, core, or fins; the ring and fins turn opposite 
 
 ## Working the tool
 
-Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
-`set-pivot`, place joints with `define-joint`, and author the three animations' keyframes
-— running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews
-between calls to confirm the parts fit, the core sits cradled with room to rise, the ring
-encircles it, the fins crown it, and the animations read with weight. Run `voxel-anim
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the three animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the core sits cradled
+with room to rise, the ring encircles it, the fins crown it, and the animations read
+with weight. Run `voxel-anim
 render` before you finish so it emits the per-part `.glb` geometry your result is built
 from — an unrendered part scores as empty (`voxel-anim render --component <part>` renders
 one part; `voxel-anim render --time <ms> --animation <name>` renders the model posed at
 that instant to check the motion). The recorded per-part logs and `rig.json` are your
-scored submission.
+submission.

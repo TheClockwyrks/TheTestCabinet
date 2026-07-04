@@ -52,8 +52,7 @@ forward-firing).
 
 ## Palette
 
-Use only these opaque colors (off-palette colors and stray primitives count against
-you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -68,8 +67,7 @@ muzzle glow, or a running-light stripe — so it shows from many angles.
 
 ## Working the tool
 
-`dc` is the only channel; anything made another way is discarded. Build the hull,
-legs, turrets, cannon, and vane as one symmetric half `mirror`-ed across `x = 60`,
-holding armor edges with `--sharp` and using `--blend`/`--smooth` where you want
-rounding. Stop when `model.png` reads as the Aegis — the recorded operations are your
-submission.
+`dc` is the only channel. Build the hull, legs, turrets, cannon, and vane as one
+symmetric half `mirror`-ed across `x = 60`, holding armor edges with `--sharp` and
+using `--blend`/`--smooth` where you want rounding. Stop when `model.png` reads as
+the Aegis — the recorded operations are your submission.

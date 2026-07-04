@@ -65,8 +65,7 @@ top for the beacon — so they meet the keep with no gap.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -106,10 +105,10 @@ stays fixed — never carried along by the crown, gate, or beacon).
 
 ## Working the tool
 
-Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
-`set-pivot`, place joints with `define-joint`, and author the three animations' keyframes
-— running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
-parts fit, the crown rings the summit, the gate seats in the front wall, the beacon
-stands on the spire, and the animations read with weight. Sculpt each part up in sensible
-layers — finish the keep with its walls, towers, and spire, then the crown, the gate, and
-the beacon. The recorded per-part logs and `rig.json` are your scored submission.
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the three animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the crown rings the
+summit, the gate seats in the front wall, the beacon stands on the spire, and the
+animations read with weight. The recorded per-part logs and `rig.json` are your
+submission.

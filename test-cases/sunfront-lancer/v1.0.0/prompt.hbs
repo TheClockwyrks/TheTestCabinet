@@ -13,12 +13,9 @@ marksman-mech needs.
 ## How sculpting and rigging works
 
 The only way to place a voxel and edit the rig is the `voxel-anim` binary already
-on your `PATH`. It is the sole channel: you build the model by calling it **one
-operation at a time**, and the ordered operations you issue — recorded per part to
-`parts/<part>.actions.json` — together with the rig you define are the
-**authoritative output that is scored**, not the voxels on disk. Anything produced
-another way (writing files directly, editing a preview by hand) is discarded and
-flagged; only the recorded operations and the rig count.
+on your `PATH`. You build the model by calling it **one operation at a time**, and
+the ordered operations you issue — recorded per part to `parts/<part>.actions.json`
+— together with the rig you define are your submission.
 
 You paint **discrete opaque voxel cells**. Set and clear single cells, fill and
 stroke boxes, draw 3D lines and spheres, and use a mirror plane. Voxels are

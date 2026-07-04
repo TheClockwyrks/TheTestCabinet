@@ -57,8 +57,7 @@ and animates convincingly.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -96,7 +95,7 @@ animation, by this name, and must not contradict it (e.g. don't drive the hull u
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
 with `set-pivot`, place joints with `define-joint`, and author the required
-animation's keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews
-between calls to confirm the parts fit, the turret seats on the hull, the gun meets
-the turret's front, and the animation reads with weight. The recorded per-part logs
-and `rig.json` are your scored submission.
+animation's keyframes — running `voxel-anim render` and reading `parts/<part>.png`
+and the `scene/*.png` previews between calls to confirm the parts fit, the turret
+seats on the hull, the gun meets the turret's front, and the animation reads with
+weight. The recorded per-part logs and `rig.json` are your submission.

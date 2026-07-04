@@ -41,8 +41,7 @@ unrendered part scores as empty). `voxel-anim --help` is the contract.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -104,9 +103,8 @@ stays fixed — never carried along by the arm or the ring).
 ## Working the tool
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
-`set-pivot`, place joints with `define-joint`, and author the two animations' keyframes —
-running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
-parts fit, the rail-arm sets into the mid-shaft, the focus-ring seats on the crown, and
-the animations read with weight. Sculpt each part up in sensible layers — finish the base
-tower and its footing, then the rail-arm, then the focus-ring. The recorded per-part logs
-and `rig.json` are your scored submission.
+`set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the rail-arm sets into the
+mid-shaft, the focus-ring seats on the crown, and the animations read with weight. The
+recorded per-part logs and `rig.json` are your submission.

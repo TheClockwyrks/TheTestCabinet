@@ -26,8 +26,7 @@ Invent the rig.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -82,10 +81,11 @@ produce these two animations, by these names, and must not contradict them.
 ## Working the tool
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
-`set-pivot`, place joints with `define-joint`, and author the two animations' keyframes —
-running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
-parts fit, the door sits square in its front opening, the flywheel seats on its flank, and
-the animations read with weight. Run `voxel-anim --help` for the available operations, the
-rig subcommands, and the animation subcommands, and `voxel-anim <operation> --help` for
-each one's exact flags. Call `voxel-anim` once per operation. The recorded per-part logs
-and `rig.json` are your scored submission.
+`set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the door sits square in
+its front opening, the flywheel seats on its flank, and the animations read with weight.
+Run `voxel-anim --help` for the available operations, the rig subcommands, and the
+animation subcommands, and `voxel-anim <operation> --help` for each one's exact flags.
+Call `voxel-anim` once per operation. The recorded per-part logs and `rig.json` are
+your submission.

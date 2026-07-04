@@ -14,12 +14,9 @@ needs.
 ## How compositing and rigging works
 
 The only way to build a part and edit the rig is the `dc-anim` binary already on your
-`PATH`. It is the sole channel: you build the model by calling it **one operation at a
-time**, and the geometry it **emits** — one per-part `.glb` (binary glTF) mesh —
-together with the rig you define are the **authoritative output that is scored**, not
-any file you write yourself. Anything produced another way (writing a mesh directly,
-editing a preview by hand) is discarded and flagged; only the tool-emitted meshes and
-the rig count.
+`PATH`. You build the model by calling it **one operation at a time**, and the
+geometry it **emits** — one per-part `.glb` (binary glTF) mesh — together with the rig
+you define are your submission.
 
 Unlike painting discrete voxels, `dc-anim` builds each part's geometry as a
 **continuous signed-distance field**: you **add** primitives (spheres, boxes,

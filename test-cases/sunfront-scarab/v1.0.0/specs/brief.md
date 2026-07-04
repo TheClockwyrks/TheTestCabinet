@@ -31,8 +31,7 @@ needs, where they attach, and how they articulate is the test. Invent the rig.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -91,9 +90,9 @@ subtle antenna twitch), but you must not drop or contradict the required `walk` 
 
 The only way to place a voxel and edit the rig is the `voxel-anim` binary already on
 your `PATH`. Define your own parts with `define-part` (giving each a parent and a
-pivot), sculpt each up in sensible layers by selecting it with `--part <name>`, set
-pivots with `set-pivot`, place joints with `define-joint`, and author the two
-animations' keyframes with `define-animation`/`add-keyframe`. Run `voxel-anim --help`
+pivot), sculpt each by selecting it with `--part <name>`, set pivots with
+`set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes with `define-animation`/`add-keyframe`. Run `voxel-anim --help`
 for the available operations (setting and clearing single voxels, filling and stroking
 boxes, 3D lines, spheres, and a mirror plane), the rig subcommands, and the animation
 subcommands, and `voxel-anim <operation> --help` for each one's exact flags. Call

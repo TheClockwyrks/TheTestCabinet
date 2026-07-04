@@ -61,8 +61,7 @@ unmistakably the Flakhound and animates convincingly.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -101,11 +100,11 @@ under `flak_track` or the weapon under `walk`).
 ## Working the tool
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
-`set-pivot`, place joints with `define-joint`, and author the two animations' keyframes
-— running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm
-the parts fit, the legs seat under the body and reach the ground, the turret sits on
-the back and the barrels meet its front, and the animations read with weight. Run
-`voxel-anim --help` for the available operations (setting and clearing single voxels,
-filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the rig and
-animation subcommands, and `voxel-anim <operation> --help` for each one's exact flags.
-The recorded per-part logs and `rig.json` are your scored submission.
+`set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the legs seat under the
+body and reach the ground, the turret sits on the back and the barrels meet its front,
+and the animations read with weight. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
+mirror plane) and the rig and animation subcommands, and `voxel-anim <operation> --help`
+for each one's exact flags. The recorded per-part logs and `rig.json` are your submission.

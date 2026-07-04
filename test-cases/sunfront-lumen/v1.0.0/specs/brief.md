@@ -31,8 +31,7 @@ to invent. Work out the pieces a hovering, ring-spinning, beam-nodding drone nee
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -112,4 +111,4 @@ flags. Call `voxel-anim` once per operation. Run `voxel-anim render` before you 
 so it emits the per-part `.glb` geometry your result is built from — an unrendered part
 scores as empty (`voxel-anim render --component <part>` renders one part; `voxel-anim
 render --time <ms> --animation <name>` renders the model posed at that instant to check
-the motion). The recorded per-part logs and `rig.json` are your scored submission.
+the motion). The recorded per-part logs and `rig.json` are your submission.

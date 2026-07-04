@@ -57,8 +57,7 @@ design that is unmistakably the Foundry and animates convincingly.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -90,10 +89,11 @@ not ride along with the crane arm or the piston.
 
 ## Working the tool
 
-Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
-`set-pivot`, place joints with `define-joint`, and author the two animations' keyframes —
-running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
-parts fit, the crane arm cantilevers off the top, the piston seats in its flank, and the
-animations read with weight. Run `voxel-anim --help` for the available operations, the rig
-subcommands, and the animation subcommands, and `voxel-anim <operation> --help` for each
-one's exact flags. The recorded per-part logs and `rig.json` are your scored submission.
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the crane arm
+cantilevers off the top, the piston seats in its flank, and the animations read with
+weight. Run `voxel-anim --help` for the available operations, the rig subcommands, and
+the animation subcommands, and `voxel-anim <operation> --help` for each one's exact
+flags. The recorded per-part logs and `rig.json` are your submission.

@@ -60,8 +60,7 @@ Sentinel and animates convincingly.
 
 ## Palette
 
-Use only these opaque colors (the model is regenerated from your operations, so
-off-palette colors and stray voxels count against you):
+Use only these opaque colors:
 
 | Role | Hex |
 | --- | --- |
@@ -109,4 +108,4 @@ read with weight. Run `voxel-anim render` before you finish so it emits the per-
 `.glb` geometry your result is built from — an unrendered part scores as empty
 (`voxel-anim render --component <part>` renders one part; `voxel-anim render --time
 <ms> --animation <name>` renders the model posed at that instant to check the motion).
-The recorded per-part logs and `rig.json` are your scored submission.
+The recorded per-part logs and `rig.json` are your submission.

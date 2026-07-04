@@ -3,8 +3,8 @@ Sculpt the **Aegis**, a colossal six-legged walking fortress, as a static
 
 ## How sculpting works
 
-The only way to shape the surface is the `sn` binary already on your `PATH`. It is
-the sole channel: you build the model by calling it **one operation at a time**.
+The only way to shape the surface is the `sn` binary already on your `PATH`. You
+build the model by calling it **one operation at a time**.
 Unlike a voxel tool that paints discrete cubes, `sn` maintains a **continuous
 signed-distance field** — you **composite primitives** into it (adding material
 with a sphere, box, ellipsoid, or cylinder; carving it away with another) and it
@@ -15,9 +15,8 @@ surface with no sharp edges, at a fixed resolution; corners round by constructio
 The field starts **empty**. Every primitive carries an **opaque** `#rrggbb` color —
 there is no transparency. Each call only records the operation and renders nothing;
 run `sn render` when you want to see the model — it extracts the surface to
-`mesh.glb` and draws the preview PNG `model.png`. The recorded operations — from
-which that surface is produced — are the authoritative output that is judged; a
-surface produced any other way is discarded. An empty log is already in place at
+`mesh.glb` and draws the preview PNG `model.png`. The recorded operations are your
+submission. An empty log is already in place at
 `{{workspace}}`; you produce the preview and mesh yourself by running `sn render`.
 
 Each operation is an ordinary subcommand with flags, for example:
