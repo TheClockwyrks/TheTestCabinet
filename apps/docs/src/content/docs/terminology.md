@@ -263,8 +263,8 @@ pixel (there is no alpha). The two 3D
 voxel volume, which always starts empty: `voxel-model` produces a
 static model and `voxel-animation` produces a [rig](#rig) — named [parts](#part)
 posed by named [joints](#joint). A voxel run's authoritative output is the data its
-voxel binary **emits** — the meshed geometry (a per-part `.glb`, plus the
-sparse `voxels.json` for the cube tools) and a rendered preview; the validator
+voxel binary **emits** — the meshed geometry (a per-part `.glb`) and a rendered
+preview; the validator
 parses and validates that emitted data rather than regenerating it, and the
 frontend renders an interactive 3D model with three.js. See
 [Voxel models and rigs](/testing/asset-generation/overview/#voxel-models-and-rigs).

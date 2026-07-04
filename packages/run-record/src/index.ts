@@ -519,7 +519,7 @@ export type VoxelGenResult = {
  *
  * For a static model this is the whole model's one part; for an animated model
  * there is one per declared part. Cheat detection is retired for the voxel family:
- * the scored artifact is the emitted geometry (the `PartMesh`-shaped `mesh.json`
+ * the scored artifact is the emitted geometry (the `PartMesh`-shaped `.glb`
  * every voxel-family binary emits) plus reviewer judgment of the model's own
  * rendered preview, so — unlike the sprite [`AssetFrameResult`] — a voxel part
  * carries no regenerated image and no cheat divergence.
@@ -531,19 +531,12 @@ export type VoxelPartResult = {
    */
   name: string;
   /**
-   * Run-root-relative path to the `PartMesh`-shaped `mesh.json` this part's binary
+   * Run-root-relative path to the `PartMesh`-shaped `.glb` this part's binary
    * emitted — **what the client renders in 3D** for every voxel-family kind (both
-   * the cube kinds and the six surface-meshed kinds emit it). `mesh.json` for a
-   * static kind, `meshes/<part>.json` per part for an animated one.
+   * the cube kinds and the six surface-meshed kinds emit it). `mesh.glb` for a
+   * static kind, `meshes/<part>.glb` per part for an animated one.
    */
   mesh: string;
-  /**
-   * Run-root-relative path to the sparse voxel data ([`VoxelsFile`]) regenerated
-   * from this part's operation log. A secondary artifact retained for the two cube
-   * kinds (which regenerate it); for a meshed kind — which emits no `voxels.json` —
-   * this repeats [`Self::mesh`]. The client renders from [`Self::mesh`], not this.
-   */
-  regeneratedVoxels: string;
   /**
    * Run-root-relative path to the isometric PNG the model rendered for this part
    * (its `preview`) — the reviewed image for this part.
@@ -788,64 +781,6 @@ export type AnimationTrackSpec = {
    * The keyframes, in time order, sampled over the animation's period.
    */
   keyframes: Array<KeyframeSpec>;
-};
-
-/**
- * The client-facing voxel data file (`voxels.json`) the validator regenerates from
- * a part's operation log. Sparse (only occupied voxels are listed) because a voxel
- * volume is mostly empty; emitted in x/y/z scan order so it is byte-stable. This
- * is a produced run artifact, not part of the run record — the 3D viewer and the
- * reusable `@test-cabinet/voxel-runtime` package load it directly.
- */
-export type VoxelsFile = {
-  /**
-   * The bounding volume the voxels sit within.
-   */
-  dims: VoxelDims;
-  /**
-   * The occupied voxels, in x/y/z scan order.
-   */
-  voxels: Array<VoxelCell>;
-};
-
-/**
- * The bounding volume of a [`VoxelsFile`], in voxels.
- */
-export type VoxelDims = {
-  /**
-   * Extent along x.
-   */
-  width: number;
-  /**
-   * Extent along y (up).
-   */
-  height: number;
-  /**
-   * Extent along z.
-   */
-  depth: number;
-};
-
-/**
- * One occupied voxel in a [`VoxelsFile`]: an integer cell and its opaque color.
- */
-export type VoxelCell = {
-  /**
-   * Voxel x coordinate.
-   */
-  x: number;
-  /**
-   * Voxel y coordinate.
-   */
-  y: number;
-  /**
-   * Voxel z coordinate.
-   */
-  z: number;
-  /**
-   * The voxel's opaque color as a `#rrggbb` hex string.
-   */
-  color: string;
 };
 
 /**

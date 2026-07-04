@@ -25,12 +25,12 @@
         },
         {
           "const": "mc-model",
-          "description": "A static surface-meshed 3D model built with the **marching cubes** `mc`\nbinary: the model composites a signed-distance field of CSG primitives, which\nthe mesher extracts to a per-model `mesh.json`. Declares a `[voxel]` table\n(the field bounds) and no `[model]`. Marching cubes yields a chunky, faceted\n**low-poly** surface.",
+          "description": "A static surface-meshed 3D model built with the **marching cubes** `mc`\nbinary: the model composites a signed-distance field of CSG primitives, which\nthe mesher extracts to a per-model `.glb`. Declares a `[voxel]` table\n(the field bounds) and no `[model]`. Marching cubes yields a chunky, faceted\n**low-poly** surface.",
           "type": "string"
         },
         {
           "const": "mc-animation",
-          "description": "A rigged, animatable surface-meshed 3D model built with the **marching cubes**\n`mc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield extracted to its own `mesh.json`; declares a `[voxel]` and a `[model]`\ntable.",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **marching cubes**\n`mc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield extracted to its own `.glb`; declares a `[voxel]` and a `[model]`\ntable.",
           "type": "string"
         },
         {

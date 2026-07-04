@@ -43,11 +43,10 @@ and confirms it is well-formed and readable:
 
 - **the emitted geometry** — the meshed surface as a per-part `.glb` (a standard
   glTF 2.0 binary decoded into the `PartMesh` shape the runtime and the [glTF
-  exporter](/components/voxel-runtime/overview/#exporting-to-gltf) consume) and, for
-  the cube tools (`voxel`/`voxel-anim`), the sparse, order-stable `voxels.json`
-  alongside it (only occupied cells, each an opaque `#rrggbb`, within the declared
-  `[voxel]` volume). These are produced artifacts, not part of the run record; they
-  are what the frontend renders as an interactive 3D model with three.js (see
+  exporter](/components/voxel-runtime/overview/#exporting-to-gltf) consume); the cube
+  tools (`voxel`/`voxel-anim`) emit a face-culled cube mesh in the same `.glb` form.
+  This is a produced artifact, not part of the run record; it is what the frontend
+  renders as an interactive 3D model with three.js (see
   [voxel-runtime](/components/voxel-runtime/overview/)).
 - **the rendered preview PNG(s)** — the previews the binary rendered during the run
   (see [voxel binaries](/testing/asset-generation/voxel-binaries/)). These are taken

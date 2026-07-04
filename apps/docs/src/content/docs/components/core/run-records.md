@@ -99,13 +99,12 @@ The harness version is not duplicated here; it lives in the subject.
   far the regenerated image differs from the model's preview, `0..=1`, or null when
   there was no readable preview to compare), which is recorded rather than gated. A
   **voxel** run is not regenerated and carries no cheat divergence: it carries the
-  **emitted geometry** — a per-part `.glb` (plus the sparse `voxels.json` for
-  the cube tools, and `rig.json` for an animated model) — and the binary's rendered
-  preview. On publish the media files are uploaded and served back as per-run media
-  (`/runs/<id>/asset/<file>`, where `<file>` is `regenerated.png`, `preview.png`, or
-  `actions.json` for a sprite and `.glb` (`mesh.glb` or `meshes/{part}.glb`),
-  `voxels.json`, `rig.json`, or
-  `preview.png` for a voxel run) so the gallery can show the result. The field is
+  **emitted geometry** — a per-part `.glb` (plus `rig.json` for an animated model) —
+  and the binary's rendered preview. On publish the media files are uploaded and
+  served back as per-run media (`/runs/<id>/asset/<file>`, where `<file>` is
+  `regenerated.png`, `preview.png`, or `actions.json` for a sprite and `.glb`
+  (`mesh.glb` or `meshes/{part}.glb`), `rig.json`, or `preview.png` for a voxel run)
+  so the gallery can show the result. The field is
   absent on an end-to-end run.
 
 ### Links

@@ -211,11 +211,6 @@ pub struct VoxelPartResult {
     /// the cube kinds and the six surface-meshed kinds emit it). `mesh.glb` for a
     /// static kind, `meshes/<part>.glb` per part for an animated one.
     pub mesh: String,
-    /// Run-root-relative path to the sparse voxel data ([`VoxelsFile`]) regenerated
-    /// from this part's operation log. A secondary artifact retained for the two cube
-    /// kinds (which regenerate it); for a meshed kind — which emits no `voxels.json` —
-    /// this repeats [`Self::mesh`]. The client renders from [`Self::mesh`], not this.
-    pub regenerated_voxels: String,
     /// Run-root-relative path to the isometric PNG the model rendered for this part
     /// (its `preview`) — the reviewed image for this part.
     pub preview_image: String,
@@ -228,49 +223,6 @@ pub struct VoxelPartResult {
     /// Detail about anything that could not be evaluated for this part.
     #[serde(default)]
     pub detail: Option<String>,
-}
-
-/// The client-facing voxel data file (`voxels.json`) the validator regenerates from
-/// a part's operation log. Sparse (only occupied voxels are listed) because a voxel
-/// volume is mostly empty; emitted in x/y/z scan order so it is byte-stable. This
-/// is a produced run artifact, not part of the run record — the 3D viewer and the
-/// reusable `@test-cabinet/voxel-runtime` package load it directly.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct VoxelsFile {
-    /// The bounding volume the voxels sit within.
-    pub dims: VoxelDims,
-    /// The occupied voxels, in x/y/z scan order.
-    pub voxels: Vec<VoxelCell>,
-}
-
-/// The bounding volume of a [`VoxelsFile`], in voxels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct VoxelDims {
-    /// Extent along x.
-    pub width: u32,
-    /// Extent along y (up).
-    pub height: u32,
-    /// Extent along z.
-    pub depth: u32,
-}
-
-/// One occupied voxel in a [`VoxelsFile`]: an integer cell and its opaque color.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct VoxelCell {
-    /// Voxel x coordinate.
-    pub x: i64,
-    /// Voxel y coordinate.
-    pub y: i64,
-    /// Voxel z coordinate.
-    pub z: i64,
-    /// The voxel's opaque color as a `#rrggbb` hex string.
-    pub color: String,
 }
 
 /// Which side a match outcome is reported from, for an adversarial run.

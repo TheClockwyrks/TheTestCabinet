@@ -68,8 +68,8 @@ const FACES: [Face; 6] = [
 
 /// Build the surface mesh for a voxel set, culling interior faces and baking each
 /// voxel's color into per-vertex `0..1` RGB. Voxels are visited in dense scan order
-/// (x fastest, matching [`VoxelSet::to_voxels_json`]); vertex numbering follows that
-/// order, which affects only the index labels, not the geometry.
+/// (x fastest, then y, then z — the dense cell index order); vertex numbering follows
+/// that order, which affects only the index labels, not the geometry.
 pub fn build_part_mesh(set: &VoxelSet) -> PartMesh {
     let (w, h) = (set.dims.width as i64, set.dims.height as i64);
     let mut positions: Vec<f32> = Vec::new();

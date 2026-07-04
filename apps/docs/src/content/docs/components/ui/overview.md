@@ -53,7 +53,7 @@ interfaces. A host imports only what it needs.
   [asset-generation](/testing/asset-generation/overview/) run's media — the
   regenerated, target, and preview images plus the action log, and for a
   [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run its
-  emitted per-part `.glb` (plus `voxels.json` for the cube tools) and `rig.json` — the same way (a
+  emitted per-part `.glb` and `rig.json` — the same way (a
   published run from the backend's `/runs/{id}/asset/{file}` endpoint; a produced
   run from the artifact service's matching endpoint; the site from snapshot
   assets), which the **Verdict** tab's result view shows side by side. A voxel run

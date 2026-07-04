@@ -909,8 +909,8 @@ impl AssetKind {
 
     /// Whether this kind is one of the six **surface-meshed** kinds (`mc`/`sn`/`dc`
     /// and their `-anim` siblings), which composite a signed-distance field and emit
-    /// a `PartMesh`-shaped `.glb` — as opposed to the two cube kinds, which
-    /// regenerate `voxels.json`. Selects the mesh-parsing validation path and the
+    /// a `PartMesh`-shaped `.glb` — as opposed to the two cube kinds, which emit a
+    /// face-culled cube mesh. Selects the mesh-parsing validation path and the
     /// per-binary mesh output threading.
     pub fn is_meshed(self) -> bool {
         matches!(

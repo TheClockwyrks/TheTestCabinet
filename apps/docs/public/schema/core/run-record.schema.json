@@ -1228,7 +1228,7 @@
       "type": "object"
     },
     "VoxelPartResult": {
-      "description": "The regenerate result for one part of a voxel-generation run.\n\nFor a static model this is the whole model's one part; for an animated model\nthere is one per declared part. Cheat detection is retired for the voxel family:\nthe scored artifact is the emitted geometry (the `PartMesh`-shaped `mesh.json`\nevery voxel-family binary emits) plus reviewer judgment of the model's own\nrendered preview, so — unlike the sprite [`AssetFrameResult`] — a voxel part\ncarries no regenerated image and no cheat divergence.",
+      "description": "The regenerate result for one part of a voxel-generation run.\n\nFor a static model this is the whole model's one part; for an animated model\nthere is one per declared part. Cheat detection is retired for the voxel family:\nthe scored artifact is the emitted geometry (the `PartMesh`-shaped `.glb`\nevery voxel-family binary emits) plus reviewer judgment of the model's own\nrendered preview, so — unlike the sprite [`AssetFrameResult`] — a voxel part\ncarries no regenerated image and no cheat divergence.",
       "properties": {
         "detail": {
           "default": null,
@@ -1236,7 +1236,7 @@
           "type": ["string", "null"]
         },
         "mesh": {
-          "description": "Run-root-relative path to the `PartMesh`-shaped `mesh.json` this part's binary\nemitted — **what the client renders in 3D** for every voxel-family kind (both\nthe cube kinds and the six surface-meshed kinds emit it). `mesh.json` for a\nstatic kind, `meshes/<part>.json` per part for an animated one.",
+          "description": "Run-root-relative path to the `PartMesh`-shaped `.glb` this part's binary\nemitted — **what the client renders in 3D** for every voxel-family kind (both\nthe cube kinds and the six surface-meshed kinds emit it). `mesh.glb` for a\nstatic kind, `meshes/<part>.glb` per part for an animated one.",
           "type": "string"
         },
         "name": {
@@ -1257,10 +1257,6 @@
           "description": "Run-root-relative path to the isometric PNG the model rendered for this part\n(its `preview`) — the reviewed image for this part.",
           "type": "string"
         },
-        "regeneratedVoxels": {
-          "description": "Run-root-relative path to the sparse voxel data ([`VoxelsFile`]) regenerated\nfrom this part's operation log. A secondary artifact retained for the two cube\nkinds (which regenerate it); for a meshed kind — which emits no `voxels.json` —\nthis repeats [`Self::mesh`]. The client renders from [`Self::mesh`], not this.",
-          "type": "string"
-        },
         "voxelCount": {
           "description": "How many occupied voxels the regenerated part contains.",
           "format": "uint",
@@ -1271,7 +1267,6 @@
       "required": [
         "name",
         "mesh",
-        "regeneratedVoxels",
         "previewImage",
         "opsLog",
         "operationCount",

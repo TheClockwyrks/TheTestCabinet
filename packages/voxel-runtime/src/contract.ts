@@ -6,10 +6,6 @@
  */
 
 export type {
-  // Regenerated voxel data (`voxels.json`).
-  VoxelsFile,
-  VoxelDims,
-  VoxelCell,
   // The rig (`rig.json` / resolved `ModelSpec`).
   ModelSpec,
   PartSpec,

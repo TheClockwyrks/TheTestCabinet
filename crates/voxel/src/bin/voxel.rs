@@ -5,11 +5,11 @@
 //! each call appends the operation to the run's `actions.json` and re-renders the
 //! isometric preview image from the **whole** log, so the recorded log is always
 //! the single source of truth and the preview always reflects it. After the run,
-//! `crates/core` regenerates the scored voxel data and image from that same log
-//! through the same [`test_cabinet_voxel`] library — so a volume produced any other
-//! way cannot match. The operation subcommands' `--help` is the contract; no
-//! operations schema is seeded. This binary does **not** write `voxels.json`; the
-//! validator regenerates that from the log.
+//! `crates/core` replays that same log through the same [`test_cabinet_voxel`]
+//! library to count the occupied voxels — so a volume produced any other way cannot
+//! match. The operation subcommands' `--help` is the contract; no operations schema
+//! is seeded. The binary emits a face-culled cube `.glb` (the geometry the 3D client
+//! renders) alongside the log.
 //!
 //! See `apps/docs/src/content/docs/testing/asset-generation/`.
 

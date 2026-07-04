@@ -417,12 +417,11 @@ impl SnapshotBuilder {
                 .collect()
         } else if let Some(voxel) = run.record.validation.voxel.as_ref() {
             // A voxel run publishes each part's per-part `.glb` (what the 3D viewer
-            // renders), the secondary regenerated `voxels.json`, the model's own
-            // isometric preview PNG, and the op log — a static model under bare names,
-            // an animated model suffixing each part with `-<index>`, matching
-            // `playable::serve_asset_file` and the driver mirror. Cheat detection is
-            // retired for voxel, so there is no regenerated PNG. The rig itself travels
-            // inline in the run record.
+            // renders), the model's own isometric preview PNG, and the op log — a
+            // static model under bare names, an animated model suffixing each part
+            // with `-<index>`, matching `playable::serve_asset_file` and the driver
+            // mirror. Cheat detection is retired for voxel, so there is no regenerated
+            // PNG. The rig itself travels inline in the run record.
             let animated = voxel.model.is_some() || voxel.rig.is_some();
             voxel
                 .parts
@@ -438,7 +437,6 @@ impl SnapshotBuilder {
                         format!("preview{suffix}.png"),
                         format!("actions{suffix}.json"),
                         format!("mesh{suffix}.glb"),
-                        format!("voxels{suffix}.json"),
                     ]
                 })
                 .collect()

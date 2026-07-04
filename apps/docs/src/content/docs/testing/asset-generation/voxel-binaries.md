@@ -24,8 +24,8 @@ plumbing, the cube mesher, and the `wgpu` renderer — and each is baked into it
 the **voxel image** (`test-cabinet-voxel`) and `voxel-anim` into the
 **voxel-animation image** (`test-cabinet-voxel-animation`), so a run carries only
 the tool it uses. Nothing is regenerated or re-rendered after the run: the binary
-**emits** the geometry (`voxels.json` and a per-part `.glb`) and the rig
-(`rig.json`), and the validator parses those and confirms they are well-formed (see
+**emits** the geometry (a per-part `.glb`) and the rig (`rig.json`), and the
+validator parses those and confirms they are well-formed (see
 [Evaluation](/testing/asset-generation/evaluation/)).
 
 ## Voxels are opaque and the volume starts empty
@@ -77,10 +77,11 @@ so the recorded log produces an exact, order-only volume.
 ## How a call records and previews
 
 Each operation appends itself to the run's **operation log**, updates the part's
-emitted geometry — the `voxels.json` and a per-part `.glb` (the meshed surface as a
-standard glTF 2.0 binary, decoded into the runtime's `PartMesh` shape) — and re-renders the **preview** from that
-geometry, so the recorded log documents every operation and the emitted data and
-preview always reflect it. The orchestrator seeds a `voxel.config.json` (static) or
+emitted geometry — a per-part `.glb` (the meshed surface as a standard glTF 2.0
+binary, decoded into the runtime's `PartMesh` shape) — and re-renders the **preview**
+from that geometry, so the recorded log documents every operation and the emitted
+data and preview always reflect it. The orchestrator seeds a `voxel.config.json`
+(static) or
 `voxel-anim.config.json` (animated) next to the workspace giving the volume
 dimensions, background, the log/preview/geometry paths — and, for the animated tool,
 the part list and the `rig.json` path — so an operation needs no volume flags. A
@@ -103,7 +104,7 @@ the retired integer-only isometric rasterizer (`crates/voxel/src/raster.rs`); th
 preview no longer needs to be byte-reproducible, because nothing regenerates it
 after the run (see [Evaluation](/testing/asset-generation/evaluation/)). The preview
 is a **still** image; the interactive, rotatable 3D view is the frontend's three.js
-rendering of the emitted `.glb`/`voxels.json` (see
+rendering of the emitted per-part `.glb` (see
 [voxel-runtime](/components/voxel-runtime/overview/)), not something the binary
 produces.
 
@@ -115,12 +116,13 @@ the model's sculpting can be streamed to the viewer in real time, exactly as for
 the [drawing binaries](/testing/asset-generation/binaries/#live-preview): the
 orchestrator adds a `live` block to the seeded config, and after each operation the
 binary connects back to the run host and streams a one-line JSON header
-(`{ token, frame, operationCount, operation, length, voxelLength }`) followed by the
-freshly rendered preview PNG's raw bytes and then the part's current `voxels.json`
-text (`voxelLength` bytes). The voxel body lets the viewer rebuild the model **in
-3D** as it is sculpted — rotating it and assembling the scene exactly as the
-finished-run view does — rather than showing only the still preview PNG; a
-PNG-only viewer simply ignores it. For an animated model the `frame` field carries
+(`{ token, frame, operationCount, operation, length, meshLength }`) followed by the
+freshly rendered preview PNG's raw bytes and then the part's current `.glb` bytes
+(`meshLength` bytes) — the same glTF geometry the 3D client renders. The mesh body
+lets the viewer rebuild the model **in 3D** as it is sculpted — rotating it and
+assembling the scene exactly as the finished-run view does — rather than showing only
+the still preview PNG; a PNG-only viewer simply ignores it. For an animated model the
+`frame` field carries
 the **part index**, so the viewer can show the most-recently-sculpted part, the
 status of every part, and the assembled scene at once (a static model uses part
 index `0`). Streaming is **best-effort and non-essential** — absent for an unwatched

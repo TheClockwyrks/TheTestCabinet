@@ -156,13 +156,11 @@ pub struct ServedAssetFile {
 ///   (its one frame, index 0);
 /// - a sprite sheet uses `regenerated-<index>.png`, `preview-<index>.png`, or
 ///   `actions-<index>.json` (one per declared frame);
-/// - a static voxel model uses `preview.png`, `actions.json`, `mesh.glb`, or
-///   `voxels.json` (its one part); an animated voxel model suffixes each with the
-///   part's `-<index>` in declared order (`mesh-<index>.glb`, etc.). The `mesh`
-///   kind is the `PartMesh`-shaped `.glb` the 3D client renders (emitted by
-///   every voxel-family binary); the `voxels` kind is the secondary regenerated
-///   `voxels.json` (cube kinds). Cheat detection is retired for voxel, so there is
-///   no regenerated PNG.
+/// - a static voxel model uses `preview.png`, `actions.json`, or `mesh.glb` (its one
+///   part); an animated voxel model suffixes each with the part's `-<index>` in
+///   declared order (`mesh-<index>.glb`, etc.). The `mesh` kind is the
+///   `PartMesh`-shaped `.glb` the 3D client renders, emitted by every voxel-family
+///   binary. Cheat detection is retired for voxel, so there is no regenerated PNG.
 ///
 /// The flat `<kind>-<index>` spelling keeps each artifact a single path segment so
 /// it routes through the one-segment `/asset/{file}` endpoints unchanged.
@@ -198,8 +196,8 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         // A voxel run addresses its parts the same flat way a sprite sheet
         // addresses its frames: a static model serves under bare names (its one
         // part), an animated model suffixes each part with its `-<index>` in
-        // declared order. The extra `voxels` kind is the regenerated `voxels.json`
-        // the 3D client renders; `preview` is the model's rendered isometric PNG.
+        // declared order. The `mesh` kind is the `.glb` the 3D client renders;
+        // `preview` is the model's rendered isometric PNG.
         let part = match frame {
             Some(index) => voxel.parts.get(index as usize)?,
             None => voxel.parts.first()?,
@@ -207,10 +205,8 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         match kind {
             "preview" => &part.preview_image,
             "actions" => &part.ops_log,
-            // The `mesh` kind is the `PartMesh`-shaped `.glb` the 3D client
-            // renders; `voxels` is the secondary sparse `voxels.json` (cube kinds).
+            // The `mesh` kind is the `PartMesh`-shaped `.glb` the 3D client renders.
             "mesh" => &part.mesh,
-            "voxels" => &part.regenerated_voxels,
             _ => return None,
         }
     } else if let Some(adversarial) = record.validation.adversarial.as_ref() {

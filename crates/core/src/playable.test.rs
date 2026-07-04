@@ -124,12 +124,11 @@ fn asset_request_parses_bare_names_and_per_frame_names() {
 #[test]
 fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
     // An animated voxel model addresses its parts by declared index: the served
-    // `preview-0.png` / `voxels-1.json` resolve to that part's recorded tree
-    // paths, which carry slashes the flat one-segment served name flattens away.
+    // `preview-0.png` / `mesh-1.glb` resolve to that part's recorded tree paths,
+    // which carry slashes the flat one-segment served name flattens away.
     let part = |name: &str| VoxelPartResult {
         name: name.to_string(),
         mesh: format!("meshes/{name}.glb"),
-        regenerated_voxels: format!("voxels/{name}.json"),
         preview_image: format!("parts/{name}.png"),
         ops_log: format!("parts/{name}.actions.json"),
         operation_count: 3,
@@ -153,16 +152,16 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
             ..Default::default()
         },
         &[
-            ("voxels/turret.json", b"{\"dims\":{}}"),
+            ("meshes/turret.glb", b"glTF turret-mesh-bytes"),
             ("meshes/chassis.glb", b"glTF chassis-mesh-bytes"),
             ("parts/chassis.png", b"\x89PNG chassis-preview"),
         ],
     );
-    // Part 1 (turret) voxels.json; part 0 (chassis) preview. Cheat detection is
+    // Part 1 (turret) mesh; part 0 (chassis) mesh + preview. Cheat detection is
     // retired for voxel, so there is no regenerated PNG to serve.
-    let served = serve_asset_file(dir.path(), "voxels-1.json").expect("voxels");
-    assert_eq!(served.content_type, "application/json");
-    assert_eq!(served.body, b"{\"dims\":{}}");
+    let served = serve_asset_file(dir.path(), "mesh-1.glb").expect("mesh");
+    assert_eq!(served.content_type, "model/gltf-binary");
+    assert_eq!(served.body, b"glTF turret-mesh-bytes");
     // Part 0 (chassis) mesh.glb — the geometry the 3D client renders.
     let served = serve_asset_file(dir.path(), "mesh-0.glb").expect("mesh");
     assert_eq!(served.content_type, "model/gltf-binary");
@@ -173,7 +172,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
     // A voxel run serves no regenerated PNG.
     assert!(serve_asset_file(dir.path(), "regenerated-1.png").is_none());
     // An out-of-range part index is a miss (404), not a panic.
-    assert!(serve_asset_file(dir.path(), "voxels-9.json").is_none());
+    assert!(serve_asset_file(dir.path(), "mesh-9.glb").is_none());
 }
 
 #[test]
@@ -183,7 +182,6 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
         parts: vec![VoxelPartResult {
             name: "model".to_string(),
             mesh: "mesh.glb".to_string(),
-            regenerated_voxels: "voxels.json".to_string(),
             preview_image: "model.png".to_string(),
             ops_log: "actions.json".to_string(),
             operation_count: 5,
@@ -200,13 +198,10 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
             ..Default::default()
         },
         &[
-            ("voxels.json", b"{\"dims\":{}}"),
             ("mesh.glb", b"glTF static-mesh-bytes"),
             ("model.png", b"\x89PNG static-preview"),
         ],
     );
-    let served = serve_asset_file(dir.path(), "voxels.json").expect("voxels");
-    assert_eq!(served.body, b"{\"dims\":{}}");
     let served = serve_asset_file(dir.path(), "mesh.glb").expect("mesh");
     assert_eq!(served.body, b"glTF static-mesh-bytes");
     let served = serve_asset_file(dir.path(), "preview.png").expect("preview");

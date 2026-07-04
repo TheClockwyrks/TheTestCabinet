@@ -482,12 +482,12 @@ fn score_frame(
 /// [`AssetGenValidator`].
 ///
 /// It ignores the build pipeline entirely. Instead it reads each recorded
-/// operation log, replays it through the **same** voxel library the in-container
-/// binary used ([`test_cabinet_voxel::render`]) to regenerate the voxel data
-/// (`voxels.json`, what the client renders in 3D) and the isometric preview PNG,
-/// and compares the PNG to the one the model left on disk (cheat divergence). A
-/// voxel run has no target model: the regenerated data is what a human reviews
-/// against the brief, and cheat divergence is the one recorded signal — not a gate.
+/// operation log and replays it through the **same** voxel library the in-container
+/// binary used ([`test_cabinet_voxel::render`]) to count the occupied voxels. The
+/// geometry the 3D client renders is the per-part `.glb` the binary emitted; preview
+/// regeneration and cheat divergence are retired, so the reviewed image is the
+/// model's own preview. A voxel run has no target model — a human reviews the result
+/// against the brief.
 /// A static model ([`AssetKind::VoxelModel`](crate::test_case::AssetKind::VoxelModel))
 /// has one target named `model`; an animated model
 /// ([`AssetKind::VoxelAnimation`](crate::test_case::AssetKind::VoxelAnimation)) has
@@ -497,11 +497,11 @@ fn score_frame(
 /// recorded in the run-level detail, never a crash.
 ///
 /// The six **surface-meshed** kinds (`mc`/`sn`/`dc` and their `-anim` siblings) take
-/// the same shape but a different geometry path: rather than regenerating
-/// `voxels.json` from the log, the validator **decodes the `.glb` the binary
-/// emitted** (per model for a static kind, per part for an animated one) and confirms
-/// it is a well-formed `PartMesh` (see [`score_mesh_part`]). It never re-meshes; the
-/// emitted mesh plus reviewer judgment of the model's preview is the scored artifact.
+/// the same shape but a different geometry path: instead of replaying the log, the
+/// validator **decodes the `.glb` the binary emitted** (per model for a static kind,
+/// per part for an animated one) and confirms it is a well-formed `PartMesh` (see
+/// [`score_mesh_part`]). It never re-meshes; the emitted mesh plus reviewer judgment
+/// of the model's preview is the scored artifact.
 /// The animated meshed kinds reconcile their `rig.json` against the required
 /// `[model]` exactly as the cube animated kind does.
 #[derive(Debug, Clone, Default)]
@@ -520,21 +520,18 @@ impl VoxelGenValidator {
 /// preview live, and where its geometry lives.
 ///
 /// [`Self::mesh_client_rel`] is the `PartMesh`-shaped `.glb` **every**
-/// voxel-family kind emits and the 3D client renders from. For a **cube** kind the
-/// validator additionally regenerates the sparse `voxels.json` from the log at
-/// [`Self::regenerated_voxels_rel`] (a secondary artifact); for a **meshed** kind it
-/// reads (does not regenerate) the emitted `.glb` at [`Self::mesh_rel`] to
-/// validate it, and `regenerated_voxels_rel` repeats that mesh path.
+/// voxel-family kind emits and the 3D client renders from. A **meshed** kind also
+/// reads (does not regenerate) the emitted `.glb` at [`Self::mesh_rel`] to validate
+/// it; a **cube** kind replays its log only to count occupied voxels.
 struct PartPlan {
     name: String,
     ops_rel: PathBuf,
     preview_rel: PathBuf,
-    regenerated_voxels_rel: String,
     /// The client-facing `.glb` path (the geometry the 3D viewer loads), for
     /// every voxel-family kind — the cube kinds emit it too.
     mesh_client_rel: String,
     /// The run-relative path of the emitted `.glb` a **meshed** kind parses to
-    /// validate; `None` for a cube kind (which regenerates `voxels.json` instead).
+    /// validate; `None` for a cube kind (which only replays its log).
     mesh_rel: Option<PathBuf>,
 }
 
@@ -583,11 +580,11 @@ impl Validator for VoxelGenValidator {
             depth: voxel_spec.depth,
         };
 
-        // A meshed kind (mc/sn/dc + `-anim`) reads the `.glb` its binary
-        // emitted; a cube kind regenerates `voxels.json` from the log. `mesh_template`
-        // is the meshed-only parse path; `client_mesh_template` is the client-facing
-        // `.glb` **every** voxel kind emits (both are `{part}` templates for an
-        // animated kind, a single file for a static one).
+        // A meshed kind (mc/sn/dc + `-anim`) reads the `.glb` its binary emitted; a
+        // cube kind only replays its log to count voxels. `mesh_template` is the
+        // meshed-only parse path; `client_mesh_template` is the client-facing `.glb`
+        // **every** voxel kind emits (both are `{part}` templates for an animated
+        // kind, a single file for a static one).
         let mesh_template = test_case.asset_kind.mesh_dest();
         let is_meshed = test_case.asset_kind.is_meshed();
         // Every voxel-family kind is routed here, so this is always `Some`.
@@ -619,15 +616,10 @@ impl Validator for VoxelGenValidator {
             // A static model: one implicit `model` target.
             None if !is_anim => {
                 let mesh_rel = mesh_template.map(PathBuf::from);
-                let geometry_rel = mesh_rel
-                    .as_ref()
-                    .map(|p| rel_string(p))
-                    .unwrap_or_else(|| "voxels.json".to_string());
                 vec![PartPlan {
                     name: "model".to_string(),
                     ops_rel: output.actions.clone(),
                     preview_rel: tool.preview.clone(),
-                    regenerated_voxels_rel: geometry_rel,
                     mesh_client_rel: client_mesh_template.to_string(),
                     mesh_rel,
                 }]
@@ -642,10 +634,6 @@ impl Validator for VoxelGenValidator {
                 .map(|part| {
                     let mesh_rel = mesh_template
                         .map(|t| crate::test_case::part_path(Path::new(t), &part.name));
-                    let geometry_rel = mesh_rel
-                        .as_ref()
-                        .map(|p| rel_string(p))
-                        .unwrap_or_else(|| format!("voxels/{}.json", part.name));
                     let mesh_client_rel = rel_string(&crate::test_case::part_path(
                         Path::new(client_mesh_template),
                         &part.name,
@@ -654,7 +642,6 @@ impl Validator for VoxelGenValidator {
                         name: part.name.clone(),
                         ops_rel: crate::test_case::part_path(&output.actions, &part.name),
                         preview_rel: crate::test_case::part_path(&tool.preview, &part.name),
-                        regenerated_voxels_rel: geometry_rel,
                         mesh_client_rel,
                         mesh_rel,
                     }
@@ -665,7 +652,7 @@ impl Validator for VoxelGenValidator {
         let mut parts = Vec::with_capacity(plans.len());
         for plan in &plans {
             // A meshed kind parses the emitted `.glb` (never re-meshing); a cube
-            // kind regenerates `voxels.json` from the recorded log.
+            // kind only replays the recorded log to count voxels.
             let scored = if is_meshed {
                 score_mesh_part(repo, plan)
             } else {
@@ -682,7 +669,6 @@ impl Validator for VoxelGenValidator {
                         parts.push(VoxelPartResult {
                             name: plan.name.clone(),
                             mesh: plan.mesh_client_rel.clone(),
-                            regenerated_voxels: plan.regenerated_voxels_rel.clone(),
                             preview_image: rel_string(&plan.preview_rel),
                             ops_log: rel_string(&plan.ops_rel),
                             operation_count: 0,
@@ -766,23 +752,13 @@ fn score_part(
 
     let set = test_cabinet_voxel::render(&dims, &operations);
 
-    // Write the regenerated voxel data (a sparse readback of the log) into the tree.
-    let voxels_path = repo.join(&plan.regenerated_voxels_rel);
-    if let Some(parent) = voxels_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("could not create {}: {err}", parent.display()))?;
-    }
-    std::fs::write(&voxels_path, format!("{}\n", set.to_voxels_json()))
-        .map_err(|err| format!("could not write the regenerated voxel data: {err}"))?;
-
-    // Preview regeneration and cheat divergence are retired for the voxel family:
-    // the scored artifact is the emitted mesh/rig plus reviewer judgment of the
-    // model's own rendered preview, so core no longer re-renders a preview here. The
-    // reviewed image is the model's preview (the wgpu+Mesa render the binary made).
+    // Replay the log only to count occupied voxels. The geometry the client renders
+    // is the per-part `.glb` the binary emitted; preview regeneration and cheat
+    // divergence are retired for the voxel family (the reviewed image is the model's
+    // own wgpu+Mesa preview), so core writes no voxel data of its own.
     Ok(VoxelPartResult {
         name: plan.name.clone(),
         mesh: plan.mesh_client_rel.clone(),
-        regenerated_voxels: plan.regenerated_voxels_rel.clone(),
         preview_image: rel_string(&plan.preview_rel),
         ops_log: rel_string(&plan.ops_rel),
         operation_count: operations.len(),
@@ -874,10 +850,8 @@ fn score_mesh_part(repo: &Path, plan: &PartPlan) -> std::result::Result<VoxelPar
     // and cheat divergence is retired.
     Ok(VoxelPartResult {
         name: plan.name.clone(),
-        // The emitted `.glb` is what the client renders in 3D; a meshed kind has
-        // no `voxels.json`, so `regenerated_voxels` repeats the same mesh path.
+        // The emitted `.glb` is what the client renders in 3D.
         mesh: plan.mesh_client_rel.clone(),
-        regenerated_voxels: plan.regenerated_voxels_rel.clone(),
         preview_image: rel_string(&plan.preview_rel),
         ops_log: rel_string(&plan.ops_rel),
         operation_count,

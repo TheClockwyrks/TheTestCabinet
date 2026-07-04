@@ -1,6 +1,5 @@
 //! Unit tests for the sculpting library: each operation applies as expected,
-//! everything clips at the volume edge, the wire form round-trips, and
-//! `voxels.json` serializes in the shape core's `VoxelsFile` reads.
+//! everything clips at the volume edge, and the wire form round-trips.
 
 use super::*;
 use crate::axis::Axis;
@@ -437,73 +436,4 @@ fn mirror_op_serializes_axis_as_snake_case() {
     .unwrap();
     assert!(json.contains("\"op\":\"mirror\""), "{json}");
     assert!(json.contains("\"plane\":\"z\""), "{json}");
-}
-
-/// A local mirror of core's `VoxelsFile`/`VoxelDims`/`VoxelCell` shape, used to
-/// confirm `to_voxels_json` deserializes into exactly that contract shape.
-#[derive(serde::Deserialize)]
-struct VoxelsFile {
-    dims: VoxelDims,
-    voxels: Vec<VoxelCell>,
-}
-
-#[derive(serde::Deserialize)]
-struct VoxelDims {
-    width: u32,
-    height: u32,
-    depth: u32,
-}
-
-#[derive(serde::Deserialize)]
-struct VoxelCell {
-    x: i64,
-    y: i64,
-    z: i64,
-    color: String,
-}
-
-#[test]
-fn to_voxels_json_matches_the_contract_shape() {
-    let set = render(
-        &Dims {
-            width: 3,
-            height: 2,
-            depth: 2,
-        },
-        &[
-            Operation::SetVoxel {
-                x: 0,
-                y: 0,
-                z: 0,
-                color: RED,
-            },
-            Operation::SetVoxel {
-                x: 2,
-                y: 1,
-                z: 1,
-                color: BLUE,
-            },
-        ],
-    );
-    let json = set.to_voxels_json();
-    let parsed: VoxelsFile = serde_json::from_str(&json).expect("valid VoxelsFile shape");
-    assert_eq!(
-        (parsed.dims.width, parsed.dims.height, parsed.dims.depth),
-        (3, 2, 2)
-    );
-    assert_eq!(parsed.voxels.len(), 2);
-    // Scan order is x fastest, then y, then z, so (0,0,0) precedes (2,1,1).
-    let first = &parsed.voxels[0];
-    assert_eq!((first.x, first.y, first.z), (0, 0, 0));
-    assert_eq!(first.color, "#ff0000");
-    let second = &parsed.voxels[1];
-    assert_eq!((second.x, second.y, second.z), (2, 1, 1));
-    assert_eq!(second.color, "#0000ff");
-}
-
-#[test]
-fn to_voxels_json_of_an_empty_volume_has_no_voxels() {
-    let json = VoxelSet::empty(dims()).to_voxels_json();
-    let parsed: VoxelsFile = serde_json::from_str(&json).expect("valid shape");
-    assert!(parsed.voxels.is_empty());
 }

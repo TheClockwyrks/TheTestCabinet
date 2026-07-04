@@ -13,8 +13,8 @@
 //! author each required animation's motion and add its own.
 //!
 //! The operation subcommands are shared with `voxel`, so their `--help` is the same
-//! contract; no operations schema is seeded. Like `voxel`, this binary does **not**
-//! write `voxels.json`; the validator regenerates each part's from its log.
+//! contract; no operations schema is seeded. Each part emits a face-culled cube
+//! `.glb` (the geometry the 3D client renders) alongside its recorded operation log.
 //!
 //! See `apps/docs/src/content/docs/testing/asset-generation/`.
 

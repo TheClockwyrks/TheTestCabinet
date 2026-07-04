@@ -6,7 +6,7 @@
 //! is the authoritative output of a run. [`render`] turns that list back into a
 //! voxel volume, and it is the **one** sculpting implementation: the binary calls
 //! it to re-render the isometric preview after every operation, and `crates/core`
-//! calls it to regenerate the scored voxel data and image from the recorded log.
+//! calls it to replay the recorded log — validating it and counting occupied voxels.
 //! Because both go through the same code, a volume produced by any other means
 //! cannot match the regeneration — which is what makes the constrained sculpting
 //! channel enforceable. This mirrors `crates/draw`, the 2D pixel analog.
@@ -105,44 +105,6 @@ impl VoxelSet {
     /// The number of occupied (non-empty) voxels in the volume.
     pub fn occupied_count(&self) -> usize {
         self.cells.iter().filter(|cell| cell.is_some()).count()
-    }
-
-    /// Serialize the occupied voxels as the sparse `voxels.json` document core's
-    /// `VoxelsFile` reads: `{ "dims": { width, height, depth }, "voxels": [ { x, y,
-    /// z, color } ] }`, in `x`/`y`/`z` scan order (x fastest, then y, then z — the
-    /// dense index order), so the output is byte-stable.
-    ///
-    /// Built by hand rather than through `serde_json` so this stays available to
-    /// core's validator, which links this crate with `default-features = false`
-    /// (no `serde_json`). The shape is asserted against core's type in the tests.
-    pub fn to_voxels_json(&self) -> String {
-        let mut out = String::new();
-        out.push_str(&format!(
-            "{{\"dims\":{{\"width\":{},\"height\":{},\"depth\":{}}},\"voxels\":[",
-            self.dims.width, self.dims.height, self.dims.depth
-        ));
-        let (w, h) = (self.dims.width as i64, self.dims.height as i64);
-        let mut first = true;
-        for (index, cell) in self.cells.iter().enumerate() {
-            let Some(color) = cell else { continue };
-            let i = index as i64;
-            let x = i % w;
-            let y = (i / w) % h;
-            let z = i / (w * h);
-            if !first {
-                out.push(',');
-            }
-            first = false;
-            out.push_str(&format!(
-                "{{\"x\":{},\"y\":{},\"z\":{},\"color\":\"{}\"}}",
-                x,
-                y,
-                z,
-                color.to_hex()
-            ));
-        }
-        out.push_str("]}");
-        out
     }
 }
 

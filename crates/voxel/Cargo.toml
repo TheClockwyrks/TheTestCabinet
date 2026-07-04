@@ -6,9 +6,9 @@ license.workspace = true
 publish.workspace = true
 
 # The cube voxel domain for 3D asset-generation test cases: the dense voxel volume
-# (`VoxelSet`/`Dims`), the sculpting `Operation`s and their log-replay `render`, the
-# sparse `voxels.json` serializer, and the cube surface mesher (`voxels` ->
-# face-culled `PartMesh`). Previews are drawn by the shared wgpu+Mesa mesh renderer
+# (`VoxelSet`/`Dims`), the sculpting `Operation`s and their log-replay `render`, and
+# the cube surface mesher (`voxels` -> face-culled `PartMesh`). Previews are drawn by
+# the shared wgpu+Mesa mesh renderer
 # in `test-cabinet-model-core`, which also owns the generic pieces — the
 # rig/animation model, color, config, and the record/preview plumbing — that this
 # crate depends on and re-exports. The `voxel` binary uses the library in the run
