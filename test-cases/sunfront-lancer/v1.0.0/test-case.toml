@@ -60,7 +60,9 @@ actions = "parts/{part}.actions.json"
 # forward on its two legs: the feet plant flat and still on the ground while the body
 # passes over them, then lift clear, swing forward, and plant again, the two legs in
 # opposite phase so one foot is always planted — the machine pushing itself forward
-# rather than flailing. The legs move; the rail-lance holds level.
+# rather than flailing. Authored IN PLACE: the body does not translate across the scene
+# (the leg cycle carries the stride; a game supplies the real travel). The legs move;
+# the rail-lance holds level.
 [[model.animation]]
 name = "walk"
 loop = true
@@ -104,7 +106,11 @@ domain = "fidelity"
 id = "legs-walk"
 title = "Legs stride on planted feet without clipping the ground"
 text = """
-Playing `walk` strides the mech forward on its two legs. Each foot has a clear \
+Playing `walk` strides the mech forward on its two legs. The clip is authored \
+IN PLACE — the body holds its ground and does not drift across the scene; the \
+forward stride is carried entirely by the legs, so played on its own the feet cycle \
+and the planted foot slides straight back under the body (a treadmill) while a game \
+supplies the real movement. Each foot has a clear \
 PLANTED STANCE — flat and still on the ground while the body passes over it — then \
 lifts clear, swings forward, and plants again with weight; the two legs step in \
 OPPOSITE phase so one foot is always down, NOT flailing as one rigid bank. The feet \

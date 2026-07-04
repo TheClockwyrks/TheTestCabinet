@@ -131,7 +131,12 @@ weapon recoil a sharp `ease-in` for a satisfying thump.
 - **`walk`** — the WALK (a game-triggered playable). Strides the mech forward on
   its two legs with the planted-stance gait described above: each foot plants flat
   and still, then lifts, swings, and plants, the two legs in **opposite phase** so
-  one foot is always down. The legs move; the rail-lance holds level.
+  one foot is always down. Author it **in place** — the body stays centered in the
+  volume and the clip must **not** translate the whole model across the scene; the
+  leg cycle alone carries the stride (played on its own, the planted foot slides
+  straight back under the body, treadmill-style, then swings forward), and a
+  consuming game supplies the real forward travel. The legs move; the rail-lance
+  holds level.
 - **`fire`** — the WEAPON showcase (a game-triggered playable, a viewer play button
   so a reviewer can watch the lance work without dragging a slider). Recoils the
   rail-lance about its chest mount: a quick recoil nod off level, an overshoot back,

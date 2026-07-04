@@ -134,7 +134,11 @@ the maul strike a sharp `ease-in` for a satisfying thump.
 - **`walk`** — the WALK (a game-triggered playable). Strides the mech forward on
   its legs with the planted-stance gait described above: feet plant flat and still,
   then lift, swing, and plant, the two legs in opposite phase so one foot is always
-  down. The legs move; the arms hold.
+  down. Author it **in place** — the body stays centered in the volume and the clip
+  must **not** translate the whole model across the scene; the leg cycle alone
+  carries the stride (played on its own, the planted foot slides straight back under
+  the body, treadmill-style, then swings forward), and a consuming game supplies the
+  real forward travel. The legs move; the arms hold.
 - **`smash`** — the WEAPON showcase (a game-triggered playable). Winds the heavy
   siege maul up over the head, slams the whole right arm-and-maul down and forward
   in a smash, then recovers to the ready pose — while the mech stands its ground

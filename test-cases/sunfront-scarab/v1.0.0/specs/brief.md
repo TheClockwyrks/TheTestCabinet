@@ -114,7 +114,11 @@ linearly between poses.
 - **`walk`** — the WALK (a game-triggered playable, `loop = true`). Strides the
   beetle forward on its legs with the planted-stance gait described above: feet
   plant flat and still, then lift, swing, and plant. Design the **foot path first**,
-  then solve the joint angles to it. The legs move; the jaws hold shut.
+  then solve the joint angles to it. Author it **in place** — the body stays centered
+  in the volume and the clip must **not** translate the whole model across the scene;
+  the leg cycle alone carries the stride (played on its own, the planted foot slides
+  straight back under the body, treadmill-style, then swings forward), and a
+  consuming game supplies the real forward travel. The legs move; the jaws hold shut.
 - **`bite`** — the WEAPON showcase (a game-triggered playable, `loop = true`). Snaps
   the front mandibles wide open, then shut, and holds them shut before looping, with
   eased curves (a fast snap open, a firm close) so a reviewer can watch the jaws work

@@ -123,8 +123,12 @@ sliding linearly, and give a foot-plant a sharp `ease-in` for a satisfying thump
 
 - **`walk`** — the WALK (a game-triggered playable). Strides the walker forward on its
   legs with the planted-stance gait described above: feet plant flat and still, then
-  lift, swing, and plant. Step the four legs as diagonal pairs. The legs move; the
-  turret and barrels hold at rest.
+  lift, swing, and plant. Step the four legs as diagonal pairs. Author it **in
+  place** — the body stays centered in the volume and the clip must **not**
+  translate the whole model across the scene; the leg cycle alone carries the stride
+  (played on its own, the planted foot slides straight back under the body,
+  treadmill-style, then swings forward), and a consuming game supplies the real
+  forward travel. The legs move; the turret and barrels hold at rest.
 - **`flak_track`** — the WEAPON showcase (a game-triggered playable). Traverses the
   turret onto a bearing and elevates and depresses the twin barrels to track a target
   across the sky, while the walker stands its ground — the legs stay planted. Use eased

@@ -128,7 +128,11 @@ gun recoil a sharp `ease-in` for a satisfying thump.
 - **`walk`** — the GAIT (a game-triggered playable). Strides the Bombard forward on
   its four legs with the planted-stance gait described above: feet plant flat and
   still, then lift, swing, and plant, stepping the diagonal pairs a half period
-  apart. The legs move; the turret and barrel hold.
+  apart. Author it **in place** — the body stays centered in the volume and the clip
+  must **not** translate the whole model across the scene; the leg cycle alone
+  carries the stride (played on its own, the planted foot slides straight back under
+  the body, treadmill-style, then swings forward), and a consuming game supplies the
+  real forward travel. The legs move; the turret and barrel hold.
 - **`bombard_fire`** — the WEAPON showcase (a game-triggered playable). Kicks the
   mortar barrel up in a quick recoil-lob off its rest elevation, then eases it back
   down and holds, so a reviewer can watch the mortar fire without dragging a slider.

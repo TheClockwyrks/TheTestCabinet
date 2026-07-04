@@ -129,7 +129,11 @@ gun recoil a sharp `ease-in` for a satisfying thump.
   two legs with the planted-stance gait described above: feet plant flat and still,
   then lift, swing, and plant, the two legs in **opposite phase** (one planted while
   the other swings). As a slow, super-heavy bruiser the Monolith rolls smoothly with
-  a firm, sharp foot-plant. The legs move; the cannon holds.
+  a firm, sharp foot-plant. Author it **in place** — the body stays centered in the
+  volume and the clip must **not** translate the whole model across the scene; the
+  leg cycle alone carries the stride (played on its own, the planted foot slides
+  straight back under the body, treadmill-style, then swings forward), and a
+  consuming game supplies the real forward travel. The legs move; the cannon holds.
 - **`fire`** — the WEAPON showcase (a game-triggered playable). Works the giant
   arm-cannon — snap it into a quick recoil nod, overshoot back, and settle — while
   the mech stands its ground and the legs stay planted, so a reviewer can watch the

@@ -79,10 +79,14 @@ heavy machine walking.
 This is the single most important rule, and the most common omission. A believable
 walk cycle has **two phases per leg**:
 
-1. **Stance** — the foot is **planted flat on the ground and translates straight
-   backward relative to the body.** The foot does not move in the world; the *machine*
-   moves forward over it. The leg **extends and folds** (hip and knee working
-   together) to keep the foot at a fixed ground point while the body passes over it.
+1. **Stance** — the foot is **planted flat and translates straight backward
+   relative to the body.** Because the walk is authored **in place** (the body's
+   origin does not travel across the scene — see the next section), the planted foot
+   slides straight back *under* the body through stance, like a treadmill belt; it is
+   a consuming game moving the whole unit forward at that same speed that makes the
+   foot read as anchored to the ground while the machine advances over it. The leg
+   **extends and folds** (hip and knee working together) to carry the foot straight
+   back along the ground line while the body holds station.
 2. **Swing** — the foot **lifts clear of the ground, travels forward, and plants**
    again at the front of the stride, ready for the next stance.
 
@@ -95,6 +99,32 @@ still on the ground while the body moves relative to it.**
 Phase the legs so the machine is always supported: a **biped** alternates the two legs
 in opposite phase; a **quadruped** moves diagonal pairs together; a **hexapod** walks
 two alternating **tripods** (three planted legs at all times) a half-period apart.
+
+## Author the walk in place — the body must not travel
+
+A walk or march clip is a **looping, in-place cycle**: over one period the rig's
+**root does not translate across the scene** — it starts and ends at the same place,
+with **zero net displacement**. Forward motion is conveyed **entirely by the legs** —
+the planted foot sliding straight back under the body during stance, then swinging
+forward — **not** by sliding the whole model across the volume. A consuming game plays
+the clip while *it* drives the unit's real world movement; if the clip *also* translated
+the body, the two would compound and the unit would rocket forward. Authoring the walk
+in place is what lets a game reuse it.
+
+When you author the cycle:
+
+- Keep the **root/body part centered** — do not keyframe a steady forward translation
+  onto the root. A small vertical bob (the body rising and settling with the stride) is
+  right; a net forward drift across the loop is not.
+- Express all forward motion as the **foot path in the body's frame** — back during
+  stance, a lifting arc forward during swing — exactly as in *Authoring method* below.
+- The review viewer plays the clip **in place**, so a correct walk shows the body
+  holding station while the feet cycle underneath (a treadmill), **not** the model
+  marching off across the scene.
+
+The same rule applies to **any** locomotion animation — a strider's `march`, a flyer's
+`hover` or `cruise`: the clip animates the motion **in place**, and the game supplies
+the travel.
 
 ## Keep the foot flat, and bend the knee the right way
 

@@ -60,7 +60,9 @@ actions = "parts/{part}.actions.json"
 # `walk` — the WALK. A game-triggered playable (not self-playing) that strides the
 # mech forward on its legs: feet plant flat and still on the ground while the body
 # passes over them, then lift, swing forward, and plant again, so the machine pushes
-# itself forward rather than flailing.
+# itself forward rather than flailing. Authored IN PLACE: the body does not translate
+# across the scene (the leg cycle carries the stride; a game supplies the real
+# travel).
 [[model.animation]]
 name = "walk"
 loop = true
@@ -108,7 +110,11 @@ id = "legs-walk"
 title = "Legs stride with a planted stance, not a flail"
 text = """
 Playing `walk` strides the mech forward on its two legs in opposite phase, so one \
-foot is always down. Each leg has a clear PLANTED STANCE — the foot flat and still on \
+foot is always down. The clip is authored IN PLACE — the body holds its ground and \
+does not drift across the scene; the forward stride is carried entirely by the legs, \
+so played on its own the feet cycle and the planted foot slides straight back under \
+the body (a treadmill) while a game supplies the real movement. \
+Each leg has a clear PLANTED STANCE — the foot flat and still on \
 the ground while the body travels forward over it — then lifts the foot clear, swings \
 it forward, and plants again with weight; a leg that swings in a continuous arc and \
 never sits still on the ground reads as flailing, not walking. The feet stay flat as \

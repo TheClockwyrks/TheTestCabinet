@@ -138,7 +138,12 @@ foot-plant or a gun recoil a sharp `ease-in` for a satisfying thump.
 
 - **`march`** — the WALK (a game-triggered playable). Strides the fortress
   forward on its legs with the planted-stance gait described above: feet plant
-  flat and still, then lift, swing, and plant. The legs move; the guns hold.
+  flat and still, then lift, swing, and plant. Author it **in place** — the
+  body stays centered in the volume and the clip must **not** translate the
+  whole model across the scene; the leg cycle alone carries the stride (played
+  on its own, the planted foot slides straight back under the body,
+  treadmill-style, then swings forward), and a consuming game supplies the
+  real forward travel. The legs move; the guns hold.
 - **`bombardment`** — the WEAPON showcase (a game-triggered playable). Works the
   main cannon (aiming forward and elevating) and the two side turrets (each
   traversing its own flank, independently), while the fortress stands its ground

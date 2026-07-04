@@ -70,7 +70,8 @@ actions = "parts/{part}.actions.json"
 # `march` — the WALK. A game-triggered playable (not self-playing) that strides the
 # fortress forward on its legs: feet plant flat and still on the ground while the body
 # passes over them, then lift, swing forward, and plant again, so the machine pushes
-# itself forward rather than flailing.
+# itself forward rather than flailing. Authored IN PLACE: the body does not translate
+# across the scene (the leg cycle carries the stride; a game supplies the real travel).
 [[model.animation]]
 name = "march"
 loop = true
@@ -124,7 +125,11 @@ domain = "fidelity"
 id = "legs-walk"
 title = "Legs stride on planted feet without clipping the ground"
 text = """
-Playing `march` strides the fortress forward on its legs. Each foot has a clear \
+Playing `march` strides the fortress forward on its legs. The clip is authored \
+IN PLACE — the body holds its ground and does not drift across the scene; the \
+forward stride is carried entirely by the legs, so played on its own the feet cycle \
+and the planted foot slides straight back under the body (a treadmill) while a game \
+supplies the real movement. Each foot has a clear \
 PLANTED STANCE — flat and still on the ground while the fortress passes over it — then \
 lifts clear, swings forward, and plants again with weight; the legs cycle so the \
 machine is always supported and pushes itself forward, NOT flailing its legs in a \
