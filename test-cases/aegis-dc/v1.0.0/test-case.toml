@@ -4,7 +4,7 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "mesh", "dual-contouring", "fortress"]
 summary = """
 Sculpt the Aegis: a colossal, hard-edged six-legged walking fortress \
-built as an 88x80x104 signed-distance field and extracted with the Dual \
+built as a 120x110x150 signed-distance field and extracted with the Dual \
 Contouring tool (`dc`) into a single crisp-panelled mesh — one recorded \
 operation at a time, sharp seams and beveled armor preserved with `--sharp`."""
 description = "description.md"
@@ -22,14 +22,14 @@ variants = ["variants/base.toml"]
 # analog of a 2D canvas): `width` across (x), `height` up (y), `depth`
 # front-to-back (z), in field units. The Aegis is deliberately huge — a walking
 # fortress with a far larger footprint than any ordinary war machine, riding
-# raised on its legs — so its volume is broad, deep, and tall. The field always
-# starts EMPTY (everywhere outside, no surface); `background` is only the clear
+# raised on its legs — so its volume is length-dominant: broad and long. The field
+# always starts EMPTY (everywhere outside, no surface); `background` is only the clear
 # color behind the wgpu preview PNG and never adds material. A voxel/mesh case
 # must NOT declare [canvas].
 [voxel]
-width = 88
-height = 80
-depth = 104
+width = 120
+height = 110
+depth = 150
 background = "transparent"
 
 # The meshing tool. `dc` (Dual Contouring) is the only channel for shaping the
@@ -45,7 +45,7 @@ preview = "model.png"
 # The recorded operation log — the authoritative output the run collects: the
 # ordered record of every `dc` op the model issued, from which the scored model is
 # regenerated. For a static model this is a single file (no `{part}` template). The
-# `dc` binary additionally emits its extracted `mesh.json` (positions, normals,
+# `dc` binary additionally emits its extracted mesh as `mesh.glb` (positions, normals,
 # colors, indices in the runtime PartMesh shape) at its own fixed path, so it is not
 # named here.
 [output]
@@ -125,7 +125,7 @@ id = "symmetry"
 title = "Bilateral symmetry"
 text = """
 The fortress is cleanly symmetric about its lengthwise vertical centerplane \
-(between x = 43 and x = 44): the two banks of three legs, the two side turrets and \
+(between x = 59 and x = 60): the two banks of three legs, the two side turrets and \
 their sponsons, and the centered main turret, cannon, and vane all mirror each \
 other, so it reads as a deliberate war machine rather than a lopsided hull."""
 weight = 2
@@ -146,8 +146,8 @@ domain = "fidelity"
 id = "fills-volume"
 title = "Fills the volume"
 text = """
-The fortress uses most of the 88x80x104 volume — broad across x at the leg stance, \
-deep along z, and tall, riding up on its legs — with only a little margin on every \
+The fortress uses most of the 120x110x150 volume — broad across x at the leg stance, \
+long along z, and riding up on its legs — with only a little margin on every \
 side, neither shrunk into one corner nor clipped where it runs past a face of the \
 volume."""
 weight = 1

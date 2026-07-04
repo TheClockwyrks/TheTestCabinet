@@ -3,7 +3,7 @@ name = "Sunfront Sentinel"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
-Sculpt and rig the Sunfront Sentinel: a 44x64x40 opaque-voxel bipedal war-mech \
+Sculpt and rig the Sunfront Sentinel: a 20x40x20 opaque-voxel bipedal war-mech \
 that strides on two legs, aims a right-arm rifle up and down, and stands its \
 ground to fire — built not from a fixed skeleton but by painting opaque cells with \
 the voxel-anim tool one recorded operation at a time. The model invents whatever \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 44
-height = 64
-depth = 40
+width = 20
+height = 40
+depth = 20
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

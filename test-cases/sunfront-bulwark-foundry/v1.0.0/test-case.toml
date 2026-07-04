@@ -3,7 +3,7 @@ name = "Sunfront Bulwark Foundry"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Bulwark Foundry: a 60x72x60 opaque-voxel heavy \
+Sculpt and rig the Sunfront Bulwark Foundry: a 66x56x66 opaque-voxel heavy \
 armored bunker-forge whose blast door raises and whose flywheel turns on their \
 own auto-play animations while the building body stays fixed, painting discrete \
 opaque cells with the voxel-anim tool one recorded operation at a time. The model \
@@ -27,9 +27,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 60
-height = 72
-depth = 60
+width = 66
+height = 56
+depth = 66
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

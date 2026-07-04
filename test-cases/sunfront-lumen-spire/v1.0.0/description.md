@@ -1,7 +1,7 @@
 **Sunfront Lumen Spire** is a slim Duneforged beacon spire with a spinning halo
 ring and a pulsing solar lens.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 44×88×44
+This asset-generation case asks a model to sculpt *and rig* it as a 46×90×46
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time: a slender brass masonry tower rising to a crown, an iron halo ring
 encircling that crown, and a bright solar lens seated atop its tip, all painted

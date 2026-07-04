@@ -3,7 +3,7 @@ name = "Sunfront Monolith"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
-Sculpt and rig the Sunfront Monolith: a 64x80x56 opaque-voxel super-heavy bipedal \
+Sculpt and rig the Sunfront Monolith: a 50x80x50 opaque-voxel super-heavy bipedal \
 war-mech that strides on two legs and works a giant cannon carried on its right arm \
 — built not from a fixed skeleton but by painting discrete opaque cells with the \
 `voxel-anim` tool one recorded operation at a time. The model invents whatever parts \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 64
+width = 50
 height = 80
-depth = 56
+depth = 50
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

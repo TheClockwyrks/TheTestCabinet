@@ -1,67 +1,65 @@
 # Sunfront Bastion — sculpting and rigging brief
 
-You are sculpting and rigging the **Sunfront Bastion**, a huge fortified keep
-with a **rotating solar collector crown**, a **raising gate**, and a **slowly
-turning beacon**, as a **3D voxel model** with a **rig** a game runs at runtime.
-There is no target model to copy: build something that reads unmistakably as this
-imposing fortress and runs correctly from the description below. This is the
-biggest, most detailed building of its set — spend the volume on it.
+You are sculpting and rigging the Sunfront Bastion, a huge fortified keep with a
+rotating solar collector crown, a raising gate, and a slowly turning beacon, as a 3D
+voxel model with a rig a game runs at runtime. There is no target model to copy: build
+something that reads unmistakably as this imposing fortress and runs correctly from the
+description below. This is the biggest, most detailed building of its set — spend the
+volume on it.
 
-This brief fixes **what the Bastion is** and **how it must move**. It deliberately
-does **not** give you a parts list, joint placements, or pose angles — **working
-out the pieces a keep whose crown spins, gate raises, and beacon sweeps needs,
-where they attach, and how they articulate is the test.** Invent the rig.
+This brief fixes what the Bastion is and how it must move. It deliberately does not give
+you a parts list, joint placements, or pose angles — working out the pieces a keep whose
+crown spins, gate raises, and beacon sweeps needs, where they attach, and how they
+articulate is the test. Invent the rig.
 
 ## How the tool works
 
-`voxel-anim` places **discrete opaque cells**. You paint solid material:
+`voxel-anim` places discrete opaque cells. You paint solid material:
 
 - Lay down cells with `set-voxel`/`fill-box` and the other cell operations (single
   voxels, filled and stroked boxes, 3D lines, spheres, and a mirror plane), each an
   opaque `#rrggbb` color; there is no transparency and no smoothing.
-- Global **`--part <name>`** selects the part an op sculpts; **each part is its own
-  volume of cells**, previewed on its own. Create a part with `define-part` before
-  you sculpt into it.
+- Global `--part <name>` selects the part an op sculpts; each part is its own volume of
+  cells, previewed on its own. Create a part with `define-part` before you sculpt into
+  it.
 
-Build **one operation at a time**. `voxel-anim` re-renders `parts/<part>.png` and
-the assembled `scene/*.png` — **read them between calls**. `voxel-anim --help` is
-the contract.
+Build one operation at a time. `voxel-anim` re-renders `parts/<part>.png` and the
+assembled `scene/*.png` — read them between calls. `voxel-anim --help` is the contract.
 
 ## The volume and coordinate system
 
-- The volume is **72 wide (x) × 88 tall (y) × 72 deep (z)**, in opaque voxels. It
-  starts **empty**.
-- **x** runs across the keep, `0`–`71`. **y** runs up, `0` (bottom, the ground)
-  to `87` (top). **z** runs front-to-back, `0`–`71`.
-- **Forward is +z:** the gated front wall faces toward `z = 71` (the front). Up is
-  +y.
-- Build the keep **symmetric left-to-right** where the form allows, **massive and
-  blocky** — a heavy masonry fortress rooted to the ground, filling most of the
-  width and depth at its base and rising to a walled summit.
-- Each part is composited in these shared coordinates, where it sits on the
-  assembled keep.
+- The volume is **90 wide (x) × 120 tall (y) × 90 deep (z)**, in opaque voxels. It
+  starts empty.
+- **x** runs across the keep, `0`–`89`. **y** runs up, `0` (bottom, the ground) to `119`
+  (top). **z** runs front-to-back, `0`–`89`.
+- **Forward is +z:** the gated front wall faces toward `z = 89` (the front). Up is +y.
+- Build the keep symmetric left-to-right where the form allows (mirror across `x = 45`,
+  between `x = 44` and `x = 45`), massive and blocky — a heavy masonry fortress rooted to
+  the ground, filling most of the width and depth at its base and rising to a walled
+  summit.
+- Each part is composited in these shared coordinates, where it sits on the assembled
+  keep.
 
 ## What the Bastion is (and what is yours to invent)
 
-Fixed — the fortress must read unmistakably as **all** of these:
+Fixed — the fortress must read unmistakably as all of these:
 
-- A **massive, heavily detailed masonry keep** — thick ramparts and corner towers
-  rising to a walled summit, with a **central spire** — **not a plain box**, and
-  plainly the biggest, most detailed building of the roster.
-- A **gated front wall**: a clear opening in the front wall holds the **gate**.
-- A **solar collector crown** ringing the keep's summit, standing proud of the
-  walls, that **rotates on its own**.
-- A **signal beacon** crowning the central spire that **sweeps slowly on its own**.
-- A clear **solar-amber energy accent** and the palette below.
+- A massive, heavily detailed masonry keep — thick ramparts and corner towers rising to
+  a walled summit, with a central spire — not a plain box, and plainly the biggest, most
+  detailed building of the roster.
+- A gated front wall: a clear opening in the front wall holds the gate.
+- A solar collector crown ringing the keep's summit, standing proud of the walls, that
+  rotates on its own.
+- A signal beacon crowning the central spire that sweeps slowly on its own.
+- A clear solar-amber energy accent and the palette below.
 
-**Everything else is yours to invent** — the exact silhouette, proportions, how the
-ramparts and towers are massed, how the spire rises, how the crown, gate, and
-beacon are shaped, and how you break the keep into rig parts and place its joints.
-Nothing here prescribes a shape; the test rewards a bold, characterful design that
-is unmistakably the Sunfront Bastion and animates convincingly. Leave the children
-something to seat against — an opening in the front wall for the gate, a ring at the
-summit for the crown, and a spire top for the beacon — so they meet the keep with no
-gap.
+Everything else is yours to invent — the exact silhouette, proportions, how the ramparts
+and towers are massed, how the spire rises, how the crown, gate, and beacon are shaped,
+and how you break the keep into rig parts and place its joints. Nothing here prescribes a
+shape; the test rewards a bold, characterful design that is unmistakably the Sunfront
+Bastion and animates convincingly. Leave the children something to seat against — an
+opening in the front wall for the gate, a ring at the summit for the crown, and a spire
+top for the beacon — so they meet the keep with no gap.
 
 ## Palette
 
@@ -78,47 +76,38 @@ off-palette colors and stray voxels count against you):
 | Energy accent (solar amber) | `#ff9d2e` |
 | Glowing core highlight (solar hot) | `#ffd76b` |
 
-The **solar-amber** accent is the team-tint region: give the bastion a clear amber
-**energy accent** — a glowing collector ring, a lit beacon lens, and a charged gate
-seam — so the accent reads from multiple angles.
+The solar-amber accent is the team-tint region: give the bastion a clear amber energy
+accent — a glowing collector ring, a lit beacon lens, and a charged gate seam — so the
+accent reads from multiple angles.
 
 ## The required animations — the fixed contract
 
-`rig.json` is pre-seeded with **three required animation declarations** by name (you
-author the motion). Author each with `voxel-anim define-animation` then
-`add-keyframe`, choosing the period and setting each key's `--interp`
+`rig.json` is pre-seeded with three required animation declarations by name (you author
+the motion). Author each with `voxel-anim define-animation` then `add-keyframe`, choosing
+the period and setting each key's `--interp`
 (`constant`/`linear`/`bezier` or `ease-in`/`ease-out`/`ease-in-out`, with optional
-`--in-handle`/`--out-handle`) so the motion carries an **eased, deliberate cadence**
-rather than a mechanical linear slide. All three are **self-playing idles** — they
-loop continuously on their own, with no caller — and the keep itself stays fixed
-throughout.
+`--in-handle`/`--out-handle`) so the motion carries an eased, deliberate cadence rather
+than a mechanical linear slide. All three are self-playing idles — they loop continuously
+on their own, with no caller — and the keep itself stays fixed throughout.
 
-- **`crown_spin`** — the collector crown's sweep. Turns the crown ringing the
-  summit **one full, smooth revolution** about the vertical axis through its center
-  across the loop, so it turns steadily and continuously on its own. Shape the crown
-  so it rotates cleanly about its center without any cell tearing away from the
+- **`crown_spin`** — the collector crown turns one full, smooth revolution on its own
+  each loop, sweeping steadily and continuously with no cell tearing away from the
   summit.
-- **`gate_raise`** — the front gate cycle. Lifts the gate in the front wall
-  **straight up**, **holds it open**, then **lowers it back down** each loop, with
-  weight into the lift and the settle. Size the gate to slide up and down within the
-  wall opening without touching its jambs or clipping the wall.
-- **`beacon_spin`** — the signal beacon's sweep. Turns the beacon crowning the spire
-  **one slow full revolution** about the vertical axis through its center across the
-  loop, so it sweeps steadily and continuously on its own. Shape the beacon so it
-  rotates cleanly about its center without any cell tearing away from the spire.
+- **`gate_raise`** — the front gate lifts straight up within the wall opening, holds
+  open, then lowers back down each loop, with weight into the lift and the settle.
+- **`beacon_spin`** — the beacon atop the central spire turns one slow full revolution on
+  its own each loop, sweeping steadily with no cell tearing away from the spire.
 
-You **may add** extra parts, joints, and animations of your own; you must produce
-these three animations, by these names, all self-playing, and must not contradict
-them (the keep base stays fixed — never carried along by the crown, gate, or
-beacon).
+You may add extra parts, joints, and animations of your own; you must produce these three
+animations, by these names, all self-playing, and must not contradict them (the keep base
+stays fixed — never carried along by the crown, gate, or beacon).
 
 ## Working the tool
 
-Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
-with `set-pivot`, place joints with `define-joint`, and author the three animations'
-keyframes — reading `parts/<part>.png` and the `scene/*.png` previews between calls
-to confirm the parts fit, the crown rings the summit, the gate seats in the front
-wall, the beacon stands on the spire, and the animations read with weight. Sculpt
-each part up in sensible layers — finish the keep with its walls, towers, and spire,
-then the crown, the gate, and the beacon. The recorded per-part logs and `rig.json`
-are your scored submission.
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
+`set-pivot`, place joints with `define-joint`, and author the three animations' keyframes
+— reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
+parts fit, the crown rings the summit, the gate seats in the front wall, the beacon
+stands on the spire, and the animations read with weight. Sculpt each part up in sensible
+layers — finish the keep with its walls, towers, and spire, then the crown, the gate, and
+the beacon. The recorded per-part logs and `rig.json` are your scored submission.

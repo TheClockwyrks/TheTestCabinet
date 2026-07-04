@@ -3,7 +3,7 @@
 This is version `v1.0.0` of the **Sunfront Bulwark** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
 sculpt *and rig* a heavy bipedal Duneforged war-mech — a tower shield braced on
-its left arm and a siege maul in its right — as a 56×68×48 opaque-voxel model
+its left arm and a siege maul in its right — as a 40×60×30 opaque-voxel model
 using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-bulwark` is the catalog slug for this case. It is one of the `sunfront-*`

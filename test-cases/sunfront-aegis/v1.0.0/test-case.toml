@@ -4,7 +4,7 @@ difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Aegis: a colossal six-legged walking fortress painted as \
-an 88x80x104 opaque-voxel model — built not by compositing a field but by placing \
+a 120x110x150 opaque-voxel model — built not by compositing a field but by placing \
 discrete cells one recorded operation at a time. It strides on legs, aims a dominant \
 forward main cannon, works two side turrets that each cover their own flank, and \
 sweeps a radar vane. The model invents whatever parts and joints it needs; the fixed \
@@ -30,9 +30,9 @@ variants = ["variants/base.toml"]
 # behind the rasterized isometric preview PNG. A voxel case must NOT declare
 # [canvas].
 [voxel]
-width = 88
-height = 80
-depth = 104
+width = 120
+height = 110
+depth = 150
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

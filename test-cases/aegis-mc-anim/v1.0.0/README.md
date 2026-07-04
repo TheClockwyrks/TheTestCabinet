@@ -5,7 +5,7 @@ asset-generation case (`asset_kind = "mc-animation"`) that asks a model to
 composite *and rig* a colossal Duneforged **six-legged walking fortress** — a
 multi-gun war-fortress that dwarfs every buildable unit and
 strides on six **independent three-segment legs** (thigh + shin + flat foot) —
-as an 88×80×104 signed-distance-field model **meshed with Marching Cubes**,
+as a 120×110×150 signed-distance-field model **meshed with Marching Cubes**,
 using only the `mc-anim` tool, one recorded operation at a time, authoring its
 walk and weapon animations as F-curves.
 
@@ -30,7 +30,8 @@ changes:
   operations schema is seeded.
 - **Output:** `[output].actions = "parts/{part}.actions.json"` — the recorded op
   log (as for any voxel case); the per-part triangle **mesh** Marching Cubes extracts
-  is emitted automatically to `meshes/{part}.json`, the authoritative scored geometry.
+  is emitted automatically as a per-part `.glb` (binary glTF), the authoritative scored
+  geometry.
 - **Character:** Marching Cubes fixes the surface as **bold, low-poly,
   faceted**. It is the binary's character, not a manifest knob — the brief tells
   the model to lean into it. (Surface Nets and Dual Contouring are the smooth

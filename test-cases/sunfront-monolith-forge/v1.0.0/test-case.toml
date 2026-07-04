@@ -3,7 +3,7 @@ name = "Sunfront Monolith Forge"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Monolith Forge: a 68x84x68 opaque-voxel great forge \
+Sculpt and rig the Sunfront Monolith Forge: a 90x110x90 opaque-voxel great forge \
 whose massive hammer stamps down and back up and whose gear crown turns on their \
 own self-playing animations while the tower stays fixed, painted cell by cell with \
 the voxel-anim tool. The model invents whatever parts and joints it needs; the \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 68
-height = 84
-depth = 68
+width = 90
+height = 110
+depth = 90
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

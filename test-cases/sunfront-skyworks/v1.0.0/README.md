@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Skyworks** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a broad Duneforged launch-pad hangar as a 64×64×64 opaque-voxel
+sculpt *and rig* a broad Duneforged launch-pad hangar as a 70×60×70 opaque-voxel
 model using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-skyworks` is the catalog slug for this case. It is one of the

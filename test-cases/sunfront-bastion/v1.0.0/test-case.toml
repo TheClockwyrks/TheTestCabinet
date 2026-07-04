@@ -3,7 +3,7 @@ name = "Sunfront Bastion"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Bastion: a 72x88x72 opaque-voxel fortified keep \
+Sculpt and rig the Sunfront Bastion: a 90x120x90 opaque-voxel fortified keep \
 whose solar collector crown rotates, whose gate raises, and whose beacon slowly \
 turns on their own self-playing animations while the keep stays fixed. The model \
 invents whatever parts and joints it needs; the fixed contract is three animations \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 72
-height = 88
-depth = 72
+width = 90
+height = 120
+depth = 90
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

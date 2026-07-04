@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Bombard Foundry** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a heavy Duneforged mortar-works as a 60×68×60 opaque-voxel model
+sculpt *and rig* a heavy Duneforged mortar-works as a 60×70×60 opaque-voxel model
 using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-bombard-foundry` is the catalog slug for this case. It is one of the

@@ -5,7 +5,7 @@ an asset-generation case (`asset_kind = "dc-animation"`) that asks a model to
 mesh *and rig* a colossal Duneforged **six-legged walking fortress** — a
 multi-gun war-fortress that dwarfs every buildable unit and strides on six
 **independent three-segment legs** (thigh + shin + flat foot) — as a **Dual
-Contouring mesh** in an 88x80x104 volume using only the `dc-anim` tool, one
+Contouring mesh** in a 120x110x150 volume using only the `dc-anim` tool, one
 recorded operation at a time, authoring its walk and weapon animations as
 F-curves.
 
@@ -29,9 +29,9 @@ crisp or is rounded, independent of the blend radius. The brief tunes the Aegis
 to that character (crisp hard-surface armor with clean edges and defined panel
 seams, rounded forms only where chosen), and a `[[review_item]]` scores whether
 the submission plays to it rather than producing a uniformly rounded surface.
-Each part's authored field is emitted as a per-part mesh; core writes it to
-`meshes/{part}.json` automatically, and that is the authoritative geometry a
-reviewer and the frontend read. The binary's `--help` is the contract; no
+Each part's authored field is emitted as a per-part `.glb` (binary glTF)
+automatically by core, and that is the authoritative geometry a reviewer and the
+frontend read. The binary's `--help` is the contract; no
 operations schema is seeded.
 
 ## The rig
@@ -106,7 +106,7 @@ A run receives the seeded brief, the `dc-anim` binary, and a pre-seeded
 `rig.json` holding the required parts, joints, and animation declarations (so
 the contract exists from the first operation). There is no target model and no
 operations schema — the binary's `--help` is the contract, and each part's
-emitted `mesh.json` plus `rig.json` are the authoritative output.
+emitted per-part `.glb` plus `rig.json` are the authoritative output.
 
 ## Variants
 

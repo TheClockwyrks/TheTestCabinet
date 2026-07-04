@@ -3,7 +3,7 @@ name = "Sunfront Bulwark"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
-Sculpt and rig the Sunfront Bulwark: a 56x68x48 opaque-voxel heavy bipedal mech \
+Sculpt and rig the Sunfront Bulwark: a 40x60x30 opaque-voxel heavy bipedal mech \
 that braces a broad tower shield on its left arm and swings a heavy siege maul on \
 its right — painting discrete opaque cells with the `voxel-anim` tool, one recorded \
 operation at a time. It strides forward on two legs and works its heavy maul arm. \
@@ -27,9 +27,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 56
-height = 68
-depth = 48
+width = 40
+height = 60
+depth = 30
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

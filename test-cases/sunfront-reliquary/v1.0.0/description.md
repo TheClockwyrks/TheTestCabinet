@@ -2,7 +2,7 @@
 glowing solar core, encircled by a turning orbital ring and crowned by
 counter-rotating guardian fins.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 60×96×60
+This asset-generation case asks a model to sculpt *and rig* it as a 60×100×60
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time.
 Instead of a fixed skeleton, the model paints discrete opaque cells to build a
 blocky brass masonry plinth (the fixed body) rising into a cradle that holds a

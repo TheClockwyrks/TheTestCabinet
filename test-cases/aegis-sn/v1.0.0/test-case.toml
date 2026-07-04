@@ -3,11 +3,11 @@ name = "Aegis (Surface Nets)"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "mesh", "surface-nets", "sn", "walker"]
 summary = """
-Sculpt the Aegis as a static 88x80x104 smooth-surfaced model with the Surface \
+Sculpt the Aegis as a static 120x110x150 smooth-surfaced model with the Surface \
 Nets meshing tool (`sn`): a colossal six-legged walking fortress — a rounded, \
 watertight, mid-fidelity mesh of softly beveled armor — composited from \
 signed-distance primitives one recorded operation at a time and emitted as a \
-single mesh.json."""
+single mesh.glb."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
@@ -23,14 +23,14 @@ variants = ["variants/base.toml"]
 # analog of a 2D canvas): `width` across (x), `height` up (y), `depth`
 # front-to-back (z), in voxel units. The Aegis is deliberately huge — a walking
 # fortress with a far larger footprint than any buildable unit, riding raised on
-# legs — so its volume is broad, deep, and tall. The field always starts EMPTY
-# (everywhere outside, no surface); `background` is only the clear color behind
+# legs — so its volume is length-dominant: broad and long. The field always starts
+# EMPTY (everywhere outside, no surface); `background` is only the clear color behind
 # the wgpu preview PNG. A meshed voxel case reuses the [voxel] volume table and
 # must NOT declare [canvas].
 [voxel]
-width = 88
-height = 80
-depth = 104
+width = 120
+height = 110
+depth = 150
 background = "transparent"
 
 # The meshing tool. `sn` is the only way to shape the surface: every operation
@@ -48,9 +48,9 @@ preview = "model.png"
 # ordered record of every `sn` op the model issued, from which the scored model is
 # regenerated. A static meshed case records a single log (a single implicit part),
 # so its path carries no {part} token. The `sn` binary additionally emits its
-# extracted `mesh.json` — the triangle surface (positions, normals, colors, indices)
-# the reviewer's 3D view is built from — at its own fixed path, so it is not named
-# here.
+# extracted mesh as `mesh.glb` — the triangle surface (positions, normals, colors,
+# indices) the reviewer's 3D view is built from — at its own fixed path, so it is not
+# named here.
 [output]
 actions = "actions.json"
 
@@ -114,7 +114,7 @@ id = "symmetry"
 title = "Bilateral symmetry"
 text = """
 The fortress is cleanly symmetric about its lengthwise vertical centerplane (between \
-x = 43 and x = 44): the two banks of three legs, the two side turrets on their \
+x = 59 and x = 60): the two banks of three legs, the two side turrets on their \
 sponsons, and the main turret and cannon mirror or center on the centerplane, so it \
 reads as a deliberate war machine rather than a lopsided hull."""
 weight = 2
@@ -135,8 +135,8 @@ domain = "fidelity"
 id = "fills-volume"
 title = "Fills the volume"
 text = """
-The fortress uses most of the 88x80x104 volume — broad across the width at the leg \
-stance, deep along z, and tall from the feet on the ground up to the sensor vane, \
+The fortress uses most of the 120x110x150 volume — broad across the width at the leg \
+stance, long along z, and rising from the feet on the ground up to the sensor vane, \
 with only a little margin on every side — neither shrunk into one corner nor clipped \
 where it runs past a face of the volume."""
 weight = 1

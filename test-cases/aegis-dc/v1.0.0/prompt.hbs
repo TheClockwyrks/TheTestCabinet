@@ -1,5 +1,5 @@
 Sculpt the **Aegis**, a colossal hard-edged six-legged walking fortress,
-as a static 3D mesh built with the Dual Contouring tool (`dc`), 88x80x104, using
+as a static 3D mesh built with the Dual Contouring tool (`dc`), 120x110x150, using
 only that tool.
 
 ## How sculpting works
@@ -16,13 +16,14 @@ not). Build through the tool — the surface it extracts is what is scored.
 
 The field starts **empty**. Colors are **opaque** `#rrggbb` — there is no
 transparency. After each call the binary re-composites the field, extracts the mesh
-to `mesh.json`, and re-renders a 3D preview to `model.png`. A blank starting preview
-and empty field are already in place at `{{workspace}}`.
+to `mesh.glb`, and re-renders a 3D preview to `model.png`. The recorded operations
+are the authoritative output that is scored. A blank starting preview and empty
+field are already in place at `{{workspace}}`.
 
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-dc add-box --x 26 --y 40 --z 20 --width 36 --height 16 --depth 64 --color "#c69a4b" --sharp
+dc add-box --x 60 --y 55 --z 74 --width 76 --height 22 --depth 96 --color "#c69a4b" --sharp
 ```
 
 Run `dc --help` to list every operation and `dc <operation> --help` for one
@@ -48,5 +49,5 @@ Build the fortress up operation by operation until the model in `model.png` matc
 the brief — a huge armored citadel riding raised on six articulated
 legs, a central forward cannon, a side turret out on each sponson, and a sensor
 vane, all in the crisp hard-surface armor Dual Contouring is made for, cleanly
-symmetric about its centerplane. When you are satisfied, stop: the extracted
-`mesh.json` is your finished submission.
+symmetric about its centerplane. When you are satisfied, stop: the recorded
+operations are your finished submission.

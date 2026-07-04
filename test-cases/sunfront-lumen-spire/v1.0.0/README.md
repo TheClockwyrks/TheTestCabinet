@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Lumen Spire** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a slim Duneforged beacon spire as a 44×88×44 opaque-voxel model
+sculpt *and rig* a slim Duneforged beacon spire as a 46×90×46 opaque-voxel model
 using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-lumen-spire` is the catalog slug for this case. It is one of the

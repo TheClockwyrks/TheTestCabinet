@@ -3,7 +3,7 @@ name = "Sunfront Reliquary"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Reliquary: a 60x96x60 opaque-voxel monument cradling a \
+Sculpt and rig the Sunfront Reliquary: a 60x100x60 opaque-voxel monument cradling a \
 glowing solar core — built not from a fixed skeleton but by painting discrete cells \
 one recorded operation at a time. Its ring turns, its core breathes, and its guardian \
 fins counter-rotate while the plinth holds still. The model invents whatever parts and \
@@ -27,7 +27,7 @@ variants = ["variants/base.toml"]
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
 width = 60
-height = 96
+height = 100
 depth = 60
 background = "transparent"
 

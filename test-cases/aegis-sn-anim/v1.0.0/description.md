@@ -6,7 +6,7 @@ with a long forward cannon, a rotating secondary turret out on each flank, and a
 decorative radar vane that sweeps on its own.
 
 This asset-generation case asks a model to composite *and rig* it as an
-88×80×104 signed-distance-field model using only the `sn-anim` tool, one
+120×110×150 signed-distance-field model using only the `sn-anim` tool, one
 operation at a time. Instead of painting cells, the model **adds and subtracts
 primitives** (spheres, boxes, ellipsoids, cylinders, with an optional soft
 `--blend`) to build each part's field, and **Surface Nets** meshes each field

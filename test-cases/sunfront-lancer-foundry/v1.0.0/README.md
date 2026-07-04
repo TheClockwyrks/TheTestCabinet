@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Lancer Foundry** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a tall, slender Duneforged foundry spire as a 44×84×44
+sculpt *and rig* a tall, slender Duneforged foundry spire as a 46×86×46
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time.
 

@@ -1,7 +1,7 @@
 **Sunfront Monolith** is a towering super-heavy bipedal Duneforged war-mech
 carrying a giant cannon on its right arm.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 64×80×56
+This asset-generation case asks a model to sculpt *and rig* it as a 50×80×50
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: a
 massive brass torso and head, two thick iron legs planted beneath the hips, and a
 giant arm-cannon carried at the right shoulder. Crucially, the case does **not**

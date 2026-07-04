@@ -3,7 +3,7 @@ name = "Sunfront Scarab"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
-Sculpt and rig the Sunfront Scarab: a 48x28x56 opaque-voxel four-legged war-beetle \
+Sculpt and rig the Sunfront Scarab: a 26x12x30 opaque-voxel four-legged war-beetle \
 that walks on its legs so every foot lifts clear of the ground and plants flat, and \
 snaps its front mandibles on demand — painted cell by cell with the voxel-anim tool, \
 one recorded operation at a time. The model invents whatever parts and joints it \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 48
-height = 28
-depth = 56
+width = 26
+height = 12
+depth = 30
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

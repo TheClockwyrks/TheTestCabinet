@@ -1,7 +1,7 @@
 **Sunfront Scarab Hatchery** is a squat, wide Duneforged hive-mound clustered with
 amber-glowing hatch cells.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 56×40×56
+This asset-generation case asks a model to sculpt *and rig* it as a 60×40×60
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time: a low brass hive-mound, a central iris hatch crowning it, and an exhaust
 vent set into its side. Crucially, the case does **not** hand the model a rig: it

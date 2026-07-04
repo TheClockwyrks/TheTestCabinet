@@ -1,7 +1,7 @@
 **Sunfront Sentinel Foundry** is a tall Duneforged assembly tower with a hammering
 stamping press and a turning drive gear.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 56×72×56
+This asset-generation case asks a model to sculpt *and rig* it as a 56×76×56
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time. Instead of a fixed rig, the model paints discrete opaque cells to build a
 blocky brass masonry tower with a throat up its center, an iron stamping press

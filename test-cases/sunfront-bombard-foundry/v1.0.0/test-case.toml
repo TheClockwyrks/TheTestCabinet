@@ -3,7 +3,7 @@ name = "Sunfront Bombard Foundry"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Bombard Foundry: a 60x68x60 opaque-voxel mortar-works \
+Sculpt and rig the Sunfront Bombard Foundry: a 60x70x60 opaque-voxel mortar-works \
 whose overhead crane arm swings and loading piston bobs on their own self-playing \
 animations while the masonry works stays fixed, built by painting opaque cells one \
 recorded operation at a time. The model invents whatever parts and joints it needs; \
@@ -27,7 +27,7 @@ variants = ["variants/base.toml"]
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
 width = 60
-height = 68
+height = 70
 depth = 60
 background = "transparent"
 

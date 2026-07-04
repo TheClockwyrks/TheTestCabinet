@@ -1,6 +1,6 @@
 **Ironward Siege Tank** is a heavy tracked tank with a swiveling turret and a
 long forward gun. This asset-generation case asks a model to sculpt *and rig* it
-as a 60×40×80 opaque-voxel model using only the `voxel-anim` tool, one operation
+as a 40×30×80 opaque-voxel model using only the `voxel-anim` tool, one operation
 at a time: instead of working from a fixed rig, the model **paints discrete
 opaque cells** into a shared volume to build each part, and defines its own
 skeleton.

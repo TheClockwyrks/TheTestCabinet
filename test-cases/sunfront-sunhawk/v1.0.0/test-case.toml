@@ -3,7 +3,7 @@ name = "Sunfront Sunhawk"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "aircraft"]
 summary = """
-Sculpt and rig the Sunfront Sunhawk: a 64x36x64 opaque-voxel gunship aircraft — a \
+Sculpt and rig the Sunfront Sunhawk: a 74x28x76 opaque-voxel gunship aircraft — a \
 wide, flat armored fuselage with a rotor out on each side and an underslung forward \
 cannon — built by painting discrete opaque cells one recorded operation at a time. \
 The model invents whatever parts and joints it needs; the fixed contract is three \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 64
-height = 36
-depth = 64
+width = 74
+height = 28
+depth = 76
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

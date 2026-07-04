@@ -1,6 +1,6 @@
 Composite and rig the **Aegis**, a colossal multi-gun walking fortress that strides on
 legs, aims a dominant main cannon forward, works a side-mounted turret on each flank,
-and sweeps a radar vane — as an 88x80x104 model **meshed with Dual Contouring** using
+and sweeps a radar vane — as a 120x110x150 model **meshed with Dual Contouring** using
 only the `dc-anim` tool. You build it not by painting cells but by **compositing a
 signed-distance field** — adding and subtracting primitives — and you **author its
 walk and weapon animations** as F-curves.
@@ -15,7 +15,7 @@ needs.
 
 The only way to build a part and edit the rig is the `dc-anim` binary already on your
 `PATH`. It is the sole channel: you build the model by calling it **one operation at a
-time**, and the geometry it **emits** — one meshed `parts/<part>.mesh.json` per part —
+time**, and the geometry it **emits** — one per-part `.glb` (binary glTF) mesh —
 together with the rig you define are the **authoritative output that is scored**, not
 any file you write yourself. Anything produced another way (writing a mesh directly,
 editing a preview by hand) is discarded and flagged; only the tool-emitted meshes and
@@ -26,13 +26,10 @@ Unlike painting discrete voxels, `dc-anim` builds each part's geometry as a
 ellipsoids, cylinders — each a center/extent and an opaque `#rrggbb` color) to lay
 down material and **subtract** them to carve it away, optionally with a soft `--blend`
 radius that fuses primitives smoothly (a `--blend` of `0`, the default, is a hard
-union with a genuine crease). Dual Contouring uniquely exposes a **`--sharp`/`--smooth`**
-tag per primitive that preserves or rounds its edges. The binary then extracts the
-field's surface into a triangle mesh with **Dual Contouring** — a **fixed
-HIGH-FIDELITY, crisp** character (a fine sample grid) that **preserves sharp edges and
-corners** instead of rounding them: it is what this binary is for, not a setting you
-tune. Lean into the crisp, sharp-edged look, keeping smooth forms only for the few
-details that want them.
+union with a genuine crease). The binary then extracts the field's surface into a
+triangle mesh with Dual Contouring, which reconstructs sharp edges and corners
+faithfully instead of rounding them, and exposes a `--sharp` / `--smooth` tag per
+primitive that holds or rounds its edges.
 
 **You invent the rig.** Define whatever parts you need with `define-part` (giving each
 a parent and a pivot), place joints on them with `define-joint`, and author the
@@ -41,14 +38,14 @@ targets a **part** with `--part <name>`, so define a part before you sculpt into
 each part is a **separate field** composited in the shared volume's coordinates. The
 field starts **empty**. Colors are **opaque** `#rrggbb` — there is no transparency.
 After each call the binary re-renders that part's wgpu preview to `parts/<part>.png`
-and updates that part's emitted `parts/<part>.mesh.json`.
+and updates that part's emitted per-part `.glb` mesh.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
 dc-anim define-part --name chassis
-dc-anim add-box --part chassis --cx 44 --cy 45 --cz 52 --sx 60 --sy 30 --sz 88 --color "#c69a4b" --sharp
-dc-anim add-sphere --part main_turret --cx 44 --cy 64 --cz 56 --r 12 --blend 3 --color "#c69a4b"
+dc-anim add-box --part chassis --cx 60 --cy 60 --cz 75 --sx 84 --sy 40 --sz 120 --color "#c69a4b" --sharp
+dc-anim add-sphere --part main_turret --cx 60 --cy 86 --cz 80 --r 16 --blend 3 --color "#c69a4b"
 ```
 
 (The part names above are just an example — name your own parts however you like.) Run

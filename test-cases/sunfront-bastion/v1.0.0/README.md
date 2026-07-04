@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Bastion** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a huge Duneforged fortified keep as a 72×88×72 opaque-voxel model
+sculpt *and rig* a huge Duneforged fortified keep as a 90×120×90 opaque-voxel model
 using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-bastion` is the catalog slug for this case. It is the home keep / HQ of

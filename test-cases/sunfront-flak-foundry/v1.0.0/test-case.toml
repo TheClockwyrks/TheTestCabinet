@@ -3,7 +3,7 @@ name = "Sunfront Flak Foundry"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Flak Foundry: a 56x76x56 opaque-voxel works crowned \
+Sculpt and rig the Sunfront Flak Foundry: a 56x80x56 opaque-voxel works crowned \
 with a sweeping radar dish and carrying a bobbing piston on its flank — painted cell \
 by cell with the `voxel-anim` tool, one recorded operation at a time. The model \
 invents whatever parts and joints it needs; the fixed contract is two self-playing \
@@ -27,7 +27,7 @@ variants = ["variants/base.toml"]
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
 width = 56
-height = 76
+height = 80
 depth = 56
 background = "transparent"
 

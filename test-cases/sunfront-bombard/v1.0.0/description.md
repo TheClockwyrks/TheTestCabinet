@@ -1,7 +1,7 @@
 **Sunfront Bombard** is a four-legged Duneforged siege mortar walker with a
 swiveling turret and a long, high-lobbing barrel.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 56×52×80
+This asset-generation case asks a model to sculpt *and rig* it as a 40×40×60
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time:
 painting discrete opaque cells to build a low brass hull raised on legs, four
 legs that carry it, a turret on top, and a long mortar barrel projecting

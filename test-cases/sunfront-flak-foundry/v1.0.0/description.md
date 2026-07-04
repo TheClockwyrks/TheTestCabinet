@@ -1,7 +1,7 @@
 **Sunfront Flak Foundry** is a tall Duneforged works crowned with a sweeping
 radar dish and carrying a bobbing piston.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 56×76×56
+This asset-generation case asks a model to sculpt *and rig* it as a 56×80×56
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time:
 instead of a fixed skeleton, the model paints discrete opaque cells into a
 blocky brass masonry works, a broad radar dish on its crown, and a heavy

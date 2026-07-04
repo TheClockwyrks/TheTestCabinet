@@ -3,7 +3,7 @@ name = "Sunfront Scarab Hatchery"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Scarab Hatchery: a 56x40x56 opaque-voxel squat \
+Sculpt and rig the Sunfront Scarab Hatchery: a 60x40x60 opaque-voxel squat \
 hive-mound whose central hatch iris slowly turns and a side vent bobs, each a \
 looping decorative auto-play animation the model authors, built and rigged one \
 recorded operation at a time."""
@@ -24,9 +24,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 56
+width = 60
 height = 40
-depth = 56
+depth = 60
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

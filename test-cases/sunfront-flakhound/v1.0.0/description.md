@@ -1,7 +1,7 @@
 **Sunfront Flakhound** is a four-legged Duneforged anti-air walker with a
 traversing back turret and twin elevating flak barrels.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 52×48×56
+This asset-generation case asks a model to sculpt *and rig* it as a 36×32×46
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at
 a time: instead of a mesh it **paints discrete opaque cells** — setting and
 clearing voxels, filling and stroking boxes, drawing lines and spheres — to

@@ -1,7 +1,7 @@
 **Sunfront Lumen** is a floating Duneforged beacon drone with two
 counter-rotating rings around a glowing core.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 40×56×40
+This asset-generation case asks a model to sculpt *and rig* it as a 20×26×20
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: a
 hovering brass core carrying a solar-hot heart, two iron rings orbiting it, and
 a beam emitter projecting from the core face.

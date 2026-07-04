@@ -2,7 +2,7 @@
 spinning rotors and an underslung forward cannon, rendered as an opaque-voxel
 model.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 64×36×64
+This asset-generation case asks a model to sculpt *and rig* it as a 74×28×76
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: it
 paints discrete opaque cells to build a broad brass fuselage, a rotor out on each
 side, and an iron cannon beneath the nose. Crucially, the case does **not** hand

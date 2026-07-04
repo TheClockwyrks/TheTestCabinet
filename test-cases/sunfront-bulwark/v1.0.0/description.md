@@ -2,7 +2,7 @@
 tower shield on its left arm and swings a heavy siege maul in its right,
 striding forward on two legs.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 56×68×48
+This asset-generation case asks a model to sculpt *and rig* it as a 40×60×30
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time:
 instead of a fixed skeleton, the model **paints discrete opaque cells** into
 whatever parts it invents — a broad, armored body and head with two shoulders,

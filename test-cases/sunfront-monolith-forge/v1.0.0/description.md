@@ -1,7 +1,7 @@
 **Sunfront Monolith Forge** is a towering Duneforged great forge with a massive
 pounding hammer and a turning gear crown.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 68×84×68
+This asset-generation case asks a model to sculpt *and rig* it as a 90×110×90
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: a
 huge, blocky brass masonry forge tower with a throat up its center, a massive iron
 hammer riding in that throat, and a toothed gear crown atop it. Crucially, the

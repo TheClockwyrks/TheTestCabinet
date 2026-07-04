@@ -4,7 +4,7 @@ This is version `v1.0.0` of the **Sunfront Aegis** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
 sculpt *and rig* a colossal Duneforged **multi-legged walking fortress** — a
 tiered, prowed multi-gun war-fortress that dwarfs every buildable unit and
-strides on legs — as an 88×80×104 opaque-voxel model using only the `voxel-anim`
+strides on legs — as a 120×110×150 opaque-voxel model using only the `voxel-anim`
 tool, one recorded operation at a time, authoring its walk and weapon animations
 as F-curves.
 

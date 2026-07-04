@@ -1,7 +1,7 @@
 **Sunfront Skyworks** is a broad Duneforged launch-pad hangar with a fast spinning
 turbine and a raising launch door.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 64×64×64
+This asset-generation case asks a model to sculpt *and rig* it as a 70×60×70
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: it
 paints discrete opaque cells (`set-voxel`, `fill-box`, strokes, lines, spheres,
 mirror) into an open brass masonry pad with a center mast, an iron turbine

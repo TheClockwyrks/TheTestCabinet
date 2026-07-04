@@ -4,7 +4,7 @@ difficulty = "easy"
 tags = ["asset-generation", "3d", "voxel", "ship"]
 summary = """
 Sculpt the Skyshard Interceptor: a symmetric, forward-swept fighter jet built as \
-a 60x20x80 opaque-voxel model, one recorded operation at a time."""
+a 50x20x76 opaque-voxel model, one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
@@ -21,9 +21,9 @@ variants = ["variants/base.toml"]
 # volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 60
+width = 50
 height = 20
-depth = 80
+depth = 76
 background = "transparent"
 
 # The sculpting tool. `voxel` is the only way to place a voxel; it records every
@@ -33,8 +33,8 @@ background = "transparent"
 binary = "voxel"
 preview = "model.png"
 
-# The recorded action log — the authoritative output the scored isometric preview
-# and the regenerated voxels.json are rebuilt from.
+# The recorded action log — the authoritative output. The binary also emits the
+# per-part `.glb` the 3D client renders (not declared here).
 [output]
 actions = "actions.json"
 
@@ -68,7 +68,7 @@ id = "symmetry"
 title = "Bilateral symmetry"
 text = """
 The interceptor is cleanly symmetric about its lengthwise vertical centerplane \
-(between x = 29 and x = 30): the two wings, the two tail fins, and any engine \
+(between x = 24 and x = 25): the two wings, the two tail fins, and any engine \
 intakes mirror each other, so it reads as a deliberate aircraft rather than a \
 lopsided hull."""
 weight = 2
@@ -88,7 +88,7 @@ domain = "fidelity"
 id = "fills-volume"
 title = "Fills the volume"
 text = """
-The jet uses most of the 60x20x80 volume — long along z, spanning most of the \
+The jet uses most of the 50x20x76 volume — long along z, spanning most of the \
 width at the wingtips, a few voxels of margin on every side — neither shrunk into \
 one corner nor clipped where it runs past a face of the volume."""
 weight = 1

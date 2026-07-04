@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Sentinel** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* an upright bipedal Duneforged war-mech as a 44×64×40 opaque-voxel
+sculpt *and rig* an upright bipedal Duneforged war-mech as a 20×40×20 opaque-voxel
 model using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-sentinel` is the catalog slug for this case. It is one of the

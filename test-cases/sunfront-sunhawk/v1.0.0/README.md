@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Sunhawk** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a wide, flat Duneforged gunship aircraft as a 64×36×64
+sculpt *and rig* a wide, flat Duneforged gunship aircraft as a 74×28×76
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time.
 

@@ -1,7 +1,7 @@
 **Sunfront Lancer Foundry** is a tall, slender Duneforged spire with a sliding
 rail-arm and a spinning focus-ring.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 44×84×44
+This asset-generation case asks a model to sculpt *and rig* it as a 46×86×46
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: a
 masonry base tower rising into a narrow shaft, a heavy iron rail-arm set into
 the mid-shaft, and a machined focus-ring crowning the top, with a solar-hot

@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Flakhound** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a four-legged Duneforged anti-air walker as a 52×48×56
+sculpt *and rig* a four-legged Duneforged anti-air walker as a 36×32×46
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time.
 

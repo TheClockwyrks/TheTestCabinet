@@ -3,7 +3,7 @@ name = "Sunfront Skyworks"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Skyworks: a 64x64x64 opaque-voxel open launch-pad \
+Sculpt and rig the Sunfront Skyworks: a 70x60x70 opaque-voxel open launch-pad \
 hangar whose turbine spins fast overhead and launch door raises and lowers on their \
 own auto-play animations while the pad stays fixed — painted cell by cell one \
 recorded operation at a time. The model invents whatever parts and joints it needs; \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 64
-height = 64
-depth = 64
+width = 70
+height = 60
+depth = 70
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

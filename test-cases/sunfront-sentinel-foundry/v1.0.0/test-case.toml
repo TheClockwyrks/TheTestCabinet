@@ -3,7 +3,7 @@ name = "Sunfront Sentinel Foundry"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Sentinel Foundry: a 56x72x56 opaque-voxel assembly \
+Sculpt and rig the Sunfront Sentinel Foundry: a 56x76x56 opaque-voxel assembly \
 tower whose stamping press hammers down and drive gear spins on their own \
 self-playing animations while the structure stays put — painted cell by cell with \
 the `voxel-anim` tool, one recorded operation at a time. The model invents whatever \
@@ -28,7 +28,7 @@ variants = ["variants/base.toml"]
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
 width = 56
-height = 72
+height = 76
 depth = 56
 background = "transparent"
 

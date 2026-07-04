@@ -3,7 +3,7 @@ name = "Sunfront Bombard"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
-Sculpt and rig the Sunfront Bombard: a 56x52x80 opaque-voxel four-legged siege \
+Sculpt and rig the Sunfront Bombard: a 40x40x60 opaque-voxel four-legged siege \
 mortar walker whose turret swivels and whose long mortar barrel lobs high — built \
 not from a fixed skeleton but by painting discrete opaque voxel cells one recorded \
 operation at a time. The model invents whatever parts and joints it needs; the fixed \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 56
-height = 52
-depth = 80
+width = 40
+height = 40
+depth = 60
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

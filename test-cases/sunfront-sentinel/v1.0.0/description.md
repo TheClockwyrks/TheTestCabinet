@@ -1,7 +1,7 @@
 **Sunfront Sentinel** is an upright bipedal Duneforged war-mech carrying a rifle on
 its right arm.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 44×64×40
+This asset-generation case asks a model to sculpt *and rig* it as a 20×40×20
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: it
 **paints discrete opaque cells** (single voxels, boxes, lines, spheres, with a
 mirror plane) to build each part's body, standing an upright brass body and head

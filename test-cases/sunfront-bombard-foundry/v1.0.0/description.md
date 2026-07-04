@@ -1,7 +1,7 @@
 **Sunfront Bombard Foundry** is a heavy Duneforged mortar-works with a swinging
 overhead crane arm and a bobbing loading piston.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 60×68×60
+This asset-generation case asks a model to sculpt *and rig* it as a 60×70×60
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time:
 the model paints discrete opaque cells into a blocky brass masonry works, an
 iron crane arm cantilevered off its top, and an iron loading piston riding in

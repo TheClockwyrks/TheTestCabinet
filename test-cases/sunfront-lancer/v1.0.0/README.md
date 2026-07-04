@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Lancer** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a tall bipedal Duneforged marksman-mech as a 44×64×64
+sculpt *and rig* a tall bipedal Duneforged marksman-mech as a 24×50×50
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time.
 

@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Scarab** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a low, wide four-legged Duneforged war-beetle as a 48×28×56
+sculpt *and rig* a low, wide four-legged Duneforged war-beetle as a 26×12×30
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time.
 

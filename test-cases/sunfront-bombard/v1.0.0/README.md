@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Bombard** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a four-legged Duneforged siege mortar walker as a 56×52×80
+sculpt *and rig* a four-legged Duneforged siege mortar walker as a 40×40×60
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time.
 

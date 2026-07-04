@@ -2,7 +2,7 @@
 armored citadel riding raised on six articulated legs, with a central forward
 cannon, a rotating turret out on each side sponson, and a sensor vane, cleanly
 symmetric about its centerplane. This asset-generation case asks a model to
-sculpt it as a static 88×80×104 mesh using only the Dual Contouring tool
+sculpt it as a static 120×110×150 mesh using only the Dual Contouring tool
 (`dc`), one operation at a time.
 
 Rather than placing voxels, the model composites a signed-distance field from

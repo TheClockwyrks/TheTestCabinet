@@ -3,7 +3,7 @@ name = "Sunfront Lumen Spire"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Lumen Spire: a slim 44x88x44 opaque-voxel beacon spire \
+Sculpt and rig the Sunfront Lumen Spire: a slim 46x90x46 opaque-voxel beacon spire \
 painted cell by cell with the `voxel-anim` tool. The model invents whatever parts and \
 joints it needs; the fixed contract is two self-playing animations it must author — a \
 `halo_ring_spin` that turns the halo ring and a `lens_pulse` that bobs the solar lens \
@@ -25,9 +25,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 44
-height = 88
-depth = 44
+width = 46
+height = 90
+depth = 46
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

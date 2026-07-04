@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Sentinel Foundry** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a tall Duneforged assembly tower as a 56×72×56 opaque-voxel model
+sculpt *and rig* a tall Duneforged assembly tower as a 56×76×56 opaque-voxel model
 using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-sentinel-foundry` is the catalog slug for this case. It is one of the

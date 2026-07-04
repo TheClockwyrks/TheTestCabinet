@@ -1,6 +1,6 @@
 Sculpt and rig the **Sunfront Bulwark**, a heavy bipedal war-mech that braces a broad
 tower shield on its left arm, swings a heavy siege maul in its right, and strides
-forward on two legs — as a 56x68x48 opaque-voxel model using only the `voxel-anim`
+forward on two legs — as a 40x60x30 opaque-voxel model using only the `voxel-anim`
 tool. You build it by **painting discrete opaque cells** — one recorded operation at a
 time — and you **author its walk and weapon animations** as F-curves.
 
@@ -37,7 +37,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name body
-voxel-anim fill-box --part body --x0 12 --y0 28 --z0 12 --x1 43 --y1 58 --z1 35 --color "#c69a4b"
+voxel-anim fill-box --part body --x0 10 --y0 30 --z0 8 --x1 29 --y1 52 --z1 22 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.) Run
@@ -53,35 +53,6 @@ actually fit together: that the legs seat beneath the body and reach the ground 
 tower shield meets the left shoulder. Because each part is sculpted in the shared
 volume's coordinates, position each part where it belongs on the finished mech; the
 scene simply composes them there.
-
-## Making the legs walk (the hard part — design them to work)
-
-The single thing most models get wrong is the walk. You are judged on whether the legs
-read as a **heavy machine pushing itself forward**, not flailing. To get there you will
-almost certainly need each leg to be an **articulated chain** — more than one segment
-and more than one joint — because a single rigid leg swung from one pivot cannot both
-lift its foot clear and hold it planted. Concretely:
-
-- **Independent legs.** Give each leg its **own** chain on its **own** hip directly
-  above its **own** foot. Do **not** hang both feet on one shared pivot — rotating that
-  bank drives one foot down through the ground while the other lifts.
-- **A planted stance.** Each leg must have a phase where its foot is **flat and still
-  on the ground** while the body travels forward over it, then lifts, swings forward,
-  and plants again. A foot that is in a continuous arc the whole time — never still on
-  the ground — reads as flailing, not walking.
-- **Keep the foot flat *in the world*.** As the leg folds and extends through the
-  stride, the foot must stay **level with the ground**, not tip onto toe or heel. This
-  is the subtle part: a joint angle is applied **relative to its parent segment**, so
-  holding the foot flat in the *world* means the ankle must **counter-rotate against
-  the combined rotation of the hip and knee above it** — not just sit at a fixed local
-  angle. Design the ankle with enough range to cancel that accumulated rotation across
-  the whole cycle.
-- **Bend the knee the right way.** Rest each leg as a **clearly bent** chain (not a
-  straight column — a straight leg has no room to fold and extend), and bend the knee
-  the way a heavy walker's does (a reverse/digitigrade knee). If it bends inside-out,
-  fix the sign of the motion.
-- **Phase the two legs in opposite phase** so one foot is always planted and the mech
-  is always supported — never both feet lifting at once.
 
 ## What to read first
 

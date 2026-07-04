@@ -1,7 +1,7 @@
 **Sunfront Bastion** is a huge Duneforged home keep with a rotating solar
 collector crown, a raising gate, and a slowly turning beacon.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 72×88×72
+This asset-generation case asks a model to sculpt *and rig* it as a 90×120×90
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time:
 instead of a smoothed surface, the model **paints discrete opaque cells** into
 a massive brass masonry fortress — thick ramparts, corner towers, and a central

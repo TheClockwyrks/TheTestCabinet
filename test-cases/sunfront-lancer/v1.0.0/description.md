@@ -1,7 +1,7 @@
 **Sunfront Lancer** is a tall bipedal Duneforged marksman-mech carrying a long
 center rail-lance.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 44×64×64
+This asset-generation case asks a model to sculpt *and rig* it as a 24×50×50
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at
 a time: it paints discrete opaque cells to build an upright brass-and-sandstone
 body (the fixed core), two articulated iron legs that stride beneath it, and a

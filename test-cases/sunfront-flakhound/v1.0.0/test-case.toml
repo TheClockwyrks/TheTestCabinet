@@ -3,7 +3,7 @@ name = "Sunfront Flakhound"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
 summary = """
-Sculpt and rig the Sunfront Flakhound: a 52x48x56 opaque-voxel four-legged \
+Sculpt and rig the Sunfront Flakhound: a 36x32x46 opaque-voxel four-legged \
 anti-air walker painted cell by cell with the `voxel-anim` tool — it strides on \
 legs, sweeps a back turret, and elevates twin flak barrels to track a target \
 across the sky. The model invents whatever parts and joints it needs; the fixed \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 52
-height = 48
-depth = 56
+width = 36
+height = 32
+depth = 46
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

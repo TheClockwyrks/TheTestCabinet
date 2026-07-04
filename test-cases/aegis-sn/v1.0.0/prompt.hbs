@@ -1,5 +1,5 @@
 Sculpt the **Aegis**, a colossal six-legged walking fortress, as a static
-88x80x104 smooth-surfaced model using only the `sn` meshing tool.
+120x110x150 smooth-surfaced model using only the `sn` meshing tool.
 
 ## How sculpting works
 
@@ -10,21 +10,20 @@ signed-distance field** — you **composite primitives** into it (adding materia
 with a sphere, box, ellipsoid, or cylinder; carving it away with another) and it
 extracts a triangle surface from the field's zero level set. `sn` is the **Surface
 Nets** extractor: it produces a **smooth, rounded, watertight, mid-fidelity**
-surface with no sharp edges, at a fixed resolution. Design for that — lean into
-rounded, beveled armor rather than crisp knife-edges.
+surface with no sharp edges, at a fixed resolution; corners round by construction.
 
 The field starts **empty**. Every primitive carries an **opaque** `#rrggbb` color —
 there is no transparency. After each call the binary extracts the surface to
-`mesh.json` and re-renders a 3D preview to `model.png`, recording the operation. The
-emitted `mesh.json` — the surface your recorded operations produce — is the
-authoritative output that is judged; a surface produced any other way is discarded.
+`mesh.glb` and re-renders a 3D preview to `model.png`, recording the operation. The
+recorded operations — from which that surface is produced — are the authoritative
+output that is judged; a surface produced any other way is discarded.
 An empty field and a blank preview are already in place at `{{workspace}}`.
 
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-sn add-box --x 44 --y 30 --z 52 --width 40 --height 16 --depth 60 --color "#c69a4b"
-sn add-sphere --x 44 --y 60 --z 56 --r 9 --color "#c69a4b" --blend 3
+sn add-box --x 60 --y 42 --z 74 --width 56 --height 22 --depth 84 --color "#c69a4b"
+sn add-sphere --x 60 --y 84 --z 80 --r 13 --color "#c69a4b" --blend 3
 ```
 
 Run `sn --help` to list every operation and `sn <operation> --help` for one
@@ -50,5 +49,5 @@ Build the fortress up operation by operation until the model in `model.png` matc
 the brief — a huge armored hull riding raised on six thick jointed
 legs, a big main turret with a long forward cannon, a side turret out on each
 sponson, and a sensor vane above, cleanly symmetric about its centerplane and built
-as one continuous rounded surface. When you are satisfied, stop: the emitted
-`mesh.json` is your finished submission.
+as one continuous rounded surface. When you are satisfied, stop: the recorded
+operations are your finished submission.

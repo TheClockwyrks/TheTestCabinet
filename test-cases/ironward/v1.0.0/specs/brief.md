@@ -1,58 +1,57 @@
 # Ironward Siege Tank — sculpting and rigging brief
 
-You are sculpting and rigging the **Ironward Siege Tank**, a **heavy tracked
-tank** with a **swiveling turret** and a **long forward gun** — as a **rigged 3D
-voxel model** a game poses at runtime. There is no target model to copy: it must
-read unmistakably as the Ironward and satisfy the animation contract below.
+You are sculpting and rigging the Ironward Siege Tank, a heavy tracked tank with a
+swiveling turret and a long forward gun — as a rigged 3D voxel model a game poses at
+runtime. There is no target model to copy: it must read unmistakably as the Ironward
+and satisfy the animation contract below.
 
-This brief fixes **what the Ironward is** and **how it must move**. It
-deliberately does **not** give you a parts list, joint placements, or pose
-angles — **working out the pieces a tracked, turret-swiveling tank needs, where
-they attach, and how they articulate is the test.** Invent the rig.
+This brief fixes what the Ironward is and how it must move. It deliberately does not
+give you a parts list, joint placements, or pose angles — working out the pieces a
+tracked, turret-swiveling tank needs, where they attach, and how they articulate is
+the test. Invent the rig.
 
 ## How the tool works
 
-`voxel-anim` paints **discrete opaque cells** into a shared volume. You build the
-model by:
+`voxel-anim` paints discrete opaque cells into a shared volume. You build the model
+by:
 
-- **Placing material** with the tool's fill/stroke/line/sphere/box operations
-  (each an opaque `#rrggbb` color), and clearing it where you overreach.
-- Selecting the **part** an op sculpts with the global **`--part <name>`**; each
-  part is its **own** preview and log. Create a part with `define-part` before you
-  sculpt into it.
+- Placing material with the tool's fill/stroke/line/sphere/box operations (each an
+  opaque `#rrggbb` color), and clearing it where you overreach.
+- Selecting the part an op sculpts with the global `--part <name>`; each part is its
+  own preview and log. Create a part with `define-part` before you sculpt into it.
 
-Build **one operation at a time**. `voxel-anim` re-renders `parts/<part>.png` and
-the assembled `scene/*.png` — **read them between calls**. `voxel-anim --help` is
-the contract.
+Build one operation at a time. `voxel-anim` re-renders `parts/<part>.png` and the
+assembled `scene/*.png` — read them between calls. `voxel-anim --help` is the
+contract.
 
 ## The volume and coordinate system
 
-- The volume is **60 wide (x) × 40 tall (y) × 80 deep (z)**, in opaque voxels,
-  starting **empty**.
-- **x** runs across the tank, `0`–`59`. **y** runs up, `0` (ground) to `39` (top).
-  **z** runs front-to-back, `0`–`79`. **Forward is +z:** the gun points toward
-  higher `z` at rest.
-- Build the tank roughly **symmetric left-to-right** about the lengthwise vertical
-  centerplane (between `x = 29` and `x = 30`).
+- The volume is **40 wide (x) × 30 tall (y) × 80 deep (z)**, in opaque voxels,
+  starting empty.
+- **x** runs across the tank, `0`–`39`. **y** runs up, `0` (ground) to `29` (top).
+  **z** runs front-to-back, `0`–`79`. **Forward is +z:** the gun points toward higher
+  `z` at rest.
+- Build the tank roughly symmetric left-to-right about the lengthwise vertical
+  centerplane (between `x = 19` and `x = 20`). It is a long, low tank — longer
+  front-to-back than it is wide or tall.
 - Each part is sculpted in these shared coordinates, where it sits on the assembled
   tank.
 
 ## What the Ironward is (and what is yours to invent)
 
-Fixed — the tank must read unmistakably as **all** of these:
+Fixed — the tank must read unmistakably as all of these:
 
-- A **low, boxy armored hull** riding on a **pair of tracks** down its sides,
-  running most of the length — a tracked fighting vehicle, **not a plain box**.
-- A **turret** sitting on top of the hull that **swivels** to aim (see the
-  animation).
-- A **long gun** projecting **forward** from the turret, swinging with it.
-- A clear **warm accent** and the palette below.
+- A low, boxy armored hull riding on a pair of tracks down its sides, running most of
+  the length — a tracked fighting vehicle, not a plain box.
+- A turret sitting on top of the hull that swivels to aim (see the animation).
+- A long gun projecting forward from the turret, swinging with it.
+- A clear warm accent and the palette below.
 
-**Everything else is yours to invent** — the exact silhouette and proportions, how
-the hull is shaped and how the tracks are detailed, how the turret and gun are
-formed, and how you break the tank into rig parts and place its joints. Nothing
-here prescribes a shape; the test rewards a bold, characterful design that is
-unmistakably the Ironward and animates convincingly.
+Everything else is yours to invent — the exact silhouette and proportions, how the
+hull is shaped and how the tracks are detailed, how the turret and gun are formed, and
+how you break the tank into rig parts and place its joints. Nothing here prescribes a
+shape; the test rewards a bold, characterful design that is unmistakably the Ironward
+and animates convincingly.
 
 ## Palette
 
@@ -67,34 +66,29 @@ off-palette colors and stray voxels count against you):
 | Gun & fittings (gunmetal) | `#6b7078` |
 | Accent (warm) | `#b5502a` |
 
-Set a clear **warm accent** (a hatch, cupola, or running-light detail) so it shows
-from many angles.
+Set a clear warm accent (a hatch, cupola, or running-light detail) so it shows from
+many angles.
 
 ## The required animation — the fixed contract
 
 `rig.json` is pre-seeded with **one required animation declaration** by name (you
-author the motion). Author it with `voxel-anim define-animation` then
-`add-keyframe`, choosing the period and setting each key's interpolation
+author the motion). Author it with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and each key's interpolation
 (`--interp constant|linear|bezier|ease-in|ease-out|ease-in-out`, with optional
-`--out-handle`/`--in-handle` for bezier) so the motion **carries weight** — a heavy
-turret slows as it reaches each extreme and rolls back, rather than sliding
-linearly at a constant rate.
+`--out-handle`/`--in-handle` for bezier) so a heavy turret slows as it reaches each
+extreme and rolls back, rather than sliding linearly at a constant rate.
 
-- **`turret_sweep`** — the TURRET traverse (a game-triggered playable). Swings the
-  turret smoothly through its full traverse — center → left → center → right →
-  center — and loops, aiming the gun across its arc. The turret (and the gun with
-  it) moves; the hull stays put. It is a **named playable**, not an idle that
-  starts on its own.
+- **`turret_sweep`** — the turret traverse (a game-triggered playable). The turret
+  swings smoothly through its full traverse — center to one side, back through center
+  to the other side, and back — and loops, aiming the gun across its arc. The turret
+  and the gun swing together as one solid piece and the gun stays attached throughout,
+  with nothing tearing away from the mount or clipping into the hull; the hull stays
+  put. It is a named playable, not an idle that starts on its own.
 
-Design the turret so this motion reads correctly: it should swing as one solid
-piece about a single vertical axis without any part tearing away from its mount or
-clipping into the hull, and the gun should ride the turret's rotation so it always
-stays attached.
-
-You **may add** extra parts, joints, and animations of your own (for example a gun
-that elevates and depresses, or a subtle decorative idle); you must produce this
-one animation, by this name, and must not contradict it (e.g. don't drive the hull
-under `turret_sweep`).
+You may add extra parts, joints, and animations of your own (for example a gun that
+elevates and depresses, or a subtle decorative idle); you must produce this one
+animation, by this name, and must not contradict it (e.g. don't drive the hull under
+`turret_sweep`).
 
 ## Working the tool
 

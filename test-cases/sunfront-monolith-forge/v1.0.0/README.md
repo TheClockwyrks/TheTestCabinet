@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Monolith Forge** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a towering Duneforged great forge as a 68×84×68 opaque-voxel
+sculpt *and rig* a towering Duneforged great forge as a 90×110×90 opaque-voxel
 model using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-monolith-forge` is the catalog slug for this case. It is one of the

@@ -3,7 +3,7 @@ name = "Sunfront Lancer Foundry"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Lancer Foundry: a 44x84x44 opaque-voxel spire whose \
+Sculpt and rig the Sunfront Lancer Foundry: a 46x86x46 opaque-voxel spire whose \
 rail-arm slides up and down its shaft and whose focus-ring spins at the crown, each \
 on its own self-playing animation, while the base stays fixed — built by painting \
 opaque cells one recorded operation at a time. The model invents whatever parts and \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 44
-height = 84
-depth = 44
+width = 46
+height = 86
+depth = 46
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

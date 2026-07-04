@@ -5,7 +5,7 @@ tags = ["asset-generation", "3d", "voxel", "mesh", "marching-cubes", "fortress"]
 summary = """
 Sculpt the Aegis: a colossal, standing six-legged war-fortress meshed \
 from a signed-distance field with the `mc` Marching Cubes binary — a bold, chunky, \
-faceted low-poly surface — inside an 88x80x104 volume, one recorded operation at a \
+faceted low-poly surface — inside a 120x110x150 volume, one recorded operation at a \
 time."""
 description = "description.md"
 prompt = "prompt.hbs"
@@ -21,16 +21,16 @@ variants = ["variants/base.toml"]
 # The fixed volume the Marching Cubes field is framed in (the 3D analog of a 2D
 # canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
 # voxels. The Aegis is deliberately huge — a walking fortress with a far larger
-# footprint than any buildable unit, standing raised on its legs — so its volume is
-# broad, deep, and tall. Unlike a cube case this volume frames a CONTINUOUS
-# signed-distance field (primitive centers and extents are real-valued within it),
-# not a discrete cell grid. The field always starts EMPTY; `background` is only the
-# clear color behind the wgpu preview PNG. A voxel/mesh case must NOT declare
-# [canvas].
+# footprint than any buildable unit, riding raised on its legs — so its volume is
+# length-dominant: broad and long, riding on its legs. Unlike a cube case this
+# volume frames a CONTINUOUS signed-distance field (primitive centers and extents
+# are real-valued within it), not a discrete cell grid. The field always starts
+# EMPTY; `background` is only the clear color behind the wgpu preview PNG. A
+# voxel/mesh case must NOT declare [canvas].
 [voxel]
-width = 88
-height = 80
-depth = 104
+width = 120
+height = 110
+depth = 150
 background = "transparent"
 
 # The meshing tool. `mc` is the only way to shape the surface: every operation
@@ -47,9 +47,9 @@ preview = "model.png"
 # The recorded operation log — the authoritative output the run collects: the
 # ordered record of every `mc` op the model issued, from which the scored model is
 # regenerated. For a static model this is a single file (no `{part}` template). The
-# `mc` binary additionally emits its extracted `mesh.json` — the triangle surface
-# (positions/normals/colors/indices) the review viewer renders — at its own fixed
-# path, so it is not named here.
+# `mc` binary additionally emits its extracted mesh as `mesh.glb` — the triangle
+# surface (positions/normals/colors/indices) the review viewer renders — at its own
+# fixed path, so it is not named here.
 [output]
 actions = "actions.json"
 
@@ -101,7 +101,7 @@ id = "symmetry"
 title = "Bilateral symmetry"
 text = """
 The fortress is cleanly symmetric about its lengthwise vertical centerplane (between \
-x = 43 and x = 44): the three legs down each side, the two side sponsons and their \
+x = 59 and x = 60): the three legs down each side, the two side sponsons and their \
 turrets, and any intakes or vents mirror each other, with the main turret, cannon, \
 and sensor vane centered on the plane — so it reads as a deliberate war machine \
 rather than a lopsided hull. Compositing one half of the field and reflecting it \
@@ -127,8 +127,8 @@ title = "Duneforged palette; fills the volume"
 text = """
 Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
 and gun barrels, dark-iron recesses, and the solar-amber accent) with a clear amber \
-accent and no out-of-palette colors, and the fortress uses most of the 88x80x104 \
-volume — broad and deep, standing tall on its legs — with a little margin on every \
+accent and no out-of-palette colors, and the fortress uses most of the 120x110x150 \
+volume — broad and long, riding raised on its legs — with a little margin on every \
 side, neither shrunk into a corner nor clipped where it runs past a face."""
 weight = 1
 domain = "fidelity"

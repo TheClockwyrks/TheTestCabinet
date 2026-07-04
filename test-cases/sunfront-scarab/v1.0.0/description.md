@@ -1,7 +1,7 @@
 **Sunfront Scarab** is a low, wide four-legged Duneforged war-beetle with snapping
 front mandibles.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 48×28×56
+This asset-generation case asks a model to sculpt *and rig* it as a 26×12×30
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time: a
 domed brass carapace body (the fixed root), four iron legs at its corners, and a
 pair of jaws at the head. Crucially, the case does **not** hand the model a rig: it

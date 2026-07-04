@@ -2,7 +2,7 @@
 armored citadel that dwarfs every buildable unit, bristling with guns and
 striding on legs — rendered from **opaque voxels**.
 
-This asset-generation case asks a model to sculpt *and rig* it as an 88×80×104
+This asset-generation case asks a model to sculpt *and rig* it as a 120×110×150
 voxel model using only the `voxel-anim` tool, one operation at a time: instead
 of compositing a field, the model **paints discrete voxel cells** (single
 cells, filled and stroked boxes, 3D lines and spheres) to build each part. The

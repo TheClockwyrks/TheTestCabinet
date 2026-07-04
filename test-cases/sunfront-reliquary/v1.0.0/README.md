@@ -3,7 +3,7 @@
 This is version `v1.0.0` of the **Sunfront Reliquary** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
 sculpt *and rig* a tall, precious Duneforged monument cradling a glowing solar
-core as a 60×96×60 opaque-voxel model using only the `voxel-anim` tool, one
+core as a 60×100×60 opaque-voxel model using only the `voxel-anim` tool, one
 recorded operation at a time.
 
 `sunfront-reliquary` is the catalog slug for this case. It is one of the

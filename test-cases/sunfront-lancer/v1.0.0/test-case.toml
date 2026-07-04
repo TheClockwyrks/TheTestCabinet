@@ -3,7 +3,7 @@ name = "Sunfront Lancer"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
-Sculpt and rig the Sunfront Lancer: a 44x64x64 opaque-voxel bipedal marksman-mech \
+Sculpt and rig the Sunfront Lancer: a 24x50x50 opaque-voxel bipedal marksman-mech \
 whose long center rail-lance aims up and down at the chest while it strides on two \
 legs whose feet lift clear of the ground and plant flat — built by painting voxel \
 cells one recorded operation at a time. The model invents whatever parts and joints \
@@ -26,9 +26,9 @@ variants = ["variants/base.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 44
-height = 64
-depth = 64
+width = 24
+height = 50
+depth = 50
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the

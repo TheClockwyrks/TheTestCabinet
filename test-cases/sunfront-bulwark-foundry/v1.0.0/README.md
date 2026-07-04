@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Bulwark Foundry** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a heavy armored Duneforged bunker-forge as a 60×72×60
+sculpt *and rig* a heavy armored Duneforged bunker-forge as a 66×56×66
 opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
 time.
 

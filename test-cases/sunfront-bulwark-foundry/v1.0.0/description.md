@@ -1,7 +1,7 @@
 **Sunfront Bulwark Foundry** is a heavy armored Duneforged bunker-forge with a
 raising blast door and a turning drive flywheel.
 
-This asset-generation case asks a model to sculpt *and rig* it as a 60×72×60
+This asset-generation case asks a model to sculpt *and rig* it as a 66×56×66
 opaque-voxel model using only the `voxel-anim` tool, one operation at a time:
 instead of a mesh, the model paints discrete opaque cells to build each part, a
 squat thick-walled armored body with a broad blast door set into its front and

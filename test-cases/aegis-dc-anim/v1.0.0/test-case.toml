@@ -32,9 +32,9 @@ variants = ["variants/base.toml"]
 # field always starts EMPTY; `background` is only the clear color behind the rendered
 # preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 88
-height = 80
-depth = 104
+width = 120
+height = 110
+depth = 150
 background = "transparent"
 
 # The meshing tool. `dc-anim` is the only way to build a part's field and edit the
@@ -51,9 +51,9 @@ preview = "parts/{part}.png"
 # The recorded operation log — the authoritative output the run collects, one per
 # part (the `{part}` token expands to each part the model defines): the ordered record
 # of every `dc-anim` op the model issued for that part, from which the scored model is
-# regenerated. The `dc-anim` binary additionally emits each part's extracted
-# `mesh.json` (the triangle mesh Dual Contouring extracts) at its own fixed path, and
-# the composited rig rides in `rig.json`, so neither is named here.
+# regenerated. The `dc-anim` binary additionally emits each part's extracted mesh as a
+# per-part `.glb` (binary glTF, the triangle mesh Dual Contouring extracts) at its own
+# fixed path, and the composited rig rides in `rig.json`, so neither is named here.
 [output]
 actions = "parts/{part}.actions.json"
 
