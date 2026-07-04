@@ -54,8 +54,7 @@ Make it read as a **wavefront**, not a growing solid disc:
 
 ## Palette
 
-Use only these grayscale values (the drawing is regenerated pixel-for-pixel, and
-the game tints it, so any actual hue or stray pixel counts against you):
+Use only these grayscale values:
 
 | Role | Hex |
 | --- | --- |
@@ -65,13 +64,10 @@ the game tints it, so any actual hue or stray pixel counts against you):
 
 ## Working the tool
 
-Draw each ring with the circle-outline operation, centered on (64, 64), one ring
-per frame (plus an optional fainter trailing ring), increasing the radius and
-lowering the brightness frame by frame. Run `draw-sheet --help` for the available
-operations (filling and stroking circles and rectangles, lines, single pixels,
-flood fill, and a horizontal mirror) and `draw-sheet <operation> --help` for each
-one's exact flags. Call `draw-sheet` once per operation and read
-`frames/<index>.png` between calls to judge that frame against this brief. A good
-order is to lay down frame 0's small bright ring, then step the radius outward
-and the brightness down through frames 1–7, checking that played in order they
-read as one expanding pulse.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame coordinates (0–127). Run
+`draw-sheet --help` for the available operations (filling and stroking circles
+and rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
+`draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
+once per operation and read `frames/<index>.png` between calls to judge that
+frame against this brief.

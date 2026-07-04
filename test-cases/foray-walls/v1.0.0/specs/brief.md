@@ -88,8 +88,7 @@ above are drawn against this same floor.
 ## Palette
 
 The tileset is **shared and never recolored** — the same earth for both colonies.
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex | Notes |
 | --- | --- | --- |
@@ -108,20 +107,10 @@ earthy, and the colonies are the only saturated color elsewhere.
 
 ## Working the tool
 
-Build each tile up in sensible layers — fill the wall body, lay the dark shadow
-along the under/closed edges, then the lighter rim along the open faces and
-rounded corners; for the seam and floor, the floor base then the marker/grain —
-drawing into the frame you select with `--frame <index>`, using plain in-frame
-coordinates (0–15). Run `draw-sheet --help` for the available operations (filling
-and stroking circles and rectangles, lines, single pixels, flood fill, and a
-horizontal mirror) and `draw-sheet <operation> --help` for each one's exact flags.
-Call `draw-sheet` once per operation and read `frames/<index>.png` between calls
-to judge that tile against this brief.
-
-A good order: settle the wall **cross-section** first — decide the exact wall
-thickness and rim, and where a connected edge meets the border — by drawing the
-two straights (5, 10) and the interior (15); reuse those exact measurements for
-every other tile so they line up. Then do the caps (1, 2, 4, 8), the elbows
-(3, 6, 9, 12 — one corner mirrored/rotated four ways), the T-junctions
-(7, 11, 13, 14), the isolated pillar (0), and finally the seam (16–18) and floor
-(19).
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame coordinates (0–15). Run
+`draw-sheet --help` for the available operations (filling and stroking circles
+and rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
+`draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
+once per operation and read `frames/<index>.png` between calls to judge that tile
+against this brief.

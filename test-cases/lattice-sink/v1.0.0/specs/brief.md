@@ -77,8 +77,7 @@ rising on frames 2–3 and falling on frames 4–5.
 
 ## Palette
 
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex |
 | --- | --- |
@@ -94,15 +93,9 @@ off-palette colors and anti-aliased fringes count against you):
 
 ## Working the tool
 
-Build each frame up in sensible layers — fill the grey-blue housing body, add the
-dark recess shading and the light bevel, outline it, cut the West intake aperture,
-then place the red indicator and (per frame) the steel-grey item and the red
-intake flash — drawing into the frame you select with `--frame <index>`, using
-plain in-frame coordinates (0–31). Run `draw-sheet --help` for the available
-operations (filling and stroking circles and rectangles, lines, single pixels, and
-flood fill) and `draw-sheet <operation> --help` for each one's exact flags. Call
-`draw-sheet` once per operation and read `frames/<index>.png` between calls to
-judge that frame against this brief. A good order is to finish the shared housing
-look once (so every frame matches), then walk frames 0→5 placing the item a little
-further inward and the red flash a little brighter through frame 3 and back down,
-checking that frame 5 settles back to frame 0.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame coordinates (0–31). Run
+`draw-sheet --help` for the available operations (filling and stroking circles and
+rectangles, lines, single pixels, and flood fill) and `draw-sheet <operation>
+--help` for each one's exact flags. Call `draw-sheet` once per operation and read
+`frames/<index>.png` between calls to judge that frame against this brief.

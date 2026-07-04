@@ -86,9 +86,7 @@ A laden raider is **carrying a seed home** and reads as **slow and heavy**:
 
 The raider's **body** is **recolored per colony at runtime by a palette swap**,
 so you draw the body **once in a neutral grey ramp** — never in red or blue. The
-**carried seed is shared gold** and is *not* recolored. Use only these colors
-(the drawing is regenerated pixel-for-pixel, so stray or off-palette colors and
-anti-aliased fringes count against you):
+**carried seed is shared gold** and is *not* recolored. Use only these colors:
 
 | Role | Hex | Notes |
 | --- | --- | --- |
@@ -106,17 +104,10 @@ carried seed pops gold against either. Do not use any other color.
 
 ## Working the tool
 
-Build each frame up in sensible layers — a dark outline, then the slim body fill,
-the highlight and head, the legs in their pose for that step, and (for the laden
-frames) the gold seed on the back last — drawing into the frame you select with
-`--frame <index>`, using plain in-frame coordinates (0–15). Run `draw-sheet
---help` for the available operations (filling and stroking circles and rectangles,
-lines, single pixels, flood fill, and a horizontal mirror) and `draw-sheet
-<operation> --help` for each one's exact flags. Call `draw-sheet` once per
-operation and read `frames/<index>.png` between calls to judge that frame against
-this brief.
-
-A good order: finish one empty facing as a cycle first (draw the shared body once
-and vary the legs/bob per step), check it reads leaner than a soldier and plays
-as a walk, then do the other empty facings (mirroring where it helps), then add
-the gold seed and the heavier, shorter-stride bob to make the four laden cycles.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame coordinates (0–15). Run
+`draw-sheet --help` for the available operations (filling and stroking circles
+and rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
+`draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
+once per operation and read `frames/<index>.png` between calls to judge that
+frame against this brief.

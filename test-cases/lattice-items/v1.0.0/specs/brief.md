@@ -53,9 +53,7 @@ So the eight read as one set, give every icon:
 ## Palette
 
 Use only these colors. Each icon may use **only the colors listed for it**, plus
-the **shared outline** `#1b1d21`. The drawing is regenerated pixel-for-pixel, so
-stray or off-palette colors and anti-aliased fringes count against you — keep
-edges crisp and the silhouette clean.
+the **shared outline** `#1b1d21`.
 
 | Frame | Item | Allowed colors (plus outline `#1b1d21`) |
 | --- | --- | --- |
@@ -72,14 +70,10 @@ Shared outline / shadow on every icon: `#1b1d21`.
 
 ## Working the tool
 
-The `draw-sheet` binary is the **only** way to make a mark — anything drawn any
-other way is discarded. Build each icon up in sensible layers (a dark outline, then
-the base fill, then the highlight and shadow, then any details), drawing into the
-frame you select with `--frame <index>` and using plain in-frame coordinates
-(0–15). Run `draw-sheet --help` for the available operations (filling and stroking
-circles and rectangles, lines, single pixels, flood fill, and a horizontal mirror)
-and `draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
-once per operation and **read `frames/<index>.png` between calls** to judge that
-icon against this brief. A good order is to finish the three plates first (they
-share a shape), then the ores and stone, then the gear and the circuit, checking
-each against the table as you go.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>` and using plain in-frame coordinates (0–15). Run
+`draw-sheet --help` for the available operations (filling and stroking circles and
+rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
+`draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet` once
+per operation and **read `frames/<index>.png` between calls** to judge that icon
+against this brief.

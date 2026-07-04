@@ -12,13 +12,10 @@ to get right.
 
 ## How drawing works
 
-The only way to make a mark is the `draw-sheet` binary already on your `PATH`. It
-is the sole channel: you build the sheet by calling it **one operation at a
-time**, each targeting a frame with `--frame <index>`. The ordered operations you
-issue — recorded to a per-frame action log — are the **authoritative output that
-is scored**, not the pixels on disk. An image produced any other way (writing a
-PNG directly, editing a preview by hand) is discarded and flagged; only the
-recorded operations count.
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. You
+build the sheet by calling it **one operation at a time**, each targeting a frame
+with `--frame <index>`. The ordered operations you issue are recorded to a per-frame
+action log, and that log is your submission.
 
 Each frame is its **own separate 96×96 image**. After each call the binary
 re-renders that frame to `frames/<index>.png` and appends the operation to that

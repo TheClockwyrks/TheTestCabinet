@@ -45,8 +45,9 @@ The source is a top-down **rectangular housing** — a panel that fills most of 
   outline/shadow tone so it reads as equipment with a defined edge.
 - **Output aperture:** on the **East (right) edge** of the housing, draw a clear
   **output port** — a recessed slot/mouth, a few pixels tall, centered vertically
-  (around `y = 16`), framed by the dark outline tone. This is where the emitted
-  item leaves. It is the one feature that marks which way the source faces.
+  across the middle of the housing, framed by the dark outline tone. This is where
+  the emitted item leaves. It is the one feature that marks which way the source
+  faces.
 - **Status indicator:** a small **green** light/lamp on the housing face (for
   example a small filled circle a few pixels across, set toward the top-left or
   upper area of the panel), in the green source-accent tones. Green is the source's
@@ -85,12 +86,11 @@ as the fixture emitting one item every cycle, over and over.
 The **emitted plate** is a small **steel-grey rectangle** (roughly 4–6 px), drawn
 in the steel-plate base tone with the steel-plate highlight tone along its top/left
 edge so it reads as a single metal plate. Keep it centered on the aperture's row
-(around `y = 16`) as it slides.
+as it slides.
 
 ## Palette
 
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex |
 | --- | --- |
@@ -106,15 +106,9 @@ off-palette colors and anti-aliased fringes count against you):
 
 ## Working the tool
 
-Build each frame up in sensible layers — outline and fill the housing, add the
-light/dark shading, frame the East output aperture, and place the green status
-indicator — then, per frame, set the green indicator/aperture brightness and draw
-the steel plate at its position for that frame — drawing into the frame you select
-with `--frame <index>`, using plain in-frame coordinates (0–31). Run `draw-sheet
---help` for the available operations (filling and stroking circles and rectangles,
-lines, single pixels, and flood fill) and `draw-sheet <operation> --help` for each
-one's exact flags. Call `draw-sheet` once per operation and read
-`frames/<index>.png` between calls to judge that frame against this brief. A good
-order is to draw the static housing once (the same in all six frames), then go frame
-by frame setting the aperture/indicator brightness and the plate's East position,
-checking that frame 5 eases cleanly back into frame 0.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame coordinates (0–31). Run
+`draw-sheet --help` for the available operations (filling and stroking circles and
+rectangles, lines, single pixels, and flood fill) and `draw-sheet <operation>
+--help` for each one's exact flags. Call `draw-sheet` once per operation and read
+`frames/<index>.png` between calls to judge that frame against this brief.

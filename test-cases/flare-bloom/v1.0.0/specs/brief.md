@@ -52,8 +52,7 @@ Make it read as a **flare going off**, not a steady lamp:
 
 ## Palette
 
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex |
 | --- | --- |
@@ -63,15 +62,10 @@ off-palette colors and anti-aliased fringes count against you):
 
 ## Working the tool
 
-Build each frame from the center out — a bright core disc, then warm rings around
-it with the circle operations (filled for the core, stroked for the spreading
-rings), widening the radius and softening from white to glow to orange toward the
-edge. Step the size and brightness up through the charge and bloom frames and
-back down through the fade. Run `draw-sheet --help` for the available operations
-(filling and stroking circles and rectangles, lines, single pixels, flood fill,
-and a horizontal mirror) and `draw-sheet <operation> --help` for each one's exact
-flags. Call `draw-sheet` once per operation and read `frames/<index>.png` between
-calls to judge that frame against this brief. A good order is to settle the bloom
-peak (frame 5) first — the white core and warm rings at full size — then scale it
-down for the charge-up and fade frames so the whole sequence shares one center
-and reads as a single flare.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame coordinates (0–127). Run
+`draw-sheet --help` for the available operations (filling and stroking circles
+and rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
+`draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
+once per operation and read `frames/<index>.png` between calls to judge that
+frame against this brief.

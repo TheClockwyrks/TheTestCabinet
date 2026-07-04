@@ -88,8 +88,8 @@ is seamless, with no jump or backward slip.
 The inserter reads, at a glance, as a **swing-arm machine** with four parts:
 
 - **Base / mount:** a small, **fixed** grey-blue pivot block sitting on the floor
-  at the **centre of the frame** (around `x = 24–40`, `y = 24–40`). Give it a touch
-  of height the way the assembler does — a lighter top, slightly darker beveled
+  at the **centre of the frame**. Give it a touch of height the way the assembler
+  does — a lighter top, slightly darker beveled
   sides, a dark outline, and a small contact shadow on the floor — so it reads
   as a squat mount, not a flat dot. It is the pivot the arm rotates from and is
   **identical in every frame**; it never moves, only the arm does.
@@ -112,8 +112,7 @@ The inserter reads, at a glance, as a **swing-arm machine** with four parts:
 
 ## Palette
 
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex |
 | --- | --- |
@@ -134,18 +133,10 @@ into the base or the plate.
 
 ## Working the tool
 
-Build each frame up in sensible layers — the floor contact shadows, the dark
-outline, then the grey-blue base block, then the amber arm at its angle, then the
-claw, then (on frames 0–5) the steel plate in the claw — drawing into the frame
-you select with `--frame <index>`,
-using plain in-frame coordinates (0–63). Run `draw-sheet --help` for the available
-operations (filling and stroking circles and rectangles, lines, single pixels,
-flood fill, and a horizontal mirror) and `draw-sheet <operation> --help` for each
-one's exact flags. Call `draw-sheet` once per operation and read
-`frames/<index>.png` between calls to judge that frame against this brief.
-
-A good order is to draw the fixed base once and reproduce it identically in every
-frame, then lay out the arm angle and claw position for the six delivery frames
-(0–5) with the held plate, check that the arc and the held item read, then do the
-six empty return frames (6–11) — confirming the claw is empty and that frame 11
-lands back on frame 0's pickup pose so the loop is seamless.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame
+coordinates (0–63). Run `draw-sheet --help` for the available operations (filling
+and stroking circles and rectangles, lines, single pixels, flood fill, and a
+horizontal mirror) and `draw-sheet <operation> --help` for each one's exact flags.
+Call `draw-sheet` once per operation and read `frames/<index>.png` between calls to
+judge that frame against this brief.

@@ -63,8 +63,7 @@ lure**:
 
 ## Palette
 
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex |
 | --- | --- |
@@ -76,13 +75,10 @@ off-palette colors and anti-aliased fringes count against you):
 
 ## Working the tool
 
-Build each frame up in sensible layers — a dark rim, then the body teardrop,
-then the belly, tail, maw, and finally the lure — drawing into the frame you
-select with `--frame <index>`, using plain in-frame coordinates (0–31). Run
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame coordinates (0–31). Run
 `draw-sheet --help` for the available operations (filling and stroking circles
 and rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
 `draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet`
 once per operation and read `frames/<index>.png` between calls to judge that
-frame against this brief. A good order is to finish one
-direction's two frames, check them, then do the others, and finish with the
-lure-bob frames.
+frame against this brief.

@@ -39,8 +39,8 @@ to edge — there is no transparent margin; the conveyor surface reaches every e
   surface.
 - **Two lanes:** the belt has **two independent lanes** — relative to travel a left
   lane and a right lane, which on this East-facing tile are the **top half** and
-  the **bottom half** of the tile, split along the horizontal centre line (around
-  `y = 16`). The split must read: mark it with the dark outline tone (and/or the
+  the **bottom half** of the tile, split along the horizontal centre line. The
+  split must read: mark it with the dark outline tone (and/or the
   metal mid tone) so the two lanes are visibly separate bands, each carrying its
   own row of chevrons, not one undivided belt.
 
@@ -94,8 +94,7 @@ scrolls.
 
 ## Palette
 
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex |
 | --- | --- |
@@ -109,15 +108,10 @@ off-palette colors and anti-aliased fringes count against you):
 
 ## Working the tool
 
-Build each frame up in sensible layers — fill the metal body, lay in the metal-mid
-band and the two side rails, mark the centre split between the two lanes, then draw
-the row of amber chevrons in each lane — drawing into the frame you select with
-`--frame <index>`, using plain in-frame coordinates (0–31). Run `draw-sheet
---help` for the available operations (filling and stroking circles and rectangles,
-lines, single pixels, and flood fill) and `draw-sheet <operation> --help` for each
-one's exact flags. Call `draw-sheet` once per operation and read
-`frames/<index>.png` between calls to judge that frame against this brief. A good
-order is to finish the belt body and rails once, then place each frame's chevrons
-shifted one-eighth of a pitch further right than the last (e.g. 2 px per frame for
-a 16 px pitch), checking that all eight frames sit at distinct offsets and that
-the step after frame 7 lands one full pitch on, back at frame 0.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame
+coordinates (0–31). Run `draw-sheet --help` for the available operations (filling
+and stroking circles and rectangles, lines, single pixels, and flood fill) and
+`draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet` once
+per operation and read `frames/<index>.png` between calls to judge that frame
+against this brief.

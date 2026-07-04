@@ -67,8 +67,7 @@ frame; the housing and divider sit on top as static structure.
 
 ## Palette
 
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex |
 | --- | --- |
@@ -88,15 +87,10 @@ The **hazard-stripe accent** uses the amber `#e6b329` against the dark outline
 
 ## Working the tool
 
-Build each frame up in sensible layers — first the dark belt-metal base across the
-whole 32×64 area, then the scrolling amber chevron rows at this frame's offset,
-then the static grey-blue housing border and end brackets, then the central
-divider seam and the hazard-stripe accent. Draw into the frame you select with
-`--frame <index>`, using plain in-frame coordinates. Run `draw-sheet --help` for
-the available operations (filling and stroking circles and rectangles, lines,
-single pixels, flood fill, and a horizontal mirror) and `draw-sheet <operation>
---help` for each one's exact flags. Call `draw-sheet` once per operation and read
-`frames/<index>.png` between calls to judge that frame against this brief. A good
-order is to finish frame 0 (the offset-0 chevrons plus the housing), check it,
-then redraw each later frame with its chevrons shifted East by the right offset
-while keeping the housing identical.
+The `draw-sheet` binary is the only way to make a mark. Draw into the frame you
+select with `--frame <index>`, using plain in-frame coordinates. Run `draw-sheet
+--help` for the available operations (filling and stroking circles and rectangles,
+lines, single pixels, flood fill, and a horizontal mirror) and `draw-sheet
+<operation> --help` for each one's exact flags. Call `draw-sheet` once per
+operation and read `frames/<index>.png` between calls to judge that frame against
+this brief.

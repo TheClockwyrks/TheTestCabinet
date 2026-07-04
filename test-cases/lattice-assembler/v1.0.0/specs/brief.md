@@ -93,8 +93,7 @@ crafting machine** standing on a 3×3 footprint:
 
 ## Palette
 
-Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
-off-palette colors and anti-aliased fringes count against you):
+Use only these colors:
 
 | Role | Hex |
 | --- | --- |
@@ -112,17 +111,12 @@ glow, nowhere else. The amber is only for the hazard stripes (paired with the
 
 ## Working the tool
 
-Build each frame up in sensible layers — the contact shadow and dark outer
-outline, then the beveled sides and the lighter inset top face, then the top-face
-plating shading, bolts, and hazard stripes, and finally the central core with its
-gear and glow. The raised chassis is identical across all eight frames, so a good
-order is to draw the **static raised block once and the same way in every frame**,
-then vary only the core's gear angle and glow brightness per frame. Draw into
-the frame you select with `--frame <index>`, using plain in-frame coordinates
-(0–95). Run `draw-sheet --help` for the
-available operations (filling and stroking circles and rectangles, lines, single
-pixels, flood fill, and a horizontal mirror) and `draw-sheet <operation> --help`
-for each one's exact flags. Call `draw-sheet` once per operation and read
-`frames/<index>.png` between calls to judge that frame against this brief. Check
-the eight frames in sequence so the rotation and the pulsing glow read as a smooth
-loop, including the wrap from frame 7 back to frame 0.
+The `draw-sheet` binary is the only way to make a mark. You draw into the frame
+you select with `--frame <index>`, using plain in-frame
+coordinates (0–95). Run `draw-sheet --help` for the available operations (filling
+and stroking circles and rectangles, lines, single pixels, flood fill, and a
+horizontal mirror) and `draw-sheet <operation> --help` for each one's exact flags.
+Call `draw-sheet` once per operation and read `frames/<index>.png` between calls to
+judge that frame against this brief. Check the eight frames in sequence so the
+rotation and the pulsing glow read as a smooth loop, including the wrap from frame 7
+back to frame 0.
