@@ -82,9 +82,9 @@ timing and intake split per wave is yours to design, within
   around it growing toward the late game.
 - A wave should mix types so the player cannot answer everything with one tower:
   Sprints want slowing, Hulks want concentrated heat, Swarms want splash, Drifts
-  want dedicated Flak coverage, and a Core wants raw white-hot output. Reading the next wave's
-  makeup (previewed in the build panel, `specs/flow.md`) and re-shaping the
-  floor for it is the between-wave game.
+  want dedicated Flak coverage, and a Core wants raw white-hot output. Reading
+  the next wave's makeup (previewed in the build panel, `specs/flow.md`) and
+  re-shaping the floor for it is the between-wave game.
 
 ## Surge and Heat System Relationship
 

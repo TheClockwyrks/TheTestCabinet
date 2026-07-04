@@ -16,7 +16,7 @@ implement them as written but keep them easy to adjust.
 Money is what gates how fast your maze can grow, so the surge always presses
 against a defense that is still being built up.
 
-- You start a game with `200` money.
+- You start a game with `250` money.
 - **Bounties.** Killing a surge unit pays its **bounty** (`specs/creeps.md`)
   immediately.
 - **Wave-clear bonus.** Clearing a wave (the last unit of it dies or leaks) pays
