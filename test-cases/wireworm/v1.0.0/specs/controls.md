@@ -8,14 +8,14 @@ in `specs/charge.md` and `specs/worm.md`.
 
 ## Moving the cursor
 
-The cursor is confined to the **player band** — the bottom 5 rows of the board
+The cursor is confined to the **player band** — the bottom 2 rows of the board
 (`specs/playfield.md`) — and moves **freely in logical pixels** within it, not
 snapped to tiles.
 
 - **Keyboard (required).** The **arrow keys** and **WASD** move the cursor:
-  left/right across the full width of the band, and up/down within the five rows.
+  left/right across the full width of the band, and up/down within the two rows.
   Movement is smooth and continuous while a key is held. The cursor is **clamped**
-  to the band — it can never leave it (never above row `15`, never past a side
+  to the band — it can never leave it (never above row `18`, never past a side
   edge, never below the floor).
 - **Mouse (optional).** You may additionally let the mouse move the cursor: the
   cursor tracks the pointer's `x` (and `y`, clamped to the band). If you support

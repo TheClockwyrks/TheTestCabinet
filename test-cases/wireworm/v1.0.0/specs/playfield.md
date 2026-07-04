@@ -40,7 +40,7 @@ charge and detonate (`specs/charge.md`). Each node fills one tile.
 
 - **Starting field.** A new game starts the board with a **scattering of inert
   (charge 0) nodes** — roughly `10%–15%` of the tiles, placed at random in the
-  upper and middle rows (about rows `1..15`), never in the top row `0` (kept clear
+  upper and middle rows (about rows `1..17`), never in the top row `0` (kept clear
   for the worm's entry) and never in the bottom **player band** (below). The exact
   scatter is yours to design; it must not be the same fixed layout every game.
 - **The field grows as you play.** Every worm segment destroyed by a **shot**
@@ -59,11 +59,13 @@ charge and detonate (`specs/charge.md`). Each node fills one tile.
 ## The player band
 
 The cursor is confined to a shallow **player band** at the bottom of the board:
-the **bottom 5 rows**, rows `15..19` — `y` in `[560, 720]`, `160` px tall, full
-width. The band reads as a subtly tinted floor (`specs/overview.md`).
+the **bottom 2 rows**, rows `18..19` — `y` in `[656, 720]`, `64` px tall, full
+width. It is a thin strip along the floor — the cursor has only a little vertical
+room, so it dodges mostly left and right. The band reads as a subtly tinted floor
+(`specs/overview.md`).
 
 - The cursor moves **freely in logical pixels** within this band — left/right
-  across the full width and up/down within the five rows — never snapped to tiles,
+  across the full width and up/down within the two rows — never snapped to tiles,
   and never leaving the band (`specs/controls.md`).
 - **No node ever occupies the player band by normal growth**: a worm segment that
   dies in the band from a shot still leaves its node (nodes can exist in the band),

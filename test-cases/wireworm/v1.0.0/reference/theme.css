@@ -11,7 +11,7 @@
  *   - 1280x720 stage. HUD bar y[0,80] (full width); board y[80,720] (1280x640).
  *   - Board is a 40-col x 20-row grid of 32x32 tiles. Tile (c,r) top-left is at
  *     (32c, 80+32r). A node fills one tile; each worm segment fills one tile.
- *   - Player band: bottom 5 rows (rows 15-19), y[560,720].
+ *   - Player band: bottom 2 rows (rows 18-19), y[656,720].
  *
  * Charge visual language (../specs/charge.md, ../specs/overview.md): a node's
  * glow tracks its charge inert-dark -> low-teal -> mid-cyan -> white-hot
@@ -132,13 +132,13 @@ body {
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 32px 32px;
 }
-/* The tinted player band: bottom 5 rows. Board-local y = 15*32 = 480. */
+/* The tinted player band: bottom 2 rows. Board-local y = 18*32 = 576. */
 .playband {
   position: absolute;
   left: 0;
-  top: 480px;
+  top: 576px;
   width: 1280px;
-  height: 160px;
+  height: 64px;
   background: var(--band);
   border-top: 1px dashed rgba(84, 230, 189, 0.18);
 }
