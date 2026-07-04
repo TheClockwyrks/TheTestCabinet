@@ -626,6 +626,7 @@ where
             slug,
             &request.model_id,
             &base_prompt,
+            WORKSPACE_DIR,
             deadline_epoch,
             events,
         );

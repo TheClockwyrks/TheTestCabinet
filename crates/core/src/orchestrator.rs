@@ -32,9 +32,7 @@ use serde::Deserialize;
 
 use crate::error::{Error, Result};
 use crate::event::EventSink;
-use crate::execution::{
-    ContainerHandle, ContainerRuntime, ExecOutput, OutputStream, WORKSPACE_DIR,
-};
+use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput, OutputStream};
 use crate::harness::{AgentHarness, HarnessOutcome, Usage};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
@@ -449,14 +447,20 @@ fn render_env_file(vars: &[(String, String)]) -> String {
 }
 
 /// The runner environment, per the contract table in the design doc.
+///
+/// `workspace_dir` is the seeded workspace path the runner sees as
+/// `TCAB_WORKSPACE`; production passes [`WORKSPACE_DIR`](crate::execution::WORKSPACE_DIR)
+/// (`/work`), and it is threaded in rather than read from the constant so the
+/// orchestrator can be driven against a real workspace on any path under test.
 fn runner_env(
     base_prompt: &str,
+    workspace_dir: &str,
     deadline_epoch: u64,
     params: &BTreeMap<String, String>,
 ) -> Vec<(String, String)> {
     let mut vars = vec![
         ("TCAB_PROMPT".to_string(), base_prompt.to_string()),
-        ("TCAB_WORKSPACE".to_string(), WORKSPACE_DIR.to_string()),
+        ("TCAB_WORKSPACE".to_string(), workspace_dir.to_string()),
         ("TCAB_DEADLINE".to_string(), deadline_epoch.to_string()),
     ];
     for (key, value) in params {
@@ -487,6 +491,7 @@ pub(crate) async fn drive_orchestrator(
     slug: HarnessSlug,
     model_id: &str,
     base_prompt: &str,
+    workspace_dir: &str,
     deadline_epoch: u64,
     events: &mut dyn EventSink,
 ) -> Result<HarnessOutcome> {
@@ -517,6 +522,7 @@ pub(crate) async fn drive_orchestrator(
     .await?;
     let env = render_env_file(&runner_env(
         base_prompt,
+        workspace_dir,
         deadline_epoch,
         &orchestrator.manifest.params,
     ));
