@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!--
+  Wireworm — game-over reference mockup.
+  Canonical view slug: game-over
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states — Game over):
+  final score and level reached, with PLAY AGAIN and MENU. A dim board shows
+  behind the card. (Victory uses the same card layout with a VICTORY eyebrow and
+  levels-cleared / lives-remaining lines.)
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Wireworm — Game Over</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- Dim board furniture behind the overlay. -->
+      <div class="board dim">
+        <div class="node c-2" style="left: 256px; top: 128px"><div class="can"></div><div class="core"></div></div>
+        <div class="node c-0" style="left: 640px; top: 96px"><div class="can"></div><div class="core"></div></div>
+        <div class="node c-1" style="left: 928px; top: 192px"><div class="can"></div><div class="core"></div></div>
+        <div class="node c-3" style="left: 384px; top: 288px">
+          <div class="can"></div><div class="core"></div><div class="spark" style="left: 15px; top: 4px"></div>
+        </div>
+        <div class="seg head" style="left: 736px; top: 224px"><div class="plate"></div><div class="seam"></div><div class="eye"></div><div class="mand"></div></div>
+        <div class="seg" style="left: 704px; top: 224px"><div class="plate"></div><div class="seam"></div></div>
+        <div class="seg tail" style="left: 672px; top: 224px"><div class="plate"></div><div class="seam"></div></div>
+      </div>
+
+      <div class="overlay"></div>
+      <div class="card">
+        <div class="card-eyebrow">CONNECTION LOST</div>
+        <div class="card-title">GAME OVER</div>
+        <div class="card-score">SCORE 24&#8202;660</div>
+        <div class="card-line">REACHED LEVEL 8 / 12</div>
+        <div class="card-actions">
+          <div class="menu-item selected">PLAY AGAIN</div>
+          <div class="menu-item">MENU</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -133,3 +133,12 @@ Devstral
 scanline
 scanlines
 underglow
+criticals
+chokepoints
+Chebyshev
+refiller
+corruptors
+# Wireworm reference-mockup CSS identifiers (harness-side only).
+playband
+mand
+ccore
