@@ -11,9 +11,10 @@ any other way (editing `model.png` by hand, or writing geometry files directly) 
 discarded and flagged; only the recorded operations count.
 
 The volume starts **empty**. Voxels are **opaque** `#rrggbb` colors — there is no
-transparency. After each call the binary re-renders the current model to an
-isometric preview at `model.png` and appends the operation to `actions.json`. A
-blank starting preview and an empty log are already in place at `{{workspace}}`.
+transparency. Each call only appends the operation to `actions.json` and renders
+nothing; run `voxel render` when you want to see the model — it meshes the model to
+`mesh.glb` and draws the preview PNG `model.png`. An empty log is already in place at
+`{{workspace}}`; you produce the preview and mesh yourself by running `voxel render`.
 
 Each operation is an ordinary subcommand with flags, for example:
 
@@ -22,8 +23,9 @@ voxel fill-box --x0 26 --y0 6 --z0 10 --x1 33 --y1 13 --z1 70 --color "#8a94a6"
 ```
 
 Run `voxel --help` to list every operation and `voxel <operation> --help` for one
-operation's exact flags — that help text is the authoritative contract. **Read
-`model.png` after your calls** to see your progress and decide what to do next.
+operation's exact flags — that help text is the authoritative contract. **Run
+`voxel render` to (re)draw `model.png`, then read it** to see your progress and
+decide what to do next.
 
 ## What to read first
 
@@ -43,5 +45,6 @@ exact operation contract.
 Build the interceptor up operation by operation until the model in `model.png`
 matches the brief — a long fuselage tapering to a pointed nose at the front, a
 cockpit canopy, forward-swept wings, and tail fins, cleanly symmetric about its
-centerplane. When you are satisfied, stop: the recorded `actions.json` is your
-finished submission.
+centerplane. **Before you finish, run `voxel render`** so the geometry (`mesh.glb`)
+the result is built from is emitted — an unrendered model is scored as empty. When
+you are satisfied, stop: the recorded `actions.json` is your finished submission.

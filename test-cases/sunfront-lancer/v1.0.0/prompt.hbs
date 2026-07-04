@@ -28,9 +28,13 @@ stroke boxes, draw 3D lines and spheres, and use a mirror plane. Voxels are
 (giving each a parent and a pivot), place joints on them with `define-joint`, and
 author the required animations with `define-animation`/`add-keyframe`. Every voxel
 operation targets a **part** with `--part <name>`, so define a part before you paint
-into it; each part is sculpted **separately** in its own preview and log. After each
-call the binary re-renders that part's isometric preview to `parts/<part>.png` and
-appends the operation to that part's log.
+into it; each part is sculpted **separately** in its own preview and log. Each call only
+records the operation to that part's log and renders **nothing** — run `voxel-anim
+render` to (re)draw the previews and the assembled scene (`--component <part>`
+redraws one part; `--time <ms> --animation <name>` renders the model posed at an
+instant of an animation), and you **must** run `voxel-anim render` before you finish
+so it emits the per-part `.glb` geometry the run is scored from — an unrendered part
+is scored as empty.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
@@ -43,10 +47,10 @@ voxel-anim fill-box --part torso --x0 7 --y0 22 --z0 20 --x1 16 --y1 40 --z1 30 
 `voxel-anim --help` to list every operation **and** the rig subcommands (defining
 parts, setting pivots, defining joints, and defining animations and their
 keyframes), and `voxel-anim <operation> --help` for one operation's exact flags —
-that help text is the authoritative contract. **Read `parts/<part>.png` after your
-calls** to see that part's progress, **and read the assembled-scene previews under
+that help text is the authoritative contract. **Read `parts/<part>.png` after you run
+`voxel-anim render`** to see that part's progress, **and read the assembled-scene previews under
 `scene/` (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** —
-the whole mech composed from all your parts, re-rendered after every operation. The
+the whole mech composed from all your parts, drawn when you run `voxel-anim render`. The
 scene views are how you confirm the parts actually fit together: that the legs seat
 under the body and reach the ground and the rail-lance meets the chest. Because each
 part is sculpted in the shared volume's coordinates, position each part where it

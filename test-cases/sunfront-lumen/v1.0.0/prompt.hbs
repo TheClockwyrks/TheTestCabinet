@@ -26,9 +26,9 @@ required animations with `define-animation`/`add-keyframe`. Every voxel operatio
 targets a **part** with `--part <name>`, so define a part before you sculpt into it;
 each part is sculpted **separately** in its own preview and log, in the shared
 volume's coordinates. The volume starts **empty**. Voxels are **opaque** `#rrggbb`
-colors — there is no transparency. After each call the binary re-renders that part's
-isometric preview to `parts/<part>.png` and appends the operation to that part's
-log.
+colors — there is no transparency. Each call **records only** — it appends the
+operation to that part's log and renders nothing; run `voxel-anim render` when you
+want to (re)draw the per-part previews (`parts/<part>.png`) and the assembled scene.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
@@ -42,10 +42,10 @@ Run `voxel-anim --help` to list every operation **and** the rig and animation
 subcommands (defining parts, setting pivots, defining joints, and authoring
 animations with `define-animation`/`add-keyframe`), and `voxel-anim <operation>
 --help` for one operation's exact flags — that help text is the authoritative
-contract. **Read `parts/<part>.png` after your calls** to see that part's progress,
-**and read the assembled-scene previews under `scene/` (`scene/iso.png`,
+contract. **Run `voxel-anim render`, then read `parts/<part>.png`** to see that part's
+progress **and the assembled-scene previews under `scene/` (`scene/iso.png`,
 `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole drone composed
-from all your parts, re-rendered after every operation. The scene views are how you
+from all your parts, drawn when you run `voxel-anim render`. The scene views are how you
 confirm the parts actually fit together: that the rings sit out at the core's sides
 and the emitter meets the core face. Because each part is sculpted in the shared
 volume's coordinates, position each part where it belongs on the finished drone; the
@@ -80,5 +80,9 @@ weight, not a weightless slide), and **`pulse`** (the emitter nodding up and dow
 and settling). The animations are the fixed contract — produce all three, by those
 names; the parts and joints that realize them are yours. You may add your own extra
 parts, joints, or animations on top, but do not drop or contradict the three
-required animations. When you are satisfied, stop: the recorded per-part logs and
-`rig.json` are your finished submission.
+required animations. Before you finish, run `voxel-anim render` so it emits the
+per-part `.glb` geometry your result is built from — an unrendered part is scored as
+empty (`voxel-anim render --component <part>` redraws one part; `voxel-anim render
+--time <ms> --animation <name>` renders the model posed at that instant of an
+animation to check the motion). When you are satisfied, stop: the recorded per-part
+logs and `rig.json` are your finished submission.

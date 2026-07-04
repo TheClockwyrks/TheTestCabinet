@@ -26,14 +26,14 @@ height = 20
 depth = 76
 background = "transparent"
 
-# The sculpting tool. `voxel` is the only way to place a voxel; it records every
-# operation to the action log and re-renders the isometric preview after each
-# call. Run `voxel --help` to see the operations; no operations schema is seeded.
+# The sculpting tool. `voxel` is the only way to place a voxel; every operation
+# records to the action log and renders nothing — rendering is on request via
+# `voxel render`. Run `voxel --help` to see the operations; no operations schema is seeded.
 [tool]
 binary = "voxel"
 preview = "model.png"
 
-# The recorded action log — the authoritative output. The binary also emits the
+# The recorded action log — the authoritative output. `voxel render` also emits the
 # per-part `.glb` the 3D client renders (not declared here).
 [output]
 actions = "actions.json"

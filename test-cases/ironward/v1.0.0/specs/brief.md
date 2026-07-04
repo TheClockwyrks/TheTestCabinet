@@ -20,8 +20,10 @@ by:
 - Selecting the part an op sculpts with the global `--part <name>`; each part is its
   own preview and log. Create a part with `define-part` before you sculpt into it.
 
-Build one operation at a time. `voxel-anim` re-renders `parts/<part>.png` and the
-assembled `scene/*.png` — read them between calls. `voxel-anim --help` is the
+Build one operation at a time. A sculpting op only records — run `voxel-anim render` to
+(re)draw `parts/<part>.png` and the assembled `scene/*.png` and read them between
+calls, and run it before you finish so the per-part `.glb` geometry is emitted (an
+unrendered part scores as empty). `voxel-anim --help` is the
 contract.
 
 ## The volume and coordinate system
@@ -94,7 +96,7 @@ animation, by this name, and must not contradict it (e.g. don't drive the hull u
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
 with `set-pivot`, place joints with `define-joint`, and author the required
-animation's keyframes — reading `parts/<part>.png` and the `scene/*.png` previews
+animation's keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews
 between calls to confirm the parts fit, the turret seats on the hull, the gun meets
 the turret's front, and the animation reads with weight. The recorded per-part logs
 and `rig.json` are your scored submission.

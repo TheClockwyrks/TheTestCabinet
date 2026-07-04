@@ -112,11 +112,13 @@ sheet by its motion, not just its static pixels.
 The **voxel** kinds move asset generation into 3D. The model builds into a fixed
 **voxel volume** (declared by a `[voxel]` table: `width` × `height` × `depth`)
 whose material is **opaque `#rrggbb`** — there is no alpha, and the volume starts
-**empty**. The building binary records every operation and, after each one,
-re-renders a **PNG preview** so the model can read a real image to see its progress
-— exactly the role `canvas.png` plays for a sprite. Previews come from a shared
-**`wgpu` mesh renderer** (an orbit-camera 3D view with lighting), so every voxel
-kind previews through the same real-3D path.
+**empty**. The building binary records every operation to a log; unlike a sprite's
+`canvas.png`, it does **not** re-render after each call — meshing and rendering a
+voxel model is far more expensive than a 2D redraw, and a model takes many more
+operations — so rendering is **on request**, via the binary's `render` command, which
+produces a **PNG preview** the model reads to see its progress. Previews come from a
+shared **`wgpu` mesh renderer** (an orbit-camera 3D view with lighting), so every
+voxel kind previews through the same real-3D path.
 
 There are two families of voxel kinds, differing in **how the model builds** and in
 the geometry each emits:

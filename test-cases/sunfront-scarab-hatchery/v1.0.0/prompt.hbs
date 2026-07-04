@@ -21,9 +21,10 @@ operations and the rig count.
 
 Every voxel operation targets a **part** with `--part <name>`; each part is sculpted
 **separately** in its own preview and log. The volume starts **empty**. Voxels are
-**opaque** `#rrggbb` colors — there is no transparency. After each call the binary
-re-renders that part's isometric preview to `parts/<part>.png` and appends the operation
-to that part's log.
+**opaque** `#rrggbb` colors — there is no transparency. Each call **records only** — it
+appends the operation to that part's log and renders nothing; run `voxel-anim render`
+when you want to (re)draw the per-part previews (`parts/<part>.png`) and the assembled
+scene.
 
 **You invent the rig.** Define whatever parts you need with `define-part` (giving each a
 parent and a pivot), place joints on them with `define-joint`, and author the required
@@ -43,11 +44,11 @@ voxel-anim add-sphere --part hatch --cx 28 --cy 22 --cz 40 --r 8 --color "#565c6
 `voxel-anim --help` to list every operation **and** the rig subcommands (defining parts,
 setting pivots, defining joints, and defining animations and adding keyframes), and
 `voxel-anim <operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that part's
-progress, **and read the assembled-scene previews under `scene/`
+authoritative contract. **Run `voxel-anim render`, then read `parts/<part>.png`** to see
+that part's progress **and the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole
-hatchery composed from all your parts, re-rendered after every operation. The scene views
-are how you confirm the parts actually fit together: that the hatch sits centered on the
+hatchery composed from all your parts, drawn when you run `voxel-anim render`. The scene
+views are how you confirm the parts actually fit together: that the hatch sits centered on the
 crown of the mound and the vent seats into its side. Because each part is sculpted in the
 shared volume's coordinates, position each part where it belongs on the finished building;
 the scene simply composes them there.
@@ -78,5 +79,9 @@ subcommands: `hatch_turn` (the hatch sweeping smoothly through a full turn about
 vertical axis, eased so it carries weight rather than sliding linearly) and `vent_bob`
 (the vent lifting off its seat and settling back with weight). The animations are the
 fixed contract — produce both, by those names, both self-playing and looping; the parts
-and joints that realize them are yours. When you are satisfied, stop: the recorded
-per-part logs and `rig.json` are your finished submission.
+and joints that realize them are yours. Before you finish, run `voxel-anim render` so it
+emits the per-part `.glb` geometry your result is built from — an unrendered part is
+scored as empty (`voxel-anim render --component <part>` redraws one part; `voxel-anim
+render --time <ms> --animation <name>` renders the model posed at that instant of an
+animation to check the motion). When you are satisfied, stop: the recorded per-part logs
+and `rig.json` are your finished submission.

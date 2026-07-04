@@ -13,11 +13,12 @@ Nets** extractor: it produces a **smooth, rounded, watertight, mid-fidelity**
 surface with no sharp edges, at a fixed resolution; corners round by construction.
 
 The field starts **empty**. Every primitive carries an **opaque** `#rrggbb` color —
-there is no transparency. After each call the binary extracts the surface to
-`mesh.glb` and re-renders a 3D preview to `model.png`, recording the operation. The
-recorded operations — from which that surface is produced — are the authoritative
-output that is judged; a surface produced any other way is discarded.
-An empty field and a blank preview are already in place at `{{workspace}}`.
+there is no transparency. Each call only records the operation and renders nothing;
+run `sn render` when you want to see the model — it extracts the surface to
+`mesh.glb` and draws the preview PNG `model.png`. The recorded operations — from
+which that surface is produced — are the authoritative output that is judged; a
+surface produced any other way is discarded. An empty log is already in place at
+`{{workspace}}`; you produce the preview and mesh yourself by running `sn render`.
 
 Each operation is an ordinary subcommand with flags, for example:
 
@@ -27,8 +28,9 @@ sn add-sphere --x 60 --y 84 --z 80 --r 13 --color "#c69a4b" --blend 3
 ```
 
 Run `sn --help` to list every operation and `sn <operation> --help` for one
-operation's exact flags — that help text is the authoritative contract. **Read
-`model.png` after your calls** to see your progress and decide what to do next.
+operation's exact flags — that help text is the authoritative contract. **Run
+`sn render` to (re)draw `model.png`, then read it** to see your progress and decide
+what to do next.
 
 ## What to read first
 
@@ -49,5 +51,7 @@ Build the fortress up operation by operation until the model in `model.png` matc
 the brief — a huge armored hull riding raised on six thick jointed
 legs, a big main turret with a long forward cannon, a side turret out on each
 sponson, and a sensor vane above, cleanly symmetric about its centerplane and built
-as one continuous rounded surface. When you are satisfied, stop: the recorded
-operations are your finished submission.
+as one continuous rounded surface. **Before you finish, run `sn render`** so the
+geometry (`mesh.glb`) the result is built from is emitted — an unrendered model is
+scored as empty. When you are satisfied, stop: the recorded operations are your
+finished submission.

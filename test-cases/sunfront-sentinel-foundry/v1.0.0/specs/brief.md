@@ -17,8 +17,9 @@ a plane; each op takes an opaque `#rrggbb` color, and there is no transparency. 
 `--part <name>` selects the part an op paints, and each part is its own volume, previewed
 on its own; create a part with `define-part` before you paint into it.
 
-`voxel-anim` re-renders `parts/<part>.png` and the assembled `scene/*.png` after each
-call — read them between calls. `voxel-anim --help` is the contract.
+A call **records only** and renders nothing; run `voxel-anim render` to (re)draw
+`parts/<part>.png` and the assembled `scene/*.png`, then read them between calls.
+`voxel-anim --help` is the contract.
 
 ## The volume and coordinate system
 
@@ -91,9 +92,13 @@ never moves, only the press and the gear.
 
 Define your parts with `define-part`, paint each with `--part <name>`, set pivots with
 `set-pivot`, place joints with `define-joint`, and author the two animations' keyframes —
-reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
-parts fit, the press rides centered in the throat, the gear seats on the flank, and the
-animations read with weight. The recorded per-part logs and `rig.json` are your scored
+running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews
+between calls to confirm the parts fit, the press rides centered in the throat, the gear
+seats on the flank, and the animations read with weight. Run `voxel-anim render` before
+you finish so it emits the per-part `.glb` geometry your result is built from — an
+unrendered part scores as empty (`voxel-anim render --component <part>` renders one part;
+`voxel-anim render --time <ms> --animation <name>` renders the model posed at that instant
+to check the motion). The recorded per-part logs and `rig.json` are your scored
 submission. Run `voxel-anim --help` for the available operations, the rig subcommands,
 and the animation subcommands, and `voxel-anim <operation> --help` for each one's exact
 flags.

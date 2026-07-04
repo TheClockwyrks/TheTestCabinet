@@ -97,7 +97,11 @@ animations' keyframes with `define-animation`/`add-keyframe`. Run `voxel-anim --
 for the available operations (setting and clearing single voxels, filling and stroking
 boxes, 3D lines, spheres, and a mirror plane), the rig subcommands, and the animation
 subcommands, and `voxel-anim <operation> --help` for each one's exact flags. Call
-`voxel-anim` once per operation and read `parts/<part>.png` (and the assembled
-`scene/*.png` previews) between calls to judge each part against this brief — that each
-leg's chain seats under its own corner of the body, the mandibles meet the head, and
-the animations read with weight.
+`voxel-anim` once per operation; run `voxel-anim render` and read `parts/<part>.png`
+(and the assembled `scene/*.png` previews) between calls to judge each part against
+this brief — that each leg's chain seats under its own corner of the body, the
+mandibles meet the head, and the animations read with weight. Run `voxel-anim render`
+before you finish so it emits the per-part `.glb` geometry your result is built from —
+an unrendered part scores as empty (`voxel-anim render --component <part>` renders one
+part; `voxel-anim render --time <ms> --animation <name>` renders the model posed at
+that instant to check the motion).

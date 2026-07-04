@@ -25,9 +25,10 @@ each a parent and a pivot), place joints on them with `define-joint`, and author
 required animations with `define-animation`/`add-keyframe`. Every voxel operation
 targets a **part** with `--part <name>`, so define a part before you sculpt into it;
 each part is sculpted **separately** in its own preview and log. The volume starts
-**empty**. Voxels are **opaque** `#rrggbb` colors — there is no transparency. After
-each call the binary re-renders that part's isometric preview to `parts/<part>.png`
-and appends the operation to that part's log.
+**empty**. Voxels are **opaque** `#rrggbb` colors — there is no transparency. Each
+call **records only** — it appends the operation to that part's log and renders
+nothing; run `voxel-anim render` when you want to (re)draw the per-part previews
+(`parts/<part>.png`) and the assembled scene.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
@@ -40,10 +41,10 @@ voxel-anim fill-box --part body --x0 3 --y0 2 --z0 4 --x1 22 --y1 8 --z1 25 --co
 `voxel-anim --help` to list every operation **and** the rig subcommands (defining
 parts, setting pivots, defining joints, and defining/keyframing animations), and
 `voxel-anim <operation> --help` for one operation's exact flags — that help text is
-the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
-part's progress, **and read the assembled-scene previews under `scene/`
+the authoritative contract. **Run `voxel-anim render`, then read `parts/<part>.png`**
+to see that part's progress **and the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the
-whole beetle composed from all your parts, re-rendered after every operation. The
+whole beetle composed from all your parts, drawn when you run `voxel-anim render`. The
 scene views are how you confirm the parts actually fit together: that each leg's
 chain seats under its own corner of the body and the mandibles meet the head.
 Because each part is sculpted in the shared volume's coordinates, position each part
@@ -77,5 +78,9 @@ weightless slide) and a **`bite`** (the mandibles snapping open and shut while t
 legs stay planted). The animations are the fixed contract — produce both, by those
 names; the parts and joints that realize them are yours. You may add your own extra
 parts, joints, or animations on top, but do not drop or contradict the required
-`walk` and `bite`. When you are satisfied, stop: the recorded per-part logs and
-`rig.json` are your finished submission.
+`walk` and `bite`. Before you finish, run `voxel-anim render` so it emits the
+per-part `.glb` geometry your result is built from — an unrendered part is scored as
+empty (`voxel-anim render --component <part>` redraws one part; `voxel-anim render
+--time <ms> --animation <name>` renders the model posed at that instant of an
+animation to check the motion). When you are satisfied, stop: the recorded per-part
+logs and `rig.json` are your finished submission.

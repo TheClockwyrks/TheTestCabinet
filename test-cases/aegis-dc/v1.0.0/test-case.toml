@@ -33,9 +33,10 @@ depth = 150
 background = "transparent"
 
 # The meshing tool. `dc` (Dual Contouring) is the only channel for shaping the
-# surface: it composites signed-distance primitives into one field, records every
-# operation, extracts a single sharp-edged mesh, and re-renders the preview after
-# each call. Run `dc --help` for the operations; no operations schema is seeded.
+# surface: it composites signed-distance primitives into one field and records every
+# operation, rendering nothing — rendering is on request via `dc render`, which
+# extracts the single sharp-edged mesh and draws the preview. Run `dc --help` for the
+# operations; no operations schema is seeded.
 # `dc` is the high-fidelity, sharp-feature-preserving extractor and exposes the
 # `--sharp` / `--smooth` tag on primitives (mc/sn do not).
 [tool]

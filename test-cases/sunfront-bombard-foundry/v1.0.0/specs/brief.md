@@ -18,8 +18,10 @@ clear op; each cell is an opaque `#rrggbb` color, and a mirror plane helps keep 
 symmetric. Global `--part <name>` selects the part an op sculpts, and each part is its own
 model, previewed on its own; create a part with `define-part` before you sculpt into it.
 
-`voxel-anim` re-renders `parts/<part>.png` and the assembled `scene/*.png` after each
-call — read them between calls. `voxel-anim --help` is the contract.
+A sculpting op only records — run `voxel-anim render` to (re)draw
+`parts/<part>.png` and the assembled `scene/*.png`, and read them between calls; run
+it before you finish so the per-part `.glb` geometry is emitted (an unrendered part
+scores as empty). `voxel-anim --help` is the contract.
 
 ## The volume and coordinate system
 
@@ -90,7 +92,7 @@ not ride along with the crane arm or the piston.
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
 `set-pivot`, place joints with `define-joint`, and author the two animations' keyframes —
-reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
+running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
 parts fit, the crane arm cantilevers off the top, the piston seats in its flank, and the
 animations read with weight. Run `voxel-anim --help` for the available operations, the rig
 subcommands, and the animation subcommands, and `voxel-anim <operation> --help` for each

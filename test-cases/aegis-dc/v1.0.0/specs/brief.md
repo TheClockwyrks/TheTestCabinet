@@ -19,10 +19,11 @@ field by compositing primitives:
 
 Build one operation at a time. The field is meshed with Dual Contouring, which
 reconstructs sharp edges and corners faithfully rather than rounding them; a
-per-primitive `--sharp`/`--smooth` tag holds or rounds an edge. `dc` re-renders
-`model.png` after each call — read it between calls, and run `dc --help` for the
-operations contract. The recorded operations are the submission (the mesh is
-extracted to `mesh.glb`).
+per-primitive `--sharp`/`--smooth` tag holds or rounds an edge. Each call only
+records to the log and renders nothing; run `dc render` (it extracts the surface to
+`mesh.glb` and draws `model.png`) to read your progress between edits and once more
+before you finish so the geometry is emitted, and run `dc --help` for the operations
+contract. The recorded operations are the submission.
 
 ## The volume and coordinate system
 

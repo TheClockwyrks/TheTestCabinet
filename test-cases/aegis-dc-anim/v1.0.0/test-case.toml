@@ -40,8 +40,9 @@ background = "transparent"
 # The meshing tool. `dc-anim` is the only way to build a part's field and edit the
 # rig; every operation targets a part with `--part <name>`, composites into that
 # part's field (additive/subtractive primitives with an optional soft `--blend`, and
-# the DC-only `--sharp`/`--smooth` tag), and re-renders that part's wgpu preview. Run
-# `dc-anim --help` for the field operations AND the rig subcommands; no operations
+# the DC-only `--sharp`/`--smooth` tag), recording only — rendering is on request via
+# `dc-anim render`. Run `dc-anim --help` for the field operations AND the rig
+# subcommands; no operations
 # schema is seeded. Dual Contouring gives a fixed HIGH-FIDELITY, crisp surface that
 # preserves sharp edges and corners — it is the binary's character, not a knob.
 [tool]

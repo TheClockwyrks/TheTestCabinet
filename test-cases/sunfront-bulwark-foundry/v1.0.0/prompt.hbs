@@ -22,8 +22,12 @@ operations and the rig count.
 
 Every voxel operation targets a **part** with `--part <name>`; each part is sculpted
 **separately** in its own preview and log. Voxels are **opaque** `#rrggbb` colors —
-there is no transparency. After each call the binary re-renders that part's isometric
-preview to `parts/<part>.png` and appends the operation to that part's log.
+there is no transparency. Each call only records the operation to that part's log and
+renders **nothing** — run `voxel-anim render` to (re)draw the previews and the
+assembled scene (`--component <part>` redraws one part; `--time <ms> --animation
+<name>` renders the model posed at an instant of an animation), and you **must** run
+`voxel-anim render` before you finish so it emits the per-part `.glb` geometry the
+run is scored from — an unrendered part is scored as empty.
 
 **You invent the rig.** Define whatever parts you need with `define-part` (giving each
 a parent and a pivot), place joints on them with `define-joint`, and author the two
@@ -44,10 +48,10 @@ voxel-anim fill-box --part body --x0 6 --y0 0 --z0 6 --x1 53 --y1 44 --z1 53 --c
 parts, setting pivots, defining joints, and authoring animations' F-curve keyframes
 with `define-animation`/`add-keyframe`), and `voxel-anim <operation> --help` for one
 operation's exact flags — that help text is the authoritative contract. **Read
-`parts/<part>.png` after your calls** to see that part's progress, **and read the
+`parts/<part>.png` after you run `voxel-anim render`** to see that part's progress, **and read the
 assembled-scene previews under `scene/` (`scene/iso.png`, `scene/front.png`,
 `scene/side.png`, `scene/top.png`)** — the whole foundry composed from all your parts,
-re-rendered after every operation. The scene views are how you confirm the parts
+drawn when you run `voxel-anim render`. The scene views are how you confirm the parts
 actually fit together: that the blast door sits square in its front opening and the
 flywheel seats on its flank. Because each part is sculpted in the shared volume's
 coordinates, position each part where it belongs on the finished building; the scene

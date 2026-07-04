@@ -27,9 +27,12 @@ sculpt into it.
 Each part is meshed with Marching Cubes, which meshes on a coarse grid so the
 surface reads faceted; detail finer than the grid is lost.
 
-Build one operation at a time. `mc-anim` re-renders `parts/<part>.png` and the
-assembled `scene/*.png` — read them between calls. `mc-anim --help` is the
-contract.
+Build one operation at a time; each call only records to that part's log and
+meshes/renders nothing. Run `mc-anim render` to extract the geometry and (re)draw
+`parts/<part>.png` and the assembled `scene/*.png` — read them between calls — and
+run it once more before you finish so every part's `.glb` is emitted (an unrendered
+part is scored as empty); `--time`/`--animation` previews an animation and
+`--component` renders one part. `mc-anim --help` is the contract.
 
 ## The volume and coordinate system
 
@@ -105,7 +108,9 @@ move the legs under `bombardment` or the guns under `march`).
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
 with `set-pivot`, place joints with `define-joint`, and author the three
-animations with `define-animation`/`add-keyframe` — reading `parts/<part>.png` and
-the `scene/*.png` previews between calls to confirm the parts fit, the legs reach
-the ground, and the animations read with weight. The recorded operations, the
-per-part `.glb`, and `rig.json` are your scored submission.
+animations with `define-animation`/`add-keyframe` — running `mc-anim render` and
+reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm
+the parts fit, the legs reach the ground, and the animations read with weight, and
+running `mc-anim render` once more before you finish so every part's `.glb` is
+emitted. The recorded operations, the per-part `.glb`, and `rig.json` are your
+scored submission.

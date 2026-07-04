@@ -37,7 +37,8 @@ background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
 # rig; every operation targets a part with `--part <name>`, records to that part's
-# action log, and re-renders that part's isometric preview. Run `voxel-anim --help`
+# action log and renders nothing — rendering is on request via `voxel-anim render`.
+# Run `voxel-anim --help`
 # for the operations AND the rig subcommands; no operations schema is seeded.
 [tool]
 binary = "voxel-anim"

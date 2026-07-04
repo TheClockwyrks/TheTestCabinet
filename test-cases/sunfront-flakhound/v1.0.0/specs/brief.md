@@ -21,8 +21,10 @@ articulate is the test. Invent the rig.
 - Global `--part <name>` selects the part an op sculpts; each part is its own volume,
   previewed on its own. Create a part with `define-part` before you sculpt into it.
 
-Build one operation at a time. `voxel-anim` re-renders `parts/<part>.png` and the
-assembled `scene/*.png` — read them between calls. `voxel-anim --help` is the contract.
+Build one operation at a time. A sculpting op only records — run `voxel-anim render` to
+(re)draw `parts/<part>.png` and the assembled `scene/*.png` and read them between
+calls, and run it before you finish so the per-part `.glb` geometry is emitted (an
+unrendered part scores as empty). `voxel-anim --help` is the contract.
 
 ## The volume and coordinate system
 
@@ -100,7 +102,7 @@ under `flak_track` or the weapon under `walk`).
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
 `set-pivot`, place joints with `define-joint`, and author the two animations' keyframes
-— reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm
+— running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm
 the parts fit, the legs seat under the body and reach the ground, the turret sits on
 the back and the barrels meet its front, and the animations read with weight. Run
 `voxel-anim --help` for the available operations (setting and clearing single voxels,

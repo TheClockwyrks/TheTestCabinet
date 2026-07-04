@@ -93,10 +93,11 @@ Seed a single self-contained `specs/brief.md`. State:
   `z` depth) so the brief pins framing to real coordinates, and where the subject
   sits within it;
 - **how the tool behaves** — the `voxel` binary is the only way to place a voxel,
-  its `--help` lists the operations, it re-renders the isometric preview after each
-  call so the model can read its progress, the volume starts empty, and the
-  recorded operations are the output (anything placed outside the tool is
-  discarded).
+  its `--help` lists the operations, a sculpting op **only records** (it renders
+  nothing); `voxel render` on request meshes the model and draws the preview so the
+  model can read its progress — and emits the geometry, so it must render before
+  finishing — the volume starts empty, and the recorded operations are the output
+  (anything placed outside the tool is discarded).
 
 The self-containment, *what-not-how*, and precise-values rules from **Writing the
 brief** below apply.
@@ -105,8 +106,9 @@ brief** below apply.
 
 A short instruction that points the model at the seeded brief, tells it to read the
 `voxel` binary's `--help` for the operations, and restates the hard requirements
-(sculpt only through the tool; read the preview between calls; return when
-finished). It renders in **strict mode**, so use only the documented template
+(sculpt only through the tool; a sculpting op renders nothing — run `voxel render`
+to (re)draw and read the preview, and **before finishing** so the geometry is
+emitted; return when finished). It renders in **strict mode**, so use only the documented template
 variables (`{{variant.*}}`, `{{#each specs}}`) — any other reference is an error.
 Model it on `skyshard`'s `prompt.hbs`. A shared **quality directive** (the brief is
 the floor, not the goal; produce the best-looking asset you can within its
@@ -135,12 +137,12 @@ Author `test-case.toml` per the
   proportions that match the subject. Keep the largest resulting dimension roughly in
   the 40–150 band.
 - **`[tool]`** — `binary = "voxel"` and the `preview` path the binary rasterizes
-  the isometric PNG to after each call (a single file, e.g. `model.png` — **no**
+  the PNG to when the model runs `render` (a single file, e.g. `model.png` — **no**
   `{part}` token for a static model). **No operations schema** — `--help` is the
   contract.
 - **`[output]`** — the `actions` log the binary records (a single file, e.g.
-  `actions.json`); this ordered list is the **authoritative output**. The binary also
-  emits the per-part `.glb` the 3D client renders — emitted automatically, not
+  `actions.json`); this ordered list is the **authoritative output**. `render` also
+  emits the per-part `.glb` the 3D client renders — produced on request, not
   declared in the manifest.
 - A **`variants`** list — an ordered array of paths to standalone variant files
   under `variants/` (the first the default — usually `base`; at least one

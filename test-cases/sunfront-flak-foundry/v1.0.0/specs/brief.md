@@ -21,8 +21,10 @@ works needs, where they attach, and how they articulate is the test. Invent the 
   cells, previewed on its own. Create a part with `define-part` before you sculpt into
   it.
 
-Build one operation at a time. `voxel-anim` re-renders `parts/<part>.png` and the
-assembled `scene/*.png` — read them between calls. `voxel-anim --help` is the contract.
+Build one operation at a time. A sculpting op only records — run `voxel-anim render` to
+(re)draw `parts/<part>.png` and the assembled `scene/*.png` and read them between
+calls, and run it before you finish so the per-part `.glb` geometry is emitted (an
+unrendered part scores as empty). `voxel-anim --help` is the contract.
 
 ## The volume and coordinate system
 
@@ -103,7 +105,7 @@ fixed — never dragged along by the dish or the piston).
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
 `set-pivot`, place joints with `define-joint`, and author the two animations' keyframes —
-reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
+running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
 parts fit, the dish sits centered on its mast, the piston seats on its flank, and the
 animations read with weight. Sculpt each part up in sensible layers — finish the works
 body and its dish mast, then the dish, then the piston. The recorded per-part logs and

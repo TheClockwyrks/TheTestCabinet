@@ -39,8 +39,9 @@ background = "transparent"
 
 # The meshing tool. `sn-anim` is the only way to build a part's field and edit the
 # rig; every operation targets a part with `--part <name>`, composites into that
-# part's field (additive/subtractive primitives with an optional soft `--blend`), and
-# re-renders that part's wgpu preview. Run `sn-anim --help` for the field operations
+# part's field (additive/subtractive primitives with an optional soft `--blend`),
+# recording only — rendering is on request via `sn-anim render`. Run `sn-anim --help`
+# for the field operations
 # AND the rig subcommands; no operations schema is seeded. Surface Nets gives a
 # fixed SMOOTH, ROUNDED, WATERTIGHT surface — it is the binary's character, not a knob.
 [tool]

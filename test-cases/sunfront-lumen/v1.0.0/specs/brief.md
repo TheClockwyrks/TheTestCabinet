@@ -100,13 +100,16 @@ rings under `pulse`, or nod the emitter under `hover`).
 Define your parts with `voxel-anim define-part` (giving each a parent and a pivot),
 sculpt each with `--part <name>`, set pivots with the rig subcommands, place joints with
 `define-joint`, and author the three required animations (`ring_spin`, `hover`, `pulse`)
-with `define-animation` and `add-keyframe` as described above — reading
-`parts/<part>.png` and the assembled-scene previews under `scene/` (`scene/iso.png`,
-`scene/front.png`, `scene/side.png`, `scene/top.png`) between calls to confirm the
-rings sit out at the
+with `define-animation` and `add-keyframe` as described above — running `voxel-anim
+render` and reading `parts/<part>.png` and the assembled-scene previews under `scene/`
+(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`) between calls to
+confirm the rings sit out at the
 core's sides, the emitter meets the core face, and the animations read with weight. Run
 `voxel-anim --help` for the available operations (setting and clearing single voxels,
 filling and stroking boxes, 3D lines, spheres, and a mirror plane), the rig subcommands,
 and the animation subcommands, and `voxel-anim <operation> --help` for each one's exact
-flags. Call `voxel-anim` once per operation. The recorded per-part logs and `rig.json`
-are your scored submission.
+flags. Call `voxel-anim` once per operation. Run `voxel-anim render` before you finish
+so it emits the per-part `.glb` geometry your result is built from — an unrendered part
+scores as empty (`voxel-anim render --component <part>` renders one part; `voxel-anim
+render --time <ms> --animation <name>` renders the model posed at that instant to check
+the motion). The recorded per-part logs and `rig.json` are your scored submission.

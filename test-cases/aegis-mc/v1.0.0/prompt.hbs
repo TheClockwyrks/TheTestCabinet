@@ -21,9 +21,11 @@ Each primitive carries an **opaque** `#rrggbb` color — there is no transparenc
 Marching Cubes meshes on a **coarse** grid, so the surface reads chunky and
 **faceted**; detail finer than the grid is lost.
 
-The field starts **empty**. After each call the binary re-renders the current mesh
-to a 3D preview at `model.png` and appends the operation to its op log. A blank
-starting preview is already in place at `{{workspace}}`.
+The field starts **empty**. Each call only appends the operation to its op log and
+renders nothing; run `mc render` when you want to see the model — it extracts the
+surface to `mesh.glb` and draws the preview PNG `model.png`. An empty log is already
+in place at `{{workspace}}`; you produce the preview and mesh yourself by running
+`mc render`.
 
 Each operation is an ordinary subcommand with flags, for example:
 
@@ -32,9 +34,9 @@ mc add-box --x 60 --y 55 --z 80 --width 76 --height 38 --depth 100 --color "#c69
 ```
 
 Run `mc --help` to list every operation and `mc <operation> --help` for one
-operation's exact flags — that help text is the authoritative contract. **Read
-`model.png` after your calls** to see the extracted surface and decide what to do
-next.
+operation's exact flags — that help text is the authoritative contract. **Run
+`mc render` to (re)draw `model.png`, then read it** to see the extracted surface and
+decide what to do next.
 
 ## What to read first
 
@@ -54,5 +56,7 @@ exact operation contract.
 Composite the fortress up operation by operation until the mesh in `model.png`
 matches the brief — a heavily armored citadel standing on six thick
 articulated legs, a big main turret with a long forward cannon, a side turret out on
-each sponson, and a sensor vane above, cleanly symmetric about its centerplane. When
-you are satisfied, stop: the recorded operations are your finished submission.
+each sponson, and a sensor vane above, cleanly symmetric about its centerplane.
+**Before you finish, run `mc render`** so the geometry (`mesh.glb`) the result is
+built from is emitted — an unrendered model is scored as empty. When you are
+satisfied, stop: the recorded operations are your finished submission.

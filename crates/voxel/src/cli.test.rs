@@ -1,6 +1,7 @@
 //! Unit tests for the shared CLI plumbing: the operation subcommands map to the
-//! recorded wire form, the anim config templates per-part paths, `init` / `apply`
-//! keep the log and preview in step, and the rig helpers upsert cleanly.
+//! recorded wire form, the anim config templates per-part paths, `init` / `record`
+//! keep the log correct (rendering nothing), the on-request `render` writes the
+//! preview and mesh, and the rig helpers upsert cleanly.
 //!
 //! # Render-dependent tests (Vulkan required)
 //!
@@ -240,11 +241,15 @@ fn render_scene_writes_every_view() {
             .to_string_lossy()
             .into(),
         preview: dir.join("parts/{part}.png").to_string_lossy().into(),
-        mesh: dir.join("parts/{part}.mesh.json").to_string_lossy().into(),
+        mesh: dir.join("parts/{part}.mesh.glb").to_string_lossy().into(),
         scene: dir.join("scene/{view}.png").to_string_lossy().into(),
         rig: dir.join("rig.json"),
         live: None,
     };
+    // The parts to render come from the produced rig, so declare `chassis` there.
+    let mut rig = Rig::new();
+    rig.upsert_part("chassis", None);
+    rig.save(&config.rig).expect("seed rig");
     write_actions(
         &config.actions_for("chassis"),
         &[Operation::FillBox {
@@ -266,33 +271,21 @@ fn render_scene_writes_every_view() {
             "scene view {name} is written"
         );
     }
+    // The rest-scene render also re-emits each part's `.glb` and preview.
+    assert!(config.mesh_for("chassis").is_file(), "part mesh emitted");
+    assert!(config.preview_for("chassis").is_file(), "part preview emitted");
 }
 
 #[test]
-#[ignore = "renders a preview PNG through wgpu + Mesa lavapipe (software Vulkan); needs a Vulkan adapter — run with `cargo test -p test-cabinet-voxel -- --ignored` where lavapipe is installed (see module docs)"]
-fn apply_appends_to_the_log_and_renders_a_matching_preview() {
+fn record_only_appends_and_renders_nothing() {
     let dir = tempdir();
     let actions = dir.join("actions.json");
     let preview = dir.join("model.png");
-    let mesh = dir.join("mesh.json");
-    let dims = Dims {
-        width: 4,
-        height: 4,
-        depth: 4,
-    };
-    let bg = PreviewBackground::Transparent;
+    let mesh = dir.join("mesh.glb");
 
-    cli_init(&dims, bg, &actions, &preview, &mesh);
-    let ApplyResult {
-        count,
-        image: returned,
-        live_body,
-    } = apply(
-        &dims,
-        bg,
+    cli_init(&actions, &preview, &mesh);
+    let count = record(
         &actions,
-        &preview,
-        &mesh,
         Operation::SetVoxel {
             x: 1,
             y: 1,
@@ -300,28 +293,59 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
             color: Rgb([1, 2, 3]),
         },
     )
-    .expect("apply");
+    .expect("record");
     assert_eq!(count, 1);
 
-    // The log holds the one operation, and the preview `apply` returned is exactly
-    // the bytes it wrote to disk, so a live viewer streams the same rendered frame.
-    // (Rendering runs through the shared wgpu+Mesa renderer, so this test needs a
-    // software Vulkan adapter — present in the container images — at runtime.)
+    // The log holds the one operation — and recording renders nothing, so no preview
+    // and no mesh are written. Rendering is the on-request `render` command's job.
     let logged = read_actions(&actions).expect("read back");
     assert_eq!(logged.len(), 1);
-    let expected = preview_bytes(&render(&dims, &logged), bg).expect("render preview");
-    let on_disk = std::fs::read(&preview).expect("preview written");
-    assert_eq!(on_disk, expected);
-    assert_eq!(returned, expected);
+    assert!(!preview.exists(), "recording writes no preview");
+    assert!(!mesh.exists(), "recording writes no mesh");
+}
 
-    // The returned live body is the part's `.glb` bytes (the same geometry emitted to
-    // disk), so a live viewer can rebuild the model in 3D from the stream.
-    assert_eq!(&live_body[0..4], b"glTF", "live body is a glb");
-    let on_disk_mesh = std::fs::read(&mesh).expect("mesh written");
-    assert_eq!(live_body, on_disk_mesh);
+#[test]
+#[ignore = "renders through wgpu + Mesa lavapipe (software Vulkan); needs a Vulkan adapter — run with `cargo test -p test-cabinet-voxel -- --ignored` where lavapipe is installed (see module docs)"]
+fn render_writes_preview_and_glb_from_the_log() {
+    let dir = tempdir();
+    let config = Config {
+        width: 4,
+        height: 4,
+        depth: 4,
+        background: "transparent".to_string(),
+        actions: dir.join("actions.json"),
+        preview: dir.join("model.png"),
+        mesh: dir.join("mesh.glb"),
+        live: None,
+    };
+    write_actions(
+        &config.actions,
+        &[Operation::SetVoxel {
+            x: 1,
+            y: 1,
+            z: 1,
+            color: Rgb([1, 2, 3]),
+        }],
+    )
+    .expect("seed log");
 
-    // A per-part `.glb` is emitted alongside the preview, decoding to the runtime's
+    // On-request render: the returned frame is exactly what lands on disk, so a live
+    // viewer streams the same bytes. (Runs through wgpu+Mesa, hence the Vulkan gate.)
+    let rendered = RenderArgs {
+        view: ViewArg::Iso,
+        out: None,
+    }
+    .run(&config)
+    .expect("render");
+
+    let on_disk = std::fs::read(&config.preview).expect("preview written");
+    assert_eq!(on_disk, rendered.image);
+
+    // The mesh glb on disk is the returned live body, decoding to the runtime's
     // PartMesh shape (a face-culled surface with one quad → six indices per face).
+    let on_disk_mesh = std::fs::read(&config.mesh).expect("mesh written");
+    assert_eq!(rendered.live_body, on_disk_mesh);
+    assert_eq!(&on_disk_mesh[0..4], b"glTF", "mesh is a glb");
     let arrays =
         test_cabinet_model_core::glb_to_part_mesh(&on_disk_mesh).expect("valid PartMesh glb");
     assert_eq!(
@@ -334,35 +358,6 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
         6 * 4 * 3,
         "6 faces * 4 verts * 3 coords"
     );
-}
-
-#[test]
-#[ignore = "renders a PNG through wgpu + Mesa lavapipe (software Vulkan); needs a Vulkan adapter — run with `cargo test -p test-cabinet-voxel -- --ignored` where lavapipe is installed (see module docs)"]
-fn render_args_regenerate_a_log_to_a_png() {
-    let dir = tempdir();
-    let actions = dir.join("log.json");
-    let out = dir.join("out.png");
-    write_actions(
-        &actions,
-        &[Operation::SetVoxel {
-            x: 0,
-            y: 0,
-            z: 0,
-            color: Rgb([9, 9, 9]),
-        }],
-    )
-    .expect("seed log");
-    RenderArgs {
-        actions: actions.clone(),
-        out: out.clone(),
-        width: 2,
-        height: 2,
-        depth: 2,
-        background: "transparent".to_string(),
-    }
-    .run()
-    .expect("render");
-    assert!(out.is_file(), "render writes the output png");
 }
 
 #[test]
@@ -512,11 +507,12 @@ fn upsert_animation_preserves_tracks_and_add_keyframe_sorts_and_replaces() {
     );
 }
 
-fn cli_init(dims: &Dims, bg: PreviewBackground, actions: &Path, preview: &Path, mesh: &Path) {
-    init_target(dims, bg, actions, preview, mesh).expect("init");
+fn cli_init(actions: &Path, preview: &Path, mesh: &Path) {
+    init_log(actions).expect("init");
     assert_eq!(read_actions(actions).expect("empty log").len(), 0);
-    assert!(preview.is_file(), "init renders a blank preview");
-    assert!(mesh.is_file(), "init writes a blank mesh");
+    // `init` records only — it renders nothing, so no preview or mesh yet.
+    assert!(!preview.exists(), "init renders no preview");
+    assert!(!mesh.exists(), "init writes no mesh");
 }
 
 /// A throwaway unique directory under the system temp dir. Avoids a dev-dependency

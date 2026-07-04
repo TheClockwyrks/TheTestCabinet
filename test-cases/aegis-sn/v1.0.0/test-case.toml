@@ -35,7 +35,7 @@ background = "transparent"
 
 # The meshing tool. `sn` is the only way to shape the surface: every operation
 # composites a signed-distance primitive into the single field, records itself to
-# the operation log, and re-renders the wgpu preview after each call. `sn` is the
+# the operation log, and renders nothing — rendering is on request via `sn render`. `sn` is the
 # Surface Nets extractor — a fixed medium-grid resolution that relaxes the surface
 # into rounded, uniformly tessellated, watertight triangles (no sharp-edge tag; that
 # is Dual Contouring only). Run `sn --help` for the field operations; no operations

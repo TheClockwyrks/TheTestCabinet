@@ -19,9 +19,10 @@ field by compositing primitives:
 
 Build one operation at a time. The field is meshed with Marching Cubes, which meshes
 on a coarse grid so the surface reads faceted; detail finer than the grid is lost.
-`mc` re-renders `model.png` after each call — read it between calls, and run
-`mc --help` for the operations contract. The recorded operations are the submission
-(the mesh is extracted to `mesh.glb`).
+Each call only records to the log and renders nothing; run `mc render` (it extracts
+the surface to `mesh.glb` and draws `model.png`) to read your progress between edits
+and once more before you finish so the geometry is emitted, and run `mc --help` for
+the operations contract. The recorded operations are the submission.
 
 ## The volume and coordinate system
 

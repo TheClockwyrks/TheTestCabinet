@@ -74,39 +74,48 @@ out-of-bounds portion is **clipped**, never a panic); sizes and radii are unsign
 Colors are opaque `#rrggbb`. A set/fill operation **replaces** the cells it touches,
 so the recorded log produces an exact, order-only volume.
 
-## How a call records and previews
+## How a call records; rendering is on request
 
-Each operation appends itself to the run's **operation log**, updates the part's
-emitted geometry — a per-part `.glb` (the meshed surface as a standard glTF 2.0
-binary, decoded into the runtime's `PartMesh` shape) — and re-renders the **preview**
-from that geometry, so the recorded log documents every operation and the emitted
-data and preview always reflect it. The orchestrator seeds a `voxel.config.json`
-(static) or
+Each operation **only appends itself to the run's operation log** — that is all a
+sculpting call does. Unlike the 2D [drawing binaries](/testing/asset-generation/binaries/),
+the voxel tools do **not** re-render after every call: meshing a volume and
+rasterizing it through the `wgpu`+Mesa renderer is far more expensive than stamping
+2D pixels, and a voxel model takes many operations, so rendering is a separate,
+**on-request** step. The orchestrator seeds a `voxel.config.json` (static) or
 `voxel-anim.config.json` (animated) next to the workspace giving the volume
-dimensions, background, the log/preview/geometry paths — and, for the animated tool,
-the part list and the `rig.json` path — so an operation needs no volume flags. A
-model reads the preview between calls to judge its progress.
+dimensions, background, and the log/preview/geometry paths — and, for the animated
+tool, the `rig.json` path — so neither an operation nor `render` needs any volume
+flags.
+
+The **`render` command** regenerates the derived artifacts from the recorded log
+when the model asks for them: it meshes the model into its per-part `.glb` — the
+surface as a standard glTF 2.0 binary, decoded into the runtime's `PartMesh` shape —
+and draws the **preview** PNG from that geometry. A model runs it to read its
+progress between edits and, **before it finishes, to emit the geometry the run's
+result is built from** — an unrendered model leaves no `.glb`, which the validator
+records as an empty part (see [Evaluation](/testing/asset-generation/evaluation/)).
 
 ```
-voxel init    # write an empty log, blank preview, and empty geometry (a run starts pre-seeded)
-voxel render --actions <log> --out <png> --width <w> --height <h> --depth <d>   # re-render a log's preview
+voxel init            # write an empty log (a run starts pre-seeded); renders nothing
+voxel render          # mesh the model to its .glb and draw the preview PNG
+voxel render --view front   # ...from a chosen camera: iso (default) | front | side | top
+voxel render --out check.png   # ...to an explicit path (the .glb still goes to its configured path)
 ```
 
 ### The preview
 
-The preview each call re-renders is a real **3D render of the meshed model**. The
-binary meshes the voxel volume into geometry and renders it with **`wgpu` targeting
-Mesa lavapipe** — software Vulkan, running on the CPU, headless (there is no GPU in
-the run container) — through an **orbit camera** with directional shading, encoded
-as a PNG. This generic mesh renderer lives in `model-core` and serves every
-voxel-family binary, so previews are apples-to-apples across tools. It **replaces**
-the retired integer-only isometric rasterizer (`crates/voxel/src/raster.rs`); the
-preview no longer needs to be byte-reproducible, because nothing regenerates it
-after the run (see [Evaluation](/testing/asset-generation/evaluation/)). The preview
-is a **still** image; the interactive, rotatable 3D view is the frontend's three.js
-rendering of the emitted per-part `.glb` (see
-[voxel-runtime](/components/voxel-runtime/overview/)), not something the binary
-produces.
+The preview `render` draws is a real **3D render of the meshed model**. The binary
+meshes the voxel volume into geometry and renders it with **`wgpu` targeting Mesa
+lavapipe** — software Vulkan, running on the CPU, headless (there is no GPU in the
+run container) — through an **orbit camera** with directional shading, encoded as a
+PNG. This generic mesh renderer lives in `model-core` and serves every voxel-family
+binary, so previews are apples-to-apples across tools. It **replaces** the retired
+integer-only isometric rasterizer (`crates/voxel/src/raster.rs`); the preview no
+longer needs to be byte-reproducible, because nothing regenerates it after the run
+(see [Evaluation](/testing/asset-generation/evaluation/)). The preview is a **still**
+image; the interactive, rotatable 3D view is the frontend's three.js rendering of the
+emitted per-part `.glb` (see [voxel-runtime](/components/voxel-runtime/overview/)),
+not something the binary produces.
 
 ## Live preview
 
@@ -114,11 +123,13 @@ When a run is being **watched** — driven by a [driver](/components/driver/over
 or the [Tauri app](/components/tauri/overview/) rather than a plain `tcab run` —
 the model's sculpting can be streamed to the viewer in real time, exactly as for
 the [drawing binaries](/testing/asset-generation/binaries/#live-preview): the
-orchestrator adds a `live` block to the seeded config, and after each operation the
-binary connects back to the run host and streams a one-line JSON header
+orchestrator adds a `live` block to the seeded config, and **when the model runs
+`render`** the binary connects back to the run host and streams a one-line JSON header
 (`{ token, frame, operationCount, operation, length, meshLength }`) followed by the
 freshly rendered preview PNG's raw bytes and then the part's current `.glb` bytes
-(`meshLength` bytes) — the same glTF geometry the 3D client renders. The mesh body
+(`meshLength` bytes) — the same glTF geometry the 3D client renders. (Because a
+sculpting operation renders nothing, frames flow only when the model renders; a scene
+render streams one per part.) The mesh body
 lets the viewer rebuild the model **in 3D** as it is sculpted — rotating it and
 assembling the scene exactly as the finished-run view does — rather than showing only
 the still preview PNG; a PNG-only viewer simply ignores it. For an animated model the
@@ -150,31 +161,42 @@ assembled model with no per-part offset — see the assembled scene below.)
 voxel-anim --help                                       # same operations, plus --part
 voxel-anim fill-box --part turret --x 12 --y 8 --z 12 --width 8 --height 4 --depth 8 --color "#4a5a3a"
 voxel-anim init                                          # seed rig.json (the required animation declarations)
-voxel-anim render --actions <log> --out <png> --width 32 --height 24 --depth 32
+voxel-anim render                                        # mesh every part's .glb + draw the assembled scene
+voxel-anim render --component turret                     # ...or just one part's preview + .glb
+voxel-anim render --time 600 --animation walk            # ...or the model posed at 600ms of the walk
 ```
 
 The seeded `voxel-anim.config.json` carries the `{part}` templates and the
 `rig.json` path, so `voxel-anim init` seeds a `rig.json` pre-populated with the
 case's **required animation declarations** (empty tracks; its `parts` and `joints`
 start **empty**, because a case declares none). No part exists until the model
-creates one with `define-part` — which then initializes that part's log, preview,
-and geometry — so `init` seeds no per-part files. The **per-part emitted data and
-previews are the scored artifacts**; the assembled scene below is a non-scored
+creates one with `define-part` — which then initializes that part's operation log —
+so `init` renders nothing and seeds no per-part previews. The **per-part emitted data
+and previews are the scored artifacts**; the assembled scene below is a non-scored
 extra.
 
-### The assembled scene
+### The `render` command
 
-Because each part is sculpted in place in the shared coordinates, `voxel-anim` also
-renders the whole model **composed at rest** — every part unioned in one volume —
-after every operation (and on `init`), alongside the per-part previews. This is the
-view that catches assembly mistakes a per-part preview can't: a turret that reads
-fine alone but sits off-center on the hull, or a barrel that misses the turret
-front. It is written to the config's `scene` template (default `scene/{view}.png`),
-one PNG per view:
+Like `voxel`, `voxel-anim` renders **only on request** — a sculpting operation just
+records. Its `render` has three modes:
 
-```
-voxel-anim scene        # re-render the assembled scene on demand (also automatic after each op)
-```
+- **`render`** (no options) — render the whole **assembled scene**: it re-emits
+  **every** part's `.glb` and preview from its log (so one call produces all the
+  geometry the run's result reads and refreshes every scored per-part image), then
+  composes the parts at rest and writes one PNG per view to the config's `scene`
+  template (default `scene/{view}.png`). This is the call to run before finishing.
+- **`render --component <part>`** — render just that part: its own preview PNG and
+  `.glb`, at a chosen `--view`. Cheap for iterating on one part.
+- **`render --time <ms> [--animation <name>]`** — render the model **posed** at that
+  instant of an animation, so you can check how the motion reads (a leg mid-stride, a
+  barrel at full elevation). Each part's rest mesh is transformed by its animated
+  world transform, exactly as the client poses it. `--animation` defaults to the sole
+  or auto-play animation; the posed image goes to `scene/pose.png` (override with
+  `--out`) and does not touch the parts' `.glb`s.
+
+The assembled scene is what catches assembly mistakes a per-part preview can't: a
+turret that reads fine alone but sits off-center on the hull, or a barrel that misses
+the turret front. Its views are:
 
 - **`iso`** — a 3D orbit render matching the per-part previews, for a read of the
   whole model.
@@ -182,10 +204,9 @@ voxel-anim scene        # re-render the assembled scene on demand (also automati
   model down each axis, so it is easy to check a part is centered and aligned
   head-on.
 
-The scene composes parts at **rest** (every joint rests at `0`, so this is the
-true rest pose); it does not apply joint motion — the interactive, posable view is
-the frontend's [voxel-runtime](/components/voxel-runtime/overview/) rendering. Like
-the per-part previews, the scene is **not** a scored artifact.
+The plain scene composes parts at **rest** (every joint rests at `0`, so this is the
+true rest pose); use `--time` to see joint motion. Neither the per-part previews nor
+the scene is a scored artifact.
 
 ### Rig subcommands
 
@@ -213,9 +234,10 @@ voxel-anim add-keyframe --animation walk --joint hip_l --t-ms 1200 --value 0.35 
 ```
 
 - **`define-part`** adds a part under a declared `--parent` (the first part defined
-  is the root, with no parent) and **initializes that part's files** — its operation
-  log, preview, and geometry — so it immediately becomes a `--part` target for
-  sculpting. A field operation on a part that has **not** been `define-part`'d yet is
+  is the root, with no parent) and **initializes that part's operation log** so it
+  immediately becomes a `--part` target for sculpting (its preview and `.glb` are
+  written later, by `render`). A field operation on a part that has **not** been
+  `define-part`'d yet is
   rejected. Set its pivot with `set-pivot`. A part sculpted with **no voxels** is an
   **attach point** (a `muzzle`, an exhaust) — an empty named node a game reads as a
   socket for a projectile or effect.

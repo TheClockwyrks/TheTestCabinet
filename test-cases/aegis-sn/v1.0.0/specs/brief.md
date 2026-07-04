@@ -18,10 +18,11 @@ field by compositing primitives:
   `copy`/`replace-color`/`clear` edit the whole field.
 
 Build one operation at a time. The field is meshed with Surface Nets, which produces
-a smooth, rounded, watertight skin; corners round by construction. `sn` re-renders
-`model.png` after each call — read it between calls, and run `sn --help` for the
-operations contract. The recorded operations are the submission (the mesh is
-extracted to `mesh.glb`).
+a smooth, rounded, watertight skin; corners round by construction. Each call only
+records to the log and renders nothing; run `sn render` (it extracts the surface to
+`mesh.glb` and draws `model.png`) to read your progress between edits and once more
+before you finish so the geometry is emitted, and run `sn --help` for the operations
+contract. The recorded operations are the submission.
 
 ## The volume and coordinate system
 

@@ -132,10 +132,12 @@ Seed a single self-contained `specs/brief.md`. State:
   volume's coordinates**, positioned where it sits on the assembled model;
 - **how the tool behaves** — `voxel-anim` is the only way to place a voxel and edit
   the rig, `--part` is required on every op, `--help` lists the operations and rig
-  subcommands, it re-renders each part's isometric preview **and the assembled-scene
-  previews** (`scene/{iso,front,side,top}.png` — the whole rig composed at rest) after
-  each call, the volume starts empty, and the recorded operations + `rig.json` are the
-  output;
+  subcommands, a sculpting op **only records** (it renders nothing); `voxel-anim
+  render` on request draws each part's preview **and the assembled-scene previews**
+  (`scene/{iso,front,side,top}.png` — the whole rig composed at rest) and emits the
+  geometry, with `render --component <part>` for one part and `render --time <ms>
+  --animation <name>` to preview a motion — so the model must render before finishing;
+  the volume starts empty, and the recorded operations + `rig.json` are the output;
 - **the required animations** — name each animation the model must author and
   describe the **behaviour** it must show in prose (a walk that plants its feet, a
   turret that sweeps its arc), whether it loops, and whether it self-plays or is
@@ -147,12 +149,14 @@ Seed a single self-contained `specs/brief.md`. State:
 ### 3. Write `prompt.hbs`
 
 A short instruction pointing the model at the seeded brief, telling it to read
-`voxel-anim --help` (operations *and* rig subcommands) and to read both each
+`voxel-anim --help` (operations *and* rig subcommands) and — because a sculpting op
+**renders nothing** — to run `voxel-anim render` when it wants to (re)draw each
 `parts/<part>.png` **and the assembled-scene previews under `scene/`**
-(iso/front/side/top) between calls — the scene is how the model confirms its
+(iso/front/side/top) and read them — the scene is how the model confirms its
 separately sculpted parts fit together (a part centered and seated, a child meeting
 its parent). Restate the hard requirements (sculpt/rig only through the tool;
-`--part` on every op; author every required animation; return when finished).
+`--part` on every op; author every required animation; **run `voxel-anim render`
+before finishing** so the geometry is emitted; return when finished).
 Strict mode — only `{{variant.*}}` and `{{#each specs}}`. Model it on `ironward`'s
 `prompt.hbs`. A shared **quality directive** (the brief is the floor, not the goal;
 produce the best-looking asset you can within its constraints) is prepended to

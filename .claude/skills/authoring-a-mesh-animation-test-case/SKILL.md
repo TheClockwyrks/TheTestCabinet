@@ -184,9 +184,12 @@ Seed a single self-contained `specs/brief.md`. State:
   is its **own field**, meshed on its own;
 - **how the tool behaves** — the `-anim` binary is the only way to shape the field
   and edit the rig, `--part` is required on every op, `--help` lists the operations
-  **and the rig subcommands**, it re-renders each part's preview **and the
-  assembled-scene previews** after each call, the field starts empty, and the
-  recorded operations + emitted per-part `.glb` + `rig.json` are the output;
+  **and the rig subcommands**, a sculpting op **only records** (it renders/meshes
+  nothing); the binary's `render` on request draws each part's preview **and the
+  assembled-scene previews** and emits the per-part `.glb` (with `render --component
+  <part>` for one part and `render --time <ms> --animation <name>` to preview a
+  motion) — so the model must render before finishing — the field starts empty, and
+  the recorded operations + emitted per-part `.glb` + `rig.json` are the output;
 - **the required animations** — name each animation the model must author and
   describe the **behaviour** it must show in prose (a walk that plants its feet, a
   turret that sweeps its arc), whether it loops, and whether it self-plays or is
@@ -201,12 +204,14 @@ the **same as voxel-anim** — see the voxel-animation skill's **Writing the bri
 ### 3. Write `prompt.hbs`
 
 A short instruction pointing the model at the seeded brief, telling it to read the
-`-anim` binary's `--help` (operations **and** rig subcommands) and to read both each
-`parts/<part>.png` **and the assembled-scene previews** between calls — the scene is
-how the model confirms its separately sculpted parts fit together. Name the field
-vocabulary (`add-*`/`subtract-*`, `--blend`, and, for `dc-anim`, `--sharp`/`--smooth`)
-and restate the hard requirements (shape/rig only through the tool; `--part` on every
-op; author every required animation; return when finished). Strict
+`-anim` binary's `--help` (operations **and** rig subcommands) and — because a
+sculpting op **renders nothing** — to run the binary's `render` when it wants to
+(re)draw each `parts/<part>.png` **and the assembled-scene previews** and read them —
+the scene is how the model confirms its separately sculpted parts fit together. Name
+the field vocabulary (`add-*`/`subtract-*`, `--blend`, and, for `dc-anim`,
+`--sharp`/`--smooth`) and restate the hard requirements (shape/rig only through the
+tool; `--part` on every op; author every required animation; **run `render` before
+finishing** so the geometry is emitted; return when finished). Strict
 mode — only `{{variant.*}}`, `{{#each specs}}`, and `{{workspace}}`. Model it on the
 matching `aegis-*-anim` case's `prompt.hbs`. A shared **quality directive** is
 prepended to every asset-generation prompt automatically at render time

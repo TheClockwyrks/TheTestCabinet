@@ -61,5 +61,7 @@ The `voxel` binary is the only way to place a voxel. Run `voxel --help` for the
 available operations (setting and clearing single voxels, filling and stroking boxes,
 3D lines, spheres, and a mirror plane) and `voxel <operation> --help` for each one's
 exact flags. Because the jet is symmetric, a mirror plane at `x = 25` can complete the
-right half from the left. Call `voxel` once per operation and read `model.png` between
-calls to judge your progress against this brief.
+right half from the left. Call `voxel` once per operation; each call only records to
+the log and renders nothing, so run `voxel render` (it meshes to `mesh.glb` and draws
+`model.png`) when you want to judge your progress against this brief, and once more
+before you finish so the geometry is emitted.

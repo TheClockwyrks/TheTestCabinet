@@ -35,8 +35,9 @@ background = "transparent"
 
 # The meshing tool. `mc` is the only way to shape the surface: every operation
 # composites a primitive into (or carves it out of) the signed-distance field,
-# records itself to the op log, and re-renders the wgpu preview PNG of the extracted
-# mesh after each call. Marching Cubes samples the field on a COARSE uniform grid, so
+# records itself to the op log and renders nothing — rendering is on request via
+# `mc render`, which extracts the mesh and draws the wgpu preview PNG. Marching Cubes
+# samples the field on a COARSE uniform grid, so
 # the output is a chunky, faceted LOW-POLY surface — a fixed characteristic of the
 # binary, not a manifest knob. Run `mc --help` for the operations; no operations
 # schema is seeded.

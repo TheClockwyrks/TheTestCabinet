@@ -37,8 +37,12 @@ required animations with `define-animation`/`add-keyframe`. Every field operatio
 targets a **part** with `--part <name>`, so define a part before you sculpt into it;
 each part is a **separate field** composited in the shared volume's coordinates. The
 field starts **empty**. Colors are **opaque** `#rrggbb` — there is no transparency.
-After each call the binary re-renders that part's wgpu preview to `parts/<part>.png`
-and updates that part's emitted per-part `.glb` mesh.
+Each call **only records the operation to that part's log** — it meshes and renders
+nothing. When you want to extract the geometry and (re)draw the previews and assembled
+scene, run `dc-anim render`: plain `dc-anim render` re-emits **every** part's `.glb`
+mesh and preview and draws the assembled `scene/` views, `dc-anim render --component
+<part>` renders just one part, and `dc-anim render --time <ms> --animation <name>`
+renders the model posed at that instant of an animation so you can check a walk cycle.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
@@ -52,10 +56,10 @@ dc-anim add-sphere --part main_turret --cx 60 --cy 86 --cz 80 --r 16 --blend 3 -
 `dc-anim --help` to list every field operation **and** the rig subcommands (defining
 parts, setting pivots, defining joints, and defining animations and their keyframes),
 and `dc-anim <operation> --help` for one operation's exact flags — that help text is
-the authoritative contract. **Read `parts/<part>.png` after your calls** to see that
-part's progress, **and read the assembled-scene previews under `scene/`
+the authoritative contract. **Run `dc-anim render`, then read `parts/<part>.png`** to
+see that part's progress, **and read the assembled-scene previews under `scene/`
 (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole
-fortress composed from all your parts, re-rendered after every operation. The scene
+fortress composed from all your parts, drawn whenever you run `dc-anim render`. The scene
 views are how you confirm the parts actually fit together and that the legs reach the
 ground. Because each part is composited in the shared volume's coordinates, position
 each part where it belongs on the finished fortress; the scene simply composes them
@@ -88,5 +92,8 @@ the `dc-anim` animation subcommands: `march` (a walk whose feet plant flat and s
 then lift and swing — with weight, not a weightless slide), `bombardment` (the guns
 working while the fortress stands), and the self-playing `radar_spin`. The animations
 are the fixed contract — produce all three, by those names; the parts and joints that
-realize them are yours. When you are satisfied, stop: the emitted per-part meshes and
-`rig.json` are your finished submission.
+realize them are yours. **Before you finish, run `dc-anim render` (no options)** so
+every part's surface is extracted and emitted to its `.glb` — an unrendered part leaves
+no geometry and is scored as empty (`--time`/`--animation` previews an animation,
+`--component` renders one part). When you are satisfied, stop: the emitted per-part
+meshes and `rig.json` are your finished submission.

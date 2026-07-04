@@ -3,13 +3,13 @@
 //!
 //! Both `voxel` (a single static model) and `voxel-anim` (a rigged model, one
 //! separate file set per part) drive the **same** cube sculpting operations through
-//! `clap`; this module defines those operation subcommands, the [`CubeBackend`] that
-//! turns a recorded log into a preview PNG and a per-part `.glb`, and the cube-flavored
-//! wrappers over `test-cabinet-model-core`'s generic
-//! [`apply`](test_cabinet_model_core::record::apply)/[`init_target`](test_cabinet_model_core::record::init_target)
-//! loop. The only difference between the binaries is whether an operation targets
-//! one volume or one of many independent per-part volumes — the operations
-//! themselves, and how each one applies, are identical.
+//! `clap`; this module defines those operation subcommands, the append-only
+//! [`record`](record::record) wrapper each operation calls, and the on-request
+//! `render` half — [`render_target_files`] plus the [`RenderArgs`]/[`AnimRenderArgs`]
+//! commands — that meshes a recorded log into a preview PNG and a per-part `.glb`. The
+//! only difference between the binaries is whether an operation targets one volume or
+//! one of many independent per-part volumes — the operations themselves, and how each
+//! one applies, are identical.
 //!
 //! The operation subcommands' help text is the contract a model reads: an
 //! asset-generation case seeds no operations schema, it tells the model to run the
@@ -21,9 +21,11 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 
+use test_cabinet_model_core::pose;
 use test_cabinet_model_core::record;
 use test_cabinet_model_core::render as mesh_render;
 use test_cabinet_model_core::render::{MeshView, View};
+use test_cabinet_model_core::rig::{Animation, Rig};
 
 use crate::color::Rgb;
 use crate::mesh::{PartMesh, build_part_mesh};
@@ -32,7 +34,7 @@ use crate::{Axis, Dims, Operation, PreviewBackground, VoxelSet, render};
 // Re-export the generic config/record surface the binaries reach as
 // `test_cabinet_voxel::cli::…`, so the split is invisible to them.
 pub use test_cabinet_model_core::config::{AnimConfig, Config, LiveConfig, read_config};
-pub use test_cabinet_model_core::record::{ApplyResult, send_live_preview, write_actions};
+pub use test_cabinet_model_core::record::{Rendered, send_live_preview, write_actions};
 
 /// A single sculpting operation, expressed as a `clap` subcommand.
 ///
@@ -477,58 +479,52 @@ fn parse_color(value: &str) -> Result<Rgb, String> {
     Rgb::parse_hex(value).map_err(|err| err.to_string())
 }
 
-/// The cube [`SculptBackend`](record::SculptBackend): replays an [`Operation`] log
-/// into a [`VoxelSet`] and renders it to the isometric preview PNG and the
-/// face-culled per-part `.glb`.
-pub struct CubeBackend {
-    /// The volume the operations sculpt within.
-    pub dims: Dims,
-    /// The preview clear color.
-    pub background: PreviewBackground,
-}
+/// Render one cube target's log to disk on request: mesh the [`VoxelSet`] the
+/// [`Operation`]s produce, write its face-culled per-part `.glb`, and render the
+/// chosen [`View`] to the preview PNG. Returns the PNG bytes and the `.glb` bytes so a
+/// caller streaming a live frame need not re-read them.
+///
+/// This is the render half of the tool, reached only by the `render` command — a
+/// sculpting operation records to the log and renders nothing.
+fn render_target_files(
+    dims: &Dims,
+    background: PreviewBackground,
+    ops: &[Operation],
+    view: View,
+    preview: &Path,
+    mesh: &Path,
+) -> Result<record::Rendered, String> {
+    let set = render(dims, ops);
 
-impl record::SculptBackend for CubeBackend {
-    type Op = Operation;
+    // The face-culled surface mesh is the single source of geometry: it is what the
+    // preview renderer draws and what every downstream consumer reads.
+    let part_mesh = build_part_mesh(&set);
+    let mesh_glb = test_cabinet_model_core::part_mesh_to_glb(
+        &part_mesh.positions,
+        &part_mesh.normals,
+        &part_mesh.colors,
+        &part_mesh.indices,
+    );
+    record::ensure_parent(mesh)?;
+    fs::write(mesh, &mesh_glb).map_err(|err| format!("writing mesh {}: {err}", mesh.display()))?;
 
-    fn render_target(
-        &self,
-        ops: &[Operation],
-        preview: &Path,
-        mesh: &Path,
-    ) -> Result<record::Rendered, String> {
-        let set = render(&self.dims, ops);
+    let image = mesh_render::render_png(
+        &[mesh_view(&part_mesh)],
+        view,
+        background,
+        mesh_render::PREVIEW_SIZE,
+    )?;
+    record::ensure_parent(preview)?;
+    fs::write(preview, &image)
+        .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
 
-        // The face-culled surface mesh is the single source of geometry: it is what
-        // the preview renderer draws and what every downstream consumer reads.
-        let part_mesh = build_part_mesh(&set);
-        let mesh_glb = test_cabinet_model_core::part_mesh_to_glb(
-            &part_mesh.positions,
-            &part_mesh.normals,
-            &part_mesh.colors,
-            &part_mesh.indices,
-        );
-        record::ensure_parent(mesh)?;
-        fs::write(mesh, &mesh_glb)
-            .map_err(|err| format!("writing mesh {}: {err}", mesh.display()))?;
-
-        let image = mesh_render::render_png(
-            &[mesh_view(&part_mesh)],
-            View::Iso,
-            self.background,
-            mesh_render::PREVIEW_SIZE,
-        )?;
-        record::ensure_parent(preview)?;
-        fs::write(preview, &image)
-            .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
-
-        Ok(record::Rendered {
-            image,
-            // Stream the face-culled part `.glb` (the `PartMesh` the 3D client
-            // renders) — the same geometry every voxel-family binary streams live,
-            // so the live viewer rebuilds the model from a mesh, never re-meshing.
-            live_body: mesh_glb,
-        })
-    }
+    Ok(record::Rendered {
+        image,
+        // The face-culled part `.glb` (the `PartMesh` the 3D client renders) — the same
+        // geometry every voxel-family binary streams live, so the live viewer rebuilds
+        // the model from a mesh, never re-meshing.
+        live_body: mesh_glb,
+    })
 }
 
 /// Borrow a [`PartMesh`]'s flat arrays as a [`MeshView`] for the preview renderer.
@@ -551,37 +547,16 @@ pub fn dims(extents: (u32, u32, u32)) -> Dims {
     }
 }
 
-/// Append one operation to `actions` and re-render the target's preview PNG and
-/// per-part `.glb` from the whole log through the cube backend.
-pub fn apply(
-    dims: &Dims,
-    background: PreviewBackground,
-    actions: &Path,
-    preview: &Path,
-    mesh: &Path,
-    operation: Operation,
-) -> Result<ApplyResult, String> {
-    let backend = CubeBackend {
-        dims: *dims,
-        background,
-    };
-    record::apply(&backend, actions, preview, mesh, operation)
+/// Record one operation to a target's action log, returning the log's new operation
+/// count. This is all a sculpting operation does — no meshing, no preview, no stream.
+pub fn record(actions: &Path, operation: Operation) -> Result<usize, String> {
+    record::record(actions, operation)
 }
 
-/// Initialize one target: write an empty action log and render its blank preview
-/// and per-part `.glb`.
-pub fn init_target(
-    dims: &Dims,
-    background: PreviewBackground,
-    actions: &Path,
-    preview: &Path,
-    mesh: &Path,
-) -> Result<(), String> {
-    let backend = CubeBackend {
-        dims: *dims,
-        background,
-    };
-    record::init_target(&backend, actions, preview, mesh)
+/// Initialize one target's action log to empty. Renders nothing (rendering is the
+/// `render` command's job).
+pub fn init_log(actions: &Path) -> Result<(), String> {
+    record::init_log::<Operation>(actions)
 }
 
 /// Read the cube action log, treating an absent file as an empty log so the first
@@ -590,58 +565,140 @@ pub fn read_actions(path: &Path) -> Result<Vec<Operation>, String> {
     record::read_actions(path)
 }
 
-/// Render an arbitrary voxel set to preview PNG bytes with the isometric camera and
-/// the given background — the exact rendering the cube backend produces (mesh the
-/// set, then draw it through the shared renderer), exposed for callers holding a set
-/// directly.
-pub fn preview_bytes(set: &VoxelSet, background: PreviewBackground) -> Result<Vec<u8>, String> {
-    let part_mesh = build_part_mesh(set);
-    mesh_render::render_png(
-        &[mesh_view(&part_mesh)],
-        View::Iso,
-        background,
-        mesh_render::PREVIEW_SIZE,
-    )
+/// A camera view as a `clap` value, mirroring [`View`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ViewArg {
+    /// The 3/4 orbit view, from the front-top-right (the default).
+    Iso,
+    /// The front elevation (looking along `-z`).
+    Front,
+    /// The side elevation (looking along `-x`).
+    Side,
+    /// The plan (top) view (looking straight down `-y`).
+    Top,
 }
 
-/// The shared `render` subcommand: regenerate a preview from an action log without
-/// modifying it. Identical for both binaries; it operates on one log and one output
-/// and needs no config, so authors can render any log (including a per-part target
-/// log) at an explicit size.
+impl From<ViewArg> for View {
+    fn from(v: ViewArg) -> View {
+        match v {
+            ViewArg::Iso => View::Iso,
+            ViewArg::Front => View::Front,
+            ViewArg::Side => View::Side,
+            ViewArg::Top => View::Top,
+        }
+    }
+}
+
+/// The static `render` command: regenerate the model's mesh `.glb` and preview PNG
+/// from its recorded log, on request. Rendering never happens automatically — a
+/// sculpting operation only records — so the model runs this to inspect its work and,
+/// before finishing, to emit the geometry the run's result is built from.
 #[derive(Debug, Args)]
 pub struct RenderArgs {
-    /// Path to the action log JSON (an array of operations).
+    /// Camera view for the preview: `iso` (default), `front`, `side`, or `top`.
+    #[arg(long, value_enum, default_value = "iso")]
+    pub view: ViewArg,
+    /// Override the preview output path (default: the configured `preview`). The mesh
+    /// `.glb` is always written to the configured `mesh`.
     #[arg(long)]
-    pub actions: PathBuf,
-    /// Where to write the rendered preview PNG.
-    #[arg(long)]
-    pub out: PathBuf,
-    /// Volume width in voxels.
-    #[arg(long)]
-    pub width: u32,
-    /// Volume height in voxels.
-    #[arg(long)]
-    pub height: u32,
-    /// Volume depth in voxels.
-    #[arg(long)]
-    pub depth: u32,
-    /// Preview clear color: `transparent` or a hex color.
-    #[arg(long, default_value = "transparent")]
-    pub background: String,
+    pub out: Option<PathBuf>,
 }
 
 impl RenderArgs {
-    /// Render the action log to the output PNG at the requested size.
-    pub fn run(&self) -> Result<(), String> {
-        let background = PreviewBackground::parse(&self.background)
-            .map_err(|err| format!("invalid background: {err}"))?;
-        let volume = dims((self.width, self.height, self.depth));
-        let operations = read_actions(&self.actions)?;
-        let set = render(&volume, &operations);
-        let bytes = preview_bytes(&set, background)?;
-        record::ensure_parent(&self.out)?;
-        fs::write(&self.out, &bytes).map_err(|err| format!("writing {}: {err}", self.out.display()))
+    /// Render the configured model log: write the mesh `.glb` and the preview PNG,
+    /// returning the rendered frame so the caller can stream it to a live viewer.
+    pub fn run(&self, config: &Config) -> Result<record::Rendered, String> {
+        let volume = dims(config.extents());
+        let operations = read_actions(&config.actions)?;
+        let preview = self.out.clone().unwrap_or_else(|| config.preview.clone());
+        render_target_files(
+            &volume,
+            config.background()?,
+            &operations,
+            self.view.into(),
+            &preview,
+            &config.mesh,
+        )
     }
+}
+
+/// The animated `render` command: on request, render the assembled rest scene (the
+/// default), a single `--component` part, or the model **posed** at a `--time` of one
+/// of its animations. Like the static form, nothing renders automatically.
+#[derive(Debug, Args)]
+pub struct AnimRenderArgs {
+    /// Render only this part — its own preview PNG and `.glb` — instead of the
+    /// assembled scene.
+    #[arg(long)]
+    pub component: Option<String>,
+    /// Pose the assembled model at this time offset (milliseconds) into an animation
+    /// before rendering, so you can see how the animation looks at that instant. Poses
+    /// the whole scene; not combinable with `--component`.
+    #[arg(long)]
+    pub time: Option<f64>,
+    /// Which animation `--time` samples. Defaults to the sole animation, or the
+    /// auto-play one; required when the rig has several and none is auto-play.
+    #[arg(long)]
+    pub animation: Option<String>,
+    /// Camera view for a `--component` or `--time` render (default `iso`). The rest
+    /// scene always renders all four views.
+    #[arg(long, value_enum)]
+    pub view: Option<ViewArg>,
+    /// Override the output path for a `--component` (its preview) or `--time` (the
+    /// posed image, default `scene/pose.png`) render.
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+}
+
+impl AnimRenderArgs {
+    /// Run the render. Returns a rendered frame for a single-part render (so the
+    /// caller can stream it, keyed by part index) and `None` for a scene render (whose
+    /// per-part frames are streamed internally).
+    pub fn run(&self, config: &AnimConfig) -> Result<Option<record::Rendered>, String> {
+        if let Some(part) = &self.component {
+            if self.time.is_some() {
+                return Err("--time poses the assembled scene; drop --component".to_string());
+            }
+            let view = self.view.map(View::from).unwrap_or(View::Iso);
+            return Ok(Some(render_part(config, part, view, self.out.as_deref())?));
+        }
+        if let Some(time_ms) = self.time {
+            let view = self.view.map(View::from).unwrap_or(View::Iso);
+            let rendered =
+                render_scene_posed(config, self.animation.as_deref(), time_ms, view, self.out.as_deref())?;
+            return Ok(Some(rendered));
+        }
+        render_scene(config)?;
+        Ok(None)
+    }
+}
+
+/// Render one part's log to its preview PNG (chosen `view`) and its `.glb`.
+pub fn render_part(
+    config: &AnimConfig,
+    part: &str,
+    view: View,
+    out: Option<&Path>,
+) -> Result<record::Rendered, String> {
+    if !config.has_part(part) {
+        return Err(format!(
+            "part `{part}` is not defined (defined: {:?})",
+            config.declared_parts()
+        ));
+    }
+    let volume = dims(config.extents());
+    let operations = read_actions(&config.actions_for(part))?;
+    let preview = out
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| config.preview_for(part));
+    render_target_files(
+        &volume,
+        config.background()?,
+        &operations,
+        view,
+        &preview,
+        &config.mesh_for(part),
+    )
 }
 
 /// The assembled-scene views the animated tool renders, as `(name, view)` pairs in
@@ -674,20 +731,43 @@ pub fn compose_scene(dims: &Dims, part_logs: &[Vec<Operation>]) -> VoxelSet {
     set
 }
 
-/// Re-render the assembled scene from the current per-part logs: compose every
-/// declared part and write one PNG per [`SCENE_VIEWS`] entry to the config's
-/// `scene` path. Returns the composed volume so a caller can reuse it. A scene view
-/// is a non-scored aid — the per-part previews remain the scored artifacts.
-pub fn render_scene(config: &AnimConfig) -> Result<VoxelSet, String> {
+/// Render the assembled rest scene on request.
+///
+/// Re-emits **every** part's `.glb` and preview from its log (so one `render` produces
+/// all the geometry the run's result reads and refreshes every scored per-part image),
+/// then composes the parts at rest and writes one PNG per [`SCENE_VIEWS`] entry. Each
+/// part's frame is streamed to a live viewer, best-effort. A scene view is a
+/// non-scored aid — the per-part previews remain the scored artifacts.
+pub fn render_scene(config: &AnimConfig) -> Result<(), String> {
     let volume = dims(config.extents());
     let background = config.background()?;
     let parts = config.declared_parts();
     let mut logs = Vec::with_capacity(parts.len());
-    for part in &parts {
-        logs.push(read_actions(&config.actions_for(part))?);
+    for (index, part) in parts.iter().enumerate() {
+        let operations = read_actions(&config.actions_for(part))?;
+        let rendered = render_target_files(
+            &volume,
+            background,
+            &operations,
+            View::Iso,
+            &config.preview_for(part),
+            &config.mesh_for(part),
+        )?;
+        if let Some(live) = &config.live {
+            send_live_preview(
+                &live.endpoint,
+                &live.token,
+                index as u32,
+                "render",
+                operations.len(),
+                &rendered.image,
+                &rendered.live_body,
+            );
+        }
+        logs.push(operations);
     }
-    let set = compose_scene(&volume, &logs);
     // Mesh the composed rest-pose model once, then draw it from each scene view.
+    let set = compose_scene(&volume, &logs);
     let part_mesh = build_part_mesh(&set);
     for (name, view) in SCENE_VIEWS {
         let path = config.scene_for(name);
@@ -701,7 +781,82 @@ pub fn render_scene(config: &AnimConfig) -> Result<VoxelSet, String> {
         fs::write(&path, &bytes)
             .map_err(|err| format!("writing scene {}: {err}", path.display()))?;
     }
-    Ok(set)
+    Ok(())
+}
+
+/// Choose which animation a `--time` render samples: the named one, else the sole
+/// animation, else the auto-play one — an error if the choice is ambiguous or the rig
+/// has no animation.
+fn pick_animation<'a>(rig: &'a Rig, name: Option<&str>) -> Result<&'a Animation, String> {
+    if let Some(name) = name {
+        return rig
+            .animations
+            .iter()
+            .find(|a| a.name == name)
+            .ok_or_else(|| format!("no animation `{name}` in the rig"));
+    }
+    match rig.animations.as_slice() {
+        [] => Err("the rig has no animations to pose (author one first)".to_string()),
+        [only] => Ok(only),
+        many => many
+            .iter()
+            .find(|a| a.auto_play)
+            .ok_or_else(|| "the rig has several animations; name one with --animation".to_string()),
+    }
+}
+
+/// Render the assembled model **posed** at `time_ms` of an animation, from `view`, to
+/// `out` (default the scene `pose` image). Each part's rest mesh is transformed by its
+/// posed world matrix, so this shows the animation as the client would play it. Does
+/// not touch the parts' `.glb`s (posing is a view, not new geometry).
+pub fn render_scene_posed(
+    config: &AnimConfig,
+    animation: Option<&str>,
+    time_ms: f64,
+    view: View,
+    out: Option<&Path>,
+) -> Result<record::Rendered, String> {
+    let volume = dims(config.extents());
+    let background = config.background()?;
+    let rig = Rig::load(&config.rig)?;
+    let anim = pick_animation(&rig, animation)?;
+    let values = pose::sample_animation(anim, time_ms);
+    // `pose_rig` returns one world matrix per part, in `rig.parts` order.
+    let world = pose::pose_rig(&rig, &values);
+
+    // Mesh each part at rest, then transform it into its posed place. The owned arrays
+    // stay alive so the mesh views can borrow them for the single composed draw.
+    // A posed part's transformed geometry, kept alive for the composed draw to
+    // borrow: (positions, normals, colors, indices).
+    type PosedGeometry = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<u32>);
+    let mut posed: Vec<PosedGeometry> = Vec::with_capacity(rig.parts.len());
+    for (i, part) in rig.parts.iter().enumerate() {
+        let operations = read_actions(&config.actions_for(&part.name))?;
+        let set = render(&volume, &operations);
+        let part_mesh = build_part_mesh(&set);
+        let (positions, normals) =
+            pose::transform_mesh(&part_mesh.positions, &part_mesh.normals, &world[i].1);
+        posed.push((positions, normals, part_mesh.colors, part_mesh.indices));
+    }
+    let views: Vec<MeshView> = posed
+        .iter()
+        .map(|(positions, normals, colors, indices)| MeshView {
+            positions,
+            normals,
+            colors,
+            indices,
+        })
+        .collect();
+    let image = mesh_render::render_png(&views, view, background, mesh_render::PREVIEW_SIZE)?;
+    let out = out
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| config.scene_for("pose"));
+    record::ensure_parent(&out)?;
+    fs::write(&out, &image).map_err(|err| format!("writing {}: {err}", out.display()))?;
+    Ok(record::Rendered {
+        image,
+        live_body: Vec::new(),
+    })
 }
 
 #[cfg(test)]

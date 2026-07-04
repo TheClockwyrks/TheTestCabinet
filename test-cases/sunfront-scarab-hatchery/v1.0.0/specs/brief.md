@@ -18,8 +18,9 @@ reflects the field across a plane. Global `--part <name>` selects the part an op
 and each part is sculpted separately in its own preview and log; create a part with
 `define-part` before you sculpt into it.
 
-`voxel-anim` re-renders `parts/<part>.png` and the assembled `scene/*.png` after each
-call — read them between calls. `voxel-anim --help` is the contract.
+A call **records only** and renders nothing; run `voxel-anim render` to (re)draw
+`parts/<part>.png` and the assembled `scene/*.png`, then read them between calls.
+`voxel-anim --help` is the contract.
 
 ## The volume and coordinate system
 
@@ -91,9 +92,12 @@ these two animations, by these names, and must not contradict them.
 
 Define your parts with `define-part`, sculpt each with `--part <name>` in sensible layers,
 set pivots with `set-pivot`, place joints with `define-joint`, and author the two
-animations' keyframes — reading `parts/<part>.png` and the `scene/*.png` previews between
-calls to confirm the parts fit, the hatch sits centered on the crown, the vent seats into
-the side, and the animations read with weight. Run `voxel-anim --help` for the available
+animations' keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews
+between calls to confirm the parts fit, the hatch sits centered on the crown, the vent
+seats into the side, and the animations read with weight. Run `voxel-anim --help` for the available
 operations, the rig subcommands, and the animation subcommands, and `voxel-anim
-<operation> --help` for each one's exact flags. The recorded per-part logs and `rig.json`
-are your scored submission.
+<operation> --help` for each one's exact flags. Run `voxel-anim render` before you finish
+so it emits the per-part `.glb` geometry your result is built from — an unrendered part
+scores as empty (`voxel-anim render --component <part>` renders one part; `voxel-anim
+render --time <ms> --animation <name>` renders the model posed at that instant to check
+the motion). The recorded per-part logs and `rig.json` are your scored submission.

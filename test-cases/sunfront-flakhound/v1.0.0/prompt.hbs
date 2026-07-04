@@ -28,9 +28,13 @@ opaque `#rrggbb` color, with no transparency. Every operation targets a **part**
 
 **You invent the rig.** Define whatever parts you need with `define-part` (giving each a
 parent and a pivot), place joints on them with `define-joint`, and author the required
-animations with `define-animation`/`add-keyframe`. The volume starts **empty**. After
-each call the binary re-renders that part's isometric preview to `parts/<part>.png` and
-appends the operation to that part's log.
+animations with `define-animation`/`add-keyframe`. The volume starts **empty**. Each
+call only records the operation to that part's log and renders **nothing** — run
+`voxel-anim render` to (re)draw the previews and the assembled scene (`--component
+<part>` redraws one part; `--time <ms> --animation <name>` renders the model posed at
+an instant of an animation), and you **must** run `voxel-anim render` before you
+finish so it emits the per-part `.glb` geometry the run is scored from — an
+unrendered part is scored as empty.
 
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
@@ -44,10 +48,10 @@ voxel-anim fill-box --part turret --x0 12 --y0 20 --z0 12 --x1 23 --y1 28 --z1 2
 `voxel-anim --help` to list every operation **and** the rig subcommands (defining parts,
 setting pivots, defining joints, and defining animations and their keyframes), and
 `voxel-anim <operation> --help` for one operation's exact flags — that help text is the
-authoritative contract. **Read `parts/<part>.png` after your calls** to see that part's
+authoritative contract. **Read `parts/<part>.png` after you run `voxel-anim render`** to see that part's
 progress, **and read the assembled-scene previews under `scene/` (`scene/iso.png`,
 `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole walker composed from
-all your parts, re-rendered after every operation. The scene views are how you confirm
+all your parts, drawn when you run `voxel-anim render`. The scene views are how you confirm
 the parts actually fit together and that the legs reach the ground. Because each part is
 sculpted in the shared volume's coordinates, position each part where it belongs on the
 finished walker; the scene simply composes them there.

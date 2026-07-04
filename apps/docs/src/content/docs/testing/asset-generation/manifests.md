@@ -246,7 +246,8 @@ background = "transparent"   # PNG preview clear color only: transparent | a hex
                              # (it never places a voxel; the volume is always empty to start)
 
 # The building binary. `voxel` for a static model, `voxel-anim` for an animated
-# one. `preview` is where the binary writes the wgpu PNG preview after each op.
+# one. `preview` is where the binary writes the wgpu PNG preview when the model runs
+# `render` (voxel rendering is on request, not after every op).
 [tool]
 binary  = "voxel"            # the voxel binary in the environment (required)
 preview = "model.png"        # where the preview PNG is written (a {part} template for voxel-animation)

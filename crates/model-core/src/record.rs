@@ -1,48 +1,26 @@
 //! The generic record / preview / live-preview plumbing every voxel-family tool
 //! shares.
 //!
-//! A tool records the model's operations to an action log and, after every
-//! operation, re-renders the derived artifacts (a preview PNG and a per-part `.glb`)
-//! from the **whole** log so the recorded log is always the single source of truth.
-//! That loop — read the log, append one operation, write it back, re-render, and
-//! (best-effort) stream the frame to a live viewer — is identical across the cube
-//! tool and the meshing tools. It is captured here, parameterized over a
-//! [`SculptBackend`]: the one domain-specific thing a tool supplies, turning its
-//! recorded operations into the rendered artifacts. This module knows nothing about
-//! voxel cubes or signed-distance fields.
+//! A tool records the model's operations to an action log. Recording is **all** an
+//! operation does: appending to the log is cheap and the log is the single source of
+//! truth, so — unlike the 2D `draw` tools — the voxel family does **not** re-render
+//! after every call. Meshing a field and rasterizing it through the wgpu+Mesa
+//! renderer is far more expensive than stamping pixels, and the voxel cases run many
+//! more operations, so rendering is a separate, **on-request** step (the tools'
+//! `render` command) rather than an automatic side effect of every mark.
+//!
+//! This module owns the record half — read the log, append one operation, write it
+//! back ([`record`]) — which is pure log I/O and knows nothing about geometry. The
+//! render half (mesh a target's log, write its preview PNG and per-part `.glb`) is
+//! domain-specific and lives in each tool's `cli` module; this module only supplies
+//! the shared [`Rendered`] return shape and the best-effort live-preview stream those
+//! renderers reuse. It knows nothing about voxel cubes or signed-distance fields.
 
 use std::fs;
 use std::path::Path;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-
-/// The domain-specific half of the record/preview loop: given a target's recorded
-/// operations, render its preview PNG and per-part `.glb` to disk and return the PNG
-/// bytes plus the live-stream body.
-///
-/// A concrete tool (the cube tool today; the meshing tools later) implements this
-/// once; the generic [`apply`]/[`init_target`] plumbing drives it. The [`Op`] type
-/// is the tool's recorded operation, which must round-trip through the JSON action
-/// log.
-///
-/// [`Op`]: SculptBackend::Op
-pub trait SculptBackend {
-    /// The recorded operation this tool logs and replays.
-    type Op: Clone + Serialize + DeserializeOwned;
-
-    /// Render `ops` into this target's artifacts: write the preview PNG to `preview`
-    /// and the surface mesh (the per-part `.glb` encoding the `PartMesh` arrays) to
-    /// `mesh`, returning the PNG bytes (so a caller streaming a live frame need not
-    /// re-read them) and the live-stream body (the glb bytes a live viewer rebuilds
-    /// the model from).
-    fn render_target(
-        &self,
-        ops: &[Self::Op],
-        preview: &Path,
-        mesh: &Path,
-    ) -> Result<Rendered, String>;
-}
 
 /// The rendered artifacts of one target: the preview PNG bytes and the live-stream
 /// body (the geometry payload — every voxel tool sends its part's `.glb` bytes, the
@@ -52,19 +30,6 @@ pub struct Rendered {
     pub image: Vec<u8>,
     /// The live-stream body appended after the PNG on the wire: the part's `.glb`
     /// bytes.
-    pub live_body: Vec<u8>,
-}
-
-/// The outcome of applying one operation: the running operation count plus the
-/// re-rendered preview PNG and live-stream body, so a caller streaming a live view
-/// can forward the exact rendered frame without re-reading it from disk.
-pub struct ApplyResult {
-    /// How many operations the target's action log now holds.
-    pub count: usize,
-    /// The re-rendered preview PNG.
-    pub image: Vec<u8>,
-    /// The live-stream body (the geometry payload — the part's `.glb` bytes every
-    /// voxel tool streams).
     pub live_body: Vec<u8>,
 }
 
@@ -88,38 +53,26 @@ pub fn write_actions<Op: Serialize>(path: &Path, operations: &[Op]) -> Result<()
     fs::write(path, json).map_err(|err| format!("writing {}: {err}", path.display()))
 }
 
-/// Initialize one target: write an empty action log and render its blank artifacts
-/// (an empty volume), so the target starts from a known, empty state.
-pub fn init_target<B: SculptBackend>(
-    backend: &B,
-    actions: &Path,
-    preview: &Path,
-    mesh: &Path,
-) -> Result<(), String> {
-    write_actions::<B::Op>(actions, &[])?;
-    backend.render_target(&[], preview, mesh)?;
-    Ok(())
+/// Initialize one target's action log to an empty log, so the target starts from a
+/// known, empty state. No artifacts are rendered — rendering is on-request (the
+/// tool's `render` command), never a side effect of setup.
+pub fn init_log<Op: Serialize>(actions: &Path) -> Result<(), String> {
+    write_actions::<Op>(actions, &[])
 }
 
-/// Append one operation to `actions` and re-render the target's artifacts from the
-/// **whole** log, keeping the recorded log the single source of truth and the
-/// preview/mesh a faithful reflection of it.
-pub fn apply<B: SculptBackend>(
-    backend: &B,
+/// Append one operation to `actions`, returning the log's new operation count.
+///
+/// This is **all** a sculpting operation does: no meshing, no preview, no live
+/// stream. The recorded log stays the single source of truth, and the model calls
+/// `render` when it wants to regenerate the mesh and preview from the whole log.
+pub fn record<Op: Serialize + DeserializeOwned>(
     actions: &Path,
-    preview: &Path,
-    mesh: &Path,
-    operation: B::Op,
-) -> Result<ApplyResult, String> {
-    let mut operations = read_actions::<B::Op>(actions)?;
+    operation: Op,
+) -> Result<usize, String> {
+    let mut operations = read_actions::<Op>(actions)?;
     operations.push(operation);
     write_actions(actions, &operations)?;
-    let Rendered { image, live_body } = backend.render_target(&operations, preview, mesh)?;
-    Ok(ApplyResult {
-        count: operations.len(),
-        image,
-        live_body,
-    })
+    Ok(operations.len())
 }
 
 /// Stream a just-rendered frame to the run's live-preview endpoint, best-effort.

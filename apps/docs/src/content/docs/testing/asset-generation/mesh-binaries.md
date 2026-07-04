@@ -180,25 +180,34 @@ feature (their vertex placement rounds by construction), so `mc`/`mc-anim` and
 the creases a hard union produces without any tag; the tag is for control beyond
 that.)
 
-## How a call records and previews
+## How a call records; rendering is on request
 
-Each operation appends itself to the run's **operation log** and re-renders the
-**preview** from the whole log, so the recorded log is always the single source of
-truth and the preview always reflects it. The orchestrator seeds a config next to
-the workspace — `mc.config.json` (static) or `mc-anim.config.json` (animated), and
-likewise for `sn`/`dc` — giving the volume dimensions, background, and the
-log/preview and mesh (`.glb`) paths, and, for the animated tools, the part list and
-the `rig.json` path, so an operation needs no volume flags. A model reads the
-preview between calls to judge its progress.
+Each operation **only appends itself to the run's operation log** — that is all a
+sculpting call does. Extracting a surface from the field and rasterizing it through
+the `wgpu`+Mesa renderer is far more expensive than stamping 2D pixels, and a model
+takes many operations, so — unlike the 2D drawing binaries — these tools do **not**
+re-render after every call. Rendering is a separate, **on-request** step, the
+`render` command. The orchestrator seeds a config next to the workspace —
+`mc.config.json` (static) or `mc-anim.config.json` (animated), and likewise for
+`sn`/`dc` — giving the volume dimensions, background, and the log/preview and mesh
+(`.glb`) paths, and, for the animated tools, the `rig.json` path, so neither an
+operation nor `render` needs volume flags.
+
+The **`render` command** rebuilds the derived artifacts from the recorded log when
+the model asks: it composites the field, extracts and simplifies the surface into the
+per-part `.glb`, and draws the preview PNG. A model runs it to see its progress and,
+**before it finishes, to emit the `.glb` the run's result is built from** — an
+unrendered model leaves no geometry, which the validator records as an empty part.
 
 ```
-mc init      # write an empty log and a blank preview (a run starts pre-seeded)
-mc render --actions <log> --out <png>    # rebuild the field from a log and re-render
+mc init            # write an empty log (a run starts pre-seeded); renders nothing
+mc render          # extract the surface to the .glb and draw the preview PNG
+mc render --view front   # ...from a chosen camera: iso (default) | front | side | top
 ```
 
-This record-and-preview loop exists for **authoring ergonomics only** — it lets the
-model (and a watching human) see the surface take shape operation by operation. It
-is **not** a cheat-detection mechanism. The [validator](/testing/asset-generation/evaluation/)
+Recording-then-rendering exists for **authoring ergonomics only** — the preview lets
+the model (and a watching human) see the surface it has built. It is **not** a
+cheat-detection mechanism. The [validator](/testing/asset-generation/evaluation/)
 does not regenerate or re-render anything: it decodes the emitted per-part
 [`.glb`](#the-glb-output-contract) and parses `rig.json`, confirms they are
 well-formed and readable, and checks the **rig contract** (that each required
@@ -207,7 +216,7 @@ reviewer's read of the rendered previews — not how the data was produced.
 
 ### Preview rendering (wgpu + Mesa lavapipe)
 
-The preview each call re-renders is a real **3D orbit view** of the extracted mesh,
+The preview `render` draws is a real **3D orbit view** of the extracted mesh,
 produced by a generic mesh renderer — geometry, an orbit camera, and lighting into
 a PNG — that lives in the shared `crates/model-core` library. It renders with
 **`wgpu`** targeting **Mesa lavapipe** (a **software Vulkan** implementation), so it
@@ -229,8 +238,8 @@ model's sculpting is streamed to the viewer in real time, mechanically identical
 the [voxel](/testing/asset-generation/voxel-binaries/#live-preview) and
 [drawing](/testing/asset-generation/binaries/#live-preview) tools: the orchestrator
 adds a `live` block (a `host.docker.internal` endpoint and an opaque per-run token)
-to the seeded config, and after each operation the binary connects back to the run
-host and streams a one-line JSON header
+to the seeded config, and **when the model runs `render`** the binary connects back
+to the run host and streams a one-line JSON header
 (`{ token, frame, operationCount, operation, length, meshLength }`) followed by the
 freshly rendered preview PNG's raw bytes and then the part's current mesh as
 per-part `.glb` bytes (`meshLength` bytes). The mesh body lets the viewer rebuild the surface **in
@@ -263,7 +272,18 @@ mc-anim --help                         # same field operations, plus --part
 mc-anim add-box --part turret --x 12 --y 8 --z 12 --width 8 --height 4 --depth 8 --color "#4a5a3a"
 mc-anim define-part --name turret --parent hull   # create a part before sculpting into it
 mc-anim init                           # seed rig.json (the required animation declarations)
+mc-anim render                         # extract every part's .glb + draw the assembled scene
+mc-anim render --component turret      # ...or just one part's preview + .glb
+mc-anim render --time 600 --animation walk   # ...or the model posed at 600ms of the walk
 ```
+
+The `render` command is identical in shape to
+[`voxel-anim render`](/testing/asset-generation/voxel-binaries/#the-render-command):
+plain `render` re-emits **every** part's `.glb` and preview and writes the assembled
+rest scene (the call to run before finishing); `--component <part>` renders one part;
+and `--time <ms>` (with `--animation`) renders the model **posed** at that instant of
+an animation, to `scene/pose.png`. Nothing renders automatically — a sculpting
+operation only records.
 
 The rig model is **identical to [`voxel-anim`](/testing/asset-generation/voxel-binaries/#voxel-anim-one-volume-per-part-plus-the-rig)**
 — the same `define-part` / `set-pivot` / `define-joint` / `define-animation` /
@@ -283,7 +303,8 @@ The seeded config carries the `{part}` templates and the `rig.json` path, so `in
 seeds a `rig.json` pre-populated with the case's **required animation declarations**
 alone — its `parts` and `joints` start **empty**, because a case declares none. No
 part exists until the model creates one with `define-part` (which initializes that
-part's log, preview, and geometry); a field op on an undefined part is rejected. The
+part's operation log; its preview and `.glb` are written later, by `render`); a field
+op on an undefined part is rejected. The
 model **builds the whole rig** — inventing the parts and joints the subject needs and
 authoring each required animation — and may add further animations of its own; the
 **required animations** are the game-facing contract a reviewer scores against.

@@ -146,10 +146,12 @@ Seed a single self-contained `specs/brief.md`. State:
   aesthetic or tell it to "lean into" the look; how to exploit the extractor is the
   model's design choice;
 - **how the tool behaves** — the binary is the only way to shape the surface, its
-  `--help` lists the operations, it re-composites the field and re-renders the
-  preview PNG after each call so the model can read its progress, the field starts
-  **empty**, and the recorded operations are the output (the extracted mesh is
-  emitted as a per-part `.glb`; anything made another way is discarded).
+  `--help` lists the operations, a sculpting op **only records** (it renders/meshes
+  nothing); the binary's `render` on request composites the field, extracts the
+  surface, and draws the preview PNG so the model can read its progress — and emits
+  the mesh, so it must render before finishing — the field starts **empty**, and the
+  recorded operations are the output (the extracted mesh is emitted as a per-part
+  `.glb`; anything made another way is discarded).
 
 The self-containment, *what-not-how*, and precise-values rules from **Writing the
 brief** below apply.
@@ -158,8 +160,10 @@ brief** below apply.
 
 A short instruction that points the model at the seeded brief, tells it to read the
 binary's `--help` for the operations (naming the binary — `mc`/`sn`/`dc`), and
-restates the hard requirements (shape only through the tool; read the preview
-between calls; the recorded operations are the submission; return when finished). It
+restates the hard requirements (shape only through the tool; a sculpting op renders
+nothing — run the binary's `render` to (re)draw and read the preview, and **before
+finishing** so the mesh is emitted; the recorded operations are the submission;
+return when finished). It
 renders in **strict mode**, so use only the documented template variables
 (`{{variant.*}}`, `{{#each specs}}`, `{{workspace}}`) — any other reference is an
 error. Model it on the matching `aegis-*` case's `prompt.hbs`. A shared **quality
@@ -192,9 +196,9 @@ Author `test-case.toml` per the
   make the proportions match the subject (a walker is longer than it is wide; a
   spire is tall). Keep the largest resulting dimension roughly in the 40–150 band.
 - **`[tool]`** — `binary` is the meshing binary for the kind (`mc` / `sn` / `dc`),
-  and `preview` is the path the binary renders the wgpu PNG to after each call (a
-  single file, e.g. `model.png` — **no** `{part}` token for a static model). **No
-  operations schema** — `--help` is the contract.
+  and `preview` is the path the binary renders the wgpu PNG to when the model runs
+  `render` (a single file, e.g. `model.png` — **no** `{part}` token for a static
+  model). **No operations schema** — `--help` is the contract.
 - **`[output]`** — **`actions`** naming the recorded op log (a single file, e.g.
   `actions.json`, **no** `{part}` token for a static model), exactly as a cube case.
   The extracted triangle mesh (positions/normals/colors/indices in the runtime

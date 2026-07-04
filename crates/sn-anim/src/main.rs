@@ -14,7 +14,11 @@
 //! animation's motion and add its own.
 //!
 //! The operation subcommands are shared with `sn`, so their `--help` is the same
-//! contract; no operations schema is seeded.
+//! contract; no operations schema is seeded. Like `sn`, a sculpting operation **only
+//! records** — it renders nothing. Rendering is on-request via `render`, which draws
+//! the assembled scene by default, a single `--component` part, or the model **posed**
+//! at a `--time` of one of its animations. `render` is where each part's extracted
+//! `.glb` (the geometry the 3D client renders) is emitted.
 //!
 //! See `apps/docs/src/content/docs/testing/asset-generation/`.
 
@@ -24,7 +28,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use test_cabinet_model_core::rig::{Drive, Interp, Joint, JointKind, Keyframe, Rig};
 use test_cabinet_sn::Axis;
-use test_cabinet_sn::cli::{self, AnimConfig, OpCommand, RenderArgs};
+use test_cabinet_sn::cli::{self, AnimConfig, AnimRenderArgs, OpCommand};
 
 /// The surface-nets tool for rigged, animated asset-generation test cases.
 #[derive(Parser)]
@@ -38,7 +42,7 @@ struct Cli {
     #[arg(long, default_value = "sn-anim.config.json", global = true)]
     config: PathBuf,
     /// Which part to sculpt into. **Required** for a field operation; each part has its
-    /// own action log and preview, all in the shared volume's coordinates.
+    /// own action log, all in the shared volume's coordinates.
     #[arg(long, global = true)]
     part: Option<String>,
     #[command(subcommand)]
@@ -47,19 +51,19 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Set up the rig and scene from whatever parts already exist (none, for a fresh
-    /// run, since parts are created by `define-part`): (re)initialize each existing
-    /// part's empty action log and blank preview, then render the blank assembled scene.
+    /// Set up the rig from whatever parts already exist (none, for a fresh run, since
+    /// parts are created by `define-part`): (re)initialize each existing part's empty
+    /// action log. Renders nothing — run `render` to draw the assembled scene.
     Init,
-    /// Re-render the assembled scene (every part composed at rest) from the current
-    /// per-part logs, writing one PNG per view (`iso`, `front`, `side`, `top`). Runs
-    /// automatically after every field operation; this is the manual form.
-    Scene,
-    /// Regenerate a preview from an action log without modifying it.
-    Render(RenderArgs),
+    /// Render on request. With no options, render the assembled scene (every part
+    /// composed at rest) — re-emitting every part's `.glb` and preview and writing one
+    /// scene PNG per view (`iso`, `front`, `side`, `top`). Pass `--component <part>`
+    /// to render just that part, or `--time <ms>` (with `--animation <name>`) to see
+    /// the model posed at that instant of an animation. Nothing renders automatically.
+    Render(AnimRenderArgs),
     /// Add a part to the rig, or update its parent if it already exists. Defining a new
-    /// part also initializes its files (action log, preview, mesh) so it becomes a
-    /// sculptable target immediately.
+    /// part also initializes its action log so it becomes a sculptable target
+    /// immediately.
     DefinePart {
         /// The part name.
         #[arg(long)]
@@ -192,8 +196,8 @@ enum Command {
         #[arg(long, value_parser = parse_handle)]
         in_handle: Option<[f64; 2]>,
     },
-    /// Apply one field operation to the `--part`: append it to that part's action log
-    /// and re-render that part's preview.
+    /// Record one field operation into the `--part`'s action log. This is all it does
+    /// — it renders nothing; run `render` when you want to see the part or scene.
     #[command(flatten)]
     Op(OpCommand),
 }
@@ -273,24 +277,15 @@ fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Init => {
             let config: AnimConfig = cli::read_config(&cli.config)?;
-            let volume = cli::bounds(config.extents());
-            let background = config.background()?;
-            // Parts are model-invented; `define-part` initializes each part's files as
+            // Parts are model-invented; `define-part` initializes each part's log as
             // it is created, so init only (re)initializes whatever the rig already
-            // carries and renders the (blank) assembled scene.
+            // carries. It renders nothing — run `render` to draw the assembled scene.
             let parts = config.declared_parts();
             for part in &parts {
-                cli::init_target(
-                    volume,
-                    background,
-                    &config.actions_for(part),
-                    &config.preview_for(part),
-                    &config.mesh_for(part),
-                )?;
+                cli::init_log(&config.actions_for(part))?;
             }
-            cli::render_scene(&config)?;
             println!(
-                "initialized {} part{} of {}x{}x{}",
+                "initialized {} part{} of {}x{}x{} (run `render` to draw the scene)",
                 parts.len(),
                 if parts.len() == 1 { "" } else { "s" },
                 config.width,
@@ -299,36 +294,46 @@ fn run(cli: Cli) -> Result<(), String> {
             );
             Ok(())
         }
-        Command::Scene => {
+        Command::Render(args) => {
             let config: AnimConfig = cli::read_config(&cli.config)?;
-            cli::render_scene(&config)?;
-            println!(
-                "rendered assembled scene ({} views)",
-                cli::SCENE_VIEWS.len()
-            );
+            // A single-part or posed render returns a frame to stream; a scene render
+            // streams its per-part frames internally and returns `None`.
+            if let Some(rendered) = args.run(&config)?
+                && let (Some(live), Some(part)) = (&config.live, &args.component)
+            {
+                let index = config
+                    .declared_parts()
+                    .iter()
+                    .position(|p| p == part)
+                    .unwrap_or(0) as u32;
+                let count = cli::read_actions(&config.actions_for(part))
+                    .map(|ops| ops.len())
+                    .unwrap_or(0);
+                cli::send_live_preview(
+                    &live.endpoint,
+                    &live.token,
+                    index,
+                    "render",
+                    count,
+                    &rendered.image,
+                    &rendered.live_body,
+                );
+            }
+            println!("rendered");
             Ok(())
         }
-        Command::Render(args) => args.run(),
         Command::DefinePart { name, parent } => {
             let config: AnimConfig = cli::read_config(&cli.config)?;
             let mut rig = Rig::load(&config.rig)?;
             let is_new = !rig.parts.iter().any(|p| p.name == name);
             rig.upsert_part(&name, parent);
             rig.save(&config.rig)?;
-            // A newly defined part gets its files initialized (empty log, blank
-            // preview, empty mesh) so it exists as a target immediately — even an
-            // attach socket that is never sculpted. Redefining an existing part (e.g.
-            // to re-parent it) leaves its sculpt untouched.
+            // A newly defined part gets its empty action log initialized so it exists
+            // as a sculptable target immediately — even an attach socket that is never
+            // sculpted. Redefining an existing part (e.g. to re-parent it) leaves its
+            // sculpt untouched. No preview/mesh is written until `render`.
             if is_new {
-                let volume = cli::bounds(config.extents());
-                let background = config.background()?;
-                cli::init_target(
-                    volume,
-                    background,
-                    &config.actions_for(&name),
-                    &config.preview_for(&name),
-                    &config.mesh_for(&name),
-                )?;
+                cli::init_log(&config.actions_for(&name))?;
             }
             println!("defined part {name}");
             Ok(())
@@ -448,43 +453,13 @@ fn run(cli: Cli) -> Result<(), String> {
                     config.declared_parts()
                 ));
             }
-            let volume = cli::bounds(config.extents());
             let field_op = op.into_field_op();
             let name = field_op.name();
-            let cli::ApplyResult {
-                count,
-                image,
-                live_body,
-            } = cli::apply(
-                volume,
-                config.background()?,
-                &config.actions_for(&part),
-                &config.preview_for(&part),
-                &config.mesh_for(&part),
-                field_op,
-            )?;
-            // Stream this part's re-rendered preview and geometry to the live viewer,
-            // keyed by its part index. Best-effort; a no-op for an unobserved run.
-            if let Some(live) = &config.live {
-                let index = config
-                    .declared_parts()
-                    .iter()
-                    .position(|p| *p == part)
-                    .unwrap_or(0) as u32;
-                cli::send_live_preview(
-                    &live.endpoint,
-                    &live.token,
-                    index,
-                    name,
-                    count,
-                    &image,
-                    &live_body,
-                );
-            }
-            // Refresh the assembled scene so its views reflect this operation.
-            cli::render_scene(&config)?;
+            // Record only: append the operation to the part's log. Nothing renders —
+            // run `render` to redraw the part or the assembled scene.
+            let count = cli::record(&config.actions_for(&part), field_op)?;
             println!(
-                "applied {name} to part {part} ({count} operation{} recorded)",
+                "recorded {name} to part {part} ({count} operation{} in the log)",
                 if count == 1 { "" } else { "s" }
             );
             Ok(())

@@ -345,9 +345,10 @@ fn seed_voxel_tool(
 
     // Seed each target's empty action log and a blank starting preview, so the run
     // starts from a known, empty state. The blank preview is a solid frame in the
-    // configured background color — the same thing the empty scene renders to — that
-    // the binary's `init` overwrites with the wgpu+Mesa mesh render on first use. A
-    // static model is one target; an animated model is one per declared part, at its
+    // configured background color — the same thing an empty scene renders to — that
+    // the binary's on-request `render` command overwrites with the wgpu+Mesa mesh
+    // render (sculpting operations only record; they render nothing). A static model
+    // is one target; an animated model is one per declared part, at its
     // `{part}`-resolved paths.
     let targets: Vec<(PathBuf, PathBuf)> = match &test_case.model {
         Some(model) => model

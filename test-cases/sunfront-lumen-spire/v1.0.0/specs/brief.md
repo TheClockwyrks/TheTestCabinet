@@ -21,8 +21,9 @@ rig.
   cells, previewed on its own. Create a part with `define-part` before you sculpt into
   it.
 
-Build one operation at a time. `voxel-anim` re-renders `parts/<part>.png` and the
-assembled `scene/*.png` — read them between calls. `voxel-anim --help` is the contract.
+Build one operation at a time. A call **records only** and renders nothing; run
+`voxel-anim render` to (re)draw `parts/<part>.png` and the assembled `scene/*.png`, then
+read them between calls. `voxel-anim --help` is the contract.
 
 ## The volume and coordinate system
 
@@ -104,7 +105,10 @@ motion drags the other).
 
 Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
 `set-pivot`, place joints with `define-joint`, and author the two animations' keyframes —
-reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm the
-parts fit (the ring encircling the crown, the lens seated on the tip) and that the
-animations read with weight. The recorded per-part logs and `rig.json` are your scored
-submission.
+running `voxel-anim render` and reading `parts/<part>.png` and the `scene/*.png` previews
+between calls to confirm the parts fit (the ring encircling the crown, the lens seated on
+the tip) and that the animations read with weight. Run `voxel-anim render` before you
+finish so it emits the per-part `.glb` geometry your result is built from — an unrendered
+part scores as empty (`voxel-anim render --component <part>` renders one part; `voxel-anim
+render --time <ms> --animation <name>` renders the model posed at that instant to check
+the motion). The recorded per-part logs and `rig.json` are your scored submission.

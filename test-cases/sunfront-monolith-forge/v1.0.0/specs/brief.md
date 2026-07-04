@@ -101,10 +101,15 @@ Sculpt each part up in sensible layers, selecting it with `--part <name>` — fi
 forge tower and its throat, then the hammer, then the gear crown, checking each part's
 preview as you go. Define your parts with `define-part`, set pivots with `set-pivot`,
 place joints with `define-joint`, and author the two animations' keyframes with
-`define-animation`/`add-keyframe` — reading `parts/<part>.png` and the `scene/*.png`
-previews between calls to confirm the parts fit, the hammer rides centered in the throat,
-the crown seats on the crest, and the animations read with weight. Run `voxel-anim
+`define-animation`/`add-keyframe` — running `voxel-anim render` and reading
+`parts/<part>.png` and the `scene/*.png` previews between calls to confirm the parts fit,
+the hammer rides centered in the throat, the crown seats on the crest, and the animations
+read with weight. Run `voxel-anim
 --help` for the available operations (setting and clearing single voxels, filling and
 stroking boxes, 3D lines, spheres, and a mirror plane) and the rig subcommands, and
-`voxel-anim <operation> --help` for each one's exact flags. The recorded per-part logs
-and `rig.json` are your scored submission.
+`voxel-anim <operation> --help` for each one's exact flags. Run `voxel-anim render`
+before you finish so it emits the per-part `.glb` geometry your result is built from — an
+unrendered part scores as empty (`voxel-anim render --component <part>` renders one part;
+`voxel-anim render --time <ms> --animation <name>` renders the model posed at that instant
+to check the motion). The recorded per-part logs and `rig.json` are your scored
+submission.
