@@ -68,12 +68,18 @@ fn looping_wraps_time_into_period() {
 
 #[test]
 fn ease_in_out_stays_monotonic_and_bounded() {
-    let frames = [kf(0, 0.0, Interp::EaseInOut), kf(1000, 100.0, Interp::Linear)];
+    let frames = [
+        kf(0, 0.0, Interp::EaseInOut),
+        kf(1000, 100.0, Interp::Linear),
+    ];
     let a = sample_keyframes(&frames, 1000.0, false, 250.0);
     let b = sample_keyframes(&frames, 1000.0, false, 500.0);
     let c = sample_keyframes(&frames, 1000.0, false, 750.0);
     assert!(a < b && b < c);
-    assert!((b - 50.0).abs() < 1e-6, "midpoint of a symmetric ease is the value midpoint");
+    assert!(
+        (b - 50.0).abs() < 1e-6,
+        "midpoint of a symmetric ease is the value midpoint"
+    );
 }
 
 /// A positive rotation about `x` (pitch) must lift a forward `+z` point up toward
@@ -108,7 +114,10 @@ fn positive_pitch_lifts_forward_part_up() {
     // A point one unit forward (+z) rotates up to +y under +90° pitch.
     let p = m.transform_point3(Vec3::new(0.0, 0.0, 1.0));
     assert!(p.y > 0.9, "expected +z to lift toward +y, got {p:?}");
-    assert!(p.z.abs() < 1e-5, "expected z≈0 after a quarter turn, got {p:?}");
+    assert!(
+        p.z.abs() < 1e-5,
+        "expected z≈0 after a quarter turn, got {p:?}"
+    );
 }
 
 /// At rest (no caller values, no mount) a part stays exactly where it was sculpted —

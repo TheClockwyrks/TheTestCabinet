@@ -80,7 +80,9 @@ fn run(cli: Cli) -> Result<(), String> {
             // A single static model is part 0. Streaming is best-effort and a no-op
             // when the run has no live viewer (no `live` in the seeded config).
             if let Some(live) = &config.live {
-                let count = cli::read_actions(&config.actions).map(|ops| ops.len()).unwrap_or(0);
+                let count = cli::read_actions(&config.actions)
+                    .map(|ops| ops.len())
+                    .unwrap_or(0);
                 cli::send_live_preview(
                     &live.endpoint,
                     &live.token,

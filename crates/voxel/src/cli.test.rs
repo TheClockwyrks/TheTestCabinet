@@ -273,7 +273,10 @@ fn render_scene_writes_every_view() {
     }
     // The rest-scene render also re-emits each part's `.glb` and preview.
     assert!(config.mesh_for("chassis").is_file(), "part mesh emitted");
-    assert!(config.preview_for("chassis").is_file(), "part preview emitted");
+    assert!(
+        config.preview_for("chassis").is_file(),
+        "part preview emitted"
+    );
 }
 
 #[test]

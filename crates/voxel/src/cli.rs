@@ -664,8 +664,13 @@ impl AnimRenderArgs {
         }
         if let Some(time_ms) = self.time {
             let view = self.view.map(View::from).unwrap_or(View::Iso);
-            let rendered =
-                render_scene_posed(config, self.animation.as_deref(), time_ms, view, self.out.as_deref())?;
+            let rendered = render_scene_posed(
+                config,
+                self.animation.as_deref(),
+                time_ms,
+                view,
+                self.out.as_deref(),
+            )?;
             return Ok(Some(rendered));
         }
         render_scene(config)?;

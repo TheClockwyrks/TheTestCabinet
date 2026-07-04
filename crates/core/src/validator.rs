@@ -817,13 +817,12 @@ fn score_mesh_part(repo: &Path, plan: &PartPlan) -> std::result::Result<VoxelPar
     let mesh_path = repo.join(mesh_rel);
     let vertex_count = match std::fs::read(&mesh_path) {
         Ok(bytes) => {
-            let arrays =
-                test_cabinet_model_core::glb_to_part_mesh(&bytes).map_err(|err| {
-                    format!(
-                        "emitted mesh `{}` is not a well-formed glb PartMesh: {err}",
-                        rel_string(mesh_rel)
-                    )
-                })?;
+            let arrays = test_cabinet_model_core::glb_to_part_mesh(&bytes).map_err(|err| {
+                format!(
+                    "emitted mesh `{}` is not a well-formed glb PartMesh: {err}",
+                    rel_string(mesh_rel)
+                )
+            })?;
             let mesh = test_cabinet_voxel_mesh::Mesh {
                 positions: arrays.positions,
                 normals: arrays.normals,

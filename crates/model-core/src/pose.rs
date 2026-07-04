@@ -230,13 +230,7 @@ fn cubic(p0: f64, p1: f64, p2: f64, p3: f64, s: f64) -> f64 {
 /// Value of a cubic Bézier `(time, value)` curve at a query `time`: solve `x(s) =
 /// time` for `s` by bisection (`x` is monotonic across a well-formed segment), then
 /// evaluate `y(s)`.
-fn bezier_value_at_time(
-    p0: [f64; 2],
-    p1: [f64; 2],
-    p2: [f64; 2],
-    p3: [f64; 2],
-    time: f64,
-) -> f64 {
+fn bezier_value_at_time(p0: [f64; 2], p1: [f64; 2], p2: [f64; 2], p3: [f64; 2], time: f64) -> f64 {
     let mut lo = 0.0;
     let mut hi = 1.0;
     for _ in 0..40 {
@@ -318,7 +312,9 @@ fn joint_matrix(joint: &Joint, value: f64) -> Mat4 {
         }
         // Rotation about the joint's own pivot: T(pivot) · R(axis, value) · T(-pivot).
         JointKind::Rotation => {
-            Mat4::from_translation(p) * rotation(joint.axis, value as f32) * Mat4::from_translation(-p)
+            Mat4::from_translation(p)
+                * rotation(joint.axis, value as f32)
+                * Mat4::from_translation(-p)
         }
     };
 
@@ -330,7 +326,8 @@ fn joint_matrix(joint: &Joint, value: f64) -> Mat4 {
     // the driven motion so the component is posed and then mounted.
     let mut mount = Mat4::IDENTITY;
     if non_zero(joint.orient) {
-        mount = Mat4::from_translation(p) * euler_rotation(joint.orient) * Mat4::from_translation(-p);
+        mount =
+            Mat4::from_translation(p) * euler_rotation(joint.orient) * Mat4::from_translation(-p);
     }
     if non_zero(joint.offset) {
         let offset = Vec3::new(
@@ -414,9 +411,7 @@ fn resolve_world(
     }
 
     let world = match &part.parent {
-        Some(parent)
-            if part_by_name.contains_key(parent.as_str()) && !seen.contains(parent) =>
-        {
+        Some(parent) if part_by_name.contains_key(parent.as_str()) && !seen.contains(parent) => {
             let mut next_seen = seen.clone();
             next_seen.insert(name.to_string());
             let parent_world = resolve_world(
