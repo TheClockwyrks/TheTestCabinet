@@ -24,7 +24,8 @@
 # (Prod still serves the console in-cluster; only the local overlay drops it.) The
 # observability stack (the local overlay's `components/observability`) replaces the
 # LGTM the devcontainer used to ship: every service exports OTLP to it in-cluster —
-# reach Grafana with `make local-grafana`.
+# reach Grafana at http://127.0.0.1:3000 (it is folded into `make local-forward`;
+# `make local-grafana` is only needed when you also want the OTLP collector ports).
 #
 # Secrets come from the host ENVIRONMENT or the gitignored repo-root .env, never a
 # tracked file. Before `local-up`, provide the harness provider API key the run
@@ -46,8 +47,8 @@
 #   local-rebuild   rebuild+import the SERVICE images, re-apply the overlay, restart the services (after a service code OR manifest change)
 #   run-images      rebuild+import the RUN-CONTAINER images (after changing baked-in tooling: voxel-anim/draw/core modeling)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
-#   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 to localhost (the console runs from source via `npm run -w apps/web dev`)
-#   local-grafana   foreground-forward Grafana→:3000 and the OTLP collector→:4318/:4317 to localhost
+#   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
+#   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
 #   secrets         (re)create the cluster Secrets from the environment
 #   local-status    show pods, services, and volumes in the namespace
@@ -157,11 +158,11 @@ local-up: cluster images run-images apply local-ingest
 	@echo ""
 	@echo "Stack is up in namespace '$(NS)' (services only — the web console runs from source, see below)."
 	@echo "Forward the data plane with:  make -C deployments/local local-forward"
-	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791"
+	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791   Grafana → http://127.0.0.1:3000"
 	@echo "Then start the web console from source (a separate terminal):  npm run -w apps/web dev  →  http://127.0.0.1:1430"
 	@echo "  (its backend/auth URLs are baked into apps/web/.env.development — no extra flags; edits hot-reload with no image rebuild)"
 	@echo "  (the backend reports the artifacts + arena URLs at GET /config; the console fetches build/media and matches/tournaments from them)"
-	@echo "Observe it with:  make -C deployments/local local-grafana   →  Grafana at http://127.0.0.1:3000 (anonymous admin)"
+	@echo "Observe it with Grafana at http://127.0.0.1:3000 (anonymous admin) — local-forward above already exposes it; local-grafana adds the OTLP ports for out-of-cluster exporters."
 
 # Create the k3d cluster if it does not already exist, mapping the repository to
 # /repo on the server node so the backend can ingest from a read-only mount of it
@@ -407,13 +408,20 @@ local-ingest:
 # browser (the local backend patch points `TCAB_ARTIFACTS_PUBLIC_URL` /
 # `TCAB_ARENA_PUBLIC_URL` at these forwarded addresses). Everything the browser touches
 # runs outside the cluster, so these forwards are required.
+#
+# Grafana (tcab-lgtm:3000) is forwarded here too, purely for convenience: it is the
+# session an operator keeps running anyway, so folding Grafana in saves a second
+# terminal for `local-grafana`. That target still exists for when you ALSO need the
+# OTLP collector ports (:4318/:4317) forwarded — to export telemetry from a binary
+# run OUTSIDE the cluster — which this data-plane forward deliberately leaves out.
 local-forward:
-	@echo "Forwarding backend→127.0.0.1:8787, auth→127.0.0.1:8789, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791 (Ctrl-C to stop)…"
+	@echo "Forwarding backend→127.0.0.1:8787, auth→127.0.0.1:8789, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791, Grafana→http://127.0.0.1:3000 (Ctrl-C to stop)…"
 	@echo "Start the console separately with:  npm run -w apps/web dev  →  http://127.0.0.1:1430"
 	@$(KUBECTL) -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-lgtm 3000:3000 & \
 	  wait
 
 # Hold the in-cluster Grafana LGTM stack open on localhost until interrupted

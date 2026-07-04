@@ -63,3 +63,29 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+---
+# Admit the ingress controller to Grafana (the observability component's tcab-lgtm)
+# on :3000, so the grafana.tcab.testcabinet.ai route (ingress.yaml) reaches it. The
+# observability component's own tcab-allow-lgtm-from-producers policy only admits the
+# OTLP ports (:4317/:4318) from the telemetry producers, not :3000 from ingress-nginx;
+# NetworkPolicies are additive, so this extra allow simply unions in the ingress path.
+# Selects tcab-lgtm, which the observability component supplies — inert (matches no
+# pod) in an overlay that omits observability.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-lgtm-from-ingress
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-lgtm
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000

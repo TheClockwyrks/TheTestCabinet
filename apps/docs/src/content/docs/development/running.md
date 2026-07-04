@@ -96,7 +96,7 @@ export ANTHROPIC_API_KEY=…   # for the `claude` harness (or OPENAI_API_KEY for
 
 ```sh
 make -C deployments/local local-up        # create cluster, build+load images, apply secrets+overlay, ingest
-make -C deployments/local local-forward   # hold backend→:8787, auth→:8789, artifacts→:8790, arena→:8791 open on localhost (run the console from source, below)
+make -C deployments/local local-forward   # hold backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, Grafana→:3000 open on localhost (run the console from source, below)
 # … develop …
 make -C deployments/local local-rebuild   # after a code change: rebuild images + restart
 make -C deployments/local local-status    # show the namespace's pods, Jobs, and services
@@ -120,8 +120,9 @@ in-cluster under their own ServiceAccounts, so a run you enqueue at the backend
 it. The host no longer runs any worker process.
 
 `make local-forward` holds the backend on `127.0.0.1:8787`, the auth service on
-`127.0.0.1:8789`, the artifact service on `127.0.0.1:8790`, and the arena service
-on `127.0.0.1:8791`. Then start the console from source in a separate terminal —
+`127.0.0.1:8789`, the artifact service on `127.0.0.1:8790`, the arena service
+on `127.0.0.1:8791`, and — for convenience, since this is the session you keep
+running anyway — Grafana on `127.0.0.1:3000`. Then start the console from source in a separate terminal —
 `npm run -w apps/web dev` — and open <http://127.0.0.1:1430>. Its backend/auth URLs
 are pre-set to those forwarded addresses via the committed `apps/web/.env.development`,
 so there is nothing to configure and no `VITE_BACKEND_URL` to pass (the backend/auth
@@ -321,8 +322,11 @@ worker to register.
 To watch traces across `tcab-backend` → `tcab-dispatcher` → `tcab-driver`
 locally, the Grafana LGTM stack runs **in the cluster** (the local overlay's
 `components/observability`), so `make -C deployments/local local-up` already wires
-every in-cluster service to it — open Grafana with
-`make -C deployments/local local-grafana`. That is fully described under
+every in-cluster service to it — Grafana is exposed at <http://127.0.0.1:3000> by
+`make -C deployments/local local-forward` (the session you already keep running);
+`make -C deployments/local local-grafana` is only needed when you also want the OTLP
+collector ports forwarded (to export from a process run outside the cluster). That is
+fully described under
 [Observability](/development/observability/) — in particular the
 [endpoint-duality rule](/development/observability/#endpoint-duality-in-cluster-vs-out-of-cluster):
 in-cluster pods use `http://tcab-lgtm:4318`, while a process run outside the

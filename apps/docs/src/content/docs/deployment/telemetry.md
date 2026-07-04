@@ -67,10 +67,18 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://tcab-lgtm:4318
 
 It is the cheapest in dollars and adds no third-party dependency, but you operate,
 secure, and (if you care about retention) back up the telemetry workload yourself —
-the telemetry stores are ephemeral by design (only Grafana's PVC persists). Reach
-Grafana through a `kubectl port-forward svc/tcab-lgtm 3000:3000`; it carries no
-public Ingress. To **opt out** of in-cluster telemetry, simply drop the component
-from an overlay (its workloads fall back to stdout-only logging).
+the telemetry stores are ephemeral by design (only Grafana's PVC persists). The
+`tcab-lgtm` `Service` is `ClusterIP` and carries **no public Ingress**; reach Grafana
+either through a `kubectl port-forward svc/tcab-lgtm 3000:3000` or — in `azure-prod`,
+which layers on the [`components/internal-ingress`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/internal-ingress)
+— at **`https://grafana.tcab.testcabinet.ai`** over the internal (VPN-only) ingress,
+alongside the console and services. Because the `otel-lgtm` image ships Grafana with
+**anonymous admin**, exposing that URL is paired with the overlay's
+`patch-grafana-auth.yaml`, which disables anonymous access and sets admin credentials
+from the `tcab-grafana-admin` Secret (synced from the `grafana-admin-user` /
+`grafana-admin-password` Key Vault secrets — both must exist before the overlay
+applies). To **opt out** of in-cluster telemetry, simply drop the component from an
+overlay (its workloads fall back to stdout-only logging).
 
 ### Grafana Cloud
 

@@ -59,6 +59,10 @@ patches:
   # Set the in-cluster console's runtime backend/auth URLs (TCAB_WEB_BACKEND_URL /
   # TCAB_WEB_AUTH_URL on the internal-ingress tcab-web pod) to the https hostnames.
   - path: patch-web-config.yaml
+  # Lock down Grafana (disable the otel-lgtm image's anonymous-admin default, set
+  # admin creds from the tcab-grafana-admin Secret) since the internal-ingress
+  # component now exposes it at grafana.tcab.testcabinet.ai over the VPN ingress.
+  - path: patch-grafana-auth.yaml
   # Catalog ingest sidecar in the backend pod (shares /state, POSTs /ingest over
   # localhost) — the base CronJob can't reach the backend or share its checkout volume.
   - path: patch-backend-ingest.yaml

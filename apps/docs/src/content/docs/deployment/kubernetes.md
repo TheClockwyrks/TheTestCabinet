@@ -40,7 +40,7 @@ GitOps pipeline — adapt them rather than applying them blind.
    ┌──────────────────────────────────────────────────────────────────────────┐
    │  console.tcab.testcabinet.ai → tcab-web   api.tcab.testcabinet.ai → tcab-backend:8787 │
    │  auth.tcab.testcabinet.ai → tcab-auth:8789  artifacts.* → tcab-artifacts:8790    │
-   │                                        arena.*     → tcab-arena:8791        │
+   │  arena.* → tcab-arena:8791          grafana.* → tcab-lgtm:3000 (auth-locked)   │
    └──────────────────────────────────────┬─────────────────────────────────────┘
                                           │ (NetworkPolicy admits ingress-nginx ns)
    Kubernetes namespace: tcab-prod   (NetworkPolicy: no PUBLIC Ingress)
@@ -87,8 +87,8 @@ deploy-hook call that rebuilds the
 
 Operators reach all of this over the **VPN**: an **internal** ingress-nginx (its
 load balancer holds a private VNet IP, never a public one) fronts the in-cluster
-`tcab-web` console and the four services at one `*.testcabinet.ai` hostname each,
-with TLS from cert-manager. The `*.testcabinet.ai` names resolve only through
+`tcab-web` console, the four services, and Grafana at one `*.testcabinet.ai` hostname
+each, with TLS from cert-manager. The `*.testcabinet.ai` names resolve only through
 private DNS that VPN clients see — nothing is given a **public** `Ingress` or FQDN.
 That layer ships as the reusable
 [`components/internal-ingress`](#internal-ingress) component, wired into the live
@@ -553,10 +553,10 @@ internal LB IP:
    would *shadow* the public zone for VPN clients and stop them resolving the public
    gallery/docs). Create the zone, **link it to both the AKS VNet and the app/VPN
    VNet** (virtual-network-link, registration disabled), and add **A records** for
-   `console` / `api` / `auth` / `artifacts` / `arena` → the internal LB IP from
-   step 1. The `_acme-challenge` TXT records (step 5) still live in the **public
-   Cloudflare `testcabinet.ai` zone** — `tcab.` is only a private Azure zone, not a
-   public delegation — so the `Zone:DNS:Edit` token covers them.
+   `console` / `api` / `auth` / `artifacts` / `arena` **and `grafana`** → the internal
+   LB IP from step 1. The `_acme-challenge` TXT records (step 5) still live in the
+   **public Cloudflare `testcabinet.ai` zone** — `tcab.` is only a private Azure zone,
+   not a public delegation — so the `Zone:DNS:Edit` token covers them.
 
 3. **Install cert-manager (with CRDs)** via Helm into the `cert-manager` namespace
    (prod pins `v1.20.3`). Two non-default flags are **load-bearing**:
@@ -598,16 +598,37 @@ internal LB IP:
    Adding a brand-new key to a Secret still needs `kubectl delete secret <name> &&
    kubectl rollout restart deploy/tcab-keyvault-sync`.)
 
-5. **Apply the overlay** (`kubectl apply -k deployments/k8s/overlays/azure-prod`), then
-   `kubectl rollout restart deploy/tcab-keyvault-sync -n tcab-prod` so the new
-   `cert-manager-cloudflare` Secret materializes. cert-manager then completes the
-   DNS-01 challenge with the Cloudflare token and issues the five certificates
-   (`kubectl -n tcab-prod get certificate` → all `Ready=True`).
+5. **Upload the Grafana admin credentials.** The overlay exposes Grafana at
+   `grafana.tcab.testcabinet.ai` and its `patch-grafana-auth.yaml` disables the
+   `otel-lgtm` image's anonymous-admin default, reading the admin user + password from
+   the `tcab-grafana-admin` Secret. Add **both** `grafana-admin-user` and
+   `grafana-admin-password` as Key Vault secrets (they are already listed in the
+   keyvault-csi `SecretProviderClass`, and the Azure provider fails the *whole* mount
+   if any listed object is absent), for example:
 
-6. **Confirm VPN DNS resolution.** The OpenVPN config must make clients resolve the
+   ```sh
+   az keyvault secret set --vault-name testcabinet-clockwyrks \
+     --name grafana-admin-user     --value admin            --output none
+   az keyvault secret set --vault-name testcabinet-clockwyrks \
+     --name grafana-admin-password --value "$(openssl rand -base64 24)" --output none
+   ```
+
+   (The vault has an IP firewall — run these from an allow-listed host, or add your IP
+   with `az keyvault network-rule add`.) Missing → the `tcab-lgtm` pod stays in
+   `CreateContainerConfigError`, which is deliberately fail-closed: better a Grafana
+   that will not start than one serving anonymous admin on the VPN.
+
+6. **Apply the overlay** (`kubectl apply -k deployments/k8s/overlays/azure-prod`), then
+   `kubectl rollout restart deploy/tcab-keyvault-sync -n tcab-prod` so the new
+   `cert-manager-cloudflare` and `tcab-grafana-admin` Secrets materialize. cert-manager
+   then completes the DNS-01 challenge with the Cloudflare token and issues the six
+   certificates (`kubectl -n tcab-prod get certificate` → all `Ready=True`).
+
+7. **Confirm VPN DNS resolution.** The OpenVPN config must make clients resolve the
    private zone (push Azure DNS `168.63.129.16`, or a resolver that sees the Private
    DNS zone). Validate from a connected client:
-   `nslookup console.tcab.testcabinet.ai` should return the internal LB IP.
+   `nslookup console.tcab.testcabinet.ai` (and `grafana.tcab.testcabinet.ai`) should
+   return the internal LB IP.
 
 The Cloudflare token (step 4) and the Azure DNS zone (step 2) are independent and can
 be prepared in parallel.
@@ -626,9 +647,14 @@ OTLP through the base default-deny. All four cloud overlays
 workload's `OTEL_EXPORTER_OTLP_ENDPOINT=http://tcab-lgtm:4318` via their env
 patch — the same stack local development runs, so staging/prod observability
 mirrors local exactly. It carries no public Ingress; reach Grafana with
-`kubectl port-forward svc/tcab-lgtm 3000:3000`. To send telemetry to Grafana
-Cloud or an external collector instead, drop the component and set the endpoint to
-that collector — see [Telemetry](/deployment/telemetry/).
+`kubectl port-forward svc/tcab-lgtm 3000:3000`. In `azure-prod` the
+`components/internal-ingress` also routes it to `https://grafana.tcab.testcabinet.ai`
+over the internal (VPN-only) ingress — paired with the overlay's
+`patch-grafana-auth.yaml`, which disables the `otel-lgtm` image's anonymous-admin
+default and sets admin credentials from the `tcab-grafana-admin` Secret so the URL
+does not mean open admin. To send telemetry to Grafana Cloud or an external collector
+instead, drop the component and set the endpoint to that collector — see
+[Telemetry](/deployment/telemetry/).
 
 ## Per-environment differences
 

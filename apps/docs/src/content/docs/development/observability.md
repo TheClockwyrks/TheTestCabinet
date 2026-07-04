@@ -160,10 +160,13 @@ To bring it up and view telemetry:
    so the services export from their first start. See
    [Running](/development/running/) and the
    [`deployments/local/Makefile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/local/Makefile).
-2. **Forward Grafana (and the collector)** — `make -C deployments/local local-grafana`.
-   This forwards Grafana to `localhost:3000` and the OTLP collector to
-   `localhost:4318`/`:4317`. To also observe a binary you run **outside** the
-   cluster, copy the relevant `.env.*.example` to its real `.env.*` (and
+2. **Forward Grafana (and the collector)** — Grafana is already forwarded to
+   `localhost:3000` by `make -C deployments/local local-forward` (the data-plane
+   session you keep running anyway), so for viewing telemetry you usually need
+   nothing extra. `make -C deployments/local local-grafana` is the superset that
+   *also* forwards the OTLP collector to `localhost:4318`/`:4317` — use it when you
+   need to observe a binary you run **outside** the cluster. To do that, copy the
+   relevant `.env.*.example` to its real `.env.*` (and
    `apps/web/.env.example` to `apps/web/.env.local`), uncomment
    `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, and restart the process.
 3. **Open Grafana at <http://localhost:3000>** (anonymous admin, no login). Use

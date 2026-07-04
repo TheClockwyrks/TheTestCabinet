@@ -1,8 +1,9 @@
-# The five host-per-service Ingress routes that expose the console + the four
-# services over the INTERNAL ingress-nginx (the controller's Service carries the
-# Azure internal-LB annotation, task-4, so it only has a private VNet IP reachable
-# from the company VPN). This is the "internal-only Ingress behind your VPN" the
-# deployment docs already anticipate — NEVER a public Ingress/LoadBalancer or FQDN.
+# The host-per-service Ingress routes that expose the console + the four services
+# (plus Grafana, appended last) over the INTERNAL ingress-nginx (the controller's
+# Service carries the Azure internal-LB annotation, task-4, so it only has a private
+# VNet IP reachable from the company VPN). This is the "internal-only Ingress behind
+# your VPN" the deployment docs already anticipate — NEVER a public Ingress/
+# LoadBalancer or FQDN.
 #
 # One Ingress per host (rather than one multi-rule Ingress) keeps each host's TLS
 # secret + backend explicit and lets an overlay patch a single host in isolation.
@@ -168,3 +169,49 @@ spec:
                 name: tcab-arena
                 port:
                   number: 8791
+---
+# Grafana (the observability component's `tcab-lgtm` all-in-one). Routing it here
+# gives operators a VPN-reachable Grafana URL instead of a `kubectl port-forward`,
+# alongside the console + services. It depends on the observability component being
+# in the overlay too (it supplies the tcab-lgtm Service); the only overlay that
+# includes this internal-ingress component (azure-prod) also includes observability,
+# so the Service is always present. Without observability this route resolves to a
+# missing backend and nginx returns 503 — harmless, never a hard apply error.
+#
+# SECURITY: the grafana/otel-lgtm image ships Grafana with ANONYMOUS ADMIN and the
+# login form hidden — safe behind a kubectl-gated port-forward, but NOT behind a URL
+# any VPN client can reach. The azure-prod overlay's patch-grafana-auth.yaml disables
+# anonymous access and sets real admin credentials (from the tcab-grafana-admin
+# Secret) so this route does not mean open admin. Do NOT add this route to an overlay
+# without that lockdown patch.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tcab-grafana
+  namespace: tcab-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-internal
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # Grafana Live (dashboards, Explore tailing) holds long-lived streaming
+    # responses, so give it the same generous read/send timeouts and unbuffered
+    # proxying the streaming services get.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - grafana.tcab.testcabinet.ai
+      secretName: tls-grafana
+  rules:
+    - host: grafana.tcab.testcabinet.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tcab-lgtm
+                port:
+                  number: 3000

@@ -12,8 +12,11 @@
 #                          static SPA, backend/auth URLs injected at runtime via env),
 #                          pulled in as a nested component so the local overlay can
 #                          reuse the same console workload without this ingress wiring.
-#   2. ingress.yaml      — five host-per-service Ingress routes (console/api/auth/
-#                          artifacts/arena), each with a cert-manager-issued TLS cert.
+#   2. ingress.yaml      — host-per-service Ingress routes (console/api/auth/
+#                          artifacts/arena, plus grafana → the observability
+#                          component's tcab-lgtm), each with a cert-manager-issued TLS
+#                          cert. The grafana route depends on the observability
+#                          component + the azure-prod overlay's auth-lockdown patch.
 #   3. clusterissuer.yaml — the cert-manager ClusterIssuer (Let's Encrypt prod,
 #                          Cloudflare DNS-01) the Ingresses reference.
 #   4. networkpolicy.yaml — admits the ingress-nginx namespace through the base's

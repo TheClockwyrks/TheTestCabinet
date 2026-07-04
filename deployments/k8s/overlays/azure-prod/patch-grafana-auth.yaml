@@ -1,0 +1,49 @@
+# Lock down Grafana before it is reachable over the internal ingress.
+#
+# The observability component runs the grafana/otel-lgtm all-in-one, whose image
+# ships Grafana with ANONYMOUS ADMIN and the login form hidden — deliberately, so the
+# local/port-forward workflow needs no credentials. That is safe when the only way in
+# is a kubectl-gated `kubectl port-forward`, but this overlay ALSO exposes Grafana at
+# grafana.tcab.testcabinet.ai over the internal ingress (components/internal-ingress),
+# and anonymous-admin behind a URL means every VPN client is a Grafana admin.
+#
+# This patch — applied only in the deployed overlay, never in the shared component, so
+# local keeps its no-login convenience — flips Grafana to authenticated access:
+#   - disable anonymous auth and re-show the login form (otel-lgtm hides it),
+#   - keep basic/login auth on, and
+#   - set the admin user + password from the tcab-grafana-admin Secret.
+#
+# The admin credentials come from Key Vault via the keyvault-csi component
+# (secretproviderclass.yaml materialises the tcab-grafana-admin Secret). Both the
+# `grafana-admin-user` and `grafana-admin-password` vault secrets MUST exist before
+# this overlay is applied, or the CSI mount fails (all-or-nothing) and this pod stays
+# in CreateContainerConfigError — fail-closed, which is correct: better a Grafana that
+# will not start than one silently serving anonymous admin on the VPN.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-lgtm
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: lgtm
+          env:
+            # Container env overrides the image's baked-in GF_* defaults.
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+            - name: GF_AUTH_DISABLE_LOGIN_FORM
+              value: "false"
+            - name: GF_AUTH_BASIC_ENABLED
+              value: "true"
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-grafana-admin
+                  key: admin-user
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-grafana-admin
+                  key: admin-password
