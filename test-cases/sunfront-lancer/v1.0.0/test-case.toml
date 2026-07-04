@@ -149,7 +149,7 @@ id = "parts-attached"
 title = "Legs and rail-lance stay attached"
 text = """
 Every moving piece stays attached across its full range: each leg's segments meet \
-their neighbours cleanly as the leg folds and extends, and the rail-lance meets the \
+their neighbors cleanly as the leg folds and extends, and the rail-lance meets the \
 body at its mount — with no gap and never floating free or detaching as the legs \
 stride and the lance pitches."""
 weight = 2

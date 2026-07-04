@@ -41,7 +41,7 @@ produce these three animations, by these names, without contradicting them.
 | ---------------- | -------------- | ---------------------------------------------------------- |
 | `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.            |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: voxel volume, tool, output, the animations, and review. |
+| `test-case.toml` | No             | Manifest: voxel volume, tool, output, animations, review.  |
 | `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
 | `description.md` | No             | Site blurb.                                                |
 | `README.md`      | No             | This overview.                                             |

@@ -11,8 +11,10 @@ config:
   # Use dashes for unordered lists.
   ul-style:
     style: dash
-  # Spec tables (measurements, view listings) often exceed the prose line length.
+  # Hard limit of 90 characters; the target we write to is 80.
   line-length:
+    line_length: 90
+    # Spec tables (measurements, view listings) often exceed the prose line length.
     tables: false
   # Specs reuse subsection names (e.g. "Mode") under different parent sections.
   no-duplicate-heading:

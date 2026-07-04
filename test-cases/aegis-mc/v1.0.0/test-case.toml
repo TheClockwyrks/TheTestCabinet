@@ -91,7 +91,7 @@ mesh with confident planar faces and hard silhouettes, its forms built by \
 compositing solid primitives — mostly HARD unions that leave crisp creases where \
 armor plates and decks meet, with rounded fillets (`--blend`) reserved for a few \
 deliberate soft joins. It does not fight the coarse grid by chasing fine detail the \
-algorithm cannot hold; the blocky facets read as an intentional stylised aesthetic, \
+algorithm cannot hold; the blocky facets read as an intentional stylized aesthetic, \
 not as noise or accidental blobbiness."""
 weight = 2
 domain = "fidelity"
