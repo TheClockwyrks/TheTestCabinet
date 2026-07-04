@@ -46,8 +46,8 @@ them as the authority:
   — the `mc`/`sn`/`dc` interface: the continuous **signed-distance field**, the
   shared **CSG vocabulary** (`add-*`/`subtract-*`, `--blend`, `mirror`/`translate`/
   `copy`/`replace-color`/`clear`), the three algorithms and their characters, the
-  **Dual-Contouring-only `--sharp`** tag, the wgpu preview, and the **`mesh.json`**
-  output contract;
+  **Dual-Contouring-only `--sharp`** tag, the wgpu preview, and the per-part
+  **`.glb`** (binary glTF) output contract;
 - [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md)
   — every manifest field and the rules enforced at resolution (see **Voxel cases**,
   including the meshed `[tool].binary` and the `[output]` op log);
@@ -105,19 +105,18 @@ soft joins; a `mirror` plane). Subjects with a **plane of symmetry** suit `mirro
 well.
 
 Then pick the **algorithm** for the surface character you want, which fixes the
-`asset_kind` and the `[tool].binary`:
+`asset_kind` and the `[tool].binary`. The character is a mechanical property of the
+extractor — how it reconstructs the field's surface — not an aesthetic you dictate.
+Pick the one whose behaviour suits the subject; how to exploit it is the model's to
+work out:
 
-- **`mc-model` / `mc`** — bold, chunky, **low-poly**: design confident readable
-  masses whose blocky facets *are* the aesthetic; mostly hard unions, `--blend`
-  reserved for a few deliberate soft joins. Don't chase fine detail the coarse grid
-  cannot hold.
-- **`sn-model` / `sn`** — **smooth, rounded, watertight**: cast/molded armor,
-  domed turrets, cylindrical barrels, all flowed into one skin with `--blend`.
-  Corners round by construction — don't fight it for knife-edges.
-- **`dc-model` / `dc`** — **crisp, hard-surface, sharp**: flat planes, clean panel
-  seams, sharp facets. A hard union (`--blend 0`) makes a sharp crease for free, and
-  `dc` alone exposes a **`--sharp`** flag (vs `--smooth`) to hold armor edges
-  knife-clean. This crispness is the whole point of choosing `dc`.
+- **`mc-model` / `mc`** (Marching Cubes) — meshes on a coarse grid, so the surface
+  reads chunky and faceted, and detail finer than the grid is lost.
+- **`sn-model` / `sn`** (Surface Nets) — produces a smooth, rounded, watertight
+  skin; corners round by construction.
+- **`dc-model` / `dc`** (Dual Contouring) — reconstructs sharp edges and corners
+  faithfully instead of rounding them, and alone exposes a per-primitive
+  **`--sharp` / `--smooth`** tag that holds or rounds an edge.
 
 Pick a `version` (`vX.Y.Z`); a version is **immutable** once runs reference it —
 revise by adding a new version, not by editing a published one.
@@ -134,20 +133,23 @@ Seed a single self-contained `specs/brief.md`. State:
   up, `depth` in z) that frame the field, so the brief pins framing to real
   coordinates, and where the subject sits within them (primitive centers/extents
   are **real-valued**, not grid-snapped);
-- **how meshing works** — that this is **not a cube tool**: the binary maintains a
-  **continuous signed-distance field** and meshes its surface, shaped by
-  **compositing** primitives (`add-*` to union material in, `subtract-*` to carve),
-  `--blend` for a smooth join (default `0` = hard), and the whole-field edits
-  (`mirror`/`translate`/`copy`/`replace-color`/`clear`);
-- **the algorithm's character** — one short paragraph telling the model to *lean
-  into* the extractor's look (faceted low-poly / smooth watertight / crisp sharp),
-  and, for `dc` only, that it should use hard unions and the **`--sharp`** tag to
-  hold edges crisp;
+- **how meshing works** — the binary maintains a continuous signed-distance field
+  and meshes its surface, shaped by compositing primitives (`add-*` to union
+  material in, `subtract-*` to carve), `--blend` for a smooth join (default `0` =
+  hard), and the whole-field edits (`mirror`/`translate`/`copy`/`replace-color`/
+  `clear`);
+- **which extractor meshes the field** — name the binary (`mc`/`sn`/`dc`) and state,
+  factually, how it reconstructs the surface (a coarse faceted grid; a smooth
+  watertight skin; faithful sharp edges and corners) and, for `dc`, that a
+  per-primitive `--sharp` / `--smooth` tag holds or rounds an edge. State the
+  behaviour so the model knows what it is working with — do **not** prescribe an
+  aesthetic or tell it to "lean into" the look; how to exploit the extractor is the
+  model's design choice;
 - **how the tool behaves** — the binary is the only way to shape the surface, its
   `--help` lists the operations, it re-composites the field and re-renders the
   preview PNG after each call so the model can read its progress, the field starts
-  **empty**, and the recorded operations (and the emitted `mesh.json`) are the
-  output (anything made another way is discarded).
+  **empty**, and the recorded operations are the output (the extracted mesh is
+  emitted as a per-part `.glb`; anything made another way is discarded).
 
 The self-containment, *what-not-how*, and precise-values rules from **Writing the
 brief** below apply.
@@ -157,7 +159,7 @@ brief** below apply.
 A short instruction that points the model at the seeded brief, tells it to read the
 binary's `--help` for the operations (naming the binary — `mc`/`sn`/`dc`), and
 restates the hard requirements (shape only through the tool; read the preview
-between calls; the emitted `mesh.json` is the submission; return when finished). It
+between calls; the recorded operations are the submission; return when finished). It
 renders in **strict mode**, so use only the documented template variables
 (`{{variant.*}}`, `{{#each specs}}`, `{{workspace}}`) — any other reference is an
 error. Model it on the matching `aegis-*` case's `prompt.hbs`. A shared **quality
@@ -183,7 +185,12 @@ Author `test-case.toml` per the
   `background` (a hex color or `transparent`). For a meshed case the volume **frames
   the signed-distance field** the surface is extracted from; it always starts
   **empty**, and `background` is only the wgpu preview PNG's clear color. A meshed
-  case must **not** declare `[canvas]`.
+  case must **not** declare `[canvas]`. **Size the volume from the subject's real
+  dimensions at a fixed scale** so relative sizes are comparable across cases: pick
+  a plausible real size in metres, then **10 voxels/metre for smaller units** (its
+  longest side ≤ ~8 m) or **5 voxels/metre for larger units and structures**, and
+  make the proportions match the subject (a walker is longer than it is wide; a
+  spire is tall). Keep the largest resulting dimension roughly in the 40–150 band.
 - **`[tool]`** — `binary` is the meshing binary for the kind (`mc` / `sn` / `dc`),
   and `preview` is the path the binary renders the wgpu PNG to after each call (a
   single file, e.g. `model.png` — **no** `{part}` token for a static model). **No
@@ -191,8 +198,9 @@ Author `test-case.toml` per the
 - **`[output]`** — **`actions`** naming the recorded op log (a single file, e.g.
   `actions.json`, **no** `{part}` token for a static model), exactly as a cube case.
   The extracted triangle mesh (positions/normals/colors/indices in the runtime
-  `PartMesh` shape) that the review viewer renders is emitted to `mesh.json`
-  automatically by core — it is **not** declared in the manifest.
+  `PartMesh` shape) that the review viewer renders is emitted as a per-part `.glb`
+  (binary glTF, `mesh.glb`) automatically by core — it is **not** declared in the
+  manifest.
 - A **`variants`** list — an ordered array of paths to standalone variant files
   under `variants/` (the first the default — usually `base`; at least one
   required). It is a **root key**, so it must precede the first table header, and
@@ -229,20 +237,25 @@ The brief is the test case. The rules that make one good:
   test rewards a model that invents a convincing model from the brief; a brief that
   dictates every primitive just measures whether it can follow instructions. Pin only
   what's truly required: the `[voxel]` volume, the exact palette, the orientation,
-  and the algorithm's character. Leave the order of operations and technique to the
-  model (except where a variant deliberately constrains technique, or where the
-  algorithm's character warrants a nudge — "lean into the facets", "hold the edges
-  crisp with `--sharp`").
+  and which extractor meshes the field (stated factually — its mechanical behaviour,
+  not an aesthetic to pursue). Leave the order of operations, the technique, and how
+  to exploit the extractor to the model (except where a variant deliberately
+  constrains technique).
 - **Use precise, testable values for what you DO pin.** Pin the palette to exact
   `#rrggbb` values, frame the subject against the fixed `[voxel]` volume, name which
   axis is up and which way is forward, and name the silhouette features that must
   read — as requirements, not as a primitive-by-primitive blueprint. Vague prose
   about the *subject* is the most common failure; over-specified footprints are the
   opposite trap.
-- **Own the algorithm's character.** Say plainly which extractor is in play and
-  what it is *for*, so the model designs to its strength — a chunky faceted read for
-  `mc`, a smooth watertight skin for `sn`, crisp hard-surface armor for `dc` — rather
-  than fighting the grid.
+- **State the extractor factually; don't design for the model.** Name which
+  extractor is in play (`mc`/`sn`/`dc`) and how it reconstructs the surface, so the
+  model knows the material it is working with — then let it decide how to take
+  advantage of that. Do not prescribe the look ("crisp armor with clean planes",
+  "lean into the facets") or tell it what to build; the design is the model's.
+- **Use emphasis sparingly.** Bold a genuine hard constraint (the palette, the
+  volume) where it must not be missed — not half the words in a paragraph. Prose
+  where everything is bold reads as noise and nothing stands out; prefer plain
+  sentences and let the few bolded constraints carry weight.
 - **Keep the bar high.** Ask for a faithful, polished model that reads unmistakably
   as the subject from more than one angle — the frontend renders the extracted mesh
   rotating — not a rough approximation.

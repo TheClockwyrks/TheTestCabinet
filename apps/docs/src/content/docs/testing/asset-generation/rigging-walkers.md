@@ -8,19 +8,20 @@ This page is a reference for how a walker's legs **behave** — how a believable
 structured and how a convincing walk cycle moves — drawn from how established walkers
 (the AT-TE and AT-AT) are built.
 
-This is **design guidance, not a rig a case pins.** A case no longer declares parts,
-joints, or pose angles: its `[model]` table fixes only the [required
-animations](/testing/asset-generation/manifests/) (by name), and the model **invents**
-the parts, joints, pivots, and F-curves it needs to satisfy them. Use this page in two
-ways:
+This is **author-facing design background, not a rig a case pins, and not content
+for a brief.** A case no longer declares parts, joints, or pose angles: its `[model]`
+table fixes only the [required animations](/testing/asset-generation/manifests/) (by
+name), and the model **invents** the parts, joints, pivots, and F-curves it needs to
+satisfy them. Use this page to understand what a convincing walk *looks like* so you
+can state that as a crisp **behavioural requirement** in the brief — the feet plant
+flat and the body advances over them; it reads as a heavy machine, not flailing.
 
-- As an **author**, to write a walker
-  [`voxel-animation`](/testing/asset-generation/overview/#voxel-models-and-rigs) case's
-  brief — its behavioural requirements, in prose, for how the walk must read (a planted
-  stance phase, a flat foot, a believable gait). Describe *what convincing walking looks
-  like*; do not prescribe a skeleton, segment counts, or angles.
-- Point the **model** toward these principles from that brief, so it can work out and
-  build a leg that walks convincingly rather than following a pinned rig.
+The brief carries only that requirement. The **mechanics** on this page — segment
+counts, joint angles, counter-rotation to hold a foot flat, knee direction, gait
+phasing — are **how** a walk is achieved, and they never go into a brief: a brief
+specifies *what*, not *how*, is seeded into a sandbox with no access to these docs,
+and must never link here. Working the mechanics out from the behavioural requirement
+*is the test*.
 
 The angles and segment breakdowns below are **illustrative** — they explain *why* real
 walkers read as heavy and grounded, not a spec to reproduce. The mechanics referenced

@@ -171,7 +171,13 @@ Author `test-case.toml` per the
 - **`type = "asset-generation"`** and **`asset_kind = "voxel-animation"`** —
   required.
 - **`[voxel]`** — the fixed `width`/`height`/`depth` and preview `background`. The
-  volume starts empty; a voxel case must **not** declare `[canvas]`.
+  volume starts empty; a voxel case must **not** declare `[canvas]`. **Size the
+  volume from the subject's real dimensions at a fixed scale** so relative sizes are
+  comparable across cases: pick a plausible real size in metres, then **10
+  voxels/metre for smaller units** (longest side ≤ ~8 m) or **5 voxels/metre for
+  larger units and structures**, with proportions that match the subject (a walker
+  is longer than it is wide; a spire is tall). Keep the largest resulting dimension
+  roughly in the 40–150 band.
 - **`[tool]`** — `binary = "voxel-anim"` and a `preview` path that **must** carry
   the `{part}` token (e.g. `parts/{part}.png`).
 - **`[output]`** — an `actions` path that **must** carry the `{part}` token (e.g.
@@ -230,16 +236,25 @@ The brief is the test case. The rules that make one good:
   the silhouette features that must read and the behaviour each animation must show,
   e.g. "the turret sweeps a full half-turn each way without any voxel of it leaving
   the hull." Keep the features as requirements, not measurements.
-- **Describe motion in world terms.** Say what the viewer should see — the barrel
-  *elevates up*, the feet *stay flat on the ground and push the body forward* — and
-  point the model at the walker design guidance in the docs. A joint's rotation is
-  applied **relative to its parent segment**, so keeping a foot flat in the world
-  means the ankle must counter-rotate against the accumulated hip and knee rotation
-  above it; frame this as guidance the model must work out, not a rig you declare.
+- **Describe motion as a requirement in world terms — state *what*, never *how*.**
+  Say what the viewer should see and stop there: the barrel elevates up; the feet
+  stay flat on the ground and the body advances over them so it reads as a heavy
+  machine pushing itself forward, not flailing. Do **not** explain the rig mechanics
+  that achieve it — no counter-rotation lessons, digitigrade-knee prescriptions,
+  gait-phasing rules, or segment counts — and do **not** link to any walker/design
+  doc: the brief is self-contained, and working out the joints and how to keep a foot
+  flat *is the test*. Keep it to the behaviour the animation must show. (The
+  [walker-rigging doc](../../../apps/docs/src/content/docs/testing/asset-generation/rigging-walkers.md)
+  exists to help **you, the author**, understand what a convincing walk looks like so
+  you can state that requirement crisply — its mechanics never go into the brief.)
 - **Keep the required animation set minimal and stable.** A game plays the required
   animations by name — keep them few and well-named (`march`, `bombardment`,
   `radar_spin`). Extra motion belongs in model-added animations, not the required
   contract.
+- **Use emphasis sparingly.** Bold a genuine hard constraint (the palette, the
+  volume, a required animation name) where it must not be missed — not half the words
+  in a paragraph. Prose where everything is bold reads as noise; prefer plain
+  sentences and let the few bolded constraints carry weight.
 - **Keep the bar high.** Ask for a model that both reads as the subject and animates
   convincingly — the review UI plays the produced animations and poses the rig.
 

@@ -128,14 +128,20 @@ Author `test-case.toml` per the
 - **`[voxel]`** — the fixed `width`, `height` (up), `depth` in voxels and the
   preview `background` (a hex color or `transparent`). The volume always starts
   **empty**; `background` is only the isometric preview PNG's clear color. A voxel
-  case must **not** declare `[canvas]`.
+  case must **not** declare `[canvas]`. **Size the volume from the subject's real
+  dimensions at a fixed scale** so relative sizes are comparable across cases: pick a
+  plausible real size in metres, then **10 voxels/metre for smaller units** (longest
+  side ≤ ~8 m) or **5 voxels/metre for larger units and structures**, with
+  proportions that match the subject. Keep the largest resulting dimension roughly in
+  the 40–150 band.
 - **`[tool]`** — `binary = "voxel"` and the `preview` path the binary rasterizes
   the isometric PNG to after each call (a single file, e.g. `model.png` — **no**
   `{part}` token for a static model). **No operations schema** — `--help` is the
   contract.
 - **`[output]`** — the `actions` log the binary records (a single file, e.g.
-  `actions.json`); this ordered list is the **authoritative output** the scored
-  isometric preview and `voxels.json` are regenerated from.
+  `actions.json`); this ordered list is the **authoritative output**. The binary also
+  emits the per-part `.glb` the 3D client renders — emitted automatically, not
+  declared in the manifest.
 - A **`variants`** list — an ordered array of paths to standalone variant files
   under `variants/` (the first the default — usually `base`; at least one
   required). It is a **root key**, so it must precede the first table header, and
@@ -179,6 +185,10 @@ The brief is the test case. The rules that make one good:
   read — as requirements, not as a voxel-by-voxel blueprint. Vague prose about the
   *subject* is the most common failure; over-specified footprints are the opposite
   trap.
+- **Use emphasis sparingly.** Bold a genuine hard constraint (the palette, the
+  volume) where it must not be missed — not half the words in a paragraph. Prose
+  where everything is bold reads as noise; prefer plain sentences and let the few
+  bolded constraints carry weight.
 - **Keep the bar high.** Ask for a faithful, polished model that reads unmistakably
   as the subject from more than one angle — the frontend renders it rotating — not a
   rough blocky approximation.

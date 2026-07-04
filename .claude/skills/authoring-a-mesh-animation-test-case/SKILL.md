@@ -70,8 +70,8 @@ them as the authority:
   — the `mc-anim`/`sn-anim`/`dc-anim` interface: the continuous **signed-distance
   field**, the shared **CSG vocabulary** (`add-*`/`subtract-*`, `--blend`, `mirror`/
   `translate`/`copy`/`replace-color`/`clear`), the **DC-only `--sharp`** tag, the
-  required per-op **`--part <name>`** (one field, log, preview, and `mesh.json` per
-  part), and **"The animated binaries: one field per part, plus the rig"** — which
+  required per-op **`--part <name>`** (one field, log, preview, and per-part `.glb`),
+  and **"The animated binaries: one field per part, plus the rig"** — which
   states the rig model is **identical to `voxel-anim`**;
 - [`testing/asset-generation/voxel-binaries.md`](../../../apps/docs/src/content/docs/testing/asset-generation/voxel-binaries.md)
   — the shared **rig subcommands** and **F-curve** interpolation the mesh docs point
@@ -87,7 +87,7 @@ them as the authority:
   — per-part review and the animation reconciliation (a missing required animation,
   or one that never actually animates, is a recorded, zero-scored contract gap);
 - [`components/voxel-runtime/overview.md`](../../../apps/docs/src/content/docs/components/voxel-runtime/overview.md)
-  — how a produced rig's per-part `mesh.json` is posed for the review viewer and real
+  — how a produced rig's per-part `.glb` is posed for the review viewer and real
   games (so the rig interface the model invents is what a game will drive and play).
 
 This skill covers the **animated** meshed kinds only. For a **static** meshed model
@@ -164,13 +164,17 @@ Seed a single self-contained `specs/brief.md`. State:
   `[voxel]` volume framing (which axis is up, which way is forward);
 - the **exact palette** — named `#rrggbb` values, the only colors allowed (opaque;
   no alpha);
-- **how meshing works** — that this is **not a cube tool**: the binary maintains a
-  **continuous signed-distance field per part** and meshes each part's surface,
-  shaped by **compositing** primitives (`add-*`/`subtract-*`), `--blend` for a smooth
-  join (default `0` = hard), and the whole-field edits;
-- **the algorithm's character** — a short paragraph telling the model to lean into
-  the extractor (faceted / smooth / crisp), and, for `dc-anim` only, to hold armor
-  edges crisp with hard unions and **`--sharp`**;
+- **how meshing works** — the binary maintains a continuous signed-distance field
+  per part and meshes each part's surface, shaped by compositing primitives
+  (`add-*`/`subtract-*`), `--blend` for a smooth join (default `0` = hard), and the
+  whole-field edits;
+- **which extractor meshes the fields** — name the binary (`mc-anim`/`sn-anim`/
+  `dc-anim`) and state, factually, how it reconstructs the surface (a coarse faceted
+  grid; a smooth watertight skin; faithful sharp edges and corners) and, for
+  `dc-anim`, that a per-primitive `--sharp` / `--smooth` tag holds or rounds an edge.
+  State the behaviour so the model knows what it is working with — do **not**
+  prescribe an aesthetic or tell it to "lean into" the look; how to exploit the
+  extractor is the model's design choice;
 - **the subject's key features** — name the components that must read (a hull, legs,
   a main turret, a side turret per flank, a radar vane) and how they relate, but
   **do not** prescribe their exact sizes, positions, pivots, or how to break them
@@ -182,7 +186,7 @@ Seed a single self-contained `specs/brief.md`. State:
   and edit the rig, `--part` is required on every op, `--help` lists the operations
   **and the rig subcommands**, it re-renders each part's preview **and the
   assembled-scene previews** after each call, the field starts empty, and the
-  recorded operations + emitted `mesh.json` + `rig.json` are the output;
+  recorded operations + emitted per-part `.glb` + `rig.json` are the output;
 - **the required animations** — name each animation the model must author and
   describe the **behaviour** it must show in prose (a walk that plants its feet, a
   turret that sweeps its arc), whether it loops, and whether it self-plays or is
@@ -222,7 +226,12 @@ Author `test-case.toml` per the
   `"sn-animation"`, `"dc-animation"` — required.
 - **`[voxel]`** — the fixed `width`/`height`/`depth` and preview `background`; it
   frames each part's field, which starts empty. A meshed case must **not** declare
-  `[canvas]`.
+  `[canvas]`. **Size the volume from the subject's real dimensions at a fixed scale**
+  so relative sizes are comparable across cases: pick a plausible real size in
+  metres, then **10 voxels/metre for smaller units** (longest side ≤ ~8 m) or **5
+  voxels/metre for larger units and structures**, with proportions that match the
+  subject (a walker is longer than it is wide). Keep the largest resulting dimension
+  roughly in the 40–150 band.
 - **`[tool]`** — `binary` is the `-anim` binary for the kind (`mc-anim` / `sn-anim` /
   `dc-anim`) and `preview` **must** carry the `{part}` token (e.g. `parts/{part}.png`).
 - **`[output]`** — **`actions`** with a path that **must** carry the `{part}` token
@@ -274,8 +283,14 @@ rig rules from the voxel-animation skill:
   `#rrggbb`; state the volume framing (which axis is up, which way is forward); name
   the silhouette features that must read and the behaviour each animation must show.
   Keep the features as requirements, not measurements.
-- **Own the algorithm's character.** Say which extractor is in play and design to it
-  — faceted `mc`, smooth `sn`, crisp/sharp `dc`.
+- **State the extractor factually; don't design for the model.** Name which
+  extractor is in play (`mc-anim`/`sn-anim`/`dc-anim`) and how it reconstructs the
+  surface, so the model knows the material it is working with — then let it decide
+  how to take advantage of that. Do not prescribe the look or tell it to "lean into"
+  the algorithm; the design is the model's.
+- **Use emphasis sparingly.** Bold a genuine hard constraint (the palette, the
+  volume, a required animation) where it must not be missed — not half the words in
+  a paragraph. Prose where everything is bold reads as noise; prefer plain sentences.
 - **Describe motion in world terms and keep the required animation set minimal** —
   these rules are identical to voxel-anim; see that skill's **Writing the brief**.
 - **Keep the bar high.** Ask for a model that both reads as the subject and animates
