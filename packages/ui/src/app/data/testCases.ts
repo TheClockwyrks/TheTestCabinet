@@ -1,4 +1,5 @@
 import type { AssetSheet, ModelSpec, TestType } from "@test-cabinet/run-record";
+import type { AssetKind } from "../../client";
 
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
@@ -99,6 +100,10 @@ export interface TestCaseSummary {
   /** The case's test type — drives type-specific affordances such as the
    * adversarial Arena tab. */
   testType: TestType;
+  /** For an asset-generation case, the asset shape it produces — the catalog
+   * splits its Sprite (2D) and Voxel (3D) tabs on this. Null for a non-asset
+   * case or on hosts that don't carry it (e.g. the static snapshot). */
+  assetKind?: AssetKind | null;
   /** Relative difficulty, e.g. `easy` | `medium` | `hard`. */
   difficulty: string;
   tags: string[];

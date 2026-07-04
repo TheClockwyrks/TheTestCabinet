@@ -81,6 +81,43 @@ export interface VariantInfo {
   domains: Domain[];
 }
 
+// The asset-generation shape a case produces, mirroring the Rust `AssetKind`
+// enum (crates/core/src/test_case.rs) serialized kebab-case. Hand-maintained
+// alongside the resolve-version wire shape (`ResolvedVersion` in httpBackend),
+// which is itself hand-mirrored rather than contract-generated. The two 2D
+// `sprite*` kinds are drawn on a canvas; the eight remaining kinds are the 3D
+// voxel/mesh family (see `isVoxelAssetKind`).
+export type AssetKind =
+  | "sprite"
+  | "sprite-sheet"
+  | "voxel-model"
+  | "voxel-animation"
+  | "mc-model"
+  | "mc-animation"
+  | "sn-model"
+  | "sn-animation"
+  | "dc-model"
+  | "dc-animation";
+
+// The 3D voxel/mesh asset kinds — everything except the two flat `sprite*`
+// kinds. Mirrors `AssetKind::is_voxel` on the Rust side.
+const VOXEL_ASSET_KINDS: ReadonlySet<AssetKind> = new Set<AssetKind>([
+  "voxel-model",
+  "voxel-animation",
+  "mc-model",
+  "mc-animation",
+  "sn-model",
+  "sn-animation",
+  "dc-model",
+  "dc-animation",
+]);
+
+/** Whether an asset kind is one of the 3D voxel/mesh kinds (vs a 2D sprite). An
+ * absent kind is treated as the default `sprite` (2D), so it reads as false. */
+export function isVoxelAssetKind(kind: AssetKind | null | undefined): boolean {
+  return kind != null && VOXEL_ASSET_KINDS.has(kind);
+}
+
 export interface VersionInfo {
   slug: string;
   version: string;
@@ -91,6 +128,11 @@ export interface VersionInfo {
   // The case's test type. Drives type-specific UI affordances — notably the
   // run-launch orchestrator selector, which is offered only for "end-to-end".
   testType: TestType;
+  // For an asset-generation case, which asset shape it produces — the finer
+  // discriminator the catalog splits its Sprite vs Voxel tabs on. Absent (null)
+  // on hosts that don't carry it (e.g. the static snapshot); backend-connected
+  // consoles always resolve it.
+  assetKind?: AssetKind | null;
   // The site-facing Markdown description, when the source carries it.
   description?: string | null;
   variants: VariantInfo[];

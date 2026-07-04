@@ -14,6 +14,7 @@ import type {
   NotificationSubscription,
 } from "../client";
 import type {
+  AssetKind,
   AssetPreview,
   AuthResult,
   BackendIdentity,
@@ -106,6 +107,9 @@ interface ResolvedVersion {
   description: string | null;
   maxRuntimeSeconds: number;
   testType: TestType;
+  // The asset shape an asset-generation case produces (camelCase `AssetKind`),
+  // carried through verbatim so the catalog can split Sprite vs Voxel tabs.
+  assetKind?: AssetKind | null;
   commonSpecs?: SpecDescriptor[];
   commonReviewItems?: ReviewItem[];
   // References every variant shares (rendered from the `_common` scope).
@@ -228,6 +232,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         description: r.description,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
+        assetKind: r.assetKind ?? null,
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
         model: r.model ?? null,

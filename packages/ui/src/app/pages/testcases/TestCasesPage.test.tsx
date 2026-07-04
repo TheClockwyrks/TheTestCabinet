@@ -4,6 +4,8 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { TestType } from "@test-cabinet/run-record";
 import type { TestCaseSummary } from "../../data/testCases";
+import type { CatalogTab } from "../../routes";
+import { routes } from "../../routes";
 import { TestCasesPage } from "./TestCasesPage";
 
 // The page's chrome pulls in contexts (backdrop settings, prompt cursor) that
@@ -44,10 +46,12 @@ function ready(testCases: TestCaseSummary[]) {
   useTestCases.mockReturnValue({ testCases, status: "ready" });
 }
 
-function renderPage() {
+// Render the page at a given tab, with the router's location set to that tab's
+// route so the tab bar's active link resolves.
+function renderPage(tab: CatalogTab = "end-to-end") {
   return render(
-    <MemoryRouter>
-      <TestCasesPage />
+    <MemoryRouter initialEntries={[routes.testCasesCatalog(tab)]}>
+      <TestCasesPage tab={tab} />
     </MemoryRouter>,
   );
 }
@@ -59,30 +63,80 @@ function cardTitles(): string[] {
 }
 
 describe("TestCasesPage", () => {
-  it("shows only the selected type's cases and switches with the segmented control", () => {
+  it("shows only the tab's cases and renders a tab bar over every type", () => {
     ready([
       testCase("Sunfront", "end-to-end"),
       testCase("Skyshard", "asset-generation"),
       testCase("Foray", "adversarial"),
     ]);
 
-    renderPage();
+    renderPage("end-to-end");
 
-    // Defaults to the end-to-end segment: only that type's case is listed.
+    // The end-to-end tab lists only that type's case.
     expect(cardTitles()).toEqual(["Sunfront"]);
     expect(screen.queryByText("Skyshard")).not.toBeInTheDocument();
     expect(screen.queryByText("Foray")).not.toBeInTheDocument();
 
-    // The switcher is an ARIA radio group with one segment per test type.
-    const group = screen.getByRole("radiogroup", { name: "Test type" });
-    for (const label of ["E2E", "Asset", "Adversarial", "Performance"]) {
-      within(group).getByRole("radio", { name: label });
+    // The switcher is a nav with one link per tab, each pointing at its route,
+    // and the current tab marked active.
+    const nav = screen.getByRole("navigation", { name: "Test type" });
+    for (const label of [
+      "E2E",
+      "Sprite",
+      "Voxel",
+      "Adversarial",
+      "Performance",
+    ]) {
+      within(nav).getByRole("link", { name: label });
     }
+    expect(within(nav).getByRole("link", { name: "Adversarial" })).toHaveAttribute(
+      "href",
+      routes.testCasesCatalog("adversarial"),
+    );
+    expect(within(nav).getByRole("link", { name: "E2E" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
 
-    // Switching to Adversarial scopes the grid to that type alone.
-    fireEvent.click(within(group).getByRole("radio", { name: "Adversarial" }));
+  it("scopes the grid to the rendered tab's type", () => {
+    ready([
+      testCase("Sunfront", "end-to-end"),
+      testCase("Foray", "adversarial"),
+    ]);
+
+    renderPage("adversarial");
+
     expect(cardTitles()).toEqual(["Foray"]);
     expect(screen.queryByText("Sunfront")).not.toBeInTheDocument();
+  });
+
+  it("splits asset-generation into a Sprite tab and a Voxel tab by asset kind", () => {
+    const cases = [
+      testCase("Skyshard", "asset-generation", { assetKind: "sprite" }),
+      testCase("Flarefish", "asset-generation", { assetKind: "sprite-sheet" }),
+      testCase("Aegis", "asset-generation", { assetKind: "voxel-animation" }),
+      testCase("Lanternjaw", "asset-generation", { assetKind: "mc-model" }),
+    ];
+
+    // The Sprite tab keeps the two 2D sprite kinds.
+    ready(cases);
+    const sprite = renderPage("sprite");
+    expect(cardTitles()).toEqual(["Flarefish", "Skyshard"]);
+    sprite.unmount();
+
+    // The Voxel tab keeps the 3D voxel/mesh kinds.
+    ready(cases);
+    renderPage("voxel");
+    expect(cardTitles()).toEqual(["Aegis", "Lanternjaw"]);
+  });
+
+  it("treats an asset case with no asset kind as a sprite", () => {
+    ready([testCase("Skyshard", "asset-generation")]);
+
+    renderPage("sprite");
+
+    expect(cardTitles()).toEqual(["Skyshard"]);
   });
 
   it("lists cases of a type alphabetically", () => {
@@ -92,7 +146,7 @@ describe("TestCasesPage", () => {
       testCase("Meltdown", "end-to-end"),
     ]);
 
-    renderPage();
+    renderPage("end-to-end");
 
     expect(cardTitles()).toEqual(["Aurora", "Meltdown", "Zephyr"]);
   });
@@ -105,7 +159,7 @@ describe("TestCasesPage", () => {
       }),
     ]);
 
-    renderPage();
+    renderPage("end-to-end");
 
     // The difficulty level renders as a badge and each tag as its own pill.
     expect(screen.getByText("hard")).toBeInTheDocument();
@@ -122,7 +176,7 @@ describe("TestCasesPage", () => {
       }),
     ]);
 
-    renderPage();
+    renderPage("end-to-end");
     const search = screen.getByRole("searchbox", { name: "Search test cases" });
 
     // A tag term keeps only the case that carries it.
@@ -134,12 +188,12 @@ describe("TestCasesPage", () => {
     expect(cardTitles()).toEqual(["Sunfront"]);
   });
 
-  it("shows an empty notice when the selected type has no cases", () => {
-    ready([testCase("Skyshard", "asset-generation")]);
+  it("shows an empty notice when the tab has no cases", () => {
+    ready([testCase("Skyshard", "asset-generation", { assetKind: "sprite" })]);
 
-    renderPage();
+    renderPage("end-to-end");
 
-    // Default type is end-to-end, which this catalog has none of.
+    // The end-to-end tab has none of this asset-only catalog.
     expect(screen.getByText("No test cases match.")).toBeInTheDocument();
     expect(cardTitles()).toEqual([]);
   });

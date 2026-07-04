@@ -1,5 +1,5 @@
-import { Route } from "react-router";
-import { routePatterns } from "../../routes";
+import { Navigate, Route } from "react-router";
+import { routePatterns, routes } from "../../routes";
 import { TestCaseOverviewPage } from "./[slug]/TestCaseOverviewPage";
 import { TestCaseInputsPage } from "./[slug]/TestCaseInputsPage";
 import { TestCaseRunsPage } from "./[slug]/TestCaseRunsPage";
@@ -8,16 +8,41 @@ import { TestCaseMetricsPage } from "./[slug]/TestCaseMetricsPage";
 import { TestCaseArenaPage } from "./[slug]/TestCaseArenaPage";
 import { TestCasesPage } from "./TestCasesPage";
 
-// Routes owned by the test-cases section: the catalog list and the per-slug
-// detail, whose Overview / Inputs / Runs / Leaderboard / Metrics tabs are each
-// their own URL so a tab (and the selected variant, carried in the query string)
-// is linkable.
+// Routes owned by the test-cases section: the catalog list — one route per type
+// tab (E2E / Sprite / Voxel / Adversarial / Performance) so the selected tab is
+// in the URL and survives a reload, with the bare `/test-cases` redirecting to
+// the default tab — and the per-slug detail, whose Overview / Inputs / Runs /
+// Leaderboard / Metrics tabs are each their own URL so a tab (and the selected
+// variant, carried in the query string) is linkable.
 // Returned as a fragment so the app's single <Routes> stitches every section's
 // routes together.
 export function testCasesRoutes() {
   return (
     <>
-      <Route path={routePatterns.testCases} element={<TestCasesPage />} />
+      <Route
+        path={routePatterns.testCases}
+        element={<Navigate to={routes.testCasesCatalog("end-to-end")} replace />}
+      />
+      <Route
+        path={routePatterns.testCasesE2E}
+        element={<TestCasesPage tab="end-to-end" />}
+      />
+      <Route
+        path={routePatterns.testCasesSprite}
+        element={<TestCasesPage tab="sprite" />}
+      />
+      <Route
+        path={routePatterns.testCasesVoxel}
+        element={<TestCasesPage tab="voxel" />}
+      />
+      <Route
+        path={routePatterns.testCasesAdversarial}
+        element={<TestCasesPage tab="adversarial" />}
+      />
+      <Route
+        path={routePatterns.testCasesPerformance}
+        element={<TestCasesPage tab="performance" />}
+      />
       <Route
         path={routePatterns.testCaseDetail}
         element={<TestCaseOverviewPage />}

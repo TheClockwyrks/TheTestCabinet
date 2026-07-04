@@ -1,40 +1,47 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router";
-import type { TestType } from "@test-cabinet/run-record";
+import { Link, NavLink } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { SegmentedControl } from "../../../primitives/SegmentedControl";
-import type { SegmentedOption } from "../../../primitives/SegmentedControl";
+import { isVoxelAssetKind } from "../../../client";
 import { useTestCases } from "../../data/useTestCases";
 import type { TestCaseSummary } from "../../data/testCases";
 import { routes } from "../../routes";
+import type { CatalogTab } from "../../routes";
 import styles from "./TestCasesPage.module.scss";
 
-// The test-type switcher: one segment per test type, always shown in this order
-// so the control's shape is stable regardless of which types the catalog
-// currently holds. The catalog shows exactly one type at a time.
-const TYPE_OPTIONS: ReadonlyArray<SegmentedOption<TestType>> = [
-  { value: "end-to-end", label: "E2E" },
-  { value: "asset-generation", label: "Asset" },
-  { value: "adversarial", label: "Adversarial" },
-  { value: "performance", label: "Performance" },
+// The catalog's type tabs, always shown in this order so the bar's shape is
+// stable regardless of which types the catalog currently holds. The catalog
+// shows exactly one tab at a time. "Asset" is split into the 2D `sprite` and 3D
+// `voxel` tabs; the other three map one-to-one to a test type.
+const CATALOG_TABS: ReadonlyArray<{ tab: CatalogTab; label: string }> = [
+  { tab: "end-to-end", label: "E2E" },
+  { tab: "sprite", label: "Sprite" },
+  { tab: "voxel", label: "Voxel" },
+  { tab: "adversarial", label: "Adversarial" },
+  { tab: "performance", label: "Performance" },
 ];
 
-// The test-case catalog: every case as a neon card showing its title and a
-// short summary. A sliding type switcher scopes the grid to a single test type,
-// and a client-side search narrows by title within it. Cards link to the
-// per-slug detail page and are listed alphabetically — never ranked.
-export function TestCasesPage() {
+interface TestCasesPageProps {
+  /** Which type tab this route renders. Carried in the URL (one route per tab)
+   * so the selection survives a reload and is linkable. */
+  tab: CatalogTab;
+}
+
+// The test-case catalog: every case as a full-width neon card showing its title
+// and a short summary. A tab bar scopes the grid to a single type — the tab is
+// the URL (one route per tab), so a reload keeps it — and a client-side search
+// narrows by title within it. Cards link to the per-slug detail page and are
+// listed alphabetically — never ranked.
+export function TestCasesPage({ tab }: TestCasesPageProps) {
   const { testCases, status } = useTestCases();
   const [query, setQuery] = useState("");
-  const [testType, setTestType] = useState<TestType>("end-to-end");
 
   const shown = useMemo(
     () =>
       testCases
-        .filter((testCase) => matches(testCase, query, testType))
+        .filter((testCase) => matches(testCase, query, tab))
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [testCases, query, testType],
+    [testCases, query, tab],
   );
 
   return (
@@ -57,12 +64,21 @@ export function TestCasesPage() {
       {status === "ready" && (
         <>
           <div className={styles.controls}>
-            <SegmentedControl
-              options={TYPE_OPTIONS}
-              value={testType}
-              onChange={setTestType}
-              ariaLabel="Test type"
-            />
+            <nav className={styles.tabs} aria-label="Test type">
+              {CATALOG_TABS.map((entry) => (
+                <NavLink
+                  key={entry.tab}
+                  to={routes.testCasesCatalog(entry.tab)}
+                  className={
+                    entry.tab === tab
+                      ? `${styles.tab} ${styles.tabActive}`
+                      : styles.tab
+                  }
+                >
+                  {entry.label}
+                </NavLink>
+              ))}
+            </nav>
             <input
               className={styles.search}
               type="search"
@@ -76,7 +92,7 @@ export function TestCasesPage() {
           {shown.length === 0 ? (
             <p className={styles.empty}>No test cases match.</p>
           ) : (
-            <ul className={styles.grid}>
+            <ul className={styles.list}>
               {shown.map((testCase) => (
                 <li key={testCase.slug}>
                   <Link
@@ -115,19 +131,43 @@ export function TestCasesPage() {
   );
 }
 
-// Scope to the selected test type, then a case-insensitive search over the
-// title, tags, and difficulty — so tags and difficulty are usable as filters
-// even though the type switcher is the only faceted control.
+// Scope to the selected tab, then a case-insensitive search over the title,
+// tags, and difficulty — so tags and difficulty are usable as filters even
+// though the tab bar is the only faceted control.
 function matches(
   testCase: TestCaseSummary,
   query: string,
-  testType: TestType,
+  tab: CatalogTab,
 ): boolean {
-  if (testCase.testType !== testType) return false;
+  if (!inTab(testCase, tab)) return false;
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   const haystack = [testCase.name, testCase.difficulty, ...testCase.tags]
     .join(" ")
     .toLowerCase();
   return haystack.includes(needle);
+}
+
+// Whether a case belongs under a given tab. The Sprite and Voxel tabs both scope
+// to asset-generation cases, split on whether the case's asset kind is a 3D
+// voxel/mesh shape; the other tabs map straight to a test type.
+function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
+  switch (tab) {
+    case "sprite":
+      return (
+        testCase.testType === "asset-generation" &&
+        !isVoxelAssetKind(testCase.assetKind)
+      );
+    case "voxel":
+      return (
+        testCase.testType === "asset-generation" &&
+        isVoxelAssetKind(testCase.assetKind)
+      );
+    case "end-to-end":
+      return testCase.testType === "end-to-end";
+    case "adversarial":
+      return testCase.testType === "adversarial";
+    case "performance":
+      return testCase.testType === "performance";
+  }
 }

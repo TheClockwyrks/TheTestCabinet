@@ -1,9 +1,24 @@
 // Centralized URL builders. Never inline path literals in components; call these
 // functions so every route is defined in exactly one place.
 
+// The catalog's type tabs, each its own route so the selected tab survives a
+// reload and is linkable. "Asset" is split into the 2D `sprite` and 3D `voxel`
+// tabs; the rest map one-to-one to a `TestType`. Each tab slug is a literal path
+// segment under `/test-cases`, a sibling of the `:slug` detail route (the same
+// literal-beside-param shape as `/runs/failures` beside `/runs/:runId`) — none
+// collides with a real case slug.
+export type CatalogTab =
+  | "end-to-end"
+  | "sprite"
+  | "voxel"
+  | "adversarial"
+  | "performance";
+
 export const routes = {
   home: (): string => "/",
   testCases: (): string => "/test-cases",
+  // The catalog scoped to one type tab (e.g. `/test-cases/sprite`).
+  testCasesCatalog: (tab: CatalogTab): string => `/test-cases/${tab}`,
   testCaseDetail: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}`,
   testCaseInputs: (slug: string): string =>
@@ -97,6 +112,13 @@ export const routes = {
 export const routePatterns = {
   home: "/",
   testCases: "/test-cases",
+  // The catalog's type tabs — literal siblings of `:slug` below (static segments
+  // rank above the dynamic `:slug`, and no case slug matches these words).
+  testCasesE2E: "/test-cases/end-to-end",
+  testCasesSprite: "/test-cases/sprite",
+  testCasesVoxel: "/test-cases/voxel",
+  testCasesAdversarial: "/test-cases/adversarial",
+  testCasesPerformance: "/test-cases/performance",
   testCaseDetail: "/test-cases/:slug",
   testCaseInputs: "/test-cases/:slug/inputs",
   testCaseRuns: "/test-cases/:slug/runs",

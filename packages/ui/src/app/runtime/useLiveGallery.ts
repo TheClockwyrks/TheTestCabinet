@@ -167,6 +167,9 @@ async function toTestCaseSummary(
     slug: info.slug,
     name: info.name,
     testType: info.testType,
+    // The asset shape (sprite/voxel family), so the catalog can split its Sprite
+    // and Voxel tabs. Null for a non-asset case or a host that omits it.
+    assetKind: info.assetKind ?? null,
     difficulty: info.difficulty,
     tags: info.tags,
     summary: info.summary,

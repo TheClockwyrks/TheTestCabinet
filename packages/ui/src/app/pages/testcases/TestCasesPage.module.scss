@@ -1,15 +1,82 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
+@use "../../styles/breakpoints" as bp;
 
-// The type switcher sits on its own row (left-aligned, its natural width) above
-// the full-width search field.
+// The type tab bar sits on its own full-width row (its underline baseline spans
+// the content width) above the full-width search field.
 .controls {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: t.$space-md;
   margin-bottom: t.$space-xl;
+}
+
+// The type tab bar. Mirrors the test-case detail page's tab bar (see
+// TestCaseDetailLayout.module.scss): a row of underlined pills over a baseline
+// border, the active tab glowing in the accent. On narrow screens it becomes a
+// single horizontally-scrollable strip rather than wrapping.
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  border-bottom: t.$border-hairline solid t.$color-border;
+
+  @include bp.below(t.$bp-md) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    // Bleed to the content edges so the first/last tabs aren't clipped by the
+    // page gutter, then restore the gutter with padding.
+    margin-inline: calc(-1 * t.$space-md);
+    padding-inline: t.$space-md;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    white-space: nowrap;
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  // Keep the inherited readability halo (the `.tab` `h.halo` dark layers) and
+  // back the accent glow with it — `var(--ttc-glow)` alone has no contrast where
+  // an active label lands over the warm sun. Merged into one declaration because
+  // a bare `text-shadow` would override the halo the `.tab` mixin set. (Mirrors
+  // the detail page's `.tabActive`.)
+  text-shadow:
+    0 0 0.5rem t.$color-bg,
+    0 0 0.4rem t.$color-bg,
+    0 0 0.25rem t.$color-bg,
+    var(--ttc-glow);
+  border-bottom-color: t.$color-accent;
 }
 
 .search {
@@ -33,12 +100,14 @@
   }
 }
 
-.grid {
+// Full-width cards stacked one per row, rather than a multi-column grid, so each
+// case gets the whole content width for its title, summary, and tags.
+.list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: t.$space-md;
 }
 
@@ -47,7 +116,6 @@
 .card {
   display: block;
   position: relative;
-  height: 100%;
   padding: t.$space-md;
   color: t.$color-text;
   border: t.$border-hairline solid t.$color-accent;
