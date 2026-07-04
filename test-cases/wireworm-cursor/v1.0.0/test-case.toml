@@ -1,0 +1,82 @@
+name = "Wireworm Cursor"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite", "player"]
+summary = """
+Draw the defrag cursor — the player's craft in the Wireworm circuit-board arcade \
+game — as a 32x32 sprite: a symmetric, upward-pointing delta ship with a glowing \
+reactor core, a muzzle at its tip, and selection-caret corner ticks, produced one \
+drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 32
+height = 32
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the brief — a symmetric, \
+upward-pointing delta craft with a glowing reactor core, muzzle tip, caret corner \
+ticks, and thruster underglow, in the cool cyan-and-white player palette on \
+transparency."""
+
+[[review_item]]
+id = "player-read"
+title = "Reads as the player's ship"
+text = """
+The sprite reads at a glance as the player's own craft — clean, cool-cyan, and \
+friendly — clearly distinct from a hostile bug. It is not menacing, corrupted, or \
+insectile."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "points-up"
+title = "Points up, with a muzzle"
+text = """
+The craft is an upward-pointing delta, symmetric about its vertical center line, \
+with a bright muzzle notch at the top tip where its shots emerge — it clearly \
+fires toward the top of the screen."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "cursor-motif"
+title = "Cursor / caret motif"
+text = """
+It carries the defrag-cursor motif — a glowing reactor core in the hull and short \
+selection-caret ticks at the lower corners — so it reads as a targeting cursor, \
+not just a generic jet."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-framing"
+title = "Palette, transparency, and framing"
+text = """
+Uses only the cool player palette from the brief (chassis light/dark, core glow, \
+highlight, trim) on full transparency — no out-of-palette pixels, no fringes, no \
+background fill — and fills most of the 32×32 frame, centered with a small margin \
+and not clipped at an edge."""
+weight = 1
+domain = "fidelity"

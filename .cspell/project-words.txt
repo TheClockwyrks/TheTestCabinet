@@ -128,3 +128,8 @@ frontmost
 redeals
 peekable
 Devstral
+
+# Wireworm circuit-board arcade case family (data-worm + charged nodes).
+scanline
+scanlines
+underglow

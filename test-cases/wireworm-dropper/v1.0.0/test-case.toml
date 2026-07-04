@@ -1,0 +1,72 @@
+name = "Wireworm Dropper"
+difficulty = "easy"
+tags = ["asset-generation", "2d", "sprite", "enemy"]
+summary = """
+Draw the packet dropper — the data packet that falls down the Wireworm \
+circuit-board arcade game seeding fresh nodes — as a 32x32 sprite: a compact amber \
+parcel with a down-chevron glyph and rising speed-line trails, clearly falling \
+downward, produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 32
+height = 32
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the brief — a compact amber data \
+parcel with a down-chevron glyph, rising speed-line trails, and a leading glow, \
+symmetric and clearly falling downward, in the warm amber palette on \
+transparency."""
+
+[[review_item]]
+id = "falling-motion"
+title = "Reads as falling downward"
+text = """
+The sprite reads at a glance as a packet in downward motion — the parcel sits low \
+in the frame with speed-line trails rising above it and a leading glow beneath — \
+not a static box. Its motion clearly reads top-to-bottom."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "packet-read"
+title = "Reads as a data packet"
+text = """
+It reads as a compact data parcel — a rounded square carrying a downward-pointing \
+chevron glyph on its face — symmetric about its vertical center line, not a \
+creature or the player's ship."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-framing"
+title = "Amber palette, transparency, and framing"
+text = """
+Uses only the warm amber palette from the brief (body, dark shade, edge, glyph, \
+trail) on full transparency — no out-of-palette pixels, no fringes, no background \
+fill — and sits centered horizontally, filling the frame top-to-bottom with its \
+trail without clipping flat against an edge."""
+weight = 1
+domain = "fidelity"
