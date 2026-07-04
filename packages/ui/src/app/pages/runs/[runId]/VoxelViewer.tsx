@@ -1,7 +1,7 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo, useState } from "react";
-import type { AnimationSpec, ModelSpec, VoxelDims } from "@test-cabinet/run-record";
+import type { AnimationSpec, ModelSpec } from "@test-cabinet/run-record";
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import { VoxelRig } from "@test-cabinet/voxel-runtime/three";
 import {
@@ -66,7 +66,6 @@ export default function VoxelViewer({
   callerJoints,
   animation,
   enableZoom,
-  frameDims,
   height = 320,
   label,
 }: {
@@ -86,10 +85,6 @@ export default function VoxelViewer({
   /** Whether scroll-to-zoom is enabled. Off by default: the inline gallery views
    * disable zoom, and only the expanded (fullscreen) view turns it on. */
   enableZoom?: boolean;
-  /** Frame the camera from this fixed volume instead of the posed bounding box.
-   * Used by the live view so the camera stays steady as the model is sculpted
-   * (the bounding box grows operation by operation); omit for post-run views. */
-  frameDims?: VoxelDims | null;
   /** Canvas height in px. */
   height?: number;
   /** Accessible name for the canvas. */
@@ -109,14 +104,12 @@ export default function VoxelViewer({
     return () => built.dispose();
   }, [rig, meshes]);
 
-  // Frame the camera so any size of model fills the view. When `frameDims` is given
-  // (the live view) frame the fixed volume so the camera holds steady as the model
-  // grows; otherwise frame the mesh bounds. Derived from the data, not the rig, so
-  // the camera is correct on the first render even though the rig builds a tick later
-  // in the effect above.
+  // Frame the camera so any size of model fills the view from the mesh bounds.
+  // Derived from the data, not the rig, so the camera is correct on the first render
+  // even though the rig builds a tick later in the effect above.
   const { center, distance, far } = useMemo(
-    () => framing(meshes, frameDims),
-    [meshes, frameDims],
+    () => framing(meshes),
+    [meshes],
   );
 
   // Play the requested animation (or stop it with `null`, which falls back to the

@@ -1,4 +1,3 @@
-import type { VoxelDims } from "@test-cabinet/run-record";
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 
 /** Column-major-agnostic 3-tuple. */
@@ -28,35 +27,15 @@ export function cameraPosition(distance: number): Vec3 {
 
 /**
  * Camera framing — the model's center, the camera distance that fits it, and a
- * far plane — derived from the mesh's vertex bounds (or a fixed `frameDims` volume
- * when the caller pins the frame). Computed from the geometry rather than a built
- * rig so it's correct on the very first render, before the rig exists. Mesh
- * positions are already in model units, so the bounds are the raw min/max of the
- * `positions` arrays; the rest pose is representative, so posing a joint doesn't
- * reframe.
- *
- * The `frameDims` branch pins the camera to a fixed volume — used by the live view
- * so the camera holds steady as the model is sculpted (its geometry grows operation
- * by operation).
+ * far plane — derived from the mesh's vertex bounds. Computed from the geometry
+ * rather than a built rig so it's correct on the very first render, before the rig
+ * exists. Mesh positions are already in model units, so the bounds are the raw
+ * min/max of the `positions` arrays; the rest pose is representative, so posing a
+ * joint doesn't reframe.
  */
 export function framing(
   meshes: Record<string, PartMesh> | PartMesh,
-  frameDims: VoxelDims | null | undefined,
 ): { center: Vec3; distance: number; far: number } {
-  if (frameDims) {
-    const size = Math.max(
-      frameDims.width,
-      frameDims.height,
-      frameDims.depth,
-      1,
-    );
-    const dist = size * 2.2;
-    return {
-      center: [frameDims.width / 2, frameDims.height / 2, frameDims.depth / 2],
-      distance: dist,
-      far: dist * 20,
-    };
-  }
   const list = isPartMesh(meshes) ? [meshes] : Object.values(meshes);
   let minX = Infinity;
   let minY = Infinity;

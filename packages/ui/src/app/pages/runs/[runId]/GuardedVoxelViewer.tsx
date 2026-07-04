@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import type { AnimationSpec, ModelSpec, VoxelDims } from "@test-cabinet/run-record";
+import type { AnimationSpec, ModelSpec } from "@test-cabinet/run-record";
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import type { VoxelViewMode } from "./VoxelViewer";
@@ -64,7 +64,6 @@ interface ViewerProps {
   rig: ModelSpec;
   callerJoints?: Record<string, number>;
   animation?: AnimationSpec | null;
-  frameDims?: VoxelDims | null;
   label: string;
 }
 
@@ -148,7 +147,6 @@ export function GuardedVoxelViewer({
   mode,
   callerJoints,
   animation,
-  frameDims,
   fallbackUrl,
   label,
   height,
@@ -159,7 +157,6 @@ export function GuardedVoxelViewer({
   mode: VoxelViewMode;
   callerJoints?: Record<string, number>;
   animation?: AnimationSpec | null;
-  frameDims?: VoxelDims | null;
   fallbackUrl: string | null;
   label: string;
   height?: number;
@@ -186,7 +183,6 @@ export function GuardedVoxelViewer({
     rig,
     callerJoints,
     animation,
-    frameDims,
     label,
   };
 

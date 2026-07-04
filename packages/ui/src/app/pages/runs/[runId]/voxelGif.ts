@@ -73,7 +73,7 @@ export async function encodeVoxelGif({
   background,
 }: VoxelGifInput): Promise<Blob> {
   const { frameCount, stepMs, delayMs } = voxelGifTiming(periodMs);
-  const { center, distance, far } = framing(meshes, null);
+  const { center, distance, far } = framing(meshes);
 
   // Opaque solid background: no alpha needed, and it gives clean anti-aliased
   // edges the way transparency (1-bit in a GIF) can't.
