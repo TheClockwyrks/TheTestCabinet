@@ -65,6 +65,11 @@ node -e 'console.log(require("./packages/ui/src/app/data/models.json").find(m =>
 Commit both the `models/` files **and** the regenerated `models.json` — the site
 builds against whatever is committed, with no Rust step of its own.
 
+If `prices` come back `null`, the model isn't on OpenRouter yet (a brand-new
+model is often added here before it is listed). That's safe to commit, but the
+model shows no pricing until you **re-run `tcab catalog` and commit again once the
+slug goes live** — don't leave it as a loose end.
+
 ## Next steps
 
 - [Adding or Updating a Model](/guides/adding-or-updating-a-model/) — the full

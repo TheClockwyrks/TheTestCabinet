@@ -117,6 +117,17 @@ git add models/<slug>.toml models/<slug>.md packages/ui/src/app/data/models.json
 The site build is pure Node with no Rust step, so it ships whatever `models.json`
 is committed — an un-regenerated dataset is the most common mistake.
 
+> **Prices came back `null`?** A brand-new model is often added to this catalog
+> before OpenRouter lists it, so the first `tcab catalog` resolves its `prices`,
+> `contextLength`, and `releasedAt` to `null`. That is fine to commit, but it is a
+> *loose end*, not the finished state: the model will show no pricing on the site
+> until the slug goes live. Once OpenRouter lists it, **re-run `tcab catalog` and
+> commit the refreshed `models.json`** so the prices appear. (Confirm the slug is
+> live first — `node scripts/add-model.mjs <openrouter-slug>` errors if it isn't
+> in OpenRouter's catalog.) A genuinely unpriced router such as `pareto-code` is
+> different: it resolves to a `prices` object whose members are `null`, and that
+> is its final state.
+
 ## Updating existing models
 
 Because prices, context windows, and release dates are resolved live, keeping the

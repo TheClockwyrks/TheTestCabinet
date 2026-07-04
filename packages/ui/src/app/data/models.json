@@ -105,9 +105,9 @@
       "openrouter/deepseek/deepseek-v4-flash"
     ],
     "prices": {
-      "uncachedInput": 9.8e-8,
-      "cachedInput": 2e-8,
-      "output": 1.96e-7
+      "uncachedInput": 9e-8,
+      "cachedInput": 1.8e-8,
+      "output": 1.8e-7
     },
     "contextLength": 1048576,
     "releasedAt": "2026-04-24T03:17:46Z"
@@ -140,9 +140,13 @@
       "mistralai/devstral-2512",
       "openrouter/mistralai/devstral-2512"
     ],
-    "prices": null,
-    "contextLength": null,
-    "releasedAt": null
+    "prices": {
+      "uncachedInput": 4e-7,
+      "cachedInput": 4e-8,
+      "output": 2e-6
+    },
+    "contextLength": 262144,
+    "releasedAt": "2025-12-09T13:03:39Z"
   },
   {
     "slug": "gemini-3.1-flash-lite",
@@ -209,9 +213,9 @@
       "openrouter/z-ai/glm-5.1"
     ],
     "prices": {
-      "uncachedInput": 9.75e-7,
-      "cachedInput": 9.75e-7,
-      "output": 4.3e-6
+      "uncachedInput": 9.66e-7,
+      "cachedInput": 1.794e-7,
+      "output": 3.036e-6
     },
     "contextLength": 202752,
     "releasedAt": "2026-04-07T16:07:05Z"
@@ -392,9 +396,13 @@
       "mistralai/mistral-medium-3-5",
       "openrouter/mistralai/mistral-medium-3-5"
     ],
-    "prices": null,
-    "contextLength": null,
-    "releasedAt": null
+    "prices": {
+      "uncachedInput": 1.5e-6,
+      "cachedInput": 1.5e-6,
+      "output": 7.5e-6
+    },
+    "contextLength": 262144,
+    "releasedAt": "2026-04-30T17:33:59Z"
   },
   {
     "slug": "pareto-code",
