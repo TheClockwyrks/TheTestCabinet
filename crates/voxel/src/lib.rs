@@ -13,6 +13,7 @@
 
 #[cfg(feature = "cli")]
 pub mod cli;
+pub mod greedy;
 pub mod mesh;
 pub mod ops;
 
@@ -25,6 +26,7 @@ pub use test_cabinet_model_core::{axis, color, rig};
 
 pub use axis::Axis;
 pub use color::{ColorError, PreviewBackground, Rgb};
+pub use greedy::build_greedy_part_mesh;
 pub use mesh::{PartMesh, build_part_mesh};
 pub use ops::Operation;
 pub use rig::{Animation, Drive, Interp, Joint, JointKind, Keyframe, Part, Rig, Track};

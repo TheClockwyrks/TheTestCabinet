@@ -28,7 +28,8 @@ use test_cabinet_model_core::render::{MeshView, View};
 use test_cabinet_model_core::rig::{Animation, Rig};
 
 use crate::color::Rgb;
-use crate::mesh::{PartMesh, build_part_mesh};
+use crate::greedy::build_greedy_part_mesh;
+use crate::mesh::PartMesh;
 use crate::{Axis, Dims, Operation, PreviewBackground, VoxelSet, render};
 
 // Re-export the generic config/record surface the binaries reach as
@@ -496,9 +497,9 @@ fn render_target_files(
 ) -> Result<record::Rendered, String> {
     let set = render(dims, ops);
 
-    // The face-culled surface mesh is the single source of geometry: it is what the
-    // preview renderer draws and what every downstream consumer reads.
-    let part_mesh = build_part_mesh(&set);
+    // The greedy quad-merged surface mesh is the single source of geometry: it is what
+    // the preview renderer draws and what every downstream consumer reads.
+    let part_mesh = build_greedy_part_mesh(&set);
     let mesh_glb = test_cabinet_model_core::part_mesh_to_glb(
         &part_mesh.positions,
         &part_mesh.normals,
@@ -773,7 +774,7 @@ pub fn render_scene(config: &AnimConfig) -> Result<(), String> {
     }
     // Mesh the composed rest-pose model once, then draw it from each scene view.
     let set = compose_scene(&volume, &logs);
-    let part_mesh = build_part_mesh(&set);
+    let part_mesh = build_greedy_part_mesh(&set);
     for (name, view) in SCENE_VIEWS {
         let path = config.scene_for(name);
         record::ensure_parent(&path)?;
@@ -838,7 +839,7 @@ pub fn render_scene_posed(
     for (i, part) in rig.parts.iter().enumerate() {
         let operations = read_actions(&config.actions_for(&part.name))?;
         let set = render(&volume, &operations);
-        let part_mesh = build_part_mesh(&set);
+        let part_mesh = build_greedy_part_mesh(&set);
         let (positions, normals) =
             pose::transform_mesh(&part_mesh.positions, &part_mesh.normals, &world[i].1);
         posed.push((positions, normals, part_mesh.colors, part_mesh.indices));
