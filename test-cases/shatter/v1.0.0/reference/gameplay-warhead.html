@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<!--
+  Shatter — Warhead-mode reference mockup (representative frame).
+  Canonical view slug: warhead
+  Render at a 1280x720 viewport. See ../specs/modes/warhead.md (armored rocks and
+  the torpedo secondary), plus ../specs/playfield.md, ../specs/physics.md, and
+  ../specs/flow.md (HUD).
+
+  Live positions vary at runtime; this frame is a representative layout for a soft
+  palette/layout comparison, not a strict pixel match. It shows the ship thrusting,
+  the star with its halo, an ARMORED Large rock rendered damaged (a hit taken), a
+  TORPEDO in flight homing on a rock through the well (it flies true, not curved by
+  gravity), ordinary rocks, the saucer, and the HUD (score, lives, and the
+  torpedo-charge indicator).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Shatter — Warhead</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- The star (gravity well) fixed at the field center (640, 360). -->
+      <div class="star"></div>
+
+      <svg
+        class="field"
+        viewBox="0 0 1280 720"
+        width="1280"
+        height="720"
+        aria-hidden="true"
+      >
+        <defs>
+          <!-- Fade for the torpedo's exhaust trail: faint at the tail, bright at
+               the head, so its guided path reads as one streak. -->
+          <linearGradient
+            id="torpedo-fade"
+            gradientUnits="userSpaceOnUse"
+            x1="452"
+            y1="470"
+            x2="650"
+            y2="300"
+          >
+            <stop offset="0" stop-color="#b8ff5c" stop-opacity="0" />
+            <stop offset="0.6" stop-color="#b8ff5c" stop-opacity="0.3" />
+            <stop offset="1" stop-color="#b8ff5c" stop-opacity="0.75" />
+          </linearGradient>
+        </defs>
+
+        <!-- Ordinary Medium rock, undamaged. -->
+        <polygon
+          points="-25,-6 -16,-22 2,-26 20,-18 26,2 18,22 -2,25 -20,16 -26,4"
+          transform="translate(210,250) rotate(20)"
+          fill="rgba(154,167,189,0.08)"
+          stroke="#9aa7bd"
+          stroke-width="2.5"
+          stroke-linejoin="round"
+          style="filter: drop-shadow(0 0 6px rgba(154, 167, 189, 0.35))"
+        />
+        <!-- Ordinary Small rock, undamaged. -->
+        <polygon
+          points="-13,-4 -6,-13 8,-12 14,-2 10,11 -4,14 -13,6"
+          transform="translate(1052,556) rotate(12)"
+          fill="rgba(154,167,189,0.08)"
+          stroke="#9aa7bd"
+          stroke-width="2.5"
+          stroke-linejoin="round"
+          style="filter: drop-shadow(0 0 6px rgba(154, 167, 189, 0.35))"
+        />
+
+        <!-- ARMORED Large rock, the torpedo's target, rendered DAMAGED: a
+             brighter, hotter outline and interior cracks show it has taken hits
+             and is close to breaking. -->
+        <g transform="translate(900,250) rotate(-14)">
+          <polygon
+            points="-44,-12 -30,-40 -2,-46 24,-38 46,-10 40,20 20,44 -12,42 -38,26 -46,4"
+            fill="rgba(255,209,102,0.10)"
+            stroke="#e7ecf3"
+            stroke-width="3"
+            stroke-linejoin="round"
+            style="filter: drop-shadow(0 0 9px rgba(255, 209, 102, 0.5))"
+          />
+          <!-- Cracks. -->
+          <path d="M -30 -40 L -6 -6 L 20 44" fill="none" stroke="#f3f6fa"
+            stroke-width="2" stroke-linejoin="round" />
+          <path d="M -6 -6 L 40 20" fill="none" stroke="#f3f6fa"
+            stroke-width="1.6" />
+          <path d="M -6 -6 L -38 26" fill="none" stroke="#f3f6fa"
+            stroke-width="1.6" />
+        </g>
+
+        <!-- The torpedo's exhaust trail: launched from near the ship and now
+             homing on the armored rock. Guided, not gravity-curved, so it runs
+             fairly true past the star rather than bending around it. -->
+        <path
+          d="M 452 470 C 520 420, 585 355, 650 300"
+          fill="none"
+          stroke="url(#torpedo-fade)"
+          stroke-width="4"
+          stroke-linecap="round"
+        />
+
+        <!-- The torpedo itself: an elongated acid-green munition with an exhaust
+             flame, heading up-and-right toward the armored rock. -->
+        <g transform="translate(650,300) rotate(-11)">
+          <polygon points="-13,-4 -22,0 -13,4" fill="#eaffcf"
+            style="filter: drop-shadow(0 0 6px rgba(184,255,92,0.85))" />
+          <polygon
+            points="-13,-5 -5,-6 10,-4 17,0 10,4 -5,6 -13,5"
+            fill="rgba(184,255,92,0.18)"
+            stroke="#b8ff5c"
+            stroke-width="2.5"
+            stroke-linejoin="round"
+            style="filter: drop-shadow(0 0 8px rgba(184, 255, 92, 0.8))"
+          />
+        </g>
+
+        <!-- The ship, thrusting, having just launched the torpedo. -->
+        <g transform="translate(400,500) rotate(38)">
+          <polygon points="-6,15 0,32 6,15" fill="#ffd166"
+            style="filter: drop-shadow(0 0 6px rgba(255,209,102,0.85))" />
+          <polygon points="-3,15 0,24 3,15" fill="#fff2cc" />
+          <path d="M 0 -20 L 13 15 L 0 8 L -13 15 Z" fill="rgba(108,240,255,0.12)"
+            stroke="#6cf0ff" stroke-width="2.5" stroke-linejoin="round"
+            style="filter: drop-shadow(0 0 7px rgba(108,240,255,0.75))" />
+        </g>
+
+        <!-- The enemy saucer, weaving across the top (outside the torpedo's
+             forward cone, so the torpedo ignores it and hunts the rock ahead). -->
+        <g transform="translate(720,140)">
+          <polygon points="-22,0 -10,-8 10,-8 22,0 10,8 -10,8"
+            fill="rgba(255,92,138,0.12)" stroke="#ff5c8a" stroke-width="2.5"
+            stroke-linejoin="round"
+            style="filter: drop-shadow(0 0 7px rgba(255,92,138,0.7))" />
+          <path d="M -10 -8 Q 0 -19 10 -8" fill="none" stroke="#ff5c8a"
+            stroke-width="2.5" />
+        </g>
+
+        <!-- HUD: remaining lives as small ship glyphs, below the score. -->
+        <g transform="translate(60,118) scale(0.7)">
+          <path d="M 0 -20 L 13 15 L 0 8 L -13 15 Z" fill="none"
+            stroke="#6cf0ff" stroke-width="3" stroke-linejoin="round" />
+        </g>
+        <g transform="translate(102,118) scale(0.7)">
+          <path d="M 0 -20 L 13 15 L 0 8 L -13 15 Z" fill="none"
+            stroke="#6cf0ff" stroke-width="3" stroke-linejoin="round" />
+        </g>
+
+        <!-- HUD: torpedo-charge indicator below the lives — glyph lit and bar
+             full, so a torpedo is ready. -->
+        <g transform="translate(44,150)">
+          <g transform="translate(14,0)">
+            <polygon points="-9,-3 -3,-4 7,-3 12,0 7,3 -3,4 -9,3"
+              fill="rgba(184,255,92,0.22)" stroke="#b8ff5c" stroke-width="2"
+              stroke-linejoin="round"
+              style="filter: drop-shadow(0 0 6px rgba(184,255,92,0.8))" />
+            <polygon points="-9,-3 -14,0 -9,3" fill="#eaffcf" />
+          </g>
+          <rect x="34" y="-4" width="66" height="8" rx="4"
+            fill="rgba(184,255,92,0.12)" stroke="#3a4a2a" stroke-width="1" />
+          <rect x="34" y="-4" width="66" height="8" rx="4" fill="#b8ff5c"
+            style="filter: drop-shadow(0 0 5px rgba(184,255,92,0.7))" />
+        </g>
+      </svg>
+
+      <!-- HUD score, top-left. -->
+      <div class="hud-score">31200</div>
+    </div>
+  </body>
+</html>

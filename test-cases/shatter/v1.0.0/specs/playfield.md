@@ -74,6 +74,11 @@ collides as a circle of the radius below.
   **Large** rock becomes **two Medium** rocks; a **Medium** becomes **two Small**;
   a **Small** is removed entirely. Splitting is the only way to reduce the number
   of rocks on the field.
+- **Health.** By default a single bullet hit destroys a rock. A mode may give
+  rocks **health**, so that larger rocks take several bullet hits before they are
+  destroyed (see the mode spec under `specs/modes/` when one is seeded). Splitting,
+  scoring, and star-recycling are otherwise unchanged, and a rock created by a
+  split or a recycle enters at full health for its size.
 - **Star recycling.** When a rock is pulled into the star and its circle reaches
   the core, that rock is **destroyed and immediately replaced** by a new rock of
   the **same size**. The replacement enters from **off-screen**: pick a random

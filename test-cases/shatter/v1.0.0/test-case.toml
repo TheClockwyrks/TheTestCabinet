@@ -61,12 +61,15 @@ workspace = "workspaces/base"
 init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# Shatter ships a single mode, so there is one variant (`base`) — the default and
-# only entry. It seeds the common specs and is rated on the common `arcade` domain;
-# it adds nothing of its own. A case must declare at least one variant. This list is
-# a root key, so it must precede the first table header (`[build]`).
+# Shatter ships two: `base` (the default — the standard endless arcade game, seeding
+# only the common specs and rated on the common `arcade` domain) and `warhead` (the
+# standard game plus armored rocks and a homing-torpedo secondary weapon, which adds
+# its own mode spec, an in-game reference view, proofs, review items, and scoring
+# domain). The first entry is the default. This list is a root key, so it must
+# precede the first table header (`[build]`).
 variants = [
   "variants/base.toml",
+  "variants/warhead.toml",
 ]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
@@ -159,11 +162,12 @@ name = "Title Screen"
 reference = "title"
 actions = []
 
-# Scoring domain. Shatter is a single-mode game, so it has one domain; the reviewer
-# rates it while playing, and (since it is the only domain) it is the run's overall
-# rating. Every case must declare at least one. Point checklist items below roll up to
-# it implicitly (an item names a `domain` only to scope itself, which is unnecessary
-# with a single domain).
+# Common scoring domain, rated for every variant. The `base` variant is rated on
+# this domain alone (its overall rating); the `warhead` variant is rated on this
+# domain plus its own `warhead` domain (declared in `variants/warhead.toml`). Every
+# case must declare at least one common domain. The common review items below roll
+# up to this domain implicitly (an item names a `domain` only to scope itself,
+# unnecessary for these since `arcade` is the only common domain).
 [[domain]]
 id = "arcade"
 name = "Arcade"

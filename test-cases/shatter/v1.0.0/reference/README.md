@@ -19,18 +19,23 @@ implementation.
 
 ## Views
 
-Shatter ships a single mode (one variant), so all three views are **common** — the
-same mockups are rendered and seeded for every run.
+Three views are **common** — rendered and seeded for every variant — and the
+`warhead` variant adds one **variant-only** view.
 
-| View slug   | File             | Description                                              |
-| ----------- | ---------------- | -------------------------------------------------------- |
-| `title`     | `title.html`     | Title screen and main menu (`PLAY` / `HOW TO PLAY`).     |
-| `gameplay`  | `gameplay.html`  | Representative in-game frame with the gravity-bent shot. |
-| `game-over` | `game-over.html` | Game-over result panel.                                  |
+| View slug   | File                    | Variant | Description                                                                              |
+| ----------- | ----------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `title`     | `title.html`            | common  | Title screen and main menu (`PLAY` / `HOW TO PLAY`).                                     |
+| `gameplay`  | `gameplay.html`         | common  | Representative in-game frame with the gravity-bent shot.                                 |
+| `game-over` | `game-over.html`        | common  | Game-over result panel.                                                                  |
+| `warhead`   | `gameplay-warhead.html` | warhead | Warhead frame: an armored rock mid-damage, a torpedo homing, and the torpedo-charge HUD. |
+
+The menu (`title`) is identical for both variants — the Warhead variant changes
+gameplay, not the title screen — so it stays a single common view rather than a
+per-variant mockup.
 
 `theme.css` holds the shared palette, type, and field furniture (the star, the
-ship glyph, rock outlines, HUD, and menus) referenced by every view and by the
-specification (the seeded specs under `../specs/`).
+ship glyph, rock outlines, the torpedo color, HUD, and menus) referenced by every
+view and by the specification (the seeded specs under `../specs/`).
 
 ## Generating screenshots
 
@@ -45,10 +50,15 @@ path is stable:
 reference/screenshots/base/title.png
 reference/screenshots/base/gameplay.png
 reference/screenshots/base/game-over.png
+reference/screenshots/warhead/title.png
+reference/screenshots/warhead/gameplay.png
+reference/screenshots/warhead/game-over.png
+reference/screenshots/warhead/warhead.png
 ```
 
-Whichever variant a run selects (here only `base`), its screenshots are seeded
-into the run under `reference/`, so the model always sees a single stable path.
+Whichever variant a run selects, its screenshots are seeded into the run under
+`reference/`, so the model always sees a single stable path. The `warhead` variant
+renders the three common views plus its own `warhead` view.
 
 Because the files are plain static HTML with no scripts or network access, they
 can be opened directly (`file://`) or served as static files for rendering.

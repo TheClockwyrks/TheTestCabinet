@@ -32,13 +32,23 @@ capture its proof-of-implementation media). All five are seeded.
 
 ## Variants
 
-Shatter ships a single mode, so it has one variant — `base`, the standard endless
-arcade game — declared in `variants/base.toml`. It seeds the common specs and is
-rated on the case's single `arcade` scoring domain; it adds no specs, references,
-review items, or domains of its own. A case must declare at least one variant, and
-a single-mode game needs only this one. Future modes (for example a denser "rush"
-variant, or one that changes the gravity) would be added as additional variant
-files against this same target.
+Shatter ships **two** variants against this same target:
+
+- **`base`** (the default, `variants/base.toml`) — the standard endless arcade
+  game. It seeds only the common specs and is rated on the common `arcade` scoring
+  domain; it adds nothing of its own.
+- **`warhead`** (`variants/warhead.toml`) — the standard game plus **armored
+  rocks** (rocks gain health, so a Large takes several bullet hits to break) and a
+  **homing torpedo** secondary weapon (`F`, a single guided munition on a 10-second
+  recharge that flies true through the gravity well and shatters any rock outright).
+  It adds a mode spec (`specs/modes/warhead.md`), its own in-game reference view
+  (`warhead`), two proofs (`warhead`, `torpedo`), three review items, and its own
+  `warhead` scoring domain.
+
+The common specs' absolute statements about single-hit rock destruction and which
+bodies gravity pulls are softened to defer to a mode spec under `specs/modes/`, so
+`warhead` can override them while `base` (which seeds no mode spec) reads them at
+their defaults.
 
 This version has **no assets**: Shatter is simple enough to leave all visuals to
 the model, guided by the palette and measurements in the specs and by the seeded

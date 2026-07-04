@@ -1,0 +1,66 @@
+# The Warhead variant: the standard endless arcade game plus armored rocks and a
+# homing torpedo secondary weapon. Listed after `base` in the case manifest's
+# `variants`. Every path here resolves against the version folder, exactly like the
+# main manifest. Warhead is its own ruleset, rated on its own scoring domain rather
+# than folded into the common `arcade` domain.
+slug = "warhead"
+name = "Warhead"
+description = "The standard game plus armored rocks and a homing torpedo secondary weapon."
+
+# Additive on top of the common specs; `dest` defaults to `source`. The Warhead
+# mode spec carries the armor, torpedo, and detonation rules; the common specs
+# (softened to defer to a mode spec under `specs/modes/`) supply everything else.
+spec = [{ source = "specs/modes/warhead.md" }]
+
+# A variant-only in-game reference view (the common `title`, `gameplay`, and
+# `game-over` views still render for this variant). `warhead` shows an armored rock
+# mid-damage, a torpedo homing on its target, and the torpedo-charge HUD.
+reference = [{ view = "warhead", path = "reference/gameplay-warhead.html" }]
+
+# Variant-only proofs the standard modes do not ask for: a still of the armored
+# rock + torpedo + charge HUD (paired with the `warhead` reference), and a clip of
+# a torpedo run (the launch-straight-then-home behavior and the harder scatter no
+# still can capture). `specs/modes/warhead.md` instructs the build to write both at
+# exactly these paths.
+[[proof]]
+id = "warhead"
+name = "Warhead frame"
+dest = "proof/warhead.png"
+
+[[proof]]
+id = "torpedo"
+name = "Torpedo run clip"
+dest = "proof/torpedo.mp4"
+
+# The Warhead mode's scoring domain, rated only when this variant runs.
+[[domain]]
+id = "warhead"
+name = "Warhead"
+description = "The Warhead mode: armored rocks that take several hits and a guided torpedo that homes through the well and shatters any rock outright."
+
+# Reviewer checklist items for the mode this variant introduces, rolled up to the
+# `warhead` domain. Additive on top of the common items; never seeded.
+[[review_item]]
+id = "warhead-armored-rocks"
+title = "Armored rocks"
+text = "Rocks have health by size — a Large takes 3 bullet hits, a Medium 2, a Small 1 — and a non-fatal hit shows visible damage (a flash and a progressively cracked/brighter rock) without splitting it; the rock only splits and scores on the hit that destroys it. Split fragments and star-recycled rocks re-enter at full health. A torpedo ignores armor and destroys any rock in one hit."
+weight = 1
+domain = "warhead"
+reference = "warhead"
+proof = "warhead"
+
+[[review_item]]
+id = "warhead-torpedo"
+title = "Homing torpedo"
+text = "Secondary fire (F) launches a single torpedo on a 10-second recharge (at most one stored, one in flight; the recharge shows in the HUD and persists across respawn). The torpedo flies straight from the nose, then homes onto the nearest rock or saucer within a ±15° forward cone at a limited turn rate, and — being self-propelled — flies true through the gravity well instead of curving like a bullet."
+weight = 1
+domain = "warhead"
+proof = "torpedo"
+
+[[review_item]]
+id = "warhead-torpedo-kill"
+title = "Torpedo detonation"
+text = "A torpedo destroys any rock instantly regardless of its armor and blasts the fragments outward with clearly more force than a bullet shatter; it also destroys the saucer for points, and is absorbed by the star core."
+weight = 1
+domain = "warhead"
+proof = "torpedo"

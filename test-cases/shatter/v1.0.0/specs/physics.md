@@ -49,15 +49,17 @@ For each affected body, every step, add an acceleration toward the star:
 ```
 d      = distance from the body's center to the star center (640, 360)
 d_eff  = max(d, 90)                     # softening radius: never divide by less
-a_mag  = MU / (d_eff * d_eff)           # MU = 3_000_000  (px^3 / s^2)
+a_mag  = MU / (d_eff * d_eff)           # MU = 4_500_000  (px^3 / s^2)
 a      = a_mag toward the star center   # along the unit vector body -> star
 ```
 
-- `MU = 3_000_000`. With the softening radius of `90`, the acceleration is
-  **capped at about 370 px/s^2** (reached at `d <= 90`). Sample magnitudes: about
-  `75 px/s^2` at `d = 200`, `208` at `d = 120`, `370` (the cap) at `d <= 90`. The
+- `MU = 4_500_000`. With the softening radius of `90`, the acceleration is
+  **capped at about 556 px/s^2** (reached at `d <= 90`). Sample magnitudes: about
+  `112 px/s^2` at `d = 200`, `312` at `d = 120`, `556` (the cap) at `d <= 90`. The
   softening only bounds the math near the center — it keeps the pull finite as a
-  body nears the core rather than letting it blow up.
+  body nears the core rather than letting it blow up. The well is deliberately
+  strong: bullets and rocks must **visibly** bend as they pass the star, not merely
+  drift a few pixels off a straight line.
 - The core (radius `30`, `specs/playfield.md`) is solid and impassable, but it is
   **not** lethal to the ship: a ship that reaches it slides along its surface
   rather than being destroyed (see Collision below).
@@ -71,7 +73,10 @@ Gravity acts only on bodies flying **ballistically** — bullets and rocks. The 
 and the saucer are powered craft whose thrusters hold them against the star, so
 they fly where they are steered, unaffected by the well. This keeps flight under
 the player's full control: the star shapes the *board* — curving your shots and
-the rocks' paths — without ever wresting the ship out of your hands.
+the rocks' paths — without ever wresting the ship out of your hands. (A mode may add
+its own self-propelled munition that, like the ship and saucer, holds its own course
+and so is likewise **not** pulled by the well; see the mode spec under
+`specs/modes/` when one is seeded.)
 
 What the pull produces, and why it is the heart of the game:
 
@@ -90,9 +95,12 @@ What the pull produces, and why it is the heart of the game:
 ## Bullets
 
 - **Muzzle velocity.** A fired bullet's velocity is the **ship's current velocity
-  plus 720 px/s along the ship's facing** — so your own drift carries into your
-  shots, and a shot fired while moving is faster than one fired at rest.
-- **Lifetime.** A bullet is removed **1.1 seconds** after it is fired (this bounds
+  plus 520 px/s along the ship's facing** — so your own drift carries into your
+  shots, and a shot fired while moving is faster than one fired at rest. This
+  launch speed is deliberately modest so a bullet spends enough time near the star
+  for the gravity well to bend it noticeably; a much faster bullet would fly
+  almost straight through the well.
+- **Lifetime.** A bullet is removed **1.5 seconds** after it is fired (this bounds
   its range even though it wraps). It is also removed when it reaches the star core
   (absorbed) or when it destroys a rock.
 - **On-screen limit.** At most **4** of the ship's bullets exist at once.
@@ -119,7 +127,11 @@ Resolve these interactions:
   velocity **plus a split kick** of about **90 px/s** directed **perpendicular
   to the bullet's travel** — the two fragments kicked to opposite sides — so the
   angle of your shot fans the pieces apart. Fragments then obey gravity like any
-  rock.
+  rock. (A mode may give rocks **health** so that a larger rock takes several
+  bullet hits to destroy; where it does, a non-destroying hit still removes the
+  bullet but only lowers the rock's health, and the split and score above happen
+  only on the hit that finally destroys it. See the mode spec under `specs/modes/`
+  when one is seeded.)
 - **Bullet ↔ saucer.** The saucer is destroyed (score `200`, `specs/flow.md`) and
   the bullet is removed.
 - **Bullet ↔ star core.** The bullet is absorbed and removed.

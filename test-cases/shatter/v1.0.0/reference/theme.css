@@ -18,6 +18,7 @@
   --star-core: #ffd27a;   /* star core */
   --star-halo: #ff7b3d;   /* star halo / gravity glow */
   --saucer: #ff5c8a;      /* enemy saucer */
+  --torpedo: #b8ff5c;     /* homing torpedo (Warhead mode secondary fire) */
   --text: #e6edf3;        /* primary text */
   --text-dim: #8a94a6;    /* secondary text */
   --text-faint: #4a5567;  /* tertiary / hints */
