@@ -8,9 +8,9 @@
   ../specs/towers.md (the roster), and ../specs/creeps.md (the surge).
 
   Floor objects use stage coordinates (the floor sits at stage 0,0). Towers fill
-  one 40px tile at left=40c, top=40r. The maze, heats, and surge positions are
-  one example moment, used for a soft palette/layout comparison, not a strict
-  pixel match.
+  a snapped 2x2 tile footprint (40x40px on the 20px grid), centered on a grid
+  intersection. The maze, heats, and surge positions are one example moment, used
+  for a soft palette/layout comparison, not a strict pixel match.
 -->
 <html lang="en">
   <head>
@@ -21,14 +21,15 @@
   <body>
     <div class="stage">
       <div class="floor">
-        <!-- ===== Portals (two-tile openings at the edge midpoints) ===== -->
-        <div class="portal intake" style="left: 0; top: 320px; width: 40px; height: 80px">IN</div>
-        <div class="portal intake" style="left: 480px; top: 0; width: 80px; height: 40px">IN</div>
-        <div class="portal exhaust" style="left: 960px; top: 320px; width: 40px; height: 80px">OUT</div>
-        <div class="portal exhaust" style="left: 480px; top: 680px; width: 80px; height: 40px">OUT</div>
+        <!-- ===== Portals (four-tile openings at the edge midpoints, one tile deep) ===== -->
+        <div class="portal intake" style="left: 0; top: 320px; width: 20px; height: 80px">IN</div>
+        <div class="portal intake" style="left: 480px; top: 0; width: 80px; height: 20px">IN</div>
+        <div class="portal exhaust" style="left: 980px; top: 320px; width: 20px; height: 80px">OUT</div>
+        <div class="portal exhaust" style="left: 480px; top: 700px; width: 80px; height: 20px">OUT</div>
 
-        <!-- ===== Range ring of the selected tower (the Bloom at tile 10,12) ===== -->
-        <div class="range" style="left: 300px; top: 380px; width: 240px; height: 240px"></div>
+        <!-- ===== Range ring of the selected tower (the Bloom footprint centered
+             on intersection 21,25; LV II range 7.0 tiles = 140px radius) ===== -->
+        <div class="range" style="left: 280px; top: 360px; width: 280px; height: 280px"></div>
 
         <!-- ===== Towers — a player-built maze at a range of heats ===== -->
         <!-- Cold Lance warmed by an adjacent Forge (heat-mover at work). -->
@@ -128,14 +129,14 @@
 
         <div class="section-title">SHOP</div>
         <div class="shop">
-          <div class="shop-item"><div class="ico h-warm"></div><div class="nm">ARC</div><div class="ct">90</div></div>
-          <div class="shop-item"><div class="ico h-hot"></div><div class="nm">STUTTER</div><div class="ct">140</div></div>
-          <div class="shop-item"><div class="ico h-cold"></div><div class="nm">LANCE</div><div class="ct">210</div></div>
-          <div class="shop-item armed"><div class="ico h-hot"></div><div class="nm">BLOOM</div><div class="ct">240</div></div>
-          <div class="shop-item"><div class="ico rime"></div><div class="nm">RIME</div><div class="ct">150</div></div>
-          <div class="shop-item"><div class="ico h-warm"></div><div class="nm">FLAK</div><div class="ct">170</div></div>
-          <div class="shop-item"><div class="ico forge"></div><div class="nm">FORGE</div><div class="ct">70</div></div>
-          <div class="shop-item"><div class="ico vent"></div><div class="nm">VENT</div><div class="ct">70</div></div>
+          <div class="shop-item"><div class="ico h-warm"></div><div class="nm">ARC</div><div class="ct">80</div></div>
+          <div class="shop-item"><div class="ico h-hot"></div><div class="nm">STUTTER</div><div class="ct">110</div></div>
+          <div class="shop-item"><div class="ico h-cold"></div><div class="nm">LANCE</div><div class="ct">160</div></div>
+          <div class="shop-item armed"><div class="ico h-hot"></div><div class="nm">BLOOM</div><div class="ct">180</div></div>
+          <div class="shop-item"><div class="ico rime"></div><div class="nm">RIME</div><div class="ct">110</div></div>
+          <div class="shop-item"><div class="ico h-warm"></div><div class="nm">FLAK</div><div class="ct">130</div></div>
+          <div class="shop-item"><div class="ico forge"></div><div class="nm">FORGE</div><div class="ct">60</div></div>
+          <div class="shop-item"><div class="ico vent"></div><div class="nm">VENT</div><div class="ct">60</div></div>
         </div>
 
         <div class="inspector">
@@ -143,14 +144,14 @@
             <div class="nm">BLOOM</div>
             <div class="lvl">LV II</div>
           </div>
-          <div class="stat"><span>RANGE</span><b>3.5 tiles</b></div>
-          <div class="stat"><span>DAMAGE</span><b>26 (x2.3 heat)</b></div>
-          <div class="stat"><span>RATE</span><b>1.0 / s</b></div>
+          <div class="stat"><span>RANGE</span><b>7.0 tiles</b></div>
+          <div class="stat"><span>DAMAGE</span><b>29 (x1.8 heat)</b></div>
+          <div class="stat"><span>RATE</span><b>1.4 / s</b></div>
           <div class="heatlabel">HEAT &mdash; 72%</div>
           <div class="heatmeter"><span style="width: 72%"></span></div>
           <div class="actions">
-            <div class="btn up">UPGRADE 432</div>
-            <div class="btn sell">SELL 285</div>
+            <div class="btn up">UPGRADE 324</div>
+            <div class="btn sell">SELL 252</div>
           </div>
         </div>
 

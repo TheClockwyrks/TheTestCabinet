@@ -16,7 +16,7 @@ implement them as written but keep them easy to adjust.
 Money is what gates how fast your maze can grow, so the surge always presses
 against a defense that is still being built up.
 
-- You start a game with `200` money.
+- You start a game with `250` money.
 - **Bounties.** Killing a surge unit pays its **bounty** (`specs/creeps.md`)
   immediately.
 - **Wave-clear bonus.** Clearing a wave (the last unit of it dies or leaks) pays
@@ -90,7 +90,8 @@ The game is a small state machine. Each state has a clear screen and controls
    towers may show behind the menu for atmosphere.
 2. **How to play.** Describes the goal (stop the surge from reaching the
    exhausts), the controls, heat as power and the redline trip, the Forge
-   and Vent, the heat-averse Rime, the flyers and Flak, and the economy. Returns
+   and Vent, the heat-averse Rime, flyers, air-capable emitters, air-only Flak,
+   and the economy. Returns
    to the menu.
 3. **In match.** The live game: the floor and its maze, the surge walking and
    flying, the towers firing and heating, and the build panel. This covers both
@@ -135,19 +136,20 @@ The game must exhibit these behaviors. They are observable and make good test
 targets:
 
 - **Towers are walls and you build the maze:** the surge pathfinds the shortest
-  open route from each intake to the **nearest reachable exhaust**, re-paths
-  live when a tower is built or sold, and a placement that would seal the floor
-  is **refused** (`specs/playfield.md`).
+  open route from each intake to its **opposite exhaust** (left to right, top to
+  bottom), re-paths live when a tower is built or sold, and a placement that
+  would seal either required route is **refused** (`specs/playfield.md`).
 - **Heat is power:** an emitter's damage climbs with its heat on the
   accelerating curve, and a tower that reaches the redline trips offline for `3
   s` (`specs/heat.md`).
 - The **Forge** pours heat into adjacent emitters (asset in a lull, liability in
-  a push) and the **Vent** draws it out, both only on orthogonal neighbors
-  (`specs/heat.md`).
+  a push) and the **Vent** draws it out, both only across orthogonal footprint
+  edge contact, scaled by tower alignment (`specs/heat.md`).
 - The **Rime** is **heat-averse** — it slows hardest when cold and degrades as
   it heats (`specs/towers.md`).
-- **Flyers ignore the maze** and only **Flak** can hit them (`specs/creeps.md`,
-  `specs/towers.md`).
+- **Flyers ignore the maze**; every emitter can hit them in range, while
+  **Flak** is air-only and provides dedicated flyer coverage
+  (`specs/creeps.md`, `specs/towers.md`).
 - The six emitters behave per their stances; towers can be **upgraded**
   (stronger and hotter) and **sold** (`specs/towers.md`); the **economy** runs
   on bounties, the wave bonus, interest, and the early-send bonus.

@@ -1,10 +1,10 @@
-# Cascade — Proof of implementation
+# Proof
 
 As part of the finished build, capture **proof of implementation**: a small set
-of screenshots and one short clip that evidence the game runs and the called-out
-features work. A reviewer compares each against the reference mockup for the same
-screen, so frame each capture the way the references do (the full `1280 x 720`
-table, fitted and centered).
+of screenshots and one short clip that demonstrate the game runs and the
+called-out features work. A reviewer compares each against the reference mockup
+for the same screen, so frame each capture the way the references do (the full
+`1280 x 720` table, fitted and centered).
 
 Write each file to **exactly** the path below, relative to the repository root.
 The paths are fixed — the validator checks for a file at each one, and the review

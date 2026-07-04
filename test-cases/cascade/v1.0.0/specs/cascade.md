@@ -1,4 +1,6 @@
-# Cascade — The victory cascade (signature animation)
+# Cascade (signature animation)
+
+## Overview
 
 This file defines the **victory cascade**, the animation that plays when the game
 is won and the feature the game is named for. It builds on the layout in
@@ -6,7 +8,7 @@ is won and the feature the game is named for. It builds on the layout in
 system in `specs/overview.md`. Implement it exactly — a reviewer watches a clip
 of it, and it is the case's signature mechanic.
 
-## When it plays
+## Trigger Condition
 
 The cascade begins the instant the game is **won** — all 52 cards on the
 foundations (`specs/rules.md`). Normal play stops; the tableau, stock, and waste
@@ -15,7 +17,7 @@ cascade then launches those foundation cards, one at a time, to bounce down and
 across the table, each leaving a **permanent painted trail**, until the whole
 table is covered and every card has flown off the edges.
 
-## The simulation
+## Simulation
 
 Run the animation on a **fixed timestep** (for example 120 Hz) decoupled from
 rendering, integrating each in-flight card's motion every step, so the motion is
@@ -23,7 +25,7 @@ reproducible and independent of the render frame rate. All values below are in t
 logical-pixel space of `specs/overview.md` (`x` right, `y` down); acceleration is
 in `px/s²`, velocity in `px/s`.
 
-### Launching cards
+### Launching Cards
 
 - Cards launch **one at a time** at a steady cadence of **one every `0.18 s`**
   (about 5–6 per second).
@@ -35,12 +37,12 @@ in `px/s²`, velocity in `px/s`.
   (`specs/layout.md`) and becomes an independent falling card with an initial
   velocity:
   - **horizontal:** `vx` of random magnitude in `[180, 420]` with a random sign
-    (left or right), but with magnitude **at least `160`** so every card
+    (left or right), but with magnitude **at least** `160` so every card
     eventually clears a side edge;
   - **vertical:** `vy = −120` (a slight upward pop) so the card arcs before
     falling.
 
-### Motion and bouncing
+### Motion and Bouncing
 
 Each in-flight card, every step:
 
@@ -57,7 +59,7 @@ The card does **not** collide with anything else — not the walls, not the othe
 cards, not the foundations. It simply falls, bounces on the floor, and drifts off
 one side.
 
-### The painted trail
+### Painted Card Trail
 
 This is what makes the cascade read the way it should: the in-flight cards are
 drawn onto a **persistent layer that is not cleared between frames**. Every step
@@ -79,7 +81,7 @@ the screen progressively fills as more cards launch and bounce.
 - When the last card has launched **and** retired, the cascade is complete. Show
   a brief **`YOU WIN`** message over the painted table with a prompt to start a
   new game (see `specs/flow.md`). The painted trail stays behind the message
-  until the player starts a new game, which clears it and deals afresh.
+  until the player starts a new game, which clears it and deals anew.
 - The player may **dismiss early**: a click or the New Game control at any point
   during the cascade clears the painted layer and deals a new game.
 

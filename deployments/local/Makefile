@@ -202,8 +202,10 @@ cluster:
 # merged file would just re-pin whatever was last written; (2) the published host
 # port is reassigned whenever the serverlb container is recreated (e.g. a docker
 # or host restart), so a port cached in the kubeconfig goes stale. Idempotent:
-# re-running re-pins to the live port. A no-op repoint on a bare host is harmless —
-# host.docker.internal resolves to the loopback there too.
+# re-running re-pins to the live port. This targets the devcontainer's
+# host.docker.internal (Docker-outside-of-Docker, mapped via extra_hosts) and
+# deliberately does NOT fall back for a bare host: if that name does not resolve,
+# the failure should surface plainly rather than be papered over.
 kubeconfig:
 	@server="$$(k3d kubeconfig get '$(CLUSTER)' 2>/dev/null | grep -E '^[[:space:]]*server:' | head -n1)"; \
 	if [ -z "$$server" ]; then \

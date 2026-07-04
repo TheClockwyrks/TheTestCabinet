@@ -117,12 +117,13 @@ top-left; `x` increases to the right and `y` increases downward.
 The stage is divided into the **reactor floor** on the left — `x` in `[0,
 1000]`, `y` in `[0, 720]` — and the **build panel** on the right — `x` in
 `[1000, 1280]` (280 px wide), full height. The floor is laid out on a **tile
-grid**: tiles are **40 x 40** logical pixels, and the grid is **25 columns x 18
-rows** (`1000 x 720`). Column `c` (`0..24`) spans `x` in `[40c, 40c + 40]`; row
-`r` (`0..17`) spans `y` in `[40r, 40r + 40]`. Tile centers are the reference
-points for tower placement, range, and surge movement throughout this spec. The
-grid geometry, the intakes and exhausts, and the build panel are defined in full
-in `specs/playfield.md`.
+grid**: tiles are **20 x 20** logical pixels, and the grid is **50 columns x 36
+rows** (`1000 x 720`). Column `c` (`0..49`) spans `x` in `[20c, 20c + 20]`; row
+`r` (`0..35`) spans `y` in `[20r, 20r + 20]`. Towers occupy snapped **2 x 2**
+tile footprints, so tower placement and range use the center of that footprint;
+surge movement still uses individual tile centers. The grid geometry, the
+intakes and exhausts, and the build panel are defined in full in
+`specs/playfield.md`.
 
 ## Visual design
 
@@ -171,10 +172,11 @@ canonical palette and type are below; match them.
   warm amber → hot orange → white-hot just under the redline — and a tripped
   emitter is unmistakable (strobing red, visibly offline). Because heat is the
   heart of the game, also give each tower a small heat read (for example a
-  short bar or ring segment on the tile) so a player can tell a tower at `90%`
-  heat from one at `30%` without guessing from glow alone. Pick one convention
-  and use it consistently. The cryo Rime is the exception that proves the
-  rule: it reads cold/cyan and you *want* it cold (see `specs/heat.md`).
+  short bar or ring segment on its 2 x 2 footprint) so a player can tell a
+  tower at `90%` heat from one at `30%` without guessing from glow alone. Pick
+  one convention and use it consistently. The cryo Rime is the exception that
+  proves the rule: it reads cold/cyan and you *want* it cold (see
+  `specs/heat.md`).
 - Keep the surge **off the temperature axis** so it never reads as "heat":
   ground intruders are acid green, flyers violet, the boss a deep violet — never
   the blue→red of the emitter ramp.

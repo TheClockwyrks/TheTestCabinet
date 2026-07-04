@@ -10,9 +10,10 @@
  * Stage geometry (matches ../specs/overview.md and ../specs/playfield.md):
  *   - 1280x720 stage. Reactor floor x[0,1000], y[0,720]; build panel
  *     x[1000,1280] (280px).
- *   - Floor is a 25-col x 18-row grid of 40x40 tiles. Tile (c,r) has
- *     left=40c, top=40r. Intakes: left edge rows 8-9, top edge cols 12-13.
- *     Exhausts: right edge rows 8-9, bottom edge cols 12-13.
+ *   - Floor is a 50-col x 36-row grid of 20x20 tiles. Tile (c,r) has
+ *     left=20c, top=20r. Towers occupy a snapped 2x2 tile footprint (40x40px)
+ *     centered on a grid intersection. Intakes: left edge rows 16-19, top edge
+ *     cols 24-27. Exhausts: right edge rows 16-19, bottom edge cols 24-27.
  *
  * Heat visual language (../specs/heat.md, ../specs/overview.md): an emitter's
  * glow tracks its heat along a ramp cold-blue -> warm-amber -> hot-orange ->
@@ -82,7 +83,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* The reactor floor (x[0,1000]) with its faint 40px structural grid. */
+/* The reactor floor (x[0,1000]) with its faint 20px structural grid. */
 .floor {
   position: absolute;
   left: 0;
@@ -93,16 +94,16 @@ body {
   background-color: var(--steel);
   background-image: linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 40px 40px;
+  background-size: 20px 20px;
 }
 
 /* ---- Portals ----------------------------------------------------------- */
-/* Two-tile openings at the edge midpoints. Positioned by tile (left=40c,
- * top=40r), each 40px per tile. */
+/* Four-tile openings at the edge midpoints, each one tile (20px) deep.
+ * Positioned by tile (left=20c, top=20r), 20px per tile. */
 .portal {
   position: absolute;
-  font-size: 11px;
-  letter-spacing: 2px;
+  font-size: 9px;
+  letter-spacing: 1px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -127,7 +128,8 @@ body {
 }
 
 /* ---- Towers ------------------------------------------------------------ */
-/* Each tower fills one 40px tile, positioned by tile (left=40c, top=40r). */
+/* Each tower fills a snapped 2x2 tile footprint (40x40px, i.e. 2x2 of the
+ * 20px grid), centered on a grid intersection. */
 .tower {
   position: absolute;
   width: 40px;

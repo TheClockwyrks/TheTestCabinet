@@ -1,4 +1,6 @@
-# Cascade — Table layout
+# Layout
+
+## Overview
 
 This file defines the geometry of the table and every pile on it. All positions
 and sizes are in the logical-pixel coordinate system defined in `specs/overview.md`
@@ -16,10 +18,10 @@ are in `specs/rules.md`.
 
 ## Piles
 
-The table holds thirteen piles in two rows: a top row of the stock, the waste,
-and the four foundations; and the seven tableau columns below.
+The table holds thirteen piles split into two rows: a top row of the stock, the
+waste, and the four foundations; and the seven tableau columns below.
 
-### The seven column anchors
+### Seven Column Anchors
 
 The seven tableau columns are evenly spaced across the table with a **pitch of
 122** (a `100`-wide card plus a `22` gap), and the group is centered, so the
@@ -31,7 +33,10 @@ column left edges are at these `x` values:
 
 The top row's piles align to these same columns so the table reads as a grid.
 
-### Top row (`y = 24`, height `140`)
+### Top Row
+
+The top row begins at `y = 24` and has a height of `140` with the following
+piles:
 
 - **Stock** — at column 1 (`x = 224`). The face-down draw pile. Clicking it turns
   cards to the waste (see `specs/rules.md` and the mode spec under
@@ -47,7 +52,9 @@ The top row's piles align to these same columns so the table reads as a grid.
 The gap at column 3 separates the draw piles on the left from the foundations on
 the right.
 
-### Tableau (below the top row)
+### Tableau
+
+Below the top row are the tableau columns with the following attributes:
 
 - The seven columns begin at **`y = 180`**, each at its column `x` above.
 - Cards in a column **overlap downward**, offset from the card above by:

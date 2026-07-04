@@ -1,4 +1,6 @@
-# Cascade — States, controls, HUD, and scope
+# Flow
+
+## Overview
 
 This file defines the game's states and screens, the controls, the on-table HUD,
 and what is out of scope. It refers to the layout in `specs/layout.md`, the rules
@@ -73,9 +75,9 @@ The HUD is deliberately minimal (there is no score or clock):
   `specs/modes/`.
 - If you implement undo, an **`UNDO`** control may sit alongside these.
 
-## Key behaviors
+## Key Behaviors
 
-The game must exhibit these behaviors — they make good review targets:
+The game must exhibit these behaviors:
 
 - The deal is exactly as `specs/rules.md` states: seven columns of `1..7` cards,
   one face-up per column, 24 in the stock, waste and foundations empty, reshuffled
