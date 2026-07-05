@@ -309,7 +309,7 @@ proof = "control"
 [[review_item]]
 id = "gunnery-readout"
 title = "Per-turret status read-out"
-text = "While a gun class is manned, the crosshair shows one indicator PER TURRET: GREEN ready (intact, bearing, in range, loaded), YELLOW reloading with visible reload progress, and RED unavailable (destroyed, OUT OF ARC, or OUT OF RANGE). Each BARREL within a turret reloads on its own clock, and both salvo and ripple fire modes work."
+text = "While a gun class is manned, a ring of small, unlabeled dots around the crosshair shows one indicator PER TURRET (main guns arcing above, secondary below): GREEN ready (intact, bearing, in range, loaded), AMBER reloading with a CLOCK-LIKE radial sweep (not a linear bar), and RED unavailable (destroyed, OUT OF ARC, or OUT OF RANGE). The read-out stays unobtrusive, not a panel that blocks the view. Each BARREL within a turret reloads on its own clock, and both salvo and ripple fire modes work."
 weight = 3
 domain = "combat"
 proof = "control"

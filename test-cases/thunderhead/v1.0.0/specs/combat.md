@@ -39,20 +39,25 @@ signature of ship combat.
 
 ### The per-turret status read-out
 
-While a class is manned, the crosshair shows **one indicator per turret** of that
-class, so the player can read the whole battery at a glance:
+While a class is manned, the crosshair carries **one small indicator per turret** of
+that class, arranged **around** the crosshair as a ring of dots — **main guns above**
+it, **secondary guns below** — so the player reads the whole battery at a glance. The
+indicators are **small and unlabeled** and must stay **unobtrusive**: a ring of dots
+around the reticle, never a panel or a table of rows that blocks the view. Each dot
+is one of:
 
 - **green — ready:** intact, bearing on the crosshair, in range, and with a loaded
   barrel;
-- **yellow — reloading:** intact and eligible, but every barrel is mid-reload; the
-  indicator shows **reload progress** (it fills as the turret reloads);
+- **amber — reloading:** intact and eligible, but every barrel is mid-reload; the dot
+  shows **reload progress as a clock-like radial sweep** (a wedge filling around the
+  dot), not a linear bar;
 - **red — unavailable:** the turret **cannot** contribute to this shot — it is
   **destroyed**, or the crosshair is **outside its arc**, or the aim point is
   **outside its range**.
 
 This read-out is a hard requirement: a player manning the surface guns must be able
 to see, per turret, whether it is ready, reloading (and how far along), or unable to
-fire and why.
+fire and why — without the read-out crowding the view.
 
 ### Ballistics
 

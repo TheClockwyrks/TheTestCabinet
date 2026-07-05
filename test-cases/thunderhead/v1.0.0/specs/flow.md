@@ -96,8 +96,9 @@ faces, matching the two scales.
 - **Possessed unit & station** — which unit you have and which **station** is manned
   (or "steering"), with a **station-switch** indicator of the others available.
 - **Gunnery read-out** — at a ship weapon class, the **per-turret status indicators**
-  (green ready / yellow reloading-with-progress / red unavailable) around the
-  **crosshair**, and the current **fire mode** (`specs/combat.md`).
+  (green ready / amber reloading with a clock-like sweep / red unavailable) as a ring
+  of small dots **around the crosshair** — main guns above, secondary below — plus the
+  current **fire mode** (`specs/combat.md`).
 - **Movement** — speed/throttle and heading; **altitude** for aircraft, **depth** for
   a submarine.
 - **Condition** — the unit's **health**, its **shield** (Meridian) or **resonance**

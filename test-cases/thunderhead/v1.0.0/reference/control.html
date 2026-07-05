@@ -34,26 +34,30 @@
         </div>
       </div>
 
-      <!-- center crosshair + per-turret gunnery read-out -->
+      <!--
+        Center reticle + per-turret gunnery read-out: a ring of small, unlabeled
+        dots around the crosshair — MAIN-gun pips arc ABOVE, SECONDARY-gun pips arc
+        BELOW. Green = ready, amber clock-wedge = reloading
+        (build animates it rotating), red = unavailable. Here the target is DISTANT,
+        so the long-ranged main guns engage (two ready, one reloading, one out of
+        arc) while the short-ranged secondaries are all out of range (red).
+      -->
       <div class="reticle">
         <div class="cross"><span class="hub"></span></div>
-        <div class="turrets">
-          <div class="grp">
-            <span class="cap">MAIN</span>
-            <span class="pip ready"></span>
-            <span class="pip ready"></span>
-            <span class="pip reload"><i style="height: 55%"></i></span>
-            <span class="pip na"></span>
-          </div>
-          <div class="grp">
-            <span class="cap">SECONDARY</span>
-            <span class="pip na"></span>
-            <span class="pip na"></span>
-            <span class="pip na"></span>
-            <span class="pip na"></span>
-          </div>
-        </div>
-        <div class="firemode">RANGE <b>612 u</b> &middot; FIRE <b>SALVO</b></div>
+
+        <!-- MAIN guns: arc above the crosshair -->
+        <span class="pip ready" style="transform: translate(calc(-50% - 26px), calc(-50% - 36px))"></span>
+        <span class="pip ready" style="transform: translate(calc(-50% - 9px), calc(-50% - 43px))"></span>
+        <span class="pip reload" style="--p: 55%; transform: translate(calc(-50% + 9px), calc(-50% - 43px))"></span>
+        <span class="pip na" style="transform: translate(calc(-50% + 26px), calc(-50% - 36px))"></span>
+
+        <!-- SECONDARY guns: arc below the crosshair (out of range at this distance) -->
+        <span class="pip na" style="transform: translate(calc(-50% - 26px), calc(-50% + 36px))"></span>
+        <span class="pip na" style="transform: translate(calc(-50% - 9px), calc(-50% + 43px))"></span>
+        <span class="pip na" style="transform: translate(calc(-50% + 9px), calc(-50% + 43px))"></span>
+        <span class="pip na" style="transform: translate(calc(-50% + 26px), calc(-50% + 36px))"></span>
+
+        <div class="range">612 u &middot; <b>SALVO</b></div>
       </div>
 
       <!-- movement read-out, bottom-left -->

@@ -405,20 +405,25 @@ body {
   border-color: var(--valid);
 }
 
-/* Center crosshair with the per-turret gunnery status read-out. */
+/* Center reticle. The per-turret gunnery read-out is a ring of SMALL, UNLABELED
+   dots arranged AROUND the crosshair: main-gun pips arc ABOVE it, secondary-gun pips
+   arc BELOW. Each pip is placed on a circle by an inline transform. Reload is shown
+   as a CLOCK-LIKE radial sweep (a conic wedge here; the build animates it rotating).
+   The whole thing is deliberately unobtrusive — it must not block the view. */
 .reticle {
   position: absolute;
   left: 50%;
-  top: 52%;
+  top: 50%;
   transform: translate(-50%, -50%);
-  width: 260px;
-  text-align: center;
+  width: 0;
+  height: 0;
 }
 .reticle .cross {
-  position: relative;
-  width: 60px;
-  height: 60px;
-  margin: 0 auto;
+  position: absolute;
+  left: -26px;
+  top: -26px;
+  width: 52px;
+  height: 52px;
 }
 .reticle .cross::before,
 .reticle .cross::after {
@@ -431,78 +436,63 @@ body {
   left: 50%;
   top: 0;
   width: 2px;
-  height: 60px;
+  height: 52px;
   transform: translateX(-50%);
 }
 .reticle .cross::after {
   top: 50%;
   left: 0;
   height: 2px;
-  width: 60px;
+  width: 52px;
   transform: translateY(-50%);
 }
 .reticle .cross .hub {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   transform: translate(-50%, -50%);
   border: 2px solid var(--text);
   border-radius: 50%;
 }
-/* Turret status pips grouped by class row. */
-.turrets {
-  margin-top: 16px;
-}
-.turrets .grp {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  margin-top: 6px;
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: var(--text-faint);
-}
-.turrets .grp .cap {
-  width: 78px;
-  text-align: right;
-  color: var(--text-dim);
-}
+/* One dot per turret, positioned on the ring by an inline translate. */
 .pip {
-  position: relative;
-  width: 15px;
-  height: 15px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.55);
 }
 .pip.ready {
   background: var(--hp-good);
 }
-.pip.reload {
-  background: rgba(255, 206, 84, 0.22);
-  border-color: var(--gold);
-  overflow: hidden;
-}
-.pip.reload i {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  background: var(--gold);
-}
 .pip.na {
   background: var(--hp-crit);
-  opacity: 0.85;
+  opacity: 0.8;
 }
-.reticle .firemode {
-  margin-top: 12px;
-  font-size: 12px;
-  letter-spacing: 2px;
+/* Reloading: a clock-like wedge fills around as the turret reloads (--p = progress). */
+.pip.reload {
+  background: conic-gradient(
+    var(--gold) 0 var(--p, 50%),
+    rgba(255, 206, 84, 0.18) 0
+  );
+  border-color: var(--gold);
+}
+/* Compact range + fire-mode line, just below the reticle. */
+.reticle .range {
+  position: absolute;
+  left: 50%;
+  top: 60px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 1px;
   color: var(--text-dim);
 }
-.reticle .firemode b {
+.reticle .range b {
   color: var(--text);
 }
 
@@ -606,31 +596,6 @@ body {
   letter-spacing: 9px;
   margin: 20px 0 0 6px;
   color: var(--text-dim);
-}
-.crests {
-  display: flex;
-  gap: 18px;
-  margin-top: 26px;
-}
-.crest {
-  padding: 6px 16px;
-  font-size: 12px;
-  letter-spacing: 3px;
-  border: 1px solid var(--rock-dark);
-  border-radius: 4px;
-  background: var(--panel);
-}
-.crest.iron {
-  color: var(--iron);
-  border-color: var(--iron);
-}
-.crest.mer {
-  color: var(--cyan);
-  border-color: var(--cyan);
-}
-.crest.geo {
-  color: var(--crystal);
-  border-color: var(--amethyst);
 }
 .menu {
   display: flex;
