@@ -184,3 +184,4 @@ toggleable
 inspectable
 unpressured
 respawning
+loadouts

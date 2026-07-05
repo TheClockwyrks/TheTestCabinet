@@ -5,7 +5,8 @@ player **classes** and their weapons, how hitscan/projectile/arcing attacks
 resolve, grenades, and the **Scourge roster** with its tiers and armor. Behaviors
 (who chases whom, pathfinding, your squad) are in `specs/ai.md`; the phase/tier
 schedule is in `specs/phases.md`. All values are world units, `u/s`, seconds, and
-degrees on the fixed timestep from `specs/overview.md`.
+degrees, in the real, frame-rate-independent simulation time from
+`specs/overview.md`.
 
 ## The player
 
@@ -18,7 +19,9 @@ You are one Warden on foot in the first person.
   Gravity applies; you cannot fly or leave the arena box (`specs/world.md`).
 - **Loadout.** A **primary**, a **secondary**, and a **grenade**, set by class
   below. Switch between primary and secondary; each has its own magazine and
-  reserve ammo. Reloading a weapon refills its magazine from its reserve.
+  reserve ammo. Reloading a weapon refills its magazine from its reserve. Reserve
+  ammo does not regenerate on its own — a squad **engineer** is the only way to
+  replenish it (`specs/ai.md`).
 - **Aiming** is pointer-lock mouselook (`specs/flow.md`); the primary fire is the
   left button, aim-down-sights the right, reload `R`, grenade `G`, weapon swap
   `Q` or the number/scroll (`specs/flow.md`).
@@ -50,8 +53,9 @@ scaled by distance. Radii are given per weapon.
 
 ### The three classes
 
-Each class is a distinct answer to the assault. Pick one on the deploy screen
-(`specs/flow.md`); all three must be implemented and playable.
+Each class is a distinct answer to the assault. You pick one on the in-game spawn
+UI each time you deploy or respawn (`specs/flow.md`); all three must be implemented
+and playable.
 
 | Class | Primary | Secondary | Grenade |
 | --- | --- | --- | --- |
@@ -67,13 +71,13 @@ they are different levers (`specs/phases.md`):
 - **Which archetypes are in play is set by the phase.** New phases **introduce new
   archetypes** — the roster grows as the siege deepens (Artillery arrives in phase
   B, Ravagers in phase C).
-- **How tough a spawned unit is, is set by its tier.** Within a phase, the tier a
-  unit spawns at **climbs with elapsed phase time** — this is the phase's
-  quality-driven difficulty ramp, not a between-phase step. A tier is the **same
-  model re-plated** in a tier accent (`specs/overview.md`) — Tier I plain Ember,
-  Tier II steel plating, Tier III bright elite trim — with more health, armor, and
-  damage. You do **not** invent new geometry per tier; you re-skin and re-stat the
-  one model.
+- **How tough a spawned unit is, is set by its tier.** The tier a unit spawns at is
+  driven by the run's **kill count** on the schedule in `specs/phases.md` — not by
+  elapsed time, and not by the redoubt's health — so clearing the field is answered
+  by tougher replacements. A tier is the **same model re-plated** in a tier accent
+  (`specs/overview.md`) — Tier I plain Ember, Tier II steel plating, Tier III bright
+  elite trim — with more health, armor, and damage. You do **not** invent new
+  geometry per tier; you re-skin and re-stat the one model.
 
 Each unit is drawn as blocky Scourge geometry reading as the silhouette below, in
 Ember with its tier accent, with a dark outline so it reads against the terrain.
@@ -88,11 +92,11 @@ Ember with its tier accent, with a dark outline so it reads against the terrain.
 | **Artillery** | Phase B | Bombardment. Holds back near the spawn line and lobs arcing shells at the **player** (nuisance) and the **active redoubt**. | `140` | light | Arcing shell — telegraphed (below) | `3 u/s` (repositions slowly) |
 | **Ravager** | Phase C | Heavy elite bruiser; wades into the **player and squad**, soaking fire to reach melee. Slow, very durable, hits hard — a target that demands anti-armor. | `500` | heavy | Melee `40` dmg, `1.2 s` cadence, reach `3` | `5 u/s` |
 
-### Tiers — the within-phase quality ramp
+### Tiers — the kill-count quality ramp
 
-Every archetype comes in three tiers, and the tier a unit spawns at rises with
-elapsed phase time (`specs/phases.md`), so a phase gets harder in quality, not just
-count. Apply these multipliers to each archetype's Tier I base stats above:
+Every archetype comes in three tiers, and the tier a unit spawns at rises with the
+run's **kill count** (`specs/phases.md`), so the assault gets harder in quality, not
+just count. Apply these multipliers to each archetype's Tier I base stats above:
 
 | Tier | Appears | HP | Damage | Armor |
 | --- | --- | --- | --- | --- |
@@ -107,8 +111,8 @@ count. Apply these multipliers to each archetype's Tier I base stats above:
   armor tax on Tier II/III. (Grenades are **not** anti-armor — they pay the armor
   tax.)
 - Breakers (and Ravagers) are the toughest things on the field for their tier; a
-  late-phase Tier III breaker should genuinely require focus (or anti-armor fire) to
-  bring down before it saps the redoubt out from under you.
+  Tier III breaker should genuinely require focus (or anti-armor fire) to bring
+  down before it saps the redoubt out from under you.
 
 ### Artillery and its telegraph
 
@@ -125,13 +129,13 @@ Artillery is the signature nuisance and a driver of redoubt damage from phase B 
   ring (enough that ignoring it is near-fatal), and **`120`** to the redoubt on a
   redoubt-targeted shell. Splash falls off to the ring edge.
 - Artillery fires roughly every **9 s** across the live artillery units in phase
-  B, tightening and adding a second concurrent tube feel in phase C (Artillery II).
-  It should read as a persistent pressure to reposition, not a constant carpet.
+  B, tightening and adding a second concurrent tube feel in phase C. It should read
+  as a persistent pressure to reposition, not a constant carpet.
 
 ## Death and kills
 
 A Scourge unit at `0` HP is destroyed (play a brief blocky break-apart or fade)
 and increments the **kill counter** (`specs/phases.md`), whether you or a squad
 member landed the killing blow. A destroyed unit deals no more damage. Downed
-units do **not** drop pickups — the only healing is the medic (`specs/ai.md`), and
-ammo is managed through reloads from reserve.
+units do **not** drop pickups — the only healing is the squad medic and the only
+reserve-ammo resupply is the squad engineer (`specs/ai.md`).

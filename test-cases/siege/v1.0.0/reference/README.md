@@ -16,24 +16,26 @@ each view, seeded as a visual target alongside the seeded specs under
 the intended UI instead of building it from the spec; a screenshot shows the
 target without giving away the implementation.
 
-Note that these mockups fake the 3D first-person view in flat CSS. The real build
-renders the world in **WebGL/WebGPU** (`../specs/overview.md`); the mockups exist
-to pin the **palette, HUD layout, and type**, not the 3D rendering.
+These mockups do **not** fake the 3D first-person view — flat CSS cannot depict it
+usefully. The real build renders the world in **WebGL/WebGPU**
+(`../specs/overview.md`); the mockups exist to pin the **palette, HUD layout, and
+type**. The `gameplay` mockup is therefore **HUD-only**: the HUD over a neutral
+dark viewport, with the 3D world left to the build.
 
 ## Views
 
 | View slug   | Mockup source           | Description                                                 |
 | ----------- | ----------------------- | ----------------------------------------------------------- |
-| `title`     | `select-<variant>.html` | Deploy screen — class + starting-phase select, per variant. |
-| `gameplay`  | `gameplay.html`         | In-siege first-person frame (common).                       |
+| `title`     | `select-<variant>.html` | Title screen — the `SIEGE` title with PLAY and HOW TO PLAY. |
+| `gameplay`  | `gameplay.html`         | In-siege **HUD** over a neutral viewport (common).          |
 | `game-over` | `game-over.html`        | Defeat screen (common).                                     |
 
 The `gameplay` and `game-over` views are **common** — the same mockup is rendered
-and seeded for every variant. The `title` view is **variant-specific**: the deploy
-screen lists the mode(s) a variant offers, so each variant declares its own deploy
-mockup (see the variant `reference` entries in `../test-case.toml`). This version
-declares the single `base` variant, whose deploy screen (`select-base.html`)
-offers the `LAST STAND` mode.
+and seeded for every variant. The `title` view is **variant-specific**: each
+variant declares its own title mockup (future variants may present their mode
+differently), see the variant `reference` entries in `../test-case.toml`. This
+version declares the single `base` variant, whose title screen (`select-base.html`)
+starts the `LAST STAND` siege.
 
 The `title` view is the **checked** view: it is what the game shows on load and is
 static, so the harness compares an implementation's load screen against it.

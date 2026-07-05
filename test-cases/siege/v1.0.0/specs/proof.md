@@ -20,11 +20,11 @@ sequence is expected.
 
 | Path | What it must show |
 | --- | --- |
-| `proof/title.png` | The **deploy** screen on load: the title, the three class options, the A/B/C starting-phase choice, and the DEPLOY control. |
+| `proof/title.png` | The **title** screen on load: the `SIEGE` title and the **PLAY** and **HOW TO PLAY** options. |
 | `proof/gameplay.png` | A live in-siege first-person frame: the weapon viewmodel and crosshair, Scourge attackers assaulting the active redoubt, and the HUD — health, ammo, the survival clock, the kill count, the **active redoubt health bar**, and the **squad panel**. Frame it during phase B or C if you can, so the tier accents and an **artillery telegraph** ring on the ground are visible. |
-| `proof/game-over.png` | The **defeat** screen after redoubt C falls (or a forced end), showing the survival time, phase reached, and total kills. |
+| `proof/game-over.png` | The **defeat** screen after redoubt C falls (or a forced end), showing the survival time and total kills. |
 | `proof/assault.mp4` | A short (a few seconds) screen recording of a live assault: a Scourge wave advancing and pathing over the terrain toward the redoubt, the player and squad firing and scoring kills, a **breaker** reaching the redoubt and its **health bar dropping**, and — if in phase B/C — an **artillery telegraph** appearing and a shell landing. Enough to show units path, fight, die, and grind the redoubt down. |
-| `proof/wireframe.png` | A frame with **wireframe mode** enabled (`specs/flow.md`), showing the terrain **chunk meshes** and the character/weapon geometry as wireframe, so the generated meshing is visible. |
+| `proof/wireframe.png` | A frame with **wireframe mode** enabled (`specs/flow.md`), showing the terrain and the character/weapon geometry as wireframe, so the generated geometry is visible. |
 
 Notes:
 

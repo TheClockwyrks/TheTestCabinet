@@ -50,8 +50,8 @@ varied, and playable it is — is part of what this case evaluates. Requirements
   units and structures only. Pathfinding may therefore treat the terrain as static
   (`specs/ai.md`).
 - The terrain is drawn in the terrain palette from `specs/overview.md` (grass top,
-  dirt and rock beneath, sand/path where a route is worn), via the chunked mesh
-  pipeline (`specs/overview.md`).
+  dirt and rock beneath, sand/path where a route is worn), and must hold the frame
+  rate the rendering requirements set (`specs/overview.md`).
 
 ## The redoubts
 
@@ -114,6 +114,6 @@ near the objective but not on top of the attackers:
   terrain surface, facing the Scourge.
 - **Squad respawn point:** near the same location (`specs/ai.md`).
 
-When you start a siege directly at phase B or C from the deploy screen
-(`specs/phases.md`), the redoubts forward of your start are already fallen and the
+When you start a siege directly at phase B or C (via **PLAY** on the title screen;
+`specs/phases.md`), the redoubts forward of your start are already fallen and the
 spawn line and respawn points are set to that phase from the first second.

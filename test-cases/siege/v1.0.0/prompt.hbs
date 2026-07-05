@@ -34,40 +34,29 @@ as one specification.
 
 ## Build requirements
 
-Deliver a complete, polished, playable game, not a tech demo. It must:
+Deliver a complete, polished, playable game, not a tech demo. The **hard
+requirements** — real 3D rendering at an interactive frame rate, no backend or
+credentials, self-contained code-built assets, the palette and type, a `README.md`,
+and the game states — are stated in full in `specs/overview.md` (and the files it
+points to). That specification is authoritative; build to it rather than to a
+summary here. Two things bear restating, because the harness depends on them:
 
-- **Render real 3D graphics** with WebGL or WebGPU — not a text-only, ASCII, or
-  purely-2D rendering. Build every mesh — terrain, structures, characters,
-  weapons, projectiles, effects — yourself, in code, in the specified palette; you
-  are given no model or texture files and must not fetch any at runtime. The
-  terrain must use a **chunked mesh** pipeline (merged faces, culled), not a draw
-  call per cube, and the game must sustain an interactive frame rate during a heavy
-  assault (see `overview`).
-- **Run in the browser with no backend** — no server, accounts, database, or
-  network calls at runtime; everything needed to play is self-contained.
-- Require **no API keys or credentials** of any kind to build, run, or play.
-- Stay a **Node project** built with only Node.js and npm-installed dependencies —
-  no separately installed language toolchain. Extend the provided `package.json`
-  at `{{workspace}}` and **commit a `package-lock.json`** (run `npm install` after
-  you change dependencies so the lockfile matches) — the build is installed with
-  `npm ci`, which requires it. `npm ci` then `npm run build` must produce the
-  static site, with no other manual step, into one of `dist/`, `build/`, or `out/`
-  at the project root, with an `index.html` at the root of that directory. Serving
-  that directory as-is from a static file server must run the game, and it must
-  work **at any base path** — it is played back from a per-run sub-path, so any URL
-  the build constructs at runtime must be page-relative (never begin with a leading
-  `/`; for a bundler, set a relative base such as `base: './'`).
-- Include a `README.md` at `{{workspace}}` explaining what the game is, how to
-  install dependencies, how to run it in development, how to produce the static
-  production build, and the controls.
-
-You choose the language, framework, bundler, and rendering approach within those
-constraints — only the `npm ci` / `npm run build` commands and their
-`dist`/`build`/`out` output are fixed. The `reference/` folder under `{{workspace}}`
-holds screenshots that are visual targets for the deploy, in-siege, and defeat
-screens — match their layout, palette, and type, but build the screens from the
-specification rather than copying the images. (The mockups fake the 3D view in flat
-2D; you render it for real in WebGL/WebGPU.)
+- **The fixed build/serve interface.** The project stays a **Node project** built
+  with only Node.js and npm-installed dependencies. Extend the provided
+  `package.json` at `{{workspace}}` and **commit a `package-lock.json`** (run
+  `npm install` after you change dependencies so the lockfile matches). `npm ci`
+  then `npm run build` must produce the static site — with no other manual step —
+  into one of `dist/`, `build/`, or `out/` at the project root, with an
+  `index.html` at the root of that directory. Serving that directory as-is must run
+  the game, and it must work **at any base path** (it is played back from a per-run
+  sub-path, so any URL the build constructs at runtime must be page-relative — never
+  a leading `/`; for a bundler, set a relative base such as `base: './'`).
+  `specs/overview.md` states this in full; follow it exactly.
+- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
+  screenshots that are visual targets for the title, in-siege HUD, and defeat
+  screens — match their layout, palette, and type, but build the screens from the
+  specification rather than copying the images. The in-siege reference is
+  **HUD-only**; you render the 3D world itself for real in WebGL/WebGPU.
 
 ## Verify before you finish
 
@@ -77,11 +66,12 @@ assume it works. Before you consider the task complete:
 
 - Produce the **static production build** and serve it locally, then open it in
   Chromium with Playwright and confirm it **loads with no console errors** and no
-  uncaught exceptions, showing the deploy screen.
-- **Drive the game** — click to lock the pointer, choose a class and starting
-  phase, deploy, then move, fire, and let the assault run — and **screenshot** the
-  deploy, in-siege, and defeat screens. Compare each against the matching image in
-  `reference/` and against the specs, and fix what does not match before finishing.
+  uncaught exceptions, showing the title screen.
+- **Drive the game** — from the title choose **PLAY**, pick a starting phase, then
+  on the spawn UI choose a class and **DEPLOY** (click to lock the pointer), then
+  move, fire, and let the assault run — and **screenshot** the title, in-siege, and
+  defeat screens. Compare each against the matching image in `reference/` and
+  against the specs, and fix what does not match before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies:
   the screenshots (including the **wireframe** frame) and the short assault clip,
   each written to the precise `proof/` path that spec names. These are required

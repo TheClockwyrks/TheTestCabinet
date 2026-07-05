@@ -102,8 +102,14 @@ This is the substance of the work. Two rules dominate:
 
 ### 4. Write `prompt.hbs`
 
-A short instruction that points the model at the seeded specs and restates the
-hard requirements. The template renders in **strict mode**, so use only the
+A short instruction that tells the model its **task** and points it at the seeded
+specs — not a second copy of the specification. State each requirement in **one
+place**: the prompt carries the task and the prompt-level, operational detail (the
+workspace path, how to verify, how to commit) plus the **fixed build/serve
+interface** the harness enforces; the *details* of every other hard requirement
+live in the specs, and the prompt points to them rather than restating them. If the
+same sentence appears in both the prompt and the overview, cut it from the prompt
+and let the spec own it. The template renders in **strict mode**, so use only the
 documented variables — `{{workspace}}`, `{{variant.slug}}`/`{{variant.name}}`/
 `{{variant.description}}`, and `{{#each specs}}` — and any other reference is a
 render error. Keep run-specific detail (container paths, which variant) in the

@@ -2,8 +2,9 @@
 <!--
   Siege — defeat screen (common across variants).
   Rendered by the harness at 1280x720 as the `game-over` view target. Shown when
-  redoubt C falls: the run's survival time, the phase reached, and total kills,
-  with REDEPLOY and DEPLOY AGAIN. A dimmed slice of the fallen field sits behind.
+  redoubt C falls: the run's survival time and total kills, with REDEPLOY and
+  DEPLOY AGAIN. There is no "reached" line — a siege always ends at redoubt C, so
+  it would carry no information. A dark, dimmed viewport sits behind the card.
 -->
 <html lang="en">
   <head>
@@ -12,9 +13,7 @@
   </head>
   <body>
     <div class="stage">
-      <!-- dimmed scene behind the card -->
-      <div class="sky"></div>
-      <div class="ground"></div>
+      <!-- dimmed viewport behind the card -->
       <div class="overlay"></div>
 
       <div class="panel">
@@ -24,10 +23,6 @@
         <div class="stat">
           <span class="k">SURVIVED</span>
           <span class="v accent">9:47</span>
-        </div>
-        <div class="stat">
-          <span class="k">REACHED</span>
-          <span class="v">REDOUBT C</span>
         </div>
         <div class="stat">
           <span class="k">SCOURGE DESTROYED</span>

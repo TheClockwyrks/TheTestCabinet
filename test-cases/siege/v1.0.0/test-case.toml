@@ -10,12 +10,12 @@ slug = "siege"
 name = "Siege"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Siege asks for
-# a procedurally generated voxel world on a real chunked mesh renderer, a
-# first-person pointer-lock controller, several weapon systems (hitscan, projectile,
-# arcing), two independent 3D-pathfinding AI systems (an escalating enemy and a
-# friendly squad), a health-based objective with a fighting-retreat survival loop,
-# artillery with ground telegraphs, and multiple states — the largest build in the
-# catalog, so it sits at hard.
+# a procedurally generated voxel world rendered in real-time 3D, a first-person
+# pointer-lock controller, several weapon systems (hitscan, projectile, arcing),
+# two independent 3D-pathfinding AI systems (an escalating enemy and a friendly
+# squad), a health-based objective with a fighting-retreat survival loop, artillery
+# with ground telegraphs, and multiple states — the largest build in the catalog,
+# so it sits at hard.
 difficulty = "hard"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
@@ -26,9 +26,10 @@ tags = ["fps", "3d", "voxel", "survival", "objective-defense"]
 summary = """
 A first-person voxel last stand: defend a chain of three redoubts across a \
 procedurally generated frontier as an escalating red Scourge grinds each one \
-down, aided by an AI squad of riflemen and medics. You cannot win — every \
-redoubt falls and you fall back to the next — so you play to survive as long as \
-you can and destroy as many attackers as possible before the line breaks."""
+down, aided by an AI squad — a rifleman, a machine gunner, a medic, and an \
+engineer. You cannot win — every redoubt falls and you fall back to the next — \
+so you play to survive as long as you can and destroy as many attackers as \
+possible before the line breaks."""
 
 # Site-facing prose describing the case, relative to this version folder. NOT
 # seeded into a run; it exists only to introduce the case on the site.
@@ -40,10 +41,9 @@ description = "description.md"
 prompt = "prompt.hbs"
 
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
-# stopped. Siege is the catalog's largest build (a chunked voxel renderer, a
+# stopped. Siege is the catalog's largest build (a real-time 3D voxel renderer, a
 # first-person controller, several weapon systems, two 3D-pathfinding AI systems,
-# the survival loop with artillery, and multiple states), so it gets six hours —
-# and is the case that most benefits from a multi-session orchestrator.
+# the survival loop with artillery, and multiple states), so it gets six hours.
 max_runtime_hours = 6
 
 # Starter workspace seeded into the root of every run before the specs. It gives
@@ -61,7 +61,7 @@ init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # This version offers a single `base` variant — the standard Last Stand siege. It
-# supplies the `title` (deploy) view's mockup; `gameplay` and `game-over` are
+# supplies the `title` view's mockup; `gameplay` and `game-over` are
 # common. Future versions/variants are expected to add rule twists (a longer front,
 # a no-artillery skirmish, a one-life gauntlet) on top of this base. This list is a
 # root key, so it must precede the first table header (`[build]`).
@@ -109,8 +109,8 @@ source = "specs/proof.md"
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
 # mockup the harness renders to a screenshot and seeds as a visual target. The
-# `title` (deploy) view is variant-specific (declared per variant); `gameplay` and
-# `game-over` look the same in every variant.
+# `title` view is variant-specific (declared per variant); `gameplay` (HUD-only)
+# and `game-over` look the same in every variant.
 [[reference]]
 view = "gameplay"
 path = "reference/gameplay.html"
@@ -126,7 +126,7 @@ path = "reference/game-over.html"
 # inferred from the extension: `.png` is an image, `.mp4` a video.
 [[proof]]
 id = "title"
-name = "Deploy screen"
+name = "Title screen"
 dest = "proof/title.png"
 
 [[proof]]
@@ -151,13 +151,13 @@ dest = "proof/wireframe.png"
 
 # Validation checks (opt-in). Only the checks declared here run. Each drives the
 # built implementation, screenshots it, and compares against the rendered
-# screenshot of `reference`. Only the deploy screen is deterministic enough to
+# screenshot of `reference`. Only the title screen is deterministic enough to
 # validate for Siege: it is whatever the game shows on load, so it needs no
 # actions. The live 3D siege and the defeat screen depend on play, so they are
 # seeded as references but not validated.
 [[check]]
 view = "title"
-name = "Deploy Screen"
+name = "Title Screen"
 reference = "title"
 actions = []
 
@@ -169,7 +169,7 @@ actions = []
 [[domain]]
 id = "worldgen"
 name = "World & rendering"
-description = "The procedurally generated terrain, the redoubt placement, and the chunked voxel renderer's quality and performance."
+description = "The procedurally generated terrain, the redoubt placement, and the 3D voxel renderer's quality and performance."
 
 [[domain]]
 id = "combat"
@@ -179,7 +179,7 @@ description = "The three classes and their hitscan/projectile/arcing weapons, hi
 [[domain]]
 id = "ai"
 name = "AI & squad"
-description = "3D pathfinding, the Scourge behaviors, and the friendly squad of riflemen and medics, including medic-only healing."
+description = "3D pathfinding, the Scourge behaviors, and the friendly squad (rifleman, machine gunner, medic, engineer), including medic-only healing and engineer-only ammo resupply."
 
 [[domain]]
 id = "siege"
@@ -211,9 +211,9 @@ reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
-id = "chunked-renderer"
-title = "Chunked voxel renderer"
-text = "The world is drawn from merged, culled chunk meshes (not a draw call per cube) and sustains a playable frame rate during a heavy assault; the performance overlay shows the live FPS, and wireframe mode reveals the terrain chunk meshes and the character/weapon geometry."
+id = "renderer-performance"
+title = "Renderer performance & wireframe"
+text = "The world renders in real-time 3D and sustains a playable frame rate during a heavy assault (dozens of attackers, the squad, projectiles, and telegraphs at once); the performance overlay shows the live FPS. Wireframe mode reveals the underlying generated geometry — both the terrain and the character/weapon geometry. How the renderer is organized to hold the frame rate is the model's choice; the requirement is the observable frame rate, not any particular technique."
 weight = 2
 domain = "worldgen"
 proof = "wireframe"
@@ -228,7 +228,7 @@ domain = "combat"
 [[review_item]]
 id = "scourge-escalation"
 title = "Scourge tiers and new units"
-text = "Escalation runs on two distinct levers. WITHIN a phase, the same attackers climb three visually distinct recolored tiers (plain, steel-plated, elite-trimmed) as elapsed phase time rises — a quality ramp, tougher and hitting harder, not just more bodies. BETWEEN phases, new archetypes join the roster (Artillery in phase B, Ravagers in phase C). Higher-tier armor reduces incoming damage, except from anti-armor sources (the Marksman's long rifle and the Breacher's launcher), which ignore it."
+text = "Escalation runs on two distinct levers. The same attackers climb three visually distinct recolored tiers (plain, steel-plated, elite-trimmed) as the run's KILL COUNT rises — a quality ramp, tougher and hitting harder, not just more bodies — starting at 100% Tier I, mixing all three tiers through a middle band, and reaching 100% Tier III at the top of the schedule; tier is NOT tied to elapsed time or to the redoubt's health. BETWEEN phases, new archetypes join the roster (Artillery in phase B, Ravagers in phase C). Higher-tier armor reduces incoming damage, except from anti-armor sources (the Marksman's long rifle and the Breacher's launcher), which ignore it."
 weight = 2
 domain = "combat"
 
@@ -241,9 +241,9 @@ domain = "ai"
 proof = "assault"
 
 [[review_item]]
-id = "squad-medics"
-title = "Squad and medic-only healing"
-text = "A four-Warden squad (two riflemen, two medics) fights alongside the player. Medics are the ONLY source of healing — no pickups or regeneration anywhere — and their long weapons keep them hanging back; they heal nearby wounded Wardens (never the redoubt). The squad respawns on a longer timer than the player, and the HUD squad panel shows each member's health or respawn countdown."
+id = "squad-support"
+title = "Squad, medic healing & engineer resupply"
+text = "A four-Warden squad — a rifleman, a machine gunner, a medic, and an engineer — fights alongside the player. The medic is the ONLY source of healing and the engineer the ONLY source of reserve-ammo resupply — no pickups or regeneration anywhere; both support roles hang back and top up nearby wounded/ammo-depleted Wardens (the medic never heals the redoubt). The squad respawns on a longer timer than the player, and the HUD squad panel shows each of the four members' health or respawn countdown."
 weight = 2
 domain = "ai"
 reference = "gameplay"
@@ -282,9 +282,9 @@ weight = 1
 domain = "siege"
 
 [[review_item]]
-id = "deploy-select"
-title = "Deploy: class and starting phase"
-text = "The deploy screen lets the player choose a class and a starting phase (A, B, or C). Starting at B or C drops straight into that phase — forward redoubts already fallen, that phase's tier and artillery active, and a full squad — while the survival clock still starts at zero."
+id = "title-phase-spawn"
+title = "Title, phase select & spawn class"
+text = "The title screen shows the SIEGE title with just PLAY and HOW TO PLAY. PLAY prompts for a starting phase (A, B, or C); the player then picks their class on the in-game spawn UI and can CHANGE it on every respawn. Starting at B or C drops straight into that phase — forward redoubts already fallen, that phase's tier schedule and artillery active, and a full squad — while the survival clock still starts at zero."
 weight = 1
 reference = "title"
 proof = "title"
@@ -306,5 +306,5 @@ proof = "gameplay"
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
-text = "The 3D view fills the window and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on the deploy screen at load before any input."
+text = "The 3D view fills the window and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on the title screen at load before any input."
 weight = 1

@@ -131,11 +131,18 @@ See the spec-writing guidance below — this is the substance of the work.
 
 ### 4. Write `prompt.hbs`
 
-A short instruction that points the model at the seeded specs and restates the
-hard requirements. Use only the documented template variables (`{{workspace}}`,
-`{{variant.*}}`, `{{#each specs}}`) — it renders in strict mode, so any other
-reference is an error. Keep run-specific detail (container paths, which variant)
-in the prompt, never in the specs. Model it on Carom's `prompt.hbs`.
+A short instruction that tells the model its **task** and points it at the seeded
+specs — not a second copy of the specification. State each requirement in **one
+place**: the prompt carries the task and the prompt-level, operational detail (the
+workspace path, how to verify, how to commit) plus the **fixed build/serve
+interface** the harness enforces (see step 6); the *details* of every other hard
+requirement live in the specs, and the prompt points to them rather than restating
+them. Duplicating the overview's requirements into the prompt is a smell — if the
+same sentence appears in both, cut it from the prompt and let the spec own it. Use
+only the documented template variables (`{{workspace}}`, `{{variant.*}}`,
+`{{#each specs}}`) — it renders in strict mode, so any other reference is an error.
+Keep run-specific detail (container paths, which variant) in the prompt, never in
+the specs. Model it on Carom's `prompt.hbs`.
 
 ### 5. Author the reference mockups
 

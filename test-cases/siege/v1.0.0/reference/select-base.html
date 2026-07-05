@@ -1,9 +1,11 @@
 <!doctype html>
 <!--
-  Siege — deploy screen (the `title` view, base variant).
+  Siege — title screen (the `title` view, base variant).
   Rendered by the harness at 1280x720 as the deterministic view target and the
-  screen shown on load: the title, the Last Stand mode, class selection (Ranger
-  selected), starting-phase selection (A selected), and DEPLOY. Static.
+  screen shown on load: the SIEGE title, a tagline, and just two options — PLAY
+  and HOW TO PLAY. No class or phase is chosen here: PLAY opens the starting-phase
+  prompt and then drops the player into the game, where the class is picked on the
+  in-game spawn UI (and can be changed on every respawn). Static.
 -->
 <html lang="en">
   <head>
@@ -15,50 +17,11 @@
       <div class="deploy">
         <div class="title">SIEGE</div>
         <div class="tagline">HOLD THE LINE UNTIL IT BREAKS</div>
-        <div class="mode">&#9656; LAST STAND</div>
 
-        <div class="section-label">CHOOSE YOUR CLASS</div>
-        <div class="classes">
-          <div class="class-card selected">
-            <div class="cname">RANGER</div>
-            <div class="role">ALL-ROUNDER</div>
-            <div class="cline"><b>Rifle</b> — automatic hitscan</div>
-            <div class="cline"><b>Sidearm</b> — pistol</div>
-            <div class="cline"><b>Frag</b> &times;3</div>
-          </div>
-          <div class="class-card">
-            <div class="cname">MARKSMAN</div>
-            <div class="role">ANTI-ARMOR / RANGE</div>
-            <div class="cline"><b>Long rifle</b> — pierces armor</div>
-            <div class="cline"><b>Carbine</b> — close backup</div>
-            <div class="cline"><b>Frag</b> &times;2</div>
-          </div>
-          <div class="class-card">
-            <div class="cname">BREACHER</div>
-            <div class="role">SPLASH / CLOSE</div>
-            <div class="cline"><b>Launcher</b> — arcing splash</div>
-            <div class="cline"><b>Sidearm</b> — pistol</div>
-            <div class="cline"><b>Incendiary</b> &times;2</div>
-          </div>
+        <div class="menu">
+          <div class="menu-btn primary">PLAY</div>
+          <div class="menu-btn">HOW TO PLAY</div>
         </div>
-
-        <div class="section-label">START AT</div>
-        <div class="phases">
-          <div class="phase selected">
-            <div class="phase-letter">A</div>
-            <div class="phase-note">FULL SIEGE</div>
-          </div>
-          <div class="phase">
-            <div class="phase-letter">B</div>
-            <div class="phase-note">ARMOR &amp; ARTILLERY</div>
-          </div>
-          <div class="phase">
-            <div class="phase-letter">C</div>
-            <div class="phase-note">LAST STAND</div>
-          </div>
-        </div>
-
-        <div class="deploy-btn">DEPLOY</div>
       </div>
       <div class="hint">
         WASD MOVE &middot; MOUSE AIM &middot; F3 PERF &middot; F4 WIREFRAME

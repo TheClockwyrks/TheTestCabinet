@@ -1,7 +1,8 @@
 # Siege — Flow, states, controls, and HUD
 
-This file defines the game-state machine, the deploy screen, the controls, and the
-HUD. It refers to the world in `specs/world.md`, the survival loop in
+This file defines the game-state machine, the title and in-game screens, the
+controls, and the HUD. It refers to the world in `specs/world.md`, the survival
+loop in
 `specs/phases.md`, the classes and roster in `specs/combat.md`, and the AI in
 `specs/ai.md`. Use the palette and monospace type from `specs/overview.md`
 throughout.
@@ -15,29 +16,44 @@ falls**, going to the **defeat** state showing the run's survival time and kills
 
 The build is a small state machine. Each state has a clear screen and controls.
 
-1. **Deploy (title).** The screen shown **on load**. It presents the game title
-   `SIEGE`, a tagline, and two choices plus a confirm:
-   - **Class** — the three classes from `specs/combat.md` (**Ranger**,
-     **Marksman**, **Breacher**), each with a one-line description of its loadout;
-     one is selected/highlighted.
-   - **Starting phase** — **A**, **B**, or **C** (`specs/phases.md`), with A the
-     default; the selected phase is highlighted, with a short note that B and C
-     drop straight into the tougher later assault.
-   - **DEPLOY** — begins the siege with the chosen class and phase.
-   This screen is **static on load** (it does not animate a live world behind it
-   in a way that changes what a screenshot shows), so it is the deterministic view
-   the harness checks.
-2. **In siege.** The live first-person game on the world from `specs/world.md`:
+1. **Title.** The screen shown **on load**. It presents the game title `SIEGE`, a
+   tagline, and exactly two options:
+   - **PLAY** — starts a new siege. It first opens the **starting-phase** prompt
+     (below), then drops the player into the game.
+   - **HOW TO PLAY** — opens a controls/how-to screen (below), from which the
+     player returns to the title.
+   No class or phase is chosen here — those come later. This screen is **static on
+   load** (it does not animate a live world behind it in a way that changes what a
+   screenshot shows), so it is the deterministic view the harness checks.
+2. **Starting-phase prompt.** Reached from **PLAY**. Offers **A**, **B**, or **C**
+   (`specs/phases.md`), with A the default and a short note that B and C drop
+   straight into the tougher later assault. Confirming a phase enters the siege at
+   that phase; a back/cancel returns to the title.
+3. **How to play.** Reached from **HOW TO PLAY**. A static panel listing the
+   controls (below) and a brief primer on the loop — the classes and their
+   loadouts (`specs/combat.md`), that you pick your class when you spawn, the medic
+   heals and the engineer resupplies, and that the siege is a fighting retreat you
+   cannot win. Returns to the title.
+4. **In siege.** The live first-person game on the world from `specs/world.md`:
    you and your squad defending the active redoubt, the Scourge assaulting, the
    HUD below. This is where `specs/world.md`, `specs/phases.md`, `specs/combat.md`,
-   and `specs/ai.md` play out. Entering it should engage pointer lock (below).
-3. **Paused.** Reachable from the siege (`Esc`). Offers **Resume**, **Restart**,
-   and **Quit to deploy**. The world is visible but the **simulation and the
+   and `specs/ai.md` play out. It includes the **spawn UI**:
+   - Whenever the player is waiting to (re)enter the fight — on the first deploy of
+     a siege and again during each **respawn** delay after death (`specs/phases.md`)
+     — a **spawn overlay** lets the player pick their **class** (the three from
+     `specs/combat.md`: **Ranger**, **Marksman**, **Breacher**), each with a
+     one-line loadout description, and a **DEPLOY** control to confirm and spawn.
+     The class may be **changed on every respawn**, so a player can adapt to the
+     assault. The world is visible behind the overlay; the survival clock keeps
+     counting (dying costs the defense — `specs/phases.md`).
+   - Entering the live fight (after DEPLOY) engages pointer lock (below).
+5. **Paused.** Reachable from the siege (`Esc`). Offers **Resume**, **Restart**,
+   and **Quit to title**. The world is visible but the **simulation and the
    survival clock are frozen** behind the menu, and pointer lock is released.
-4. **Defeat.** Shown when redoubt C falls. Displays `THE LINE HAS FALLEN` (or
-   similar), the **survival time** reached, the **phase reached**, and the **total
-   kills**, with **REDEPLOY** (back to deploy) and **DEPLOY AGAIN** (restart with
-   the same class/phase). See `reference/game-over.png`.
+6. **Defeat.** Shown when redoubt C falls. Displays `THE LINE HAS FALLEN` (or
+   similar), the **survival time** reached and the **total kills**, with
+   **REDEPLOY** (back to the title) and **DEPLOY AGAIN** (restart a fresh siege at
+   the same starting phase). See `reference/game-over.png`.
 
 Every state must be reachable and behave as described.
 
@@ -58,12 +74,12 @@ accept mouse and keyboard.
 - **Toggles** (see HUD): **performance overlay** and **wireframe mode** each have a
   key (state them on the how-to line or a controls hint — e.g. `F3` performance,
   `F4` wireframe); both work during a live siege.
-- **Menus / deploy / pause / defeat:** the mouse selects and clicks; arrow keys or
-  `W`/`S`/`A`/`D` move the selection and `Enter`/`Space` confirms. On the deploy
-  screen, class and phase are both selectable.
+- **Menus / title / phase prompt / spawn UI / pause / defeat:** the mouse selects
+  and clicks; arrow keys or `W`/`S`/`A`/`D` move the selection and `Enter`/`Space`
+  confirms. The starting-phase prompt selects a phase; the spawn UI selects a class.
 
-A brief controls hint must be available (on the deploy screen and/or a pause-menu
-panel) so a first-time player can find these.
+A brief controls hint must be available (on the title screen, the **HOW TO PLAY**
+screen, and/or a pause-menu panel) so a first-time player can find these.
 
 ## HUD
 
@@ -83,9 +99,11 @@ HUD shows, at minimum:
 - **Redoubt status** — which redoubt is active (`DEFENDING A` / `B` / `C`) and its
   **health bar** (`specs/world.md`), so the player can watch the objective being
   ground down. A brief callout when a redoubt falls and the front falls back.
-- **Squad panel** — the four squad members (`specs/ai.md`), each shown **alive**
-  with a health bar (riflemen in Cobalt, medics in Teal) **or dead** with a
-  **respawn countdown**. Required, so the player can read the squad at a glance.
+- **Squad panel** — the four squad members (`specs/ai.md`) — Rifleman, Machine
+  Gunner, Medic, Engineer — each shown **alive** with a health bar (rifleman and
+  gunner in Cobalt, medic in Teal, engineer in the ammo/accent color) **or dead**
+  with a **respawn countdown**. Required, so the player can read the squad at a
+  glance.
 - **Artillery telegraphs** — the ground rings for incoming shells
   (`specs/combat.md`) are drawn in the world (not the flat HUD), warning then
   imminent; an optional directional cue on the HUD for a shell targeting the
@@ -96,17 +114,17 @@ HUD shows, at minimum:
 ### Performance overlay
 
 A toggleable **performance overlay** (default off, bound to a key — e.g. `F3`)
-shows at least the live **FPS**, and ideally the visible **chunk/draw count** and
-on-screen unit count. It exists so the required frame rate (`specs/overview.md`)
-is observable during a heavy phase-C assault. Keep it small, in a corner, in the
-faint/secondary text colors.
+shows at least the live **FPS**, and ideally the **draw count** and on-screen unit
+count. It exists so the required frame rate (`specs/overview.md`) is observable
+during a heavy phase-C assault. Keep it small, in a corner, in the faint/secondary
+text colors.
 
 ### Wireframe mode
 
 A toggleable **wireframe mode** (default off, bound to a key — e.g. `F4`) renders
-the scene as wireframe — **both** the terrain chunk meshes **and** the
-character/weapon geometry — so the generated geometry (the chunk meshing and the
-blocky models) can be inspected. Toggling it must not disturb the simulation.
+the scene as wireframe — **both** the terrain **and** the character/weapon
+geometry — so the generated geometry (the terrain mesh and the blocky models) can
+be inspected. Toggling it must not disturb the simulation.
 
 ## Audio
 
@@ -127,5 +145,6 @@ autoplay).
 - Additional classes, weapons, or Scourge archetypes beyond those in
   `specs/combat.md` — escalation is by tier and cadence (`specs/phases.md`), not a
   larger roster.
-- Inventory, looting, or health/ammo pickups — healing is medic-only
-  (`specs/ai.md`) and ammo is managed by reloading from reserve (`specs/combat.md`).
+- Inventory, looting, or health/ammo pickups — healing is medic-only and
+  reserve-ammo resupply is engineer-only (`specs/ai.md`); ammo is otherwise managed
+  by reloading from reserve (`specs/combat.md`).

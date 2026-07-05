@@ -5,9 +5,12 @@
  * Every mockup is authored on a fixed 1280x720 logical stage so the testing
  * harness can render and screenshot them at a 1280x720 viewport. Colors,
  * positions, and type below are the source of truth referenced by the seeded
- * specs under ../specs/. The in-siege frame fakes the 3D view in flat CSS — the
- * real build renders it in WebGL/WebGPU — but the palette, HUD layout, and type
- * are the targets to match.
+ * specs under ../specs/.
+ *
+ * The mockups do NOT fake the 3D world — the flat CSS cannot depict it usefully.
+ * The in-siege mockup is HUD-only: it pins the HUD layout, palette, and type over
+ * a neutral dark viewport, and the real build renders the WebGL/WebGPU world
+ * behind that HUD itself.
  */
 
 :root {
@@ -23,9 +26,9 @@
   --concrete: #c8ccd2;
   --concrete-shadow: #9aa0a8;
 
-  --cobalt: #3d7bd6; /* Wardens: you & squad */
+  --cobalt: #3d7bd6; /* Wardens: you, rifleman & machine gunner */
   --cobalt-light: #7fb0f0; /* accent / selection / valid */
-  --teal: #2fb59a; /* squad medics */
+  --teal: #2fb59a; /* squad medic */
   --heal: #eafcf6; /* medic cross / heal accent */
 
   --ember: #b83a3a; /* Scourge Tier I body */
@@ -35,7 +38,7 @@
 
   --hp-good: #5ec96b;
   --hp-crit: #ff5c5a;
-  --ammo: #ffce54;
+  --ammo: #ffce54; /* ammo, and the squad engineer's resupply accent */
   --telegraph-warn: #ff7a3d;
   --telegraph-imminent: #ff3a2f;
 
@@ -61,176 +64,26 @@ body {
   background: #000;
 }
 
-/* The fixed logical stage. The build is 16:9; these mockups are 1280x720. */
+/* The fixed logical stage. The build is 16:9; these mockups are 1280x720. The
+   default background is the neutral dark viewport the HUD sits over (the real
+   build draws the 3D world here). The title screen overrides it. */
 .stage {
   position: relative;
   width: 1280px;
   height: 720px;
   overflow: hidden;
-  background: var(--sky);
+  background: radial-gradient(
+      ellipse at 50% 42%,
+      #1b232d 0%,
+      #10151b 70%,
+      #0b0f14 100%
+    );
   font-family: var(--mono);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
 
-/* ---- Faux 3D scene (in-siege view) ------------------------------------- */
-
-.sky {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 1280px;
-  height: 400px;
-  background: linear-gradient(to bottom, var(--sky) 0%, var(--sky-haze) 100%);
-}
-
-/* the ground plane, receding to a horizon around y=360 */
-.ground {
-  position: absolute;
-  left: 0;
-  top: 360px;
-  width: 1280px;
-  height: 360px;
-  background: linear-gradient(to bottom, var(--grass-shadow) 0%, var(--grass) 40%);
-}
-
-/* faint banding to suggest voxel ground rows */
-.ground::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0) 0,
-    rgba(0, 0, 0, 0) 22px,
-    rgba(0, 0, 0, 0.06) 22px,
-    rgba(0, 0, 0, 0.06) 24px
-  );
-}
-
-/* a generic blocky voxel prop */
-.voxel {
-  position: absolute;
-  border: 2px solid var(--rock-dark);
-  border-radius: 2px;
-}
-
-/* the active redoubt: concrete blockwork with a lit top face */
-.redoubt {
-  position: absolute;
-  background: var(--concrete);
-  border: 3px solid var(--rock-dark);
-  border-radius: 3px;
-  box-shadow: inset 0 10px 0 rgba(255, 255, 255, 0.14),
-    inset 0 -14px 0 rgba(0, 0, 0, 0.18);
-}
-.redoubt .banner {
-  position: absolute;
-  top: -46px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 16px;
-  height: 44px;
-  background: var(--cobalt);
-  border: 2px solid var(--rock-dark);
-}
-
-/* a Scourge attacker: red block, eye accent, optional tier plating/trim */
-.scourge {
-  position: absolute;
-  width: 26px;
-  height: 40px;
-  background: var(--ember);
-  border: 2px solid var(--rock-dark);
-  border-radius: 2px;
-}
-.scourge::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 8px;
-  transform: translateX(-50%);
-  width: 10px;
-  height: 6px;
-  background: var(--scourge-eye);
-}
-.scourge.t2 {
-  box-shadow: inset 0 0 0 3px var(--steel);
-}
-.scourge.t3 {
-  box-shadow: inset 0 0 0 3px var(--elite);
-}
-.scourge.breaker {
-  width: 40px;
-  height: 48px;
-  background: var(--ember);
-  box-shadow: inset 0 0 0 4px var(--steel);
-}
-
-/* a friendly squad member in the world */
-.warden {
-  position: absolute;
-  width: 24px;
-  height: 40px;
-  background: var(--cobalt);
-  border: 2px solid var(--rock-dark);
-  border-radius: 2px;
-}
-.warden.medic {
-  background: var(--teal);
-}
-.warden.medic::after {
-  content: "+";
-  position: absolute;
-  left: 50%;
-  top: 6px;
-  transform: translateX(-50%);
-  color: var(--heal);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-/* artillery telegraph ring on the ground */
-.telegraph {
-  position: absolute;
-  border-radius: 50%;
-  border: 4px solid var(--telegraph-warn);
-  background: radial-gradient(
-    ellipse at center,
-    rgba(255, 122, 61, 0.28) 0%,
-    rgba(255, 122, 61, 0.05) 70%,
-    rgba(255, 122, 61, 0) 100%
-  );
-  transform: scaleY(0.42);
-}
-.telegraph.imminent {
-  border-color: var(--telegraph-imminent);
-}
-
-/* first-person weapon viewmodel, bottom-right */
-.viewmodel {
-  position: absolute;
-  right: 210px;
-  bottom: -10px;
-  width: 260px;
-  height: 240px;
-  background: linear-gradient(160deg, var(--rock) 0%, var(--rock-dark) 100%);
-  border: 3px solid var(--rock-dark);
-  border-radius: 6px;
-  transform: rotate(-8deg);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
-}
-.viewmodel::before {
-  content: "";
-  position: absolute;
-  left: 24px;
-  top: 30px;
-  width: 150px;
-  height: 26px;
-  background: var(--cobalt);
-  border: 2px solid var(--rock-dark);
-}
+/* ---- In-siege HUD ------------------------------------------------------ */
 
 /* center crosshair */
 .crosshair {
@@ -258,15 +111,6 @@ body {
   top: 12px;
   width: 26px;
   height: 2px;
-}
-
-/* ---- HUD --------------------------------------------------------------- */
-
-.hp {
-  position: absolute;
-  height: 5px;
-  background: var(--hp-good);
-  border: 1px solid var(--rock-dark);
 }
 
 /* survival clock + kills, top center */
@@ -319,6 +163,19 @@ body {
   top: 0;
   bottom: 0;
   border-radius: 1px;
+}
+
+/* optional HUD cue: an artillery shell is inbound on the player (the ground
+   telegraph itself is drawn in the world, not the flat HUD) */
+.hud-incoming {
+  position: absolute;
+  left: 50%;
+  top: 132px;
+  transform: translateX(-50%);
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--telegraph-imminent);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 
 /* health, bottom-left */
@@ -383,7 +240,7 @@ body {
   position: absolute;
   left: 26px;
   top: 120px;
-  width: 210px;
+  width: 226px;
 }
 .squad h4 {
   margin: 0 0 8px;
@@ -408,11 +265,17 @@ body {
 .squad .chip.rifle {
   background: var(--cobalt);
 }
+.squad .chip.gunner {
+  background: var(--cobalt);
+}
 .squad .chip.medic {
   background: var(--teal);
 }
+.squad .chip.engr {
+  background: var(--ammo);
+}
 .squad .name {
-  width: 74px;
+  width: 88px;
   color: var(--text);
 }
 .squad .bar {
@@ -453,13 +316,13 @@ body {
   font-weight: 400;
 }
 
-/* ---- Deploy / menu screen ---------------------------------------------- */
+/* ---- Title screen ------------------------------------------------------ */
 
 .deploy {
   position: absolute;
   inset: 0;
   background: radial-gradient(
-      ellipse at 50% 30%,
+      ellipse at 50% 34%,
       rgba(61, 123, 214, 0.16) 0%,
       rgba(0, 0, 0, 0) 60%
     ),
@@ -467,118 +330,45 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
 .title {
-  font-size: 100px;
+  font-size: 116px;
   font-weight: 700;
-  letter-spacing: 26px;
-  margin: 40px 0 0 26px;
+  letter-spacing: 30px;
+  margin: 0 0 0 30px;
   color: var(--text);
   text-shadow: 0 0 30px rgba(61, 123, 214, 0.55), 0 0 3px rgba(184, 58, 58, 0.7);
 }
 .tagline {
-  font-size: 17px;
-  letter-spacing: 9px;
-  margin: 12px 0 0 9px;
+  font-size: 18px;
+  letter-spacing: 10px;
+  margin: 20px 0 0 10px;
   color: var(--text-dim);
 }
-.mode {
-  margin-top: 22px;
-  font-size: 15px;
-  letter-spacing: 6px;
-  color: var(--cobalt-light);
-}
-
-.section-label {
-  font-size: 13px;
-  letter-spacing: 5px;
-  color: var(--text-faint);
-  margin: 22px 0 10px;
-}
-
-.classes {
+.menu {
   display: flex;
-  gap: 20px;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  margin-top: 64px;
 }
-.class-card {
-  width: 240px;
-  padding: 18px 20px 20px;
-  background: var(--panel);
-  border: 2px solid var(--rock-dark);
-  border-radius: 10px;
-  text-align: left;
-}
-.class-card.selected {
-  border-color: var(--cobalt-light);
-  box-shadow: 0 0 0 2px rgba(127, 176, 240, 0.35), 0 10px 30px rgba(0, 0, 0, 0.5);
-}
-.class-card .cname {
+.menu-btn {
+  width: 340px;
+  padding: 16px 0;
+  text-align: center;
   font-size: 22px;
   font-weight: 700;
-  letter-spacing: 3px;
-  color: var(--text);
-}
-.class-card.selected .cname {
+  letter-spacing: 8px;
   color: var(--cobalt-light);
-}
-.class-card .role {
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: var(--text-faint);
-  margin: 2px 0 12px;
-}
-.class-card .cline {
-  font-size: 13px;
-  color: var(--text-dim);
-  margin-top: 5px;
-}
-.class-card .cline b {
-  color: var(--text);
-  font-weight: 400;
-}
-
-.phases {
-  display: flex;
-  gap: 16px;
-}
-.phase {
-  width: 132px;
-  padding: 12px 0 14px;
-  text-align: center;
   background: var(--panel);
-  border: 2px solid var(--rock-dark);
+  border: 2px solid var(--cobalt-light);
   border-radius: 8px;
 }
-.phase.selected {
-  border-color: var(--cobalt-light);
-  box-shadow: 0 0 0 2px rgba(127, 176, 240, 0.3);
-}
-.phase .phase-letter {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: var(--text);
-}
-.phase.selected .phase-letter {
-  color: var(--cobalt-light);
-}
-.phase .phase-note {
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: var(--text-faint);
-  margin-top: 3px;
-}
-
-.deploy-btn {
-  margin-top: 22px;
-  padding: 14px 60px;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 10px;
+.menu-btn.primary {
   color: #0a0f18;
   background: var(--cobalt-light);
-  border: 2px solid var(--cobalt);
-  border-radius: 8px;
+  border-color: var(--cobalt);
 }
 .hint {
   position: absolute;
@@ -595,7 +385,7 @@ body {
 .overlay {
   position: absolute;
   inset: 0;
-  background: rgba(8, 6, 6, 0.8);
+  background: rgba(8, 6, 6, 0.82);
 }
 .panel {
   position: absolute;
@@ -627,7 +417,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: 10px 6px;
+  padding: 12px 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 16px;
 }

@@ -4,7 +4,7 @@ This file defines the heart of the game: the count-up survival clock, how a
 redoubt is ground down and lost, how the assault escalates through phases
 A → B → C, and how a siege ends. It builds on the world in `specs/world.md`, the
 units in `specs/combat.md`, and the behaviors in `specs/ai.md`. All times are in
-seconds on the fixed timestep from `specs/overview.md`.
+seconds of real, frame-rate-independent simulation time (`specs/overview.md`).
 
 ## The loop, in one paragraph
 
@@ -40,17 +40,20 @@ matter how well you play:
   and your squad entirely** and marches straight for the active redoubt to attack
   it at melee range. Breakers are the primary way the redoubt loses health. They
   are heavily armored and slow; you can kill them to buy time, but more keep
-  coming, on a cadence that tightens as the phase wears on (below).
+  coming, on a cadence that tightens with elapsed phase time (below).
 - **Artillery** — from phase B onward (`specs/combat.md`), arcing shells that
   bombard both the player (as a nuisance, forcing you to move — see below) and the
   active redoubt directly, chipping its health from range.
 
 **Invariant:** the active redoubt's health trends **strictly downward** under
 sustained assault. No defense — however skilled, however many breakers you kill —
-can hold a redoubt indefinitely, because the breaker cadence tightens and their
-per-hit damage escalates by tier faster than a player can fully suppress them. A
-build in which a well-played redoubt can be held forever is **wrong**: every
-redoubt must fall in bounded time, so every siege ends.
+can hold a redoubt indefinitely. Two independent pressures guarantee this: the
+**breaker (and, from phase B, artillery) cadence tightens with elapsed phase
+time**, which sets a rising floor on how fast the redoubt loses health no matter
+how the player fights; and as your **kill count** climbs, breakers spawn at higher
+**tiers** and each hit lands harder (below). A build in which a well-played
+redoubt can be held forever is **wrong**: every redoubt must fall in bounded time,
+so every siege ends.
 
 As a target, an unpressured redoubt should still take a couple of minutes of
 sustained assault to fall (it is not a soft target that pops in seconds), and a
@@ -78,33 +81,62 @@ When **C falls**, the siege ends → the **defeat** state (`specs/flow.md`).
 Because the redoubt always falls, **every siege progresses through the phases in a
 single run** regardless of skill — a strong defender simply reaches each phase
 later, with a longer survival time. A reviewer can also **start a siege at any
-phase** from the deploy screen (below) to see that phase directly.
+phase** (via **PLAY** on the title screen, below) to see that phase directly.
 
-### Escalation within a phase — tiers (quality), then cadence
+### Escalation — tiers driven by your kill count
 
-A single phase lasts a few minutes and must get harder as it runs — and it does so
-first by **quality**, not just quantity. Each attacker archetype
+The assault gets harder first by **quality**, not quantity. Each attacker archetype
 (`specs/combat.md`) comes in three visually distinct **tiers** — the same
 silhouette re-plated in a tier accent color, each tier tougher, better-armored, and
-hitting harder — and the tier a unit **spawns at climbs with elapsed phase time**:
+hitting harder. The tier a unit **spawns at is driven by your running kill count**,
+**not** by elapsed time and **not** by the redoubt's remaining health. This is
+deliberate: the harder tiers exist to keep the pressure — and the redoubt damage —
+rising as you clear the field, so thinning a wave is answered by tougher
+replacements rather than by the fight going quiet.
 
-- A phase **opens** spawning its attackers at **Tier I**, works up to **Tier II**
-  around its midpoint, and reaches **Tier III** late, as the redoubt nears falling.
-- So the same wave of Rushers and Gunners becomes a wave of plated, then elite
-  ones: a phase escalates in **character**, not just volume. This is the point of
-  tiers — within-phase difficulty is **quality-driven**, so a phase gets
-  meaningfully harder without simply flooding the field with more bodies.
-- A later phase may bias this ramp upward so the fight never feels easier than the
-  phase before it, and a siege **started** directly at phase B or C (deploy choice
-  below) opens at a representative mid-tier, not Tier I.
+Define the tier a spawning unit rolls from a **kill-count schedule**. Let `E` be
+the **escalation count** — the run's cumulative Scourge kills (the HUD kill
+counter) plus a **starting-phase offset** (`0` starting at A, `80` at B, `140` at
+C; see below) — and let `N = 200` (tunable). At each spawn, roll the unit's tier
+from these probabilities, which vary with `E`:
 
-Spawn **cadence and count** tighten over a phase as a secondary lever: infantry
-waves start about **8 s** apart and tighten toward a **3 s** floor, and **breakers**
-spawn from about **one every 24 s** toward **one every 10 s**, so redoubt damage
-accelerates the longer a phase runs (this is what carries the redoubt down — see
-above). But keep the live on-screen count within what the renderer can sustain
-(`specs/overview.md`): escalate a phase through **tier** first and cadence second,
-not by letting the population grow without bound.
+| Escalation count `E` | P(Tier I) | P(Tier II) | P(Tier III) |
+| --- | --- | --- | --- |
+| `0` | `100%` | `0%` | `0%` |
+| `≈ 40` | `67%` | `33%` | `0%` |
+| `≈ 80` | `33%` | `67%` | `0%` |
+| `≈ 100` | `17%` | `66%` | `17%` |
+| `≈ 120` | `0%` | `67%` | `33%` |
+| `≈ 160` | `0%` | `33%` | `67%` |
+| `≥ 200` (`N`) | `0%` | `0%` | `100%` |
+
+The exact curve is yours to tune, but it **must** have these properties: it starts
+at **100% Tier I** at `E = 0`; **Tier II ramps in** as `E` rises; there is a
+**middle band where all three tiers can spawn** (Tier I fading out while Tier III
+fades in, around `E ≈ 80`–`120` above); and at **`E ≥ N` it is 100% Tier III**. A
+straightforward way to get this: Tier I's share falls linearly from `1` at `E = 0`
+to `0` at `E = 120`; Tier III's share rises linearly from `0` at `E = 80` to `1` at
+`E = N`; Tier II takes whatever is left. Because the schedule keys on kills, later
+phases (reached with a higher kill count) naturally field tougher tiers, and a
+siege **started** at phase B or C opens at a representative mid-tier via its offset
+(`80` → mostly Tier II; `140` → a Tier II/III mix), never at Tier I.
+
+Wave **size and cadence** are a secondary lever, kept bounded so the renderer holds
+its frame rate (`specs/overview.md`) — escalate through **tier** first, not by
+flooding the field with bodies:
+
+- **Infantry waves.** A wave is a small **mixed group of `5`–`8` attackers**
+  (Rushers and Gunners, at whatever tiers the schedule rolls). Waves arrive about
+  **every 12 s** at a phase's open, tightening toward a **6 s** floor as the phase
+  wears on — never faster than the floor.
+- **Live-population cap.** At most about **40** Scourge attackers may be alive at
+  once (tune this **down** if the frame rate suffers). If a wave would exceed the
+  cap, hold it until units die. The field stays dense but bounded; population never
+  grows without limit.
+- **Breakers** spawn on their **own** cadence (they still count toward the cap):
+  about **one every 20 s** at a phase's open, tightening toward **one every 12 s**.
+  This time-based tightening is the redoubt's clock (see the invariant above);
+  their tier — and so their per-hit redoubt damage — rises with your kill count.
 
 ### Escalation between phases — new units
 
@@ -119,8 +151,8 @@ you must answer changes, on top of the new redoubt having more health
 | **B** | + **Artillery** | Arcing bombardment begins (`specs/combat.md`). |
 | **C** | + **Ravagers** | Heavy elite bruisers that wade into the Wardens. |
 
-Carried-over archetypes keep appearing (and keep climbing tiers within the new
-phase); the newly introduced archetype is the headline threat of the phase. Full
+Carried-over archetypes keep appearing (and keep climbing tiers as your kill count
+rises); the newly introduced archetype is the headline threat of the phase. Full
 stats for every archetype and tier are in `specs/combat.md`. The roster stays
 small — a handful of archetypes, each re-skinned across three tiers rather than
 multiplied into many models — but it **grows** as the siege deepens.
@@ -136,18 +168,22 @@ multiplied into many models — but it **grows** as the siege deepens.
 - There is **no lives limit** — respawns are unlimited. The siege ends only when
   redoubt C falls, never because you ran out of lives.
 
-## Starting phase (deploy choice)
+## Starting phase
 
-On the **deploy** screen (`specs/flow.md`) the player chooses a **starting
-phase** — **A**, **B**, or **C** — as well as a class:
+After choosing **PLAY** on the title screen the player picks a **starting
+phase** — **A**, **B**, or **C** — before dropping into the game (`specs/flow.md`;
+the class is chosen separately, on the in-game spawn UI):
 
-- Starting at **A** is a full siege from the front.
+- Starting at **A** is a full siege from the front, tier schedule opening at Tier I
+  (escalation offset `0`).
 - Starting at **B** or **C** drops you straight into that phase: the redoubts
   forward of it are already fallen, the spawn line and respawn points are set to
   that phase, that phase's full roster (its newly introduced archetype included) is
-  active immediately with the tier ramp opening at a representative mid-phase level
-  rather than Tier I, and you begin with a **full four-Warden squad**. The survival
-  clock still starts at `0:00`.
+  active immediately, the tier schedule opens at a representative mid-tier via its
+  **escalation offset** (`80` for B, `140` for C — see the tier schedule above)
+  rather than at Tier I, and you begin with a **full four-Warden squad**. The
+  survival clock still starts at `0:00`, and the displayed kill counter still
+  starts at `0` (only the tier schedule's escalation count carries the offset).
 
 This lets a player — or a reviewer — jump directly to the tougher, later content
 without first surviving the earlier phases. Whichever phase you start in, the
