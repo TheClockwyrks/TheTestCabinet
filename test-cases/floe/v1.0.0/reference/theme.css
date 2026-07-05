@@ -108,26 +108,26 @@ html, body { margin: 0; padding: 0; overflow: hidden; background: var(--sea); }
 }
 /* Bands (strait-local top). */
 .band { position: absolute; left: 0; width: 1280px; }
-.band.shore  { top: 0;    height: 128px; background: var(--ice); }     /* rows 0-3 */
-.band.water  { top: 128px; height: 256px;                              /* rows 4-11 */
+.band.shore  { top: 0;    height: 64px;  background: var(--ice); }     /* rows 0-1 */
+.band.water  { top: 64px; height: 256px;                              /* rows 2-9 */
   background: linear-gradient(var(--sea), var(--sea-deep));
   background-image: linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 32px 32px;
 }
-.band.median { top: 384px; height: 32px;  background: var(--median);   /* row 12 */
-  border-top: 1px solid var(--ice-edge); border-bottom: 1px solid var(--ice-edge); }
-.band.ice    { top: 416px; height: 192px; background: var(--ice-blue); /* rows 13-18 */
-  background-image: linear-gradient(var(--ice-edge) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(143,182,201,0.4) 1px, transparent 1px);
+.band.median { top: 320px; height: 32px;  background: var(--median);   /* row 10 (bright safe strip) */
+  border-top: 2px solid var(--ice-edge); border-bottom: 2px solid var(--ice-edge); }
+.band.ice    { top: 352px; height: 256px; background: #9fb9c7;         /* rows 11-18 (the road — darker, duller) */
+  background-image: linear-gradient(#7a97a6 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122,151,166,0.5) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 .band.near   { top: 608px; height: 32px;  background: var(--ice);      /* row 19 */
   border-top: 1px solid var(--ice-edge); }
 
-/* ---- Goal bays (far shore, row 3: strait-local top 96) ---------------- */
+/* ---- Goal bays (far shore, row 1: strait-local top 32) ---------------- */
 .bay {
-  position: absolute; top: 96px;
+  position: absolute; top: 32px;
   width: 64px; height: 32px;         /* 2 tiles wide */
   border-radius: 6px 6px 0 0;
 }

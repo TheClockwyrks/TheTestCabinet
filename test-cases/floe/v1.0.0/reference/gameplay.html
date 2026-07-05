@@ -8,8 +8,9 @@
   floes).
 
   Strait objects use strait-local coordinates (the strait sits at stage y=80). A
-  tile (c,r) has left=32c, top=32r. Bands: far shore + bays rows 0-3, water 4-11,
-  median 12, ice band 13-18, near shore 19. The lanes, floes, bear, and critter
+  tile (c,r) has left=32c, top=32r. Bands: far shore + bays rows 0-1, water 2-9,
+  median 10, ice band 11-18, near shore 19. The ice band (road) is a darker,
+  duller ice than the bright shores/median. The lanes, floes, bear, and critter
   shown are one example moment, used for a soft palette/layout comparison, not a
   strict pixel match.
 -->
@@ -39,45 +40,47 @@
         <div class="band ice"></div>
         <div class="band near"></div>
 
-        <!-- ===== Goal bays (far shore, row 3) ===== -->
+        <!-- ===== Goal bays (far shore, row 1) ===== -->
         <div class="bay filled" style="left: 96px"><div class="critter" style="left: 16px; top: 0"><div class="body"></div></div></div>
         <div class="bay open" style="left: 352px"></div>
         <div class="bay filled" style="left: 608px"><div class="critter" style="left: 16px; top: 0"><div class="body"></div></div></div>
         <div class="bay open" style="left: 864px"></div>
         <div class="bay open" style="left: 1120px"></div>
 
-        <!-- ===== Water band — drifting floes (rows 4-11) ===== -->
-        <div class="floe" style="left: 96px; top: 128px; width: 96px"></div>
-        <div class="floe" style="left: 640px; top: 128px; width: 64px"></div>
-        <div class="floe" style="left: 320px; top: 160px; width: 64px"></div>
-        <div class="floe" style="left: 896px; top: 160px; width: 96px"></div>
-        <div class="floe" style="left: 160px; top: 192px; width: 64px"></div>
-        <div class="floe" style="left: 736px; top: 192px; width: 96px"></div>
-        <div class="floe" style="left: 480px; top: 224px; width: 96px"></div>
-        <div class="floe" style="left: 1056px; top: 224px; width: 64px"></div>
-        <div class="floe" style="left: 96px; top: 256px; width: 64px"></div>
-        <div class="floe" style="left: 608px; top: 256px; width: 96px"></div>
-        <div class="floe" style="left: 352px; top: 288px; width: 64px"></div>
-        <div class="floe" style="left: 864px; top: 288px; width: 64px"></div>
-        <div class="floe" style="left: 192px; top: 320px; width: 96px"></div>
-        <div class="floe" style="left: 704px; top: 320px; width: 64px"></div>
-        <div class="floe" style="left: 448px; top: 352px; width: 64px"></div>
-        <div class="floe" style="left: 992px; top: 352px; width: 96px"></div>
+        <!-- ===== Water band — drifting floes (rows 2-9; a mix of pans and solid rafts) ===== -->
+        <div class="floe" style="left: 96px; top: 64px; width: 96px"></div>
+        <div class="floe" style="left: 640px; top: 64px; width: 64px"></div>
+        <div class="floe" style="left: 320px; top: 96px; width: 64px"></div>
+        <div class="floe" style="left: 896px; top: 96px; width: 128px"></div>
+        <div class="floe" style="left: 160px; top: 128px; width: 96px"></div>
+        <div class="floe" style="left: 736px; top: 128px; width: 64px"></div>
+        <div class="floe" style="left: 480px; top: 160px; width: 96px"></div>
+        <div class="floe" style="left: 1040px; top: 160px; width: 64px"></div>
+        <div class="floe" style="left: 96px; top: 192px; width: 128px"></div>
+        <div class="floe" style="left: 608px; top: 192px; width: 96px"></div>
+        <div class="floe" style="left: 352px; top: 224px; width: 64px"></div>
+        <div class="floe" style="left: 864px; top: 224px; width: 96px"></div>
+        <div class="floe" style="left: 192px; top: 256px; width: 96px"></div>
+        <div class="floe" style="left: 704px; top: 256px; width: 64px"></div>
+        <div class="floe" style="left: 448px; top: 288px; width: 96px"></div>
+        <div class="floe" style="left: 992px; top: 288px; width: 96px"></div>
 
-        <!-- The critter, riding a floe partway across the water. -->
-        <div class="critter" style="left: 112px; top: 256px"><div class="body"></div><div class="eye" style="left:13px"></div><div class="eye" style="left:17px"></div></div>
+        <!-- The critter, riding a floe partway across the water (row 5). -->
+        <div class="critter" style="left: 500px; top: 160px"><div class="body"></div><div class="eye" style="left:13px"></div><div class="eye" style="left:17px"></div></div>
 
-        <!-- The bear, swimming up through the water after the critter — shown as a
-             submerged silhouette with a wake so it stays trackable. -->
-        <div class="bear swim" style="left: 176px; top: 320px"><div class="mass"></div></div>
+        <!-- The bear, swimming up through the water after the critter — a
+             submerged silhouette with a wake so it stays trackable (row 8). -->
+        <div class="bear swim" style="left: 220px; top: 256px"><div class="mass"></div></div>
 
-        <!-- ===== Ice band — sliding vehicles (rows 13-18): 3-tile plows, 2-tile dogsleds ===== -->
-        <div class="plow" style="left: 160px; top: 416px"><div class="hull"></div><div class="cab"></div><div class="blade"></div><div class="beacon"></div></div>
-        <div class="dogsled" style="left: 640px; top: 448px"><div class="dogs"></div><div class="harness"></div><div class="sled"></div><div class="musher"></div></div>
-        <div class="plow" style="left: 900px; top: 480px"><div class="hull"></div><div class="cab"></div><div class="blade"></div><div class="beacon"></div></div>
-        <div class="dogsled" style="left: 320px; top: 512px"><div class="dogs"></div><div class="harness"></div><div class="sled"></div><div class="musher"></div></div>
-        <div class="plow" style="left: 704px; top: 544px"><div class="hull"></div><div class="cab"></div><div class="blade"></div><div class="beacon"></div></div>
-        <div class="dogsled" style="left: 448px; top: 576px"><div class="dogs"></div><div class="harness"></div><div class="sled"></div><div class="musher"></div></div>
+        <!-- ===== Ice band — sliding vehicles (rows 11-18): 3-tile plows, 2-tile dogsleds ===== -->
+        <div class="plow" style="left: 160px; top: 352px"><div class="hull"></div><div class="cab"></div><div class="blade"></div><div class="beacon"></div></div>
+        <div class="dogsled" style="left: 640px; top: 384px"><div class="dogs"></div><div class="harness"></div><div class="sled"></div><div class="musher"></div></div>
+        <div class="plow" style="left: 900px; top: 416px"><div class="hull"></div><div class="cab"></div><div class="blade"></div><div class="beacon"></div></div>
+        <div class="dogsled" style="left: 320px; top: 448px"><div class="dogs"></div><div class="harness"></div><div class="sled"></div><div class="musher"></div></div>
+        <div class="plow" style="left: 704px; top: 480px"><div class="hull"></div><div class="cab"></div><div class="blade"></div><div class="beacon"></div></div>
+        <div class="dogsled" style="left: 448px; top: 512px"><div class="dogs"></div><div class="harness"></div><div class="sled"></div><div class="musher"></div></div>
+        <div class="plow" style="left: 200px; top: 544px"><div class="hull"></div><div class="cab"></div><div class="blade"></div><div class="beacon"></div></div>
+        <div class="dogsled" style="left: 820px; top: 576px"><div class="dogs"></div><div class="harness"></div><div class="sled"></div><div class="musher"></div></div>
       </div>
     </div>
   </body>

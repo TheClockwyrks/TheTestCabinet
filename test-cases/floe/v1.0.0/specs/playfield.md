@@ -27,44 +27,53 @@ top.
 
 ## The bands
 
-From bottom to top, the strait is laid out in fixed bands:
+From bottom to top, the strait is laid out in fixed bands. The **ice band and the
+water band are the same size — eight lanes each** — and the far shore is kept thin
+so the two crossing zones dominate the strait:
 
 | Rows | Band | Footing |
 | --- | --- | --- |
 | 19 | **Near shore** | Solid ice — safe. The critter spawns here; the bear emerges here. |
-| 13–18 | **Ice band** (6 lanes) | Solid ice you may stand on anywhere, but **sliding hazards** cross it (`specs/hazards.md`). |
-| 12 | **Median shelf** | Solid ice — safe footing (but the bear can reach it). |
-| 4–11 | **Water band** (8 lanes) | Deep **deadly water**; crossable only on drifting **floes** (`specs/water.md`). |
-| 0–3 | **Far shore** | Solid ice, mostly **impassable wall**, cut by the goal **bays** (below). |
+| 11–18 | **Ice band** (8 lanes) | Solid ice you may stand on anywhere, but **sliding vehicles** cross it (`specs/hazards.md`). |
+| 10 | **Median shelf** | Solid ice — safe footing (but the bear can reach it). |
+| 2–9 | **Water band** (8 lanes) | Deep **deadly water**; crossable only on drifting **floes** (`specs/water.md`). |
+| 0–1 | **Far shore** | Solid ice, mostly **impassable wall**, cut by the goal **bays** (below). |
 
-- The **near shore** (row 19) and the **median shelf** (row 12) are full-width
-  solid strips the critter can rest on. They are safe from the hazards and the
-  water — but not from the bear, which can reach any solid tile
-  (`specs/hunter.md`). Only a filled bay is ever truly safe.
-- The **ice band** rows are solid ice: the critter hops freely on them and may
-  pause on an empty tile, but each row is a lane a hazard slides along, and contact
-  with a hazard is death (`specs/hazards.md`).
+- The **near shore** (row 19) and the **median shelf** (row 10) are full-width solid
+  strips the critter can rest on. They are safe from the vehicles and the water
+  — but
+  not from the bear, which can reach any solid tile (`specs/hunter.md`). Only a
+  filled bay is ever truly safe.
+- The **ice band** rows are solid ice: the critter hops freely on them and may pause
+  on an empty tile, but each row is a lane a vehicle slides along, and contact
+  with a
+  vehicle is death (`specs/hazards.md`). The ice band reads as a **darker, duller
+  ice** than the bright shores and median, so the median stands out as a clear safe
+  strip (`specs/overview.md`).
 - The **water band** rows are deadly water: standing on a water tile with no floe
   under you is death (`specs/water.md`). The critter crosses by hopping onto floes
   and riding them.
 
 ## The far shore and the goal bays
 
-The far shore (rows 0–3) is solid ice the critter cannot stand on **except** at
+The far shore (rows 0–1) is solid ice the critter cannot stand on **except** at
 the
 **goal bays**: **5 bays**, each a **2-tile-wide** opening in the shore along row
-3,
-centered near columns **4, 12, 20, 28, and 36**, with solid impassable shore
-between them.
+1,
+centered near columns **4, 12, 20, 28, and 36**, with solid impassable shore between
+them (and the solid cap of row 0 behind them).
 
-- The critter reaches a bay by hopping **up from the top water lane (row 4) into
+- The critter reaches a bay by hopping **up from the top water lane (row 2) into
   an
-  open bay tile**. Landing in an **open** bay **fills** it (scores and starts a
-  fresh crossing — `specs/flow.md`).
-- A **filled** bay is occupied (show the critter resting in it) and cannot be
-  entered again; the solid shore between bays cannot be entered at all — a hop that
-  would land the critter on filled-bay or solid shore is **refused** (the critter
-  does not move there), so the only way onto the far shore is into an open bay.
+  open bay tile** in row 1. Landing in an **open** bay **fills** it (scores and
+  starts
+  a fresh crossing — `specs/flow.md`).
+- A **filled** bay is occupied (show the critter resting in it) and cannot be entered
+  again; the solid shore between bays cannot be entered at all — a hop that
+  would land
+  the critter on filled-bay or solid shore is **refused** (the critter does not
+  move
+  there), so the only way onto the far shore is into an open bay.
 - **Filling all 5 bays clears the level** (`specs/flow.md`).
 
 ## The HUD bar
@@ -74,12 +83,12 @@ The HUD bar (`y` in `[0, 80]`) carries the status readouts across the full width
 
 - **SCORE** — the running score (`specs/flow.md`), the most prominent readout.
 - **LIVES** — the crosser lives remaining, shown as a small row of critter icons
-  (or a count).
+  (or
+  a count).
 - **LEVEL** — the current level as `LEVEL n / 8` (`specs/flow.md`).
-- **TIME** — the per-crossing timer, as a draining bar or countdown
-  (`specs/flow.md`).
-- A small row of **bay markers** showing which of the 5 bays are filled is
-  encouraged (in the HUD or drawn at the bays themselves).
+- **TIME** — the per-crossing timer, as a draining bar or countdown (`specs/flow.md`).
+- A small row of **bay markers** showing which of the 5 bays are filled is encouraged
+  (in the HUD or drawn at the bays themselves).
 
 The HUD bar must always be fully visible above the strait at every window size
 (`specs/overview.md`).

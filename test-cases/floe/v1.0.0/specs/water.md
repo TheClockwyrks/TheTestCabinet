@@ -2,16 +2,24 @@
 
 ## Overview
 
-This file defines the **water band** (rows 4–11, `specs/playfield.md`): eight lanes
+This file defines the **water band** (rows 2–9, `specs/playfield.md`): **eight**
+lanes
 of deadly sea crossed only by riding drifting **floes**, and how the critter reaches
 the far-shore bays. It uses the grid and palette from `specs/overview.md`. The bear
 swims this band too (`specs/hunter.md`). The exact floe speeds, sizes, and spacing
 are a **starting balance** you design; the behavior here is fixed.
 
+The water band is the **riskier** of the two crossing zones: its floes move **faster**
+and in a **wider speed range** (with a higher top speed) than the ice band's vehicles
+(`specs/hazards.md`), so crossing the water demands sharper timing than crossing
+the
+road.
+
 ## Deadly water
 
-Every tile of the water band is deep, freezing sea. **Standing on a water tile with
-no floe under the critter is death** — the critter falls in and **loses a life**
+Every tile of the water band is deep, freezing sea. **Standing on a water tile
+with no
+floe under the critter is death** — the critter falls in and **loses a life**
 (`specs/flow.md`). The critter crosses only by hopping onto floes and riding them.
 
 ## Drifting floes
@@ -22,7 +30,8 @@ the provided sprites (`specs/assets.md`):
 
 - Each lane has a fixed **direction** and **speed**; **alternate the direction**
   lane
-  to lane and vary the speeds, as with the ice band (`specs/hazards.md`).
+  to lane, and vary the speeds across the water's **wide** range so some lanes crawl
+  and some race.
 - **Floes come in a mix of lengths.** Use them so some floes demand a precise landing
   and some are more forgiving, with real gaps of open water between them:
   - a **small floe** — one tile — the pan sprite (`assets/pan/`);
@@ -34,7 +43,7 @@ the provided sprites (`specs/assets.md`):
   tile
   the small pan across a long floe.
 - Floes drift straight along their lane and respawn at the far edge, like the
-  hazards.
+  vehicles.
 
 ## Riding and drifting
 
@@ -52,16 +61,17 @@ the provided sprites (`specs/assets.md`):
   it **off the strait** (past the left or right edge), the critter is lost and **loses
   a life**. You must hop off a floe before it drifts you off the edge — riding
   one to
-  the edge is fatal.
+  the edge is fatal. (Faster floes reach the edge sooner, so the fast lanes punish
+  lingering.)
 - Hopping onto **open water** (a tile with no floe) is death (above); hopping onto
-  another floe, or back onto the median shelf (row 12) or into a bay, is safe.
+  another floe, or back onto the median shelf (row 10) or into a bay, is safe.
 
 ## Reaching the bays
 
-The top water lane is **row 4**, just below the far shore (rows 0–3,
-`specs/playfield.md`). From a floe in row 4 the critter hops **up into an open
+The top water lane is **row 2**, just below the far shore (rows 0–1,
+`specs/playfield.md`). From a floe in row 2 the critter hops **up into an open
 bay** in
-row 3 to complete the crossing:
+row 1 to complete the crossing:
 
 - Landing in an **open** bay fills it, scores, and starts a fresh crossing from
   the
@@ -77,12 +87,13 @@ row 3 to complete the crossing:
 
 | Quantity | Value |
 | --- | --- |
-| Water-band lanes | 8 (rows 4–11) |
+| Water-band lanes | 8 (rows 2–9) |
 | Floe lengths | 1 tile (pan), 3 and 4 tiles (solid rafts) |
-| Floe speed range | about `1.5`–`4` tiles/second |
+| Floe speed range | about `3.0`–`5.0` tiles/second (faster and wider than the road) |
 | Per-level speed increase | about `+6%` per level (`specs/flow.md`) |
 | Off a floe onto water / off the edge | death (lose a life) |
 
-Keep the water band **crossable** at level 1 — forgiving floe sizes, real gaps,
-moderate speeds — and let the speeds climb and the floes thin with the level
-(`specs/flow.md`).
+Keep the water band **crossable** at level 1 — forgiving floe sizes, real gaps —
+but
+noticeably faster and riskier than the road, and let the speeds climb and the floes
+thin with the level (`specs/flow.md`).

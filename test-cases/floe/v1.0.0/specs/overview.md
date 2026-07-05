@@ -140,10 +140,11 @@ match them.
 | Sea / deadly water | `#0a2233` |
 | Sea — deep shadow | `#061a28` |
 | Grid lines (on water) | `#123a4e` |
-| Ice — shore / surface | `#dfeef5` |
-| Ice — pale blue | `#c3dee9` |
+| Ice — shore / surface (bright) | `#dfeef5` |
+| Median shelf (bright) | `#cfe6f2` |
+| Ice band — the road (darker, duller) | `#9fb9c7` |
+| Floe — pale ice (small pan) | `#c3dee9` |
 | Ice edge / grid (on ice) | `#8fb6c9` |
-| Median shelf | `#cfe6f2` |
 | Goal bay — open (inviting glow) | `#ffd27f` |
 | Crosser — warm fur | `#f2a03a` |
 | Crosser — cream | `#ffe0a8` |
@@ -152,9 +153,8 @@ match them.
 | Bear — outline / eyes / nose | `#26323a` |
 | Bear — submerged silhouette | `#5b6f7a` |
 | Bear — wake / ripple | `#cfe6f2` |
-| Crawler — steel | `#4a5560` |
+| Plow / vehicle — steel | `#4a5560` |
 | Hazard yellow | `#ffd23f` |
-| Berg — ice | `#9cc0d6` |
 | Splash / spray | `#cfe6f2` |
 | Score / readouts | `#7fe0d0` |
 | Warning / danger | `#e0492f` |
@@ -165,10 +165,12 @@ match them.
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do not
   depend on a web font that must be downloaded; a system monospace stack is required
   so the game renders identically offline.
-- The bands read clearly apart: the **shores, median, and ice band** are pale ice;
-  the **water band** is dark deadly sea; the **bays** glow warm and inviting at
-  the
-  top. A faint tile grid is visible so the player can read the lanes.
+- The bands read clearly apart: the **shores** and the **median shelf** are bright
+  pale ice; the **ice band** (the road) is a **darker, duller ice** so the median
+  reads clearly as a distinct safe strip between the darker road and the dark water;
+  the **water band** is dark deadly sea; and the **bays** glow warm and inviting
+  at
+  the top. A faint tile grid is visible so the player can read the lanes.
 - **The bear must always be readable.** It is a big white animal on pale ice, so
   render it with its dark outline (`specs/assets.md`) so it never disappears against
   the ice — and when it swims it must still be trackable as a silhouette and wake
