@@ -14,8 +14,9 @@
  *     has left=32c, top=32r (strait-local).
  *
  * The critter is warm, the bear is big and white with a dark outline (and a
- * submerged silhouette + wake when swimming); hazards are the steel crawler and
- * the blue berg; floes are pale pans. See ../specs/hunter.md and ../specs/assets.md.
+ * submerged silhouette + wake when swimming); the ice-band hazards are the long
+ * snow plow (3 tiles) and the dogsled (2 tiles); floes are pale pans/rafts. See
+ * ../specs/hunter.md, ../specs/hazards.md, and ../specs/assets.md.
  */
 
 :root {
@@ -171,28 +172,28 @@ html, body { margin: 0; padding: 0; overflow: hidden; background: var(--sea); }
   opacity: 0.7;
 }
 
-/* Crawler — steel hazard machine. */
-.crawler {
-  position: absolute; width: 32px; height: 32px; z-index: 4;
+/* Snow plow — long steel hazard vehicle (3 tiles = 96px), faces right. */
+.plow {
+  position: absolute; width: 96px; height: 32px; z-index: 4;
 }
-.crawler .hull {
-  position: absolute; left: 2px; top: 8px; width: 28px; height: 16px;
+.plow .hull {
+  position: absolute; left: 2px; top: 7px; width: 78px; height: 15px;
   background: var(--steel); border-radius: 3px;
-  border-bottom: 4px solid #171c21;
+  border-bottom: 8px solid #171c21;
 }
-.crawler .stripe { position: absolute; right: 3px; top: 8px; width: 4px; height: 12px; background: var(--yellow); }
-.crawler .beacon { position: absolute; right: 8px; top: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--danger); }
+.plow .cab { position: absolute; left: 10px; top: 1px; width: 20px; height: 8px; background: var(--steel); border-radius: 2px; }
+.plow .cab::after { content: ""; position: absolute; left: 3px; top: 2px; width: 14px; height: 4px; background: #7fb0c4; }
+.plow .blade { position: absolute; right: 2px; top: 3px; width: 10px; height: 26px; background: var(--yellow); }
+.plow .beacon { position: absolute; left: 22px; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: var(--danger); }
 
-/* Berg — jagged ice hazard. */
-.berg {
-  position: absolute; width: 32px; height: 32px; z-index: 4;
+/* Dogsled — fast sled-dog team (2 tiles = 64px), faces right (dogs lead). */
+.dogsled {
+  position: absolute; width: 64px; height: 32px; z-index: 4;
 }
-.berg .ice {
-  position: absolute; left: 5px; top: 6px; width: 22px; height: 22px;
-  background: var(--berg);
-  clip-path: polygon(20% 0, 45% 25%, 70% 5%, 100% 45%, 85% 100%, 15% 100%, 0 55%);
-  border: 1px solid #5a86a2;
-}
+.dogsled .dogs { position: absolute; right: 4px; top: 13px; width: 26px; height: 9px; background: #d8dde0; border-radius: 4px; border-bottom: 3px solid #3a4249; }
+.dogsled .harness { position: absolute; left: 24px; top: 17px; width: 14px; height: 2px; background: #c08a3a; }
+.dogsled .sled { position: absolute; left: 4px; top: 16px; width: 20px; height: 7px; background: #2a2f34; border-radius: 2px; }
+.dogsled .musher { position: absolute; left: 11px; top: 8px; width: 6px; height: 9px; background: var(--danger); }
 
 /* Floe — pale drifting pan (one tile; tile across for a wide floe). */
 .floe {

@@ -1,0 +1,75 @@
+name = "Floe Plow"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite", "hazard"]
+summary = """
+Draw the snow plow — a big, long tracked hazard vehicle in the Floe arctic-crossing \
+game — as a 96x32 (three-tile) sprite: a hard-edged steel plow on caterpillar \
+treads with a tall hazard-yellow plow blade, a glass cab, and a red beacon, \
+produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The plow is a long, three-tile vehicle, so the canvas is 96x32 (three 32-pixel
+# tiles). Fixing the size keeps every run comparable.
+[canvas]
+width = 96
+height = 32
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the brief — a big, long, hard-edged \
+tracked plow facing right, filling the 96x32 canvas, with a steel chassis on \
+caterpillar treads, a tall hazard-yellow plow blade at the leading edge, a glass \
+cab, and a red beacon, in the industrial palette on transparency."""
+
+[[review_item]]
+id = "dangerous-machine"
+title = "Reads as a big dangerous machine"
+text = """
+The sprite reads at a glance as a large, heavy, dangerous road machine — straight \
+lines, right angles, metal, and clearly long (it fills the three-tile 96x32 canvas) \
+— a hazard to dodge, not a creature and not a safe platform to stand on."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "plow-details"
+title = "Snow-plow details"
+text = """
+It reads specifically as a tracked snow plow: a long steel chassis on a heavy \
+caterpillar tread, a tall hazard-yellow plow blade at its leading (right) edge, a \
+raised cab with a glass window, and a red warning beacon on top — built and \
+detailed along its length, not a plain block."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-framing"
+title = "Industrial palette, transparency, and framing"
+text = """
+Uses only the industrial palette from the brief (steel, dark, tread, hazard yellow, \
+beacon red, cab glass) on full transparency — no out-of-palette pixels, no fringes, \
+no background fill — and fills most of the 96x32 canvas, facing right, without \
+clipping flat against an edge."""
+weight = 1
+domain = "fidelity"

@@ -37,8 +37,8 @@ start; they cross-reference each other by name and form one specification.
   bays, and the HUD layout.
 - `specs/hunter.md` — the signature system: the bear, how it pursues, how it
   navigates hazards and water, and how it stays readable. **Read this carefully.**
-- `specs/hazards.md` — the ice band: the sliding hazards (the crawler and the
-  berg), their lanes and speeds, and how they kill.
+- `specs/hazards.md` — the ice band: the sliding vehicles (the snow plow and the
+  dogsled), their lanes and speeds, and how they kill.
 - `specs/water.md` — the water band: the drifting floes, riding and drifting with
   them, drowning and off-edge death, and reaching the far-shore bays.
 - `specs/controls.md` — the keyboard controls: the one-tile hop, and pause.

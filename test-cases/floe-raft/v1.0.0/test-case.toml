@@ -1,0 +1,102 @@
+name = "Floe Raft"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite-sheet", "prop"]
+summary = """
+Draw the long, solid drifting ice floes of the Floe arctic-crossing game — the \
+rafts the player rides — as a 128x32 two-frame sprite sheet: a three-tile floe and \
+a four-tile floe, each one continuous rounded slab (not separate pans) with a snow \
+top and a waterline, produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header
+# (`[canvas]`).
+variants = ["variants/base.toml"]
+
+# The canvas is 128x32 (four 32-pixel tiles wide): frame 0 fills the left three
+# tiles (the 3-tile floe), frame 1 fills all four (the 4-tile floe). Fixing the
+# size keeps every run comparable.
+[canvas]
+width = 128
+height = 32
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — two separate 128x32 frames, the 3-tile and 4-tile
+# floes — and a sequence the reviewer flips between to compare the two lengths.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.sequence]]
+slug = "lengths"
+name = "Floe — 3-tile and 4-tile"
+frames = [0, 1]
+fps = 1
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated floes match the brief — two solid, continuous, flat \
+ice rafts (a three-tile and a four-tile length) with a snow-dusted top, a ringed \
+ice edge, and a waterline, each one single long slab rather than separate pans, in \
+the pale ice palette on transparency."""
+
+[[review_item]]
+id = "solid-long-floe"
+title = "Each is one solid long floe"
+text = """
+Each frame reads as ONE continuous, solid, flat floe of its length — a single \
+rounded slab with a continuous snow top, ice edge, and waterline running the whole \
+length — NOT several small pans butted together (no internal seams, gaps, or \
+repeated end-caps in the middle). It is calm, flat footing, not a jagged hazard."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "two-lengths"
+title = "Three-tile and four-tile lengths"
+text = """
+Frame 0 is a three-tile floe filling the left 96x32 of the canvas (with the right \
+tile left transparent), and frame 1 is a four-tile floe filling the full 128x32. \
+They are clearly the same floe design at two clean lengths — same height, snow top, \
+edge, and waterline — with rounded left and right ends."""
+sequences = ["lengths"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-transparency"
+title = "Pale ice palette on transparency"
+text = """
+Uses only the pale ice palette from the brief (snow top, ice body, ice edge, \
+waterline shadow) on full transparency — no out-of-palette pixels, no anti-aliased \
+fringes, and no opaque background fill; only the floe's pixels are opaque so it \
+composites onto the dark water."""
+weight = 1
+domain = "fidelity"

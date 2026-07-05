@@ -36,7 +36,7 @@ The `title` view has one mockup per variant: this version declares the single
 `base` variant, whose menu (`menu-base.html`) lists `CROSS` then `HOW TO PLAY`.
 
 The `gameplay.html` frame shows the intended look of a live crossing: the strait's
-bands (the near shore, the ice band of sliding crawlers and bergs, the median, the
+bands (the near shore, the ice band of sliding plows and dogsleds, the median, the
 water band of drifting floes, and the far shore with its bays — some filled, some
 open), the warm critter riding a floe partway across, and the bear swimming up
 after it (shown as a submerged silhouette with a wake), with the HUD (score, lives,
