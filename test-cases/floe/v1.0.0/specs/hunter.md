@@ -72,9 +72,9 @@ critter does, and it can be **taken out** by the hazards:
   detours** it. Leading the bear into a lane a hazard is sweeping is a
   legitimate way
   to open distance.
-- **If a hazard catches the bear, the bear is RESET.** If a plow or dogsled runs
-  into
-  the bear's tile (you juke it into traffic, or it mistimes a lane), the bear is
+- **If a hazard catches the bear, the bear is RESET.** If a plow, dogsled, or
+  car runs into the bear's tile (you juke it into traffic, or it mistimes a
+  lane), the bear is
   **knocked out and removed** — it does **not** shrug it off, and it does **not**
   merely drop back a row. It then **re-emerges from the near shore** after a short
   delay, exactly as when a crossing begins. So driving the bear in front of a hazard

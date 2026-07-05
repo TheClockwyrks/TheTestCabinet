@@ -4,9 +4,9 @@ difficulty = "easy"
 tags = ["asset-generation", "2d", "sprite", "prop"]
 summary = """
 Draw the ice floe — the safe drifting platform in the Floe arctic-crossing game — \
-as a 32x32 sprite: a flat, smooth, rounded ice pan with a snow-dusted top, a ringed \
-edge, and a waterline shadow so it reads as floating, distinct from a jagged \
-hazard, produced one drawing operation at a time."""
+as a 32x32 sprite: a flat ice pan with the jagged, broken edges of real fractured \
+sea ice, a snow-dusted top, a ringed edge, and a waterline shadow so it reads as \
+floating, produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.5
@@ -36,18 +36,19 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sprite matches the brief — a flat, smooth, rounded, \
-tile-filling ice pan with a snow-dusted top, a ringed ice edge, and a waterline \
-shadow so it reads as floating and safe, distinct from a jagged hazard, in the pale \
-ice palette on transparency."""
+How faithfully the regenerated sprite matches the brief — a flat, tile-filling ice \
+pan with the jagged, irregular edges of fractured sea ice, a snow-dusted top, a \
+ringed ice edge, and a waterline shadow so it reads as floating and safe, in the \
+pale ice palette on transparency."""
 
 [[review_item]]
 id = "flat-safe-platform"
 title = "Reads as flat, safe footing"
 text = """
-The sprite reads at a glance as a flat, calm, solid platform to stand on — smooth \
-and rounded, snow-dusted — clearly a safe footing and clearly NOT a jagged, sharp, \
-dangerous ice hazard. It has no facets or sharp points."""
+The sprite reads at a glance as a flat, calm, solid platform to stand on — a \
+snow-dusted top face that is clearly safe footing — while its outline is the \
+irregular, jagged shape of fractured sea ice, not a smooth circle or neat lozenge. \
+The jaggedness is in the edges; the top stays flat, with no tall facets."""
 weight = 3
 domain = "fidelity"
 
@@ -55,9 +56,9 @@ domain = "fidelity"
 id = "floating-pan"
 title = "Reads as a floating pan"
 text = """
-It reads as a low pan floating on water, not a tall block: a rounded tile-filling \
-slab with a snow-dusted top surface, a ringed ice edge, and a darker waterline \
-shadow along the bottom rim where it meets the sea."""
+It reads as a low pan floating on water, not a tall block: an irregular, \
+jagged-edged tile-filling slab with a snow-dusted top surface, a ringed ice edge, \
+and a darker waterline shadow along the bottom rim where it meets the sea."""
 weight = 2
 domain = "fidelity"
 
@@ -67,7 +68,7 @@ title = "Pale ice palette, transparency, and framing"
 text = """
 Uses only the pale ice palette from the brief (snow top, ice body, ice edge, \
 waterline shadow) on full transparency — no out-of-palette pixels, no fringes, no \
-background fill — and fills most of the 32×32 frame as a rounded pan without \
-clipping flat against an edge."""
+background fill — and fills most of the 32×32 frame as an irregular, jagged-edged \
+pan without clipping flat against an edge."""
 weight = 1
 domain = "fidelity"

@@ -38,12 +38,11 @@ horizontally, and touching one is death.
   safe
   from the bear.
 
-## The two vehicles
+## The three vehicles
 
-Two kinds of vehicle populate the lanes, rendered from the provided sprites
-(`specs/assets.md`). Both are **multi-tile vehicles** — the whole sprite moves
-as one
-unit and every tile it covers is deadly:
+Three kinds of vehicle populate the lanes, rendered from the provided sprites
+(`specs/assets.md`). All are **multi-tile vehicles** — the whole sprite moves as
+one unit and every tile it covers is deadly:
 
 - **The snow plow** — a big, heavy machine **three tiles long**
   (`assets/plow/`). Use
@@ -52,13 +51,15 @@ unit and every tile it covers is deadly:
 - **The dogsled** — a fast sled-dog team **two tiles long** (`assets/dogsled/`).
   Use
   it for the quicker lanes. Mirror it for a left-moving lane.
+- **The car** — an ordinary sedan **two tiles long** (`assets/car/`). Another
+  quick vehicle; use it in the quicker lanes alongside the dogsled. Mirror it for
+  a left-moving lane.
 
 Give the band variety — some slow three-tile plow lanes, some quicker two-tile
-dogsled lanes — so the eight lanes do not all read the same. A long plow leaves
-a
-smaller gap behind it than a dogsled at the same spacing, so the vehicle length
-is
-part of the timing.
+dogsled and car lanes — so the eight lanes do not all read the same. A long plow
+leaves a smaller gap behind it than a two-tile car or dogsled at the same spacing,
+so the vehicle length is part of the timing. Mix the two-tile vehicles (car and
+dogsled) so the quicker lanes are not all the same sprite.
 
 ## Numbers (starting balance)
 
@@ -67,6 +68,7 @@ part of the timing.
 | Ice-band lanes | 8 (rows 11–18) |
 | Plow length | 3 tiles (`assets/plow/`) |
 | Dogsled length | 2 tiles (`assets/dogsled/`) |
+| Car length | 2 tiles (`assets/car/`) |
 | Lane speed range | about `1.5`–`2.5` tiles/second (slower and narrower than the water) |
 | Per-level speed increase | about `+6%` per level (`specs/flow.md`) |
 | Vehicle contact (any covered tile) | death (lose a life) |

@@ -9,14 +9,15 @@
  * Stage geometry (matches ../specs/overview.md and ../specs/playfield.md):
  *   - 1280x720 stage. HUD bar y[0,80] (full width); strait y[80,720] (1280x640).
  *   - Strait is a 40-col x 20-row grid of 32x32 tiles. Row 0 = top (far shore),
- *     row 19 = bottom (near shore). Bands (rows): far shore + bays 0-3, water
- *     4-11, median 12, ice band 13-18, near shore 19. A tile (c,r) in the strait
+ *     row 19 = bottom (near shore). Bands (rows): far shore + bays 0-1, water
+ *     2-9, median 10, ice band 11-18, near shore 19. A tile (c,r) in the strait
  *     has left=32c, top=32r (strait-local).
  *
  * The critter is warm, the bear is big and white with a dark outline (and a
  * submerged silhouette + wake when swimming); the ice-band hazards are the long
- * snow plow (3 tiles) and the dogsled (2 tiles); floes are pale pans/rafts. See
- * ../specs/hunter.md, ../specs/hazards.md, and ../specs/assets.md.
+ * snow plow (3 tiles), the dogsled (2 tiles), and the car (2 tiles), all seen
+ * top-down; floes are pale, jagged pans/rafts. See ../specs/hunter.md,
+ * ../specs/hazards.md, and ../specs/assets.md.
  */
 
 :root {
@@ -37,9 +38,9 @@
   --bear-sub: #5b6f7a;   /* bear submerged silhouette */
   --wake: #cfe6f2;       /* bear wake / spray */
 
-  --steel: #4a5560;      /* crawler steel */
+  --steel: #4a5560;      /* vehicle steel */
   --yellow: #ffd23f;     /* hazard yellow */
-  --berg: #9cc0d6;       /* berg ice */
+  --car: #b5423a;        /* car body (sedan red) */
 
   --score: #7fe0d0;      /* score / readouts */
   --danger: #e0492f;     /* warning */
@@ -172,37 +173,120 @@ html, body { margin: 0; padding: 0; overflow: hidden; background: var(--sea); }
   opacity: 0.7;
 }
 
-/* Snow plow — long steel hazard vehicle (3 tiles = 96px), faces right. */
+/* Snow plow — long steel hazard vehicle (3 tiles = 96px), TOP-DOWN, faces right.
+   Treads run along both long sides; a wide yellow blade across the leading edge. */
 .plow {
   position: absolute; width: 96px; height: 32px; z-index: 4;
 }
-.plow .hull {
-  position: absolute; left: 2px; top: 7px; width: 78px; height: 15px;
-  background: var(--steel); border-radius: 3px;
-  border-bottom: 8px solid #171c21;
+.plow::before, .plow::after {
+  content: ""; position: absolute; left: 4px; width: 80px; height: 5px;
+  background: #171c21; border-radius: 2px;
 }
-.plow .cab { position: absolute; left: 10px; top: 1px; width: 20px; height: 8px; background: var(--steel); border-radius: 2px; }
-.plow .cab::after { content: ""; position: absolute; left: 3px; top: 2px; width: 14px; height: 4px; background: #7fb0c4; }
-.plow .blade { position: absolute; right: 2px; top: 3px; width: 10px; height: 26px; background: var(--yellow); }
-.plow .beacon { position: absolute; left: 22px; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: var(--danger); }
+.plow::before { top: 2px; }   /* top track */
+.plow::after  { top: 25px; }  /* bottom track */
+.plow .body {
+  position: absolute; left: 4px; top: 6px; width: 80px; height: 20px;
+  background: var(--steel); border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+.plow .cab {
+  position: absolute; left: 10px; top: 9px; width: 24px; height: 14px;
+  background: #39424b; border-radius: 2px;
+}
+.plow .cab::after {
+  content: ""; position: absolute; right: 3px; top: 3px; width: 6px; height: 8px;
+  background: #7fb0c4; border-radius: 1px;   /* windshield toward the front */
+}
+.plow .blade {
+  position: absolute; right: 0; top: 0; width: 13px; height: 32px;
+  background: var(--yellow); border-radius: 2px;
+}
+.plow .beacon {
+  position: absolute; left: 18px; top: 13px; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--danger); box-shadow: 0 0 5px var(--danger);
+}
 
-/* Dogsled — fast sled-dog team (2 tiles = 64px), faces right (dogs lead). */
+/* Dogsled — fast sled-dog team (2 tiles = 64px), TOP-DOWN, dogs lead at right.
+   Two huskies seen from above, harness back to a sled on runners + musher. */
 .dogsled {
   position: absolute; width: 64px; height: 32px; z-index: 4;
 }
-.dogsled .dogs { position: absolute; right: 4px; top: 13px; width: 26px; height: 9px; background: #d8dde0; border-radius: 4px; border-bottom: 3px solid #3a4249; }
-.dogsled .harness { position: absolute; left: 24px; top: 17px; width: 14px; height: 2px; background: #c08a3a; }
-.dogsled .sled { position: absolute; left: 4px; top: 16px; width: 20px; height: 7px; background: #2a2f34; border-radius: 2px; }
-.dogsled .musher { position: absolute; left: 11px; top: 8px; width: 6px; height: 9px; background: var(--danger); }
+.dogsled .dog {
+  position: absolute; right: 3px; width: 24px; height: 9px;
+  background: #d8dde0; border-radius: 5px; border-top: 3px solid #3a4249;
+}
+.dogsled .dog.d1 { top: 5px; }
+.dogsled .dog.d2 { top: 18px; }
+.dogsled .harness {
+  position: absolute; left: 22px; top: 15px; width: 14px; height: 2px;
+  background: #c08a3a;
+}
+.dogsled .sled {
+  position: absolute; left: 6px; top: 9px; width: 18px; height: 14px;
+  background: #2a2f34; border-radius: 2px;
+}
+.dogsled .sled::before, .dogsled .sled::after {
+  content: ""; position: absolute; left: -1px; width: 20px; height: 2px;
+  background: #171c21;   /* runners along both edges */
+}
+.dogsled .sled::before { top: -2px; }
+.dogsled .sled::after  { bottom: -2px; }
+.dogsled .musher {
+  position: absolute; left: 10px; top: 11px; width: 9px; height: 9px;
+  background: var(--danger); border-radius: 50%;   /* head/shoulders from above */
+}
 
-/* Floe — pale drifting pan (one tile; tile across for a wide floe). */
+/* Car — ordinary sedan (2 tiles = 64px), TOP-DOWN, faces right. Rounded red body,
+   glass cabin, four corner wheels, headlights front / taillights rear. */
+.car {
+  position: absolute; width: 64px; height: 32px; z-index: 4;
+}
+.car .body {
+  position: absolute; left: 4px; top: 6px; width: 56px; height: 20px;
+  background: var(--car); border: 1.5px solid var(--bear-line); border-radius: 10px;
+}
+.car .cabin {
+  position: absolute; left: 20px; top: 9px; width: 24px; height: 14px;
+  background: #7d2c27; border-radius: 3px;
+}
+.car .cabin::before {
+  content: ""; position: absolute; right: 2px; top: 2px; width: 6px; height: 10px;
+  background: #7fb0c4; border-radius: 1px;   /* windshield (front) */
+}
+.car .cabin::after {
+  content: ""; position: absolute; left: 2px; top: 2px; width: 5px; height: 10px;
+  background: #7fb0c4; border-radius: 1px;    /* rear window */
+}
+.car .wheel {
+  position: absolute; width: 9px; height: 4px; background: #171c21;
+  border-radius: 2px;
+}
+.car .wheel.fl { right: 9px; top: 3px; }
+.car .wheel.fr { right: 9px; top: 25px; }
+.car .wheel.rl { left: 11px; top: 3px; }
+.car .wheel.rr { left: 11px; top: 25px; }
+.car .light { position: absolute; width: 3px; height: 4px; border-radius: 1px; }
+.car .light.h1 { right: 1px; top: 9px; background: #eef6fa; }
+.car .light.h2 { right: 1px; top: 19px; background: #eef6fa; }
+.car .light.t1 { left: 2px; top: 9px; background: var(--danger); }
+.car .light.t2 { left: 2px; top: 19px; background: var(--danger); }
+
+/* Floe — pale drifting ice, TOP-DOWN, with the jagged edges of fractured sea ice
+   (single-tile pan, or wider for a raft). Snow-lit top, dark waterline. */
 .floe {
   position: absolute; height: 32px; z-index: 3;
   background: var(--ice-blue);
-  border: 1px solid var(--ice-edge);
-  border-bottom: 4px solid #4d7488;
-  border-radius: 8px;
-  box-shadow: inset 0 6px 0 rgba(238,246,250,0.7);
+  box-shadow: inset 0 7px 0 rgba(238, 246, 250, 0.75),
+    inset 0 -5px 0 rgba(77, 116, 136, 0.9),
+    inset 0 0 0 1px var(--ice-edge);
+  clip-path: polygon(2% 16%, 11% 2%, 24% 10%, 37% 3%, 51% 12%, 64% 2%, 78% 11%,
+    93% 5%, 100% 34%, 97% 66%, 100% 90%, 88% 99%, 74% 90%, 60% 100%, 46% 89%,
+    32% 99%, 18% 90%, 6% 98%, 0 62%, 1% 32%);
+}
+.floe.alt {
+  clip-path: polygon(4% 8%, 17% 0, 30% 9%, 45% 1%, 58% 8%, 72% 0, 86% 8%, 98% 2%,
+    100% 46%, 95% 74%, 98% 96%, 83% 100%, 69% 92%, 54% 100%, 41% 92%, 27% 100%,
+    13% 94%, 2% 90%, 0 54%, 3% 22%);
 }
 
 /* Splash / spray marker. */

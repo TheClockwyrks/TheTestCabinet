@@ -51,6 +51,9 @@ Make it read as **one big animal**:
 
 - The bear is the **same size, bulk, and coloring** in every frame — a heavy body
   with a low, broad head; it never changes size between frames.
+- Its **legs are thick and powerful** — short, heavy, blocky limbs at least a
+  couple of pixels wide, the broad legs of a big bear. Never draw them as thin
+  single-pixel sticks or twigs.
 - Keep the **dark outline** on the body in every frame, and shade the underside/
   far side with the **cool fur shadow** so the white body has form and doesn't
   read as a flat blob.
@@ -79,14 +82,16 @@ off-palette colors and anti-aliased fringes count against you):
 
 Build one run frame first — block the heavy body as a rounded mass in fur-light,
 outline it in the dark color, shade the far side and underside with the cool fur
-shadow, then add the head with its dark eyes and nose and the four legs — then
-reuse that body for the other frames, swapping the legs for each run pose,
+shadow, then add the head with its dark eyes and nose and the four thick, stocky
+legs — then reuse that body for the other frames, swapping the legs for each run
+pose,
 mirroring the left run to make the right, muting the body to a submerged
 silhouette with a wake for the swim, and adding the raised clawed paws and open
 red
 maw for the lunge. Use the filled-circle and rectangle operations for the body
-mass and head, single pixels or short lines for legs, claws, eyes, nose, and the
-wake, and the horizontal mirror to turn the left run into the right. Run
+mass, head, and the thick legs, single pixels or short lines for claws, eyes,
+nose, and the wake, and the horizontal mirror to turn the left run into the
+right. Run
 `draw-sheet --help` for the available operations and `draw-sheet <operation>
 --help` for each one's exact flags. Call `draw-sheet` once per operation and read
 `frames/<index>.png` between calls. Picture each two-frame loop as you go — the

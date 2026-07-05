@@ -4,9 +4,9 @@ difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite", "hazard"]
 summary = """
 Draw the dogsled — a fast sled-dog team hazard in the Floe arctic-crossing game — \
-as a 64x32 (two-tile) sprite: two running huskies leading a low sled on runners \
-with a warm-parka musher and a little snow spray, racing right, produced one \
-drawing operation at a time."""
+as a 64x32 (two-tile) top-down sprite seen from overhead: two running huskies \
+leading a low sled on runners with a warm-parka musher and a little snow spray, \
+racing right, produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.5
@@ -38,19 +38,19 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sprite matches the brief — a fast sled-dog team \
-racing right across the 64x32 canvas: two running huskies leading, a taut harness \
-to a low sled on runners with a warm-parka musher, and a little snow spray, in the \
-arctic palette on transparency."""
+How faithfully the regenerated sprite matches the brief — a fast sled-dog team seen \
+from overhead, racing right across the 64x32 canvas: two running huskies leading, a \
+taut harness to a low sled on parallel runners with a warm-parka musher, and a \
+little snow spray, in the arctic palette on transparency."""
 
 [[review_item]]
 id = "fast-sled-team"
 title = "Reads as a fast sled team"
 text = """
-The sprite reads at a glance as a sled-dog team racing across the ice — low, \
-stretched, and in motion — clearly a moving vehicle to dodge, not a lone creature \
-and not a safe platform. It is clearly different from the big blocky plow and the \
-soft lone critter."""
+The sprite reads at a glance as a sled-dog team seen from above racing across the \
+ice — low, stretched, and in motion — clearly a moving vehicle to dodge, not a lone \
+creature and not a safe platform. It is clearly different from the big blocky plow \
+and the soft lone critter."""
 weight = 3
 domain = "fidelity"
 
@@ -58,10 +58,10 @@ domain = "fidelity"
 id = "dogsled-details"
 title = "Huskies, sled, and musher"
 text = """
-It reads specifically as a dogsled: two running huskies at the leading (right) end, \
-a taut harness/gangline back to a low sled on curved runners at the left, and a \
-small standing musher in a warm parka driving it — the parts that make it a sled \
-team, not a single animal."""
+It reads specifically as a top-down dogsled: two running huskies at the leading \
+(right) end with stocky (not twig-thin) legs, a taut harness/gangline back to a low \
+sled on parallel runners at the left, and a small musher in a warm parka driving it \
+— the parts that make it a sled team, not a single animal."""
 weight = 2
 domain = "fidelity"
 

@@ -24,26 +24,30 @@ It is a **long vehicle: three tiles wide**, so the canvas is **96×32** (three
 
 ## The form
 
-A long, boxy plow vehicle seen from a **slight three-quarter side**:
+A long plow truck seen from **directly overhead (top-down)**, as in a top-down
+crossing game — you look down on its roof:
 
-- **Plow blade:** at the leading (right) edge, a tall angled **blade** (about
-  **x = 80–94**, most of the height) in the hazard-yellow, with a few diagonal
-  hazard stripes — the business end that shoves the snow.
-- **Tracks / wheels:** a heavy dark **tread** band along the bottom (about
-  **y = 22–30**, spanning most of the width) with a few lighter notches so it
-  reads as a caterpillar track, not a plain bar.
-- **Chassis:** a long steel body sitting on the tracks (about **(4, 6)** to
-  **(82, 22)**), filled in the steel color and shaded darker (chassis-dark) along
-  the bottom and the rear (left).
-- **Cab:** a raised cab toward the **rear** (left of center) with a **glass**
-  window (the cab glass color).
-- **Beacon:** a small **red warning light** on top of the cab.
-- Pick out a couple of panel lines / bolts / exhaust in the dark color across the
-  long body so it reads as a built machine, not a smooth block.
+- **Plow blade:** at the leading (right) edge, a wide angled **blade** spanning the
+  full height (about **x = 80–95**, `y = 0–31`) in the hazard-yellow, with a few
+  diagonal hazard stripes — it is wider than the truck body and juts ahead of it,
+  the business end that shoves the snow.
+- **Tracks / treads:** from above, the caterpillar tracks run along **both long
+  sides** — a heavy dark **tread** band along the **top edge** (about **y = 1–7**)
+  and another along the **bottom edge** (about **y = 25–31**), each spanning the
+  body's length, with a few lighter notches so they read as caterpillar tracks, not
+  plain bars.
+- **Body / roof:** a long steel **roof** between the two tread bands (about
+  **(6, 8)** to **(80, 24)**), filled in the steel color, with a darker panel line
+  or two (chassis-dark) breaking up the flat top.
+- **Cab:** toward the **rear** (left), the **cab roof** as a distinct panel with a
+  **glass windshield** strip along its forward (right) edge (the cab glass color).
+- **Beacon:** a small **red warning light** on the cab roof, visible from above.
+- Pick out a couple of panel lines / bolts in the dark color across the long roof
+  so it reads as a built machine, not a smooth block.
 
 Keep it **hard-edged and mechanical** — straight lines, right angles, metal — and
-clearly **long and heavy**, the opposite of the soft creatures and the flat ice
-floes.
+clearly **long and heavy**, seen from straight above, the opposite of the soft
+creatures and the flat ice floes.
 
 ## Palette
 
@@ -61,15 +65,15 @@ off-palette colors and anti-aliased fringes count against you):
 
 ## Working the tool
 
-Block in the tread band across the bottom first, then the long steel chassis on
-top
-of it, shading the bottom and rear with chassis-dark; add the raised cab and its
-glass window toward the rear, the tall hazard-yellow plow blade with its diagonal
-stripes at the right leading edge, the red beacon on the cab, and a few dark panel
-lines and tread notches along the length. Use the rectangle operations for the
-chassis, cab, blade, and tread, short lines for the hazard stripes and panel lines,
-and single pixels for the beacon and bolts. Run `draw --help` for the available
-operations and `draw <operation> --help` for each one's exact flags. Call `draw`
-once per operation and read `canvas.png` between calls to judge it against this
-brief — it should read at a glance as a big, long, dangerous plow facing right,
-filling the 96×32 canvas, on full transparency.
+Block in the two tread bands along the top and bottom edges first, then the long
+steel roof between them, breaking it up with a dark panel line or two; add the cab
+roof and its glass windshield toward the rear (left), the wide hazard-yellow plow
+blade with its diagonal stripes across the right leading edge, the red beacon on
+the cab, and a few dark panel lines and tread notches along the length. Use the
+rectangle operations for the roof, cab, blade, and tread bands, short lines for the
+hazard stripes and panel lines, and single pixels for the beacon and bolts. Run
+`draw --help` for the available operations and `draw <operation> --help` for each
+one's exact flags. Call `draw` once per operation and read `canvas.png` between
+calls to judge it against this brief — it should read at a glance as a big, long,
+dangerous plow seen from overhead, facing right, filling the 96×32 canvas, on full
+transparency.

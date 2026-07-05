@@ -6,7 +6,8 @@ for
 every build** — your job is to build the game *around* them, not to redraw them.
 
 **You must render the game using these provided assets** for every element they
-cover (the critter, the bear, the snow plow, the dogsled, and the floes). Do **not**
+cover (the critter, the bear, the snow plow, the dogsled, the car, and the floes).
+Do **not**
 substitute your own art for these, and do not restyle or recolor them. Elements
 that
 have **no** asset (listed at the end) you draw in code as the other specs describe.
@@ -83,6 +84,7 @@ each at its native pixel size at the correct tile position:
 | Bear (hunter) | `assets/bear/` | 12 (`0`–`11`) | 32×32 | 1 tile |
 | Snow plow | `assets/plow/` | 1 (`0`) | 96×32 | 3 tiles |
 | Dogsled | `assets/dogsled/` | 1 (`0`) | 64×32 | 2 tiles |
+| Car | `assets/car/` | 1 (`0`) | 64×32 | 2 tiles |
 | Floe — small | `assets/pan/` | 1 (`0`) | 32×32 | 1 tile |
 | Floe — rafts | `assets/raft/` | 2 (`0`–`1`) | 128×32 | 3 or 4 tiles |
 
@@ -138,6 +140,12 @@ Draw
 it 64 px wide at its lane position. It faces right; mirror it for a left-moving
 lane.
 Every tile it covers is deadly.
+
+## The car — `assets/car/` (1 frame, 64×32, 2 tiles)
+
+An ice-band hazard (`specs/hazards.md`): an ordinary sedan spanning **two tiles**.
+Draw it 64 px wide at its lane position. It faces right; mirror it for a left-moving
+lane. Every tile it covers is deadly.
 
 ## The floes — `assets/pan/` and `assets/raft/`
 

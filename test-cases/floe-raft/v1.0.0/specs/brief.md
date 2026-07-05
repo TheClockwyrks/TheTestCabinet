@@ -38,20 +38,19 @@ onto the dark water.
 Each floe is one **solid, continuous slab of flat ice** seen from top-down — the
 same style as a single small pan, just longer:
 
-- A **long rounded slab** spanning its length with a couple of pixels of margin
-  top
-  and bottom and **rounded left and right ends** — a single continuous shape, **not
-  two or three separate pans butted together** (no internal seams, gaps, or repeated
-  end-caps in the middle).
+- A **long slab** spanning its length with a couple of pixels of margin top and
+  bottom and **jagged, irregular left and right ends and edges** — a single
+  continuous shape with the rough outline of fractured sea ice, **not two or three
+  separate pans butted together** (no internal seams, gaps, or repeated end-caps in
+  the middle).
 - **Flat top surface:** fill the body with the pale ice body color and lay a lighter
   **snow** cap across the upper part along the **whole length** (one continuous
-  snowy
-  top), so it reads as one snow-dusted flat floe you could stand on. Keep it smooth
-  and calm — no facets or sharp points.
-- **Edge and waterline:** ring the whole slab with the slightly darker **ice edge**,
-  and run a thin **waterline shadow** along the bottom edge for the full length
-  so it
-  reads as one long pan floating on water.
+  snowy top), so it reads as one snow-dusted flat floe you could stand on. The top
+  stays flat and calm — the jaggedness is in the outline/edges, not the height; no
+  tall facets or sharp 3D.
+- **Edge and waterline:** ring the whole slab with the slightly darker **ice edge**
+  along its jagged outline, and run a thin **waterline shadow** along the bottom
+  edge for the full length so it reads as one long pan floating on water.
 - The three-tile floe (frame 0) and the four-tile floe (frame 1) are the **same
   design at two lengths** — same height, same snow top, same edge and waterline,
   just longer.
@@ -74,14 +73,14 @@ off-palette colors and anti-aliased fringes count against you):
 
 ## Working the tool
 
-Build the four-tile floe (frame 1) first — one long rounded slab in the pale ice
-body across the full width, ringed with the ice-edge tone, a continuous snow-top
-across the upper surface, and the waterline shadow along the bottom — then make
-the
-three-tile floe (frame 0) the same way but ending at `x = 95`, leaving the right
-tile transparent. Keep both a single continuous shape with no internal seams. Use
-the rectangle and filled-circle/ellipse operations for the long slab and rounded
-ends and the snow cap, and lines for the edge and waterline. Run `draw-sheet --help`
+Build the four-tile floe (frame 1) first — one long slab in the pale ice body
+across the full width with a jagged, irregular outline, ringed with the ice-edge
+tone, a continuous snow-top across the upper surface, and the waterline shadow
+along the bottom — then make the three-tile floe (frame 0) the same way but ending
+at `x = 95`, leaving the right tile transparent. Keep both a single continuous
+shape with no internal seams. Use the rectangle and short line/pixel operations to
+build the long slab, its jagged ends and edges, and the snow cap, and lines for the
+edge and waterline. Run `draw-sheet --help`
 for the available operations and `draw-sheet <operation> --help` for each one's
 exact flags. Call `draw-sheet` once per operation and read `frames/<index>.png`
 between calls to judge each against this brief — each should read as one solid,

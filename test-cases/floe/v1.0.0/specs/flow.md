@@ -126,9 +126,9 @@ targets:
   hesitates or errs (`specs/hunter.md`).
 - **One-tile hops only:** the critter moves exactly one tile per hop, four
   directions, with no long or charged jump (`specs/controls.md`).
-- **Ice band:** solid lanes of sliding multi-tile vehicles — a 3-tile snow plow
-  and
-  a 2-tile dogsled; contact is death (`specs/hazards.md`).
+- **Ice band:** solid lanes of sliding multi-tile vehicles — a 3-tile snow
+  plow, a 2-tile dogsled, and a 2-tile car; contact is death
+  (`specs/hazards.md`).
 - **Water band:** deadly water crossed on drifting floes that **carry** the
   critter —
   1-tile pans and solid 3-/4-tile rafts; falling in or drifting off the edge is

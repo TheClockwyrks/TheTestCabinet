@@ -1,0 +1,77 @@
+slug = "floe-car"
+name = "Floe Car"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite", "hazard"]
+summary = """
+Draw the car — a normal two-tile sedan hazard vehicle in the Floe arctic-crossing \
+game — as a 64x32 top-down sprite seen from overhead: a rounded red car body with a \
+glass cabin, four wheels, headlights, and taillights, produced one drawing \
+operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The car is a two-tile vehicle, so the canvas is 64x32 (two 32-pixel tiles).
+# Fixing the size keeps every run comparable.
+[canvas]
+width = 64
+height = 32
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the brief — a normal sedan seen from \
+overhead, facing right and filling the 64x32 canvas: a rounded red car body with a \
+glass cabin (windshield and rear window), four wheels at the corners, headlights at \
+the front and taillights at the rear, in the car palette on transparency."""
+
+[[review_item]]
+id = "reads-as-a-car"
+title = "Reads as a normal car"
+text = """
+The sprite reads at a glance as an ordinary car — a sedan seen from directly above, \
+a rounded body clearly two tiles long (it fills the 64x32 canvas) — a vehicle to \
+dodge, not a creature and not a safe platform. It is plainly a car, distinct from \
+the big blocky snow plow and the sled-dog team."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "car-details"
+title = "Top-down car details"
+text = """
+It reads specifically as a top-down sedan: a rounded car body with a glass cabin (a \
+windshield toward the front and a rear window), four wheels showing at the corners \
+along both sides, and headlights at the leading (front/right) edge with taillights \
+at the rear (left) — the parts that make it a car, not a plain block."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-framing"
+title = "Car palette, transparency, and framing"
+text = """
+Uses only the palette from the brief (the car body and its dark shade, the glass, \
+the tyres, the outline, the headlights, and the taillights) on full transparency — \
+no out-of-palette pixels, no fringes, no background fill — and fills most of the \
+64x32 canvas, facing right, without clipping flat against an edge."""
+weight = 1
+domain = "fidelity"

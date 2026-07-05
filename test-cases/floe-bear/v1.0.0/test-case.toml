@@ -132,9 +132,10 @@ id = "dangerous-animal"
 title = "Reads as a big dangerous predator"
 text = """
 The sprite reads at a glance as a huge, heavy, dangerous animal — a bulky bear with \
-a low broad head and small dark predatory eyes — never cute or small. It fills the \
-frame and is the same size and bulk in every frame, and its dark outline and cool \
-shadow keep it from reading as a flat white blob."""
+a low broad head, small dark predatory eyes, and thick, powerful legs (not thin \
+twigs) — never cute or small. It fills the frame and is the same size and bulk in \
+every frame, and its dark outline and cool shadow keep it from reading as a flat \
+white blob."""
 weight = 3
 domain = "fidelity"
 
