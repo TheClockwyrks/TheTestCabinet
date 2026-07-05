@@ -57,9 +57,7 @@ The `assets/` sprites are the finished pixel art produced by the companion
 asset-generation cases (`floe-bear`, `floe-crosser`, `floe-plow`, `floe-dogsled`,
 `floe-car`, `floe-pan`, `floe-raft`) — each folder's frames are the regenerated
 output of the matching case's recorded draw operations, so the folder layout and
-frame counts under `assets/` match those cases exactly. (The `car/` frame is
-currently a placeholder pending the `floe-car` run; swap in its regenerated art
-once generated, as with the others.)
+frame counts under `assets/` match those cases exactly.
 
 Future versions or variants are expected to add rule twists sketched during
 design —
