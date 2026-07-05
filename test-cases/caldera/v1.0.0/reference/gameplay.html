@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  Caldera — in-game HUD (common across variants).
+  Rendered by the harness at 1280x720 as the `gameplay` view target. This mockup is
+  HUD-ONLY: it pins the HUD layout, palette, and type over a neutral dark viewport.
+  The real build renders the WebGL/WebGPU 3D caldera (the terraced hex terrain,
+  water, vents, pipes, towers, and the Slag) behind this HUD, viewed through a
+  tilted RTS camera — the flat CSS cannot depict that usefully, so it is
+  deliberately not faked here. One example moment: a build interval before wave 7.
+  Exact values are illustrative.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- performance overlay (toggled on) -->
+      <div class="perf">
+        <div><b>FPS</b> 57</div>
+        <div><b>DRAWS</b> 63</div>
+        <div><b>SLAG</b> 0</div>
+      </div>
+
+      <!-- wave status + next-wave preview -->
+      <div class="wave">
+        <div class="num">WAVE 6 / 15</div>
+        <div class="next">NEXT <b>0:14</b></div>
+        <div class="preview">
+          <span class="chip"><span class="dot"></span>RUNNER</span>
+          <span class="chip"><span class="dot t2"></span>BREAKER</span>
+          <span class="chip"><span class="dot t2"></span>SAPPER</span>
+        </div>
+      </div>
+
+      <!-- Core health, top center -->
+      <div class="core">
+        <div class="label">CORE</div>
+        <div class="bar">
+          <div class="fill" style="width: 71%"></div>
+        </div>
+        <div class="hp">710 / 1000</div>
+      </div>
+
+      <!-- funds + income + core upgrade, top-right -->
+      <div class="funds">
+        <div class="amt">$1,240</div>
+        <div class="rate">+$24 / s</div>
+        <div class="upgrade">CORE <b>Lv.2</b> &middot; UPGRADE $1600</div>
+      </div>
+
+      <!-- alert -->
+      <div class="alert">&#9888; SAPPERS INBOUND — WEST BREACH</div>
+
+      <!-- selection panel: a boiler on a vent -->
+      <div class="select">
+        <h4>BOILER</h4>
+        <div class="row"><span>HEALTH</span><span class="v good">220 / 220</span></div>
+        <div class="row"><span>WATER IN</span><span class="v">6.0 f/s</span></div>
+        <div class="row"><span>STEAM OUT</span><span class="v">4.5 f/s</span></div>
+        <div class="actions">
+          <span class="act">REPAIR</span>
+          <span class="act">DEMOLISH</span>
+        </div>
+      </div>
+
+      <!-- steam supply + game speed, bottom-right -->
+      <div class="steam">
+        <div class="label">STEAM</div>
+        <div class="val">13 <small>/ 16 f/s</small></div>
+        <div class="bar"><div class="fill" style="width: 81%"></div></div>
+        <div class="speed">SPEED <b>1&times;</b></div>
+      </div>
+
+      <!-- build palette hotbar -->
+      <div class="palette">
+        <div class="slot">
+          <div class="key">1</div>
+          <div class="swatch sw-water"></div>
+          <div class="name">WATER</div>
+          <div class="cost">$10</div>
+        </div>
+        <div class="slot">
+          <div class="key">2</div>
+          <div class="swatch sw-steam"></div>
+          <div class="name">STEAM</div>
+          <div class="cost">$12</div>
+        </div>
+        <div class="slot">
+          <div class="key">3</div>
+          <div class="swatch sw-tap"></div>
+          <div class="name">TAP</div>
+          <div class="cost">$80</div>
+        </div>
+        <div class="slot">
+          <div class="key">4</div>
+          <div class="swatch sw-pump"></div>
+          <div class="name">PUMP</div>
+          <div class="cost">$150</div>
+        </div>
+        <div class="slot">
+          <div class="key">5</div>
+          <div class="swatch sw-boiler"></div>
+          <div class="name">BOILER</div>
+          <div class="cost">$200</div>
+        </div>
+        <div class="slot sel">
+          <div class="key">6</div>
+          <div class="swatch sw-tower"></div>
+          <div class="name">REPEATER</div>
+          <div class="cost">$90</div>
+        </div>
+        <div class="slot">
+          <div class="key">7</div>
+          <div class="swatch sw-tower"></div>
+          <div class="name">MORTAR</div>
+          <div class="cost">$140</div>
+        </div>
+        <div class="slot">
+          <div class="key">8</div>
+          <div class="swatch sw-tower"></div>
+          <div class="name">LANCE</div>
+          <div class="cost">$220</div>
+        </div>
+        <div class="slot">
+          <div class="key">9</div>
+          <div class="swatch sw-tower"></div>
+          <div class="name">SCALD</div>
+          <div class="cost">$180</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

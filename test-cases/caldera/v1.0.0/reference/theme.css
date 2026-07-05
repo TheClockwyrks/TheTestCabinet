@@ -1,0 +1,550 @@
+/*
+ * Caldera — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Caldera test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/.
+ *
+ * The mockups do NOT fake the 3D hex world — flat CSS cannot depict it usefully.
+ * The in-game mockup is HUD-only: it pins the HUD layout, palette, and type over a
+ * neutral dark viewport, and the real build renders the WebGL/WebGPU caldera (the
+ * terraced hex terrain, water, vents, pipes, towers, and the Slag) behind that HUD
+ * itself, viewed through a tilted RTS camera.
+ */
+
+:root {
+  --sky: #9fb4bf;
+  --sky-haze: #d8c8b0;
+
+  --grass: #6b9a44;
+  --grass-shadow: #517a34;
+  --dirt: #6b4e34;
+  --rock: #5f5c58;
+  --rock-dark: #3a3836;
+  --scorched: #7a4a38;
+  --sand: #b8a877;
+
+  --water-deep: #2f6f8f;
+  --water-shallow: #4f97b0;
+  --water-foam: #dbeef2;
+
+  --vent-glow: #ff7a3d;
+  --vent-core: #ffd08a;
+
+  --brass: #c8a24a; /* Holdfast: Core, towers */
+  --brass-dark: #8a6d2e;
+  --steel: #b8bcc2;
+  --steam: #dfeaea;
+  --pipe-water: #3d9bd6;
+  --pipe-steam: #7fcabc;
+
+  --slag: #241f2b; /* Slag Tier I body */
+  --slag-accent: #9ede3a; /* acid glow / eye */
+  --slag-plating: #c9ced6; /* Tier II plating */
+  --slag-trim: #b56bff; /* Tier III elite trim */
+
+  --hp-good: #5ec96b;
+  --hp-crit: #ff5c5a;
+  --funds: #ffce54;
+  --valid: #7fe0a0;
+  --invalid: #ff5c5a;
+  --alert: #ff7a3d;
+
+  --text: #eef3f7;
+  --text-dim: #9fb0c0;
+  --text-faint: #6f8090;
+
+  --panel: rgba(12, 16, 22, 0.72);
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+/* The fixed logical stage. The build fills the window (16:9); these mockups are
+   1280x720. The default background is the neutral dark viewport the HUD sits over
+   (the real build draws the 3D caldera here). The title screen overrides it. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  background: radial-gradient(
+      ellipse at 50% 44%,
+      #1b232d 0%,
+      #10151b 70%,
+      #0b0f14 100%
+    );
+  font-family: var(--mono);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- In-game HUD ------------------------------------------------------- */
+
+/* performance overlay, top-left corner */
+.perf {
+  position: absolute;
+  left: 22px;
+  top: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.perf b {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* wave status, upper-left (right of perf) */
+.wave {
+  position: absolute;
+  left: 150px;
+  top: 18px;
+  width: 260px;
+}
+.wave .num {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--text);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+.wave .next {
+  margin-top: 3px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+.wave .next b {
+  color: var(--alert);
+  font-weight: 700;
+}
+.wave .preview {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.wave .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 3px;
+}
+.wave .chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--slag-accent);
+}
+.wave .chip .dot.t2 {
+  background: var(--slag-plating);
+}
+.wave .chip .dot.t3 {
+  background: var(--slag-trim);
+}
+
+/* Core health, top center */
+.core {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  width: 320px;
+  text-align: center;
+}
+.core .label {
+  font-size: 14px;
+  letter-spacing: 6px;
+  color: var(--brass);
+}
+.core .bar {
+  position: relative;
+  margin-top: 5px;
+  height: 18px;
+  border: 2px solid var(--brass-dark);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.core .bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+  background: var(--hp-good);
+}
+.core .hp {
+  margin-top: 3px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+
+/* funds, top-right */
+.funds {
+  position: absolute;
+  right: 22px;
+  top: 16px;
+  text-align: right;
+}
+.funds .amt {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--funds);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+.funds .rate {
+  font-size: 14px;
+  color: var(--hp-good);
+  margin-top: 1px;
+}
+.funds .upgrade {
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+.funds .upgrade b {
+  color: var(--brass);
+  font-weight: 700;
+}
+
+/* alert line, upper center under core */
+.alert {
+  position: absolute;
+  left: 50%;
+  top: 74px;
+  transform: translateX(-50%);
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--alert);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+/* selection panel, bottom-left */
+.select {
+  position: absolute;
+  left: 22px;
+  bottom: 96px;
+  width: 240px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 6px;
+}
+.select h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--brass);
+  font-weight: 700;
+}
+.select .row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 5px;
+  color: var(--text-dim);
+}
+.select .row .v {
+  color: var(--text);
+}
+.select .row .v.good {
+  color: var(--hp-good);
+}
+.select .actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.select .act {
+  flex: 1;
+  text-align: center;
+  padding: 5px 0;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--valid);
+  border: 1px solid var(--valid);
+  border-radius: 4px;
+}
+
+/* steam supply + game speed, bottom-right */
+.steam {
+  position: absolute;
+  right: 22px;
+  bottom: 96px;
+  width: 220px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 6px;
+  text-align: right;
+}
+.steam .label {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--pipe-steam);
+}
+.steam .val {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--steam);
+  margin-top: 2px;
+}
+.steam .val small {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.steam .bar {
+  position: relative;
+  margin-top: 6px;
+  height: 8px;
+  border: 1px solid var(--rock-dark);
+  background: rgba(0, 0, 0, 0.4);
+}
+.steam .bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--pipe-steam);
+}
+.steam .speed {
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+}
+.steam .speed b {
+  color: var(--text);
+}
+
+/* build palette hotbar, bottom center */
+.palette {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+}
+.slot {
+  width: 78px;
+  padding: 8px 4px 6px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 5px;
+}
+.slot.sel {
+  border-color: var(--valid);
+  box-shadow: 0 0 0 1px var(--valid);
+}
+.slot.off {
+  opacity: 0.4;
+}
+.slot .key {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.slot .name {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text);
+  margin-top: 3px;
+}
+.slot .cost {
+  font-size: 11px;
+  color: var(--funds);
+  margin-top: 3px;
+}
+.slot .swatch {
+  width: 20px;
+  height: 20px;
+  margin: 4px auto 0;
+  border: 1px solid var(--rock-dark);
+  border-radius: 3px;
+}
+.sw-water {
+  background: var(--pipe-water);
+}
+.sw-steam {
+  background: var(--pipe-steam);
+}
+.sw-tap {
+  background: var(--water-shallow);
+}
+.sw-pump {
+  background: var(--water-deep);
+}
+.sw-boiler {
+  background: var(--vent-glow);
+}
+.sw-tower {
+  background: var(--brass);
+}
+
+/* ---- Title screen ------------------------------------------------------ */
+
+.hero {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+      ellipse at 50% 32%,
+      rgba(255, 122, 61, 0.14) 0%,
+      rgba(0, 0, 0, 0) 58%
+    ),
+    linear-gradient(to bottom, #14100f 0%, #0a0e12 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.title {
+  font-size: 108px;
+  font-weight: 700;
+  letter-spacing: 26px;
+  margin: 0 0 0 26px;
+  color: var(--text);
+  text-shadow: 0 0 30px rgba(255, 122, 61, 0.5), 0 0 3px rgba(200, 162, 74, 0.7);
+}
+.tagline {
+  font-size: 18px;
+  letter-spacing: 10px;
+  margin: 20px 0 0 8px;
+  color: var(--text-dim);
+}
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  margin-top: 60px;
+}
+.menu-btn {
+  width: 340px;
+  padding: 16px 0;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  color: var(--brass);
+  background: var(--panel);
+  border: 2px solid var(--brass);
+  border-radius: 8px;
+}
+.menu-btn.primary {
+  color: #0a0e12;
+  background: var(--brass);
+  border-color: var(--brass-dark);
+}
+.hint {
+  position: absolute;
+  bottom: 26px;
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: var(--text-faint);
+}
+
+/* ---- End screen (held / overrun) --------------------------------------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 8, 10, 0.82);
+}
+.panel-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 46px 48px 38px;
+  text-align: center;
+  background: #10130f;
+  border: 1px solid var(--rock-dark);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.panel-eyebrow {
+  font-size: 16px;
+  letter-spacing: 9px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+.panel-title {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  margin: 0 0 26px;
+}
+.panel-title.win {
+  color: var(--hp-good);
+}
+.panel-title.lose {
+  color: var(--hp-crit);
+}
+.stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 11px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 16px;
+}
+.stat:last-of-type {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.stat .k {
+  letter-spacing: 3px;
+  color: var(--text-faint);
+}
+.stat .v {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+}
+.stat .v.accent {
+  color: var(--brass);
+}
+.buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 28px;
+}
+.btn {
+  padding: 12px 26px;
+  font-size: 16px;
+  letter-spacing: 4px;
+  color: var(--brass);
+  border: 1px solid var(--brass);
+  border-radius: 6px;
+}
+.btn.primary {
+  color: #0a0e12;
+  background: var(--brass);
+}

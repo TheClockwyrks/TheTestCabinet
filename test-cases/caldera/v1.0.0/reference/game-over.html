@@ -1,0 +1,45 @@
+<!doctype html>
+<!--
+  Caldera — end screen (common across variants).
+  Rendered by the harness at 1280x720 as the `game-over` view target. Caldera is
+  won or lost: this mockup shows the OVERRUN (defeat) end reached when the Core
+  falls — the wave reached, Slag destroyed, and time, with DEFEND AGAIN and RETURN.
+  The HELD (victory) end shares this exact layout, recolored to the healthy color
+  with a victory title and a "waves survived" line. A dark, dimmed viewport sits
+  behind the card.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- dimmed viewport behind the card -->
+      <div class="overlay"></div>
+
+      <div class="panel-card">
+        <div class="panel-eyebrow">CALDERA OVERRUN</div>
+        <div class="panel-title lose">THE CORE IS LOST</div>
+
+        <div class="stat">
+          <span class="k">WAVE REACHED</span>
+          <span class="v accent">11 / 15</span>
+        </div>
+        <div class="stat">
+          <span class="k">SLAG DESTROYED</span>
+          <span class="v">318</span>
+        </div>
+        <div class="stat">
+          <span class="k">TIME</span>
+          <span class="v">12:24</span>
+        </div>
+
+        <div class="buttons">
+          <span class="btn primary">DEFEND AGAIN</span>
+          <span class="btn">RETURN</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

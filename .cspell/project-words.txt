@@ -185,3 +185,12 @@ inspectable
 unpressured
 respawning
 loadouts
+
+# Caldera hex-terrain strategy tower-defense test case.
+hotbar
+buildables
+unpowered
+chokepoints
+Perlin
+crossable
+cliffed

@@ -1,0 +1,9 @@
+# The default (and only) Caldera variant: the standard The Hold defense across the
+# fifteen waves. Listed first in the case manifest's `variants`, so it is the
+# default. It supplies the `title` view's mockup; `gameplay` and `game-over` are
+# common. Every path here resolves against the version folder, exactly like the
+# main manifest.
+slug = "base"
+name = "Base"
+description = "The standard The Hold defense: build a water-to-steam network across the caldera and hold the Core through fifteen escalating waves of the Slag."
+reference = [{ view = "title", path = "reference/title-base.html" }]
