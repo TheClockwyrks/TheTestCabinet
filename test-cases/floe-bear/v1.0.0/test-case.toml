@@ -1,3 +1,4 @@
+slug = "floe-bear"
 name = "Floe Bear"
 difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]

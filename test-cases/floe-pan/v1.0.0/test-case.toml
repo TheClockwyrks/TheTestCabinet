@@ -1,3 +1,4 @@
+slug = "floe-pan"
 name = "Floe Pan"
 difficulty = "easy"
 tags = ["asset-generation", "2d", "sprite", "prop"]

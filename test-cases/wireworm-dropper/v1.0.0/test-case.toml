@@ -1,3 +1,4 @@
+slug = "wireworm-dropper"
 name = "Wireworm Dropper"
 difficulty = "easy"
 tags = ["asset-generation", "2d", "sprite", "enemy"]

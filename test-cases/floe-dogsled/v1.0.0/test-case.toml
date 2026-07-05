@@ -1,3 +1,4 @@
+slug = "floe-dogsled"
 name = "Floe Dogsled"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite", "hazard"]

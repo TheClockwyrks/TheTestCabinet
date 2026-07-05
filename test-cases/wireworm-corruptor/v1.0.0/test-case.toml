@@ -1,3 +1,4 @@
+slug = "wireworm-corruptor"
 name = "Wireworm Corruptor"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]

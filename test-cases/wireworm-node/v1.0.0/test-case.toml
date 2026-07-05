@@ -1,3 +1,4 @@
+slug = "wireworm-node"
 name = "Wireworm Node"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite-sheet", "prop"]

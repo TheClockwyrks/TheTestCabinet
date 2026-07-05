@@ -1,3 +1,4 @@
+slug = "wireworm-cursor"
 name = "Wireworm Cursor"
 difficulty = "medium"
 tags = ["asset-generation", "2d", "sprite", "player"]
