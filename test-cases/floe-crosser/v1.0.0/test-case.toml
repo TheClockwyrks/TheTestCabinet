@@ -1,0 +1,148 @@
+name = "Floe Crosser"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite-sheet", "player"]
+summary = """
+Draw the crosser — the player critter of the Floe arctic-crossing game — as a \
+32x32 eight-frame sprite sheet: a small, round, warm-furred, big-eyed tundra \
+creature hopping in four directions, each a crouch-then-leap pair, produced one \
+drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header
+# (`[canvas]`).
+variants = ["variants/base.toml"]
+
+# Each frame is its own 32x32 transparent canvas (a separate file) — one small
+# critter sized to sit within a grid cell. Fixing the size keeps every run
+# comparable.
+[canvas]
+width = 32
+height = 32
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — eight separate 32x32 frames of the crosser's
+# four-direction hop — and the named sequences a reviewer plays back.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.sequence]]
+slug = "hop-down"
+name = "Crosser — hop down"
+frames = [0, 1]
+fps = 6
+
+[[sheet.sequence]]
+slug = "hop-up"
+name = "Crosser — hop up"
+frames = [2, 3]
+fps = 6
+
+[[sheet.sequence]]
+slug = "hop-left"
+name = "Crosser — hop left"
+frames = [4, 5]
+fps = 6
+
+[[sheet.sequence]]
+slug = "hop-right"
+name = "Crosser — hop right"
+frames = [6, 7]
+fps = 6
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated crosser matches the brief — one small, round, \
+warm-furred, big-eyed critter, the same creature in every frame, hopping in four \
+distinct directions as crouch-then-leap pairs, in the warm palette on \
+transparency."""
+
+[[review_item]]
+id = "small-warm-prey"
+title = "Reads as small, warm prey"
+text = """
+The sprite reads at a glance as a small, round, fuzzy, big-eyed critter — warm and \
+endearing, clearly harmless prey, not a predator — and it is warm-colored so it \
+pops against pale ice and dark water rather than blending in. It sits within the \
+frame as a little animal, not filling the whole tile."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "four-way-hop"
+title = "Four-direction hop"
+text = """
+The critter faces and hops down (0–1), up (2–3), left (4–5), and right (6–7), each \
+a two-frame crouch-then-leap that springs when played. The facings are clearly \
+distinct — face and eyes visible facing down, back and ears facing up, clean \
+profiles left and right (right a mirror of left)."""
+sequences = ["hop-down", "hop-up", "hop-left", "hop-right"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "consistent-creature"
+title = "One consistent creature"
+text = """
+Every frame is clearly the same critter — the same body shape, size, warm fur and \
+cream face/belly, and big dark eyes — centered and the same size throughout, only \
+its facing and crouch/leap pose changing."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-transparency"
+title = "Warm palette on transparency"
+text = """
+Uses only the warm palette from the brief (the warm fur, cream belly/face, fur \
+shadow, dark eyes/nose, and paws) on full transparency — no out-of-palette pixels, \
+no anti-aliased fringes, and no opaque background fill; only the critter's pixels \
+are opaque so it composites onto the ice and water."""
+weight = 1
+domain = "fidelity"

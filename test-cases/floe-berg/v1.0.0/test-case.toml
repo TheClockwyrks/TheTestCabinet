@@ -1,0 +1,73 @@
+name = "Floe Berg"
+difficulty = "easy"
+tags = ["asset-generation", "2d", "sprite", "hazard"]
+summary = """
+Draw the ice berg — a jagged drifting-ice hazard in the Floe arctic-crossing game \
+— as a 32x32 sprite: a faceted, three-dimensional chunk of ice with sharp points, \
+shaded facets, cracks, and snow highlights, distinct from a flat floe, produced one \
+drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 32
+height = 32
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the brief — a jagged, faceted, \
+three-dimensional chunk of ice with sharp top points, shaded facets, dark cracks, \
+and snow highlights, reading as a hard hazard distinct from a flat floe, in the \
+cold ice palette on transparency."""
+
+[[review_item]]
+id = "hard-hazard"
+title = "Reads as a hard, dangerous berg"
+text = """
+The sprite reads at a glance as a hard, sharp, dangerous mass of ice — angular with \
+sharp points — clearly a hazard to dodge, and clearly NOT a flat, calm floe you \
+could stand on. It is jagged, not a circle or soft blob."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "faceted-3d"
+title = "Faceted and three-dimensional"
+text = """
+The mass reads as a solid three-dimensional block of ice: broken into facets shaded \
+with the light, mid, and shadow ice tones (lit faces vs shaded faces), with a \
+couple of dark cracks and snow highlights on the top edges — not a flat single-tone \
+shape."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-framing"
+title = "Ice palette, transparency, and framing"
+text = """
+Uses only the cold ice palette from the brief (the three ice tones, the crack \
+color, and white snow highlight) on full transparency — no out-of-palette pixels, \
+no fringes, no background fill — and fills most of the 32×32 frame, centered, \
+without clipping against an edge."""
+weight = 1
+domain = "fidelity"
