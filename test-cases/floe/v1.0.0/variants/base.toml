@@ -1,0 +1,11 @@
+# The default (and only) variant for this case: the standard Crossing run on the
+# one strait, with no per-variant overrides beyond its own title-menu mockup.
+# Listed first in the manifest's `variants`, so it is the default. Every path here
+# resolves against the version folder, like the manifest.
+slug = "base"
+name = "Base"
+description = "The standard Crossing run: the critter across the one strait, hunted by the bear, across all 8 levels."
+
+# Variant-specific reference: the title view lists this variant's menu (CROSS, then
+# HOW TO PLAY). `gameplay` and `game-over` are common (in test-case.toml).
+reference = [{ view = "title", path = "reference/menu-base.html" }]

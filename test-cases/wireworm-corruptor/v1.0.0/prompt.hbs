@@ -1,0 +1,57 @@
+Draw the **corruptor**, a 4-frame **sprite sheet** of a leggy crawling foe for a
+circuit-board arcade game, using only the drawing tool.
+
+The corruptor is a support enemy: a low, many-legged crawler that scuttles
+horizontally across the top of the board, slamming every capacitor node it touches
+to a full critical charge. It must read as a leggy crawler with a glowing amber
+charge stinger — clearly a different beast from the tall, armored data-worm. Draw
+it facing right as a four-frame crawl loop on full transparency.
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. It
+is the sole channel: you build the sheet by calling it **one operation at a
+time**, each targeting a frame with `--frame <index>`. The ordered operations you
+issue — recorded to a per-frame action log — are the **authoritative output that
+is scored**, not the pixels on disk. An image produced any other way (writing a
+PNG directly, editing a preview by hand) is discarded and flagged; only the
+recorded operations count.
+
+Each frame is its **own separate 32×32 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-circle --frame 0 --cx 20 --cy 16 --r 5 --color "#4e7a1e"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the four frames — the shared body, head, and amber
+stinger, the cycling legs and body bob, the palette, and how to work the tool. Run
+`draw-sheet --help` for the exact operation contract.
+
+## What to deliver
+
+Build the corruptor up operation by operation until each `frames/<index>.png`
+matches the brief: the same low, wide, green segmented body with a red-eyed head
+and an amber charge stinger in every frame, the legs stepping through a steady
+scuttle and the body bobbing ~1 px, all facing right on full transparency. Played
+in a loop the frames must read as a leggy crawler scuttling in place — not the
+data-worm. When you are satisfied, stop: the recorded per-frame action logs are
+your finished submission.

@@ -3,6 +3,9 @@
 # dictionary does not know. See `cspell.json` and the `spell` script in
 # `package.json`.
 
+# Models
+Devstral
+
 # Test case titles / mode names.
 Carom
 Gyre
@@ -128,11 +131,10 @@ FreeCell
 frontmost
 redeals
 peekable
-Devstral
-Sunfront
-Duneforged
 
 # Sunfront tug-of-war game + Duneforged voxel asset cases (unit & structure roster).
+Sunfront
+Duneforged
 Scarab
 Sentinel
 Bulwark
@@ -194,3 +196,24 @@ chokepoints
 Perlin
 crossable
 cliffed
+
+# Wireworm circuit-board arcade case family (data-worm + charged nodes).
+scanline
+scanlines
+underglow
+criticals
+chokepoints
+Chebyshev
+refiller
+corruptors
+# Wireworm reference-mockup CSS identifiers (harness-side only).
+playband
+mand
+ccore
+
+# Floe arctic-crossing case family (critter + pursuing polar bear).
+crossable
+respawn
+respawned
+respawning
+gangline

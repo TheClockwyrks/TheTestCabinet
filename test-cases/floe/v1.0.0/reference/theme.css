@@ -1,0 +1,255 @@
+/*
+ * Floe — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Floe test case. Every
+ * mockup is authored on a fixed 1280x720 logical stage so the testing harness can
+ * render and screenshot them at a 1280x720 viewport. Colors, positions, and type
+ * below are the source of truth referenced by the seeded specs under ../specs/.
+ *
+ * Stage geometry (matches ../specs/overview.md and ../specs/playfield.md):
+ *   - 1280x720 stage. HUD bar y[0,80] (full width); strait y[80,720] (1280x640).
+ *   - Strait is a 40-col x 20-row grid of 32x32 tiles. Row 0 = top (far shore),
+ *     row 19 = bottom (near shore). Bands (rows): far shore + bays 0-3, water
+ *     4-11, median 12, ice band 13-18, near shore 19. A tile (c,r) in the strait
+ *     has left=32c, top=32r (strait-local).
+ *
+ * The critter is warm, the bear is big and white with a dark outline (and a
+ * submerged silhouette + wake when swimming); the ice-band hazards are the long
+ * snow plow (3 tiles) and the dogsled (2 tiles); floes are pale pans/rafts. See
+ * ../specs/hunter.md, ../specs/hazards.md, and ../specs/assets.md.
+ */
+
+:root {
+  --sea: #0a2233;        /* deadly water */
+  --sea-deep: #061a28;   /* water shadow */
+  --grid: #123a4e;       /* grid lines on water */
+  --ice: #dfeef5;        /* shore / ice surface */
+  --ice-blue: #c3dee9;   /* ice band tint */
+  --ice-edge: #8fb6c9;   /* ice edge / grid on ice */
+  --median: #cfe6f2;     /* median shelf */
+  --bay: #ffd27f;        /* open goal bay glow */
+
+  --critter: #f2a03a;    /* crosser warm fur */
+  --cream: #ffe0a8;      /* crosser cream */
+  --bear: #eef1ef;       /* bear fur */
+  --bear-shadow: #aebfc7;/* bear cool shadow */
+  --bear-line: #26323a;  /* bear outline / eyes */
+  --bear-sub: #5b6f7a;   /* bear submerged silhouette */
+  --wake: #cfe6f2;       /* bear wake / spray */
+
+  --steel: #4a5560;      /* crawler steel */
+  --yellow: #ffd23f;     /* hazard yellow */
+  --berg: #9cc0d6;       /* berg ice */
+
+  --score: #7fe0d0;      /* score / readouts */
+  --danger: #e0492f;     /* warning */
+  --text: #eaf4f8;       /* primary text */
+  --text-dim: #8fb6c9;   /* secondary text */
+  --text-faint: #4d7488; /* tertiary / hints */
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; overflow: hidden; background: var(--sea); }
+
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  font-family: var(--mono);
+  color: var(--text);
+  background-color: var(--sea);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- HUD bar (y[0,80]) ------------------------------------------------- */
+.hud {
+  position: absolute;
+  left: 0; top: 0;
+  width: 1280px; height: 80px;
+  background: #0c191c;
+  border-bottom: 2px solid #1c3a40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+}
+.hud .block { display: flex; flex-direction: column; gap: 3px; }
+.hud .k { font-size: 11px; letter-spacing: 3px; color: var(--text-faint); }
+.hud .v { font-size: 26px; font-weight: 700; letter-spacing: 2px; }
+.hud .v.score { color: var(--score); font-size: 30px; }
+.hud .lives { display: flex; gap: 8px; align-items: center; }
+.pip { width: 16px; height: 16px; border-radius: 50%; background: var(--critter); }
+/* Timer bar. */
+.timer { width: 150px; }
+.timer .bar {
+  height: 10px; border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12); overflow: hidden;
+}
+.timer .bar > span { display: block; height: 100%; background: var(--score); }
+/* Bay markers row. */
+.bays-hud { display: flex; gap: 5px; }
+.bays-hud i {
+  width: 12px; height: 12px; border-radius: 3px;
+  background: rgba(255, 210, 127, 0.25); border: 1px solid var(--bay);
+}
+.bays-hud i.done { background: var(--critter); border-color: var(--critter); }
+
+/* ---- Strait (y[80,720], 1280x640) ------------------------------------- */
+.strait {
+  position: absolute;
+  left: 0; top: 80px;
+  width: 1280px; height: 640px;
+  overflow: hidden;
+  background: var(--sea);
+}
+/* Bands (strait-local top). */
+.band { position: absolute; left: 0; width: 1280px; }
+.band.shore  { top: 0;    height: 64px;  background: var(--ice); }     /* rows 0-1 */
+.band.water  { top: 64px; height: 256px;                              /* rows 2-9 */
+  background: linear-gradient(var(--sea), var(--sea-deep));
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.band.median { top: 320px; height: 32px;  background: var(--median);   /* row 10 (bright safe strip) */
+  border-top: 2px solid var(--ice-edge); border-bottom: 2px solid var(--ice-edge); }
+.band.ice    { top: 352px; height: 256px; background: #9fb9c7;         /* rows 11-18 (the road — darker, duller) */
+  background-image: linear-gradient(#7a97a6 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122,151,166,0.5) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.band.near   { top: 608px; height: 32px;  background: var(--ice);      /* row 19 */
+  border-top: 1px solid var(--ice-edge); }
+
+/* ---- Goal bays (far shore, row 1: strait-local top 32) ---------------- */
+.bay {
+  position: absolute; top: 32px;
+  width: 64px; height: 32px;         /* 2 tiles wide */
+  border-radius: 6px 6px 0 0;
+}
+.bay.open {
+  background: radial-gradient(circle at 50% 70%, rgba(255,210,127,0.55), transparent 70%);
+  border: 2px solid var(--bay); border-bottom: none;
+  box-shadow: 0 0 14px rgba(255, 210, 127, 0.5);
+}
+.bay.filled { background: rgba(0,0,0,0.15); border: 2px solid var(--ice-edge); border-bottom: none; }
+
+/* ---- Sprites (CSS stand-ins for the 32x32 art) ------------------------ */
+/* Crosser — small warm critter. */
+.critter {
+  position: absolute; width: 32px; height: 32px; z-index: 6;
+}
+.critter .body {
+  position: absolute; left: 8px; top: 8px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--critter);
+  box-shadow: inset 0 -4px 0 rgba(183,101,28,0.6);
+}
+.critter .eye { position: absolute; width: 2px; height: 2px; background: var(--bear-line); top: 13px; }
+
+/* Bear — big white predator with a dark outline. */
+.bear {
+  position: absolute; width: 32px; height: 32px; z-index: 5;
+}
+.bear .mass {
+  position: absolute; left: 3px; top: 4px; width: 26px; height: 24px;
+  border-radius: 48% 48% 45% 45%;
+  background: radial-gradient(circle at 50% 35%, var(--bear), var(--bear-shadow));
+  border: 1.5px solid var(--bear-line);
+}
+.bear .eye { position: absolute; width: 2px; height: 2px; background: var(--bear-line); top: 12px; }
+/* Swimming bear — submerged silhouette + wake. */
+.bear.swim .mass {
+  background: var(--bear-sub); border-color: rgba(38,50,58,0.5);
+  opacity: 0.85;
+}
+.bear.swim::after {
+  content: ""; position: absolute; left: -4px; top: 20px; width: 40px; height: 12px;
+  border: 1.5px solid var(--wake); border-radius: 50%; border-top: none;
+  opacity: 0.7;
+}
+
+/* Snow plow — long steel hazard vehicle (3 tiles = 96px), faces right. */
+.plow {
+  position: absolute; width: 96px; height: 32px; z-index: 4;
+}
+.plow .hull {
+  position: absolute; left: 2px; top: 7px; width: 78px; height: 15px;
+  background: var(--steel); border-radius: 3px;
+  border-bottom: 8px solid #171c21;
+}
+.plow .cab { position: absolute; left: 10px; top: 1px; width: 20px; height: 8px; background: var(--steel); border-radius: 2px; }
+.plow .cab::after { content: ""; position: absolute; left: 3px; top: 2px; width: 14px; height: 4px; background: #7fb0c4; }
+.plow .blade { position: absolute; right: 2px; top: 3px; width: 10px; height: 26px; background: var(--yellow); }
+.plow .beacon { position: absolute; left: 22px; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: var(--danger); }
+
+/* Dogsled — fast sled-dog team (2 tiles = 64px), faces right (dogs lead). */
+.dogsled {
+  position: absolute; width: 64px; height: 32px; z-index: 4;
+}
+.dogsled .dogs { position: absolute; right: 4px; top: 13px; width: 26px; height: 9px; background: #d8dde0; border-radius: 4px; border-bottom: 3px solid #3a4249; }
+.dogsled .harness { position: absolute; left: 24px; top: 17px; width: 14px; height: 2px; background: #c08a3a; }
+.dogsled .sled { position: absolute; left: 4px; top: 16px; width: 20px; height: 7px; background: #2a2f34; border-radius: 2px; }
+.dogsled .musher { position: absolute; left: 11px; top: 8px; width: 6px; height: 9px; background: var(--danger); }
+
+/* Floe — pale drifting pan (one tile; tile across for a wide floe). */
+.floe {
+  position: absolute; height: 32px; z-index: 3;
+  background: var(--ice-blue);
+  border: 1px solid var(--ice-edge);
+  border-bottom: 4px solid #4d7488;
+  border-radius: 8px;
+  box-shadow: inset 0 6px 0 rgba(238,246,250,0.7);
+}
+
+/* Splash / spray marker. */
+.splash {
+  position: absolute; width: 26px; height: 26px; margin: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(207,230,242,0.8), transparent 70%);
+  z-index: 5;
+}
+
+/* ---- Menus / overlays -------------------------------------------------- */
+.center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.title {
+  font-size: 128px; font-weight: 700; letter-spacing: 20px; margin: 0 0 0 20px;
+  background: linear-gradient(90deg, var(--critter), var(--ice), var(--score));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 22px rgba(127, 224, 208, 0.3));
+}
+.tagline { font-size: 22px; letter-spacing: 14px; margin: 16px 0 60px 14px; color: var(--text-dim); }
+.menu { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.menu-item { font-size: 30px; letter-spacing: 10px; color: var(--text-dim); }
+.menu-item.selected { color: var(--text); }
+.menu-item.selected::before { content: "\25B8  "; color: var(--score); }
+.menu-item.selected::after { content: "  \25C2"; color: var(--critter); }
+.hint {
+  position: absolute; bottom: 34px; width: 100%; text-align: center;
+  font-size: 16px; letter-spacing: 8px; color: var(--text-faint);
+}
+.overlay { position: absolute; inset: 0; background: rgba(4, 14, 20, 0.82); }
+.card {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 560px; padding: 52px 48px 44px; text-align: center;
+  background: #0c191c; border: 1px solid #1c3a40; border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.card-eyebrow { font-size: 18px; letter-spacing: 10px; color: var(--danger); margin: 0 0 12px; }
+.card-title {
+  font-size: 52px; font-weight: 700; letter-spacing: 8px; margin: 0 0 22px;
+  background: linear-gradient(90deg, var(--score), var(--ice), var(--critter));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.card-score { font-size: 36px; letter-spacing: 8px; margin: 0 0 8px; color: var(--text); }
+.card-line { font-size: 18px; letter-spacing: 6px; margin: 0 0 6px; color: var(--text-dim); }
+.card-actions { display: flex; gap: 18px; justify-content: center; margin-top: 32px; }
+.card-actions .menu-item { font-size: 22px; letter-spacing: 6px; }
+
+.dim { opacity: 0.34; filter: saturate(0.85); }

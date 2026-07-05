@@ -1,0 +1,58 @@
+Draw the **capacitor node**, a 5-frame **sprite sheet** of a small circuit-board
+component filling with charge, using only the drawing tool.
+
+The node is the terrain of a circuit-board arcade game: the board is a field of
+these components, and a segmented data-worm charges them as it winds down through
+them. The sprite has to read as a small electronic component whose **charge
+level** is unmistakable — dead and dark when inert, brighter as it charges, and
+clearly **critical** (loaded and dangerous) at the top. Draw it as a short
+animation on full transparency: a **charge-up** ramp from inert to critical
+(frames 0–3) and a **critical pulse** peak (frame 4).
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. It
+is the sole channel: you build the sheet by calling it **one operation at a
+time**, each targeting a frame with `--frame <index>`. The ordered operations you
+issue — recorded to a per-frame action log — are the **authoritative output that
+is scored**, not the pixels on disk. An image produced any other way (writing a
+PNG directly, editing a preview by hand) is discarded and flagged; only the
+recorded operations count.
+
+Each frame is its **own separate 32×32 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-rect --frame 0 --x 9 --y 7 --w 14 --h 18 --color "#25303a"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the five frames — the shared capacitor component, the
+charge-up ramp and critical pulse, the palette, and how to work the tool. Run
+`draw-sheet --help` for the exact operation contract.
+
+## What to deliver
+
+Build the node up operation by operation until each `frames/<index>.png` matches
+the brief: the same centered capacitor can in every frame, its core dark and
+unlit at frame 0 and brightening monotonically to a white-hot critical core with
+a glow halo and amber overcharge sparks at frames 3–4, all on full transparency.
+Played in order the frames must read as one component charging up. When you are
+satisfied, stop: the recorded per-frame action logs are your finished submission.

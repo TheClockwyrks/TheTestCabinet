@@ -1,0 +1,72 @@
+name = "Floe Pan"
+difficulty = "easy"
+tags = ["asset-generation", "2d", "sprite", "prop"]
+summary = """
+Draw the ice floe — the safe drifting platform in the Floe arctic-crossing game — \
+as a 32x32 sprite: a flat, smooth, rounded ice pan with a snow-dusted top, a ringed \
+edge, and a waterline shadow so it reads as floating, distinct from a jagged \
+hazard, produced one drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 32
+height = 32
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the brief — a flat, smooth, rounded, \
+tile-filling ice pan with a snow-dusted top, a ringed ice edge, and a waterline \
+shadow so it reads as floating and safe, distinct from a jagged hazard, in the pale \
+ice palette on transparency."""
+
+[[review_item]]
+id = "flat-safe-platform"
+title = "Reads as flat, safe footing"
+text = """
+The sprite reads at a glance as a flat, calm, solid platform to stand on — smooth \
+and rounded, snow-dusted — clearly a safe footing and clearly NOT a jagged, sharp, \
+dangerous ice hazard. It has no facets or sharp points."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "floating-pan"
+title = "Reads as a floating pan"
+text = """
+It reads as a low pan floating on water, not a tall block: a rounded tile-filling \
+slab with a snow-dusted top surface, a ringed ice edge, and a darker waterline \
+shadow along the bottom rim where it meets the sea."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-framing"
+title = "Pale ice palette, transparency, and framing"
+text = """
+Uses only the pale ice palette from the brief (snow top, ice body, ice edge, \
+waterline shadow) on full transparency — no out-of-palette pixels, no fringes, no \
+background fill — and fills most of the 32×32 frame as a rounded pan without \
+clipping flat against an edge."""
+weight = 1
+domain = "fidelity"

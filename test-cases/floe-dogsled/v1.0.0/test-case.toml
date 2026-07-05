@@ -1,0 +1,76 @@
+name = "Floe Dogsled"
+difficulty = "medium"
+tags = ["asset-generation", "2d", "sprite", "hazard"]
+summary = """
+Draw the dogsled — a fast sled-dog team hazard in the Floe arctic-crossing game — \
+as a 64x32 (two-tile) sprite: two running huskies leading a low sled on runners \
+with a warm-parka musher and a little snow spray, racing right, produced one \
+drawing operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The dogsled is a two-tile vehicle, so the canvas is 64x32 (two 32-pixel tiles).
+# Fixing the size keeps every run comparable.
+[canvas]
+width = 64
+height = 32
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the brief — a fast sled-dog team \
+racing right across the 64x32 canvas: two running huskies leading, a taut harness \
+to a low sled on runners with a warm-parka musher, and a little snow spray, in the \
+arctic palette on transparency."""
+
+[[review_item]]
+id = "fast-sled-team"
+title = "Reads as a fast sled team"
+text = """
+The sprite reads at a glance as a sled-dog team racing across the ice — low, \
+stretched, and in motion — clearly a moving vehicle to dodge, not a lone creature \
+and not a safe platform. It is clearly different from the big blocky plow and the \
+soft lone critter."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "dogsled-details"
+title = "Huskies, sled, and musher"
+text = """
+It reads specifically as a dogsled: two running huskies at the leading (right) end, \
+a taut harness/gangline back to a low sled on curved runners at the left, and a \
+small standing musher in a warm parka driving it — the parts that make it a sled \
+team, not a single animal."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-framing"
+title = "Arctic palette, transparency, and framing"
+text = """
+Uses only the palette from the brief (the two husky tones, the dark sled/runners, \
+the harness rope, the musher's warm parka, and snow spray) on full transparency — \
+no out-of-palette pixels, no fringes, no background fill — and fills most of the \
+64x32 canvas, racing right, without clipping flat against an edge."""
+weight = 1
+domain = "fidelity"

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!--
+  Floe — title / main-menu reference mockup (base variant).
+  Canonical view slug: title (variant-specific: this variant's menu is CROSS).
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states — title menu)
+  and ../specs/modes/standard.md (the CROSS entry). A dim slice of strait shows
+  behind the menu for atmosphere.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Floe — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- Dim strait furniture behind the menu, for atmosphere. -->
+      <div class="strait dim">
+        <div class="band shore"></div>
+        <div class="band water"></div>
+        <div class="band median"></div>
+        <div class="band ice"></div>
+        <div class="band near"></div>
+        <div class="floe" style="left: 128px; top: 192px; width: 96px"></div>
+        <div class="floe" style="left: 900px; top: 288px; width: 64px"></div>
+        <div class="bear swim" style="left: 220px; top: 256px"><div class="mass"></div></div>
+        <div class="plow" style="left: 820px; top: 480px"><div class="hull"></div><div class="cab"></div><div class="blade"></div><div class="beacon"></div></div>
+        <div class="dogsled" style="left: 300px; top: 544px"><div class="dogs"></div><div class="harness"></div><div class="sled"></div><div class="musher"></div></div>
+      </div>
+
+      <!-- Title, tagline, and the menu. -->
+      <div class="center">
+        <div class="title">FLOE</div>
+        <div class="tagline">DON'T LOOK BACK</div>
+        <div class="menu">
+          <div class="menu-item selected">CROSS</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </div>
+      </div>
+      <div class="hint">&#9650; &#9660; SELECT &nbsp;&nbsp; ENTER START</div>
+    </div>
+  </body>
+</html>
