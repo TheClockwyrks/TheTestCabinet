@@ -615,6 +615,11 @@ export function createBackendExec(
       // An EventSource holds one long-lived SSE connection and reconnects on its
       // own if it drops — exactly what an always-on notifications channel wants.
       const source = new EventSource(joinUrl(backendUrl, "/notifications"));
+      // Fires on the initial connect and on every automatic reconnect. Because the
+      // feed carries no backlog, a completion that fired while the channel was down
+      // is gone; the console reconciles against the active list on each open to
+      // recover it.
+      source.onopen = () => handlers.onOpen?.();
       source.onmessage = (event) => {
         try {
           handlers.onNotification(JSON.parse(event.data) as RunNotification);

@@ -10,8 +10,18 @@ import {
   notificationFromPush,
   useNotifications,
 } from "../runtime/notifications";
+import {
+  reconcileActiveRuns,
+  type ActiveRunsResult,
+} from "../runtime/reconcileActiveRuns";
 import { NotificationToast } from "./NotificationToast";
 import { NotificationsSidebar } from "./NotificationsSidebar";
+
+// How often, while runs are in progress, the console reconciles its in-progress
+// list against the workers' authoritative active sets — the backstop that recovers
+// a completion whose live push never arrived (the feed keeps no backlog), even if
+// the push channel is wedged. Frequent enough to feel prompt, cheap enough to poll.
+const RECONCILE_INTERVAL_MS = 15_000;
 
 // The console's notification subsystem, mounted once inside the router (so its
 // toasts and sidebar can use <Link>) and only where runs execute. It:
@@ -86,6 +96,32 @@ export function NotificationsLayer() {
     [add],
   );
 
+  // Reconcile the in-progress list against every worker's active runs and apply the
+  // result: track newly-seen runs, drop finished ones, and re-read produced runs so
+  // a recovered completion surfaces. This is exactly what a manual page refresh
+  // does; wiring it to the push channel's (re)connect and to a periodic timer makes
+  // the list self-heal when a completion's live push was missed — the reported bug,
+  // where a whole batch of finished runs sat as "in progress" until a manual reload.
+  const reconcileActive = useCallback(async () => {
+    const workers = workersRef.current;
+    if (workers.length === 0) return;
+    const settled = await Promise.allSettled(
+      workers.map((worker) => worker.client.listActiveRuns()),
+    );
+    const results: ActiveRunsResult[] = settled.map((result) =>
+      result.status === "fulfilled"
+        ? { ok: true, runs: result.value }
+        : { ok: false },
+    );
+    const runtime = runtimeRef.current;
+    const { toTrack, toRemove } = reconcileActiveRuns(runtime.inProgress, results);
+    for (const activeRun of toTrack) runtime.track(activeRun);
+    for (const runId of toRemove) runtime.remove(runId);
+    // A pruned run has finished; nudge the data source to re-read produced runs so
+    // it reappears as a completed run rather than simply vanishing.
+    if (toRemove.length > 0) runtime.requestRefresh();
+  }, []);
+
   useEffect(() => {
     const unsubscribes = workersRef.current.map((worker) =>
       worker.client.subscribeToNotifications({
@@ -93,12 +129,30 @@ export function NotificationsLayer() {
         // A transport fault is non-fatal: the web EventSource reconnects on its
         // own; a desktop listen error just means no notifications until retried.
         onError: () => {},
+        // The feed carries no backlog, so a completion that fired while the channel
+        // was down is never replayed. Reconcile against the active list on every
+        // (re)connect to recover any completion missed during the gap.
+        onOpen: () => {
+          void reconcileActive();
+        },
       }),
     );
     return () => {
       for (const unsubscribe of unsubscribes) unsubscribe();
     };
-  }, [workerKey, handlePush]);
+  }, [workerKey, handlePush, reconcileActive]);
+
+  // A periodic backstop for reconnect-time reconciliation: that only recovers a
+  // missed completion if the channel actually reconnects. If it wedges — an
+  // EventSource stuck after an error, or a push dropped with the connection still
+  // up — poll the active list while runs are in flight so the list still heals
+  // within an interval instead of waiting on a manual refresh.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (runtimeRef.current.inProgress.length > 0) void reconcileActive();
+    }, RECONCILE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [reconcileActive]);
 
   // Opening a run dismisses its alert: mark every notification for that run read
   // whenever the location lands on a run's pages (`/runs/:id...`).

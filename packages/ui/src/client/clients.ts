@@ -110,10 +110,14 @@ export interface RunSubscription {
 
 // Handlers for the worker-wide notification subscription. `onNotification` fires
 // once per run completion across the whole worker; `onError` reports a transport
-// fault (the web `EventSource` reconnects on its own afterward).
+// fault (the web `EventSource` reconnects on its own afterward); `onOpen` fires
+// each time the channel (re)connects. The feed is live-only (no backlog), so a
+// completion that fired during a gap is never replayed — `onOpen` lets the console
+// reconcile against the active list on every (re)connect to recover it.
 export interface NotificationSubscription {
   onNotification: (notification: RunNotification) => void;
   onError?: (error: unknown) => void;
+  onOpen?: () => void;
 }
 
 // A worker: a runner that executes a test case and produces a run record. It
