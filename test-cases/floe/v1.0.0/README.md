@@ -53,12 +53,11 @@ The specification is split across `specs/` by concern: `overview.md`,
 `proof.md`. This version offers a single `base` variant — the standard **Crossing**
 run on the one strait.
 
-The `assets/` sprites come from the companion asset-generation cases (`floe-bear`,
-`floe-crosser`, `floe-plow`, `floe-dogsled`, `floe-pan`, `floe-raft`) — the folder
-layout and frame counts under `assets/` match those cases exactly. The bear,
-crosser, and small pan are the finished regenerated art; the plow (3-tile), dogsled
-(2-tile), and rafts (solid 3- and 4-tile floes) are placeholder art pending a fresh
-run of their cases.
+The `assets/` sprites are the finished pixel art produced by the companion
+asset-generation cases (`floe-bear`, `floe-crosser`, `floe-plow`, `floe-dogsled`,
+`floe-pan`, `floe-raft`) — each folder's frames are the regenerated output of the
+matching case's recorded draw operations, so the folder layout and frame counts
+under `assets/` match those cases exactly.
 
 Future versions or variants are expected to add rule twists sketched during
 design —
