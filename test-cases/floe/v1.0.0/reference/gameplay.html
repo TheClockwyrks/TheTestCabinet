@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!--
+  Floe — in-game reference mockup (representative mid-crossing frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system,
+  palette), ../specs/playfield.md (bands, bays, HUD), ../specs/hunter.md (the
+  pursuing bear), ../specs/hazards.md (the ice band), and ../specs/water.md (the
+  floes).
+
+  Strait objects use strait-local coordinates (the strait sits at stage y=80). A
+  tile (c,r) has left=32c, top=32r. Bands: far shore + bays rows 0-3, water 4-11,
+  median 12, ice band 13-18, near shore 19. The lanes, floes, bear, and critter
+  shown are one example moment, used for a soft palette/layout comparison, not a
+  strict pixel match.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Floe — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- ===================== HUD bar ===================== -->
+      <div class="hud">
+        <div class="block"><div class="k">SCORE</div><div class="v score">6&#8202;420</div></div>
+        <div class="block"><div class="k">LIVES</div><div class="lives"><span class="pip"></span><span class="pip"></span></div></div>
+        <div class="block"><div class="k">BAYS</div><div class="bays-hud"><i class="done"></i><i></i><i class="done"></i><i></i><i></i></div></div>
+        <div class="block timer"><div class="k">TIME</div><div class="bar"><span style="width: 58%"></span></div></div>
+        <div class="block" style="align-items: flex-end"><div class="k">LEVEL</div><div class="v">3 / 8</div></div>
+      </div>
+
+      <!-- ===================== Strait ===================== -->
+      <div class="strait">
+        <!-- Bands -->
+        <div class="band shore"></div>
+        <div class="band water"></div>
+        <div class="band median"></div>
+        <div class="band ice"></div>
+        <div class="band near"></div>
+
+        <!-- ===== Goal bays (far shore, row 3) ===== -->
+        <div class="bay filled" style="left: 96px"><div class="critter" style="left: 16px; top: 0"><div class="body"></div></div></div>
+        <div class="bay open" style="left: 352px"></div>
+        <div class="bay filled" style="left: 608px"><div class="critter" style="left: 16px; top: 0"><div class="body"></div></div></div>
+        <div class="bay open" style="left: 864px"></div>
+        <div class="bay open" style="left: 1120px"></div>
+
+        <!-- ===== Water band — drifting floes (rows 4-11) ===== -->
+        <div class="floe" style="left: 96px; top: 128px; width: 96px"></div>
+        <div class="floe" style="left: 640px; top: 128px; width: 64px"></div>
+        <div class="floe" style="left: 320px; top: 160px; width: 64px"></div>
+        <div class="floe" style="left: 896px; top: 160px; width: 96px"></div>
+        <div class="floe" style="left: 160px; top: 192px; width: 64px"></div>
+        <div class="floe" style="left: 736px; top: 192px; width: 96px"></div>
+        <div class="floe" style="left: 480px; top: 224px; width: 96px"></div>
+        <div class="floe" style="left: 1056px; top: 224px; width: 64px"></div>
+        <div class="floe" style="left: 96px; top: 256px; width: 64px"></div>
+        <div class="floe" style="left: 608px; top: 256px; width: 96px"></div>
+        <div class="floe" style="left: 352px; top: 288px; width: 64px"></div>
+        <div class="floe" style="left: 864px; top: 288px; width: 64px"></div>
+        <div class="floe" style="left: 192px; top: 320px; width: 96px"></div>
+        <div class="floe" style="left: 704px; top: 320px; width: 64px"></div>
+        <div class="floe" style="left: 448px; top: 352px; width: 64px"></div>
+        <div class="floe" style="left: 992px; top: 352px; width: 96px"></div>
+
+        <!-- The critter, riding a floe partway across the water. -->
+        <div class="critter" style="left: 112px; top: 256px"><div class="body"></div><div class="eye" style="left:13px"></div><div class="eye" style="left:17px"></div></div>
+
+        <!-- The bear, swimming up through the water after the critter — shown as a
+             submerged silhouette with a wake so it stays trackable. -->
+        <div class="bear swim" style="left: 176px; top: 320px"><div class="mass"></div></div>
+
+        <!-- ===== Ice band — sliding hazards (rows 13-18) ===== -->
+        <div class="crawler" style="left: 192px; top: 416px"><div class="hull"></div><div class="stripe"></div><div class="beacon"></div></div>
+        <div class="berg" style="left: 640px; top: 448px"><div class="ice"></div></div>
+        <div class="crawler" style="left: 960px; top: 480px"><div class="hull"></div><div class="stripe"></div><div class="beacon"></div></div>
+        <div class="berg" style="left: 320px; top: 512px"><div class="ice"></div></div>
+        <div class="crawler" style="left: 768px; top: 544px"><div class="hull"></div><div class="stripe"></div><div class="beacon"></div></div>
+        <div class="berg" style="left: 448px; top: 576px"><div class="ice"></div></div>
+      </div>
+    </div>
+  </body>
+</html>

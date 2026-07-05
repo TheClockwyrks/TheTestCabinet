@@ -1,0 +1,113 @@
+Build **Floe**, a single-screen arcade crossing game with a **pursuing hunter**
+that runs entirely in the browser.
+
+Your project root is `{{workspace}}`. Create the game there.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins **Playwright** as a dev dependency, and an `assets/` folder of the game's
+sprite art. Its dependencies have already been installed for you — `node_modules/`
+is populated and Playwright's headless **Chromium** is downloaded — so you can build
+and verify right away. Build on this project rather than replacing it: keep the
+`package.json`, add your framework, bundler, and a `build` script on top of it, and
+keep the lockfile in sync (see below).
+
+## What to read first
+
+The full specification is split across the files below, all already present in your
+project. Read every one of them before you start, then implement the game they
+describe as a single, cohesive build:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+Start with `overview` for the goals, hard requirements, coordinate system, and
+palette. Then read `hunter` carefully — the bear that chases the critter across the
+whole strait, only held back by its speed, is the heart of this game. Then
+`playfield` (the tile strait, its bands, and the goal bays), `hazards` (the sliding
+ice-band lanes), `water` (the drifting floes and drift/off-edge death), `controls`
+(the one-tile hop), `flow` (lives, the timer, the 8-level run, scoring, and states),
+and `assets` (the provided sprite art and how to load it). Finally read the mode
+spec(s) under `modes/` for the playable modes. The specs cross-reference each other
+by name — treat them as one specification. **There is no fixed lane layout: the
+hazards and floes are populated at runtime and the bear pursues live, so do not ship
+a fixed one** — you design the lane speeds, floe sizes and spacing, and per-level
+pacing within the constraints in `hazards`, `water`, `hunter`, and `flow`.
+
+## Build requirements
+
+Deliver a complete, polished, playable game, not a tech demo. It must:
+
+- **Render real graphics** (Canvas 2D, WebGL/WebGPU, or positioned DOM), using the
+  provided sprite assets under `assets/` (`{{workspace}}/specs/assets.md`) — not a
+  text-only or ASCII rendering.
+- **Run in the browser with no backend** — no server, accounts, database, or network
+  calls at runtime; everything needed to play is self-contained.
+- Require **no API keys or credentials** of any kind to build, run, or play.
+- Stay a **Node project** built with only Node.js and npm-installed dependencies — no
+  separately installed language toolchain. Extend the provided `package.json` at
+  `{{workspace}}` and **commit a `package-lock.json`** (run `npm install` after you
+  change dependencies so the lockfile matches) — the build is installed with `npm
+  ci`, which requires it. `npm ci` then `npm run build` must produce the static site,
+  with no other manual step, into one of `dist/`, `build/`, or `out/` at the project
+  root, with an `index.html` at the root of that directory. Serving that directory
+  as-is at the root of any static file server must run the game — and, because a
+  finished run is played back from a **per-run sub-path**, it must also run under
+  **any base path**: load the seeded `assets/` with page-relative URLs, never
+  root-absolute ones (`{{workspace}}/specs/assets.md`).
+- Include a `README.md` at `{{workspace}}` explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
+
+You choose the language, framework, bundler, and rendering approach within those
+constraints — only the `npm ci` / `npm run build` commands and their
+`dist`/`build`/`out` output are fixed (plain TypeScript with Canvas 2D is entirely
+sufficient). The `reference/` folder under `{{workspace}}` holds screenshots that
+are visual targets for the title, gameplay, and game-over screens — match their
+layout, palette, and type, but build the screens from the specification rather than
+copying the images, and remember the lanes, floes, bear, and critter they show are
+just one example moment.
+
+## Verify before you finish
+
+Your project has **Playwright** and a headless **Chromium** installed as project
+dependencies, plus network access — use them to verify your build, do not just
+assume it works. Before you consider the task complete:
+
+- Produce the **static production build** and serve it locally, then open it in
+  Chromium with Playwright and confirm it **loads with no console errors** and no
+  uncaught exceptions. Also serve it from a **non-root sub-path** and confirm the
+  sprite assets still load with no 404s (`{{workspace}}/specs/assets.md`).
+- **Drive the game** — hop the critter up through the ice band dodging hazards, ride
+  the drifting floes across the water without falling in or drifting off the edge,
+  fill the bays, and watch the **bear emerge and chase** you across the ice and
+  **swim after you** across the water (staying visible) and catch you when you
+  hesitate — take hits to a loss and (if you can) clear levels toward victory — and
+  **screenshot** the title, gameplay, and end screens. Compare each against the
+  matching image in `reference/` and against the specs, and fix what does not match
+  before finishing.
+- **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
+  screenshots and the two short clips (`hunt.mp4`, `cross.mp4`), each written to the
+  precise `proof/` path that spec names. These are required deliverables of the
+  finished build, not a private check. Do not invent a different folder or filename,
+  and do not skip the `.mp4` clips.
+
+Use the project's own Playwright: import it from your project (for example `import {
+chromium } from "playwright"`) or run the project-local CLI with `npx playwright`.
+There is **no** global Playwright on `PATH` — it lives in your project's
+`node_modules`, like any other dependency. Launch Chromium with the `--no-sandbox`
+argument — this container has no Chromium sandbox, so a default launch will fail.
+
+## Commit your work
+
+Your project root is a **git repository** — it was initialized before you started,
+with the starter files in its first commit. Your finished implementation is
+published directly from this repository's commits, so work you leave uncommitted is
+**not** published. When the build is complete and verified, commit everything: run
+`git add -A` then `git commit`, and confirm `git status` reports a clean working
+tree with nothing uncommitted or untracked. A `.gitignore` already excludes
+`node_modules/` and the build output (`dist/`/`build/`/`out/`), so a clean tree does
+not mean committing those — but it does mean committing your source, the provided
+`assets/`, your `package-lock.json`, your `README.md`, and the `proof/` artifacts.

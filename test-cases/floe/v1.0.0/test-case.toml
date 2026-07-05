@@ -1,0 +1,284 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Floe"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Floe asks for
+# tile-based hopping across lanes of sliding hazards and drifting carry-floes, a
+# pursuing hunter with real pathfinding across the hazard board and the water, a
+# row of goal bays, a timer, an 8-level progression with a win and a loss, and
+# multiple states — a heavy build, so it sits at hard.
+difficulty = "hard"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "crossing"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A single-screen crossing game where a small critter hops across lanes of sliding \
+ice hazards and drifting floes to reach the far-shore bays — while a polar bear \
+hunts it across the whole strait, dodging the same hazards and swimming out after \
+it. Its one limit is speed, so keep moving: hesitate and it catches you."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Floe is a substantial build (tile hopping with carry-floes, a pursuing
+# hunter with pathfinding, the bays, a timer, an 8-level progression, multiple
+# states), so as a hard case it gets a full five hours.
+max_runtime_hours = 5
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins `playwright`
+# as a dev dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Provided art assets, seeded into the run root under `assets/`. A directory is
+# seeded recursively, so every sprite frame under `assets/` reaches the run. The
+# build must render the game with these (see specs/assets.md) and load them with
+# page-relative URLs so it works under any base path.
+assets = ["assets"]
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant (the standard Crossing run on the one
+# strait), declared in its own file under `variants/`. It supplies the `title`
+# view's menu mockup; `gameplay` and `game-over` are common. Future
+# versions/variants are expected to add rule twists (e.g. a longer endless run or a
+# fog-of-war strait) as additional variants on top of this base. This list is a
+# root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. These are always present,
+# so the mode specs may reference them freely; the common specs must never
+# reference a mode spec a given variant does not seed (only `modes/standard.md` is
+# always present). All common specs are plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/hunter.md"
+
+[[spec]]
+source = "specs/hazards.md"
+
+[[spec]]
+source = "specs/water.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/assets.md"
+
+[[spec]]
+source = "specs/modes/standard.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup the harness renders to a screenshot and seeds as a visual target. The
+# `title` view is variant-specific (declared per variant below); `gameplay` and
+# `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot or
+# `.mp4` to; `specs/proof.md` instructs the build to produce them at exactly these
+# paths. Validation records whether each turned up (informational). The media kind
+# is inferred from the extension: `.png` is an image, `.mp4` a video.
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-game"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "End screen"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "hunt"
+name = "Hunter-pursuit clip"
+dest = "proof/hunt.mp4"
+
+[[proof]]
+id = "cross"
+name = "Crossing clip"
+dest = "proof/cross.mp4"
+
+# Validation checks (opt-in). Only the checks declared here run. Each drives the
+# built implementation, screenshots it, and compares against the rendered
+# screenshot of `reference`. Only the title screen is deterministic enough to
+# validate for Floe: it is whatever the game shows on load, so it needs no actions.
+# Gameplay and game-over depend on live, moving state, so they are seeded as
+# references but not validated.
+[[check]]
+view = "title"
+name = "Title Screen"
+reference = "title"
+actions = []
+
+# Scoring domains. The reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a flawless hunter cannot
+# mask a broken crossing, and vice versa. Domains are case-level; an individual
+# review item rolls up to one through its optional `domain`, while a general item
+# (states, window fit) omits it.
+[[domain]]
+id = "hunter"
+name = "The Hunter"
+description = "The signature: the bear emerging at the near shore and pursuing the critter across the whole strait, navigating around the hazards, swimming out onto the water after it while staying visible, catching a critter that hesitates or errs, resetting fairly between crossings, and speeding up (and doubling) with the level."
+
+[[domain]]
+id = "crossing"
+name = "The Crossing"
+description = "The crossing core: one-tile hopping, the solid ice lanes of sliding hazards, the deadly water crossed on drifting carry-floes (with fall-in and off-edge death), filling the five far-shore bays, the timer, and the 8-level progression with its win and loss."
+
+# Reviewer checklist items, common to every variant. The major, observable
+# requirements a reviewer must explicitly check by playing the build — the things
+# validation cannot judge and that are easy to miss. Reporter-side material: never
+# seeded into a run, so the model never sees the checklist; each restates a
+# requirement the seeded specification already states. Each item is worth `weight`
+# points toward the run's score; the reviewer records a pass/fail verdict for each
+# before the run can be published.
+
+[[review_item]]
+id = "bear-pursues"
+title = "The bear hunts across the whole strait"
+text = "The bear emerges at the near shore after the critter advances, then pursues the critter's position across every band — ice, floes, and water — not confined to any section. It moves a touch slower than a cleanly-played critter, so steady forward hopping stays ahead, but it visibly closes whenever the critter hesitates, backtracks, or gets stuck."
+weight = 1
+domain = "hunter"
+reference = "gameplay"
+proof = "hunt"
+
+[[review_item]]
+id = "bear-navigates"
+title = "The bear navigates the hazards"
+text = "The bear is not immune to the world: it avoids the sliding hazards and paths AROUND them (a hazard-choked lane delays and detours it), and if a hazard catches it, it is staggered/knocked back briefly rather than killed. Leading it into a hazard lane is a way to open distance; the hunt is never removed mid-crossing."
+weight = 1
+domain = "hunter"
+proof = "hunt"
+
+[[review_item]]
+id = "bear-swims-visible"
+title = "The bear swims, and stays visible"
+text = "The bear follows the critter out onto the floes and swims through the open water after it (slower than on ice, but never walled out). While submerged it stays trackable — drawn as a silhouette with a wake/ripple — so it is never invisible, even passing under a floe."
+weight = 1
+domain = "hunter"
+proof = "hunt"
+
+[[review_item]]
+id = "bear-fair-reset"
+title = "Fair pursuit reset and safe bays"
+text = "When a crossing ends (death or a filled bay), the bear is removed and re-emerges only after the fresh critter has advanced a few tiles — it is never sitting on a just-respawned critter. A critter safe in a FILLED bay is safe from the bear (it cannot enter the far-shore wall or a filled bay)."
+weight = 1
+domain = "hunter"
+
+[[review_item]]
+id = "one-tile-hops"
+title = "One-tile hops only"
+text = "The critter moves by discrete one-tile hops in four directions, one tile per press, with no long or charged jump and no diagonal. A hop that would leave the strait or hit the far-shore wall / a filled bay is refused (no move, no death)."
+weight = 1
+domain = "crossing"
+proof = "cross"
+
+[[review_item]]
+id = "ice-hazards"
+title = "The ice band of sliding hazards"
+text = "The ice band is solid lanes the critter hops freely on, each carrying sliding hazards (crawlers and bergs) moving at set speeds in alternating directions; contact with a hazard is death. The critter is safe in the gaps and on the shores/median (from hazards), but never from the bear."
+weight = 1
+domain = "crossing"
+reference = "gameplay"
+
+[[review_item]]
+id = "water-floes-drift"
+title = "Deadly water and drifting carry-floes"
+text = "The water band is deadly: standing on a water tile with no floe is death. The critter crosses by riding drifting floes, which CARRY it sideways as it stands on them; hopping into open water is death, and riding a floe off the side edge is death. Floes come in a mix of sizes and speeds."
+weight = 1
+domain = "crossing"
+proof = "cross"
+
+[[review_item]]
+id = "bays-goal"
+title = "Filling the far-shore bays"
+text = "The critter completes a crossing by hopping up into an open bay in the far shore; a filled bay is occupied and blocks re-entry, and the solid shore between bays cannot be entered. Filling all 5 bays clears the level."
+weight = 1
+domain = "crossing"
+reference = "gameplay"
+
+[[review_item]]
+id = "timer-lives-levels"
+title = "Timer, lives, and the 8-level run"
+text = "Each crossing is under a timer that costs a life if it expires; the critter has 3 lives, lost to the bear, a hazard, drowning/off-edge, or the timer; 0 lives ends the game. The game is a run of 8 levels that speed up (and add a second bear from level 5), and clearing level 8 wins it."
+weight = 1
+domain = "crossing"
+
+[[review_item]]
+id = "uses-assets"
+title = "Renders with the provided sprites"
+text = "The game renders the critter (4-dir hop), the bear (4-dir run, submerged swim, lunge), the crawler and berg hazards, and the floe using the provided assets/ sprites at 32x32 with nearest-neighbor scaling — while the strait (water, ice, bays), the HUD, and the splash/wake VFX are drawn in code."
+weight = 1
+domain = "crossing"
+
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, in-game, pause (resume/restart/quit), Victory, and Game over, each with the right screen and actions."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the full HUD bar, the whole strait, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1

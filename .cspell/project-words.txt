@@ -142,3 +142,9 @@ corruptors
 playband
 mand
 ccore
+
+# Floe arctic-crossing case family (critter + pursuing polar bear).
+crossable
+respawn
+respawned
+respawning
