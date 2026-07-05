@@ -12,8 +12,8 @@ name = "Cascade"
 # for a full deck model, legal-move validation across foundations and tableau,
 # drag-and-drop of single cards and ordered runs, an auto-move to foundation, win
 # detection, a physics-driven victory animation, and the menus and states that tie
-# it together — a solid front-end build, so it sits at medium.
-difficulty = "medium"
+# it together — a contained front-end build, so it sits at easy.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["cards", "solitaire", "klondike", "2d"]
