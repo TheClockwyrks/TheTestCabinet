@@ -231,3 +231,8 @@ dogfighter
 dogfighting
 granularities
 unpossessed
+playstyle
+# Thunderhead reference-mockup CSS identifiers and manifest ids (harness-side only).
+hpbar
+firemode
+autofire

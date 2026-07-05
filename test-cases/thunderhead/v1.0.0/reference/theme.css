@@ -1,0 +1,747 @@
+/*
+ * Thunderhead — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Thunderhead test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/.
+ *
+ * The mockups do NOT fake the 3D world — flat CSS cannot depict the islands, the
+ * cloud sea, or the fleets usefully. The in-battle mockups are HUD-only: they pin
+ * the HUD layout, palette, and type over a neutral dark viewport, and the real
+ * build renders the WebGL/WebGPU world (terrain, cloud sea, and the provided unit
+ * models) behind that HUD, through the tactical camera and the direct-control views.
+ */
+
+:root {
+  --sky: #93aec4;
+  --sky-haze: #c6d2dc;
+  --cloud: #e6ebf0;
+  --cloud-foam: #f5f8fb;
+  --murk: #8b95a1;
+  --murk-deep: #565e69;
+
+  --grass: #5e7d46;
+  --grass-shadow: #47612f;
+  --dirt: #6b4e34;
+  --rock: #6f6b64;
+  --rock-dark: #49463f;
+  --scree: #575049;
+  --snow: #e8edf0;
+  --float-rock: #3d372f;
+
+  --iron: #6b7178; /* Ironbound */
+  --iron-dark: #464b52;
+  --brass: #c07a2c;
+  --coal: #2c2e33;
+
+  --pearl: #dbe3ea; /* Meridian */
+  --silver: #a7b2bd;
+  --cyan: #4fd4e0;
+  --cyan-deep: #1f6f7a;
+
+  --amethyst: #8a5cff; /* Geode */
+  --crystal: #b79bff;
+  --magenta: #ff5ce0;
+  --crystal-dark: #3a2a5a;
+
+  --allied: #4f9dff;
+  --hostile: #ff5347;
+  --objective: #ffce54;
+
+  --hp-good: #5ec96b;
+  --hp-crit: #ff5c5a;
+  --shield: #5fd0dc;
+  --valid: #7fe0a0;
+  --invalid: #ff5c5a;
+  --alert: #ff7a3d;
+  --danger: #ff3a2f;
+  --order: #7fb0f0;
+  --gold: #ffce54;
+
+  --text: #eef3f7;
+  --text-dim: #9fb0c0;
+  --text-faint: #6f8090;
+
+  --panel: rgba(12, 16, 22, 0.72);
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+/* The fixed logical stage. The build fills the window (16:9); these mockups are
+   1280x720. The default background is the neutral dark viewport the HUD sits over
+   (the real build draws the 3D world here). The title screen overrides it. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  background: radial-gradient(
+      ellipse at 50% 42%,
+      #1a222c 0%,
+      #10151b 68%,
+      #0b0f14 100%
+    );
+  font-family: var(--mono);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Performance overlay, top-left corner (shared by both in-battle views). */
+.perf {
+  position: absolute;
+  left: 22px;
+  top: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.perf b {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ---- Tactical HUD ------------------------------------------------------ */
+
+/* Flagship health, top center: yours (allied) and the enemy's (hostile). */
+.flagships {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 26px;
+}
+.flag {
+  width: 300px;
+  text-align: center;
+}
+.flag .label {
+  font-size: 12px;
+  letter-spacing: 4px;
+}
+.flag.you .label {
+  color: var(--allied);
+}
+.flag.foe .label {
+  color: var(--hostile);
+}
+.flag .bar {
+  position: relative;
+  margin-top: 5px;
+  height: 16px;
+  border: 2px solid var(--rock-dark);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.flag .bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+  background: var(--hp-good);
+}
+.flag.foe .bar .fill {
+  background: var(--hp-crit);
+}
+.flag .hp {
+  margin-top: 3px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+
+/* Requisition + reinforcement, top-right. */
+.req {
+  position: absolute;
+  right: 22px;
+  top: 16px;
+  text-align: right;
+}
+.req .amt {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--gold);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+.req .rate {
+  font-size: 13px;
+  color: var(--hp-good);
+  margin-top: 1px;
+}
+.req .reinforce {
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+.req .reinforce b {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* Alert line, upper center under the flagship bars. */
+.alert-line {
+  position: absolute;
+  left: 50%;
+  top: 78px;
+  transform: translateX(-50%);
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--alert);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+/* Fleet roster, left side. */
+.roster {
+  position: absolute;
+  left: 22px;
+  top: 96px;
+  width: 210px;
+}
+.roster h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--allied);
+  font-weight: 700;
+}
+.unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-left: 3px solid var(--allied);
+  border-radius: 3px;
+}
+.unit.sel {
+  border-color: var(--valid);
+  border-left-color: var(--valid);
+}
+.unit.flag-unit {
+  border-left-color: var(--gold);
+}
+.unit .nm {
+  flex: 1;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+.unit .hpbar {
+  width: 46px;
+  height: 6px;
+  border: 1px solid var(--rock-dark);
+  background: rgba(0, 0, 0, 0.4);
+  position: relative;
+}
+.unit .hpbar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--hp-good);
+}
+.unit .hpbar i.warn {
+  background: var(--alert);
+}
+
+/* Selection + order panel, bottom-left. */
+.select {
+  position: absolute;
+  left: 22px;
+  bottom: 22px;
+  width: 250px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 6px;
+}
+.select h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--gold);
+  font-weight: 700;
+}
+.select .row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 5px;
+  color: var(--text-dim);
+}
+.select .row .v {
+  color: var(--text);
+}
+.select .row .v.good {
+  color: var(--hp-good);
+}
+.select .orders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 9px;
+}
+.select .ord {
+  padding: 4px 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--order);
+  border: 1px solid var(--order);
+  border-radius: 4px;
+}
+.select .ord.on {
+  color: #0a0e12;
+  background: var(--order);
+}
+
+/* Minimap / contacts, bottom-right. */
+.minimap {
+  position: absolute;
+  right: 22px;
+  bottom: 22px;
+  width: 232px;
+  height: 172px;
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.minimap .field {
+  position: absolute;
+  inset: 8px;
+  background: radial-gradient(ellipse at 50% 50%, #172029 0%, #0d1116 100%);
+  border-radius: 3px;
+}
+.minimap .blip {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.minimap .blip.you {
+  background: var(--allied);
+}
+.minimap .blip.foe {
+  background: var(--hostile);
+}
+.minimap .blip.flag {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--gold);
+}
+.minimap .zone {
+  position: absolute;
+  width: 54px;
+  height: 22px;
+  border: 1px dashed var(--text-faint);
+  border-radius: 3px;
+}
+.minimap .lbl {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+}
+
+/* ---- Direct-control HUD ------------------------------------------------ */
+
+/* Banner: possessed unit, manned station, and the station-switch strip. */
+.banner {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  text-align: center;
+}
+.banner .unit-name {
+  font-size: 16px;
+  letter-spacing: 4px;
+  color: var(--text);
+}
+.banner .unit-name b {
+  color: var(--iron);
+  font-weight: 700;
+}
+.banner .stations {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.banner .st {
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 3px;
+}
+.banner .st.on {
+  color: #0a0e12;
+  background: var(--valid);
+  border-color: var(--valid);
+}
+
+/* Center crosshair with the per-turret gunnery status read-out. */
+.reticle {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  width: 260px;
+  text-align: center;
+}
+.reticle .cross {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  margin: 0 auto;
+}
+.reticle .cross::before,
+.reticle .cross::after {
+  content: "";
+  position: absolute;
+  background: var(--text);
+  opacity: 0.85;
+}
+.reticle .cross::before {
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 60px;
+  transform: translateX(-50%);
+}
+.reticle .cross::after {
+  top: 50%;
+  left: 0;
+  height: 2px;
+  width: 60px;
+  transform: translateY(-50%);
+}
+.reticle .cross .hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--text);
+  border-radius: 50%;
+}
+/* Turret status pips grouped by class row. */
+.turrets {
+  margin-top: 16px;
+}
+.turrets .grp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
+.turrets .grp .cap {
+  width: 78px;
+  text-align: right;
+  color: var(--text-dim);
+}
+.pip {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+}
+.pip.ready {
+  background: var(--hp-good);
+}
+.pip.reload {
+  background: rgba(255, 206, 84, 0.22);
+  border-color: var(--gold);
+  overflow: hidden;
+}
+.pip.reload i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: var(--gold);
+}
+.pip.na {
+  background: var(--hp-crit);
+  opacity: 0.85;
+}
+.reticle .firemode {
+  margin-top: 12px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+.reticle .firemode b {
+  color: var(--text);
+}
+
+/* Movement read-out, bottom-left. */
+.move {
+  position: absolute;
+  left: 22px;
+  bottom: 22px;
+  width: 200px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 6px;
+}
+.move .row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 5px;
+  color: var(--text-dim);
+}
+.move .row .v {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Condition read-out, bottom-right (faction paradigm). */
+.cond {
+  position: absolute;
+  right: 22px;
+  bottom: 22px;
+  width: 230px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--rock-dark);
+  border-radius: 6px;
+}
+.cond .label {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--text-dim);
+}
+.cond .bar {
+  position: relative;
+  margin: 5px 0 9px;
+  height: 12px;
+  border: 1px solid var(--rock-dark);
+  background: rgba(0, 0, 0, 0.4);
+}
+.cond .bar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--hp-good);
+}
+.cond .bar.shield i {
+  background: var(--shield);
+}
+.cond .dmg {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+.cond .dmg .fire {
+  color: var(--danger);
+}
+.cond .dmg .breach {
+  color: var(--alert);
+}
+.cond .dmg .crew {
+  color: var(--valid);
+}
+
+/* ---- Title screen ------------------------------------------------------ */
+
+.hero {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+      ellipse at 50% 34%,
+      rgba(79, 157, 255, 0.16) 0%,
+      rgba(0, 0, 0, 0) 60%
+    ),
+    linear-gradient(to bottom, #0f151c 0%, #0a0e12 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.title {
+  font-size: 96px;
+  font-weight: 700;
+  letter-spacing: 22px;
+  margin: 0 0 0 22px;
+  color: var(--text);
+  text-shadow: 0 0 30px rgba(79, 157, 255, 0.45), 0 0 3px rgba(230, 235, 240, 0.7);
+}
+.tagline {
+  font-size: 17px;
+  letter-spacing: 9px;
+  margin: 20px 0 0 6px;
+  color: var(--text-dim);
+}
+.crests {
+  display: flex;
+  gap: 18px;
+  margin-top: 26px;
+}
+.crest {
+  padding: 6px 16px;
+  font-size: 12px;
+  letter-spacing: 3px;
+  border: 1px solid var(--rock-dark);
+  border-radius: 4px;
+  background: var(--panel);
+}
+.crest.iron {
+  color: var(--iron);
+  border-color: var(--iron);
+}
+.crest.mer {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+.crest.geo {
+  color: var(--crystal);
+  border-color: var(--amethyst);
+}
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 46px;
+}
+.menu-btn {
+  width: 340px;
+  padding: 15px 0;
+  text-align: center;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  color: var(--allied);
+  background: var(--panel);
+  border: 2px solid var(--allied);
+  border-radius: 8px;
+}
+.menu-btn.primary {
+  color: #0a0e12;
+  background: var(--allied);
+  border-color: #2f6bb0;
+}
+.hint {
+  position: absolute;
+  bottom: 26px;
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: var(--text-faint);
+}
+
+/* ---- End screen (victory / defeat) ------------------------------------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 8, 10, 0.82);
+}
+.panel-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 46px 48px 38px;
+  text-align: center;
+  background: #0e1218;
+  border: 1px solid var(--rock-dark);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.panel-eyebrow {
+  font-size: 16px;
+  letter-spacing: 9px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+.panel-title {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  margin: 0 0 26px;
+}
+.panel-title.win {
+  color: var(--hp-good);
+}
+.panel-title.lose {
+  color: var(--hp-crit);
+}
+.stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 11px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 16px;
+}
+.stat:last-of-type {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.stat .k {
+  letter-spacing: 3px;
+  color: var(--text-faint);
+}
+.stat .v {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+}
+.stat .v.accent {
+  color: var(--allied);
+}
+.buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 28px;
+}
+.btn {
+  padding: 12px 26px;
+  font-size: 16px;
+  letter-spacing: 4px;
+  color: var(--allied);
+  border: 1px solid var(--allied);
+  border-radius: 6px;
+}
+.btn.primary {
+  color: #0a0e12;
+  background: var(--allied);
+}

@@ -1,0 +1,11 @@
+# The default (and only) Thunderhead variant: the standard Open Battle — one fleet
+# against one over a freshly generated world. Listed first in the case manifest's
+# `variants`, so it is the default. It supplies the `title` view's mockup;
+# `tactical`, `control`, and `game-over` are common. Every path here resolves against
+# the version folder, exactly like the main manifest. Future versions/variants are
+# expected to add rule twists (a fixed matchup, a larger battle, a no-reinforcement
+# skirmish) on top of this base.
+slug = "base"
+name = "Base"
+description = "The standard Open Battle: command a fleet of one power against another over a generated archipelago, possess any unit and station to fight it directly, and win by destroying the enemy flagship."
+reference = [{ view = "title", path = "reference/title-base.html" }]

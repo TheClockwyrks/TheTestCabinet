@@ -1,0 +1,73 @@
+# Thunderhead — Reference Visuals
+
+These files are the **canonical visual reference** for the Thunderhead test case.
+They are authored as self-contained static HTML on a fixed `1280x720` logical stage
+so the testing harness can render and screenshot them deterministically. The
+rendered screenshots serve two purposes: they are seeded into a run as visual
+targets, and they are the baselines for any validation check (declared in
+`../test-case.toml`) that names the view.
+
+## Source is rendered, not seeded
+
+The mockup **source** in this `reference/` folder is **harness-side only** and is
+never seeded into a run. What the model receives is the *rendered screenshot* of
+each view, seeded as a visual target alongside the seeded specs under
+[`../specs/`](../specs/). Handing over the source HTML/CSS would let a model copy the
+intended UI instead of building it from the spec; a screenshot shows the target
+without giving away the implementation.
+
+These mockups do **not** fake the 3D world — flat CSS cannot depict the islands, the
+cloud sea, or the fleets. The real build renders the world in **WebGL/WebGPU**
+(`../specs/overview.md`) through the tactical camera and the direct-control views;
+the mockups exist to pin the **palette, HUD layout, and type**. The in-battle
+mockups are therefore **HUD-only**: the HUD over a neutral dark viewport, with the 3D
+world left to the build.
+
+## Views
+
+- **`title`** (`title-<variant>.html`) — the title screen: the `THUNDERHEAD` title
+  with PLAY and HOW TO PLAY.
+- **`tactical`** (`tactical.html`) — the in-battle **tactical HUD** over a neutral
+  viewport (common).
+- **`control`** (`control.html`) — the **direct-control HUD**: a possessed ship's
+  gunnery read-out (common).
+- **`game-over`** (`game-over.html`) — the end screen: VICTORY; DEFEAT shares its
+  layout, recolored (common).
+
+The `tactical`, `control`, and `game-over` views are **common** — the same mockup is
+rendered and seeded for every variant. The `title` view is **variant-specific**: each
+variant declares its own title mockup, so a future variant can present its mode
+differently. This version declares the single `base` variant, whose title
+(`title-base.html`) opens the standard **Open Battle**.
+
+The `title` view is the **checked** view: it is what the game shows on load and is
+static, so the harness compares an implementation's load screen against it.
+`tactical`, `control`, and `game-over` depend on live play and are seeded as targets
+but not auto-checked.
+
+`theme.css` holds the shared palette, type, and furniture referenced by every view
+and by the specification (the seeded specs under [`../specs/`](../specs/)): the sky
+and cloud colors, the terrain colors, the three power colors (Ironbound iron/brass,
+Meridian pearl/cyan, Geode amethyst/magenta), the allied/hostile allegiance colors,
+and the HUD styling.
+
+## Generating screenshots
+
+The mockups are the source of truth; their rendered screenshots are a build output
+and are **git-ignored** (the repository ignores
+`test-cases/**/reference/screenshots/`). The testing harness renders each file at a
+`1280x720` viewport and writes the images under `reference/screenshots/<variant>/`,
+one folder per variant:
+
+```
+reference/screenshots/base/title.png        # from title-base.html
+reference/screenshots/base/tactical.png
+reference/screenshots/base/control.png
+reference/screenshots/base/game-over.png
+```
+
+Whichever variant a run selects, its `title.png` is seeded into the run as
+`reference/title.png`, so the model always sees a single stable path.
+
+Because the files are plain static HTML with no scripts or network access, they can
+be opened directly (`file://`) or served as static files for rendering.
