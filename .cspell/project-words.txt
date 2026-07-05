@@ -217,3 +217,8 @@ respawn
 respawned
 respawning
 gangline
+
+# Thunderhead (thunderhead) fleet-command case.
+battlespace
+sightline
+sightlines
