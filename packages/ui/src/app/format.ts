@@ -67,11 +67,15 @@ export function formatUsd(value: number | null): string {
   if (value === null) {
     return "—";
   }
+  // Sub-dollar figures (per-token prices, tiny run costs) need the extra
+  // precision to read as anything but "$0.00"; at a dollar and up those digits
+  // are just noise, so cap them at cents.
+  const fractionDigits = Math.abs(value) < 1 ? 4 : 2;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
+    maximumFractionDigits: fractionDigits,
   }).format(value);
 }
 
