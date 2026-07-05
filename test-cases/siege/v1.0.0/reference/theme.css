@@ -1,0 +1,666 @@
+/*
+ * Siege — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Siege test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/. The in-siege frame fakes the 3D view in flat CSS — the
+ * real build renders it in WebGL/WebGPU — but the palette, HUD layout, and type
+ * are the targets to match.
+ */
+
+:root {
+  --sky: #8fb8d6;
+  --sky-haze: #c2d6e4;
+  --grass: #5a8f3c;
+  --grass-shadow: #47702f;
+  --dirt: #6b4e34;
+  --rock: #6d6b66;
+  --rock-dark: #4c4a46;
+  --sand: #b8a066;
+
+  --concrete: #c8ccd2;
+  --concrete-shadow: #9aa0a8;
+
+  --cobalt: #3d7bd6; /* Wardens: you & squad */
+  --cobalt-light: #7fb0f0; /* accent / selection / valid */
+  --teal: #2fb59a; /* squad medics */
+  --heal: #eafcf6; /* medic cross / heal accent */
+
+  --ember: #b83a3a; /* Scourge Tier I body */
+  --steel: #c9ced6; /* Scourge Tier II plating */
+  --elite: #ffcf4d; /* Scourge Tier III trim */
+  --scourge-eye: #ff6a5a;
+
+  --hp-good: #5ec96b;
+  --hp-crit: #ff5c5a;
+  --ammo: #ffce54;
+  --telegraph-warn: #ff7a3d;
+  --telegraph-imminent: #ff3a2f;
+
+  --text: #eef3f7;
+  --text-dim: #9fb0c0;
+  --text-faint: #6f8090;
+
+  --panel: rgba(12, 16, 22, 0.72);
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+/* The fixed logical stage. The build is 16:9; these mockups are 1280x720. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  background: var(--sky);
+  font-family: var(--mono);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Faux 3D scene (in-siege view) ------------------------------------- */
+
+.sky {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 400px;
+  background: linear-gradient(to bottom, var(--sky) 0%, var(--sky-haze) 100%);
+}
+
+/* the ground plane, receding to a horizon around y=360 */
+.ground {
+  position: absolute;
+  left: 0;
+  top: 360px;
+  width: 1280px;
+  height: 360px;
+  background: linear-gradient(to bottom, var(--grass-shadow) 0%, var(--grass) 40%);
+}
+
+/* faint banding to suggest voxel ground rows */
+.ground::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) 22px,
+    rgba(0, 0, 0, 0.06) 22px,
+    rgba(0, 0, 0, 0.06) 24px
+  );
+}
+
+/* a generic blocky voxel prop */
+.voxel {
+  position: absolute;
+  border: 2px solid var(--rock-dark);
+  border-radius: 2px;
+}
+
+/* the active redoubt: concrete blockwork with a lit top face */
+.redoubt {
+  position: absolute;
+  background: var(--concrete);
+  border: 3px solid var(--rock-dark);
+  border-radius: 3px;
+  box-shadow: inset 0 10px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -14px 0 rgba(0, 0, 0, 0.18);
+}
+.redoubt .banner {
+  position: absolute;
+  top: -46px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 44px;
+  background: var(--cobalt);
+  border: 2px solid var(--rock-dark);
+}
+
+/* a Scourge attacker: red block, eye accent, optional tier plating/trim */
+.scourge {
+  position: absolute;
+  width: 26px;
+  height: 40px;
+  background: var(--ember);
+  border: 2px solid var(--rock-dark);
+  border-radius: 2px;
+}
+.scourge::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 6px;
+  background: var(--scourge-eye);
+}
+.scourge.t2 {
+  box-shadow: inset 0 0 0 3px var(--steel);
+}
+.scourge.t3 {
+  box-shadow: inset 0 0 0 3px var(--elite);
+}
+.scourge.breaker {
+  width: 40px;
+  height: 48px;
+  background: var(--ember);
+  box-shadow: inset 0 0 0 4px var(--steel);
+}
+
+/* a friendly squad member in the world */
+.warden {
+  position: absolute;
+  width: 24px;
+  height: 40px;
+  background: var(--cobalt);
+  border: 2px solid var(--rock-dark);
+  border-radius: 2px;
+}
+.warden.medic {
+  background: var(--teal);
+}
+.warden.medic::after {
+  content: "+";
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  transform: translateX(-50%);
+  color: var(--heal);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* artillery telegraph ring on the ground */
+.telegraph {
+  position: absolute;
+  border-radius: 50%;
+  border: 4px solid var(--telegraph-warn);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 122, 61, 0.28) 0%,
+    rgba(255, 122, 61, 0.05) 70%,
+    rgba(255, 122, 61, 0) 100%
+  );
+  transform: scaleY(0.42);
+}
+.telegraph.imminent {
+  border-color: var(--telegraph-imminent);
+}
+
+/* first-person weapon viewmodel, bottom-right */
+.viewmodel {
+  position: absolute;
+  right: 210px;
+  bottom: -10px;
+  width: 260px;
+  height: 240px;
+  background: linear-gradient(160deg, var(--rock) 0%, var(--rock-dark) 100%);
+  border: 3px solid var(--rock-dark);
+  border-radius: 6px;
+  transform: rotate(-8deg);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+}
+.viewmodel::before {
+  content: "";
+  position: absolute;
+  left: 24px;
+  top: 30px;
+  width: 150px;
+  height: 26px;
+  background: var(--cobalt);
+  border: 2px solid var(--rock-dark);
+}
+
+/* center crosshair */
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 26px;
+}
+.crosshair::before,
+.crosshair::after {
+  content: "";
+  position: absolute;
+  background: var(--text);
+}
+.crosshair::before {
+  left: 12px;
+  top: 0;
+  width: 2px;
+  height: 26px;
+}
+.crosshair::after {
+  left: 0;
+  top: 12px;
+  width: 26px;
+  height: 2px;
+}
+
+/* ---- HUD --------------------------------------------------------------- */
+
+.hp {
+  position: absolute;
+  height: 5px;
+  background: var(--hp-good);
+  border: 1px solid var(--rock-dark);
+}
+
+/* survival clock + kills, top center */
+.hud-top {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  text-align: center;
+}
+.hud-clock {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--text);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+.hud-kills {
+  font-size: 15px;
+  letter-spacing: 4px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* redoubt status, top center-ish under the clock */
+.hud-redoubt {
+  position: absolute;
+  left: 50%;
+  top: 74px;
+  transform: translateX(-50%);
+  width: 300px;
+  text-align: center;
+}
+.hud-redoubt .label {
+  font-size: 14px;
+  letter-spacing: 5px;
+  color: var(--telegraph-warn);
+}
+.hud-redoubt .bar {
+  position: relative;
+  margin-top: 5px;
+  height: 16px;
+  border: 2px solid var(--rock-dark);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.hud-redoubt .bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+}
+
+/* health, bottom-left */
+.hud-health {
+  position: absolute;
+  left: 26px;
+  bottom: 26px;
+}
+.hud-health .num {
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--hp-good);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+.hud-health .num.low {
+  color: var(--hp-crit);
+}
+.hud-health .bar {
+  position: relative;
+  margin-top: 4px;
+  width: 240px;
+  height: 12px;
+  border: 2px solid var(--rock-dark);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.hud-health .bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--hp-good);
+  border-radius: 1px;
+}
+
+/* ammo, bottom-right */
+.hud-ammo {
+  position: absolute;
+  right: 26px;
+  bottom: 26px;
+  text-align: right;
+}
+.hud-ammo .mag {
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--ammo);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+.hud-ammo .mag small {
+  font-size: 20px;
+  color: var(--text-dim);
+}
+.hud-ammo .grenade {
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* squad panel, left edge */
+.squad {
+  position: absolute;
+  left: 26px;
+  top: 120px;
+  width: 210px;
+}
+.squad h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.squad .member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.squad .chip {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--rock-dark);
+  flex: 0 0 auto;
+}
+.squad .chip.rifle {
+  background: var(--cobalt);
+}
+.squad .chip.medic {
+  background: var(--teal);
+}
+.squad .name {
+  width: 74px;
+  color: var(--text);
+}
+.squad .bar {
+  position: relative;
+  flex: 1;
+  height: 9px;
+  border: 1px solid var(--rock-dark);
+  background: rgba(0, 0, 0, 0.4);
+}
+.squad .bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--hp-good);
+}
+.squad .member.down .name {
+  color: var(--text-faint);
+}
+.squad .member.down .respawn {
+  flex: 1;
+  text-align: right;
+  color: var(--telegraph-warn);
+  letter-spacing: 1px;
+}
+
+/* performance overlay, top-left corner */
+.perf {
+  position: absolute;
+  left: 26px;
+  top: 20px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.perf b {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ---- Deploy / menu screen ---------------------------------------------- */
+
+.deploy {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+      ellipse at 50% 30%,
+      rgba(61, 123, 214, 0.16) 0%,
+      rgba(0, 0, 0, 0) 60%
+    ),
+    linear-gradient(to bottom, #0f1622 0%, #0a0f18 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.title {
+  font-size: 100px;
+  font-weight: 700;
+  letter-spacing: 26px;
+  margin: 40px 0 0 26px;
+  color: var(--text);
+  text-shadow: 0 0 30px rgba(61, 123, 214, 0.55), 0 0 3px rgba(184, 58, 58, 0.7);
+}
+.tagline {
+  font-size: 17px;
+  letter-spacing: 9px;
+  margin: 12px 0 0 9px;
+  color: var(--text-dim);
+}
+.mode {
+  margin-top: 22px;
+  font-size: 15px;
+  letter-spacing: 6px;
+  color: var(--cobalt-light);
+}
+
+.section-label {
+  font-size: 13px;
+  letter-spacing: 5px;
+  color: var(--text-faint);
+  margin: 22px 0 10px;
+}
+
+.classes {
+  display: flex;
+  gap: 20px;
+}
+.class-card {
+  width: 240px;
+  padding: 18px 20px 20px;
+  background: var(--panel);
+  border: 2px solid var(--rock-dark);
+  border-radius: 10px;
+  text-align: left;
+}
+.class-card.selected {
+  border-color: var(--cobalt-light);
+  box-shadow: 0 0 0 2px rgba(127, 176, 240, 0.35), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.class-card .cname {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--text);
+}
+.class-card.selected .cname {
+  color: var(--cobalt-light);
+}
+.class-card .role {
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+  margin: 2px 0 12px;
+}
+.class-card .cline {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 5px;
+}
+.class-card .cline b {
+  color: var(--text);
+  font-weight: 400;
+}
+
+.phases {
+  display: flex;
+  gap: 16px;
+}
+.phase {
+  width: 132px;
+  padding: 12px 0 14px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--rock-dark);
+  border-radius: 8px;
+}
+.phase.selected {
+  border-color: var(--cobalt-light);
+  box-shadow: 0 0 0 2px rgba(127, 176, 240, 0.3);
+}
+.phase .phase-letter {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text);
+}
+.phase.selected .phase-letter {
+  color: var(--cobalt-light);
+}
+.phase .phase-note {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+  margin-top: 3px;
+}
+
+.deploy-btn {
+  margin-top: 22px;
+  padding: 14px 60px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 10px;
+  color: #0a0f18;
+  background: var(--cobalt-light);
+  border: 2px solid var(--cobalt);
+  border-radius: 8px;
+}
+.hint {
+  position: absolute;
+  bottom: 26px;
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: var(--text-faint);
+}
+
+/* ---- Defeat overlay ---------------------------------------------------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 6, 6, 0.8);
+}
+.panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 48px 48px 40px;
+  text-align: center;
+  background: #140d0d;
+  border: 1px solid var(--rock-dark);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.panel-eyebrow {
+  font-size: 16px;
+  letter-spacing: 9px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+.panel-title {
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  margin: 0 0 26px;
+  color: var(--hp-crit);
+}
+.stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 16px;
+}
+.stat:last-of-type {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.stat .k {
+  letter-spacing: 3px;
+  color: var(--text-faint);
+}
+.stat .v {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+}
+.stat .v.accent {
+  color: var(--cobalt-light);
+}
+.panel .buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 30px;
+}
+.btn {
+  padding: 12px 26px;
+  font-size: 16px;
+  letter-spacing: 4px;
+  color: var(--cobalt-light);
+  border: 1px solid var(--cobalt-light);
+  border-radius: 6px;
+}
+.btn.primary {
+  color: #0a0f18;
+  background: var(--cobalt-light);
+}

@@ -1,0 +1,110 @@
+<!doctype html>
+<!--
+  Siege — in-siege first-person frame (common across variants).
+  Rendered by the harness at 1280x720 as the `gameplay` view target. One example
+  moment mid phase B: the player firing on a Scourge wave assaulting the active
+  redoubt, a breaker reaching it, an artillery telegraph on the ground, the squad
+  fighting, and the full HUD. The flat CSS fakes the 3D view the real build draws
+  in WebGL; the palette, HUD layout, and type are the targets. Exact positions
+  and values are illustrative.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- ============ FAUX 3D SCENE ============ -->
+      <div class="sky"></div>
+      <div class="ground"></div>
+
+      <!-- the active redoubt (B): concrete blockwork with a Warden banner -->
+      <div
+        class="redoubt"
+        style="left: 470px; top: 300px; width: 340px; height: 150px"
+      >
+        <div class="banner"></div>
+      </div>
+      <div class="hp" style="left: 470px; top: 288px; width: 210px"></div>
+
+      <!-- Scourge wave (Tier II — steel plating) advancing over the terrain -->
+      <div class="scourge t2" style="left: 372px; top: 430px"></div>
+      <div class="scourge t2" style="left: 430px; top: 470px"></div>
+      <div class="scourge t2" style="left: 560px; top: 500px"></div>
+      <div class="scourge t2" style="left: 690px; top: 452px"></div>
+      <div class="scourge t2" style="left: 840px; top: 486px; transform: scale(1.15)"></div>
+      <!-- a breaker reaching the redoubt (ignores the player, saps the wall) -->
+      <div class="scourge breaker" style="left: 620px; top: 408px"></div>
+
+      <!-- friendly squad: a rifleman forward, a medic hanging back -->
+      <div class="warden" style="left: 300px; top: 512px; transform: scale(1.2)"></div>
+      <div class="warden medic" style="left: 214px; top: 560px; transform: scale(1.25)"></div>
+
+      <!-- artillery telegraph: an incoming shell warning ring on the ground -->
+      <div
+        class="telegraph"
+        style="left: 470px; top: 520px; width: 150px; height: 150px"
+      ></div>
+
+      <!-- first-person weapon viewmodel + crosshair -->
+      <div class="viewmodel"></div>
+      <div class="crosshair"></div>
+
+      <!-- ============ HUD ============ -->
+      <!-- performance overlay (toggled on) -->
+      <div class="perf">
+        <div><b>FPS</b> 58</div>
+        <div><b>CHUNKS</b> 41</div>
+        <div><b>UNITS</b> 34</div>
+      </div>
+
+      <!-- survival clock + kills, top center -->
+      <div class="hud-top">
+        <div class="hud-clock">4:12</div>
+        <div class="hud-kills">KILLS 128</div>
+      </div>
+
+      <!-- active redoubt status + health bar -->
+      <div class="hud-redoubt">
+        <div class="label">DEFENDING B</div>
+        <div class="bar">
+          <div class="fill" style="width: 54%; background: var(--hp-good)"></div>
+        </div>
+      </div>
+
+      <!-- squad panel -->
+      <div class="squad">
+        <h4>SQUAD</h4>
+        <div class="member">
+          <span class="chip rifle"></span><span class="name">RIFLE 1</span>
+          <span class="bar"><span class="fill" style="width: 82%"></span></span>
+        </div>
+        <div class="member">
+          <span class="chip rifle"></span><span class="name">RIFLE 2</span>
+          <span class="bar"><span class="fill" style="width: 40%; background: var(--hp-crit)"></span></span>
+        </div>
+        <div class="member">
+          <span class="chip medic"></span><span class="name">MEDIC 1</span>
+          <span class="bar"><span class="fill" style="width: 100%"></span></span>
+        </div>
+        <div class="member down">
+          <span class="chip medic"></span><span class="name">MEDIC 2</span>
+          <span class="respawn">RESPAWN 0:12</span>
+        </div>
+      </div>
+
+      <!-- health, bottom-left -->
+      <div class="hud-health">
+        <div class="num">76</div>
+        <div class="bar"><div class="fill" style="width: 76%"></div></div>
+      </div>
+
+      <!-- ammo, bottom-right -->
+      <div class="hud-ammo">
+        <div class="mag">18 <small>/ 162</small></div>
+        <div class="grenade">FRAG &times; 3</div>
+      </div>
+    </div>
+  </body>
+</html>

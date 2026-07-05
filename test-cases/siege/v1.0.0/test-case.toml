@@ -1,0 +1,310 @@
+slug = "siege"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, which proofs the
+# build must submit, and which validation checks run. The harness reads this file
+# to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Siege"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Siege asks for
+# a procedurally generated voxel world on a real chunked mesh renderer, a
+# first-person pointer-lock controller, several weapon systems (hitscan, projectile,
+# arcing), two independent 3D-pathfinding AI systems (an escalating enemy and a
+# friendly squad), a health-based objective with a fighting-retreat survival loop,
+# artillery with ground telegraphs, and multiple states — the largest build in the
+# catalog, so it sits at hard.
+difficulty = "hard"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["fps", "3d", "voxel", "survival", "objective-defense"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A first-person voxel last stand: defend a chain of three redoubts across a \
+procedurally generated frontier as an escalating red Scourge grinds each one \
+down, aided by an AI squad of riflemen and medics. You cannot win — every \
+redoubt falls and you fall back to the next — so you play to survive as long as \
+you can and destroy as many attackers as possible before the line breaks."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Siege is the catalog's largest build (a chunked voxel renderer, a
+# first-person controller, several weapon systems, two 3D-pathfinding AI systems,
+# the survival loop with artillery, and multiple states), so it gets six hours —
+# and is the case that most benefits from a multi-session orchestrator.
+max_runtime_hours = 6
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project: a `package.json` that pins `playwright` as a dev
+# dependency, so the browser tooling is a visible, project-local dependency. The
+# seeded files land at the run root (`workspaces/base/package.json` → `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant — the standard Last Stand siege. It
+# supplies the `title` (deploy) view's mockup; `gameplay` and `game-over` are
+# common. Future versions/variants are expected to add rule twists (a longer front,
+# a no-artillery skirmish, a one-life gauntlet) on top of this base. This list is a
+# root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. These are always present,
+# so the mode specs may reference them freely; the common specs must never
+# reference a mode spec a given variant does not seed (only `modes/standard.md` is
+# always present). All common specs are plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/world.md"
+
+[[spec]]
+source = "specs/phases.md"
+
+[[spec]]
+source = "specs/combat.md"
+
+[[spec]]
+source = "specs/ai.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes/standard.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup the harness renders to a screenshot and seeds as a visual target. The
+# `title` (deploy) view is variant-specific (declared per variant); `gameplay` and
+# `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest` path
+# (relative to the run workspace root) the build must write a screenshot or `.mp4`
+# to; `specs/proof.md` instructs the build to produce them at exactly these paths.
+# Validation records whether each turned up (informational). The media kind is
+# inferred from the extension: `.png` is an image, `.mp4` a video.
+[[proof]]
+id = "title"
+name = "Deploy screen"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-siege"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Defeat screen"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "assault"
+name = "Assault clip"
+dest = "proof/assault.mp4"
+
+[[proof]]
+id = "wireframe"
+name = "Wireframe frame"
+dest = "proof/wireframe.png"
+
+# Validation checks (opt-in). Only the checks declared here run. Each drives the
+# built implementation, screenshots it, and compares against the rendered
+# screenshot of `reference`. Only the deploy screen is deterministic enough to
+# validate for Siege: it is whatever the game shows on load, so it needs no
+# actions. The live 3D siege and the defeat screen depend on play, so they are
+# seeded as references but not validated.
+[[check]]
+view = "title"
+name = "Deploy Screen"
+reference = "title"
+actions = []
+
+# Scoring domains. A reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — polished terrain cannot mask
+# broken AI or a siege that never ends. Every case declares at least one. Most
+# checklist items apply across domains; an item may name one when it is specific to
+# that facet.
+[[domain]]
+id = "worldgen"
+name = "World & rendering"
+description = "The procedurally generated terrain, the redoubt placement, and the chunked voxel renderer's quality and performance."
+
+[[domain]]
+id = "combat"
+name = "Combat & weapons"
+description = "The three classes and their hitscan/projectile/arcing weapons, hit detection, grenades, and the Scourge roster with its tiers and armor."
+
+[[domain]]
+id = "ai"
+name = "AI & squad"
+description = "3D pathfinding, the Scourge behaviors, and the friendly squad of riflemen and medics, including medic-only healing."
+
+[[domain]]
+id = "siege"
+name = "Siege loop"
+description = "The health-based objective, the fighting retreat through the phases, escalation, artillery, respawns, and the survival scoring."
+
+# Reviewer checklist items, common to every variant. These are the major,
+# observable requirements a reviewer must explicitly check by playing the build —
+# what validation cannot judge and is easy to miss. They are reporter-side: never
+# seeded, so the model never sees the checklist; each restates a requirement the
+# seeded specification already states. Each is worth `weight` points; the reviewer
+# records a pass/fail verdict for each before the run can be published.
+[[review_item]]
+id = "terrain-gen"
+title = "Procedural terrain"
+text = "Each match generates a coherent natural voxel landform — varied elevation with real high and low ground, not a flat plane or random noise — that stays traversable on foot from the spawn edge to each redoubt, with no holes a unit falls through and no floating voxels. The terrain is non-destructible: weapons, grenades, and artillery never carve or crater it."
+weight = 3
+domain = "worldgen"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "redoubts-placed"
+title = "Redoubt placement"
+text = "Three concrete redoubts (A forward, B middle, C last) stand in a line along the retreat axis, each founded correctly on the generated terrain (no floating base, nothing buried to the parapet), each defensible and approachable on foot from the Scourge side."
+weight = 2
+domain = "worldgen"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "chunked-renderer"
+title = "Chunked voxel renderer"
+text = "The world is drawn from merged, culled chunk meshes (not a draw call per cube) and sustains a playable frame rate during a heavy assault; the performance overlay shows the live FPS, and wireframe mode reveals the terrain chunk meshes and the character/weapon geometry."
+weight = 2
+domain = "worldgen"
+proof = "wireframe"
+
+[[review_item]]
+id = "classes-weapons"
+title = "Classes and weapons"
+text = "All three classes (Ranger, Marksman, Breacher) are playable, each with a distinct primary, secondary, and grenade. Hitscan weapons hit instantly along the aim ray; the Breacher's launcher and the grenades are arcing/projectile with splash; magazines, reloads from reserve, and grenade counts all work. There is no friendly fire."
+weight = 3
+domain = "combat"
+
+[[review_item]]
+id = "scourge-escalation"
+title = "Scourge tiers and new units"
+text = "Escalation runs on two distinct levers. WITHIN a phase, the same attackers climb three visually distinct recolored tiers (plain, steel-plated, elite-trimmed) as elapsed phase time rises — a quality ramp, tougher and hitting harder, not just more bodies. BETWEEN phases, new archetypes join the roster (Artillery in phase B, Ravagers in phase C). Higher-tier armor reduces incoming damage, except from anti-armor sources (the Marksman's long rifle and the Breacher's launcher), which ignore it."
+weight = 2
+domain = "combat"
+
+[[review_item]]
+id = "pathfinding-3d"
+title = "3D pathfinding"
+text = "Attackers path through the world in three dimensions — up and down slopes, around hills, rock, and the redoubt — toward their targets, without walking through terrain, off the edges, or freezing. A crowd flows and spreads rather than clumping into a vibrating pile or single-file line."
+weight = 3
+domain = "ai"
+proof = "assault"
+
+[[review_item]]
+id = "squad-medics"
+title = "Squad and medic-only healing"
+text = "A four-Warden squad (two riflemen, two medics) fights alongside the player. Medics are the ONLY source of healing — no pickups or regeneration anywhere — and their long weapons keep them hanging back; they heal nearby wounded Wardens (never the redoubt). The squad respawns on a longer timer than the player, and the HUD squad panel shows each member's health or respawn countdown."
+weight = 2
+domain = "ai"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "breaker-invariant"
+title = "Breakers and the falling redoubt"
+text = "Breaker sappers ignore the player and squad entirely and march for the active redoubt, damaging its health pool; standing on the redoubt does not stop them — only killing attackers slows the loss. The redoubt's health trends strictly downward under sustained assault, so every redoubt falls in bounded time (a well-played redoubt cannot be held forever)."
+weight = 3
+domain = "siege"
+proof = "assault"
+
+[[review_item]]
+id = "survival-retreat"
+title = "Fighting retreat and survival score"
+text = "The siege is a pure-survival fighting retreat: when the active redoubt falls the front falls back to the next (A → B → C), the spawn line and respawn points advance, and a new attacker archetype joins the assault. The survival clock counts up and never resets on a loss; kills are tallied. There is no victory — the siege ends only when redoubt C falls, showing the survival time and kills."
+weight = 2
+domain = "siege"
+reference = "game-over"
+proof = "game-over"
+
+[[review_item]]
+id = "artillery-telegraph"
+title = "Artillery and telegraphs"
+text = "From phase B on, artillery lobs arcing shells at the player and the redoubt. A ground telegraph ring appears at the impact point and leads the blast by enough time to clear it, pulsing as impact nears; the shell detonates in that radius, forcing the player to reposition and chipping the redoubt's health."
+weight = 2
+domain = "siege"
+proof = "assault"
+
+[[review_item]]
+id = "player-respawn"
+title = "Player respawn"
+text = "On death the player respawns after a short delay behind the active redoubt at full health with their loadout; respawns are unlimited, and the redoubt keeps taking damage while the player is down, so dying costs the defense."
+weight = 1
+domain = "siege"
+
+[[review_item]]
+id = "deploy-select"
+title = "Deploy: class and starting phase"
+text = "The deploy screen lets the player choose a class and a starting phase (A, B, or C). Starting at B or C drops straight into that phase — forward redoubts already fallen, that phase's tier and artillery active, and a full squad — while the survival clock still starts at zero."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "controls-pointer-lock"
+title = "First-person controls"
+text = "Look uses pointer-lock mouselook; WASD moves with sprint, crouch, and jump; fire, aim-down-sights, reload, grenade, and weapon swap all work. Pausing releases the pointer lock and freezes the simulation and the survival clock."
+weight = 1
+
+[[review_item]]
+id = "hud-complete"
+title = "HUD"
+text = "The HUD shows the crosshair, player health, the equipped weapon's ammo and grenade count, the count-up survival clock, the kill count, the active redoubt's label and health bar, and the squad panel — plus the toggleable performance overlay (FPS) and wireframe mode."
+weight = 1
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The 3D view fills the window and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on the deploy screen at load before any input."
+weight = 1

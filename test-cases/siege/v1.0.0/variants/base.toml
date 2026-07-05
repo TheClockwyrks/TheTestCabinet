@@ -1,0 +1,9 @@
+# The default (and only) Siege variant: the standard Last Stand siege across the
+# three redoubts. Listed first in the case manifest's `variants`, so it is the
+# default. It supplies the `title` (deploy) view's mockup; `gameplay` and
+# `game-over` are common. Every path here resolves against the version folder,
+# exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard Last Stand siege: defend redoubts A, B, C in a fighting retreat and survive as long as you can."
+reference = [{ view = "title", path = "reference/select-base.html" }]

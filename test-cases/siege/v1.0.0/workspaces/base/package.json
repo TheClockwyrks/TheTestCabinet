@@ -1,0 +1,9 @@
+{
+  "name": "siege",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Siege — a first-person voxel last-stand survival shooter: defend a chain of three redoubts against an escalating Scourge, aided by an AI squad, and survive as long as you can. Runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

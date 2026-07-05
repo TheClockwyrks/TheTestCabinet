@@ -168,3 +168,19 @@ blobbiness
 playables
 aimable
 sawtooths
+
+# Siege first-person voxel last-stand test case.
+Scourge
+redoubt
+redoubts
+blockwork
+strongpoint
+heightfield
+viewmodel
+mouselook
+hitmarker
+killable
+toggleable
+inspectable
+unpressured
+respawning
