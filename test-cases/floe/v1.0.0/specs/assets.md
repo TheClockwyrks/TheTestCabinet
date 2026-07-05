@@ -81,7 +81,7 @@ each at its native pixel size at the correct tile position:
 | Asset | Folder | Frames | Frame size | Spans |
 | --- | --- | --- | --- | --- |
 | Crosser (player) | `assets/crosser/` | 8 (`0`–`7`) | 32×32 | 1 tile |
-| Bear (hunter) | `assets/bear/` | 12 (`0`–`11`) | 32×32 | 1 tile |
+| Bear (hunter) | `assets/bear/` | 18 (`0`–`17`) | 32×32 | 1 tile |
 | Snow plow | `assets/plow/` | 1 (`0`) | 96×32 | 3 tiles |
 | Dogsled | `assets/dogsled/` | 1 (`0`) | 64×32 | 2 tiles |
 | Car | `assets/car/` | 1 (`0`) | 64×32 | 2 tiles |
@@ -106,9 +106,10 @@ and play
 crouch→leap as it hops. When the critter is resting in a filled bay, a crouch frame
 works as its icon; the small **lives** icons in the HUD may reuse a crouch frame.
 
-## The bear — `assets/bear/` (12 frames, 32×32)
+## The bear — `assets/bear/` (18 frames, 32×32)
 
-The hunter (`specs/hunter.md`). A four-direction run, a submerged swim, and a lunge:
+The hunter (`specs/hunter.md`). All frames are top-down. A four-direction run, a
+four-direction submerged swim, and a lunge:
 
 | Frames | Pose | Play |
 | --- | --- | --- |
@@ -116,16 +117,17 @@ The hunter (`specs/hunter.md`). A four-direction run, a submerged swim, and a lu
 | 2, 3 | run **up** | two-frame cycle |
 | 4, 5 | run **left** | two-frame cycle |
 | 6, 7 | run **right** | two-frame cycle |
-| 8, 9 | **swim** (submerged) | play while the bear is in the water — the submerged silhouette + wake |
-| 10, 11 | **lunge** | the strike, as it reaches and catches the critter |
+| 8, 9 | **swim down** (submerged) | submerged silhouette + wake, heading down |
+| 10, 11 | **swim up** (submerged) | heading up |
+| 12, 13 | **swim left** (submerged) | heading left |
+| 14, 15 | **swim right** (submerged) | heading right |
+| 16, 17 | **lunge** | the strike, as it reaches and catches the critter |
 
 Draw the bear with the run frame for its current heading while on ice or a floe;
-use
-the **swim** frames whenever it is over open water, so its position stays
-readable as
-a silhouette and wake (`specs/hunter.md`); and play the **lunge** as it catches
-the
-critter. The bear is a big animal — it fills its tile.
+use the **swim** frame set **for its current heading** whenever it is over open
+water, so its position stays readable as a silhouette and wake
+(`specs/hunter.md`); and play the **lunge** as it catches the critter. The bear is
+a big animal — it fills its tile.
 
 ## The snow plow — `assets/plow/` (1 frame, 96×32, 3 tiles)
 

@@ -4,9 +4,9 @@ difficulty = "hard"
 tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
 summary = """
 Draw the ice bear that hunts the player in the Floe arctic-crossing game — a huge \
-white predator — as a 32x32 twelve-frame sprite sheet: a four-direction run cycle, \
-a mostly-submerged swim with a trailing wake, and an open-maw lunge, produced one \
-drawing operation at a time."""
+white predator — as a 32x32 eighteen-frame sprite sheet, all from a top-down \
+camera: a four-direction run cycle, a four-direction mostly-submerged swim with a \
+trailing wake, and an open-maw lunge, produced one drawing operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
@@ -38,8 +38,8 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — twelve separate 32x32 frames of the bear's movement
-# set — and the named sequences a reviewer plays back.
+# The frames the model draws — eighteen separate 32x32 frames of the bear's
+# movement set — and the named sequences a reviewer plays back.
 [sheet]
 
 [[sheet.frame]]
@@ -78,6 +78,24 @@ index = 10
 [[sheet.frame]]
 index = 11
 
+[[sheet.frame]]
+index = 12
+
+[[sheet.frame]]
+index = 13
+
+[[sheet.frame]]
+index = 14
+
+[[sheet.frame]]
+index = 15
+
+[[sheet.frame]]
+index = 16
+
+[[sheet.frame]]
+index = 17
+
 [[sheet.sequence]]
 slug = "run-down"
 name = "Bear — run down"
@@ -103,15 +121,33 @@ frames = [6, 7]
 fps = 6
 
 [[sheet.sequence]]
-slug = "swim"
-name = "Bear — swim (submerged)"
+slug = "swim-down"
+name = "Bear — swim down (submerged)"
 frames = [8, 9]
+fps = 5
+
+[[sheet.sequence]]
+slug = "swim-up"
+name = "Bear — swim up (submerged)"
+frames = [10, 11]
+fps = 5
+
+[[sheet.sequence]]
+slug = "swim-left"
+name = "Bear — swim left (submerged)"
+frames = [12, 13]
+fps = 5
+
+[[sheet.sequence]]
+slug = "swim-right"
+name = "Bear — swim right (submerged)"
+frames = [14, 15]
 fps = 5
 
 [[sheet.sequence]]
 slug = "lunge"
 name = "Bear — lunge"
-frames = [10, 11]
+frames = [16, 17]
 fps = 6
 
 # The self-contained brief, seeded for the run.
@@ -123,9 +159,10 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How faithfully the regenerated bear matches the brief — one big, heavy, \
-dark-outlined white predator, the same bulk in every frame, with a four-direction \
-run cycle, a mostly-submerged swim with a trailing wake, and an open-maw lunge, in \
-the tight arctic-predator palette on transparency."""
+dark-outlined white predator, the same bulk in every frame, drawn from a top-down \
+camera in every frame, with a four-direction run cycle, a four-direction \
+mostly-submerged swim with a trailing wake, and an open-maw lunge, in the tight \
+arctic-predator palette on transparency."""
 
 [[review_item]]
 id = "dangerous-animal"
@@ -145,8 +182,10 @@ title = "Four-direction run cycle"
 text = """
 The bear has a readable run facing down (0–1), up (2–3), left (4–5), and right \
 (6–7), each a two-frame gait whose legs swap so it lumbers in place when played. \
-The four facings are clearly distinct directions of the same animal, and the right \
-run is a clean mirror of the left."""
+The four facings are clearly distinct directions of the same animal seen from the \
+SAME overhead (top-down) camera — the left and right runs look down on the bear's \
+back turned sideways, NOT a side/profile view — and the right run is a clean mirror \
+of the left."""
 sequences = ["run-down", "run-up", "run-left", "run-right"]
 weight = 2
 domain = "fidelity"
@@ -155,11 +194,13 @@ domain = "fidelity"
 id = "submerged-swim"
 title = "Readable submerged swim"
 text = """
-The swim frames (8–9) read as the bear mostly UNDER water: a muted, cool submerged \
-silhouette with only the top of its head/back breaking the surface in fur-white, \
-and a pale wake trailing behind it — so its position stays readable even when it is \
-in the water. Played, the wake and paddle animate."""
-sequences = ["swim"]
+The swim frames read as the bear mostly UNDER water in all four headings — down \
+(8–9), up (10–11), left (12–13), right (14–15) — each a muted, cool submerged \
+silhouette (still top-down, not a profile) with only the top of its head/back \
+breaking the surface in fur-white and a pale wake trailing behind its heading, so \
+its position stays readable even when it is in the water. Played, each heading's \
+wake and paddle animate."""
+sequences = ["swim-down", "swim-up", "swim-left", "swim-right"]
 weight = 2
 domain = "fidelity"
 
@@ -167,8 +208,8 @@ domain = "fidelity"
 id = "lunge"
 title = "The lunge reads as an attack"
 text = """
-The lunge frames (10–11) unmistakably read as a strike: the bear rearing/lunging \
-forward with its maw OPEN (a red mouth) and front paws raised with dark claws. The \
+The lunge frames (16–17) unmistakably read as a strike: the bear lunging forward \
+with its maw OPEN (a red mouth) and front paws thrown forward with dark claws. The \
 open red maw and claws appear ONLY here, not on the run or swim frames."""
 sequences = ["lunge"]
 weight = 2

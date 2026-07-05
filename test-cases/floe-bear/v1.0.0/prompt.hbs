@@ -1,4 +1,4 @@
-Draw the **ice bear**, a 12-frame **sprite sheet** of the predator that hunts the
+Draw the **ice bear**, an 18-frame **sprite sheet** of the predator that hunts the
 player in an arctic crossing game, using only the drawing tool.
 
 The bear is the hunter: a huge, heavy white animal that runs the player down on the
@@ -6,8 +6,9 @@ pack ice and swims after them through the water. It must read at a glance, from 
 facing, as a big and dangerous animal — never cute — and it must stay readable
 against pale ice (carry a dark outline) and as a silhouette under water. Draw its
 full movement set on full transparency: a **run cycle in four directions** (frames
-0–7), a **swim** seen from above and mostly submerged (frames 8–9), and a **lunge**
-strike (frames 10–11).
+0–7), a **swim in four directions**, seen from above and mostly submerged (frames
+8–15), and a **lunge** strike (frames 16–17). Keep the **same top-down camera in
+every frame** — never a side/profile view, even for left/right.
 
 ## How drawing works
 
@@ -44,15 +45,16 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the twelve frames — the four-direction run, the
-submerged swim with its wake, and the open-maw lunge — the palette, and how to work
-the tool. Run `draw-sheet --help` for the exact operation contract.
+`specs/brief.md` describes the eighteen frames — the four-direction run, the
+four-direction submerged swim with its wake, and the open-maw lunge — the palette,
+and how to work the tool. Run `draw-sheet --help` for the exact operation contract.
 
 ## What to deliver
 
 Build the bear up operation by operation until each `frames/<index>.png` matches
-the brief: one big, heavy, dark-outlined white bear, running in all four directions
-(0–7), swimming as a submerged silhouette with a wake (8–9), and lunging with an
-open red maw and raised claws (10–11), all on full transparency and reading
-unmistakably as a dangerous predator. When you are satisfied, stop: the recorded
-per-frame action logs are your finished submission.
+the brief: one big, heavy, dark-outlined white bear seen from above in every frame,
+running in all four directions (0–7), swimming as a submerged silhouette with a
+wake in all four directions (8–15), and lunging with an open red maw and claws
+(16–17), all on full transparency and reading unmistakably as a dangerous predator.
+When you are satisfied, stop: the recorded per-frame action logs are your finished
+submission.
