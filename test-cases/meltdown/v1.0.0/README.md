@@ -42,7 +42,7 @@ harder front-end task that should separate stronger builds from weaker ones.
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `heat.md` (the signature), `towers.md`, `creeps.md`,
-`controls.md`, `flow.md`, the mode spec under `specs/modes/`, and `proof.md`.
+`controls.md`, `flow.md`, `standard.md` (the playable mode), and `proof.md`.
 This version offers a single `base` variant — the standard **Containment**
 defense on the one fixed reactor floor.
 

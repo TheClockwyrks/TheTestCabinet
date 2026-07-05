@@ -49,7 +49,7 @@ that punishes every pause.
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `hunter.md` (the signature), `hazards.md`, `water.md`,
-`controls.md`, `flow.md`, `assets.md`, the mode spec under `specs/modes/`, and
+`controls.md`, `flow.md`, `assets.md`, `standard.md` (the playable mode), and
 `proof.md`. This version offers a single `base` variant — the standard **Crossing**
 run on the one strait.
 

@@ -42,10 +42,9 @@ start; they cross-reference each other **by name** and form a single spec.
   movement and target acquisition, and the Reliquary objective.
 - `specs/flow.md` — win and loss, the game-state machine, controls, the HUD, the
   AI opponent, audio, and what is out of scope.
-- the mode spec(s) under `specs/modes/` — the playable modes. Each mode spec
-  declares its own main-menu entry.
+- the `standard` spec — the playable mode and its main-menu entry.
 
-The main menu lists the modes the mode specs define, then `HOW TO PLAY`.
+The main menu lists the playable mode, then `HOW TO PLAY`.
 
 ## Goal of this build
 

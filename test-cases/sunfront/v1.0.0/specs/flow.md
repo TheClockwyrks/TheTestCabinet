@@ -18,8 +18,8 @@ the AI opponent, audio, and what is out of scope. It refers to the geometry in
 The build is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `SUNFRONT`, the tagline `TUG-OF-WAR ON
-   THE DUNE FRONT`, and a vertical menu listing the playable modes the mode specs
-   define, then `HOW TO PLAY`. The selected item is highlighted. A dimmed slice
+   THE DUNE FRONT`, and a vertical menu with the playable mode's entry (defined by
+   the `standard` spec), then `HOW TO PLAY`. The selected item is highlighted. A dimmed slice
    of the battlefield may show behind the menu.
 2. **How to play.** A screen explaining the loop (build spawners → waves march →
    counter what you see through the fog → raze the enemy base), the resource and

@@ -6,7 +6,7 @@ This file defines the economy, lives, the wave progression and victory, scoring,
 the game's state machine, the HUD's meaning, audio, and what is out of scope. It
 refers to the floor in `specs/playfield.md`, the heat system in `specs/heat.md`,
 the towers in `specs/towers.md`, the surge in `specs/creeps.md`, the controls in
-`specs/controls.md`, and the modes under `specs/modes/`.
+`specs/controls.md`, and the playable mode in `specs/standard.md`.
 
 The numeric values here are the **starting balance**, meant to be tuned by play;
 implement them as written but keep them easy to adjust.
@@ -84,8 +84,8 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `MELTDOWN`, the tagline `RUN IT HOT`,
-   and a vertical menu listing the playable modes defined by the mode specs
-   (each mode spec declares its own entry), followed by `HOW TO PLAY`. The
+   and a vertical menu with the playable mode's entry (defined by the `standard`
+   spec), followed by `HOW TO PLAY`. The
    selected item is highlighted. A dim slice of reactor floor with a few glowing
    towers may show behind the menu for atmosphere.
 2. **How to play.** Describes the goal (stop the surge from reaching the

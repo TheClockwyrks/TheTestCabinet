@@ -46,9 +46,8 @@ start; they cross-reference each other by name and form one specification.
   the game states, the HUD, audio, and what is out of scope.
 - `specs/assets.md` — the provided sprite art you must render the game with, how
   it is organized, and the rule for loading it so the build works at any base path.
-- the mode specs under `specs/modes/` — the playable mode(s) and the main-menu
-  entry for each. Read every mode spec present and implement the modes they define.
-  The main menu lists those modes, then `HOW TO PLAY`.
+- the `standard` spec — the playable mode and its main-menu entry.
+  The main menu lists that mode, then `HOW TO PLAY`.
 
 ## Goal of this build
 

@@ -1,6 +1,6 @@
 # Sunfront — Skirmish (standard mode)
 
-This is the always-present mode. It defines the standard one-versus-one match and
+This is the game's playable mode. It defines the standard one-versus-one match and
 its main-menu entry. It builds on the common specs (`specs/overview.md`,
 `specs/playfield.md`, `specs/economy.md`, `specs/units.md`, `specs/waves.md`,
 `specs/flow.md`) and adds nothing new to their rules — it is the baseline match
@@ -12,7 +12,7 @@ The main menu lists this mode first, as:
 
 - **`SKIRMISH`** — a full match against the AI on the standard front.
 
-`HOW TO PLAY` follows the mode entries (`specs/flow.md`).
+`HOW TO PLAY` follows the mode entry (`specs/flow.md`).
 
 ## The match
 

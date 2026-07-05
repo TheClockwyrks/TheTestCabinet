@@ -51,7 +51,7 @@ start; they cross-reference each other **by name** and form a single spec.
   and the rest), controls, the **HUD** (including the performance overlay, the
   wireframe toggle, the squad panel, and artillery telegraphs), audio, and what is
   out of scope.
-- the mode spec under `specs/modes/` — the playable mode and its deploy-screen
+- the `standard` spec — the playable mode and its deploy-screen
   entry.
 
 ## Goal of this build

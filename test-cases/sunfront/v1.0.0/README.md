@@ -28,7 +28,7 @@ non-cheating, beatable AI.
 - `specs/` — the seeded specification, decomposed by concern: `overview`,
   `playfield` (geometry + fog), `economy`, `units` (roster + counter matrix),
   `waves` (wave clock + Reliquary/Aegis), `flow` (states, controls, HUD, AI),
-  `proof`, and `modes/standard.md` (the Skirmish mode).
+  `proof`, and `standard` (the Skirmish mode).
 - `variants/base.toml` — the single default variant (Skirmish).
 - `prompt.hbs` — the rendered build instruction (not seeded).
 - `reference/` — mockup **source** for the title, gameplay, and game-over views

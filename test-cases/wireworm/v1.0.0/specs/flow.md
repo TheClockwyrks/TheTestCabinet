@@ -7,7 +7,7 @@ state machine, the HUD, audio, and what is out of scope. It refers to the
 board in
 `specs/playfield.md`, the charge system in `specs/charge.md`, the worm in
 `specs/worm.md`, the foes in `specs/foes.md`, the controls in `specs/controls.md`,
-and the modes under `specs/modes/`.
+and the playable mode in `specs/standard.md`.
 
 The numeric values here are a **starting balance**, meant to be tuned by play;
 implement them as written but keep them easy to adjust.
@@ -66,8 +66,8 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `WIREWORM`, the tagline `CUT THE
-   CURRENT`, and a vertical menu listing the playable modes defined by the mode
-   specs (each mode spec declares its own entry), followed by `HOW TO PLAY`. The
+   CURRENT`, and a vertical menu with the playable mode's entry (defined by the
+   `standard` spec), followed by `HOW TO PLAY`. The
    selected item is highlighted. A dim slice of board with a few glowing nodes and
    a worm may show behind the menu for atmosphere.
 2. **How to play.** Describes the goal (cut the worm apart before it reaches your

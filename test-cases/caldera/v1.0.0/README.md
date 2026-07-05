@@ -39,7 +39,7 @@ It is among the catalog's largest builds.
   (hex caldera + terraces/cliffs + water + vents), `build` (economy + structures),
   `fluids` (the flow simulation), `enemies` (the Slag roster + pathfinding), `towers`
   (the Holdfast towers), `waves` (the wave loop + win/loss), `flow` (states,
-  controls, HUD), `proof`, and `modes/standard.md` (The Hold mode).
+  controls, HUD), `proof`, and `standard` (The Hold mode).
 - `variants/base.toml` — the single default variant (The Hold).
 - `prompt.hbs` — the rendered build instruction (not seeded).
 - `reference/` — mockup **source** for the `title`, `gameplay`, and `game-over` views

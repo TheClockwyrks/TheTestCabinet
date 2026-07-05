@@ -47,9 +47,8 @@ you start; they cross-reference each other by name and form one specification.
   upgrading and selling towers, sending waves, game speed, and pause.
 - `specs/flow.md` — the economy, lives, the wave progression and victory,
   scoring, the game states, the HUD, audio, and what is out of scope.
-- the mode specs under `specs/modes/` — the playable mode(s) and the main-menu
-  entry for each. Read every mode spec present and implement the modes they
-  define. The main menu lists those modes, then `HOW TO PLAY`.
+- the `standard` spec — the playable mode and its main-menu entry. The main
+  menu lists that mode, then `HOW TO PLAY`.
 
 ## Goal of this build
 

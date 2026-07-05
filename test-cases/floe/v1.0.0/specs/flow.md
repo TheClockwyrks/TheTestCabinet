@@ -7,7 +7,7 @@ the
 game's state machine, the HUD, audio, and what is out of scope. It refers to the
 strait in `specs/playfield.md`, the hunter in `specs/hunter.md`, the hazards in
 `specs/hazards.md`, the water in `specs/water.md`, the controls in
-`specs/controls.md`, and the modes under `specs/modes/`.
+`specs/controls.md`, and the playable mode in `specs/standard.md`.
 
 The numeric values here are a **starting balance**, meant to be tuned by play;
 implement them as written but keep them easy to adjust.
@@ -75,8 +75,8 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `FLOE`, the tagline `DON'T LOOK BACK`,
-   and a vertical menu listing the playable modes defined by the mode specs (each
-   mode spec declares its own entry), followed by `HOW TO PLAY`. The selected item
+   and a vertical menu with the playable mode's entry (defined by the `standard`
+   spec), followed by `HOW TO PLAY`. The selected item
    is highlighted. A dim slice of the strait — ice, water, a floe, the bear — may
    show behind the menu for atmosphere.
 2. **How to play.** Describes the goal (cross the strait and fill all the bays),

@@ -49,7 +49,7 @@ builds from weaker ones.
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `charge.md` (the signature), `worm.md`, `foes.md`, `controls.md`,
-`flow.md`, `assets.md`, the mode spec under `specs/modes/`, and `proof.md`. This
+`flow.md`, `assets.md`, `standard.md` (the playable mode), and `proof.md`. This
 version offers a single `base` variant — the standard **Descent** run down the one
 board.
 

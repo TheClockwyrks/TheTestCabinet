@@ -36,7 +36,7 @@ largest build.
 - `specs/` — the seeded specification, decomposed by concern: `overview`,
   `world` (arena + terrain + redoubts), `phases` (survival loop + escalation),
   `combat` (classes + weapons + Scourge roster/tiers), `ai` (pathfinding + enemy +
-  squad), `flow` (states, controls, HUD), `proof`, and `modes/standard.md` (the
+  squad), `flow` (states, controls, HUD), `proof`, and `standard` (the
   Last Stand mode).
 - `variants/base.toml` — the single default variant (Last Stand).
 - `prompt.hbs` — the rendered build instruction (not seeded).

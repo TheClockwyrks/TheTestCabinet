@@ -9,7 +9,7 @@ and the flow in `specs/flow.md`.
 
 ## Menu Entry
 
-This mode spec adds the following entry to the main menu (see Game states in
+This spec adds the following entry to the main menu (see Game states in
 `specs/flow.md`), before `HOW TO PLAY`:
 
 - `DESCEND`
