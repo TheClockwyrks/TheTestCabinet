@@ -85,6 +85,50 @@ reads, such as a walk with a planted stance or the snap of a recoil — alongsid
 mesh, and the review UI plays the produced animations back beside each caller
 joint's live control.
 
+### Skinned characters
+
+A [skinned](/testing/asset-generation/skinned-binaries/) run
+(`mc-skinned`/`sn-skinned`/`dc-skinned`) is validated like an animated voxel run,
+with one shape difference: it emits **one** skinned `mesh.glb` and **one** `rig.json`
+(a skinned model is a single continuous field, not a set of parts), so there is no
+per-part set. The validator decodes the glb — confirming its skin binding is
+well-formed (per-vertex bone weights and inverse-bind matrices, the joint node
+hierarchy) — parses `rig.json`, and applies the **same rig contract** above: each
+[required animation](/testing/asset-generation/manifests/#skinned-cases) must be
+present and actually animate, a missing or empty one recorded as a zero-scored
+contract gap. The reviewer scores how well the skin **deforms** — an elbow that bends
+without tearing, a stride that reads as a walking creature — with the 3D viewer posing
+the rig by linear-blend skinning.
+
+## Particle validation
+
+A [particle](/testing/asset-generation/particle-binaries/) run
+(`particle-2d`/`particle-3d`) is **not regenerated** either: its output is the
+data the binary emits — the authored **`system.json`**, the emitter/force/curve
+definition. The validator parses it, confirms it is well-formed and **non-empty**
+(the system actually emits particles within the declared `[particle]` field and
+duration), and takes the rendered **preview animation** as the reviewer sees it.
+There is no bake and no determinism: a particle effect is **simulated live**, so it
+varies slightly from play to play — the validator judges the emitted **system**, not
+a frozen frame sequence. The reviewer scores the **character of the effect** (the
+read of an explosion, a muzzle flash, a plume) the way a sprite sheet's sequences are
+judged, the review UI **simulating the system live** — a running particle editor, not
+a replayed clip.
+
+## Audio validation
+
+An [audio](/testing/asset-generation/audio-binaries/) run
+(`sfx-synth`/`sfx-sample`/`music`) emits a rendered PCM **`clip.wav`** (and, for
+`music`, a portable **`clip.mid`** score). The validator decodes the `.wav`, confirms
+it is well-formed, within the `[audio]` format (`sample_rate`, `channels`), no longer
+than `max_duration_ms`, and **not silent** (the operations produced audible signal) —
+a silent or empty clip is recorded as a contract gap, not a crash. There is no
+runtime to pose and nothing to re-render: the clip is played as the reviewer hears it.
+The assessment is **subjective** — a reviewer plays the clip against the brief (does
+it read as a battleship's main gun, a footstep on a deck, a victory fanfare) — with
+the rendered **waveform and spectrogram** (and, for music, the **piano-roll**) shown
+alongside.
+
 ## Cheat detection
 
 Comparing the **regenerated image** against the **final image from the model's
@@ -96,9 +140,10 @@ reviewer sees it; because only the regenerated image is ever scored, a model gai
 nothing from drawing outside the tool, and the mismatch simply marks the attempt.
 
 This check applies only to the 2D drawing tools. A
-[voxel run](#voxel-validation) is judged on its **emitted data** (see above) and is
-not policed this way — the geometry and preview it emits are what a reviewer
-evaluates, whatever produced them.
+[voxel](#voxel-validation), [skinned](#skinned-characters),
+[particle](#particle-validation), or [audio](#audio-validation) run is judged on its
+**emitted data** (see above) and is not policed this way — the geometry, effect, clip,
+and preview it emits are what a reviewer evaluates, whatever produced them.
 
 ## Review
 

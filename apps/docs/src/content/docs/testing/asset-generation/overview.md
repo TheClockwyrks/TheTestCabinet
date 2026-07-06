@@ -70,8 +70,9 @@ than scored.
 ## Asset kinds
 
 A case declares, with its `asset_kind`, **what shape of asset** the model produces
-— today one of ten, split across two dimensionalities and, in 3D, two building
-paradigms:
+— one of eighteen, spanning **2D images**, **3D models** (built three ways —
+cube voxels, meshed signed-distance fields, and skinned characters), **particle
+effects** (2D and 3D), and **audio** (sound effects and music):
 
 - **`sprite`** (the default) — a **single sprite**: one image drawn onto the whole
   canvas with the [`draw` binary](/testing/asset-generation/binaries/).
@@ -95,9 +96,31 @@ paradigms:
   models](#meshed-voxel-models)). The `-model` kinds are static; the `-animation`
   kinds are rigged and animated exactly like `voxel-animation`, each part built
   with a required `--part <name>`.
+- **`mc-skinned`**, **`sn-skinned`**, **`dc-skinned`** — the **skinned character**
+  kinds: a **single continuous skin** — one meshed signed-distance field bound to a
+  model-invented **skeleton** with per-vertex weights — that **deforms** across its
+  joints via linear-blend skinning, built with the [`mc-skin` / `sn-skin` / `dc-skin`
+  binaries](/testing/asset-generation/skinned-binaries/). Where the meshed
+  `-animation` kinds articulate **rigidly** (separate per-part meshes, a
+  wooden-puppet read), a skinned model bends organically — the kind for characters
+  and creatures. A skinned model is inherently rigged; there is no static skinned
+  kind. See [Skinned character models](#skinned-character-models).
+- **`particle-2d`** / **`particle-3d`** — the **particle-effect** kinds: a VFX asset
+  (an explosion, a muzzle flash, an engine plume, a victory burst) the model builds
+  by **authoring an emitter system** — emitters, forces, and per-particle curves —
+  with the [`particle-2d` / `particle-3d`
+  binaries](/testing/asset-generation/particle-binaries/), which the review UI and a
+  game **simulate live**, the way a real particle editor plays a system. See
+  [Particle effects](#particle-effects).
+- **`sfx-synth`** / **`sfx-sample`** / **`music`** — the **audio** kinds: a short
+  (≤ 5 s) clip the model builds with the [audio
+  binaries](/testing/asset-generation/audio-binaries/) — `sfx-synth` synthesizes a
+  sound effect from a modular synth graph, `sfx-sample` layers one over a baked
+  sample library, and `music` sequences notes on instrument tracks — each rendering
+  to a PCM `.wav`. See [Audio](#audio).
 
 `asset_kind` is a property of the whole version, **not** a variant — a case is
-exactly one kind, never a mix, and a variant cannot change it. None of the ten
+exactly one kind, never a mix, and a variant cannot change it. None of the eighteen
 carries a target: every kind is reviewed against the brief, never against a
 supplied picture.
 
@@ -239,3 +262,57 @@ package for how a game poses a produced rig, and
 [Manifests](/testing/asset-generation/manifests/) for how a case declares its
 canvas or `[voxel]` volume, `asset_kind`, the `[sheet]` frames and sequences, and
 the `[model]` required animations.
+
+## Skinned character models
+
+The **skinned** kinds — `mc-skinned`, `sn-skinned`, `dc-skinned` — produce a
+**character**: a single continuous skin that **deforms** across its joints, the way
+an elbow bends without a seam. This is the paradigm the meshed `-animation` kinds
+cannot express — those articulate **rigidly**, each part a separate mesh posed about
+a pivot (the right read for a tank or a mech, wrong for a creature). A skinned model
+instead composites **one whole-body signed-distance field**, meshes it **once** into
+a single surface, and binds that surface to a model-invented **skeleton** — bones in
+a hierarchy, each carrying the same [joints and F-curve
+animations](#the-rig-parts-and-joints) a rig does — with **per-vertex weights** the
+binary derives automatically, so the mesh follows the bones by **linear-blend
+skinning**. It reuses the meshed kinds' [signed-distance-field
+authoring](#meshed-voxel-models) and the same three surface characters (low-poly,
+smooth, sharp), and — like the animated voxel kinds — a case fixes only the
+[required animations](#the-rig-parts-and-joints), leaving the skeleton and its
+binding for the model to invent. The **first-person viewmodel** an FPS wants (two
+floating hands, a weapon on an attach socket) is authored the same way, needing no
+separate tool. See [The skinned binaries](/testing/asset-generation/skinned-binaries/).
+
+## Particle effects
+
+The **particle** kinds — `particle-2d` and `particle-3d` — produce a **visual
+effect**: an explosion, a muzzle flash, an engine plume, a splash, a victory burst.
+The model does **not** place individual particles; it **authors a system** — emitters
+(what spawns, where, how fast, for how long), forces (gravity, drag, a radial
+explosion push, a vortex, curl-noise turbulence), and per-particle **curves** (size,
+color, and opacity over each particle's life, as the same
+[F-curves](#the-rig-parts-and-joints) a rig uses) — that a **live simulation** plays,
+the way a real particle editor (Unreal's Niagara, Unity's VFX Graph) plays a system.
+The authored **system definition is the asset**; the review UI and a consuming game
+each **simulate it live** from that definition. There is no bake and no determinism
+requirement — a stochastic effect **varies slightly from one play to the next**,
+which is exactly right for an explosion or a plume, and the authored system *is* the
+[recorded operations](#why-the-actions-are-the-output), so nothing is produced outside
+the tool. See [The particle binaries](/testing/asset-generation/particle-binaries/).
+
+## Audio
+
+The **audio** kinds — `sfx-synth`, `sfx-sample`, and `music` — produce a short
+(≤ 5 s) **clip**, rendered to a PCM `.wav`. Because the asset is a finished waveform
+a game plays directly, the audio kinds carry **no runtime posing or simulation
+library** — where a rig or a particle system is played live, a `.wav` is simply
+played. A model builds a clip through discrete operations exactly as it draws or
+sculpts: `sfx-synth` **layers a modular synth graph** (oscillators, noise,
+envelopes, filters, FM) the way a gunshot stacks a boom, a crack, and a tail;
+`sfx-sample` layers that same synthesis **over a baked sample library** — the
+game-audio approach the naval, weapon, and footstep effects of the harder 3D cases
+use; and `music` **sequences notes on instrument tracks**, emitting a portable
+`.mid` score beside the `.wav`. The binary renders a **waveform and spectrogram**
+(and, for music, a piano-roll) the model reads to see its progress, and a reviewer
+plays the clip against the brief. See [The audio
+binaries](/testing/asset-generation/audio-binaries/).

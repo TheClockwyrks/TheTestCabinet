@@ -27,6 +27,10 @@ asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-shee
                              # | a 3D voxel kind: "voxel-model"/"voxel-animation" (cube cells),
                              # "mc-model"/"mc-animation", "sn-model"/"sn-animation",
                              # "dc-model"/"dc-animation" (meshed) — see "Voxel cases" below
+                             # | a skinned character: "mc-skinned"/"sn-skinned"/"dc-skinned"
+                             # — see "Skinned cases"
+                             # | a particle effect: "particle-2d"/"particle-3d" — see "Particle cases"
+                             # | audio: "sfx-synth"/"sfx-sample"/"music" — see "Audio cases"
 
 # Variants: an ORDERED list of paths to standalone variant files (first = default).
 # Because `variants` is a root key, it must appear BEFORE the first table header
@@ -122,14 +126,19 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   3D **voxel** kinds — the **cube** kinds `"voxel-model"` (static) and
   `"voxel-animation"` (rigged, animated), or the **meshed** kinds `"mc-model"`,
   `"sn-model"`, `"dc-model"` (static) and `"mc-animation"`, `"sn-animation"`,
-  `"dc-animation"` (rigged, animated). It is a property of the whole version,
-  **not** a variant axis — a case is exactly one kind, never a mix, and a variant
-  cannot change it. `asset_kind` (and the `[sheet]`, `[voxel]`, and `[model]`
-  tables) are only valid for an asset-generation case; an explicit value on any
-  other type is rejected. The two 2D kinds declare a `[canvas]`; every 3D voxel
-  kind declares a `[voxel]` volume instead (see [Voxel cases](#voxel-cases)) — a
-  voxel case must **not** declare `[canvas]`, and a 2D case must **not** declare
-  `[voxel]`.
+  `"dc-animation"` (rigged, animated); the **skinned character** kinds
+  `"mc-skinned"`, `"sn-skinned"`, `"dc-skinned"` (see [Skinned
+  cases](#skinned-cases)); the **particle** kinds `"particle-2d"`, `"particle-3d"`
+  (see [Particle cases](#particle-cases)); or the **audio** kinds `"sfx-synth"`,
+  `"sfx-sample"`, `"music"` (see [Audio cases](#audio-cases)). It is a property of
+  the whole version, **not** a variant axis — a case is exactly one kind, never a
+  mix, and a variant cannot change it. `asset_kind` (and the `[sheet]`, `[voxel]`,
+  `[model]`, `[particle]`, and `[audio]` tables) are only valid for an
+  asset-generation case; an explicit value on any other type is rejected. The two
+  2D image kinds declare a `[canvas]`; every voxel, meshed, and skinned kind
+  declares a `[voxel]` volume instead (see [Voxel cases](#voxel-cases)); a particle
+  kind declares a `[particle]` field; and an audio kind declares an `[audio]`
+  table — a case declares exactly the one its kind requires.
 - The `[sheet]` table is **required for — and only for — `asset_kind =
   "sprite-sheet"`**. It declares the case's frames as `[[sheet.frame]]` entries —
   each just the `index` it is written to (passed as
@@ -415,8 +424,144 @@ actions = "parts/{part}.actions.json" # {part} REQUIRED for an animated kind
   animations; the 3D viewer poses the full rig. See
   [Evaluation](/testing/asset-generation/evaluation/).
 
+## Skinned cases
+
+A **skinned** case (`asset_kind = "mc-skinned"`, `"sn-skinned"`, or `"dc-skinned"`)
+produces a [character](/testing/asset-generation/overview/#skinned-character-models):
+a single continuous skin bound to a model-invented skeleton, deforming across its
+joints. Its manifest is a **meshed animated** case with one difference — the model
+builds **one whole-body field**, not a field per part — so its `[tool].preview` and
+`[output].actions` are **single files** (not `{part}` templates), even though it is
+an animated kind carrying a `[model]` table:
+
+```toml
+# A skinned character (asset_kind = "sn-skinned"; mc-skinned / dc-skinned differ
+# only in the binary and its surface character).
+asset_kind = "sn-skinned"
+
+[voxel]
+width  = 40                  # the field bounds — the same volume table a meshed case
+height = 48                  # frames, here bounding the one whole-body field the skin
+depth  = 24                  # is extracted from
+background = "transparent"
+
+[tool]
+binary  = "sn-skin"          # the skinned binary: mc-skin | sn-skin | dc-skin
+preview = "model.png"        # a SINGLE file — NOT a {part} template (one field, one mesh)
+
+[output]
+actions = "actions.json"     # a SINGLE op log — NOT a {part} template; the skinned
+                             # mesh.glb + rig.json are emitted automatically by core
+
+# The REQUIRED animations, declared EXACTLY as for voxel-animation — by identity
+# alone. The skeleton, its bones, joints, and per-vertex binding are all
+# model-invented at run time; the case fixes only the animations.
+[model]
+
+[[model.animation]]
+name      = "walk"
+loop      = true
+auto_play = false
+```
+
+- A skinned case declares a **`[voxel]`** volume (the field bounds), like a meshed
+  case, and a **`[model]`** table of required animations, like any animated kind —
+  the skeleton, joints, and weights are the model's to invent. Because it builds a
+  single field, `[tool].preview` and `[output].actions` are **single files** and
+  must **not** carry `{part}` — this is the one animated kind that does not. Core
+  emits the skinned **`mesh.glb`** (geometry plus the glTF skin — per-vertex bone
+  weights and inverse-bind matrices) and **`rig.json`** (the skeleton, the joint
+  interface, and the F-curve animations) automatically; neither is manifest-declared.
+  See [The skinned binaries](/testing/asset-generation/skinned-binaries/).
+
+## Particle cases
+
+A **particle** case (`asset_kind = "particle-2d"` or `"particle-3d"`) produces a
+[particle effect](/testing/asset-generation/overview/#particle-effects): the model
+authors an emitter system the review UI and a game **simulate live**. It replaces
+`[canvas]`/`[voxel]` with a **`[particle]`** table and declares no `[model]` — a
+particle effect is judged subjectively against its brief, with no required-animation
+contract, and a case authors **one effect** (as a single sprite is one image).
+
+```toml
+# A 3D particle effect (asset_kind = "particle-3d").
+asset_kind = "particle-3d"
+
+# The field the effect plays in and how it is baked. A particle-2d case gives
+# width/height only (a 2D field, like [canvas]); particle-3d adds depth (a volume,
+# like [voxel]).
+[particle]
+width       = 48             # extent along x (required)
+height      = 48             # extent along y — up (required)
+depth       = 48             # extent along z (required for particle-3d; omitted for particle-2d)
+duration_ms = 1500           # the effect's length in milliseconds (required)
+fps         = 60             # the preview/playback frame rate (required, > 0)
+loop        = false          # one-shot (an explosion, default) or looping (fire, smoke)
+background  = "transparent"  # preview clear color only
+
+[tool]
+binary  = "particle-3d"      # the particle binary: particle-2d | particle-3d
+preview = "effect.gif"       # where the binary writes the preview animation
+
+[output]
+actions = "actions.json"     # the recorded op record; the emitted system.json is
+                             # emitted automatically by core
+```
+
+- The **`[particle]`** table fixes the field the effect plays in — `width`/`height`
+  (and, for `particle-3d`, `depth`), its `duration_ms` and playback `fps`, and
+  whether the effect `loop`s — and, like every other kind, a `background` used only
+  as the preview's clear color. It is required for — and only for — a particle case,
+  and replaces `[canvas]`/`[voxel]`. There is no simulation seed: a particle effect
+  is **simulated live** (not baked), so it varies slightly from one play to the next,
+  exactly as a real particle editor plays a system.
+- Core emits the authored **`system.json`** (the emitter/force/curve definition the
+  review UI and a game **simulate live**) automatically; it is not manifest-declared.
+  See [The particle binaries](/testing/asset-generation/particle-binaries/).
+
+## Audio cases
+
+An **audio** case (`asset_kind = "sfx-synth"`, `"sfx-sample"`, or `"music"`) produces
+a short [audio clip](/testing/asset-generation/overview/#audio). It replaces
+`[canvas]`/`[voxel]` with an **`[audio]`** table, declares no `[model]` (a clip is
+judged subjectively against its brief), and authors **one clip** per case.
+
+```toml
+# A sample-library sound effect (asset_kind = "sfx-sample").
+asset_kind = "sfx-sample"
+
+[audio]
+sample_rate     = 44100      # output sample rate in Hz (required)
+channels        = "stereo"   # "mono" | "stereo" (required)
+max_duration_ms = 5000       # cap on the rendered clip's length (required, ≤ 5000)
+sample_pack     = "naval-weapons@1"  # for sfx-sample: the baked sample pack (name@version)
+                             # instrument_bank = "orchestral@1"  # for music: the baked instrument bank
+
+[tool]
+binary  = "sfx-sample"       # the audio binary: sfx-synth | sfx-sample | music
+preview = "waveform.png"     # where the binary writes the waveform + spectrogram
+                             # (a piano-roll as well, for music)
+
+[output]
+actions = "actions.json"     # the recorded op record; the rendered clip.wav (and, for
+                             # music, the portable clip.mid) are emitted automatically
+```
+
+- The **`[audio]`** table fixes the output format: its `sample_rate`, `channels`,
+  and `max_duration_ms` (at most 5000). A **`sfx-sample`** case additionally names
+  the **`sample_pack`** it mixes over, and a **`music`** case names the
+  **`instrument_bank`** it plays — each a `name@version` identifying the palette
+  **baked into the run-container image**, never a path in this repo (see [the sample
+  library](/testing/asset-generation/audio-binaries/#the-sample-library)). A
+  `sfx-synth` case names neither — it synthesizes from oscillators alone.
+- Core emits the rendered **`clip.wav`** (and, for `music`, a portable **`clip.mid`**
+  score) automatically; neither is manifest-declared. Because the asset is a finished
+  waveform, an audio case has **no** produced rig or system a runtime plays — the
+  clip is simply played. See [The audio binaries](/testing/asset-generation/audio-binaries/).
+
 :::caution[Re-ingest after editing]
-The test type and the `[canvas]`/`[voxel]`/`[tool]`/`[output]`/`[model]` tables
+The test type and the
+`[canvas]`/`[voxel]`/`[tool]`/`[output]`/`[model]`/`[particle]`/`[audio]` tables
 are stored in the backend's immutable def store. Because they are newer fields,
 editing an
 already-ingested case (or adding a type to one) requires a **forced re-ingest**
