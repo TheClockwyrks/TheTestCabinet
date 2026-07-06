@@ -1,7 +1,7 @@
 # Sunfront — Flow, states, controls, HUD, and the AI
 
 This file defines win and loss, the game-state machine, the controls, the HUD,
-the AI opponent, audio, and what is out of scope. It refers to the geometry in
+the AI opponent, and what is out of scope. It refers to the geometry in
 `specs/playfield.md`, the economy in `specs/economy.md`, the roster in
 `specs/units.md`, and the wave clock in `specs/waves.md`.
 
@@ -103,14 +103,6 @@ opponent, not a scripted script:
   a timely Reliquary push, or a better economy beats it. It is competent, not
   omniscient, and not a resource-cheating wall. Tune it so a first-time player can
   lose but a player who understands the counters can win.
-
-## Audio
-
-Audio is recommended but optional, and must never be required for the game to run
-or load. If included, synthesize it with the Web Audio API (no audio files):
-short distinct cues for placing a structure, a wave firing, a Reliquary falling,
-and a base under attack, plus a victory/defeat sting. Provide a mute toggle, and
-do not start audio until the player interacts (browsers block autoplay).
 
 ## Out of scope
 

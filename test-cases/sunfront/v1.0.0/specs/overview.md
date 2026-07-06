@@ -41,7 +41,7 @@ start; they cross-reference each other **by name** and form a single spec.
 - `specs/waves.md` — the wave clock, how spawners emit units each wave, unit
   movement and target acquisition, and the Reliquary objective.
 - `specs/flow.md` — win and loss, the game-state machine, controls, the HUD, the
-  AI opponent, audio, and what is out of scope.
+  AI opponent, and what is out of scope.
 - the `standard` spec — the playable mode and its main-menu entry.
 
 The main menu lists the playable mode, then `HOW TO PLAY`.

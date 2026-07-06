@@ -3,7 +3,7 @@
 ## Overview
 
 This file defines the economy, lives, the wave progression and victory, scoring,
-the game's state machine, the HUD's meaning, audio, and what is out of scope. It
+the game's state machine, the HUD's meaning, and what is out of scope. It
 refers to the floor in `specs/playfield.md`, the heat system in `specs/heat.md`,
 the towers in `specs/towers.md`, the surge in `specs/creeps.md`, the controls in
 `specs/controls.md`, and the playable mode in `specs/standard.md`.
@@ -120,15 +120,6 @@ read** (`specs/overview.md`, `specs/heat.md`) and surge units carry health bars
 A **next-wave preview** — what types the coming wave contains — should be shown
 during the build phase (in the panel or as a banner) so the player can re-shape
 the maze for it.
-
-## Audio
-
-Audio is recommended but optional, and must never be required for the game to
-run or load. If included, synthesize it with the Web Audio API (no audio files):
-distinct short cues for placing a tower, an emitter firing, a tower **tripping
-the redline**, a unit dying, a unit leaking (a life lost), a wave starting,
-clearing a wave, and the Victory/Game-over stings. Provide a mute toggle, and do
-not start audio until the player interacts (browsers block autoplay).
 
 ## Key Behaviors
 

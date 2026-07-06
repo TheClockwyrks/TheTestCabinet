@@ -48,7 +48,7 @@ start; they cross-reference each other **by name** and form a single spec.
 - `specs/flow.md` — the game-state machine (title, starting-wave prompt, in-game,
   paused, and the two end screens), the camera and build controls, the **HUD**
   (including the **fluid-network overlay**, the wireframe toggle, and the
-  performance overlay), audio, and what is out of scope.
+  performance overlay), and what is out of scope.
 - the `standard` spec — the playable mode and its title-screen entry.
 
 ## Goal of this build

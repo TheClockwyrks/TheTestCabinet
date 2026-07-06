@@ -140,15 +140,6 @@ scene as wireframe — **both** the terrain (the hex mesh with its terraces and 
 **and** the structure/unit geometry — so the generated geometry is inspectable
 (`specs/overview.md`). Toggling it must not disturb the simulation.
 
-## Audio
-
-Audio is recommended but optional, and must never be required for the game to run or
-load. If included, synthesize it with the Web Audio API (no audio files): short
-distinct cues for placing a structure, a tower firing, a boiler venting steam, a line
-severed, a Slag destroyed, a wave incoming, the Core under attack, and the held/overrun
-stings. Provide a mute toggle, and do not start audio until the player interacts
-(browsers block autoplay).
-
 ## Out of scope
 
 - Network or online multiplayer — the Slag are all local AI.
