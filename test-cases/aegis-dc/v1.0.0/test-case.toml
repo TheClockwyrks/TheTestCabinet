@@ -4,7 +4,7 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "mesh", "dual-contouring", "fortress"]
 summary = """
 Sculpt the Aegis: a colossal, hard-edged six-legged walking fortress \
-built as a 120x110x150 signed-distance field and extracted with the Dual \
+built as a signed-distance field and extracted with the Dual \
 Contouring tool (`dc`) into a single crisp-panelled mesh — one recorded \
 operation at a time, sharp seams and beveled armor preserved with `--sharp`."""
 description = "description.md"
@@ -14,18 +14,21 @@ type = "asset-generation"
 asset_kind = "dc-model"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# This case has a single default variant declared in its own file under
-# `variants/`. This list is a root key, so it must precede the first table header.
-variants = ["variants/base.toml"]
+# The three variants mesh the SAME Aegis at three sizes — `base` (this case's field
+# bounds), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
 
-# The fixed volume the model shapes its signed-distance field within (the 3D
+# The default volume the model shapes its signed-distance field within (the 3D
 # analog of a 2D canvas): `width` across (x), `height` up (y), `depth`
 # front-to-back (z), in field units. The Aegis is deliberately huge — a walking
 # fortress with a far larger footprint than any ordinary war machine, riding
-# raised on its legs — so its volume is length-dominant: broad and long. The field
-# always starts EMPTY (everywhere outside, no surface); `background` is only the clear
-# color behind the wgpu preview PNG and never adds material. A voxel/mesh case
-# must NOT declare [canvas].
+# raised on its legs — so its volume is length-dominant: broad and long. A variant
+# may OVERRIDE this with its own `[voxel]` (the `half`/`double` size axis); `base`
+# inherits it. The field always starts EMPTY (everywhere outside, no surface);
+# `background` is only the clear color behind the wgpu preview PNG and never adds
+# material. A voxel/mesh case must NOT declare [canvas].
 [voxel]
 width = 120
 height = 110
@@ -52,9 +55,12 @@ preview = "model.png"
 [output]
 actions = "actions.json"
 
-# The self-contained brief, seeded for the run.
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the field bounds it states match the selected
+# size (`{{voxel.width}}`×`{{voxel.height}}`×`{{voxel.depth}}`). The seeded dest
+# drops the `.hbs`, so the run still reads `specs/brief.md`.
 [[spec]]
-source = "specs/brief.md"
+source = "specs/brief.md.hbs"
 
 [[domain]]
 id = "fidelity"
@@ -125,8 +131,8 @@ domain = "fidelity"
 id = "symmetry"
 title = "Bilateral symmetry"
 text = """
-The fortress is cleanly symmetric about its lengthwise vertical centerplane \
-(between x = 59 and x = 60): the two banks of three legs, the two side turrets and \
+The fortress is cleanly symmetric about its lengthwise vertical centerplane: the \
+two banks of three legs, the two side turrets and \
 their sponsons, and the centered main turret, cannon, and vane all mirror each \
 other, so it reads as a deliberate war machine rather than a lopsided hull."""
 weight = 2
@@ -147,7 +153,7 @@ domain = "fidelity"
 id = "fills-volume"
 title = "Fills the volume"
 text = """
-The fortress uses most of the 120x110x150 volume — broad across x at the leg stance, \
+The fortress uses most of the volume — broad across x at the leg stance, \
 long along z, and riding up on its legs — with only a little margin on every \
 side, neither shrunk into one corner nor clipped where it runs past a face of the \
 volume."""

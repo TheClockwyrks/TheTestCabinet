@@ -3,7 +3,7 @@ name = "Sunfront Scarab Hatchery"
 difficulty = "medium"
 tags = ["asset-generation", "3d", "voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Scarab Hatchery: a 60x40x60 opaque-voxel squat \
+Sculpt and rig the Sunfront Scarab Hatchery: an opaque-voxel squat \
 hive-mound whose central hatch iris slowly turns and a side vent bobs, each a \
 looping decorative auto-play animation the model authors, built and rigged one \
 recorded operation at a time."""
@@ -14,9 +14,11 @@ type = "asset-generation"
 asset_kind = "voxel-animation"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# This case has a single default variant declared in its own file under
-# `variants/`. This list is a root key, so it must precede the first table header.
-variants = ["variants/base.toml"]
+# The three variants sculpt and rig the SAME hatchery at three sizes — `base` (this
+# case's volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
 
 # The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
 # canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
@@ -69,9 +71,11 @@ name = "vent_bob"
 loop = true
 auto_play = true
 
-# The self-contained brief, seeded for the run.
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected
+# size. The seeded dest drops the `.hbs`, so the run still reads `specs/brief.md`.
 [[spec]]
-source = "specs/brief.md"
+source = "specs/brief.md.hbs"
 
 [[domain]]
 id = "fidelity"

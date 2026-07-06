@@ -58,8 +58,9 @@ Once the formation has assembled, drones **peel off to attack**:
   - and end by either **looping back up** to re-enter its slot, or **exiting
     through the bottom** (`y > 656`) and **re-appearing from the top** to fly back
     to its slot (continuous wrap, `specs/playfield.md`).
-- A looping dive **turns back before `y = 656`** so play never enters the bottom
-  HUD strip.
+- A **looping** dive **turns back before `y = 656`**, so it never enters the
+  bottom HUD strip; an **exit-dive** is the only thing that crosses it, and only
+  in transit as it wraps.
 - **Firing.** While diving, a drone fires **1–2 bullets** of its **current band**
   straight down (you may bias the aim slightly toward the player's `x`) at
   **`320 px/s`**. Drones **in formation do not fire** — only divers do, which

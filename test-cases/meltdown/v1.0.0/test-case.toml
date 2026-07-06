@@ -174,7 +174,7 @@ description = "The signature: heat as power and the accelerating damage curve, t
 [[domain]]
 id = "defense"
 name = "Tower Defense"
-description = "The TD core: towers-as-walls mazing and live re-pathing to the nearest exhaust, the can't-seal rule, the tower roster and upgrades, the surge types and maze-ignoring flyers, and the economy and 20-wave progression."
+description = "The TD core: towers-as-walls mazing and live re-pathing to the fixed opposite exhaust, the can't-seal rule, the tower roster and upgrades, the surge types and maze-ignoring flyers, and the economy and 20-wave progression."
 
 # Reviewer checklist items, common to every variant. The major, observable
 # requirements a reviewer must explicitly check by playing the build — the things
@@ -187,7 +187,7 @@ description = "The TD core: towers-as-walls mazing and live re-pathing to the ne
 [[review_item]]
 id = "heat-is-power"
 title = "Heat is power"
-text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 1.0x base), roughly 3x just under the redline — and its glow tracks heat from cold blue to white-hot. A tower fed a steady stream of targets visibly hits harder than an idle one."
+text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 0.5x base), roughly 3x just under the redline — and its glow tracks heat from cold blue to white-hot. A tower fed a steady stream of targets visibly hits harder than an idle one."
 weight = 1
 domain = "heat"
 reference = "gameplay"
@@ -253,16 +253,16 @@ weight = 1
 domain = "defense"
 
 [[review_item]]
-id = "nearest-exhaust"
+id = "opposite-exhaust"
 title = "Two intakes, two exhausts"
-text = "The surge enters at the mid-left and mid-top intakes and leaves at the mid-right and mid-bottom exhausts, each unit routing to the nearest reachable exhaust by path distance — so the rectangular floor's asymmetric distances matter to the maze."
+text = "The surge enters at the mid-left and mid-top intakes and leaves at the mid-right and mid-bottom exhausts, each unit routing to its fixed opposite exhaust (left→right, top→bottom) and never the nearer one — so the maze must lengthen that crossing to be effective."
 weight = 1
 domain = "defense"
 
 [[review_item]]
 id = "flyers-and-flak"
 title = "Flyers ignore the maze"
-text = "Flyers (Drift) fly in a straight line from intake to the nearest exhaust, over every tower and wall, and ONLY the Flak (anti-air) can hit them — ground emitters cannot. A defense with no Flak leaks flyers regardless of how good the maze is."
+text = "Flyers (Drift) fly in a straight line from intake to the opposite exhaust, over every tower and wall, and any emitter can hit them while they are in range (the Flak is the dedicated air specialist, but not the only counter). Because the maze cannot stop them, a defense that leaves the flight line uncovered leaks flyers regardless of how good the maze is."
 weight = 1
 domain = "defense"
 proof = "siege"

@@ -669,6 +669,14 @@ struct ManifestVariant {
     /// this variant's domains; the variant's effective set is common ∪ these.
     #[serde(default, rename = "domain")]
     domains: Vec<ManifestDomain>,
+    /// Optional per-variant bounding volume for a voxel case. When present it
+    /// **replaces** the case's common `[voxel]` volume for runs of this variant
+    /// (it is not additive), so the same subject can be sculpted at a different
+    /// size — the axis behind a case's half/base/double size variants. `None`
+    /// falls back to the case's `[voxel]`. Declaring a `[voxel]` on a variant of a
+    /// non-voxel case is rejected.
+    #[serde(default)]
+    voxel: Option<ManifestVoxel>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -1995,6 +2003,13 @@ pub struct Variant {
     /// The effective domain set for a run of this variant is
     /// [`TestCaseVersion::domains_for`].
     pub domains: Vec<Domain>,
+    /// The bounding volume this variant overrides the case's common `[voxel]`
+    /// with, when it declares its own. `Some` **replaces** the case's `[voxel]`
+    /// for this variant (it is not additive), so the same subject can be sculpted
+    /// at a different size; `None` falls back to [`TestCaseVersion::voxel`].
+    /// Resolve the effective volume for a variant with
+    /// [`TestCaseVersion::voxel_for`].
+    pub voxel: Option<VoxelSpec>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -2353,6 +2368,17 @@ impl TestCaseVersion {
             .workspace
             .as_deref()
             .unwrap_or(&self.common_workspace)
+    }
+
+    /// The effective bounding volume for a run of `variant`: the variant's own
+    /// `[voxel]` when it overrides the size, otherwise the case's common `[voxel]`.
+    /// Like [`Self::workspace_for`], a variant's volume **replaces** the common
+    /// one rather than layering on top. `None` for a non-voxel case (neither has a
+    /// volume). Every consumer of the volume — seeding the tool config, validating
+    /// the produced mesh, and rendering the brief/prompt templates — resolves it
+    /// through this one accessor so all three agree on the size a run was given.
+    pub fn voxel_for<'a>(&'a self, variant: &'a Variant) -> Option<&'a VoxelSpec> {
+        variant.voxel.as_ref().or(self.voxel.as_ref())
     }
 
     /// The full set of specs seeded for a variant: the common specs followed by
@@ -4062,6 +4088,47 @@ impl TestCaseCatalog {
                 None => None,
             };
 
+            // A variant's `[voxel]`, when declared, replaces the case's common
+            // volume for this variant (the size axis behind half/base/double
+            // variants). It is meaningful only for a voxel case: a variant of any
+            // other kind declaring one is a manifest error. Validate its extents
+            // and background exactly as the common `[voxel]` is validated above.
+            let voxel = match &variant.voxel {
+                Some(voxel) => {
+                    if !(test_type == TestType::AssetGeneration
+                        && manifest.asset_kind.is_voxel())
+                    {
+                        return Err(invalid(format!(
+                            "variant `{}` declares a [voxel] volume, but only a voxel \
+                             asset-generation case may override the volume per variant",
+                            variant.slug
+                        )));
+                    }
+                    if voxel.width == 0 || voxel.height == 0 || voxel.depth == 0 {
+                        return Err(invalid(format!(
+                            "variant `{}` voxel width, height, and depth must be greater \
+                             than zero",
+                            variant.slug
+                        )));
+                    }
+                    test_cabinet_model_core::PreviewBackground::parse(&voxel.background).map_err(
+                        |err| {
+                            invalid(format!(
+                                "variant `{}` voxel background `{}`: {err}",
+                                variant.slug, voxel.background
+                            ))
+                        },
+                    )?;
+                    Some(VoxelSpec {
+                        width: voxel.width,
+                        height: voxel.height,
+                        depth: voxel.depth,
+                        background: voxel.background.clone(),
+                    })
+                }
+                None => None,
+            };
+
             let mut references = Vec::with_capacity(variant.references.len());
             for reference in &variant.references {
                 references.push(resolve_reference(reference)?);
@@ -4293,6 +4360,7 @@ impl TestCaseCatalog {
                 proofs,
                 review_items,
                 domains: variant_domains,
+                voxel,
             });
         }
 

@@ -1,5 +1,5 @@
 Sculpt and rig the **Sunfront Bombard Foundry**, a heavy mortar-works whose
-overhead crane arm swings while its loading piston bobs, as a 60x70x60
+overhead crane arm swings while its loading piston bobs, as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}
 opaque-voxel model using only the `voxel-anim` tool. You build it by **painting
 opaque cells** — one recorded operation at a time — and you **author its two
 self-playing animations** as F-curves.
@@ -37,7 +37,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name works
-voxel-anim fill-box --part works --x0 8 --y0 0 --z0 8 --x1 51 --y1 56 --z1 51 --color "#c69a4b"
+voxel-anim fill-box --part works --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.)

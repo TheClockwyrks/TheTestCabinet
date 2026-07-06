@@ -97,7 +97,7 @@ waiting for.
     toward a top speed of **`184 px/s`** — faster than the forager's `128`, so it
     runs you down on a straightaway.
   - But it can only **take a turn at a junction when its speed is at or below
-    `112 px/s`**. Moving faster than that, it **cannot corner**: it overshoots
+    `130 px/s`**. Moving faster than that, it **cannot corner**: it overshoots
     straight through the junction and must decelerate before it can turn back.
   - So a Listener at full chase barrels past tight turns. **Juke it**: make sharp
     turns down side corridors it is going too fast to follow, forcing it to

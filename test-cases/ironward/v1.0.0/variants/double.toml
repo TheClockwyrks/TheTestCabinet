@@ -1,0 +1,11 @@
+# The double-size variant: the same tank sculpted in a volume with each extent
+# doubled from the case's base 40x30x80. Its `[voxel]` OVERRIDES the case volume for
+# runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 80
+height = 60
+depth = 160
+background = "transparent"

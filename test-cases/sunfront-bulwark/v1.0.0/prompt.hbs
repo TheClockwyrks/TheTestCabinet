@@ -1,6 +1,6 @@
 Sculpt and rig the **Sunfront Bulwark**, a heavy bipedal war-mech that braces a broad
 tower shield on its left arm, swings a heavy siege maul in its right, and strides
-forward on two legs — as a 40x60x30 opaque-voxel model using only the `voxel-anim`
+forward on two legs — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the `voxel-anim`
 tool. You build it by **painting discrete opaque cells** — one recorded operation at a
 time — and you **author its walk and weapon animations** as F-curves.
 
@@ -37,7 +37,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name body
-voxel-anim fill-box --part body --x0 10 --y0 30 --z0 8 --x1 29 --y1 52 --z1 22 --color "#c69a4b"
+voxel-anim fill-box --part body --x0 1 --y0 1 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.) Run

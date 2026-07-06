@@ -1,0 +1,11 @@
+# The double-size variant: the same mech sculpted in a volume with each extent
+# doubled from the case's base 20x40x20. Its `[voxel]` OVERRIDES the case volume
+# for runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 40
+height = 80
+depth = 40
+background = "transparent"

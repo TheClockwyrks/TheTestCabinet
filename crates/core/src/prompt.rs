@@ -26,7 +26,7 @@ use serde::Serialize;
 
 use crate::error::{Error, Result};
 use crate::execution::WORKSPACE_DIR;
-use crate::test_case::{TestCaseVersion, TestType, Variant};
+use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
 
 /// A standing quality directive prepended to every asset-generation case's
 /// rendered prompt.
@@ -57,6 +57,11 @@ struct PromptContext<'a> {
     /// The seeded specs for the selected variant, in seed order, each with an
     /// absolute in-container path.
     specs: Vec<PromptSpec>,
+    /// The effective bounding volume for this run, for a voxel case: the variant's
+    /// override when it declares one, else the case's `[voxel]`. `None` for a
+    /// non-voxel case, whose prompt never references `{{voxel}}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    voxel: Option<TemplateVoxel>,
 }
 
 /// The Handlebars context exposed to a test case's spec `.hbs` template.
@@ -74,6 +79,54 @@ struct SpecContext<'a> {
     version: &'a str,
     /// The selected variant.
     variant: TemplateVariant<'a>,
+    /// The effective bounding volume for this run, for a voxel case: the variant's
+    /// override when it declares one, else the case's `[voxel]`. This is what lets a
+    /// brief state its volume — `{{voxel.width}}×{{voxel.height}}×{{voxel.depth}}`,
+    /// axes `0`–`{{voxel.maxX}}` — from one source of truth rather than restating
+    /// the numbers, so the same brief reads correctly at every size variant. `None`
+    /// for a non-voxel case, whose specs never reference `{{voxel}}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    voxel: Option<TemplateVoxel>,
+}
+
+/// The bounding volume as exposed to a prompt or spec template.
+///
+/// A voxel brief reads its size from here instead of hardcoding it, so one brief
+/// serves every size variant. Alongside the three extents it carries the
+/// **maximum index** on each axis (`extent − 1`), so a brief can state an
+/// inclusive coordinate range as `0`–`{{voxel.maxX}}` without the template having
+/// to do arithmetic (Handlebars has none).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TemplateVoxel {
+    /// Volume extent along x, in voxels.
+    width: u32,
+    /// Volume extent along y (up), in voxels.
+    height: u32,
+    /// Volume extent along z, in voxels.
+    depth: u32,
+    /// Highest valid x index (`width − 1`).
+    max_x: u32,
+    /// Highest valid y index (`height − 1`).
+    max_y: u32,
+    /// Highest valid z index (`depth − 1`).
+    max_z: u32,
+}
+
+impl TemplateVoxel {
+    /// Build the template view of an effective [`VoxelSpec`]. The max-index fields
+    /// saturate at zero so a degenerate 0-extent (rejected at resolution, but
+    /// guarded here too) never underflows.
+    fn new(voxel: &VoxelSpec) -> Self {
+        Self {
+            width: voxel.width,
+            height: voxel.height,
+            depth: voxel.depth,
+            max_x: voxel.width.saturating_sub(1),
+            max_y: voxel.height.saturating_sub(1),
+            max_z: voxel.depth.saturating_sub(1),
+        }
+    }
 }
 
 /// The selected variant, as exposed to a prompt or spec template.
@@ -141,6 +194,7 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
         variant.description.as_deref(),
         &dests,
         test_case.test_type,
+        test_case.voxel_for(variant),
     )
 }
 
@@ -158,8 +212,10 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
 /// shared [`ASSET_QUALITY_PREAMBLE`] is prepended: it is, and only is, for
 /// [`TestType::AssetGeneration`], so every asset-generation case's rendered
 /// prompt opens with the same quality directive while other types render bare.
-/// Rendering uses the same strict, no-escape engine as a real run, so the output
-/// matches what the harness receives.
+/// `voxel` is the effective bounding volume for a voxel case (the variant's
+/// override, else the case's `[voxel]`), exposed to the template as `{{voxel}}`;
+/// pass `None` for a non-voxel case. Rendering uses the same strict, no-escape
+/// engine as a real run, so the output matches what the harness receives.
 #[allow(clippy::too_many_arguments)]
 pub fn render_prompt_from_template(
     slug: &str,
@@ -170,6 +226,7 @@ pub fn render_prompt_from_template(
     variant_description: Option<&str>,
     spec_dests: &[String],
     test_type: TestType,
+    voxel: Option<&VoxelSpec>,
 ) -> Result<String> {
     let context = PromptContext {
         workspace: WORKSPACE_DIR,
@@ -179,6 +236,7 @@ pub fn render_prompt_from_template(
             description: variant_description,
         },
         specs: spec_dests.iter().map(|dest| prompt_spec(dest)).collect(),
+        voxel: voxel.map(TemplateVoxel::new),
     };
 
     let body = template_engine()
@@ -225,6 +283,7 @@ pub(crate) fn render_spec(
     let context = SpecContext {
         version: &test_case.version,
         variant: TemplateVariant::new(variant),
+        voxel: test_case.voxel_for(variant).map(TemplateVoxel::new),
     };
 
     template_engine()

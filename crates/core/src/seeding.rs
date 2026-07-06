@@ -148,8 +148,10 @@ impl RepoSeeder for FsRepoSeeder {
             let kind = test_case.asset_kind;
             if kind.is_voxel() {
                 // The voxel/mesh/skinned kinds sculpt through their `.glb`-emitting
-                // binary (skinned single-file; see [`seed_voxel_tool`]).
-                seed_voxel_tool(test_case, &repo, request.live_preview)?;
+                // binary (skinned single-file; see [`seed_voxel_tool`]). The volume
+                // is resolved for the selected variant, so a half/double run seeds
+                // its own dimensions.
+                seed_voxel_tool(test_case, request.variant, &repo, request.live_preview)?;
             } else if kind.is_paint() {
                 seed_paint_tool(test_case, &repo, request.live_preview)?;
             } else if kind.is_particle() {
@@ -287,12 +289,16 @@ fn seed_asset_tool(
 /// exists from the first operation.
 fn seed_voxel_tool(
     test_case: &crate::TestCaseVersion,
+    variant: &crate::test_case::Variant,
     repo: &Path,
     live_preview: Option<&crate::preview::LivePreviewEndpoint>,
 ) -> Result<()> {
+    // The effective volume for this run: the variant's `[voxel]` override when it
+    // declares one (the half/base/double size axis), else the case's common
+    // `[voxel]`. Every consumer resolves it through `voxel_for` so the config the
+    // binary reads, the brief the model reads, and the validator all agree.
     let voxel_spec = test_case
-        .voxel
-        .as_ref()
+        .voxel_for(variant)
         .ok_or_else(|| Error::Seeding("voxel case has no [voxel]".to_string()))?;
     let tool = test_case
         .tool

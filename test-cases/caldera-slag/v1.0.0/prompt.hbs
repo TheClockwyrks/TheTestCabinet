@@ -1,5 +1,5 @@
 Sculpt and rig the **Caldera Slag**, a lumbering molten elemental — a hunched mass of
-glowing magma sheathed in a cracked cooling-basalt crust — as a 44x36x44 **skinned**
+glowing magma sheathed in a cracked cooling-basalt crust — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} **skinned**
 character using only the `sn-skin` tool. You build it as **one continuous skin**: a
 single whole-body signed-distance field composited from CSG primitives, bound to a
 skeleton you invent, and you **author its animations** as F-curves so the whole body
@@ -38,7 +38,7 @@ influences per vertex) — you do not paint them by hand.
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-sn-skin add-ellipsoid --x 22 --y 22 --z 22 --rx 10 --ry 9 --rz 11 --color "#17151a"
+sn-skin add-ellipsoid --x 3 --y 3 --z 3 --rx 5 --ry 4 --rz 5 --color "#17151a"
 sn-skin define-bone --name pelvis --parent ""
 ```
 

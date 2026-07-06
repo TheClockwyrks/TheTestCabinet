@@ -38,7 +38,7 @@ body {
 }
 
 /* The fixed logical table. All coordinates in the mockups and the specification
- * are expressed in these 1280x800 logical pixels. */
+ * are expressed in these 1280x720 logical pixels. */
 .stage {
   position: relative;
   width: 1280px;

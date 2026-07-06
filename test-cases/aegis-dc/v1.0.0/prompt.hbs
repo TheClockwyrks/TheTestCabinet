@@ -1,5 +1,5 @@
 Sculpt the **Aegis**, a colossal hard-edged six-legged walking fortress,
-as a static 3D mesh built with the Dual Contouring tool (`dc`), 120x110x150, using
+as a static 3D mesh built with the Dual Contouring tool (`dc`), {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}, using
 only that tool.
 
 ## How sculpting works
@@ -24,7 +24,7 @@ are your submission. An empty log is already in place at
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-dc add-box --x 60 --y 55 --z 74 --width 76 --height 22 --depth 96 --color "#c69a4b" --sharp
+dc add-box --x 2 --y 2 --z 3 --width 4 --height 2 --depth 5 --color "#c69a4b" --sharp
 ```
 
 Run `dc --help` to list every operation and `dc <operation> --help` for one

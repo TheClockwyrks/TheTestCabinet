@@ -1,6 +1,6 @@
 Sculpt and rig the **Sunfront Lancer Foundry**, a tall, slender spire whose
 rail-arm slides up and down its shaft and whose focus-ring spins at the crown, as a
-46x86x46 opaque-voxel model using only the `voxel-anim` tool. You paint discrete
+{{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the `voxel-anim` tool. You paint discrete
 opaque cells to build it and **author its two self-playing animations** as F-curves.
 
 This test measures **creativity and craft**, not instruction-following: the brief
@@ -37,7 +37,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name shaft
-voxel-anim fill-box --part shaft --x0 14 --y0 0 --z0 14 --x1 29 --y1 60 --z1 29 --color "#c69a4b"
+voxel-anim fill-box --part shaft --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.) Run

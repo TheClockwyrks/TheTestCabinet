@@ -40,7 +40,7 @@ use crate::match_play::{
     win_type_for,
 };
 use crate::reference::RenderedReference;
-use crate::test_case::{ProofFile, TestCaseVersion};
+use crate::test_case::{ProofFile, TestCaseVersion, Variant};
 use crate::validation::{
     AdversarialOutcome, AdversarialReplay, AdversarialResult, AdversarialTeam, ValidationSummary,
     Validator,
@@ -71,6 +71,7 @@ impl Validator for AdversarialValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        _variant: &Variant,
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],

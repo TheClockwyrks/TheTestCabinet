@@ -400,6 +400,13 @@ pub struct StoredVariant {
     /// Defaulted for manifests stored before the field existed.
     #[serde(default)]
     pub domains: Vec<StoredDomain>,
+    /// The variant's bounding-volume override, when it declares its own `[voxel]`
+    /// (the size axis behind a case's half/base/double variants). `None` inherits
+    /// the case's common [`StoredManifest::voxel`]. Reuses the core [`VoxelSpec`]
+    /// verbatim, as [`StoredManifest::voxel`] does. Defaulted for manifests stored
+    /// before the field existed.
+    #[serde(default)]
+    pub voxel: Option<VoxelSpec>,
 }
 
 /// A reference persisted in a [`StoredManifest`]. The served media lives under the

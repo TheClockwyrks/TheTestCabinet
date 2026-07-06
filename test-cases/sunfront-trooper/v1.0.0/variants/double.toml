@@ -1,0 +1,11 @@
+# The double-size variant: the same trooper sculpted in a field with each extent
+# doubled from the case's base 24x48x20. Its `[voxel]` OVERRIDES the case volume for
+# runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 48
+height = 96
+depth = 40
+background = "transparent"

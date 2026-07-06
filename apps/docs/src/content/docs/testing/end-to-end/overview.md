@@ -109,6 +109,12 @@ context exposes exactly:
   stay free of container paths.
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
+- `{{voxel}}` — for a voxel [asset-generation](/testing/asset-generation/overview/)
+  case only, the effective bounding volume for the run (the variant's `[voxel]`
+  override, else the case's `[voxel]`): `{{voxel.width}}`/`{{voxel.height}}`/
+  `{{voxel.depth}}` and the per-axis maximum indices `{{voxel.maxX}}`/`{{voxel.maxY}}`/
+  `{{voxel.maxZ}}`, exactly as in [Spec templates](#spec-templates). Absent — and a
+  strict-mode error to reference — for any non-voxel case.
 - `{{#each specs}} … {{/each}}` — the specs seeded for the selected variant, in
   **seed order**: the common specs first, then the variant's own specs. Each
   spec exposes:
@@ -141,6 +147,17 @@ exactly:
 - `{{version}}` — the exact test case version string (for example `v1.0.0`).
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
+- `{{voxel}}` — **for a voxel [asset-generation](/testing/asset-generation/overview/)
+  case only**, the effective bounding volume for the run: the variant's `[voxel]`
+  override when it declares one (the size axis behind a case's half/base/double
+  variants), otherwise the case's `[voxel]`. It exposes `{{voxel.width}}`,
+  `{{voxel.height}}`, `{{voxel.depth}}` (the extents, in voxels) and
+  `{{voxel.maxX}}`, `{{voxel.maxY}}`, `{{voxel.maxZ}}` (the highest index on each
+  axis — `extent − 1` — so an inclusive range reads `` `0`–`{{voxel.maxX}}` ``).
+  This is what lets a voxel brief state its volume from one source of truth, so the
+  same brief reads correctly at every size variant. `{{voxel}}` is absent for a
+  non-voxel case (any other type or asset kind), and referencing it there is a
+  strict-mode error.
 
 Unlike the prompt, a spec template is given neither `{{workspace}}` nor the spec
 manifest (`{{#each specs}}`): a spec is a file the model reads in place, so

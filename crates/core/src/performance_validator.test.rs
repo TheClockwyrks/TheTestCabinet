@@ -19,8 +19,26 @@ use super::PerformanceValidator;
 use crate::execution::ArtifactCollection;
 use crate::test_case::{
     AssetKind, BuildCommands, ContractSpec, PerformanceCase, SandboxSpec, TestCaseVersion, TestType,
+    Variant,
 };
 use crate::validation::Validator;
+
+/// A bare default variant: the performance validator ignores the variant, so an
+/// empty one (no voxel override) is all these tests need.
+fn base_variant() -> Variant {
+    Variant {
+        slug: "base".to_string(),
+        name: "Base".to_string(),
+        description: None,
+        specs: vec![],
+        workspace: None,
+        references: vec![],
+        proofs: vec![],
+        review_items: vec![],
+        domains: vec![],
+        voxel: None,
+    }
+}
 
 /// A small but non-trivial scenario: a `fast` source feeding a belt into a sink,
 /// run long enough that items flow and the sink counts them. Enough to make the
@@ -178,6 +196,7 @@ fn a_correct_engine_scores_correct_with_a_fuel_number() {
     let summary = PerformanceValidator::new()
         .validate(
             &version,
+            &base_variant(),
             &ArtifactCollection {
                 repo_path: repo.clone(),
             },
@@ -225,7 +244,13 @@ fn a_wrong_answer_engine_fails_the_correctness_gate() {
 
     let version = performance_version(root.clone(), module_rel, case);
     let summary = PerformanceValidator::new()
-        .validate(&version, &ArtifactCollection { repo_path: repo }, &[], &[])
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+        )
         .expect("validate");
 
     // The engine ran (it loaded and produced output), so the load signal is
@@ -269,7 +294,13 @@ fn a_missing_engine_module_scores_incorrect() {
         case,
     );
     let summary = PerformanceValidator::new()
-        .validate(&version, &ArtifactCollection { repo_path: repo }, &[], &[])
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+        )
         .expect("validate");
 
     // No engine means nothing runnable: the load signal is negative and the run is

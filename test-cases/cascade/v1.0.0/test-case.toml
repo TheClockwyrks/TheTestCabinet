@@ -59,8 +59,9 @@ init = "npm install && npx playwright install chromium"
 # Each is declared in its own file under `variants/` and listed here in order —
 # the first is the default. Each seeds the common specs plus its own deal-mode
 # spec, declares its own `title` menu mockup (the menu shows the active deal
-# mode), and the review item for its turn count. The two differ ONLY in the
-# stock's turn count; the `gameplay` and `victory` views are common to both.
+# mode), and the review item for its turn count. The two differ in the stock's
+# turn count and how the waste is shown, so each also declares its own `gameplay`
+# mockup; only the `victory` view is common to both.
 #   - draw-three — the classic Klondike deal (turns three; the default).
 #   - draw-one   — the gentler deal (turns one; more winnable).
 # This list is a root key, so it must precede the first table header (`[build]`).
@@ -115,13 +116,9 @@ source = "specs/proof.md"
 # mockup; the harness renders it to a screenshot that is seeded into the run as a
 # visual target. The reference source is rendered, then never seeded directly.
 # References are not validated unless a `[[check]]` below names them. The `title`
-# view is variant-specific (declared per variant above) because the menu shows the
-# active deal mode; `gameplay` and `victory` look the same in every variant, so
-# they are common.
-[[reference]]
-view = "gameplay"
-path = "reference/gameplay.html"
-
+# and `gameplay` views are variant-specific (declared per variant above): the menu
+# shows the active deal mode, and the waste is fanned (Draw Three) or a single card
+# (Draw One). Only `victory` looks the same in every variant, so it is common.
 [[reference]]
 view = "victory"
 path = "reference/victory.html"

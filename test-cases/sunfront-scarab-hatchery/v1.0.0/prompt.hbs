@@ -1,5 +1,5 @@
 Sculpt and rig the **Sunfront Scarab Hatchery**, a squat, wide Duneforged hive-mound
-whose central iris hatch turns and whose side vent bobs, as a 60x40x60 opaque-voxel
+whose central iris hatch turns and whose side vent bobs, as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel
 model using only the `voxel-anim` tool. You build it by **painting discrete opaque
 cells** one recorded operation at a time, and you **author its two decorative
 animations** as F-curves.
@@ -33,8 +33,8 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name base
-voxel-anim fill-box --part base --x0 6 --y0 0 --z0 6 --x1 49 --y1 22 --z1 49 --color "#c69a4b"
-voxel-anim add-sphere --part hatch --cx 28 --cy 22 --cz 40 --r 8 --color "#565c64"
+voxel-anim fill-box --part base --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
+voxel-anim add-sphere --part hatch --cx 3 --cy 3 --cz 3 --r 2 --color "#565c64"
 ```
 
 (The part names above are just an example — name your own parts however you like.) Run

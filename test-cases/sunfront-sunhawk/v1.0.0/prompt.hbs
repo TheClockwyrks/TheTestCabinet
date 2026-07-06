@@ -1,5 +1,5 @@
 Sculpt and rig the **Sunfront Sunhawk**, a wide, flat gunship aircraft whose two
-rotors spin while its underslung forward cannon aims up and down — as a 74x28x76
+rotors spin while its underslung forward cannon aims up and down — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}
 opaque-voxel model using only the `voxel-anim` tool. You build it by **painting
 discrete opaque cells** one recorded operation at a time, and you **author its rotor,
 hover, and gun-run animations** as F-curves.
@@ -34,7 +34,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name hull
-voxel-anim fill-box --part hull --x0 8 --y0 6 --z0 10 --x1 65 --y1 20 --z1 65 --color "#c69a4b"
+voxel-anim fill-box --part hull --x0 1 --y0 1 --z0 1 --x1 5 --y1 4 --z1 5 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.) Run

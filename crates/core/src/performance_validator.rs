@@ -41,7 +41,7 @@ use lattice_host::{RunError, SandboxLimits, run_submission, score_against};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::{PerformanceCase, ProofFile, TestCaseVersion};
+use crate::test_case::{PerformanceCase, ProofFile, TestCaseVersion, Variant};
 use crate::validation::{
     PerformanceCaseResult, PerformanceResult, ProofResult, ValidationSummary, Validator,
 };
@@ -69,6 +69,7 @@ impl Validator for PerformanceValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        _variant: &Variant,
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],

@@ -122,9 +122,9 @@ seconds, and angles in degrees.
 - The simulation must be **frame-rate independent**, as a modern game is: movement,
   combat cadence, redoubt damage, and spawns advance in real time (scaled by the
   elapsed time between frames), never per rendered frame, so behavior is the same
-  whether a machine draws fast or slow. Use whatever integration approach you like
-  (a variable delta-time step, or a fixed-step accumulator under the hood) — the
-  requirement is the observable one: the game plays the same at 30 FPS and at 120.
+  whether a machine draws fast or slow. Use whatever integration approach you like —
+  the requirement is the observable one: the game plays the same at 30 FPS and at
+  120.
 - The world is **procedurally generated with randomness** each match (the terrain
   and the spawns; see `specs/world.md` and `specs/phases.md`) — two matches should
   not lay out identically.

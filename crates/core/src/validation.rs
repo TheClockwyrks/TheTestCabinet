@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::{MediaKind, ModelSpec, NineSlice, ProofFile, SheetSpec, TestCaseVersion};
+use crate::test_case::{
+    MediaKind, ModelSpec, NineSlice, ProofFile, SheetSpec, TestCaseVersion, Variant,
+};
 
 /// A screenshot captured from the implementation during validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -636,9 +638,14 @@ pub trait Validator {
     /// is looked up here by its reference view. `proofs` are the proof-of-
     /// implementation artifacts requested for the selected variant (see
     /// [`TestCaseVersion::proofs_for`]); each is recorded present or missing.
+    /// `variant` is the selected variant: most validators ignore it, but a voxel
+    /// case reads the effective bounding volume for the run through it (see
+    /// [`TestCaseVersion::voxel_for`]) so a half/double run is scored against the
+    /// size it was actually given, not the case's base volume.
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        variant: &Variant,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],

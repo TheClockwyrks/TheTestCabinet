@@ -16,8 +16,26 @@ use crate::execution::ArtifactCollection;
 use crate::match_play::ended_to;
 use crate::test_case::{
     AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
+    Variant,
 };
 use crate::validation::{AdversarialOutcome, AdversarialReplay, AdversarialTeam, Validator};
+
+/// A bare default variant: the adversarial validator ignores the variant, so an
+/// empty one (no voxel override) is all these tests need.
+fn base_variant() -> Variant {
+    Variant {
+        slug: "base".to_string(),
+        name: "Base".to_string(),
+        description: None,
+        specs: vec![],
+        workspace: None,
+        references: vec![],
+        proofs: vec![],
+        review_items: vec![],
+        domains: vec![],
+        voxel: None,
+    }
+}
 
 /// Wrap a bare [`ReplayResult`] in a minimal [`Replay`] — the entry mapping reads
 /// only the scores/kills/ticks the result already carries.
@@ -122,7 +140,13 @@ fn a_missing_submission_module_is_a_forfeit_loss() {
     );
 
     let summary = AdversarialValidator::new()
-        .validate(&version, &ArtifactCollection { repo_path: repo }, &[], &[])
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+        )
         .expect("validate");
 
     // A submission that produced no module forfeits — it is recorded, not a crash.
@@ -145,7 +169,13 @@ fn a_missing_baseline_opponent_is_a_failed_load() {
     let version = adversarial_version(dir.path().to_path_buf(), "controller.wasm");
 
     let summary = AdversarialValidator::new()
-        .validate(&version, &ArtifactCollection { repo_path: repo }, &[], &[])
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+        )
         .expect("validate");
 
     assert!(!summary.loaded);
@@ -183,6 +213,7 @@ fn validate_writes_a_replay_per_opponent_and_records_them() {
     let summary = AdversarialValidator::new()
         .validate(
             &version,
+            &base_variant(),
             &ArtifactCollection {
                 repo_path: repo.clone(),
             },

@@ -572,6 +572,86 @@ fn voxel_model_rejects_a_model_table() {
 }
 
 #[test]
+fn voxel_variant_overrides_the_base_volume() {
+    // A case whose `double` variant declares its own [voxel] sculpts the same
+    // subject at a larger size; the default `base` variant inherits the case's
+    // volume. `voxel_for` resolves each to the size that variant runs at.
+    let manifest = VALID_VOXEL_MODEL_MANIFEST.replace(
+        "variants = [\"variants/base.toml\"]",
+        "variants = [\"variants/base.toml\", \"variants/double.toml\"]",
+    );
+    let (dir, catalog) = asset_catalog(&manifest);
+    fs::write(
+        dir.path().join("sprite/v1.0.0/variants/double.toml"),
+        "slug = \"double\"\nname = \"Double Size\"\n\
+         [voxel]\nwidth = 48\nheight = 32\ndepth = 64\nbackground = \"transparent\"\n",
+    )
+    .expect("write double variant");
+
+    let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    let double = version.variant("double").expect("double variant");
+
+    // The base variant declares no override and inherits the manifest volume; the
+    // double variant carries its own and `voxel_for` returns it.
+    assert!(base.voxel.is_none(), "base declares no override");
+    let base_dims = version.voxel_for(base).expect("base volume");
+    assert_eq!(
+        (base_dims.width, base_dims.height, base_dims.depth),
+        (24, 16, 32)
+    );
+    let double_dims = version.voxel_for(double).expect("double volume");
+    assert_eq!(
+        (double_dims.width, double_dims.height, double_dims.depth),
+        (48, 32, 64)
+    );
+}
+
+#[test]
+fn voxel_variant_rejects_a_zero_extent() {
+    let manifest = VALID_VOXEL_MODEL_MANIFEST.replace(
+        "variants = [\"variants/base.toml\"]",
+        "variants = [\"variants/base.toml\", \"variants/bad.toml\"]",
+    );
+    let (dir, catalog) = asset_catalog(&manifest);
+    fs::write(
+        dir.path().join("sprite/v1.0.0/variants/bad.toml"),
+        "slug = \"bad\"\n[voxel]\nwidth = 0\nheight = 16\ndepth = 32\nbackground = \"transparent\"\n",
+    )
+    .expect("write bad variant");
+    let err = catalog
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a zero-extent variant volume is rejected");
+    assert!(
+        format!("{err}").contains("greater than zero"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn non_voxel_variant_rejects_a_voxel_table() {
+    // A 2D sprite case whose variant declares a [voxel] override is a mistake:
+    // only a voxel case may vary its volume per variant.
+    let manifest = VALID_ASSET_MANIFEST.replace(
+        "variants = [\"variants/base.toml\"]",
+        "variants = [\"variants/base.toml\", \"variants/big.toml\"]",
+    );
+    let (dir, catalog) = asset_catalog(&manifest);
+    fs::write(
+        dir.path().join("sprite/v1.0.0/variants/big.toml"),
+        "slug = \"big\"\n[voxel]\nwidth = 8\nheight = 8\ndepth = 8\nbackground = \"transparent\"\n",
+    )
+    .expect("write big variant");
+    let err = catalog
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a [voxel] override on a non-voxel case is rejected");
+    assert!(
+        format!("{err}").contains("only a voxel asset-generation case"),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn voxel_animation_resolves_its_model() {
     let (_dir, catalog) = asset_catalog(VALID_VOXEL_ANIM_MANIFEST);
     let version = catalog.resolve("sprite", "v1.0.0").expect("resolve");

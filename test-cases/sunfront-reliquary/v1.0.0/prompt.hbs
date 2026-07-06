@@ -1,6 +1,6 @@
 Sculpt and rig the **Sunfront Reliquary**, a tall, precious monument that cradles a
 glowing solar core, encircled by a turning orbital ring and crowned by counter-rotating
-guardian fins — as a 60x100x60 opaque-voxel model using only the `voxel-anim` tool. You
+guardian fins — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the `voxel-anim` tool. You
 build it by **painting discrete opaque cells** and you **author its ring, core, and fin
 animations** as F-curves.
 
@@ -36,8 +36,8 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name plinth
-voxel-anim fill-box --part plinth --x0 8 --y0 0 --z0 8 --x1 51 --y1 52 --z1 51 --color "#c69a4b"
-voxel-anim add-sphere --part solar_core --cx 30 --cy 56 --cz 30 --r 8 --color "#ff9d2e"
+voxel-anim fill-box --part plinth --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
+voxel-anim add-sphere --part solar_core --cx 3 --cy 3 --cz 3 --r 2 --color "#ff9d2e"
 ```
 
 (The part names above are just an example — name your own parts however you like.) Run

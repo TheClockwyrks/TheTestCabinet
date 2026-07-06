@@ -1,5 +1,5 @@
 Sculpt and rig the **Sunfront Bulwark Foundry**, a heavy armored bunker-forge whose
-blast door raises and whose flywheel turns on their own, as a 66x56x66 opaque-voxel
+blast door raises and whose flywheel turns on their own, as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel
 model using only the `voxel-anim` tool. You build it by **painting discrete opaque
 cells** — one recorded operation at a time — and you **author its two self-playing
 animations** as F-curves.
@@ -37,7 +37,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name body
-voxel-anim fill-box --part body --x0 6 --y0 0 --z0 6 --x1 53 --y1 44 --z1 53 --color "#c69a4b"
+voxel-anim fill-box --part body --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.) Run

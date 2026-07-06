@@ -729,12 +729,13 @@ where
     pub fn validate(
         &self,
         test_case: &TestCaseVersion,
+        variant: &Variant,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
     ) -> Result<ValidationSummary> {
         self.validator
-            .validate(test_case, artifacts, references, proofs)
+            .validate(test_case, variant, artifacts, references, proofs)
     }
 
     /// Serialize the run record as camelCase JSON and store it, alongside a copy
@@ -949,7 +950,7 @@ where
         // The proof-of-implementation artifacts requested for this variant; the
         // validator records whether each turned up in the produced tree.
         let proofs = test_case.proofs_for(&variant);
-        let validation = self.validate(test_case, &artifacts, &references, &proofs)?;
+        let validation = self.validate(test_case, &variant, &artifacts, &references, &proofs)?;
         let finished_at = OffsetDateTime::now_utc();
 
         // A clean harness exit that produced nothing evaluable is a model

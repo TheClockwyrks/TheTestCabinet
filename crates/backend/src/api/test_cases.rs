@@ -199,6 +199,7 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
                 proofs: v.proofs.iter().map(proof_out).collect(),
                 review_items: v.review_items.iter().map(review_item_out).collect(),
                 domains: v.domains.iter().map(domain_out).collect(),
+                voxel: v.voxel.clone(),
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
@@ -307,6 +308,9 @@ fn render_variant_prompt(
         variant.description.as_deref(),
         &spec_dests,
         manifest.test_type,
+        // The variant's own volume overrides the case's for its prompt, so the
+        // gallery renders each size variant's brief at its actual dimensions.
+        variant.voxel.as_ref().or(manifest.voxel.as_ref()),
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }
@@ -559,6 +563,10 @@ struct VariantOut {
     /// The variant's own scoring domains, on top of the case's common
     /// [`VersionResponse::domains`]. Rated only when this variant is selected.
     domains: Vec<DomainOut>,
+    /// The variant's bounding-volume override, when it declares its own `[voxel]`
+    /// (the size axis behind a case's half/base/double variants). `None` inherits
+    /// the case's common [`VersionResponse::voxel`].
+    voxel: Option<VoxelSpec>,
 }
 
 #[derive(Serialize)]
