@@ -5,7 +5,7 @@ name = "Draw One"
 description = "The gentler deal — the stock turns one card at a time, with unlimited redeals."
 
 spec = [{ source = "specs/modes/draw-one.md" }]
-reference = [{ view = "title", path = "reference/menu-draw-one.html" }]
+reference = [{ view = "title", path = "reference/menu-draw-one.html" }, { view = "gameplay", path = "reference/gameplay-draw-one.html" }]
 
 [[review_item]]
 id = "draw-one-count"

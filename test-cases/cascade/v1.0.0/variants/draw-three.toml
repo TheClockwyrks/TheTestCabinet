@@ -7,7 +7,7 @@ name = "Draw Three"
 description = "The classic Klondike deal — the stock turns three cards at a time, top playable, with unlimited passes."
 
 spec = [{ source = "specs/modes/draw-three.md" }]
-reference = [{ view = "title", path = "reference/menu-draw-three.html" }]
+reference = [{ view = "title", path = "reference/menu-draw-three.html" }, { view = "gameplay", path = "reference/gameplay-draw-three.html" }]
 
 [[review_item]]
 id = "draw-three-count"

@@ -21,15 +21,16 @@ implementation.
 
 Each file corresponds to a canonical view slug. The `gameplay` and `victory`
 views are **common** — the same mockup is rendered and seeded for both variants.
-The `title` view is **variant-specific**: the title menu shows the active deal
-mode, so each variant declares its own menu mockup (see the `[[variant]]`
-`reference` entries in `../test-case.toml`).
+The `title` and `gameplay` views are **variant-specific**: the title menu shows
+the active deal mode, and the waste is fanned (Draw Three) or a single card (Draw
+One), so each variant declares its own mockups (see the `reference` entries in the
+variant files under `../variants/`).
 
-| View slug  | File(s)                                      | Description                          |
-| ---------- | -------------------------------------------- | ------------------------------------ |
-| `title`    | `menu-draw-three.html`, `menu-draw-one.html` | Title menu, one mockup per variant.  |
-| `gameplay` | `gameplay.html`                              | Representative mid-game table.       |
-| `victory`  | `victory.html`                               | Win screen, cascade under way.       |
+| View slug  | File(s)                                              | Description                                       |
+| ---------- | ---------------------------------------------------- | ------------------------------------------------- |
+| `title`    | `menu-draw-three.html`, `menu-draw-one.html`         | Title menu, one mockup per variant.               |
+| `gameplay` | `gameplay-draw-three.html`, `gameplay-draw-one.html` | Mid-game table, one per variant (fan vs. single). |
+| `victory`  | `victory.html`                                       | Win screen, cascade under way.                    |
 
 The two `title` mockups differ only in the deal-mode badge/label:
 `menu-draw-three.html` reads `DRAW THREE` and `menu-draw-one.html` reads `DRAW
