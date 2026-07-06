@@ -18,8 +18,8 @@ use lattice_core::{Engine, Scenario, Snapshot};
 use super::PerformanceValidator;
 use crate::execution::ArtifactCollection;
 use crate::test_case::{
-    AssetKind, BuildCommands, ContractSpec, PerformanceCase, SandboxSpec, TestCaseVersion, TestType,
-    Variant,
+    AssetKind, BuildCommands, ContractSpec, PerformanceCase, SandboxSpec, TestCaseVersion,
+    TestType, Variant,
 };
 use crate::validation::Validator;
 
