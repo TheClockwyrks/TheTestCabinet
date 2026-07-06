@@ -62,9 +62,10 @@
 #   - the SOURCE of the packages the console actually bundles: apps/web itself
 #     plus its workspace deps @test-cabinet/ui and @test-cabinet/run-record, which
 #     Vite resolves to their TypeScript sources (packages/ui exports ./src/*), and
-#     @test-cabinet/voxel-runtime, whose compiled `./three` subpath the ui library
-#     imports (the Dockerfile builds its dist/ before the console — the sources
-#     ride along here, dist/ is re-excluded below and rebuilt in-image).
+#     @test-cabinet/voxel-runtime and @test-cabinet/particle-runtime, whose
+#     compiled `./three` subpaths the ui library imports (the Dockerfile builds
+#     their dist/ before the console — the sources ride along here, dist/ is
+#     re-excluded below and rebuilt in-image).
 # node_modules/ and dist/ are re-excluded below (those re-exclusions come last and
 # win), so a local install/build never rides along.
 !/package.json
@@ -77,6 +78,7 @@
 !/packages/run-record
 !/packages/ui
 !/packages/voxel-runtime
+!/packages/particle-runtime
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block, the config.js
 # envsubst template, and the entrypoint that renders it) — the Rust images embed
