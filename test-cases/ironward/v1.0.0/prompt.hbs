@@ -1,5 +1,5 @@
 Sculpt and rig the **Ironward Siege Tank**, a heavy tracked tank whose turret
-swivels to aim a long forward gun — as a 40x30x80 opaque-voxel model using only the
+swivels to aim a long forward gun — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the
 `voxel-anim` tool. You build it by **painting discrete cells** — one recorded
 operation at a time — and you **author its turret animation** as F-curves.
 
@@ -35,7 +35,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name hull
-voxel-anim fill-box --part hull --x0 6 --y0 0 --z0 5 --x1 33 --y1 16 --z1 74 --color "#5d6b3a"
+voxel-anim fill-box --part hull --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#5d6b3a"
 ```
 
 (The part name above is just an example — name your own parts however you like.) Run

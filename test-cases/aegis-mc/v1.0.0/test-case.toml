@@ -5,8 +5,7 @@ tags = ["asset-generation", "3d", "voxel", "mesh", "marching-cubes", "fortress"]
 summary = """
 Sculpt the Aegis: a colossal, standing six-legged war-fortress meshed \
 from a signed-distance field with the `mc` Marching Cubes binary — a bold, chunky, \
-faceted low-poly surface — inside a 120x110x150 volume, one recorded operation at a \
-time."""
+faceted low-poly surface — one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
@@ -14,19 +13,22 @@ type = "asset-generation"
 asset_kind = "mc-model"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# This case has a single default variant declared in its own file under
-# `variants/`. This list is a root key, so it must precede the first table header.
-variants = ["variants/base.toml"]
+# The three variants mesh the SAME Aegis at three sizes — `base` (this case's field
+# bounds), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
 
-# The fixed volume the Marching Cubes field is framed in (the 3D analog of a 2D
+# The default volume the Marching Cubes field is framed in (the 3D analog of a 2D
 # canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
 # voxels. The Aegis is deliberately huge — a walking fortress with a far larger
 # footprint than any buildable unit, riding raised on its legs — so its volume is
-# length-dominant: broad and long, riding on its legs. Unlike a cube case this
-# volume frames a CONTINUOUS signed-distance field (primitive centers and extents
-# are real-valued within it), not a discrete cell grid. The field always starts
-# EMPTY; `background` is only the clear color behind the wgpu preview PNG. A
-# voxel/mesh case must NOT declare [canvas].
+# length-dominant: broad and long, riding on its legs. A variant may OVERRIDE this
+# with its own `[voxel]` (the `half`/`double` size axis); `base` inherits it. Unlike
+# a cube case this volume frames a CONTINUOUS signed-distance field (primitive
+# centers and extents are real-valued within it), not a discrete cell grid. The
+# field always starts EMPTY; `background` is only the clear color behind the wgpu
+# preview PNG. A voxel/mesh case must NOT declare [canvas].
 [voxel]
 width = 120
 height = 110
@@ -54,9 +56,12 @@ preview = "model.png"
 [output]
 actions = "actions.json"
 
-# The self-contained brief, seeded for the run.
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the field bounds it states match the selected
+# size (`{{voxel.width}}`×`{{voxel.height}}`×`{{voxel.depth}}`). The seeded dest
+# drops the `.hbs`, so the run still reads `specs/brief.md`.
 [[spec]]
-source = "specs/brief.md"
+source = "specs/brief.md.hbs"
 
 [[domain]]
 id = "fidelity"
@@ -101,8 +106,8 @@ domain = "fidelity"
 id = "symmetry"
 title = "Bilateral symmetry"
 text = """
-The fortress is cleanly symmetric about its lengthwise vertical centerplane (between \
-x = 59 and x = 60): the three legs down each side, the two side sponsons and their \
+The fortress is cleanly symmetric about its lengthwise vertical centerplane: the \
+three legs down each side, the two side sponsons and their \
 turrets, and any intakes or vents mirror each other, with the main turret, cannon, \
 and sensor vane centered on the plane — so it reads as a deliberate war machine \
 rather than a lopsided hull. Compositing one half of the field and reflecting it \
@@ -128,7 +133,7 @@ title = "Duneforged palette; fills the volume"
 text = """
 Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
 and gun barrels, dark-iron recesses, and the solar-amber accent) with a clear amber \
-accent and no out-of-palette colors, and the fortress uses most of the 120x110x150 \
+accent and no out-of-palette colors, and the fortress uses most of the \
 volume — broad and long, riding raised on its legs — with a little margin on every \
 side, neither shrunk into a corner nor clipped where it runs past a face."""
 weight = 1

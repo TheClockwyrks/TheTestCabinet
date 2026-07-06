@@ -73,6 +73,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 domain: None,
             }],
             domains: vec![],
+            voxel: None,
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),

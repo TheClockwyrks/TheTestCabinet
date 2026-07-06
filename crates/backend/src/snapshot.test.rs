@@ -156,6 +156,7 @@ fn manifest() -> StoredManifest {
             proofs: vec![],
             review_items: vec![],
             domains: vec![],
+            voxel: None,
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),

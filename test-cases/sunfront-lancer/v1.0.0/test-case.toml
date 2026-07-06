@@ -3,7 +3,7 @@ name = "Sunfront Lancer"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
 summary = """
-Sculpt and rig the Sunfront Lancer: a 24x50x50 opaque-voxel bipedal marksman-mech \
+Sculpt and rig the Sunfront Lancer: an opaque-voxel bipedal marksman-mech \
 whose long center rail-lance aims up and down at the chest while it strides on two \
 legs whose feet lift clear of the ground and plant flat — built by painting voxel \
 cells one recorded operation at a time. The model invents whatever parts and joints \
@@ -16,9 +16,11 @@ type = "asset-generation"
 asset_kind = "voxel-animation"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# This case has a single default variant declared in its own file under
-# `variants/`. This list is a root key, so it must precede the first table header.
-variants = ["variants/base.toml"]
+# The three variants sculpt and rig the SAME mech at three sizes — `base` (this
+# case's volume), `half` (each extent halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
 
 # The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
 # canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
@@ -78,9 +80,11 @@ name = "fire"
 loop = true
 auto_play = false
 
-# The self-contained brief, seeded for the run.
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected size.
+# The seeded dest drops the `.hbs`, so the run still reads `specs/brief.md`.
 [[spec]]
-source = "specs/brief.md"
+source = "specs/brief.md.hbs"
 
 [[domain]]
 id = "fidelity"

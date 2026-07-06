@@ -77,6 +77,7 @@ fn frenzy() -> Variant {
         proofs: vec![],
         review_items: vec![],
         domains: vec![],
+        voxel: None,
     }
 }
 
@@ -151,6 +152,7 @@ fn strict_mode_rejects_unknown_variables() {
         proofs: vec![],
         review_items: vec![],
         domains: vec![],
+        voxel: None,
     };
     assert!(
         render_prompt(&version, &variant).is_err(),
@@ -183,6 +185,78 @@ fn render_spec_exposes_the_variant_and_version() {
         out,
         "Version v1.0.0 — the Frenzy build (frenzy): Standard plus Frenzy."
     );
+}
+
+/// A voxel `voxel-model` version at the given volume, so a spec/prompt template
+/// can be rendered with `{{voxel}}` in scope.
+fn voxel_version(prompt_path: PathBuf, width: u32, height: u32, depth: u32) -> TestCaseVersion {
+    let mut version = version_with_prompt_typed(prompt_path, TestType::AssetGeneration);
+    version.asset_kind = crate::test_case::AssetKind::VoxelModel;
+    version.voxel = Some(crate::test_case::VoxelSpec {
+        width,
+        height,
+        depth,
+        background: "transparent".to_string(),
+    });
+    version
+}
+
+#[test]
+fn spec_template_injects_the_voxel_dimensions() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = dir.path().join("brief.md.hbs");
+    // A brief states its volume and axis ranges from the injected context — the
+    // max-index fields give the inclusive `0`–N span without template arithmetic.
+    std::fs::write(
+        &spec,
+        "{{voxel.width}}x{{voxel.height}}x{{voxel.depth}}, x 0-{{voxel.maxX}} \
+         y 0-{{voxel.maxY}} z 0-{{voxel.maxZ}}",
+    )
+    .expect("write spec");
+
+    let version = voxel_version(dir.path().join("prompt.hbs"), 50, 20, 76);
+    let out = render_spec(&version, &frenzy(), &spec).expect("render spec");
+
+    assert_eq!(out, "50x20x76, x 0-49 y 0-19 z 0-75");
+}
+
+#[test]
+fn spec_template_uses_the_variant_volume_override() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = dir.path().join("brief.md.hbs");
+    std::fs::write(&spec, "{{voxel.width}}x{{voxel.height}}x{{voxel.depth}}").expect("write spec");
+
+    // The case's [voxel] is 50x20x76, but the selected variant halves it — the
+    // brief renders the size the run actually gets.
+    let version = voxel_version(dir.path().join("prompt.hbs"), 50, 20, 76);
+    let mut half = frenzy();
+    half.voxel = Some(crate::test_case::VoxelSpec {
+        width: 25,
+        height: 10,
+        depth: 38,
+        background: "transparent".to_string(),
+    });
+
+    let out = render_spec(&version, &half, &spec).expect("render spec");
+    assert_eq!(out, "25x10x38");
+}
+
+#[test]
+fn prompt_template_injects_the_voxel_dimensions() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(
+        &prompt,
+        "Sculpt in a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} volume.",
+    )
+    .expect("write prompt");
+
+    let version = voxel_version(prompt, 40, 30, 80);
+    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+
+    // Asset-generation prompts carry the shared preamble, then the rendered body.
+    assert!(out.starts_with(ASSET_QUALITY_PREAMBLE));
+    assert!(out.contains("Sculpt in a 40x30x80 volume."));
 }
 
 #[test]

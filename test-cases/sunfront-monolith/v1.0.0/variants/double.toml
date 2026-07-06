@@ -1,0 +1,11 @@
+# The double-size variant: the same war-mech sculpted in a volume with each extent
+# doubled from the case's base 50x80x50. Its `[voxel]` OVERRIDES the case volume for
+# runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 100
+height = 160
+depth = 100
+background = "transparent"

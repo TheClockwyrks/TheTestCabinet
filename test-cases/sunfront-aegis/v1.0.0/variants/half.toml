@@ -1,0 +1,11 @@
+# The half-size variant: the same fortress sculpted in a volume with each extent
+# ~halved (rounded) from the case's base 120x110x150. Its `[voxel]` OVERRIDES the case
+# volume for runs of this variant, and the brief is rendered at these dimensions.
+slug = "half"
+name = "Half Size"
+
+[voxel]
+width = 60
+height = 55
+depth = 75
+background = "transparent"

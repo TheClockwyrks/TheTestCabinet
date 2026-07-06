@@ -1,0 +1,11 @@
+# The double-size variant: the same Slag sculpted in field bounds with each extent
+# doubled from the case's base 44x36x44. Its `[voxel]` OVERRIDES the case volume for
+# runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 88
+height = 72
+depth = 88
+background = "transparent"

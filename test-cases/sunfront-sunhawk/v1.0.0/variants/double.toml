@@ -1,0 +1,11 @@
+# The double-size variant: the same Sunhawk sculpted and rigged in a volume with each
+# extent doubled from the case's base 74x28x76. Its `[voxel]` OVERRIDES the case
+# volume for runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 148
+height = 56
+depth = 152
+background = "transparent"

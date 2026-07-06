@@ -695,6 +695,17 @@
           },
           "type": "array"
         },
+        "voxel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VoxelSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The variant's bounding-volume override, when it declares its own `[voxel]`\n(the size axis behind a case's half/base/double variants). `None` inherits\nthe case's common [`VersionResponse::voxel`]."
+        },
         "workspace": {
           "items": {
             "$ref": "#/$defs/WorkspaceOut"

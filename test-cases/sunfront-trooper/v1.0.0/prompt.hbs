@@ -1,5 +1,5 @@
 Sculpt and rig the **Sunfront Trooper**, an armored Duneforged infantry soldier
-whose whole plated body deforms as one continuous skin — as a 24x48x20 hard-surface
+whose whole plated body deforms as one continuous skin — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} hard-surface
 model using only the `dc-skin` tool. You build it by **sculpting one whole-body
 signed-distance field** — one recorded operation at a time — bind it to a skeleton you
 invent, and **author its three animations** as F-curves.
@@ -42,7 +42,7 @@ bone).
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-dc-skin add-box --x 12 --y 26 --z 10 --w 8 --h 12 --d 5 --color "#b07a35"
+dc-skin add-box --x 3 --y 4 --z 2 --w 4 --h 5 --d 3 --color "#b07a35"
 dc-skin define-bone --name pelvis --parent ""
 ```
 

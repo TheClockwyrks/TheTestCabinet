@@ -1,5 +1,5 @@
 Sculpt and rig the **Siege Husk**, a decrepit, low-poly shambling humanoid enemy for
-the Siege first-person voxel last-stand game — as **one continuous skin** in a 24x48x20
+the Siege first-person voxel last-stand game — as **one continuous skin** in a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}
 volume using only the `mc-skin` tool. You build it by **compositing signed-distance
 primitives** into a single whole-body field — one recorded operation at a time — bind it
 to a **skeleton you invent**, and **author its animations** as F-curves so the skin
@@ -40,7 +40,7 @@ you do not paint them by hand.
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-mc-skin add-ellipsoid --x 12 --y 30 --z 10 --rx 4 --ry 7 --rz 3 --color "#7e8a68"
+mc-skin add-ellipsoid --x 3 --y 4 --z 2 --rx 2 --ry 4 --rz 2 --color "#7e8a68"
 mc-skin define-bone --name pelvis --parent ""
 ```
 

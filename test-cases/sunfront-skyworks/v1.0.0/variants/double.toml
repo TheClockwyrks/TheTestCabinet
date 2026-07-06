@@ -1,0 +1,11 @@
+# The double-size variant: the same Skyworks sculpted and rigged in a volume with each
+# extent doubled from the case's base 70x60x70. Its `[voxel]` OVERRIDES the case
+# volume for runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 140
+height = 120
+depth = 140
+background = "transparent"

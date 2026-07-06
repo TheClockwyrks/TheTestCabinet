@@ -1,5 +1,6 @@
 Sculpt the **Skyshard Interceptor**, a symmetric forward-swept fighter jet, as a
-50x20x76 opaque-voxel model using only the voxel tool.
+{{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the
+voxel tool.
 
 ## How sculpting works
 
@@ -13,10 +14,12 @@ nothing; run `voxel render` when you want to see the model — it meshes the mod
 `mesh.glb` and draws the preview PNG `model.png`. An empty log is already in place at
 `{{workspace}}`; you produce the preview and mesh yourself by running `voxel render`.
 
-Each operation is an ordinary subcommand with flags, for example:
+Each operation is an ordinary subcommand with flags — a filled box, for example,
+takes its two opposite corners as `--x0/--y0/--z0` and `--x1/--y1/--z1` plus a
+`--color`:
 
 ```
-voxel fill-box --x0 26 --y0 6 --z0 10 --x1 33 --y1 13 --z1 70 --color "#8a94a6"
+voxel fill-box --x0 1 --y0 1 --z0 1 --x1 5 --y1 5 --z1 5 --color "#8a94a6"
 ```
 
 Run `voxel --help` to list every operation and `voxel <operation> --help` for one

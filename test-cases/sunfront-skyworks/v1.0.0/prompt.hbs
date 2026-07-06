@@ -1,5 +1,5 @@
 Sculpt and rig the **Sunfront Skyworks**, an open launch-pad hangar whose turbine
-spins fast overhead while its launch door raises and lowers, as a 70x60x70
+spins fast overhead while its launch door raises and lowers, as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}
 opaque-voxel model using only the `voxel-anim` tool. You build it by **painting
 discrete opaque cells** and you **author its turbine and launch-door animations** as
 F-curves.
@@ -35,7 +35,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name pad
-voxel-anim fill-box --part pad --x0 6 --y0 0 --z0 6 --x1 57 --y1 12 --z1 57 --color "#c69a4b"
+voxel-anim fill-box --part pad --x0 1 --y0 0 --z0 1 --x1 5 --y1 4 --z1 5 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.) Run

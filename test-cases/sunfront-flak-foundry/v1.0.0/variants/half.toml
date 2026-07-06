@@ -1,0 +1,11 @@
+# The half-size variant: the same works sculpted and rigged in a volume with each
+# extent ~halved (rounded) from the case's base 56x80x56. Its `[voxel]` OVERRIDES the
+# case volume for runs of this variant, and the brief is rendered at these dimensions.
+slug = "half"
+name = "Half Size"
+
+[voxel]
+width = 28
+height = 40
+depth = 28
+background = "transparent"

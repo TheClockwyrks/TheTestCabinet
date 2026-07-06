@@ -104,7 +104,10 @@ Each `variants` entry points at a standalone variant file, exactly as for an
 keys are the variant's own fields, with every path resolving against the version
 folder. Here a variant varies the **brief** (an additive spec) the model draws
 toward — a tighter palette, an operation budget, a required technique — **not** a
-different reference (an asset-generation case declares none):
+different reference (an asset-generation case declares none). A **voxel** case's
+variant may additionally declare its own **`[voxel]`** volume, overriding the case's
+so the same subject is sculpted at a different size (see [Variants vary the volume,
+too](#variants-vary-the-volume-too)):
 
 ```toml
 # test-cases/<slug>/<version>/variants/base.toml
@@ -113,6 +116,7 @@ name = "Base"                # display name (optional; default humanizes the slu
 spec = []                    # ADDITIVE specs on top of the common specs (dest defaults to source)
 # review_item = [...]        # ADDITIVE reviewer items; may name a common or this variant's own domain
 # [[domain]]                 # ADDITIONAL scoring domains, rated only when this variant runs
+# [voxel]                    # VOXEL cases only: OVERRIDE the case's bounding volume for this variant
 ```
 
 - `type = "asset-generation"` is the explicit test-type discriminator. It is
@@ -505,7 +509,10 @@ actions = "parts/{part}.actions.json" # {part} REQUIRED for an animated kind
   frames the signed-distance field the surface is extracted from. It is required
   for — and only for — a voxel case, and replaces `[canvas]`: a voxel case declaring
   `[canvas]`, or a 2D case declaring `[voxel]`, is rejected. Voxel material is
-  **opaque `#rrggbb`** (there is no alpha).
+  **opaque `#rrggbb`** (there is no alpha). The volume is the case's **default**: a
+  **variant may declare its own `[voxel]`** to override it (see [Variants vary the
+  volume, too](#variants-vary-the-volume-too)), so the same subject can be sculpted
+  at more than one size.
 - The **`[tool]`** and **`[output]`** tables work exactly as for a sprite, with the
   voxel binaries. `[tool].binary` is the binary for the kind: `voxel` / `voxel-anim`
   for the cube kinds, and `mc` / `sn` / `dc` (static) or `mc-anim` / `sn-anim` /
@@ -555,6 +562,45 @@ actions = "parts/{part}.actions.json" # {part} REQUIRED for an animated kind
   required set, surfaces caller joints as controls, and plays the produced
   animations; the 3D viewer poses the full rig. See
   [Evaluation](/testing/asset-generation/evaluation/).
+
+### Variants vary the volume, too
+
+For a voxel case the bounding volume is a **variant axis**: a variant may declare
+its **own `[voxel]` table**, which **replaces** the case's `[voxel]` for runs of
+that variant (like a variant's `workspace`, it overrides rather than layers). A
+variant with no `[voxel]` inherits the case's volume. This is how a case offers the
+**same subject at several sizes** — the idiomatic set is a `base` variant (no
+override, so it inherits the case volume), a `half` variant, and a `double` variant,
+each with its own `[voxel]`:
+
+```toml
+# variants/double.toml — the same subject in a doubled volume.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width  = 100                 # the case's width, doubled
+height = 40
+depth  = 152
+background = "transparent"
+```
+
+Resolution validates a variant's `[voxel]` exactly as the case's — every extent
+`> 0`, the `background` parses — and **rejects** a `[voxel]` on a variant of any
+**non-voxel** case (only a voxel case has a volume to vary). The size a variant runs
+at flows to everything that reads the volume: the tool config the binary is seeded
+with, the volume the produced model is scored against, and the brief.
+
+So a voxel brief should **not** hardcode its dimensions. Its `[[spec]]` is written as
+a Handlebars template (a `.hbs` source; the seeded `dest` drops the `.hbs`), and the
+[spec-template context](/testing/end-to-end/overview/#spec-templates) exposes the
+effective volume as `{{voxel}}`: `{{voxel.width}}`/`{{voxel.height}}`/`{{voxel.depth}}`
+for the extents and `{{voxel.maxX}}`/`{{voxel.maxY}}`/`{{voxel.maxZ}}` for the highest
+index on each axis (so an inclusive coordinate range reads `` `0`–`{{voxel.maxX}}` ``).
+The same `{{voxel}}` context is available in the case's `prompt.hbs`. One brief then
+reads correctly at every size. (Because coordinates are size-dependent, a voxel case's
+`[[review_item]]` and `[[domain]]` text should describe the form **without** citing
+specific coordinates or exact extents — a reviewer judges the shape, not numbers.)
 
 ## Skinned cases
 

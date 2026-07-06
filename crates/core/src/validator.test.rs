@@ -104,6 +104,23 @@ use crate::test_case::{
 };
 use crate::validation::Validator;
 
+/// A bare default variant for tests whose validator ignores the variant. Carries
+/// no voxel override, so `voxel_for` falls back to the case's `[voxel]`.
+fn base_variant() -> crate::test_case::Variant {
+    crate::test_case::Variant {
+        slug: "base".to_string(),
+        name: "Base".to_string(),
+        description: None,
+        specs: vec![],
+        workspace: None,
+        references: vec![],
+        proofs: vec![],
+        review_items: vec![],
+        domains: vec![],
+        voxel: None,
+    }
+}
+
 /// A minimal asset-generation version drawing on a 4x4 transparent canvas.
 fn asset_version() -> TestCaseVersion {
     TestCaseVersion {
@@ -181,6 +198,7 @@ fn asset_validation_regenerates_and_detects_no_cheating() {
     let summary = AssetGenValidator::new()
         .validate(
             &asset_version(),
+            &base_variant(),
             &ArtifactCollection {
                 repo_path: repo.clone(),
             },
@@ -255,6 +273,7 @@ fn asset_validation_regenerates_each_sheet_frame_independently() {
     let summary = AssetGenValidator::new()
         .validate(
             &version,
+            &base_variant(),
             &ArtifactCollection {
                 repo_path: repo.clone(),
             },
@@ -301,6 +320,7 @@ fn asset_validation_flags_drawing_outside_the_tool() {
     let summary = AssetGenValidator::new()
         .validate(
             &asset_version(),
+            &base_variant(),
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
@@ -324,6 +344,7 @@ fn asset_validation_without_an_action_log_fails_to_load() {
     let summary = AssetGenValidator::new()
         .validate(
             &asset_version(),
+            &base_variant(),
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
@@ -413,7 +434,13 @@ fn dispatch_routes_an_adversarial_case_to_the_adversarial_validator() {
     let version = dispatch_adversarial_version(dir.path().to_path_buf(), "controller.wasm");
 
     let summary = DispatchValidator::new(screenshots)
-        .validate(&version, &ArtifactCollection { repo_path: repo }, &[], &[])
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+        )
         .expect("validate");
 
     assert!(

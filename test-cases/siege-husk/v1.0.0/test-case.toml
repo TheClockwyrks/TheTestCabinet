@@ -4,8 +4,8 @@ difficulty = "medium"
 tags = ["asset-generation", "3d", "skinned", "character"]
 summary = """
 Sculpt and rig the Siege Husk: a low-poly, shambling humanoid enemy for the Siege \
-first-person last-stand game, built as ONE continuous skin in a 24x48x20 volume with \
-the `mc-skin` tool — a whole-body signed-distance field bound to a model-invented \
+first-person last-stand game, built as ONE continuous skin with the `mc-skin` tool — a \
+whole-body signed-distance field bound to a model-invented \
 skeleton and deformed across its joints by per-vertex weights, not posed as rigid \
 parts. The model invents the whole skeleton; the fixed contract is three animations it \
 must author so the skin deforms convincingly — a looping `walk` shamble, a one-shot \
@@ -17,9 +17,11 @@ type = "asset-generation"
 asset_kind = "mc-skinned"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# This case has a single default variant declared in its own file under
-# `variants/`. This list is a root key, so it must precede the first table header.
-variants = ["variants/base.toml"]
+# The three variants sculpt and rig the SAME husk at three field sizes — `base` (this
+# case's volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
 
 # The field bounds — the same [voxel] volume table a meshed case frames, here bounding
 # the ONE whole-body signed-distance field the skin is extracted from: `width` across
@@ -96,9 +98,11 @@ name = "collapse"
 loop = false
 auto_play = false
 
-# The self-contained brief, seeded for the run.
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the field volume it states matches the selected
+# size. The seeded dest drops the `.hbs`, so the run still reads `specs/brief.md`.
 [[spec]]
-source = "specs/brief.md"
+source = "specs/brief.md.hbs"
 
 [[domain]]
 id = "fidelity"

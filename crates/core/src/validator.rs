@@ -22,7 +22,7 @@ use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
     JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
-    TestCaseVersion, TestType,
+    TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
     AssetFrameResult, AssetGenResult, AudioGenResult, CheckResult, MaterialGenResult,
@@ -57,6 +57,7 @@ impl Validator for BuildValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        _variant: &Variant,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
@@ -321,6 +322,7 @@ impl Validator for AssetGenValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        _variant: &Variant,
         artifacts: &ArtifactCollection,
         // An asset-generation run has no target image, so references — the
         // browser-rendered baselines other types score against — are unused here.
@@ -549,6 +551,7 @@ impl Validator for VoxelGenValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        variant: &Variant,
         artifacts: &ArtifactCollection,
         // A voxel run has no target model, so references — the browser-rendered
         // baselines other types score against — are unused here.
@@ -559,9 +562,11 @@ impl Validator for VoxelGenValidator {
         let proof_results = proof_results(proofs, repo);
 
         // The orchestrator only routes voxel cases here, so the tables are present;
-        // guard the invariant rather than panicking.
+        // guard the invariant rather than panicking. The volume is resolved for the
+        // selected variant, so a half/double run is scored against the size it was
+        // actually given rather than the case's base volume.
         let (Some(voxel_spec), Some(tool), Some(output)) = (
-            test_case.voxel.as_ref(),
+            test_case.voxel_for(variant),
             test_case.tool.as_ref(),
             test_case.output.as_ref(),
         ) else {
@@ -1185,6 +1190,7 @@ impl Validator for PaintGenValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        _variant: &Variant,
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],
@@ -1272,6 +1278,7 @@ impl Validator for ParticleGenValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        _variant: &Variant,
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],
@@ -1323,6 +1330,7 @@ impl Validator for AudioGenValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        _variant: &Variant,
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],
@@ -1916,6 +1924,7 @@ impl Validator for DispatchValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
+        variant: &Variant,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
@@ -1923,7 +1932,7 @@ impl Validator for DispatchValidator {
         match test_case.test_type {
             TestType::EndToEnd => self
                 .build
-                .validate(test_case, artifacts, references, proofs),
+                .validate(test_case, variant, artifacts, references, proofs),
             // Each asset kind routes to the validator for the data it emits: the
             // voxel/mesh/skinned kinds decode `.glb` + `rig.json`; the painted
             // (`ui`/`material`) kinds decode PNG(s) + `ui.json`/`material.json`; the
@@ -1933,27 +1942,27 @@ impl Validator for DispatchValidator {
                 let kind = test_case.asset_kind;
                 if kind.is_voxel() {
                     self.voxel
-                        .validate(test_case, artifacts, references, proofs)
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else if kind.is_paint() {
                     self.paint
-                        .validate(test_case, artifacts, references, proofs)
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else if kind.is_particle() {
                     self.particle
-                        .validate(test_case, artifacts, references, proofs)
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else if kind.is_audio() {
                     self.audio
-                        .validate(test_case, artifacts, references, proofs)
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else {
                     self.asset
-                        .validate(test_case, artifacts, references, proofs)
+                        .validate(test_case, variant, artifacts, references, proofs)
                 }
             }
             TestType::Adversarial => self
                 .adversarial
-                .validate(test_case, artifacts, references, proofs),
+                .validate(test_case, variant, artifacts, references, proofs),
             TestType::Performance => self
                 .performance
-                .validate(test_case, artifacts, references, proofs),
+                .validate(test_case, variant, artifacts, references, proofs),
         }
     }
 }

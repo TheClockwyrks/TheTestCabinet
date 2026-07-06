@@ -1,0 +1,110 @@
+# Sunfront Flakhound — sculpting-and-rigging brief
+
+You are sculpting and rigging the Sunfront Flakhound, a four-legged anti-air walker
+that strides on legs — a squat armored platform carrying a traversing back turret and
+twin elevating flak barrels it aims at the sky. Build it with `voxel-anim` (each part
+painted as discrete opaque cells) as a rigged 3D model a game poses at runtime. There
+is no target model to copy: it must read unmistakably as the Flakhound and satisfy the
+animation contract below.
+
+This brief fixes what the Flakhound is and how it must move. It deliberately does not
+give you a parts list, joint placements, or pose angles — working out the pieces a
+walking, target-tracking anti-air platform needs, where they attach, and how they
+articulate is the test. Invent the rig.
+
+## How the tool works
+
+`voxel-anim` places discrete opaque voxels — you build each part by painting cells:
+
+- Set and clear single voxels, fill and stroke boxes, draw 3D lines and spheres, and
+  use a mirror plane — each in an opaque `#rrggbb` color (there is no transparency).
+- Global `--part <name>` selects the part an op sculpts; each part is its own volume,
+  previewed on its own. Create a part with `define-part` before you sculpt into it.
+
+Build one operation at a time. A sculpting op only records — run `voxel-anim render` to
+(re)draw `parts/<part>.png` and the assembled `scene/*.png` and read them between
+calls, and run it before you finish so the per-part `.glb` geometry is emitted (an
+unrendered part scores as empty). `voxel-anim --help` is the contract.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels, starting
+  empty.
+- x runs across the walker, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`. Forward is +z: the walker faces toward
+  `z = {{voxel.maxZ}}`, and the barrels point that way when the turret is at rest.
+- Build it roughly symmetric left-to-right about the lengthwise centerplane — a
+  squat, sturdy striding platform: a compact armored body
+  carried on its legs, with the turret raised on its back so the barrels clear the
+  body.
+- Each part is sculpted in these shared coordinates, where it sits on the assembled
+  walker.
+
+## What the Flakhound is (and what is yours to invent)
+
+Fixed — the walker must read unmistakably as all of these:
+
+- A squat, compact armored body — the fixed core of the machine — riding raised off
+  the ground on legs.
+- Four legs (one at each corner) that carry it and walk (see the animations).
+- A turret up on its back that traverses to swing onto a bearing.
+- Twin flak barrels on that turret, raked upward toward the sky, that elevate to track
+  a target.
+- A clear solar-amber targeting eye on the turret, facing forward between the barrels,
+  and the palette below.
+
+Everything else is yours to invent — the exact silhouette, proportions, number of
+segments in each leg and how it folds, how the body is massed, how the turret and
+barrels are shaped, and how you break the walker into rig parts and place its joints.
+Nothing here prescribes a shape; the test rewards a bold, characterful design that is
+unmistakably the Flakhound and animates convincingly.
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Body — primary plating (brass) | `#c69a4b` |
+| Body — dark plating, underside, shadow (bronze) | `#7a5527` |
+| Legs, turret, flak barrels, mechanisms (iron) | `#565c64` |
+| Deep recesses, shadow (dark iron) | `#31353b` |
+| Targeting-eye accent (solar amber) | `#ff9d2e` |
+
+Set a clear solar-amber targeting eye on the turret, facing forward between the
+barrels, so the accent reads from many angles.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author
+the motion). Author each with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion carries weight — legs and barrels are heavy, so ease them rather than sliding
+linearly.
+
+- **`walk`** — the walk (a game-triggered playable). The feet plant flat on the ground
+  and the walker advances over them so it reads as a machine pushing itself forward,
+  not flailing. Authored in place: the body does not translate across the scene — the
+  leg cycle alone carries the stride (played on its own the planted foot slides
+  straight back under the body, treadmill-style, then swings forward), and a game
+  supplies the real travel. The legs move; the turret and barrels hold at rest.
+- **`flak_track`** — the weapon showcase (a game-triggered playable). The back turret
+  traverses onto a bearing and the twin barrels elevate and depress to track a target
+  across the sky, while the walker stands its ground and its legs stay planted.
+
+You may add extra parts, joints, and animations of your own; you must produce these two
+animations, by these names, and must not contradict them (e.g. don't move the legs
+under `flak_track` or the weapon under `walk`).
+
+## Working the tool
+
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots with
+`set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the legs seat under the
+body and reach the ground, the turret sits on the back and the barrels meet its front,
+and the animations read with weight. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
+mirror plane) and the rig and animation subcommands, and `voxel-anim <operation> --help`
+for each one's exact flags. The recorded per-part logs and `rig.json` are your submission.

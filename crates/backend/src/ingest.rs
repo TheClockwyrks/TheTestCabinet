@@ -419,6 +419,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                     .map(stored_review_item)
                     .collect(),
                 domains: variant.domains.iter().map(stored_domain).collect(),
+                voxel: variant.voxel.clone(),
             })
         })
         .collect::<Result<Vec<_>>>()?;

@@ -1,5 +1,5 @@
 Sculpt and rig the **Sunfront Flak Foundry**, a tall works whose radar dish
-sweeps while a flank piston bobs, as a 56x80x56 opaque-voxel model using only the
+sweeps while a flank piston bobs, as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the
 `voxel-anim` tool.
 
 This test measures **creativity and craft**, not instruction-following: the brief
@@ -36,7 +36,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name works
-voxel-anim fill-box --part works --x0 6 --y0 0 --z0 6 --x1 49 --y1 62 --z1 49 --color "#c69a4b"
+voxel-anim fill-box --part works --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.) Run

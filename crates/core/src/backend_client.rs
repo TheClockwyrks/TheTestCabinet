@@ -1518,6 +1518,7 @@ impl VersionBody {
                         .map(review_item_from)
                         .collect(),
                     domains: variant.domains,
+                    voxel: variant.voxel,
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),
@@ -1756,6 +1757,13 @@ struct VariantBody {
     /// domain of its own.
     #[serde(default)]
     domains: Vec<Domain>,
+    /// The variant's bounding-volume override, when it declares its own `[voxel]`
+    /// (the size axis behind a case's half/base/double variants). Deserialized
+    /// straight into [`VoxelSpec`]. Absent when the variant inherits the case's
+    /// common volume — so a backend-driven half/double run carries the same
+    /// per-variant volume a local one does.
+    #[serde(default)]
+    voxel: Option<VoxelSpec>,
 }
 
 /// A starter workspace file in the §1.2 wire shape: a store-relative `source`

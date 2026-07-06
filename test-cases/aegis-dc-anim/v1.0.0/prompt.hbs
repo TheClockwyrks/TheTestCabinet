@@ -1,6 +1,6 @@
 Composite and rig the **Aegis**, a colossal multi-gun walking fortress that strides on
 legs, aims a dominant main cannon forward, works a side-mounted turret on each flank,
-and sweeps a radar vane — as a 120x110x150 model **meshed with Dual Contouring** using
+and sweeps a radar vane — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} model **meshed with Dual Contouring** using
 only the `dc-anim` tool. You build it not by painting cells but by **compositing a
 signed-distance field** — adding and subtracting primitives — and you **author its
 walk and weapon animations** as F-curves.
@@ -45,8 +45,8 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 dc-anim define-part --name chassis
-dc-anim add-box --part chassis --cx 60 --cy 60 --cz 75 --sx 84 --sy 40 --sz 120 --color "#c69a4b" --sharp
-dc-anim add-sphere --part main_turret --cx 60 --cy 86 --cz 80 --r 16 --blend 3 --color "#c69a4b"
+dc-anim add-box --part chassis --cx 3 --cy 3 --cz 3 --sx 4 --sy 2 --sz 5 --color "#c69a4b" --sharp
+dc-anim add-sphere --part main_turret --cx 3 --cy 4 --cz 3 --r 2 --blend 1 --color "#c69a4b"
 ```
 
 (The part names above are just an example — name your own parts however you like.) Run

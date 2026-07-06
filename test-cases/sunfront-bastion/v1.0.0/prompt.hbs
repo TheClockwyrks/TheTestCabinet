@@ -1,6 +1,6 @@
 Sculpt and rig the **Sunfront Bastion**, a huge fortified keep whose solar
 collector crown rotates, whose gate raises and lowers, and whose beacon slowly
-turns, as a 90x120x90 opaque-voxel model using only the `voxel-anim` tool. You
+turns, as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the `voxel-anim` tool. You
 build it by **painting discrete opaque cells** and you **author its idle
 animations** as F-curves.
 
@@ -39,7 +39,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name keep
-voxel-anim fill-box --part keep --x0 6 --y0 0 --z0 6 --x1 65 --y1 70 --z1 65 --color "#c69a4b"
+voxel-anim fill-box --part keep --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
 ```
 
 (The part name above is just an example — name your own parts however you like.)

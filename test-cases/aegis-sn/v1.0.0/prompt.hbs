@@ -1,5 +1,5 @@
 Sculpt the **Aegis**, a colossal six-legged walking fortress, as a static
-120x110x150 smooth-surfaced model using only the `sn` meshing tool.
+{{voxel.width}}x{{voxel.height}}x{{voxel.depth}} smooth-surfaced model using only the `sn` meshing tool.
 
 ## How sculpting works
 
@@ -22,8 +22,8 @@ submission. An empty log is already in place at
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-sn add-box --x 60 --y 42 --z 74 --width 56 --height 22 --depth 84 --color "#c69a4b"
-sn add-sphere --x 60 --y 84 --z 80 --r 13 --color "#c69a4b" --blend 3
+sn add-box --x 2 --y 2 --z 3 --width 4 --height 2 --depth 5 --color "#c69a4b"
+sn add-sphere --x 2 --y 4 --z 3 --r 2 --color "#c69a4b" --blend 1
 ```
 
 Run `sn --help` to list every operation and `sn <operation> --help` for one

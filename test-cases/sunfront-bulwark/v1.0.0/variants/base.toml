@@ -1,5 +1,6 @@
-# The default (and only) variant for this asset-generation case. Listed first in
-# the case manifest's `variants`, so it is the default. Every path here resolves
-# against the version folder, exactly like the main manifest.
+# The default variant, listed first in the case manifest's `variants`. It declares
+# no `[voxel]`, so it inherits the case's volume (40x60x30) — the reference size the
+# `half` and `double` variants scale from. Every path here resolves against the
+# version folder, exactly like the main manifest.
 slug = "base"
-name = "Base"
+name = "Base Size"

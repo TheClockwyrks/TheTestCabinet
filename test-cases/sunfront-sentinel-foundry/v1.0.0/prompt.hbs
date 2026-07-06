@@ -1,5 +1,5 @@
 Sculpt and rig the **Sunfront Sentinel Foundry**, a tall assembly tower whose
-stamping press hammers down and back up while its drive gear spins — as a 56x76x56
+stamping press hammers down and back up while its drive gear spins — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}
 opaque-voxel model using only the `voxel-anim` tool. You build it by **painting
 discrete opaque cells** — one recorded operation at a time — and you **author its
 stamp and spin animations** as F-curves.
@@ -35,7 +35,7 @@ Each operation is an ordinary subcommand with flags, naming its part, for exampl
 
 ```
 voxel-anim define-part --name tower
-voxel-anim fill-box --part tower --x0 6 --y0 0 --z0 6 --x1 49 --y1 60 --z1 49 --color "#c69a4b"
+voxel-anim fill-box --part tower --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
 ```
 
 (The part names above are just an example — name your own parts however you like.) Run

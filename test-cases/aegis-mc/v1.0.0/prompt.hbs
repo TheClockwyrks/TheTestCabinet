@@ -1,5 +1,5 @@
 Sculpt the **Aegis**, a colossal six-legged war-fortress standing at rest,
-as a **3D mesh** in a 120x110x150 volume using only the `mc` Marching Cubes tool.
+as a **3D mesh** in a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} volume using only the `mc` Marching Cubes tool.
 
 ## How meshing works
 
@@ -26,7 +26,7 @@ in place at `{{workspace}}`; you produce the preview and mesh yourself by runnin
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-mc add-box --x 60 --y 55 --z 80 --width 76 --height 38 --depth 100 --color "#c69a4b"
+mc add-box --x 2 --y 2 --z 3 --width 4 --height 3 --depth 5 --color "#c69a4b"
 ```
 
 Run `mc --help` to list every operation and `mc <operation> --help` for one

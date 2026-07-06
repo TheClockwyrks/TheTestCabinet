@@ -51,7 +51,7 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     // scratch can live in the system temp directory.
     let validator = DispatchValidator::new(std::env::temp_dir().join("tcab").join("screenshots"));
     let summary = validator
-        .validate(&test_case, &artifacts, &references, &proofs)
+        .validate(&test_case, variant, &artifacts, &references, &proofs)
         .context("validation failed")?;
 
     println!("  loaded: {}", summary.loaded);

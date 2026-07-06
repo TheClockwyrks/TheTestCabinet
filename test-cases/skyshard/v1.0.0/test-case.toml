@@ -4,7 +4,7 @@ difficulty = "easy"
 tags = ["asset-generation", "3d", "voxel", "ship"]
 summary = """
 Sculpt the Skyshard Interceptor: a symmetric, forward-swept fighter jet built as \
-a 50x20x76 opaque-voxel model, one recorded operation at a time."""
+an opaque-voxel model, one recorded operation at a time."""
 description = "description.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
@@ -12,14 +12,18 @@ type = "asset-generation"
 asset_kind = "voxel-model"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# This case has a single default variant declared in its own file under
-# `variants/`. This list is a root key, so it must precede the first table header.
-variants = ["variants/base.toml"]
+# The three variants sculpt the SAME interceptor at three sizes — `base` (this
+# case's volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
 
-# The fixed voxel volume the model sculpts into (the 3D analog of a 2D canvas):
-# `width` across (x), `height` up (y), `depth` front-to-back (z), in voxels. The
-# volume always starts EMPTY; `background` is only the clear color behind the
-# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+# The default voxel volume the model sculpts into (the 3D analog of a 2D canvas):
+# `width` across (x), `height` up (y), `depth` front-to-back (z), in voxels. A
+# variant may OVERRIDE this with its own `[voxel]` (the `half`/`double` size axis);
+# `base` inherits it. The volume always starts EMPTY; `background` is only the clear
+# color behind the rasterized isometric preview PNG. A voxel case must NOT declare
+# [canvas].
 [voxel]
 width = 50
 height = 20
@@ -38,9 +42,12 @@ preview = "model.png"
 [output]
 actions = "actions.json"
 
-# The self-contained brief, seeded for the run.
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected
+# size (`{{voxel.width}}`×`{{voxel.height}}`×`{{voxel.depth}}`). The seeded dest
+# drops the `.hbs`, so the run still reads `specs/brief.md`.
 [[spec]]
-source = "specs/brief.md"
+source = "specs/brief.md.hbs"
 
 [[domain]]
 id = "fidelity"
@@ -67,10 +74,9 @@ domain = "fidelity"
 id = "symmetry"
 title = "Bilateral symmetry"
 text = """
-The interceptor is cleanly symmetric about its lengthwise vertical centerplane \
-(between x = 24 and x = 25): the two wings, the two tail fins, and any engine \
-intakes mirror each other, so it reads as a deliberate aircraft rather than a \
-lopsided hull."""
+The interceptor is cleanly symmetric about its lengthwise vertical centerplane: \
+the two wings, the two tail fins, and any engine intakes mirror each other, so it \
+reads as a deliberate aircraft rather than a lopsided hull."""
 weight = 2
 domain = "fidelity"
 
@@ -88,8 +94,8 @@ domain = "fidelity"
 id = "fills-volume"
 title = "Fills the volume"
 text = """
-The jet uses most of the 50x20x76 volume — long along z, spanning most of the \
-width at the wingtips, a few voxels of margin on every side — neither shrunk into \
-one corner nor clipped where it runs past a face of the volume."""
+The jet uses most of the volume — long along z, spanning most of the width at the \
+wingtips, a few voxels of margin on every side — neither shrunk into one corner nor \
+clipped where it runs past a face of the volume."""
 weight = 1
 domain = "fidelity"
