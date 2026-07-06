@@ -325,17 +325,32 @@ fn every_stored_manifest_preserves_its_asset_shape() {
                         "{id}: skinned meshed kind lost its [model] rig"
                     );
                 }
-                // The painted (`ui`/`material`), particle, and audio kinds carry their
-                // own `[ui]`/`[material]`/`[particle]`/`[audio]` tables, which the
-                // backend `StoredManifest` does not yet mirror (a known follow-up).
-                // Their losslessness is still exercised by the round-trip below.
-                AssetKind::Ui
-                | AssetKind::Material
-                | AssetKind::Particle2d
-                | AssetKind::Particle3d
-                | AssetKind::SfxSynth
-                | AssetKind::SfxSample
-                | AssetKind::Music => {}
+                // The painted (`ui`/`material`), particle, and audio kinds each carry
+                // their own `[ui]`/`[material]`/`[particle]`/`[audio]` table, which the
+                // backend `StoredManifest` now mirrors verbatim (as with the voxel
+                // specs above). Guard each so a run seeds from a manifest that still
+                // carries the table its shape requires.
+                AssetKind::Ui => {
+                    assert!(manifest.ui.is_some(), "{id}: ui kind lost its [ui]");
+                }
+                AssetKind::Material => {
+                    assert!(
+                        manifest.material.is_some(),
+                        "{id}: material kind lost its [material]"
+                    );
+                }
+                AssetKind::Particle2d | AssetKind::Particle3d => {
+                    assert!(
+                        manifest.particle.is_some(),
+                        "{id}: particle kind lost its [particle]"
+                    );
+                }
+                AssetKind::SfxSynth | AssetKind::SfxSample | AssetKind::Music => {
+                    assert!(
+                        manifest.audio.is_some(),
+                        "{id}: audio kind lost its [audio]"
+                    );
+                }
                 AssetKind::Sprite => {}
             }
 

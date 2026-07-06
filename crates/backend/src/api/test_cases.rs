@@ -7,6 +7,7 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
+use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 
 use crate::error::ApiError;
@@ -238,6 +239,10 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         sheet: manifest.sheet.clone(),
         voxel: manifest.voxel.clone(),
         model: manifest.model.clone(),
+        ui: manifest.ui.clone(),
+        material: manifest.material.clone(),
+        particle: manifest.particle.clone(),
+        audio: manifest.audio.clone(),
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
         workspace: manifest.workspace.iter().map(workspace_out).collect(),
@@ -461,6 +466,14 @@ pub struct VersionResponse {
     voxel: Option<VoxelSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     model: Option<ModelSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ui: Option<UiSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    material: Option<MaterialSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    particle: Option<ParticleSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    audio: Option<AudioSpec>,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
     workspace: Vec<WorkspaceOut>,

@@ -117,6 +117,37 @@
       "required": ["source", "dest"],
       "type": "object"
     },
+    "AudioSpec": {
+      "description": "The resolved `[audio]` of an audio asset-generation case: the rendered clip's\noutput format and (for the sample/instrument kinds) the baked palette.",
+      "properties": {
+        "channels": {
+          "description": "Channel layout: `mono` or `stereo`.",
+          "type": "string"
+        },
+        "instrumentBank": {
+          "description": "For `music`: the baked instrument bank (`name@version`). `None` otherwise.",
+          "type": ["string", "null"]
+        },
+        "maxDurationMs": {
+          "description": "Cap on the rendered clip's length in milliseconds (at most 5000).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "samplePack": {
+          "description": "For `sfx-sample`: the baked sample pack (`name@version`). `None` otherwise.",
+          "type": ["string", "null"]
+        },
+        "sampleRate": {
+          "description": "Output sample rate in Hz.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["sampleRate", "channels", "maxDurationMs"],
+      "type": "object"
+    },
     "BuildOut": {
       "properties": {
         "build": {
@@ -266,6 +297,34 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "MaterialSpec": {
+      "description": "The resolved `[material]` of a `material` asset-generation case: the tileable PBR\nmaterial's output resolution, seamlessness, and emitted channels.",
+      "properties": {
+        "background": {
+          "description": "Preview clear color: `transparent` or a hex color.",
+          "type": "string"
+        },
+        "maps": {
+          "description": "The channels the material emits, in declared order. Always includes\n`base-color`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "size": {
+          "description": "Square map resolution in pixels (a power of two).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tile": {
+          "description": "Whether the maps are authored seamlessly (wrap toroidally).",
+          "type": "boolean"
+        }
+      },
+      "required": ["size", "tile", "maps", "background"],
+      "type": "object"
+    },
     "OutputOut": {
       "properties": {
         "actions": {
@@ -273,6 +332,57 @@
         }
       },
       "required": ["actions"],
+      "type": "object"
+    },
+    "ParticleSpec": {
+      "description": "The resolved `[particle]` of a particle asset-generation case: the field the\neffect plays in and its playback timing. [`Self::depth`] is `Some` for\n`particle-3d` (a volume) and `None` for `particle-2d` (a planar field).",
+      "properties": {
+        "background": {
+          "description": "Preview clear color: `transparent` or a hex color.",
+          "type": "string"
+        },
+        "depth": {
+          "description": "Field extent along z. `Some` for `particle-3d`, `None` for `particle-2d`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "durationMs": {
+          "description": "The effect's length in milliseconds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fps": {
+          "description": "Preview/playback frame rate (greater than zero).",
+          "format": "double",
+          "type": "number"
+        },
+        "height": {
+          "description": "Field extent along y (up).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "looping": {
+          "description": "Whether the effect loops (steady-state) or is one-shot.",
+          "type": "boolean"
+        },
+        "width": {
+          "description": "Field extent along x.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "durationMs",
+        "fps",
+        "looping",
+        "background"
+      ],
       "type": "object"
     },
     "ProofOut": {
@@ -491,6 +601,54 @@
       "required": ["binary", "preview"],
       "type": "object"
     },
+    "UiElementSpec": {
+      "description": "A resolved `[[ui.element]]`: one named element of a UI kit, its size, and an\noptional fixed nine-slice.",
+      "properties": {
+        "height": {
+          "description": "Element height in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "Stable, unique element name (targeted with `--element <name>`).",
+          "type": "string"
+        },
+        "nineSlice": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/NineSlice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The fixed stretchable insets, when the case declares them (otherwise the\nmodel authors them with `ui set-nine-slice`)."
+        },
+        "width": {
+          "description": "Element width in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["name", "width", "height"],
+      "type": "object"
+    },
+    "UiSpec": {
+      "description": "The resolved `[ui]` of a `ui` asset-generation case: the kit of named elements\nthe model paints. Empty [`Self::elements`] means the case is a single implicit\nelement (the whole `[canvas]`).",
+      "properties": {
+        "elements": {
+          "description": "The declared elements, in declared order. Empty for a single-image case.",
+          "items": {
+            "$ref": "#/$defs/UiElementSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["elements"],
+      "type": "object"
+    },
     "VariantOut": {
       "properties": {
         "description": {
@@ -611,6 +769,16 @@
       },
       "type": "array"
     },
+    "audio": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AudioSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "build": {
       "anyOf": [
         {
@@ -696,6 +864,16 @@
         }
       ]
     },
+    "material": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MaterialSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "maxRuntimeSeconds": {
       "format": "uint64",
       "minimum": 0,
@@ -718,6 +896,16 @@
       "anyOf": [
         {
           "$ref": "#/$defs/OutputOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "particle": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ParticleSpec"
         },
         {
           "type": "null"
@@ -786,6 +974,16 @@
       "anyOf": [
         {
           "$ref": "#/$defs/ToolOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ui": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UiSpec"
         },
         {
           "type": "null"
