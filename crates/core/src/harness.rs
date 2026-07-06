@@ -61,6 +61,29 @@ const DC_IMAGE_NAME: &str = "test-cabinet-dc";
 /// The name of the dual-contouring animated run-container image, used by every
 /// `dc-animation` run. It is the base image plus the baked-in `dc-anim` binary.
 const DC_ANIMATION_IMAGE_NAME: &str = "test-cabinet-dc-animation";
+/// The name of the `ui` run-container image, used by every `ui` asset-generation
+/// run. It is the base image plus the baked-in `paint`/`ui` binaries.
+const UI_IMAGE_NAME: &str = "test-cabinet-ui";
+/// The name of the `material` run-container image (base plus `texture`/`pbr`).
+const MATERIAL_IMAGE_NAME: &str = "test-cabinet-material";
+/// The name of the `mc-skinned` run-container image (base plus `mc-skin`).
+const MC_SKINNED_IMAGE_NAME: &str = "test-cabinet-mc-skinned";
+/// The name of the `sn-skinned` run-container image (base plus `sn-skin`).
+const SN_SKINNED_IMAGE_NAME: &str = "test-cabinet-sn-skinned";
+/// The name of the `dc-skinned` run-container image (base plus `dc-skin`).
+const DC_SKINNED_IMAGE_NAME: &str = "test-cabinet-dc-skinned";
+/// The name of the `particle-2d` run-container image (base plus `particle-2d`).
+const PARTICLE_2D_IMAGE_NAME: &str = "test-cabinet-particle-2d";
+/// The name of the `particle-3d` run-container image (base plus `particle-3d`).
+const PARTICLE_3D_IMAGE_NAME: &str = "test-cabinet-particle-3d";
+/// The name of the `sfx-synth` run-container image (base plus `sfx-synth`).
+const SFX_SYNTH_IMAGE_NAME: &str = "test-cabinet-sfx-synth";
+/// The name of the `sfx-sample` run-container image (base plus `sfx-sample` and its
+/// baked sample pack).
+const SFX_SAMPLE_IMAGE_NAME: &str = "test-cabinet-sfx-sample";
+/// The name of the `music` run-container image (base plus `music` and its baked
+/// instrument bank).
+const MUSIC_IMAGE_NAME: &str = "test-cabinet-music";
 /// The name of the adversarial run-container image, used by every adversarial
 /// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
 /// (so a model's controller builds to wasm in-container) and the baked-in Foray
@@ -104,6 +127,26 @@ const DC_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_DC";
 /// The environment variable that pins a verbatim override for the dual-contouring
 /// animated (`dc-animation`) image.
 const DC_ANIMATION_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_DC_ANIMATION";
+/// The environment variable that pins a verbatim override for the `ui` image.
+const UI_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_UI";
+/// The environment variable that pins a verbatim override for the `material` image.
+const MATERIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MATERIAL";
+/// The environment variable that pins a verbatim override for the `mc-skinned` image.
+const MC_SKINNED_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MC_SKINNED";
+/// The environment variable that pins a verbatim override for the `sn-skinned` image.
+const SN_SKINNED_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SN_SKINNED";
+/// The environment variable that pins a verbatim override for the `dc-skinned` image.
+const DC_SKINNED_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_DC_SKINNED";
+/// The environment variable that pins a verbatim override for the `particle-2d` image.
+const PARTICLE_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PARTICLE_2D";
+/// The environment variable that pins a verbatim override for the `particle-3d` image.
+const PARTICLE_3D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PARTICLE_3D";
+/// The environment variable that pins a verbatim override for the `sfx-synth` image.
+const SFX_SYNTH_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SFX_SYNTH";
+/// The environment variable that pins a verbatim override for the `sfx-sample` image.
+const SFX_SAMPLE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SFX_SAMPLE";
+/// The environment variable that pins a verbatim override for the `music` image.
+const MUSIC_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MUSIC";
 /// The environment variable that pins a verbatim override for the adversarial
 /// image.
 const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
@@ -181,6 +224,46 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
             AssetKind::DcAnimation => ImageSpec {
                 name: DC_ANIMATION_IMAGE_NAME,
                 override_env: DC_ANIMATION_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::Ui => ImageSpec {
+                name: UI_IMAGE_NAME,
+                override_env: UI_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::Material => ImageSpec {
+                name: MATERIAL_IMAGE_NAME,
+                override_env: MATERIAL_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::McSkinned => ImageSpec {
+                name: MC_SKINNED_IMAGE_NAME,
+                override_env: MC_SKINNED_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::SnSkinned => ImageSpec {
+                name: SN_SKINNED_IMAGE_NAME,
+                override_env: SN_SKINNED_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::DcSkinned => ImageSpec {
+                name: DC_SKINNED_IMAGE_NAME,
+                override_env: DC_SKINNED_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::Particle2d => ImageSpec {
+                name: PARTICLE_2D_IMAGE_NAME,
+                override_env: PARTICLE_2D_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::Particle3d => ImageSpec {
+                name: PARTICLE_3D_IMAGE_NAME,
+                override_env: PARTICLE_3D_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::SfxSynth => ImageSpec {
+                name: SFX_SYNTH_IMAGE_NAME,
+                override_env: SFX_SYNTH_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::SfxSample => ImageSpec {
+                name: SFX_SAMPLE_IMAGE_NAME,
+                override_env: SFX_SAMPLE_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::Music => ImageSpec {
+                name: MUSIC_IMAGE_NAME,
+                override_env: MUSIC_IMAGE_OVERRIDE_ENV,
             },
         },
         TestType::Adversarial => ImageSpec {

@@ -1,0 +1,35 @@
+{
+  "dimensions": 2,
+  "field": { "width": 64, "height": 64 },
+  "durationMs": 1000,
+  "fps": 30,
+  "loop": true,
+  "emitters": [
+    {
+      "name": "flame",
+      "shape": "disc",
+      "position": [32, 8, 0],
+      "extent": { "radius": 4, "size": [1, 1, 1] },
+      "emission": { "mode": "rate", "rate": 120 },
+      "lifetimeMs": 600,
+      "lifetimeSpread": 100,
+      "speed": 20,
+      "speedSpread": 5,
+      "direction": [0, 1, 0],
+      "coneAngle": 25,
+      "seed": 3,
+      "forces": {},
+      "particle": {
+        "sizeCurve": { "interp": "ease-out", "from": 1, "to": 0 },
+        "opacityCurve": { "interp": "linear", "from": 1, "to": 0 },
+        "colorGradient": [
+          { "color": "#fff2b0", "at": 0 },
+          { "color": "#ff7a1a", "at": 0.5 },
+          { "color": "#3a0a04", "at": 1 }
+        ]
+      }
+    }
+  ],
+  "forces": { "gravity": 8, "gravityDir": [0, 1, 0] },
+  "subEmitters": []
+}

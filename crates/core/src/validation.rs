@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
-use crate::test_case::{MediaKind, ModelSpec, ProofFile, SheetSpec, TestCaseVersion};
+use crate::test_case::{MediaKind, ModelSpec, NineSlice, ProofFile, SheetSpec, TestCaseVersion};
 
 /// A screenshot captured from the implementation during validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -185,8 +185,160 @@ pub struct VoxelGenResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub rig: Option<ModelSpec>,
+    /// Whether this is a **skinned** run (`mc-skinned`/`sn-skinned`/`dc-skinned`):
+    /// one continuous mesh bound to the rig and deformed by linear-blend skinning,
+    /// rather than the rigid per-part posing of the other voxel-family kinds. The
+    /// marker tells the 3D viewer to skin the single mesh rather than pose per-part
+    /// meshes. `false` for every non-skinned voxel-family run.
+    #[serde(default)]
+    pub skinned: bool,
     /// Detail about anything that could not be evaluated at the run level, or
     /// `None`. Per-part detail lives on each [`VoxelPartResult`].
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The validation result of a `ui` asset-generation run — the emitted flattened
+/// PNG(s) plus the parsed `ui.json`. A `ui` run is **not** regenerated: its output
+/// is the image data the `paint`/`ui` binaries emit, which the validator decodes and
+/// well-formedness-checks. Present only on a `ui` run's [`ValidationSummary`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct UiGenResult {
+    /// The per-element results: one for a single-image case, one per declared
+    /// element for a kit, in declared order.
+    pub elements: Vec<UiElementResult>,
+    /// Detail about anything that could not be evaluated at the run level (for
+    /// example a missing or malformed `ui.json`), or `None`.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The validation result for one element of a `ui` run: its emitted flattened PNG,
+/// its decoded dimensions, and any authored nine-slice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct UiElementResult {
+    /// The element name this result records under (`canvas` for a single-image case,
+    /// the declared `[[ui.element]]` name for a kit).
+    pub name: String,
+    /// Run-root-relative path to this element's emitted flattened RGBA PNG — the
+    /// reviewed image.
+    pub image: String,
+    /// The decoded pixel width of the emitted PNG.
+    pub width: u32,
+    /// The decoded pixel height of the emitted PNG.
+    pub height: u32,
+    /// The nine-slice insets carried in `ui.json`, when the model authored them.
+    /// `None` when the element declares no stretchable region.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub nine_slice: Option<NineSlice>,
+    /// Detail about anything that could not be evaluated for this element (a missing
+    /// PNG, a size mismatch, an out-of-bounds nine-slice), or `None`.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The validation result of a `material` asset-generation run — the emitted per-map
+/// PNGs plus the parsed `material.json`. Like `ui`, a `material` run is **not**
+/// regenerated: the validator decodes each declared map and parses `material.json`.
+/// Present only on a `material` run's [`ValidationSummary`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct MaterialGenResult {
+    /// The per-map results, in declared order. Always includes `base-color`.
+    pub maps: Vec<MaterialMapResult>,
+    /// The maps' square resolution in pixels (the declared `[material].size`).
+    pub size: u32,
+    /// The suggested world-space tiling scale carried in `material.json`, when
+    /// present. `None` when `material.json` declares none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub tiling: Option<f64>,
+    /// Detail about anything that could not be evaluated at the run level (a missing
+    /// or malformed `material.json`, an absent `base-color`), or `None`.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The validation result for one map channel of a `material` run: its emitted PNG
+/// and the color space it is tagged with.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct MaterialMapResult {
+    /// The map channel this result records under (`base-color`, `normal`, …).
+    pub name: String,
+    /// Run-root-relative path to this map's emitted PNG.
+    pub image: String,
+    /// The color space this map is tagged with in `material.json` (`srgb` for
+    /// `base-color`/`emissive`, `linear` for the data maps).
+    pub color_space: String,
+    /// Detail about anything that could not be evaluated for this map (a missing PNG,
+    /// a size mismatch), or `None`.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The validation result of a particle asset-generation run — the parsed
+/// `system.json` (the authored emitter/force/curve definition) and the rendered
+/// preview. A particle run is **not** regenerated and there is no bake: the validator
+/// parses `system.json`, confirms it is well-formed and non-empty (it actually emits
+/// particles), and takes the preview as the reviewer sees it. Present only on a
+/// particle run's [`ValidationSummary`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ParticleGenResult {
+    /// Run-root-relative path to the emitted `system.json` — the authored definition
+    /// every consumer simulates live.
+    pub system: String,
+    /// Run-root-relative path to the rendered preview animation (`effect.gif`) the
+    /// reviewer plays, or `None` when the model rendered none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub preview: Option<String>,
+    /// How many emitters the authored system declares.
+    pub emitter_count: usize,
+    /// Detail about anything that could not be evaluated (a missing or malformed
+    /// `system.json`, or a system that emits nothing), or `None`.
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// The validation result of an audio asset-generation run — the decoded PCM
+/// `clip.wav` (and, for `music`, the portable `clip.mid`). The validator decodes the
+/// `.wav`, confirms it is well-formed, within the `[audio]` format, no longer than
+/// the cap, and not silent. Present only on an audio run's [`ValidationSummary`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AudioGenResult {
+    /// Run-root-relative path to the emitted PCM `clip.wav` — the clip a game plays
+    /// and the reviewer hears.
+    pub clip: String,
+    /// Run-root-relative path to the portable `clip.mid` score, for a `music` run.
+    /// `None` for the two SFX kinds (and when a `music` run emitted none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub midi: Option<String>,
+    /// Run-root-relative path to the rendered waveform/spectrogram preview PNG, or
+    /// `None` when the model rendered none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub preview: Option<String>,
+    /// The decoded sample rate in Hz.
+    pub sample_rate: u32,
+    /// The decoded channel count (1 = mono, 2 = stereo).
+    pub channels: u32,
+    /// The decoded clip length in milliseconds.
+    pub duration_ms: u32,
+    /// Detail about anything that could not be evaluated (a missing or malformed
+    /// `.wav`, a format mismatch, an over-cap or silent clip), or `None`.
     #[serde(default)]
     pub detail: Option<String>,
 }
@@ -433,12 +585,33 @@ pub struct ValidationSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub asset: Option<AssetGenResult>,
-    /// The regenerate result of a voxel asset-generation run. `None` for every
+    /// The regenerate result of a voxel asset-generation run — also carries the
+    /// **skinned** kinds (with [`VoxelGenResult::skinned`] set). `None` for every
     /// other type (and for the 2D sprite kinds, which use [`Self::asset`]), so a
     /// non-voxel summary serializes with no new field at all.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub voxel: Option<VoxelGenResult>,
+    /// The validation result of a `ui` asset-generation run. `None` for every other
+    /// kind/type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub ui: Option<UiGenResult>,
+    /// The validation result of a `material` asset-generation run. `None` for every
+    /// other kind/type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub material: Option<MaterialGenResult>,
+    /// The validation result of a particle asset-generation run. `None` for every
+    /// other kind/type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub particle: Option<ParticleGenResult>,
+    /// The validation result of an audio asset-generation run. `None` for every
+    /// other kind/type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub audio: Option<AudioGenResult>,
     /// The canonical-match result of an adversarial run. `None` for any other
     /// type, so a non-adversarial summary serializes with no new field at all and
     /// its shape is unchanged.

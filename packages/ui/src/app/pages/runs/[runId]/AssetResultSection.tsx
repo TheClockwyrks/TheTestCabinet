@@ -10,6 +10,12 @@ import { SpriteSheetPlayer } from "./SpriteSheetPlayer";
 import { GifDownloadButton } from "./GifDownloadButton";
 import { encodeSpriteGif } from "./spriteGif";
 import { VoxelResultSection } from "./VoxelResultSection";
+import { ParticleResultSection } from "./ParticleResultSection";
+import { AudioResultSection } from "./AudioResultSection";
+import {
+  UiResultSection,
+  MaterialResultSection,
+} from "./UiMaterialResultSection";
 import styles from "./RunDetailPages.module.scss";
 
 // Small sprites are tiny; scale them up with crisp (nearest-neighbor) sampling so
@@ -403,18 +409,28 @@ function SheetResult({
  */
 export function AssetResultSection({ run }: { run: RunRecord }) {
   const gallery = useGalleryData();
-  // A 3D voxel run leads with the interactive voxel viewer; a 2D sprite/sheet run
-  // with the pixel result. The two are mutually exclusive (a run carries either
-  // `validation.voxel` or `validation.asset`), so voxel takes precedence here.
+  // Each asset-generation family surfaces under its own `validation.*` field, and a
+  // run carries exactly one, so the sections are mutually exclusive. Resolve each in
+  // turn and lead with whichever the run is. A shared `Panel` + heading wraps the
+  // family-specific section.
   const voxel = gallery.voxelResultFor(run);
-  if (voxel) {
+  const ui = gallery.uiResultFor(run);
+  const material = gallery.materialResultFor(run);
+  const particle = gallery.particleResultFor(run);
+  const audio = gallery.audioResultFor(run);
+
+  if (voxel || ui || material || particle || audio) {
     return (
       <Panel>
         <h2 className={`${styles.section} ${styles.leadHeading}`}>
           Generated asset
         </h2>
-        <VoxelResultSection view={voxel} />
-        {voxel.detail ? (
+        {voxel ? <VoxelResultSection view={voxel} /> : null}
+        {ui ? <UiResultSection view={ui} /> : null}
+        {material ? <MaterialResultSection view={material} /> : null}
+        {particle ? <ParticleResultSection view={particle} /> : null}
+        {audio ? <AudioResultSection view={audio} /> : null}
+        {voxel?.detail ? (
           <p className={styles.secondary}>{voxel.detail}</p>
         ) : null}
       </Panel>

@@ -52,6 +52,56 @@
           "const": "dc-animation",
           "description": "A rigged, animatable surface-meshed 3D model built with the **dual contouring**\n`dc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield; declares a `[voxel]` and a `[model]` table.",
           "type": "string"
+        },
+        {
+          "const": "ui",
+          "description": "A high-resolution 2D interface asset (or kit of elements) painted with the\n`paint`/`ui` binaries. Declares a `[canvas]` (base element size) and an\noptional `[ui]` table (the kit's elements). Judged on the emitted flattened\nPNG(s) plus `ui.json`.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "A tileable PBR material — a set of maps (base color, normal, roughness, …) —\npainted with the `texture`/`pbr` binaries. Declares a `[material]` table (no\n`[canvas]`/`[voxel]`). Judged on the emitted maps plus `material.json`.",
+          "type": "string"
+        },
+        {
+          "const": "mc-skinned",
+          "description": "A skinned character (marching cubes): one whole-body field bound to a\nmodel-invented skeleton, deformed by linear-blend skinning. Declares a\n`[voxel]` and a `[model]` table but emits a **single** `mesh.glb` + `rig.json`\n(not per-part).",
+          "type": "string"
+        },
+        {
+          "const": "sn-skinned",
+          "description": "A skinned character (surface nets). See [`Self::McSkinned`].",
+          "type": "string"
+        },
+        {
+          "const": "dc-skinned",
+          "description": "A skinned character (dual contouring). See [`Self::McSkinned`].",
+          "type": "string"
+        },
+        {
+          "const": "particle-2d",
+          "description": "A 2D particle effect authored with the `particle-2d` binary. Declares a\n`[particle]` table (a planar field). Judged on the emitted `system.json`.",
+          "type": "string"
+        },
+        {
+          "const": "particle-3d",
+          "description": "A 3D particle effect authored with the `particle-3d` binary. Declares a\n`[particle]` table (a volume). Judged on the emitted `system.json`.",
+          "type": "string"
+        },
+        {
+          "const": "sfx-synth",
+          "description": "A procedurally-synthesized sound effect authored with the `sfx-synth` binary.\nDeclares an `[audio]` table. Judged on the emitted `clip.wav`.",
+          "type": "string"
+        },
+        {
+          "const": "sfx-sample",
+          "description": "A sample-library sound effect authored with the `sfx-sample` binary. Declares\nan `[audio]` table (naming its `sample_pack`). Judged on the emitted `clip.wav`.",
+          "type": "string"
+        },
+        {
+          "const": "music",
+          "description": "A short piece of music authored with the `music` sequencer binary. Declares an\n`[audio]` table (naming its `instrument_bank`). Judged on the emitted\n`clip.wav` (and portable `clip.mid`).",
+          "type": "string"
         }
       ]
     },

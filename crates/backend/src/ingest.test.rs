@@ -237,7 +237,7 @@ fn stored_manifest_carries_voxel_specs() {
     let skyshard = catalog.resolve("skyshard", "v1.0.0").unwrap();
     let manifest = build_stored_manifest(&skyshard).unwrap();
     let voxel = manifest.voxel.expect("voxel volume survives ingest");
-    assert_eq!((voxel.width, voxel.height, voxel.depth), (60, 20, 80));
+    assert_eq!((voxel.width, voxel.height, voxel.depth), (50, 20, 76));
     assert!(
         manifest.model.is_none(),
         "a static voxel-model case declares no rig"
@@ -315,6 +315,27 @@ fn every_stored_manifest_preserves_its_asset_shape() {
                         "{id}: animated voxel/meshed kind lost its [model]"
                     );
                 }
+                AssetKind::McSkinned | AssetKind::SnSkinned | AssetKind::DcSkinned => {
+                    assert!(
+                        manifest.voxel.is_some(),
+                        "{id}: skinned meshed kind lost its [voxel]"
+                    );
+                    assert!(
+                        manifest.model.is_some(),
+                        "{id}: skinned meshed kind lost its [model] rig"
+                    );
+                }
+                // The painted (`ui`/`material`), particle, and audio kinds carry their
+                // own `[ui]`/`[material]`/`[particle]`/`[audio]` tables, which the
+                // backend `StoredManifest` does not yet mirror (a known follow-up).
+                // Their losslessness is still exercised by the round-trip below.
+                AssetKind::Ui
+                | AssetKind::Material
+                | AssetKind::Particle2d
+                | AssetKind::Particle3d
+                | AssetKind::SfxSynth
+                | AssetKind::SfxSample
+                | AssetKind::Music => {}
                 AssetKind::Sprite => {}
             }
 

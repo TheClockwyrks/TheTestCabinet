@@ -90,6 +90,25 @@ struct Manifest {
     /// "voxel-animation"`; forbidden otherwise.
     #[serde(default)]
     model: Option<ManifestModel>,
+    /// The optional kit of elements a `ui` case declares (the `[ui]` table). Only
+    /// valid for `asset_kind = "ui"`; omitting it makes the case a single implicit
+    /// full-`[canvas]` element.
+    #[serde(default)]
+    ui: Option<ManifestUi>,
+    /// The tileable-PBR-material output a `material` case declares (the `[material]`
+    /// table). Required for — and only for — `asset_kind = "material"`.
+    #[serde(default)]
+    material: Option<ManifestMaterial>,
+    /// The field/timing a particle case plays in (the `[particle]` table). Required
+    /// for — and only for — the two particle kinds (`asset_kind = "particle-2d"` /
+    /// `"particle-3d"`).
+    #[serde(default)]
+    particle: Option<ManifestParticle>,
+    /// The output format of an audio case's clip (the `[audio]` table). Required for
+    /// — and only for — the three audio kinds (`asset_kind = "sfx-synth"` /
+    /// `"sfx-sample"` / `"music"`).
+    #[serde(default)]
+    audio: Option<ManifestAudio>,
     /// The commands the validator runs to build the produced implementation as a
     /// static site (the `[build]` table). **Required for an end-to-end case** and
     /// **forbidden for any other type**, so its presence is validated against
@@ -482,6 +501,106 @@ fn default_true() -> bool {
     true
 }
 
+/// The `[ui]` table of a `ui` asset-generation case: the optional kit of named
+/// elements the model paints. Absent means the case is a single implicit element
+/// (the whole `[canvas]`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestUi {
+    /// The declared elements, as repeated `[[ui.element]]` tables. At least one is
+    /// required when the `[ui]` table is present; names must be unique.
+    #[serde(default, rename = "element")]
+    element: Vec<ManifestUiElement>,
+}
+
+/// A single `[[ui.element]]` entry: one named element of a UI kit, its size, and an
+/// optional fixed nine-slice.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestUiElement {
+    /// Stable, unique element name (targeted with `--element <name>`).
+    name: String,
+    /// Element width in pixels.
+    width: u32,
+    /// Element height in pixels.
+    height: u32,
+    /// Optional fixed stretchable insets. When omitted the model authors them with
+    /// `ui set-nine-slice`.
+    #[serde(default)]
+    nine_slice: Option<ManifestNineSlice>,
+}
+
+/// The `nine_slice = { left, right, top, bottom }` insets of a `[[ui.element]]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+struct ManifestNineSlice {
+    /// Left inset in pixels.
+    left: u32,
+    /// Right inset in pixels.
+    right: u32,
+    /// Top inset in pixels.
+    top: u32,
+    /// Bottom inset in pixels.
+    bottom: u32,
+}
+
+/// The `[material]` table of a `material` asset-generation case: the tileable PBR
+/// material's output resolution, seamlessness, and emitted channels.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestMaterial {
+    /// Square map resolution in pixels (must be a power of two, greater than zero).
+    size: u32,
+    /// Whether the maps are authored seamlessly (wrap toroidally). Defaults to
+    /// `true` (required for triplanar application).
+    #[serde(default = "default_true")]
+    tile: bool,
+    /// The channels the material emits. Must include `base-color`; the rest are any
+    /// subset of `normal` / `roughness` / `metallic` / `ao` / `emissive`.
+    maps: Vec<String>,
+    /// Preview clear color: `transparent` or a hex color.
+    #[serde(default = "default_background")]
+    background: String,
+}
+
+/// The `[particle]` table of a particle asset-generation case: the field the effect
+/// plays in and its playback timing. A `particle-2d` case omits `depth`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestParticle {
+    /// Field extent along x.
+    width: u32,
+    /// Field extent along y (up).
+    height: u32,
+    /// Field extent along z. Required for `particle-3d`, omitted for `particle-2d`.
+    #[serde(default)]
+    depth: Option<u32>,
+    /// The effect's length in milliseconds.
+    duration_ms: u32,
+    /// Preview/playback frame rate (must be greater than zero).
+    fps: f64,
+    /// Whether the effect loops (a steady-state fire/smoke) or is one-shot (an
+    /// explosion, the default). `loop` is a Rust keyword, so the field is `r#loop`.
+    #[serde(default)]
+    r#loop: bool,
+    /// Preview clear color: `transparent` or a hex color.
+    #[serde(default = "default_background")]
+    background: String,
+}
+
+/// The `[audio]` table of an audio asset-generation case: the rendered clip's output
+/// format and (for the sample/instrument kinds) the baked palette it draws from.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestAudio {
+    /// Output sample rate in Hz.
+    sample_rate: u32,
+    /// Channel layout: `mono` or `stereo`.
+    channels: String,
+    /// Cap on the rendered clip's length in milliseconds (at most 5000).
+    max_duration_ms: u32,
+    /// For `sfx-sample`: the baked sample pack (`name@version`) the clip mixes over.
+    #[serde(default)]
+    sample_pack: Option<String>,
+    /// For `music`: the baked instrument bank (`name@version`) the clip plays.
+    #[serde(default)]
+    instrument_bank: Option<String>,
+}
+
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
 /// array): a `source` file inside the version folder seeded to a `dest` path in
 /// the run's workspace.
@@ -690,6 +809,44 @@ pub const DC_CONFIG_DEST: &str = "dc.config.json";
 /// The config path the `dc-anim` binary reads (dual contouring, animated).
 pub const DC_ANIM_CONFIG_DEST: &str = "dc-anim.config.json";
 
+/// The config path the `paint` binary reads for a `ui` asset-generation case.
+pub const PAINT_CONFIG_DEST: &str = "paint.config.json";
+/// The config path the `texture`/`pbr` binaries read for a `material` case.
+pub const MATERIAL_CONFIG_DEST: &str = "material.config.json";
+/// The config path the `mc-skin` binary reads (`mc-skinned`).
+pub const MC_SKIN_CONFIG_DEST: &str = "mc-skin.config.json";
+/// The config path the `sn-skin` binary reads (`sn-skinned`).
+pub const SN_SKIN_CONFIG_DEST: &str = "sn-skin.config.json";
+/// The config path the `dc-skin` binary reads (`dc-skinned`).
+pub const DC_SKIN_CONFIG_DEST: &str = "dc-skin.config.json";
+/// The config path the `particle-2d` binary reads.
+pub const PARTICLE_2D_CONFIG_DEST: &str = "particle-2d.config.json";
+/// The config path the `particle-3d` binary reads.
+pub const PARTICLE_3D_CONFIG_DEST: &str = "particle-3d.config.json";
+/// The config path the `sfx-synth` binary reads.
+pub const SFX_SYNTH_CONFIG_DEST: &str = "sfx-synth.config.json";
+/// The config path the `sfx-sample` binary reads.
+pub const SFX_SAMPLE_CONFIG_DEST: &str = "sfx-sample.config.json";
+/// The config path the `music` binary reads.
+pub const MUSIC_CONFIG_DEST: &str = "music.config.json";
+
+/// The run-workspace-relative path core claims for a `ui` case's emitted `ui.json`
+/// (element sizes, nine-slice insets, atlas rectangles). Auto-emitted by the binary,
+/// not manifest-declared.
+pub const UI_JSON_DEST: &str = "ui.json";
+/// The run-workspace-relative path core claims for a `material` case's emitted
+/// `material.json` (per-map paths, color spaces, tiling scale). Auto-emitted.
+pub const MATERIAL_JSON_DEST: &str = "material.json";
+/// The run-workspace-relative path core claims for a particle case's emitted
+/// `system.json` (the authored emitter/force/curve definition). Auto-emitted.
+pub const PARTICLE_SYSTEM_DEST: &str = "system.json";
+/// The run-workspace-relative path core claims for an audio case's rendered PCM
+/// clip. Auto-emitted by the binary.
+pub const AUDIO_CLIP_WAV_DEST: &str = "clip.wav";
+/// The run-workspace-relative path core claims for a `music` case's portable score,
+/// emitted alongside [`AUDIO_CLIP_WAV_DEST`]. Auto-emitted.
+pub const AUDIO_CLIP_MID_DEST: &str = "clip.mid";
+
 /// The run-workspace-relative path a **static** surface-meshed run emits its single
 /// `PartMesh`-shaped geometry file to (the `mc`/`sn`/`dc` binaries), a per-part
 /// binary-glTF (`.glb`). The seeded config threads this path to the binary and the
@@ -734,6 +891,28 @@ pub const PART_TOKEN: &str = "{part}";
 /// name, yielding that part's concrete run-relative path.
 pub fn part_path(template: &Path, part: &str) -> PathBuf {
     PathBuf::from(template.to_string_lossy().replace(PART_TOKEN, part))
+}
+
+/// The placeholder a `ui` kit case's preview path carries, replaced by the element
+/// name to give every element its own separate preview/PNG (for example
+/// `elements/{element}.png` → `elements/panel.png`). The interface analog of
+/// [`FRAME_TOKEN`]; shared by manifest validation, seeding, and the validator.
+pub const ELEMENT_TOKEN: &str = "{element}";
+
+/// Substitute the [`ELEMENT_TOKEN`] in a `ui` path template with an element name.
+pub fn element_path(template: &Path, element: &str) -> PathBuf {
+    PathBuf::from(template.to_string_lossy().replace(ELEMENT_TOKEN, element))
+}
+
+/// The placeholder a `material` case's preview path carries, replaced by the map
+/// channel to give every map its own separate preview/PNG (for example
+/// `maps/{map}.png` → `maps/base-color.png`). Shared by manifest validation,
+/// seeding, and the validator.
+pub const MAP_TOKEN: &str = "{map}";
+
+/// Substitute the [`MAP_TOKEN`] in a `material` path template with a map channel.
+pub fn map_path(template: &Path, map: &str) -> PathBuf {
+    PathBuf::from(template.to_string_lossy().replace(MAP_TOKEN, map))
 }
 
 /// A test case: a single game a model is asked to build, identified by a stable
@@ -873,14 +1052,51 @@ pub enum AssetKind {
     /// `dc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed
     /// field; declares a `[voxel]` and a `[model]` table.
     DcAnimation,
+    /// A high-resolution 2D interface asset (or kit of elements) painted with the
+    /// `paint`/`ui` binaries. Declares a `[canvas]` (base element size) and an
+    /// optional `[ui]` table (the kit's elements). Judged on the emitted flattened
+    /// PNG(s) plus `ui.json`.
+    Ui,
+    /// A tileable PBR material — a set of maps (base color, normal, roughness, …) —
+    /// painted with the `texture`/`pbr` binaries. Declares a `[material]` table (no
+    /// `[canvas]`/`[voxel]`). Judged on the emitted maps plus `material.json`.
+    Material,
+    /// A skinned character (marching cubes): one whole-body field bound to a
+    /// model-invented skeleton, deformed by linear-blend skinning. Declares a
+    /// `[voxel]` and a `[model]` table but emits a **single** `mesh.glb` + `rig.json`
+    /// (not per-part).
+    McSkinned,
+    /// A skinned character (surface nets). See [`Self::McSkinned`].
+    SnSkinned,
+    /// A skinned character (dual contouring). See [`Self::McSkinned`].
+    DcSkinned,
+    /// A 2D particle effect authored with the `particle-2d` binary. Declares a
+    /// `[particle]` table (a planar field). Judged on the emitted `system.json`.
+    #[serde(rename = "particle-2d")]
+    Particle2d,
+    /// A 3D particle effect authored with the `particle-3d` binary. Declares a
+    /// `[particle]` table (a volume). Judged on the emitted `system.json`.
+    #[serde(rename = "particle-3d")]
+    Particle3d,
+    /// A procedurally-synthesized sound effect authored with the `sfx-synth` binary.
+    /// Declares an `[audio]` table. Judged on the emitted `clip.wav`.
+    SfxSynth,
+    /// A sample-library sound effect authored with the `sfx-sample` binary. Declares
+    /// an `[audio]` table (naming its `sample_pack`). Judged on the emitted `clip.wav`.
+    SfxSample,
+    /// A short piece of music authored with the `music` sequencer binary. Declares an
+    /// `[audio]` table (naming its `instrument_bank`). Judged on the emitted
+    /// `clip.wav` (and portable `clip.mid`).
+    Music,
 }
 
 impl AssetKind {
     /// Whether this kind is one of the 3D voxel-family kinds (as opposed to a 2D
-    /// sprite kind): the two cube kinds plus the six surface-meshed kinds. Every
-    /// voxel-family kind declares a `[voxel]` bounding volume instead of `[canvas]`,
-    /// is seeded through [`crate::seeding`]'s voxel path, and is validated by the
-    /// voxel validator.
+    /// sprite/paint kind): the two cube kinds, the six surface-meshed kinds, and the
+    /// three **skinned** kinds. Every voxel-family kind declares a `[voxel]` bounding
+    /// volume instead of `[canvas]`, is seeded through [`crate::seeding`]'s voxel
+    /// path, and is validated by the voxel validator. Skinned kinds are voxel-family
+    /// too — one whole-body field — but are **single-file** (see [`Self::is_per_part`]).
     pub fn is_voxel(self) -> bool {
         matches!(
             self,
@@ -892,26 +1108,52 @@ impl AssetKind {
                 | Self::SnAnimation
                 | Self::DcModel
                 | Self::DcAnimation
+                | Self::McSkinned
+                | Self::SnSkinned
+                | Self::DcSkinned
         )
     }
 
-    /// Whether this kind is a **rigged/animated** voxel-family kind — the ones that
-    /// declare and require a `[model]` rig, author per-part fields, and emit a
-    /// `rig.json`: `voxel-animation` and the three `*-animation` meshed kinds. The
-    /// discriminator the resolver, seeder, and validator branch on for the
-    /// per-part (`{part}`) treatment.
+    /// Whether this kind is **rigged/animated** — declares and requires a `[model]`
+    /// rig and emits a `rig.json`: `voxel-animation`, the three `*-animation` meshed
+    /// kinds, and the three **skinned** kinds. Note that skinned kinds are animated
+    /// but **not** per-part (see [`Self::is_per_part`]).
     pub fn is_animated(self) -> bool {
         matches!(
             self,
-            Self::VoxelAnimation | Self::McAnimation | Self::SnAnimation | Self::DcAnimation
+            Self::VoxelAnimation
+                | Self::McAnimation
+                | Self::SnAnimation
+                | Self::DcAnimation
+                | Self::McSkinned
+                | Self::SnSkinned
+                | Self::DcSkinned
         )
     }
 
-    /// Whether this kind is one of the six **surface-meshed** kinds (`mc`/`sn`/`dc`
-    /// and their `-anim` siblings), which composite a signed-distance field and emit
-    /// a `PartMesh`-shaped `.glb` — as opposed to the two cube kinds, which emit a
-    /// face-culled cube mesh. Selects the mesh-parsing validation path and the
-    /// per-binary mesh output threading.
+    /// Whether this kind authors **one field/mesh per part** — the discriminator the
+    /// resolver, seeder, and validator branch on for the per-part (`{part}`)
+    /// treatment. True for the four rigid animated kinds (`voxel-animation` and the
+    /// three `*-animation` meshed kinds); **false** for the skinned kinds, which are
+    /// animated but build a single whole-body field emitted as one file (the
+    /// "skinned exception" to the `{part}` rule).
+    pub fn is_per_part(self) -> bool {
+        self.is_animated() && !self.is_skinned()
+    }
+
+    /// Whether this kind is one of the three **skinned** character kinds
+    /// (`mc-skinned`/`sn-skinned`/`dc-skinned`): a single continuous mesh bound to a
+    /// model-invented skeleton and deformed by linear-blend skinning. Voxel-family
+    /// and animated, but single-file.
+    pub fn is_skinned(self) -> bool {
+        matches!(self, Self::McSkinned | Self::SnSkinned | Self::DcSkinned)
+    }
+
+    /// Whether this kind is one of the surface-**meshed** kinds that composite a
+    /// signed-distance field and emit a `PartMesh`-shaped `.glb`: the six `mc`/`sn`/
+    /// `dc` (+ `-anim`) kinds and the three **skinned** kinds. As opposed to the two
+    /// cube kinds (a face-culled cube mesh) and the 2D kinds. Selects the
+    /// mesh-parsing validation path and the per-binary mesh output threading.
     pub fn is_meshed(self) -> bool {
         matches!(
             self,
@@ -921,42 +1163,68 @@ impl AssetKind {
                 | Self::SnAnimation
                 | Self::DcModel
                 | Self::DcAnimation
+                | Self::McSkinned
+                | Self::SnSkinned
+                | Self::DcSkinned
         )
     }
 
-    /// The run-workspace-relative path (or `{part}` template, for an animated kind)
+    /// Whether this kind is a high-resolution **2D painted** kind — `ui` or
+    /// `material` — driven by the `paint`/`ui`/`texture`/`pbr` binaries and validated
+    /// by decoding the emitted PNG(s) plus its `ui.json`/`material.json`.
+    pub fn is_paint(self) -> bool {
+        matches!(self, Self::Ui | Self::Material)
+    }
+
+    /// Whether this kind is a **particle** effect (`particle-2d`/`particle-3d`),
+    /// declaring a `[particle]` field and validated by parsing its `system.json`.
+    pub fn is_particle(self) -> bool {
+        matches!(self, Self::Particle2d | Self::Particle3d)
+    }
+
+    /// Whether this kind is an **audio** clip (`sfx-synth`/`sfx-sample`/`music`),
+    /// declaring an `[audio]` table and validated by decoding its emitted `.wav`.
+    pub fn is_audio(self) -> bool {
+        matches!(self, Self::SfxSynth | Self::SfxSample | Self::Music)
+    }
+
+    /// Whether this kind is `music`, the only audio kind that also emits a portable
+    /// `.mid` score alongside its `.wav`.
+    pub fn emits_midi(self) -> bool {
+        matches!(self, Self::Music)
+    }
+
+    /// The run-workspace-relative path (or `{part}` template, for a per-part kind)
     /// a **meshed** kind emits its `.glb` geometry to — [`MESH_DEST`] for a
-    /// static meshed kind, [`MESH_PART_DEST`] for an animated one. `None` for the
-    /// cube kinds and the 2D sprite kinds, which emit no `.glb`. Shared by the
-    /// seeded tool config (so the binary writes here), manifest path-claiming, and
-    /// the validator (so it reads the same path).
+    /// static/skinned meshed kind, [`MESH_PART_DEST`] for a per-part animated one.
+    /// `None` for the cube kinds and the 2D kinds, which emit no meshed `.glb`.
+    /// Shared by the seeded tool config (so the binary writes here), manifest
+    /// path-claiming, and the validator (so it reads the same path).
     pub fn mesh_dest(self) -> Option<&'static str> {
         if !self.is_meshed() {
             return None;
         }
-        Some(if self.is_animated() {
+        Some(if self.is_per_part() {
             MESH_PART_DEST
         } else {
             MESH_DEST
         })
     }
 
-    /// The run-workspace-relative path (or `{part}` template, for an animated kind)
+    /// The run-workspace-relative path (or `{part}` template, for a per-part kind)
     /// the client-facing `PartMesh` geometry (`.glb`) every **voxel-family** kind
-    /// emits — [`MESH_DEST`] for a static kind, [`MESH_PART_DEST`] for an animated
-    /// one. `None` for the 2D sprite kinds, which emit no geometry.
+    /// emits — [`MESH_DEST`] for a static/skinned kind, [`MESH_PART_DEST`] for a
+    /// per-part animated one. `None` for the 2D kinds, which emit no geometry.
     ///
-    /// Unlike [`Self::mesh_dest`] — which is `Some` only for the six surface-meshed
+    /// Unlike [`Self::mesh_dest`] — which is `Some` only for the surface-meshed
     /// kinds and selects the mesh-parsing validation path — this is `Some` for the
     /// two **cube** kinds as well: their binaries also emit a face-culled `.glb`,
-    /// and the 3D client renders from that mesh for every voxel-family kind. Threaded
-    /// by seeding into the tool config so every voxel binary writes here, claimed in
-    /// manifest resolution, and read back by the validator as the served geometry.
+    /// and the 3D client renders from that mesh for every voxel-family kind.
     pub fn voxel_mesh_dest(self) -> Option<&'static str> {
         if !self.is_voxel() {
             return None;
         }
-        Some(if self.is_animated() {
+        Some(if self.is_per_part() {
             MESH_PART_DEST
         } else {
             MESH_DEST
@@ -964,10 +1232,7 @@ impl AssetKind {
     }
 
     /// The run-workspace-relative path the orchestrator seeds this kind's tool
-    /// configuration to: [`ASSET_CONFIG_DEST`] for the 2D `draw`/`draw-sheet`
-    /// kinds, [`VOXEL_CONFIG_DEST`] / [`VOXEL_ANIM_CONFIG_DEST`] for the two cube
-    /// kinds, and one config per surface-meshing binary. Shared by manifest
-    /// path-claiming and seeding so they agree.
+    /// configuration to. Shared by manifest path-claiming and seeding so they agree.
     pub fn config_dest(self) -> &'static str {
         match self {
             Self::Sprite | Self::SpriteSheet => ASSET_CONFIG_DEST,
@@ -979,6 +1244,16 @@ impl AssetKind {
             Self::SnAnimation => SN_ANIM_CONFIG_DEST,
             Self::DcModel => DC_CONFIG_DEST,
             Self::DcAnimation => DC_ANIM_CONFIG_DEST,
+            Self::Ui => PAINT_CONFIG_DEST,
+            Self::Material => MATERIAL_CONFIG_DEST,
+            Self::McSkinned => MC_SKIN_CONFIG_DEST,
+            Self::SnSkinned => SN_SKIN_CONFIG_DEST,
+            Self::DcSkinned => DC_SKIN_CONFIG_DEST,
+            Self::Particle2d => PARTICLE_2D_CONFIG_DEST,
+            Self::Particle3d => PARTICLE_3D_CONFIG_DEST,
+            Self::SfxSynth => SFX_SYNTH_CONFIG_DEST,
+            Self::SfxSample => SFX_SAMPLE_CONFIG_DEST,
+            Self::Music => MUSIC_CONFIG_DEST,
         }
     }
 }
@@ -1334,6 +1609,122 @@ pub struct VoxelSpec {
     pub depth: u32,
     /// Preview clear color: `transparent` or a hex color.
     pub background: String,
+}
+
+/// The resolved fixed nine-slice insets of a UI element (or as read back from
+/// `ui.json`): the stretchable border margins in pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct NineSlice {
+    /// Left inset in pixels.
+    pub left: u32,
+    /// Right inset in pixels.
+    pub right: u32,
+    /// Top inset in pixels.
+    pub top: u32,
+    /// Bottom inset in pixels.
+    pub bottom: u32,
+}
+
+/// The resolved `[ui]` of a `ui` asset-generation case: the kit of named elements
+/// the model paints. Empty [`Self::elements`] means the case is a single implicit
+/// element (the whole `[canvas]`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct UiSpec {
+    /// The declared elements, in declared order. Empty for a single-image case.
+    pub elements: Vec<UiElementSpec>,
+}
+
+/// A resolved `[[ui.element]]`: one named element of a UI kit, its size, and an
+/// optional fixed nine-slice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct UiElementSpec {
+    /// Stable, unique element name (targeted with `--element <name>`).
+    pub name: String,
+    /// Element width in pixels.
+    pub width: u32,
+    /// Element height in pixels.
+    pub height: u32,
+    /// The fixed stretchable insets, when the case declares them (otherwise the
+    /// model authors them with `ui set-nine-slice`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub nine_slice: Option<NineSlice>,
+}
+
+/// The resolved `[material]` of a `material` asset-generation case: the tileable PBR
+/// material's output resolution, seamlessness, and emitted channels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct MaterialSpec {
+    /// Square map resolution in pixels (a power of two).
+    pub size: u32,
+    /// Whether the maps are authored seamlessly (wrap toroidally).
+    pub tile: bool,
+    /// The channels the material emits, in declared order. Always includes
+    /// `base-color`.
+    pub maps: Vec<String>,
+    /// Preview clear color: `transparent` or a hex color.
+    pub background: String,
+}
+
+/// The resolved `[particle]` of a particle asset-generation case: the field the
+/// effect plays in and its playback timing. [`Self::depth`] is `Some` for
+/// `particle-3d` (a volume) and `None` for `particle-2d` (a planar field).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ParticleSpec {
+    /// Field extent along x.
+    pub width: u32,
+    /// Field extent along y (up).
+    pub height: u32,
+    /// Field extent along z. `Some` for `particle-3d`, `None` for `particle-2d`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub depth: Option<u32>,
+    /// The effect's length in milliseconds.
+    pub duration_ms: u32,
+    /// Preview/playback frame rate (greater than zero).
+    pub fps: f64,
+    /// Whether the effect loops (steady-state) or is one-shot.
+    pub looping: bool,
+    /// Preview clear color: `transparent` or a hex color.
+    pub background: String,
+}
+
+// `ParticleSpec` carries an `fps: f64`, so it cannot derive `Eq` (and neither can
+// the `TestCaseVersion` that owns it). The fps originates as an exact TOML literal
+// validated to be finite and positive at resolution, and is only ever compared or
+// rendered, never a hash key, so a manual `Eq` is sound — matching `SheetSequence`.
+impl Eq for ParticleSpec {}
+
+/// The resolved `[audio]` of an audio asset-generation case: the rendered clip's
+/// output format and (for the sample/instrument kinds) the baked palette.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AudioSpec {
+    /// Output sample rate in Hz.
+    pub sample_rate: u32,
+    /// Channel layout: `mono` or `stereo`.
+    pub channels: String,
+    /// Cap on the rendered clip's length in milliseconds (at most 5000).
+    pub max_duration_ms: u32,
+    /// For `sfx-sample`: the baked sample pack (`name@version`). `None` otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub sample_pack: Option<String>,
+    /// For `music`: the baked instrument bank (`name@version`). `None` otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub instrument_bank: Option<String>,
 }
 
 /// The resolved `[model]` of a voxel-animation case: the rig the model must
@@ -1871,10 +2262,26 @@ pub struct TestCaseVersion {
     /// [`AssetKind::VoxelAnimation`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voxel: Option<VoxelSpec>,
-    /// The required rig (parts + joints) of a voxel-animation case. `Some` only
-    /// when [`Self::asset_kind`] is [`AssetKind::VoxelAnimation`].
+    /// The required rig (parts + joints) of a voxel-animation, meshed-animation, or
+    /// skinned case. `Some` only for an animated voxel-family kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelSpec>,
+    /// The kit of elements a `ui` case declares. `Some` only for [`AssetKind::Ui`]
+    /// (with empty elements for a single-image `ui` case).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui: Option<UiSpec>,
+    /// The tileable-PBR-material output a `material` case declares. `Some` only for
+    /// [`AssetKind::Material`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<MaterialSpec>,
+    /// The field/timing a particle case plays in. `Some` only for the two particle
+    /// kinds ([`AssetKind::Particle2d`] / [`AssetKind::Particle3d`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub particle: Option<ParticleSpec>,
+    /// The clip output format of an audio case. `Some` only for the three audio
+    /// kinds ([`AssetKind::SfxSynth`] / [`AssetKind::SfxSample`] / [`AssetKind::Music`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<AudioSpec>,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
     /// Starter workspace files seeded for every variant that does not override
@@ -2414,7 +2821,59 @@ impl TestCaseCatalog {
         // `{frame}` templates, since every frame is a separate file. An
         // asset-generation case has no target image: its output is human-reviewed
         // against the brief, so it declares no references at all.
-        let (canvas, tool, output, sheet, voxel, model) = match test_type {
+        // The `[tool]`/`[output]` tables are shared across every asset-generation
+        // kind (the binary and the paths it reads/writes). This resolves and
+        // validates them once for the painted/particle/audio arms below (the sprite
+        // and voxel arms inline the same checks). The preview/action tokens are
+        // validated per-kind by each arm.
+        let resolve_tool_output = || -> Result<(ToolSpec, OutputSpec)> {
+            let tool = manifest
+                .tool
+                .as_ref()
+                .ok_or_else(|| invalid("the [tool] table is required".to_string()))?;
+            if tool.binary.trim().is_empty() {
+                return Err(invalid("tool.binary must not be empty".to_string()));
+            }
+            if escapes_folder(&tool.preview) {
+                return Err(invalid(format!(
+                    "tool preview `{}` escapes the run workspace",
+                    tool.preview.display()
+                )));
+            }
+            let output = manifest
+                .output
+                .as_ref()
+                .ok_or_else(|| invalid("the [output] table is required".to_string()))?;
+            if escapes_folder(&output.actions) {
+                return Err(invalid(format!(
+                    "output actions `{}` escapes the run workspace",
+                    output.actions.display()
+                )));
+            }
+            Ok((
+                ToolSpec {
+                    binary: tool.binary.clone(),
+                    preview: tool.preview.clone(),
+                },
+                OutputSpec {
+                    actions: output.actions.clone(),
+                },
+            ))
+        };
+
+        #[allow(clippy::type_complexity)]
+        let (canvas, tool, output, sheet, voxel, model, ui, material, particle, audio): (
+            Option<CanvasSpec>,
+            Option<ToolSpec>,
+            Option<OutputSpec>,
+            Option<SheetSpec>,
+            Option<VoxelSpec>,
+            Option<ModelSpec>,
+            Option<UiSpec>,
+            Option<MaterialSpec>,
+            Option<ParticleSpec>,
+            Option<AudioSpec>,
+        ) = match test_type {
             TestType::EndToEnd | TestType::Adversarial | TestType::Performance => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
@@ -2442,7 +2901,19 @@ impl TestCaseCatalog {
                             .to_string(),
                     ));
                 }
-                (None, None, None, None, None, None)
+                // As are the painted / particle / audio tables.
+                if manifest.ui.is_some()
+                    || manifest.material.is_some()
+                    || manifest.particle.is_some()
+                    || manifest.audio.is_some()
+                {
+                    return Err(invalid(
+                        "the [ui], [material], [particle], and [audio] tables are only valid for \
+                         an asset-generation case"
+                            .to_string(),
+                    ));
+                }
+                (None, None, None, None, None, None, None, None, None, None)
             }
             TestType::AssetGeneration if manifest.asset_kind.is_voxel() => {
                 // A voxel case declares a `[voxel]` bounding volume instead of a 2D
@@ -2455,6 +2926,16 @@ impl TestCaseCatalog {
                 if manifest.canvas.is_some() || manifest.sheet.is_some() {
                     return Err(invalid(
                         "a voxel case declares a [voxel] table, not [canvas] or [sheet]"
+                            .to_string(),
+                    ));
+                }
+                if manifest.ui.is_some()
+                    || manifest.material.is_some()
+                    || manifest.particle.is_some()
+                    || manifest.audio.is_some()
+                {
+                    return Err(invalid(
+                        "a voxel case declares none of [ui], [material], [particle], or [audio]"
                             .to_string(),
                     ));
                 }
@@ -2497,43 +2978,43 @@ impl TestCaseCatalog {
                     )));
                 }
 
-                // The preview and action-log paths must be `{part}` templates for an
-                // animated model (one file per part) and plain paths for a static
-                // one. Validating this here keeps the seeded config, the binary, and
-                // the validator agreeing on where each part's files live. This holds
-                // for every animated voxel-family kind — the cube `voxel-animation`
-                // and the three meshed `*-animation` kinds alike.
-                let is_anim = manifest.asset_kind.is_animated();
+                // The preview and action-log paths must be `{part}` templates for a
+                // **per-part** animated model (one file per part) and plain paths
+                // otherwise. This holds for the four rigid animated kinds (the cube
+                // `voxel-animation` and the three meshed `*-animation` kinds); a
+                // static kind, and every **skinned** kind (one whole-body field, one
+                // mesh — the single-file exception), use plain paths.
+                let is_per_part = manifest.asset_kind.is_per_part();
                 for (label, path) in [
                     ("tool.preview", &tool.preview),
                     ("output.actions", &output.actions),
                 ] {
                     let has_token = path.to_string_lossy().contains(PART_TOKEN);
-                    if is_anim && !has_token {
+                    if is_per_part && !has_token {
                         return Err(invalid(format!(
-                            "{label} `{}` must contain `{PART_TOKEN}` for a voxel-animation case \
-                             (one file per part)",
+                            "{label} `{}` must contain `{PART_TOKEN}` for a per-part animated \
+                             voxel case (one file per part)",
                             path.display()
                         )));
                     }
-                    if !is_anim && has_token {
+                    if !is_per_part && has_token {
                         return Err(invalid(format!(
-                            "{label} `{}` must not contain `{PART_TOKEN}` for a voxel-model case",
+                            "{label} `{}` must not contain `{PART_TOKEN}` for a static or skinned \
+                             voxel case (a single file)",
                             path.display()
                         )));
                     }
                 }
 
-                // The `[model]` rig is required for — and only for — an animated
-                // voxel-family case (the cube `voxel-animation` and the three meshed
-                // `*-animation` kinds). A static kind (`voxel-model` or a meshed
+                // The `[model]` rig is required for — and only for — an **animated**
+                // voxel-family case: the four rigid animated kinds and the three
+                // **skinned** kinds. A static kind (`voxel-model` or a meshed
                 // `*-model`) is one unposed volume/field and declares no rig.
                 let model = if manifest.asset_kind.is_animated() {
                     let model = manifest.model.as_ref().ok_or_else(|| {
                         invalid(
-                            "an animated voxel case (asset_kind = \"voxel-animation\"/\
-                             \"mc-animation\"/\"sn-animation\"/\"dc-animation\") requires a \
-                             [model] table"
+                            "an animated voxel case (a `*-animation` or `*-skinned` kind) requires \
+                             a [model] table"
                                 .to_string(),
                         )
                     })?;
@@ -2541,8 +3022,7 @@ impl TestCaseCatalog {
                 } else {
                     if manifest.model.is_some() {
                         return Err(invalid(
-                            "a static voxel case (asset_kind = \"voxel-model\"/\"mc-model\"/\
-                             \"sn-model\"/\"dc-model\") declares no [model] table"
+                            "a static voxel case (a `*-model` kind) declares no [model] table"
                                 .to_string(),
                         ));
                     }
@@ -2566,6 +3046,211 @@ impl TestCaseCatalog {
                         background: voxel.background.clone(),
                     }),
                     model,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
+            TestType::AssetGeneration if manifest.asset_kind.is_paint() => {
+                // A painted kind (`ui`/`material`). `ui` reuses `[canvas]` for the
+                // base element size and adds an optional `[ui]` kit; `material`
+                // declares a `[material]` table and no `[canvas]`. Neither declares
+                // the voxel/particle/audio tables.
+                if manifest.sheet.is_some()
+                    || manifest.voxel.is_some()
+                    || manifest.model.is_some()
+                    || manifest.particle.is_some()
+                    || manifest.audio.is_some()
+                {
+                    return Err(invalid(
+                        "a painted case (asset_kind = \"ui\"/\"material\") declares none of \
+                         [sheet], [voxel], [model], [particle], or [audio]"
+                            .to_string(),
+                    ));
+                }
+                let (tool, output) = resolve_tool_output()?;
+
+                match manifest.asset_kind {
+                    AssetKind::Ui => {
+                        if manifest.material.is_some() {
+                            return Err(invalid(
+                                "a `ui` case declares [canvas] (+ optional [ui]), not [material]"
+                                    .to_string(),
+                            ));
+                        }
+                        let canvas = manifest.canvas.as_ref().ok_or_else(|| {
+                            invalid("a `ui` case requires the [canvas] table".to_string())
+                        })?;
+                        if canvas.width == 0 || canvas.height == 0 {
+                            return Err(invalid(
+                                "canvas width and height must be greater than zero".to_string(),
+                            ));
+                        }
+                        test_cabinet_draw::Background::parse(&canvas.background).map_err(
+                            |err| {
+                                invalid(format!("canvas background `{}`: {err}", canvas.background))
+                            },
+                        )?;
+                        let ui = resolve_ui(manifest.ui.as_ref(), &invalid)?;
+                        // The preview carries `{element}` when — and only when — the
+                        // kit declares elements; the action log is a single
+                        // interleaved stream (never templated).
+                        let preview_has_token =
+                            tool.preview.to_string_lossy().contains(ELEMENT_TOKEN);
+                        if !ui.elements.is_empty() && !preview_has_token {
+                            return Err(invalid(format!(
+                                "tool.preview `{}` must contain `{ELEMENT_TOKEN}` for a `ui` kit \
+                                 (one file per element)",
+                                tool.preview.display()
+                            )));
+                        }
+                        if ui.elements.is_empty() && preview_has_token {
+                            return Err(invalid(format!(
+                                "tool.preview `{}` must not contain `{ELEMENT_TOKEN}` for a \
+                                 single-element `ui` case",
+                                tool.preview.display()
+                            )));
+                        }
+                        if output.actions.to_string_lossy().contains(ELEMENT_TOKEN) {
+                            return Err(invalid(format!(
+                                "output.actions `{}` must not contain `{ELEMENT_TOKEN}` — a `ui` \
+                                 run records a single interleaved log",
+                                output.actions.display()
+                            )));
+                        }
+                        (
+                            Some(CanvasSpec {
+                                width: canvas.width,
+                                height: canvas.height,
+                                background: canvas.background.clone(),
+                            }),
+                            Some(tool),
+                            Some(output),
+                            None,
+                            None,
+                            None,
+                            Some(ui),
+                            None,
+                            None,
+                            None,
+                        )
+                    }
+                    // `material` (the only other painted kind).
+                    _ => {
+                        if manifest.canvas.is_some() || manifest.ui.is_some() {
+                            return Err(invalid(
+                                "a `material` case declares [material], not [canvas] or [ui]"
+                                    .to_string(),
+                            ));
+                        }
+                        let material = resolve_material(manifest.material.as_ref(), &invalid)?;
+                        // One preview per declared map (`{map}` template); the action
+                        // log is a single interleaved stream.
+                        if !tool.preview.to_string_lossy().contains(MAP_TOKEN) {
+                            return Err(invalid(format!(
+                                "tool.preview `{}` must contain `{MAP_TOKEN}` for a `material` case \
+                                 (one preview per map)",
+                                tool.preview.display()
+                            )));
+                        }
+                        if output.actions.to_string_lossy().contains(MAP_TOKEN) {
+                            return Err(invalid(format!(
+                                "output.actions `{}` must not contain `{MAP_TOKEN}` — a `material` \
+                                 run records a single interleaved log",
+                                output.actions.display()
+                            )));
+                        }
+                        (
+                            None,
+                            Some(tool),
+                            Some(output),
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some(material),
+                            None,
+                            None,
+                        )
+                    }
+                }
+            }
+            TestType::AssetGeneration if manifest.asset_kind.is_particle() => {
+                if manifest.canvas.is_some()
+                    || manifest.sheet.is_some()
+                    || manifest.voxel.is_some()
+                    || manifest.model.is_some()
+                    || manifest.ui.is_some()
+                    || manifest.material.is_some()
+                    || manifest.audio.is_some()
+                {
+                    return Err(invalid(
+                        "a particle case declares only the [particle] table (none of [canvas], \
+                         [sheet], [voxel], [model], [ui], [material], or [audio])"
+                            .to_string(),
+                    ));
+                }
+                let (tool, output) = resolve_tool_output()?;
+                // A particle effect's preview/log are single files (one effect).
+                for (label, path) in [
+                    ("tool.preview", &tool.preview),
+                    ("output.actions", &output.actions),
+                ] {
+                    if path.to_string_lossy().contains(PART_TOKEN) {
+                        return Err(invalid(format!(
+                            "{label} `{}` must not contain `{PART_TOKEN}` — a particle case \
+                             authors one effect",
+                            path.display()
+                        )));
+                    }
+                }
+                let particle = resolve_particle(
+                    manifest.particle.as_ref(),
+                    manifest.asset_kind == AssetKind::Particle3d,
+                    &invalid,
+                )?;
+                (
+                    None,
+                    Some(tool),
+                    Some(output),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(particle),
+                    None,
+                )
+            }
+            TestType::AssetGeneration if manifest.asset_kind.is_audio() => {
+                if manifest.canvas.is_some()
+                    || manifest.sheet.is_some()
+                    || manifest.voxel.is_some()
+                    || manifest.model.is_some()
+                    || manifest.ui.is_some()
+                    || manifest.material.is_some()
+                    || manifest.particle.is_some()
+                {
+                    return Err(invalid(
+                        "an audio case declares only the [audio] table (none of [canvas], \
+                         [sheet], [voxel], [model], [ui], [material], or [particle])"
+                            .to_string(),
+                    ));
+                }
+                let (tool, output) = resolve_tool_output()?;
+                let audio = resolve_audio(manifest.audio.as_ref(), manifest.asset_kind, &invalid)?;
+                (
+                    None,
+                    Some(tool),
+                    Some(output),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(audio),
                 )
             }
             TestType::AssetGeneration => {
@@ -2575,6 +3260,18 @@ impl TestCaseCatalog {
                     return Err(invalid(
                         "the [voxel] and [model] tables are only valid for a voxel \
                          asset-generation case (asset_kind = \"voxel-model\"/\"voxel-animation\")"
+                            .to_string(),
+                    ));
+                }
+                // The painted/particle/audio tables belong to their kinds.
+                if manifest.ui.is_some()
+                    || manifest.material.is_some()
+                    || manifest.particle.is_some()
+                    || manifest.audio.is_some()
+                {
+                    return Err(invalid(
+                        "the [ui], [material], [particle], and [audio] tables are only valid for \
+                         their respective asset kinds"
                             .to_string(),
                     ));
                 }
@@ -2667,17 +3364,9 @@ impl TestCaseCatalog {
                         })?;
                         Some(resolve_sheet(sheet, canvas.width, canvas.height, &invalid)?)
                     }
-                    // The voxel-family kinds are resolved by the guarded voxel arm
-                    // above (they are `is_voxel()`) and never reach this 2D sprite
-                    // branch.
-                    AssetKind::VoxelModel
-                    | AssetKind::VoxelAnimation
-                    | AssetKind::McModel
-                    | AssetKind::McAnimation
-                    | AssetKind::SnModel
-                    | AssetKind::SnAnimation
-                    | AssetKind::DcModel
-                    | AssetKind::DcAnimation => unreachable!(),
+                    // Every non-sprite kind is resolved by a guarded arm above and
+                    // never reaches this 2D sprite branch.
+                    _ => unreachable!("non-sprite asset kind reached the sprite arm"),
                 };
 
                 (
@@ -2694,6 +3383,10 @@ impl TestCaseCatalog {
                         actions: output.actions.clone(),
                     }),
                     sheet,
+                    None,
+                    None,
+                    None,
+                    None,
                     None,
                     None,
                 )
@@ -3467,25 +4160,68 @@ impl TestCaseCatalog {
                 // single `.glb`; claim it so a spec can never land on the geometry
                 // the binary writes.
                 let mesh_template = manifest.asset_kind.voxel_mesh_dest();
-                if let Some(model) = &model {
-                    for part in &model.parts {
-                        claim(part_path(&tool.preview, &part.name), "part preview")?;
-                        claim(part_path(&output.actions, &part.name), "part action log")?;
-                        if let Some(mesh) = mesh_template {
-                            claim(part_path(Path::new(mesh), &part.name), "part mesh")?;
+                if manifest.asset_kind.is_per_part() {
+                    // A rigid animated voxel/mesh kind: one preview, log, and `.glb`
+                    // per declared part, plus the produced `rig.json`.
+                    if let Some(model) = &model {
+                        for part in &model.parts {
+                            claim(part_path(&tool.preview, &part.name), "part preview")?;
+                            claim(part_path(&output.actions, &part.name), "part action log")?;
+                            if let Some(mesh) = mesh_template {
+                                claim(part_path(Path::new(mesh), &part.name), "part mesh")?;
+                            }
                         }
+                        claim(PathBuf::from(VOXEL_RIG_DEST), "rig")?;
                     }
-                    claim(PathBuf::from(VOXEL_RIG_DEST), "rig")?;
                 } else if let Some(sheet) = &sheet {
                     for &index in &sheet.frames {
                         claim(frame_path(&tool.preview, index), "tool preview")?;
                         claim(frame_path(&output.actions, index), "action log")?;
                     }
+                } else if let Some(ui) = &ui {
+                    // A `ui` run records ONE interleaved log; it emits one flattened
+                    // PNG per element (or a single file) plus the auto-emitted
+                    // `ui.json`.
+                    claim(output.actions.clone(), "action log")?;
+                    if ui.elements.is_empty() {
+                        claim(tool.preview.clone(), "element preview")?;
+                    } else {
+                        for element in &ui.elements {
+                            claim(
+                                element_path(&tool.preview, &element.name),
+                                "element preview",
+                            )?;
+                        }
+                    }
+                    claim(PathBuf::from(UI_JSON_DEST), "ui manifest")?;
+                } else if let Some(material) = &material {
+                    // A `material` run records ONE interleaved log; it emits one PNG
+                    // per declared map plus the auto-emitted `material.json`.
+                    claim(output.actions.clone(), "action log")?;
+                    for map in &material.maps {
+                        claim(map_path(&tool.preview, map), "map preview")?;
+                    }
+                    claim(PathBuf::from(MATERIAL_JSON_DEST), "material manifest")?;
                 } else {
+                    // The single-file kinds: sprite (single), static voxel/mesh, the
+                    // three skinned kinds, particle, and audio.
                     claim(tool.preview.clone(), "tool preview")?;
                     claim(output.actions.clone(), "action log")?;
                     if let Some(mesh) = mesh_template {
                         claim(PathBuf::from(mesh), "mesh")?;
+                    }
+                    // A skinned kind is animated (single-file) and produces a rig.
+                    if manifest.asset_kind.is_skinned() {
+                        claim(PathBuf::from(VOXEL_RIG_DEST), "rig")?;
+                    }
+                    if manifest.asset_kind.is_particle() {
+                        claim(PathBuf::from(PARTICLE_SYSTEM_DEST), "particle system")?;
+                    }
+                    if manifest.asset_kind.is_audio() {
+                        claim(PathBuf::from(AUDIO_CLIP_WAV_DEST), "audio clip")?;
+                        if manifest.asset_kind.emits_midi() {
+                            claim(PathBuf::from(AUDIO_CLIP_MID_DEST), "audio score")?;
+                        }
                     }
                 }
             }
@@ -3625,6 +4361,10 @@ impl TestCaseCatalog {
             sheet,
             voxel,
             model,
+            ui,
+            material,
+            particle,
+            audio,
             common_specs,
             common_workspace,
             init: manifest.init,
@@ -3892,6 +4632,292 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
         parts: Vec::new(),
         joints: Vec::new(),
         animations,
+    })
+}
+
+/// Resolve and validate a `ui` case's optional `[ui]` table into a [`UiSpec`].
+///
+/// When the table is absent the case is a single implicit element (empty
+/// [`UiSpec::elements`]). When present it must declare at least one element; every
+/// element carries a unique non-empty name and positive `width`/`height`, and any
+/// fixed `nine_slice` must fit within the element's bounds. `invalid` is the
+/// resolver's error constructor.
+fn resolve_ui(ui: Option<&ManifestUi>, invalid: &impl Fn(String) -> Error) -> Result<UiSpec> {
+    let Some(ui) = ui else {
+        return Ok(UiSpec {
+            elements: Vec::new(),
+        });
+    };
+    if ui.element.is_empty() {
+        return Err(invalid(
+            "a [ui] table must declare at least one [[ui.element]]".to_string(),
+        ));
+    }
+    let mut elements: Vec<UiElementSpec> = Vec::with_capacity(ui.element.len());
+    for element in &ui.element {
+        if element.name.trim().is_empty() {
+            return Err(invalid("ui element `name` must not be empty".to_string()));
+        }
+        if elements
+            .iter()
+            .any(|resolved| resolved.name == element.name)
+        {
+            return Err(invalid(format!(
+                "duplicate ui element name `{}`",
+                element.name
+            )));
+        }
+        if element.width == 0 || element.height == 0 {
+            return Err(invalid(format!(
+                "ui element `{}` width and height must be greater than zero",
+                element.name
+            )));
+        }
+        let nine_slice = match &element.nine_slice {
+            Some(ns) => {
+                if ns.left + ns.right > element.width {
+                    return Err(invalid(format!(
+                        "ui element `{}` nine_slice left+right ({}) exceeds width {}",
+                        element.name,
+                        ns.left + ns.right,
+                        element.width
+                    )));
+                }
+                if ns.top + ns.bottom > element.height {
+                    return Err(invalid(format!(
+                        "ui element `{}` nine_slice top+bottom ({}) exceeds height {}",
+                        element.name,
+                        ns.top + ns.bottom,
+                        element.height
+                    )));
+                }
+                Some(NineSlice {
+                    left: ns.left,
+                    right: ns.right,
+                    top: ns.top,
+                    bottom: ns.bottom,
+                })
+            }
+            None => None,
+        };
+        elements.push(UiElementSpec {
+            name: element.name.clone(),
+            width: element.width,
+            height: element.height,
+            nine_slice,
+        });
+    }
+    Ok(UiSpec { elements })
+}
+
+/// The map channels a `material` case may emit. `base-color` is required; the rest
+/// are optional. (`height` is an authoring aid, not an emitted channel, so it is not
+/// declarable here.)
+const MATERIAL_MAP_CHANNELS: [&str; 6] = [
+    "base-color",
+    "normal",
+    "roughness",
+    "metallic",
+    "ao",
+    "emissive",
+];
+
+/// Resolve and validate a `material` case's required `[material]` table into a
+/// [`MaterialSpec`]. The `size` must be a positive power of two; `maps` must include
+/// `base-color`, name only known channels, and carry no duplicates; the background
+/// must parse. `invalid` is the resolver's error constructor.
+fn resolve_material(
+    material: Option<&ManifestMaterial>,
+    invalid: &impl Fn(String) -> Error,
+) -> Result<MaterialSpec> {
+    let material = material
+        .ok_or_else(|| invalid("a `material` case requires the [material] table".to_string()))?;
+    if material.size == 0 || !material.size.is_power_of_two() {
+        return Err(invalid(format!(
+            "material.size ({}) must be a power of two greater than zero",
+            material.size
+        )));
+    }
+    if material.maps.is_empty() {
+        return Err(invalid("material.maps must not be empty".to_string()));
+    }
+    let mut seen: Vec<String> = Vec::with_capacity(material.maps.len());
+    for map in &material.maps {
+        if !MATERIAL_MAP_CHANNELS.contains(&map.as_str()) {
+            return Err(invalid(format!(
+                "material map `{map}` is not a known channel (base-color | normal | roughness | \
+                 metallic | ao | emissive)"
+            )));
+        }
+        if seen.contains(map) {
+            return Err(invalid(format!("duplicate material map `{map}`")));
+        }
+        seen.push(map.clone());
+    }
+    if !material.maps.iter().any(|m| m == "base-color") {
+        return Err(invalid(
+            "material.maps must include `base-color`".to_string(),
+        ));
+    }
+    test_cabinet_model_core::PreviewBackground::parse(&material.background).map_err(|err| {
+        invalid(format!(
+            "material background `{}`: {err}",
+            material.background
+        ))
+    })?;
+    Ok(MaterialSpec {
+        size: material.size,
+        tile: material.tile,
+        maps: material.maps.clone(),
+        background: material.background.clone(),
+    })
+}
+
+/// Resolve and validate a particle case's required `[particle]` table into a
+/// [`ParticleSpec`]. `width`/`height` must be positive; `depth` is required (and
+/// positive) for `particle-3d` and forbidden for `particle-2d`; `duration_ms` must
+/// be positive; `fps` must be finite and positive; the background must parse.
+/// `invalid` is the resolver's error constructor.
+fn resolve_particle(
+    particle: Option<&ManifestParticle>,
+    is_3d: bool,
+    invalid: &impl Fn(String) -> Error,
+) -> Result<ParticleSpec> {
+    let particle = particle
+        .ok_or_else(|| invalid("a particle case requires the [particle] table".to_string()))?;
+    if particle.width == 0 || particle.height == 0 {
+        return Err(invalid(
+            "particle width and height must be greater than zero".to_string(),
+        ));
+    }
+    let depth = match (is_3d, particle.depth) {
+        (true, Some(depth)) => {
+            if depth == 0 {
+                return Err(invalid(
+                    "particle depth must be greater than zero".to_string(),
+                ));
+            }
+            Some(depth)
+        }
+        (true, None) => {
+            return Err(invalid(
+                "a `particle-3d` case requires particle.depth".to_string(),
+            ));
+        }
+        (false, Some(_)) => {
+            return Err(invalid(
+                "a `particle-2d` case declares no particle.depth (it is a planar field)"
+                    .to_string(),
+            ));
+        }
+        (false, None) => None,
+    };
+    if particle.duration_ms == 0 {
+        return Err(invalid(
+            "particle.duration_ms must be greater than zero".to_string(),
+        ));
+    }
+    if !(particle.fps.is_finite() && particle.fps > 0.0) {
+        return Err(invalid(
+            "particle.fps must be greater than zero".to_string(),
+        ));
+    }
+    test_cabinet_model_core::PreviewBackground::parse(&particle.background).map_err(|err| {
+        invalid(format!(
+            "particle background `{}`: {err}",
+            particle.background
+        ))
+    })?;
+    Ok(ParticleSpec {
+        width: particle.width,
+        height: particle.height,
+        depth,
+        duration_ms: particle.duration_ms,
+        fps: particle.fps,
+        looping: particle.r#loop,
+        background: particle.background.clone(),
+    })
+}
+
+/// The cap on an audio clip's rendered length, in milliseconds (matching the
+/// `[audio]` contract).
+const AUDIO_MAX_DURATION_MS: u32 = 5000;
+
+/// Resolve and validate an audio case's required `[audio]` table into an
+/// [`AudioSpec`]. `sample_rate` must be positive; `channels` must be `mono` or
+/// `stereo`; `max_duration_ms` must be positive and at most 5000. A `sfx-sample`
+/// case requires `sample_pack` (and no `instrument_bank`); a `music` case requires
+/// `instrument_bank` (and no `sample_pack`); a `sfx-synth` case names neither.
+/// `invalid` is the resolver's error constructor.
+fn resolve_audio(
+    audio: Option<&ManifestAudio>,
+    kind: AssetKind,
+    invalid: &impl Fn(String) -> Error,
+) -> Result<AudioSpec> {
+    let audio =
+        audio.ok_or_else(|| invalid("an audio case requires the [audio] table".to_string()))?;
+    if audio.sample_rate == 0 {
+        return Err(invalid(
+            "audio.sample_rate must be greater than zero".to_string(),
+        ));
+    }
+    if audio.channels != "mono" && audio.channels != "stereo" {
+        return Err(invalid(format!(
+            "audio.channels `{}` must be `mono` or `stereo`",
+            audio.channels
+        )));
+    }
+    if audio.max_duration_ms == 0 || audio.max_duration_ms > AUDIO_MAX_DURATION_MS {
+        return Err(invalid(format!(
+            "audio.max_duration_ms ({}) must be greater than zero and at most {AUDIO_MAX_DURATION_MS}",
+            audio.max_duration_ms
+        )));
+    }
+    // Each audio kind draws from a different palette: `sfx-sample` mixes over a baked
+    // sample pack, `music` plays a baked instrument bank, and `sfx-synth`
+    // synthesizes from oscillators alone. Require exactly the palette the kind uses
+    // and reject the other so a mistyped `[audio]` is caught here.
+    match kind {
+        AssetKind::SfxSample => {
+            if audio.sample_pack.is_none() {
+                return Err(invalid(
+                    "a `sfx-sample` case requires audio.sample_pack".to_string(),
+                ));
+            }
+            if audio.instrument_bank.is_some() {
+                return Err(invalid(
+                    "audio.instrument_bank is only valid for a `music` case".to_string(),
+                ));
+            }
+        }
+        AssetKind::Music => {
+            if audio.instrument_bank.is_none() {
+                return Err(invalid(
+                    "a `music` case requires audio.instrument_bank".to_string(),
+                ));
+            }
+            if audio.sample_pack.is_some() {
+                return Err(invalid(
+                    "audio.sample_pack is only valid for a `sfx-sample` case".to_string(),
+                ));
+            }
+        }
+        // `sfx-synth` synthesizes from oscillators alone.
+        _ => {
+            if audio.sample_pack.is_some() || audio.instrument_bank.is_some() {
+                return Err(invalid(
+                    "a `sfx-synth` case names neither audio.sample_pack nor audio.instrument_bank"
+                        .to_string(),
+                ));
+            }
+        }
+    }
+    Ok(AudioSpec {
+        sample_rate: audio.sample_rate,
+        channels: audio.channels.clone(),
+        max_duration_ms: audio.max_duration_ms,
+        sample_pack: audio.sample_pack.clone(),
+        instrument_bank: audio.instrument_bank.clone(),
     })
 }
 

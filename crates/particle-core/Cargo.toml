@@ -1,0 +1,39 @@
+[package]
+name = "test-cabinet-particle-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The shared particle library behind `particle-2d` and `particle-3d`: the authored
+# system model (emitters, forces, per-particle curves, sub-emitters), the live
+# particle simulator, and the F-curve reuse from `test-cabinet-model-core`. See
+# `apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md`.
+[lib]
+name = "test_cabinet_particle_core"
+path = "src/lib.rs"
+
+[features]
+# `cli` pulls in clap (the value enums the authoring subcommands parse), serde_json
+# (the emitted `system.json`), and the shared mesh preview renderer (the 3D binary
+# billboards through `model-core`'s wgpu+Mesa renderer). A `default-features = false`
+# consumer (e.g. `crates/core`) links only the pure system model + simulator.
+default = ["cli"]
+cli = ["dep:clap", "dep:serde_json", "dep:gif", "test-cabinet-model-core/cli"]
+
+[dependencies]
+serde = { workspace = true }
+# PNG encoder for the preview frames the 2D raster path composites, and the decoder
+# that reads the 3D wgpu preview PNGs back to RGBA so they can be packed into the GIF.
+png = { workspace = true }
+clap = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+# The GIF encoder that packs the simulated preview frames into `effect.gif`.
+gif = { workspace = true, optional = true }
+# The F-curve model (size/opacity curves) and the shared wgpu+Mesa renderer the 3D
+# binary billboards through. Linked without default features so a
+# `default-features = false` consumer never pulls in the renderer stack.
+test-cabinet-model-core = { path = "../model-core", default-features = false }
+
+[lints]
+workspace = true

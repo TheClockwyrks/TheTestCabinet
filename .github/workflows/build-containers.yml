@@ -58,6 +58,27 @@ on:
       - "containers/**"
       - "crates/draw/**"
       - "crates/voxel/**"
+      - "crates/voxel-anim/**"
+      - "crates/voxel-mesh/**"
+      - "crates/model-core/**"
+      - "crates/mc/**"
+      - "crates/mc-anim/**"
+      - "crates/sn/**"
+      - "crates/sn-anim/**"
+      - "crates/dc/**"
+      - "crates/dc-anim/**"
+      - "crates/paint/**"
+      - "crates/model-skin/**"
+      - "crates/mc-skin/**"
+      - "crates/sn-skin/**"
+      - "crates/dc-skin/**"
+      - "crates/particle-core/**"
+      - "crates/particle-2d/**"
+      - "crates/particle-3d/**"
+      - "crates/audio-core/**"
+      - "crates/sfx-synth/**"
+      - "crates/sfx-sample/**"
+      - "crates/music/**"
       - "crates/foray-core/**"
       - "crates/foray-controller-sdk/**"
       - "crates/foray-cli/**"
@@ -156,7 +177,7 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          for name in base sprite sprite-sheet voxel voxel-animation adversarial performance; do
+          for name in base sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned particle-2d particle-3d sfx-synth sfx-sample music adversarial performance; do
             repo="$registry/test-cabinet-$name"
             echo "==> assembling $repo:latest + $repo:$GIT_SHA from :latest-amd64 + :latest-arm64"
             docker buildx imagetools create \

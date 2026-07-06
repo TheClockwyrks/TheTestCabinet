@@ -119,6 +119,10 @@ fn sample_record() -> RunRecord {
             adversarial: None,
             performance: None,
             voxel: None,
+            ui: None,
+            material: None,
+            particle: None,
+            audio: None,
         },
         links: RunLinks::default(),
         status: RunStatus {

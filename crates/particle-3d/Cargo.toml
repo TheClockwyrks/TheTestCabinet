@@ -1,0 +1,22 @@
+[package]
+name = "test-cabinet-particle-3d"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `particle-3d` binary: authoring a volumetric particle effect (`asset_kind =
+# "particle-3d"`). A thin CLI over `test-cabinet-particle-core` (the shared system
+# model and simulator); it billboards its preview through `model-core`'s wgpu+Mesa
+# renderer. The planar sibling is `particle-2d`. See
+# `apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md`.
+[[bin]]
+name = "particle-3d"
+path = "src/main.rs"
+
+[dependencies]
+test-cabinet-particle-core = { path = "../particle-core" }
+clap = { workspace = true }
+
+[lints]
+workspace = true

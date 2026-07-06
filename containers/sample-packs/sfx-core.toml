@@ -1,0 +1,71 @@
+# EXAMPLE sample pack — sfx-core
+#
+# A small, general-purpose game-SFX sample library for the `sfx-sample` tool to layer
+# and process over. This file is the COMMITTED manifest; the audio itself is NOT in
+# this repo (see `containers/README.md` and the audio-binaries doc). The pack is built
+# from this manifest with:
+#
+#   node scripts/build-sample-pack.mjs sfx-core
+#
+# which fetches each `url`, verifies its `sha256`, normalizes it, and prints the
+# content-addressed digest the `sfx-sample` image pins.
+#
+# ⚠️  EXAMPLE / PLACEHOLDER: the `url`s and `sha256`s below are placeholders to be
+# replaced with real CC0 / permissively-licensed sources (e.g. curated freesound.org
+# CC0 clips, OpenGameArt CC0 packs, or archive.org public-domain audio) and their true
+# content hashes before a real build. `--check` parses this file without fetching; a
+# real build will (correctly) fail sha256/fetch on these placeholders.
+
+name = "sfx-core"
+version = "0.1.0"
+kind = "sample-pack"
+
+# How every source is normalized into the baked pack. sfx layers are mono so they place
+# and pan cleanly in the mixer.
+[normalize]
+sample_rate = 44100
+channels = 1
+loudness_lufs = -23.0
+true_peak_dbfs = -1.0
+trim_silence = true
+max_duration_ms = 5000
+
+[[sample]]
+name = "impact_wood_heavy"
+tags = ["impact", "wood", "hit"]
+description = "A heavy, dull wooden impact — a crate dropping or a club landing."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/impact_wood_heavy.wav"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[[sample]]
+name = "explosion_debris"
+tags = ["explosion", "debris", "impact"]
+description = "A gritty explosion tail with scattering metal-and-stone debris."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/explosion_debris.wav"
+sha256 = "1111111111111111111111111111111111111111111111111111111111111111"
+
+[[sample]]
+name = "footstep_gravel"
+tags = ["footstep", "gravel", "movement"]
+description = "A single boot step crunching on loose gravel."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/footstep_gravel.wav"
+sha256 = "2222222222222222222222222222222222222222222222222222222222222222"
+
+[[sample]]
+name = "mechanism_ratchet"
+tags = ["mechanical", "ratchet", "reload"]
+description = "A short metallic ratchet click — a bolt, lever, or reload mechanism."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/mechanism_ratchet.wav"
+sha256 = "3333333333333333333333333333333333333333333333333333333333333333"
+
+[[sample]]
+name = "whoosh_swing"
+tags = ["whoosh", "movement", "melee"]
+description = "A fast air whoosh for a melee swing or a passing projectile."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/whoosh_swing.wav"
+sha256 = "4444444444444444444444444444444444444444444444444444444444444444"

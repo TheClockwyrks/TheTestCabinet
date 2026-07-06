@@ -42,6 +42,10 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         sheet: None,
         voxel: None,
         model: None,
+        ui: None,
+        material: None,
+        particle: None,
+        audio: None,
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),

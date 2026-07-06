@@ -15,6 +15,18 @@ members = [
 	"crates/sn-anim",
 	"crates/dc",
 	"crates/dc-anim",
+	"crates/paint",
+	"crates/model-skin",
+	"crates/mc-skin",
+	"crates/sn-skin",
+	"crates/dc-skin",
+	"crates/particle-core",
+	"crates/particle-2d",
+	"crates/particle-3d",
+	"crates/audio-core",
+	"crates/sfx-synth",
+	"crates/sfx-sample",
+	"crates/music",
 	"crates/foray-core",
 	"crates/foray-host",
 	"crates/foray-cli",
@@ -143,6 +155,13 @@ tempfile = "3"
 # `png` crate is a small, pure-Rust decoder/encoder with no system dependencies,
 # keeping the workspace buildable on minimal hosts.
 png = "0.17"
+# GIF encoding for the particle binaries' animated preview (the packed effect.gif
+# the reviewer plays). The in-repo animation GIF export is TypeScript-only
+# (`packages/ui`'s `gifenc`), so the Rust `particle-core` render path packs its
+# simulated preview frames with this pure-Rust encoder (LZW via `weezl`, palette
+# quantization via `color_quant`) — no system dependency, matching the `png` stance.
+# Only the particle binaries pull it in, behind `particle-core`'s `cli` feature.
+gif = "0.14"
 # The headless mesh preview renderer (`test-cabinet-model-core`'s `render` module,
 # behind its `cli` feature). `wgpu` targets Mesa lavapipe (software Vulkan) to draw
 # offscreen with no GPU or window; `glam` builds the camera matrices; `bytemuck`

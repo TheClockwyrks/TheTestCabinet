@@ -1,0 +1,24 @@
+[package]
+name = "test-cabinet-dc-skin"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `dc-skin` binary: the Dual Contouring skinned-character tool (high-fidelity,
+# sharp-feature surface character). It pins the dual-contouring algorithm and delegates
+# the whole command surface to `test-cabinet-model-skin` (the shared skinning CLI — the
+# skeleton binding, skin weighting, and skinned-`.glb` encode). The Marching Cubes /
+# Surface Nets siblings are `mc-skin` / `sn-skin`. See
+# `apps/docs/src/content/docs/testing/asset-generation/skinned-binaries.md`.
+[[bin]]
+name = "dc-skin"
+path = "src/main.rs"
+
+[dependencies]
+# The shared skinning library, with its default `cli` feature (the whole command
+# surface and the renderer stack).
+test-cabinet-model-skin = { path = "../model-skin" }
+
+[lints]
+workspace = true

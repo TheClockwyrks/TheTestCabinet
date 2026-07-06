@@ -22,6 +22,7 @@
     "@observablehq/plot": "^0.6.16",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "@test-cabinet/particle-runtime": "*",
     "@test-cabinet/run-record": "*",
     "@test-cabinet/voxel-runtime": "*",
     "gifenc": "^1.0.3",

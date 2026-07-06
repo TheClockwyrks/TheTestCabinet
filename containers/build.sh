@@ -236,6 +236,16 @@ build_asset_image sn
 build_asset_image sn-animation
 build_asset_image dc
 build_asset_image dc-animation
+build_asset_image ui
+build_asset_image material
+build_asset_image mc-skinned
+build_asset_image sn-skinned
+build_asset_image dc-skinned
+build_asset_image particle-2d
+build_asset_image particle-3d
+build_asset_image sfx-synth
+build_asset_image sfx-sample
+build_asset_image music
 build_adversarial
 build_performance
 echo "==> done"

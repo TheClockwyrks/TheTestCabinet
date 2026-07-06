@@ -1,0 +1,75 @@
+# EXAMPLE instrument bank — gm-lite
+#
+# A small, general-MIDI-flavoured instrument bank for the `music` sequencer to play:
+# one representative one-shot per instrument, which the renderer pitch-shifts across a
+# track's notes. This file is the COMMITTED manifest; the audio itself is NOT in this
+# repo (see `containers/README.md` and the audio-binaries doc). The bank is built from
+# this manifest with:
+#
+#   node scripts/build-sample-pack.mjs gm-lite
+#
+# which fetches each `url`, verifies its `sha256`, normalizes it, and prints the
+# content-addressed digest the `music` image pins.
+#
+# Instrument entries use [[instrument]] (the loader treats it identically to [[sample]])
+# so the manifest reads naturally for a bank. Each `name` is the instrument name a
+# `music` track selects with `define-track --instrument <name>`.
+#
+# ⚠️  EXAMPLE / PLACEHOLDER: the `url`s and `sha256`s below are placeholders to be
+# replaced with real CC0 / permissively-licensed instrument samples (e.g. CC0 samples
+# from freesound.org or a public-domain soundfont's rendered one-shots) and their true
+# content hashes before a real build. `--check` parses this file without fetching; a
+# real build will (correctly) fail sha256/fetch on these placeholders.
+
+name = "gm-lite"
+version = "0.1.0"
+kind = "instrument-bank"
+
+# Instrument one-shots are baked stereo at full rate; the sequencer resamples per note.
+[normalize]
+sample_rate = 44100
+channels = 2
+loudness_lufs = -20.0
+true_peak_dbfs = -1.0
+trim_silence = true
+max_duration_ms = 5000
+
+[[instrument]]
+name = "grand_piano"
+tags = ["keys", "piano", "melodic"]
+description = "A single sustained grand-piano note (C4), the bank's reference pitch."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/grand_piano_c4.wav"
+sha256 = "5555555555555555555555555555555555555555555555555555555555555555"
+
+[[instrument]]
+name = "string_ensemble"
+tags = ["strings", "pad", "melodic"]
+description = "A warm bowed string-ensemble note (C4) with a slow attack."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/string_ensemble_c4.wav"
+sha256 = "6666666666666666666666666666666666666666666666666666666666666666"
+
+[[instrument]]
+name = "brass_section"
+tags = ["brass", "lead", "melodic"]
+description = "A bright brass-section note (C4) for stingers and fanfares."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/brass_section_c4.wav"
+sha256 = "7777777777777777777777777777777777777777777777777777777777777777"
+
+[[instrument]]
+name = "drum_kick"
+tags = ["drum", "percussion", "kick"]
+description = "A tight acoustic kick-drum one-shot for the percussion track."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/drum_kick.wav"
+sha256 = "8888888888888888888888888888888888888888888888888888888888888888"
+
+[[instrument]]
+name = "drum_snare"
+tags = ["drum", "percussion", "snare"]
+description = "A crisp acoustic snare-drum one-shot for the percussion track."
+license = "CC0-1.0"
+url = "https://example.invalid/cc0/drum_snare.wav"
+sha256 = "9999999999999999999999999999999999999999999999999999999999999999"

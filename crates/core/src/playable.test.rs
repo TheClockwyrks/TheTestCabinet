@@ -144,6 +144,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
             animations: vec![],
         }),
         rig: None,
+        skinned: false,
         detail: None,
     };
     let dir = run_dir_with_validation(
@@ -190,6 +191,7 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
         }],
         model: None,
         rig: None,
+        skinned: false,
         detail: None,
     };
     let dir = run_dir_with_validation(

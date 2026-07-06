@@ -1,0 +1,59 @@
+[package]
+name = "test-cabinet-model-skin"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The shared skinning library behind the skinned-character binaries (`mc-skin`,
+# `sn-skin`, `dc-skin`): the model-invented skeleton, the automatic bone-heat skin
+# weighting, the linear-blend deform, and the skinned-`.glb` (glTF 2.0 with
+# JOINTS_0/WEIGHTS_0 + a glTF skin) encode. It reuses almost the entire meshed-
+# animation stack — the whole-body signed-distance `Field`, the MC/SN/DC extraction,
+# and the QEM simplify from `test-cabinet-voxel-mesh`, and the rig/animation model,
+# the F-curve sampler + rig poser, color, config, record/preview plumbing, and the
+# shared wgpu+Mesa renderer from `test-cabinet-model-core` — and adds only the skinning
+# layer on top. The three binaries each pin one `Algorithm`; the CLI surface lives here
+# so they stay thin. See
+# `apps/docs/src/content/docs/testing/asset-generation/skinned-binaries.md`.
+[lib]
+name = "test_cabinet_model_skin"
+path = "src/lib.rs"
+
+[features]
+# `cli` pulls in `clap` (the shared subcommand surface), `glam` (the linear-blend
+# skinning math), and `serde_json` (rig.json / the glb JSON chunk), and re-enables the
+# `cli` features of the domain crates (the field ops, the config/record plumbing, the
+# rig poser, and the mesh preview renderer) the binaries need. It is on by default for
+# the binaries; the pure skeleton/rig types stay available with `default-features =
+# false`.
+default = ["cli"]
+cli = [
+    "dep:clap",
+    "dep:glam",
+    "dep:serde_json",
+    "test-cabinet-model-core/cli",
+    "test-cabinet-voxel-mesh/cli",
+]
+
+[dependencies]
+# The rig/animation model, the F-curve sampler + rig poser, color, config, record, and
+# the shared mesh renderer. Linked without default features so a `default-features =
+# false` consumer never pulls in wgpu; the `cli` feature re-enables it.
+test-cabinet-model-core = { path = "../model-core", default-features = false }
+# The signed-distance meshing domain: the `Field`, the shared CSG `FieldOp` vocabulary,
+# the MC/SN/DC meshers, the QEM simplify, and the `.glb` emission helpers.
+test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+# The linear-blend skinning math (bone matrices, inverse-bind, the LBS deform). The
+# same `glam` version `test-cabinet-model-core` poses with, so the `Mat4` its `pose_rig`
+# returns unifies with the matrices this crate builds.
+glam = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

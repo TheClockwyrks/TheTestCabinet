@@ -1,0 +1,42 @@
+[package]
+name = "test-cabinet-audio-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The shared DSP and audio-authoring library behind `sfx-synth`, `sfx-sample`, and
+# `music`: the oscillators/noise/envelopes/filters/FM, the mixer and offline render
+# engine, the (hand-rolled, dependency-light) PCM WAV encoder, the hand-rolled FFT
+# behind the spectrogram, the waveform/spectrogram/piano-roll PNG renderers, the
+# hand-rolled Standard-MIDI-File encoder for `music`, and the shared CLI
+# record/preview/config plumbing (including the seeded noise source). See
+# `apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md`.
+[lib]
+name = "test_cabinet_audio_core"
+path = "src/lib.rs"
+
+[features]
+# `cli` pulls in clap (the value enums the authoring subcommands parse), serde_json
+# (config + op-log I/O), and toml (the baked sample-pack / instrument-bank manifest
+# the library loader reads). A `default-features = false` consumer (e.g. `crates/core`)
+# links only the pure DSP, mixer, encoders, and renderers.
+default = ["cli"]
+cli = ["dep:clap", "dep:serde_json", "dep:toml"]
+
+[dependencies]
+serde = { workspace = true }
+# PNG encoder for the waveform / spectrogram / piano-roll previews. The WAV encoder,
+# the spectrogram FFT, and the MIDI encoder are hand-rolled (see the `wav`, `fft`, and
+# `midi` modules) so the crate stays dependency-light and needs no audio/DSP system
+# packages.
+png = { workspace = true }
+clap = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

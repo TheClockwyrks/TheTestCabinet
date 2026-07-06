@@ -184,6 +184,10 @@ impl Validator for PerformanceValidator {
             proofs: proof_results,
             asset: None,
             voxel: None,
+            ui: None,
+            material: None,
+            particle: None,
+            audio: None,
             adversarial: None,
             performance: Some(result),
         })
@@ -340,6 +344,10 @@ fn failed(detail: &str, proofs: Vec<ProofResult>) -> ValidationSummary {
         proofs,
         asset: None,
         voxel: None,
+        ui: None,
+        material: None,
+        particle: None,
+        audio: None,
         adversarial: None,
         performance: None,
     }
@@ -363,6 +371,10 @@ fn incorrect(
         proofs,
         asset: None,
         voxel: None,
+        ui: None,
+        material: None,
+        particle: None,
+        audio: None,
         adversarial: None,
         performance: Some(PerformanceResult {
             correct: false,
