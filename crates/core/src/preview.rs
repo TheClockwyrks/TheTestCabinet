@@ -52,6 +52,11 @@ const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 /// dimensions, so a header advertising more is dropped rather than allocated.
 const MAX_MESH_BYTES: usize = 32 * 1024 * 1024;
 
+/// A cap on the `system.json` body a particle run appends after its PNG frame — the
+/// authored emitter/force/curve definition the live viewer simulates. Compact
+/// metadata, so a small bound.
+const MAX_SYSTEM_BYTES: usize = 4 * 1024 * 1024;
+
 /// A cap on reading one frame off a connection, so a client that opens a socket
 /// and then stalls cannot tie up the listener.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -89,6 +94,11 @@ pub struct AssetPreview {
     /// (which streams only the PNG).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mesh: Option<test_cabinet_voxel_mesh::Mesh>,
+    /// The frame's current authored `system.json`, for a particle run — so the live
+    /// viewer can **simulate** the effect as it is authored, rather than show only the
+    /// rendered still. `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<serde_json::Value>,
 }
 
 /// Receives [`AssetPreview`]s as the drawing binary streams them during a run.
@@ -201,6 +211,11 @@ struct FrameHeader {
     /// run. `0` (or absent, for a 2D sprite run) means no mesh body follows.
     #[serde(default)]
     mesh_length: usize,
+    /// The number of `system.json` bytes that follow the PNG body, for a particle
+    /// run — the authored system the live viewer simulates. `0`/absent for every
+    /// other kind. A frame carries at most one body (mesh XOR system).
+    #[serde(default)]
+    system_length: usize,
 }
 
 /// Read one framed preview off a connection: a JSON header line, then exactly
@@ -234,6 +249,7 @@ async fn read_frame(stream: TcpStream, token: &str) -> Option<AssetPreview> {
     if header.token != token
         || header.length > MAX_FRAME_BYTES
         || header.mesh_length > MAX_MESH_BYTES
+        || header.system_length > MAX_SYSTEM_BYTES
     {
         return None;
     }
@@ -260,12 +276,24 @@ async fn read_frame(stream: TcpStream, token: &str) -> Option<AssetPreview> {
         None
     };
 
+    // A particle run appends its current `system.json` after the PNG so the live
+    // viewer can simulate the effect (rather than show only the rendered still).
+    // A malformed body drops the system (the PNG preview still stands).
+    let system = if header.system_length > 0 {
+        let mut buf = vec![0u8; header.system_length];
+        reader.read_exact(&mut buf).await.ok()?;
+        serde_json::from_slice::<serde_json::Value>(&buf).ok()
+    } else {
+        None
+    };
+
     Some(AssetPreview {
         frame: header.frame,
         operation_count: header.operation_count,
         operation: header.operation,
         image: base64::engine::general_purpose::STANDARD.encode(&image),
         mesh,
+        system,
     })
 }
 

@@ -12,6 +12,7 @@ import type {
   ControllerRef,
   MatchSummary,
   ModelSpec,
+  NineSlice,
   RunRecord,
   RunSubject,
   TournamentRecord,
@@ -423,88 +424,6 @@ export interface VoxelResultView {
   detail: string | null;
 }
 
-// The `ui`, `material`, `particle`, and `audio` asset families are validated by
-// `crates/core` (see `crates/core/src/validation.rs`) but not yet emitted into the
-// generated `@test-cabinet/run-record` contract, so — exactly as
-// `@test-cabinet/particle-runtime` declares the `system.json` shape locally — their
-// `validation.*` result shapes are declared here, matching the core structs'
-// camelCase serialization. When the contract regenerates to include them these
-// locals should be replaced with the generated types.
-
-/** The fixed nine-slice insets of a UI element (`crate::test_case::NineSlice`). */
-interface NineSliceResult {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-}
-
-/** One element of a `ui` run (`crate::validation::UiElementResult`). */
-interface UiElementResult {
-  name: string;
-  image: string;
-  width: number;
-  height: number;
-  nineSlice?: NineSliceResult;
-  detail: string | null;
-}
-
-/** A `ui` run's validation result (`crate::validation::UiGenResult`). */
-interface UiGenResult {
-  elements: UiElementResult[];
-  detail: string | null;
-}
-
-/** One map channel of a `material` run (`crate::validation::MaterialMapResult`). */
-interface MaterialMapResult {
-  name: string;
-  image: string;
-  colorSpace: string;
-  detail: string | null;
-}
-
-/** A `material` run's validation result (`crate::validation::MaterialGenResult`). */
-interface MaterialGenResult {
-  maps: MaterialMapResult[];
-  size: number;
-  tiling?: number;
-  detail: string | null;
-}
-
-/** A particle run's validation result (`crate::validation::ParticleGenResult`). */
-interface ParticleGenResult {
-  system: string;
-  preview?: string;
-  emitterCount: number;
-  detail: string | null;
-}
-
-/** An audio run's validation result (`crate::validation::AudioGenResult`). */
-interface AudioGenResult {
-  clip: string;
-  midi?: string;
-  preview?: string;
-  sampleRate: number;
-  channels: number;
-  durationMs: number;
-  detail: string | null;
-}
-
-/** The not-yet-generated validation fields, read off `run.validation` by cast. */
-interface RunValidationExt {
-  ui?: UiGenResult;
-  material?: MaterialGenResult;
-  particle?: ParticleGenResult;
-  audio?: AudioGenResult;
-  voxel?: { skinned?: boolean };
-}
-
-/** The not-yet-generated `validation.*` fields for a run, resolved by a single cast
- * kept in one place so the local-contract escape hatch is easy to retire. */
-function validationExt(run: RunRecord): RunValidationExt {
-  return run.validation as unknown as RunValidationExt;
-}
-
 /**
  * A UI element resolved for display: its emitted flattened PNG (reviewed against the
  * brief), decoded dimensions, and any authored nine-slice (whose stretchable region
@@ -520,7 +439,7 @@ export interface UiElementView {
   /** Decoded pixel height. */
   height: number;
   /** The authored nine-slice insets, or null when the element has none. */
-  nineSlice: NineSliceResult | null;
+  nineSlice: NineSlice | null;
   /** Detail about anything that could not be evaluated for this element, or null. */
   detail: string | null;
 }
@@ -811,10 +730,10 @@ export function GalleryDataProvider({
           };
         });
         // A skinned run (`mc-skinned`/`sn-skinned`/`dc-skinned`) carries the marker
-        // in `validation.voxel.skinned` (not yet in the generated contract). It emits
-        // one continuous skinned mesh — the single part's `.glb` — the viewer decodes
-        // and drives by linear-blend skinning rather than posing per-part meshes.
-        const skinned = validationExt(run).voxel?.skinned ?? false;
+        // in `validation.voxel.skinned`. It emits one continuous skinned mesh — the
+        // single part's `.glb` — the viewer decodes and drives by linear-blend
+        // skinning rather than posing per-part meshes.
+        const skinned = voxel.skinned ?? false;
         return {
           // A static model declares neither the required nor the produced rig; an
           // animated one carries both. The produced rig drives the viewer.
@@ -828,7 +747,7 @@ export function GalleryDataProvider({
         };
       },
       uiResultFor(run) {
-        const ui = validationExt(run).ui;
+        const ui = run.validation.ui;
         if (!ui) return null;
         const url = (file: string) =>
           assetMediaUrl ? assetMediaUrl(run.id, file) : null;
@@ -847,7 +766,7 @@ export function GalleryDataProvider({
         return { elements, detail: ui.detail };
       },
       materialResultFor(run) {
-        const material = validationExt(run).material;
+        const material = run.validation.material;
         if (!material) return null;
         const url = (file: string) =>
           assetMediaUrl ? assetMediaUrl(run.id, file) : null;
@@ -871,7 +790,7 @@ export function GalleryDataProvider({
         };
       },
       particleResultFor(run) {
-        const particle = validationExt(run).particle;
+        const particle = run.validation.particle;
         if (!particle) return null;
         const url = (file: string) =>
           assetMediaUrl ? assetMediaUrl(run.id, file) : null;
@@ -883,7 +802,7 @@ export function GalleryDataProvider({
         };
       },
       audioResultFor(run) {
-        const audio = validationExt(run).audio;
+        const audio = run.validation.audio;
         if (!audio) return null;
         const url = (file: string) =>
           assetMediaUrl ? assetMediaUrl(run.id, file) : null;

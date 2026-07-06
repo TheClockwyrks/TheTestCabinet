@@ -1,10 +1,16 @@
-import { useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import { Panel } from "@test-cabinet/ui";
 import type { AssetSheet, ModelSpec } from "@test-cabinet/run-record";
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 import type { AssetPreview } from "../../../../client/types";
 import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
+import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import styles from "./RunDetailPages.module.scss";
+
+// Lazy-loaded so `three`/@react-three land in their own chunk, exactly as the
+// finished-run particle section loads it.
+const ParticleViewer = lazy(() => import("./ParticleViewer"));
 
 // The model's sprites are tiny; scale them up with crisp (nearest-neighbor)
 // sampling over a checkerboard so transparency reads and pixels stay sharp —
@@ -390,6 +396,52 @@ function LiveVoxelView({
 }
 
 /**
+ * The in-progress view of a particle run. The model authors the effect off-screen
+ * and, on each `render`, streams its current `system.json`; here we **simulate it
+ * live** (looping, or one-shot with replay), exactly as the finished-run view does —
+ * rather than showing only the streamed still frame. On a browser without WebGL or
+ * with reduced motion, it falls back to the streamed preview frame so the run stays
+ * watchable.
+ */
+function LiveParticleView({
+  system,
+  fallbackImage,
+}: {
+  system: ParticleSystem;
+  fallbackImage: string | null;
+}) {
+  const enabled = supportsWebGL() && !prefersReducedMotion();
+  const fallback = fallbackImage ? (
+    <img
+      src={dataUrl(fallbackImage)}
+      alt="the effect's current preview frame"
+      style={{ maxWidth: "100%", borderRadius: 4 }}
+    />
+  ) : null;
+  return (
+    <Panel>
+      <h2 className={`${styles.section} ${styles.leadHeading}`}>Live effect</h2>
+      <p className={styles.secondary}>
+        The authored system, simulated live as the model builds it. The recorded
+        action log is the run's authoritative output; this preview just shows
+        progress.
+      </p>
+      {enabled ? (
+        <Suspense fallback={fallback}>
+          <ParticleViewer
+            system={system}
+            blend="additive"
+            label="Live particle effect"
+          />
+        </Suspense>
+      ) : (
+        fallback
+      )}
+    </Panel>
+  );
+}
+
+/**
  * The live drawing view for an in-progress asset-generation run. As the model
  * issues drawing operations, each re-rendered frame is streamed here (out of band
  * from the event feed); this shows the current canvas updating in real time.
@@ -436,6 +488,24 @@ export function LiveAssetView({
   if (isVoxelRun(previews, model)) {
     return (
       <LiveVoxelView previews={previews} activeFrame={activeFrame} model={model} />
+    );
+  }
+
+  // A particle run streams its current `system.json` alongside the preview frame;
+  // when present, simulate the effect live rather than showing the flat still. The
+  // most-recently streamed system wins. (A plain scan, not a hook — the early
+  // returns above rule out a hook here.)
+  let liveSystem: ParticleSystem | null = null;
+  let systemFallbackImage: string | null = null;
+  for (const preview of previews.values()) {
+    if (preview.system) {
+      liveSystem = preview.system as ParticleSystem;
+      systemFallbackImage = preview.image || systemFallbackImage;
+    }
+  }
+  if (liveSystem) {
+    return (
+      <LiveParticleView system={liveSystem} fallbackImage={systemFallbackImage} />
     );
   }
 

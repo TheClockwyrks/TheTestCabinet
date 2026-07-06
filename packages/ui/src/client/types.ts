@@ -312,6 +312,12 @@ export interface AssetPreview {
   // `mesh.json` the 3D viewer renders, so the live view can rebuild the part in 3D
   // and assemble the scene. Absent (null/undefined) for a 2D sprite run.
   mesh?: PartMesh | null;
+  // The frame's current authored `system.json`, for a particle run — so the live
+  // view can simulate the effect as it is authored, rather than show only the
+  // rendered still. Arbitrary JSON on the wire (the receiver validates only that it
+  // parses); the particle viewer treats it as a `ParticleSystem`. Absent for every
+  // other kind.
+  system?: unknown;
 }
 
 // One line of raw harness output, as recorded in a run's `raw.jsonl`. Mirrors
