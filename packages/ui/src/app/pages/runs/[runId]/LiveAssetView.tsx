@@ -1,7 +1,13 @@
 import { Suspense, lazy, useMemo, useState } from "react";
 import { Panel } from "@test-cabinet/ui";
-import type { AssetSheet, ModelSpec } from "@test-cabinet/run-record";
+import type {
+  AnimationSpec,
+  AssetSheet,
+  JointSpec,
+  ModelSpec,
+} from "@test-cabinet/run-record";
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import { parseSkinnedGlb } from "@test-cabinet/voxel-runtime";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 import type { AssetPreview } from "../../../../client/types";
 import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
@@ -9,8 +15,9 @@ import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import styles from "./RunDetailPages.module.scss";
 
 // Lazy-loaded so `three`/@react-three land in their own chunk, exactly as the
-// finished-run particle section loads it.
+// finished-run particle and skinned sections load them.
 const ParticleViewer = lazy(() => import("./ParticleViewer"));
+const SkinnedVoxelViewer = lazy(() => import("./SkinnedVoxelViewer"));
 
 // The model's sprites are tiny; scale them up with crisp (nearest-neighbor)
 // sampling over a checkerboard so transparency reads and pixels stay sharp —
@@ -38,6 +45,14 @@ const SPRITE_THUMB: React.CSSProperties = {
 
 // A base64 PNG (no prefix) as a renderable data URL.
 const dataUrl = (image: string) => `data:image/png;base64,${image}`;
+
+/** Decode a base64 body (no `data:` prefix) into a fresh `ArrayBuffer`. */
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const source = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  // Copy into a fresh, plain-`ArrayBuffer`-backed view: `atob` results type as
+  // `ArrayBufferLike`, but the glb parser wants a concrete `ArrayBuffer`.
+  return new Uint8Array(source).buffer;
+}
 
 /** One slot the case wants the model to fill: a declared frame (for a sprite
  * sheet) or the single sprite. `name` is what the brief asks for in that slot
@@ -395,6 +410,141 @@ function LiveVoxelView({
   );
 }
 
+/** The on-disk `SkinnedRig` a skinned run streams in its `rig.json`: the skeleton as
+ * `bones` (not parts), plus its `joints`/`animations` — both of which already arrive in
+ * the run-record `JointSpec`/`AnimationSpec` wire shapes. */
+interface StreamedRig {
+  bones?: Array<{ name: string; parent?: string; head?: [number, number, number] }>;
+  joints?: JointSpec[];
+  animations?: AnimationSpec[];
+}
+
+/**
+ * Convert a streamed skinned `rig.json` (a `SkinnedRig`) into the {@link ModelSpec} the
+ * {@link SkinnedVoxelViewer} poses. The viewer takes its skeleton from the decoded
+ * mesh's bones and only reads the rig's `joints`/`animations` (both already in
+ * run-record shape on the wire), so this mirrors core's finished-run `rig_to_model_spec`
+ * for the fields that matter — each bone is mapped to a `part` (its head as the pivot)
+ * for completeness. Written here because core's Rust converter has no TS equivalent (the
+ * finished path receives an already-converted `ModelSpec`, but the live rig arrives raw).
+ */
+function skinnedRigToModelSpec(rig: unknown): ModelSpec {
+  const r = (rig ?? {}) as StreamedRig;
+  const parts = (r.bones ?? []).map((bone) => ({
+    name: bone.name,
+    parent: bone.parent,
+    pivot: [
+      Math.round(bone.head?.[0] ?? 0),
+      Math.round(bone.head?.[1] ?? 0),
+      Math.round(bone.head?.[2] ?? 0),
+    ] as [number, number, number],
+  }));
+  return { parts, joints: r.joints ?? [], animations: r.animations ?? [] };
+}
+
+/**
+ * The in-progress view of a **skinned** run (`mc-skin`/`sn-skin`/`dc-skin`). On each
+ * `render` the model streams its whole-body `.glb` (skin intact) alongside its
+ * `rig.json`; here we decode both and **deform** the mesh by linear-blend skinning,
+ * auto-playing the model's idle (or its first animation) so the deformation reads —
+ * exactly as the finished-run view does, rather than showing the undeformed rest mesh.
+ * On a browser without WebGL or with reduced motion, it falls back to the streamed
+ * preview frame so the run stays watchable.
+ */
+function LiveSkinnedView({ preview }: { preview: AssetPreview }) {
+  const enabled = supportsWebGL() && !prefersReducedMotion();
+
+  // Decode the streamed skin-preserving glb and rig once per new frame; a malformed
+  // frame simply falls back to the streamed PNG.
+  const decoded = useMemo(() => {
+    if (!preview.skinnedGlb || !preview.rig) return null;
+    try {
+      const mesh = parseSkinnedGlb(base64ToArrayBuffer(preview.skinnedGlb));
+      return { mesh, rig: skinnedRigToModelSpec(preview.rig) };
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview.skinnedGlb]);
+
+  // Auto-play the idle, else the first animation, so the skin visibly deforms without a
+  // picker (this is a read-only live look).
+  const animation =
+    decoded?.rig.animations?.find((a) => a.autoPlay) ??
+    decoded?.rig.animations?.[0] ??
+    null;
+
+  const fallback = preview.image ? (
+    <img
+      src={dataUrl(preview.image)}
+      alt="the character's current preview frame"
+      style={{ maxWidth: "100%", borderRadius: 4 }}
+    />
+  ) : null;
+
+  return (
+    <Panel>
+      <h2 className={`${styles.section} ${styles.leadHeading}`}>Live model</h2>
+      <p className={styles.secondary}>
+        The character's in-progress mesh, bound to its rig and deformed by linear-blend
+        skinning after each render. The recorded action log is the run's authoritative
+        output; this preview is just a live look at it.
+      </p>
+      {enabled && decoded && decoded.mesh.positions.length > 0 ? (
+        <Suspense fallback={fallback}>
+          <SkinnedVoxelViewer
+            mesh={decoded.mesh}
+            rig={decoded.rig}
+            mode="auto-rotate"
+            animation={animation}
+            height={340}
+            label="Live skinned rig"
+          />
+        </Suspense>
+      ) : (
+        fallback
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * The in-progress view of an audio run. On each `render` the model streams its current
+ * clip `.wav` alongside a waveform/spectrogram PNG (its own preview); here we show the
+ * waveform and offer the clip for playback — without autoplay, so the page never plays
+ * on its own. The recorded action log stays authoritative; this is just a live listen.
+ */
+function LiveAudioView({ preview }: { preview: AssetPreview }) {
+  return (
+    <Panel>
+      <h2 className={`${styles.section} ${styles.leadHeading}`}>Live audio</h2>
+      <p className={styles.secondary}>
+        The clip as the model builds it — its own waveform preview above, the current mix
+        below to play back. The recorded action log is the run's authoritative output;
+        this preview is just a live look at it.
+      </p>
+      {preview.image ? (
+        <img
+          src={dataUrl(preview.image)}
+          alt="the clip's current waveform"
+          style={{ maxWidth: "100%", borderRadius: 4, marginBottom: 12 }}
+        />
+      ) : null}
+      {preview.audio ? (
+        // No autoplay: a data-URL `.wav` the watcher plays on demand.
+        <audio controls src={`data:audio/wav;base64,${preview.audio}`}>
+          Your browser does not support audio playback.
+        </audio>
+      ) : null}
+      <p className={styles.secondary} style={{ marginTop: 8 }}>
+        {preview.operationCount}{" "}
+        {preview.operationCount === 1 ? "operation" : "operations"}
+        {preview.operation ? ` · ${preview.operation}` : ""}
+      </p>
+    </Panel>
+  );
+}
+
 /**
  * The in-progress view of a particle run. The model authors the effect off-screen
  * and, on each `render`, streams its current `system.json`; here we **simulate it
@@ -483,6 +633,19 @@ export function LiveAssetView({
   // Nothing to show for a non-asset run that has streamed no previews.
   if (!sheet && !model && previews.size === 0) return null;
 
+  // A skinned run streams its skin-preserving glb alongside its rig; when present, pose
+  // and deform it live rather than show the undeformed rest mesh or a flat still. Routed
+  // before the generic voxel branch (a skinned case also declares a `model`). The
+  // most-recently streamed frame wins. (A plain scan, not a hook — the early return
+  // above rules out a hook here.)
+  let skinnedPreview: AssetPreview | null = null;
+  for (const preview of previews.values()) {
+    if (preview.skinnedGlb && preview.rig) skinnedPreview = preview;
+  }
+  if (skinnedPreview) {
+    return <LiveSkinnedView preview={skinnedPreview} />;
+  }
+
   // A voxel run (a declared rig, or any streamed voxel geometry) renders its
   // in-progress model in 3D rather than as a flat sprite canvas.
   if (isVoxelRun(previews, model)) {
@@ -507,6 +670,17 @@ export function LiveAssetView({
     return (
       <LiveParticleView system={liveSystem} fallbackImage={systemFallbackImage} />
     );
+  }
+
+  // An audio run streams its clip `.wav` alongside its waveform PNG; when present, offer
+  // it for playback rather than showing the PNG as a flat sprite. The most-recently
+  // streamed frame wins.
+  let audioPreview: AssetPreview | null = null;
+  for (const preview of previews.values()) {
+    if (preview.audio) audioPreview = preview;
+  }
+  if (audioPreview) {
+    return <LiveAudioView preview={audioPreview} />;
   }
 
   const slots = buildSlots(sheet, model, previews, assetLabel);

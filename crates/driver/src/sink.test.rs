@@ -124,6 +124,9 @@ fn preview(frame: u32) -> AssetPreview {
         image: String::new(),
         mesh: None,
         system: None,
+        skinned_glb: None,
+        rig: None,
+        audio: None,
     }
 }
 

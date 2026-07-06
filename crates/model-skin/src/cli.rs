@@ -258,7 +258,12 @@ fn dispatch(algorithm: Algorithm, config_path: &Path, command: Command) -> Resul
                 let count = record::read_actions::<FieldOp>(&config.actions)
                     .map(|ops| ops.len())
                     .unwrap_or(0);
-                record::send_live_preview(
+                // A skinned frame carries the whole-body glb (with its skin intact,
+                // `rendered.live_body`) plus the on-disk `rig.json`, so the live viewer
+                // can deform it rather than show the undeformed rest mesh. A posed
+                // (`--time`) render has no glb; the rig then simply rides along unused.
+                let rig_json = std::fs::read(&config.rig).unwrap_or_default();
+                record::send_live_preview_with_rig(
                     &live.endpoint,
                     &live.token,
                     0,
@@ -266,6 +271,7 @@ fn dispatch(algorithm: Algorithm, config_path: &Path, command: Command) -> Resul
                     count,
                     &rendered.image,
                     &rendered.live_body,
+                    &rig_json,
                 );
             }
             println!("rendered");

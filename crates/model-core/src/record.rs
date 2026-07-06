@@ -81,11 +81,12 @@ pub fn record<Op: Serialize + DeserializeOwned>(
 /// every error here is swallowed — the recorded action log remains the run's
 /// authoritative output regardless of whether a frame reaches a viewer. The wire
 /// form is one JSON header line (`{ token, frame, operation, operationCount,
-/// length, meshLength }`) followed by exactly `length` raw PNG bytes and then
-/// `meshLength` bytes of the live body (the part's `.glb` bytes); the listener
+/// length, meshLength, rigLength }`) followed by exactly `length` raw PNG bytes and
+/// then `meshLength` bytes of the live body (the part's `.glb` bytes); the listener
 /// validates the token before accepting the frame. `frame` carries the part index
 /// (0 for a single static model). The body lets the live viewer rebuild the model in
-/// 3D — a PNG-only viewer simply ignores it.
+/// 3D — a PNG-only viewer simply ignores it. This sender appends no rig
+/// (`rigLength: 0`); a skinned tool uses [`send_live_preview_with_rig`] instead.
 pub fn send_live_preview(
     endpoint: &str,
     token: &str,
@@ -103,6 +104,35 @@ pub fn send_live_preview(
         operation_count,
         image,
         body,
+        &[],
+    );
+}
+
+/// Like [`send_live_preview`], but appends the skinned run's `rig.json` as a second
+/// body (after the glb) so the live viewer can **deform** the skin rather than show
+/// the undeformed rest mesh — the one frame that carries two bodies (glb + rig). Used
+/// only by the skinning binaries; every other voxel tool sends no rig. Best-effort,
+/// exactly like the base sender.
+#[allow(clippy::too_many_arguments)]
+pub fn send_live_preview_with_rig(
+    endpoint: &str,
+    token: &str,
+    frame: u32,
+    operation: &str,
+    operation_count: usize,
+    image: &[u8],
+    body: &[u8],
+    rig: &[u8],
+) {
+    let _ = try_send_live_preview(
+        endpoint,
+        token,
+        frame,
+        operation,
+        operation_count,
+        image,
+        body,
+        rig,
     );
 }
 
@@ -115,6 +145,7 @@ fn try_send_live_preview(
     operation_count: usize,
     image: &[u8],
     body: &[u8],
+    rig: &[u8],
 ) -> std::io::Result<()> {
     use std::io::{Error, ErrorKind, Write};
     use std::net::{TcpStream, ToSocketAddrs};
@@ -129,19 +160,20 @@ fn try_send_live_preview(
         .ok_or_else(|| Error::new(ErrorKind::NotFound, "live endpoint resolved to no address"))?;
     let mut stream = TcpStream::connect_timeout(&addr, TIMEOUT)?;
     stream.set_write_timeout(Some(TIMEOUT))?;
-    let body_bytes = body;
     let mut header = serde_json::to_vec(&serde_json::json!({
         "token": token,
         "frame": frame,
         "operation": operation,
         "operationCount": operation_count,
         "length": image.len(),
-        "meshLength": body_bytes.len(),
+        "meshLength": body.len(),
+        "rigLength": rig.len(),
     }))?;
     header.push(b'\n');
     stream.write_all(&header)?;
     stream.write_all(image)?;
-    stream.write_all(body_bytes)?;
+    stream.write_all(body)?;
+    stream.write_all(rig)?;
     stream.flush()
 }
 
