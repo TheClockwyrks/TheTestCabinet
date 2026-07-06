@@ -1,0 +1,9 @@
+{
+  "name": "thunderhead",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Thunderhead — a real-time combined-arms fleet-command game over a procedurally generated archipelago drowned in a cloud sea: command a fleet of three asymmetric powers and possess any unit, and any station aboard it, to fight it directly. Runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

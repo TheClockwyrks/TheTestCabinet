@@ -20,12 +20,14 @@ use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
 use crate::reference::RenderedReference;
 use crate::test_case::{
-    AnimationSpec, AnimationTrackSpec, AxisSpec, DriveKindSpec, InterpSpec, JointKindSpec,
-    JointSpec, KeyframeSpec, MediaKind, ModelSpec, PartSpec, ProofFile, TestCaseVersion, TestType,
+    AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
+    JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
+    TestCaseVersion, TestType,
 };
 use crate::validation::{
-    AssetFrameResult, AssetGenResult, CheckResult, ProofResult, StepResult, ValidationSummary,
-    Validator, VoxelGenResult, VoxelPartResult,
+    AssetFrameResult, AssetGenResult, AudioGenResult, CheckResult, MaterialGenResult,
+    MaterialMapResult, ParticleGenResult, ProofResult, StepResult, UiElementResult, UiGenResult,
+    ValidationSummary, Validator, VoxelGenResult, VoxelPartResult,
 };
 
 /// Candidate output directories a static build may produce.
@@ -132,6 +134,10 @@ impl Validator for BuildValidator {
             proofs: proof_results,
             asset: None,
             voxel: None,
+            ui: None,
+            material: None,
+            particle: None,
+            audio: None,
             adversarial: None,
             performance: None,
         })
@@ -406,6 +412,10 @@ impl Validator for AssetGenValidator {
                 detail: None,
             }),
             voxel: None,
+            ui: None,
+            material: None,
+            particle: None,
+            audio: None,
             adversarial: None,
             performance: None,
         })
@@ -599,9 +609,13 @@ impl Validator for VoxelGenValidator {
         // `model` target. A missing/unreadable `rig.json` is a recorded gap, not a
         // crash.
         let is_anim = test_case.model.is_some();
+        // A skinned kind is animated (it has a `[model]` rig) but builds ONE
+        // whole-body field → a single mesh/preview/log, not one per part. It still
+        // reads and reconciles `rig.json` below, but its scored plan is single-file.
+        let is_skinned = test_case.asset_kind.is_skinned();
         let mut run_notes: Vec<String> = Vec::new();
         let produced_rig = if is_anim {
-            match read_rig(repo) {
+            match read_rig(repo, is_skinned) {
                 Ok(rig) => Some(rig),
                 Err(detail) => {
                     run_notes.push(detail);
@@ -612,41 +626,54 @@ impl Validator for VoxelGenValidator {
             None
         };
 
-        let plans: Vec<PartPlan> = match produced_rig.as_ref() {
-            // A static model: one implicit `model` target.
-            None if !is_anim => {
-                let mesh_rel = mesh_template.map(PathBuf::from);
-                vec![PartPlan {
-                    name: "model".to_string(),
-                    ops_rel: output.actions.clone(),
-                    preview_rel: tool.preview.clone(),
-                    mesh_client_rel: client_mesh_template.to_string(),
-                    mesh_rel,
-                }]
-            }
-            // An animated model whose rig could not be read: nothing to score (the gap
-            // is already noted); carry on with no parts.
-            None => Vec::new(),
-            // An animated model: one target per part the model actually produced.
-            Some(rig) => rig
-                .parts
-                .iter()
-                .map(|part| {
-                    let mesh_rel = mesh_template
-                        .map(|t| crate::test_case::part_path(Path::new(t), &part.name));
-                    let mesh_client_rel = rel_string(&crate::test_case::part_path(
-                        Path::new(client_mesh_template),
-                        &part.name,
-                    ));
-                    PartPlan {
-                        name: part.name.clone(),
-                        ops_rel: crate::test_case::part_path(&output.actions, &part.name),
-                        preview_rel: crate::test_case::part_path(&tool.preview, &part.name),
-                        mesh_client_rel,
+        let plans: Vec<PartPlan> = if is_skinned {
+            // The skinned single-file exception: one whole-body mesh at `mesh.glb`,
+            // scored like a static model even though the kind is animated.
+            let mesh_rel = mesh_template.map(PathBuf::from);
+            vec![PartPlan {
+                name: "model".to_string(),
+                ops_rel: output.actions.clone(),
+                preview_rel: tool.preview.clone(),
+                mesh_client_rel: client_mesh_template.to_string(),
+                mesh_rel,
+            }]
+        } else {
+            match produced_rig.as_ref() {
+                // A static model: one implicit `model` target.
+                None if !is_anim => {
+                    let mesh_rel = mesh_template.map(PathBuf::from);
+                    vec![PartPlan {
+                        name: "model".to_string(),
+                        ops_rel: output.actions.clone(),
+                        preview_rel: tool.preview.clone(),
+                        mesh_client_rel: client_mesh_template.to_string(),
                         mesh_rel,
-                    }
-                })
-                .collect(),
+                    }]
+                }
+                // An animated model whose rig could not be read: nothing to score (the gap
+                // is already noted); carry on with no parts.
+                None => Vec::new(),
+                // An animated model: one target per part the model actually produced.
+                Some(rig) => rig
+                    .parts
+                    .iter()
+                    .map(|part| {
+                        let mesh_rel = mesh_template
+                            .map(|t| crate::test_case::part_path(Path::new(t), &part.name));
+                        let mesh_client_rel = rel_string(&crate::test_case::part_path(
+                            Path::new(client_mesh_template),
+                            &part.name,
+                        ));
+                        PartPlan {
+                            name: part.name.clone(),
+                            ops_rel: crate::test_case::part_path(&output.actions, &part.name),
+                            preview_rel: crate::test_case::part_path(&tool.preview, &part.name),
+                            mesh_client_rel,
+                            mesh_rel,
+                        }
+                    })
+                    .collect(),
+            }
         };
 
         let mut parts = Vec::with_capacity(plans.len());
@@ -705,8 +732,15 @@ impl Validator for VoxelGenValidator {
                 model: test_case.model.clone(),
                 // The full rig the model actually produced (`rig.json`).
                 rig: produced_rig,
+                // A skinned run deforms one mesh; the marker tells the viewer to skin
+                // rather than pose per-part.
+                skinned: test_case.asset_kind.is_skinned(),
                 detail: (!run_notes.is_empty()).then(|| run_notes.join("; ")),
             }),
+            ui: None,
+            material: None,
+            particle: None,
+            audio: None,
             adversarial: None,
             performance: None,
         })
@@ -914,7 +948,7 @@ fn validate_mesh(mesh: &test_cabinet_voxel_mesh::Mesh) -> std::result::Result<()
 
 /// Read the model-written `rig.json` and convert it into a [`ModelSpec`] superset
 /// (the full produced rig — required parts/joints plus any the model added).
-fn read_rig(repo: &Path) -> std::result::Result<ModelSpec, String> {
+fn read_rig(repo: &Path, is_skinned: bool) -> std::result::Result<ModelSpec, String> {
     let rig_path = repo.join(crate::test_case::VOXEL_RIG_DEST);
     let raw = std::fs::read_to_string(&rig_path).map_err(|err| {
         format!(
@@ -922,29 +956,50 @@ fn read_rig(repo: &Path) -> std::result::Result<ModelSpec, String> {
             crate::test_case::VOXEL_RIG_DEST
         )
     })?;
-    let rig: test_cabinet_voxel::Rig = serde_json::from_str(&raw).map_err(|err| {
+    let invalid = |err: serde_json::Error| {
         format!(
             "`{}` is not a valid rig: {err}",
             crate::test_case::VOXEL_RIG_DEST
         )
-    })?;
-    Ok(rig_to_model_spec(&rig))
+    };
+    // A skinned kind writes a bones-based rig (`SkinnedRig`), not the parts-based rig
+    // every rigid voxel/mesh kind writes, so parse it accordingly — a plain `Rig` parse
+    // would fail on the missing `parts` and lose the produced joints/animations. Both
+    // share the same joint/animation shapes; only the skeleton differs (bones vs parts).
+    if is_skinned {
+        let rig: SkinnedRigDoc = serde_json::from_str(&raw).map_err(invalid)?;
+        Ok(skinned_rig_to_model_spec(&rig))
+    } else {
+        let rig: test_cabinet_voxel::Rig = serde_json::from_str(&raw).map_err(invalid)?;
+        Ok(rig_to_model_spec(&rig))
+    }
 }
 
 /// Convert the voxel binary's on-disk [`Rig`](test_cabinet_voxel::Rig) into the
 /// contract [`ModelSpec`] carried in the run record.
 fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
-    let parts = rig
-        .parts
-        .iter()
-        .map(|part| PartSpec {
-            name: part.name.clone(),
-            parent: part.parent.clone(),
-            pivot: part.pivot,
-        })
-        .collect();
-    let joints = rig
-        .joints
+    ModelSpec {
+        parts: rig.parts.iter().map(part_to_spec).collect(),
+        joints: joints_to_specs(&rig.joints),
+        animations: animations_to_specs(&rig.animations),
+    }
+}
+
+/// Convert one voxel [`Part`](test_cabinet_voxel::Part) into a contract [`PartSpec`].
+fn part_to_spec(part: &test_cabinet_voxel::Part) -> PartSpec {
+    PartSpec {
+        name: part.name.clone(),
+        parent: part.parent.clone(),
+        pivot: part.pivot,
+    }
+}
+
+/// Convert the shared joint list into [`JointSpec`]s. Identical for a rigid rig
+/// (voxel/mesh, whose joints target parts) and a skinned rig (whose joints target
+/// bones): both use the same [`Joint`](test_cabinet_voxel::Joint) shape, and a skinned
+/// joint's target bone rides in the same `part` field.
+fn joints_to_specs(joints: &[test_cabinet_voxel::Joint]) -> Vec<JointSpec> {
+    joints
         .iter()
         .map(|joint| {
             let kind = match joint.kind {
@@ -976,11 +1031,14 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
                 drive,
             }
         })
-        .collect();
-    // The model's animations ride in the produced `rig.json` (the required
-    // declarations, seeded with empty tracks, plus the F-curves the model authored).
-    let animations = rig
-        .animations
+        .collect()
+}
+
+/// Convert the shared animation list into [`AnimationSpec`]s. Identical for a rigid and
+/// a skinned rig. The model's animations ride in the produced `rig.json` (the required
+/// declarations, seeded with empty tracks, plus the F-curves the model authored).
+fn animations_to_specs(animations: &[test_cabinet_voxel::Animation]) -> Vec<AnimationSpec> {
+    animations
         .iter()
         .map(|animation| AnimationSpec {
             name: animation.name.clone(),
@@ -997,11 +1055,57 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
                 })
                 .collect(),
         })
+        .collect()
+}
+
+/// The model-written **skinned** `rig.json` (`mc-skin`/`sn-skin`/`dc-skin`): a minimal
+/// deserialize view, since `core` does not depend on the skinning crate. Its skeleton is
+/// `bones` rather than `parts`; its `joints` and `animations` are the same shapes a rigid
+/// rig uses, so they reuse the shared converters. Only the fields the run record needs are
+/// read — the skinning weights live in the mesh, not here.
+#[derive(serde::Deserialize)]
+struct SkinnedRigDoc {
+    #[serde(default)]
+    bones: Vec<SkinnedBoneDoc>,
+    #[serde(default)]
+    joints: Vec<test_cabinet_voxel::Joint>,
+    #[serde(default)]
+    animations: Vec<test_cabinet_voxel::Animation>,
+}
+
+/// One bone of a [`SkinnedRigDoc`]: its name, parent, and head (which becomes the mapped
+/// part's pivot). The bone's tail/roll/weights are irrelevant to the run-record rig.
+#[derive(serde::Deserialize)]
+struct SkinnedBoneDoc {
+    name: String,
+    #[serde(default)]
+    parent: Option<String>,
+    head: [f64; 3],
+}
+
+/// Convert a skinned `rig.json` into the contract [`ModelSpec`] the skinned result view
+/// poses. Each bone maps to a part, its head rounded to the integer grid parts use as the
+/// pivot; the skinned viewer takes its actual skeleton from the mesh, so these parts are
+/// cosmetic, but they keep the spec complete and named. Joints and animations convert
+/// exactly as a rigid rig's.
+fn skinned_rig_to_model_spec(rig: &SkinnedRigDoc) -> ModelSpec {
+    let parts = rig
+        .bones
+        .iter()
+        .map(|bone| PartSpec {
+            name: bone.name.clone(),
+            parent: bone.parent.clone(),
+            pivot: [
+                bone.head[0].round() as i64,
+                bone.head[1].round() as i64,
+                bone.head[2].round() as i64,
+            ],
+        })
         .collect();
     ModelSpec {
         parts,
-        joints,
-        animations,
+        joints: joints_to_specs(&rig.joints),
+        animations: animations_to_specs(&rig.animations),
     }
 }
 
@@ -1055,6 +1159,725 @@ fn reconcile_rig(required: &ModelSpec, produced: &ModelSpec, notes: &mut Vec<Str
     }
 }
 
+// ===========================================================================
+// Painted (ui / material), particle, and audio validators.
+//
+// Like the voxel family, none of these is regenerated: the authoritative output is
+// the data the binary emits (flattened PNGs + `ui.json` / per-map PNGs +
+// `material.json` / `system.json` / `clip.wav`), which the validator DECODES and
+// well-formedness-checks. It never replays the operation log.
+// ===========================================================================
+
+/// A validator for the two 2D **painted** kinds (`ui`/`material`). It decodes the
+/// emitted PNG(s) and parses the auto-emitted `ui.json`/`material.json`; there is no
+/// regeneration and no cheat check.
+#[derive(Debug, Clone, Default)]
+pub struct PaintGenValidator;
+
+impl PaintGenValidator {
+    /// A new painted-asset validator. It keeps no state.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Validator for PaintGenValidator {
+    fn validate(
+        &self,
+        test_case: &TestCaseVersion,
+        artifacts: &ArtifactCollection,
+        _references: &[RenderedReference],
+        proofs: &[ProofFile],
+    ) -> Result<ValidationSummary> {
+        let repo = &artifacts.repo_path;
+        let proof_results = proof_results(proofs, repo);
+
+        let Some(tool) = test_case.tool.as_ref() else {
+            return Ok(failed_load(
+                "painted validation requires [tool]",
+                None,
+                None,
+                proof_results,
+            ));
+        };
+
+        let mut summary = ValidationSummary {
+            loaded: true,
+            detail: None,
+            install: None,
+            build: None,
+            checks: Vec::new(),
+            proofs: proof_results,
+            asset: None,
+            voxel: None,
+            ui: None,
+            material: None,
+            particle: None,
+            audio: None,
+            adversarial: None,
+            performance: None,
+        };
+
+        match test_case.asset_kind {
+            AssetKind::Ui => {
+                let Some(canvas) = test_case.canvas.as_ref() else {
+                    return Ok(failed_load(
+                        "a `ui` case requires [canvas]",
+                        None,
+                        None,
+                        summary.proofs,
+                    ));
+                };
+                let ui_spec = test_case.ui.as_ref();
+                summary.ui = Some(validate_ui(repo, canvas, tool, ui_spec));
+            }
+            AssetKind::Material => {
+                let Some(material) = test_case.material.as_ref() else {
+                    return Ok(failed_load(
+                        "a `material` case requires [material]",
+                        None,
+                        None,
+                        summary.proofs,
+                    ));
+                };
+                summary.material = Some(validate_material(repo, material, tool));
+            }
+            _ => {
+                return Ok(failed_load(
+                    "painted validation requires a `ui` or `material` case",
+                    None,
+                    None,
+                    summary.proofs,
+                ));
+            }
+        }
+        Ok(summary)
+    }
+}
+
+/// A validator for the two **particle** kinds (`particle-2d`/`particle-3d`): parse
+/// the emitted `system.json`, confirm it is well-formed and non-empty (it actually
+/// emits particles), and take the rendered preview as the reviewer sees it.
+#[derive(Debug, Clone, Default)]
+pub struct ParticleGenValidator;
+
+impl ParticleGenValidator {
+    /// A new particle validator. It keeps no state.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Validator for ParticleGenValidator {
+    fn validate(
+        &self,
+        test_case: &TestCaseVersion,
+        artifacts: &ArtifactCollection,
+        _references: &[RenderedReference],
+        proofs: &[ProofFile],
+    ) -> Result<ValidationSummary> {
+        let repo = &artifacts.repo_path;
+        let proof_results = proof_results(proofs, repo);
+        let Some(tool) = test_case.tool.as_ref() else {
+            return Ok(failed_load(
+                "particle validation requires [tool]",
+                None,
+                None,
+                proof_results,
+            ));
+        };
+        let particle = validate_particle(repo, tool);
+        Ok(ValidationSummary {
+            loaded: true,
+            detail: None,
+            install: None,
+            build: None,
+            checks: Vec::new(),
+            proofs: proof_results,
+            asset: None,
+            voxel: None,
+            ui: None,
+            material: None,
+            particle: Some(particle),
+            audio: None,
+            adversarial: None,
+            performance: None,
+        })
+    }
+}
+
+/// A validator for the three **audio** kinds (`sfx-synth`/`sfx-sample`/`music`):
+/// decode the emitted PCM `clip.wav`, confirm it is well-formed, within the
+/// `[audio]` format, no longer than the cap, and not silent.
+#[derive(Debug, Clone, Default)]
+pub struct AudioGenValidator;
+
+impl AudioGenValidator {
+    /// A new audio validator. It keeps no state.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Validator for AudioGenValidator {
+    fn validate(
+        &self,
+        test_case: &TestCaseVersion,
+        artifacts: &ArtifactCollection,
+        _references: &[RenderedReference],
+        proofs: &[ProofFile],
+    ) -> Result<ValidationSummary> {
+        let repo = &artifacts.repo_path;
+        let proof_results = proof_results(proofs, repo);
+        let (Some(audio), Some(tool)) = (test_case.audio.as_ref(), test_case.tool.as_ref()) else {
+            return Ok(failed_load(
+                "audio validation requires [audio] and [tool]",
+                None,
+                None,
+                proof_results,
+            ));
+        };
+        let result = validate_audio(repo, audio, test_case.asset_kind, tool);
+        Ok(ValidationSummary {
+            loaded: true,
+            detail: None,
+            install: None,
+            build: None,
+            checks: Vec::new(),
+            proofs: proof_results,
+            asset: None,
+            voxel: None,
+            ui: None,
+            material: None,
+            particle: None,
+            audio: Some(result),
+            adversarial: None,
+            performance: None,
+        })
+    }
+}
+
+// --- ui.json / material.json / system.json parse structs -------------------
+
+/// Core's parse-struct for the emitted `ui.json` (element sizes, nine-slice insets,
+/// atlas rectangles). Unknown fields are ignored so the binary may carry more than
+/// core reads.
+#[derive(serde::Deserialize)]
+struct UiJson {
+    #[serde(default)]
+    elements: Vec<UiJsonElement>,
+    #[serde(default)]
+    atlas: Vec<UiJsonAtlasRect>,
+}
+
+#[derive(serde::Deserialize)]
+struct UiJsonElement {
+    name: String,
+    #[serde(default)]
+    nine_slice: Option<UiJsonNineSlice>,
+}
+
+#[derive(serde::Deserialize)]
+struct UiJsonNineSlice {
+    left: u32,
+    right: u32,
+    top: u32,
+    bottom: u32,
+}
+
+#[derive(serde::Deserialize)]
+struct UiJsonAtlasRect {
+    width: u32,
+    height: u32,
+}
+
+/// Core's parse-struct for the emitted `material.json` (per-map paths + color space,
+/// tiling scale, size). Unknown fields are ignored.
+#[derive(serde::Deserialize)]
+struct MaterialJson {
+    #[serde(default)]
+    maps: Vec<MaterialJsonMap>,
+    #[serde(default)]
+    tiling: Option<f64>,
+}
+
+#[derive(serde::Deserialize)]
+struct MaterialJsonMap {
+    name: String,
+    #[serde(default)]
+    color_space: Option<String>,
+}
+
+/// Core's parse-struct for the emitted `system.json` (the authored particle system).
+/// Only the fields the non-empty check needs are read; the rest is ignored.
+#[derive(serde::Deserialize)]
+struct SystemJson {
+    #[serde(default)]
+    emitters: Vec<SystemJsonEmitter>,
+}
+
+#[derive(serde::Deserialize)]
+struct SystemJsonEmitter {
+    /// The emission source, an internally-tagged `{"mode":"rate","rate":…}` or
+    /// `{"mode":"burst","count":…,"atMs":…}` object (the shape `particle-core` and
+    /// `@test-cabinet/particle-runtime` emit). Absent → the emitter declares no source.
+    #[serde(default)]
+    emission: Option<SystemJsonEmission>,
+}
+
+/// The emitter's emission source. `mode` is ignored; `rate`/`count` are read directly
+/// so a positive continuous rate or a positive burst count both count as emitting.
+#[derive(serde::Deserialize)]
+struct SystemJsonEmission {
+    /// Continuous emission rate (particles/second), present for `mode:"rate"`.
+    #[serde(default)]
+    rate: Option<f64>,
+    /// One-shot burst count, present for `mode:"burst"`.
+    #[serde(default)]
+    count: Option<u32>,
+}
+
+impl SystemJsonEmitter {
+    /// Whether this emitter actually emits particles (a positive rate or burst count),
+    /// rather than declaring an emitter that produces nothing.
+    fn emits(&self) -> bool {
+        self.emission.as_ref().is_some_and(|e| {
+            e.rate.is_some_and(|r| r > 0.0) || e.count.is_some_and(|c| c > 0)
+        })
+    }
+}
+
+/// Decode and well-formedness-check a `ui` run: one element for a single-image case,
+/// one per declared element for a kit. Each element's emitted PNG must decode and
+/// match its declared size; `ui.json` (when present) must parse and its nine-slice
+/// insets fall within each element's bounds.
+fn validate_ui(
+    repo: &Path,
+    canvas: &crate::test_case::CanvasSpec,
+    tool: &crate::test_case::ToolSpec,
+    ui_spec: Option<&crate::test_case::UiSpec>,
+) -> UiGenResult {
+    // The element set: the implicit single element (the whole canvas) when the case
+    // declares no kit, otherwise one per declared element.
+    let elements: Vec<(String, u32, u32, PathBuf)> = match ui_spec {
+        Some(ui) if !ui.elements.is_empty() => ui
+            .elements
+            .iter()
+            .map(|el| {
+                (
+                    el.name.clone(),
+                    el.width,
+                    el.height,
+                    crate::test_case::element_path(&tool.preview, &el.name),
+                )
+            })
+            .collect(),
+        _ => vec![(
+            "canvas".to_string(),
+            canvas.width,
+            canvas.height,
+            tool.preview.clone(),
+        )],
+    };
+
+    let mut run_notes: Vec<String> = Vec::new();
+    let ui_json = match std::fs::read_to_string(repo.join(crate::test_case::UI_JSON_DEST)) {
+        Ok(raw) => match serde_json::from_str::<UiJson>(&raw) {
+            Ok(parsed) => Some(parsed),
+            Err(err) => {
+                run_notes.push(format!("`ui.json` is not well-formed: {err}"));
+                None
+            }
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            run_notes.push("the model emitted no `ui.json`".to_string());
+            None
+        }
+        Err(err) => {
+            run_notes.push(format!("could not read `ui.json`: {err}"));
+            None
+        }
+    };
+    // Any atlas rectangle must be non-degenerate (self-consistent).
+    if let Some(json) = &ui_json
+        && json.atlas.iter().any(|r| r.width == 0 || r.height == 0)
+    {
+        run_notes.push("`ui.json` declares a degenerate atlas rectangle".to_string());
+    }
+
+    let mut results = Vec::with_capacity(elements.len());
+    for (name, decl_w, decl_h, preview_rel) in elements {
+        let mut detail: Vec<String> = Vec::new();
+        let (width, height) = match decode_png(&repo.join(&preview_rel)) {
+            Ok(image) => {
+                let (dw, dh) = (image.width as u32, image.height as u32);
+                if dw != decl_w || dh != decl_h {
+                    detail.push(format!(
+                        "emitted PNG is {dw}x{dh} but the element declares {decl_w}x{decl_h}"
+                    ));
+                }
+                (dw, dh)
+            }
+            Err(err) => {
+                detail.push(format!("could not decode emitted PNG: {err}"));
+                (decl_w, decl_h)
+            }
+        };
+        // The nine-slice the model authored (from `ui.json`), validated to fall
+        // within the element's declared bounds.
+        let nine_slice = ui_json
+            .as_ref()
+            .and_then(|json| json.elements.iter().find(|e| e.name == name))
+            .and_then(|e| e.nine_slice.as_ref())
+            .map(|ns| NineSlice {
+                left: ns.left,
+                right: ns.right,
+                top: ns.top,
+                bottom: ns.bottom,
+            });
+        if let Some(ns) = &nine_slice {
+            if ns.left + ns.right > decl_w {
+                detail.push(format!(
+                    "nine_slice left+right ({}) exceeds width {decl_w}",
+                    ns.left + ns.right
+                ));
+            }
+            if ns.top + ns.bottom > decl_h {
+                detail.push(format!(
+                    "nine_slice top+bottom ({}) exceeds height {decl_h}",
+                    ns.top + ns.bottom
+                ));
+            }
+        }
+        results.push(UiElementResult {
+            name,
+            image: rel_string(&preview_rel),
+            width,
+            height,
+            nine_slice,
+            detail: (!detail.is_empty()).then(|| detail.join("; ")),
+        });
+    }
+
+    UiGenResult {
+        elements: results,
+        detail: (!run_notes.is_empty()).then(|| run_notes.join("; ")),
+    }
+}
+
+/// Decode and well-formedness-check a `material` run: each declared map's emitted PNG
+/// must decode and be the declared square `size`; `base-color` must be present and
+/// decode; `material.json` (when present) must parse and supplies each map's color
+/// space and the tiling scale.
+fn validate_material(
+    repo: &Path,
+    material: &crate::test_case::MaterialSpec,
+    tool: &crate::test_case::ToolSpec,
+) -> MaterialGenResult {
+    let mut run_notes: Vec<String> = Vec::new();
+    let material_json =
+        match std::fs::read_to_string(repo.join(crate::test_case::MATERIAL_JSON_DEST)) {
+            Ok(raw) => match serde_json::from_str::<MaterialJson>(&raw) {
+                Ok(parsed) => Some(parsed),
+                Err(err) => {
+                    run_notes.push(format!("`material.json` is not well-formed: {err}"));
+                    None
+                }
+            },
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                run_notes.push("the model emitted no `material.json`".to_string());
+                None
+            }
+            Err(err) => {
+                run_notes.push(format!("could not read `material.json`: {err}"));
+                None
+            }
+        };
+
+    let mut maps = Vec::with_capacity(material.maps.len());
+    for map in &material.maps {
+        let mut detail: Vec<String> = Vec::new();
+        let preview_rel = crate::test_case::map_path(&tool.preview, map);
+        match decode_png(&repo.join(&preview_rel)) {
+            Ok(image) => {
+                if image.width as u32 != material.size || image.height as u32 != material.size {
+                    detail.push(format!(
+                        "emitted PNG is {}x{} but the material declares {}x{}",
+                        image.width, image.height, material.size, material.size
+                    ));
+                }
+            }
+            Err(err) => {
+                detail.push(format!("could not decode emitted PNG: {err}"));
+                if map == "base-color" {
+                    run_notes.push("the required `base-color` map did not decode".to_string());
+                }
+            }
+        }
+        // The color space: taken from `material.json` when it tags the map, else the
+        // canonical default for the channel (sRGB for color data, linear otherwise).
+        let color_space = material_json
+            .as_ref()
+            .and_then(|json| json.maps.iter().find(|m| &m.name == map))
+            .and_then(|m| m.color_space.clone())
+            .unwrap_or_else(|| default_color_space(map).to_string());
+        maps.push(MaterialMapResult {
+            name: map.clone(),
+            image: rel_string(&preview_rel),
+            color_space,
+            detail: (!detail.is_empty()).then(|| detail.join("; ")),
+        });
+    }
+
+    MaterialGenResult {
+        maps,
+        size: material.size,
+        tiling: material_json.and_then(|json| json.tiling),
+        detail: (!run_notes.is_empty()).then(|| run_notes.join("; ")),
+    }
+}
+
+/// The canonical color space for a material map channel: sRGB for the color-data
+/// channels (`base-color`/`emissive`), linear for the rest.
+fn default_color_space(channel: &str) -> &'static str {
+    match channel {
+        "base-color" | "emissive" => "srgb",
+        _ => "linear",
+    }
+}
+
+/// Parse and non-emptiness-check a particle run's emitted `system.json`, and record
+/// the rendered preview when present.
+fn validate_particle(repo: &Path, tool: &crate::test_case::ToolSpec) -> ParticleGenResult {
+    let system_rel = crate::test_case::PARTICLE_SYSTEM_DEST;
+    let mut notes: Vec<String> = Vec::new();
+    let emitter_count = match std::fs::read_to_string(repo.join(system_rel)) {
+        Ok(raw) => match serde_json::from_str::<SystemJson>(&raw) {
+            Ok(system) => {
+                if system.emitters.is_empty() {
+                    notes.push("`system.json` declares no emitters".to_string());
+                } else if !system.emitters.iter().any(SystemJsonEmitter::emits) {
+                    notes.push(
+                        "`system.json` declares emitters but none actually emits particles"
+                            .to_string(),
+                    );
+                }
+                system.emitters.len()
+            }
+            Err(err) => {
+                notes.push(format!("`system.json` is not well-formed: {err}"));
+                0
+            }
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            notes.push("the model emitted no `system.json`".to_string());
+            0
+        }
+        Err(err) => {
+            notes.push(format!("could not read `system.json`: {err}"));
+            0
+        }
+    };
+    let preview = {
+        let path = repo.join(&tool.preview);
+        path.is_file().then(|| rel_string(&tool.preview))
+    };
+    ParticleGenResult {
+        system: system_rel.to_string(),
+        preview,
+        emitter_count,
+        detail: (!notes.is_empty()).then(|| notes.join("; ")),
+    }
+}
+
+/// Decode and check an audio run's emitted `clip.wav` against the declared `[audio]`
+/// format, its duration cap, and non-silence; record the portable `clip.mid` (for a
+/// `music` run) and the rendered preview when present.
+fn validate_audio(
+    repo: &Path,
+    audio: &crate::test_case::AudioSpec,
+    kind: AssetKind,
+    tool: &crate::test_case::ToolSpec,
+) -> AudioGenResult {
+    let clip_rel = crate::test_case::AUDIO_CLIP_WAV_DEST;
+    let declared_channels: u32 = if audio.channels == "stereo" { 2 } else { 1 };
+    let mut notes: Vec<String> = Vec::new();
+    let (sample_rate, channels, duration_ms) = match std::fs::read(repo.join(clip_rel)) {
+        Ok(bytes) => match parse_wav(&bytes) {
+            Ok(info) => {
+                if info.sample_rate != audio.sample_rate {
+                    notes.push(format!(
+                        "clip sample rate {} does not match the declared {}",
+                        info.sample_rate, audio.sample_rate
+                    ));
+                }
+                if info.channels as u32 != declared_channels {
+                    notes.push(format!(
+                        "clip has {} channel(s) but the case declares {} ({})",
+                        info.channels, declared_channels, audio.channels
+                    ));
+                }
+                if info.duration_ms > audio.max_duration_ms {
+                    notes.push(format!(
+                        "clip is {} ms, longer than the {} ms cap",
+                        info.duration_ms, audio.max_duration_ms
+                    ));
+                }
+                if info.silent {
+                    notes.push(
+                        "clip is silent (the operations produced no audible signal)".to_string(),
+                    );
+                }
+                (info.sample_rate, info.channels as u32, info.duration_ms)
+            }
+            Err(err) => {
+                notes.push(format!("`clip.wav` is not a well-formed PCM WAV: {err}"));
+                (0, 0, 0)
+            }
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            notes.push("the model emitted no `clip.wav`".to_string());
+            (0, 0, 0)
+        }
+        Err(err) => {
+            notes.push(format!("could not read `clip.wav`: {err}"));
+            (0, 0, 0)
+        }
+    };
+    // `music` additionally emits a portable `.mid` score; record it when present.
+    let midi = if kind.emits_midi() {
+        let mid = crate::test_case::AUDIO_CLIP_MID_DEST;
+        if repo.join(mid).is_file() {
+            Some(mid.to_string())
+        } else {
+            notes.push("the `music` run emitted no `clip.mid`".to_string());
+            None
+        }
+    } else {
+        None
+    };
+    let preview = {
+        let path = repo.join(&tool.preview);
+        path.is_file().then(|| rel_string(&tool.preview))
+    };
+    AudioGenResult {
+        clip: clip_rel.to_string(),
+        midi,
+        preview,
+        sample_rate,
+        channels,
+        duration_ms,
+        detail: (!notes.is_empty()).then(|| notes.join("; ")),
+    }
+}
+
+/// The decoded header/summary of a PCM WAV file, enough to validate an audio clip.
+struct WavInfo {
+    /// Channel count (1 = mono, 2 = stereo).
+    channels: u16,
+    /// Sample rate in Hz.
+    sample_rate: u32,
+    /// Clip length in milliseconds, from the data chunk size and format.
+    duration_ms: u32,
+    /// Whether every sample is (near) zero — a silent clip.
+    silent: bool,
+}
+
+/// Parse a minimal PCM RIFF/WAVE file into a [`WavInfo`], without depending on an
+/// audio crate. Walks the RIFF chunks for the `fmt ` and `data` chunks, requires
+/// integer PCM (`audioFormat == 1`), and scans the samples for any audible signal.
+fn parse_wav(bytes: &[u8]) -> std::result::Result<WavInfo, String> {
+    if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err("missing RIFF/WAVE header".to_string());
+    }
+    let read_u16 = |b: &[u8]| u16::from_le_bytes([b[0], b[1]]);
+    let read_u32 = |b: &[u8]| u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+
+    let mut fmt: Option<(u16, u16, u32, u16)> = None; // (format, channels, rate, bits)
+    let mut data: Option<(usize, usize)> = None; // (start, end) of the data chunk body
+    let mut pos = 12;
+    while pos + 8 <= bytes.len() {
+        let id = &bytes[pos..pos + 4];
+        let size = read_u32(&bytes[pos + 4..pos + 8]) as usize;
+        let body_start = pos + 8;
+        let body_end = body_start.saturating_add(size).min(bytes.len());
+        if id == b"fmt " && body_end - body_start >= 16 {
+            let b = &bytes[body_start..body_end];
+            fmt = Some((
+                read_u16(&b[0..2]),
+                read_u16(&b[2..4]),
+                read_u32(&b[4..8]),
+                read_u16(&b[14..16]),
+            ));
+        } else if id == b"data" {
+            data = Some((body_start, body_end));
+        }
+        // RIFF chunks are word-aligned: an odd size carries a pad byte.
+        pos = body_start + size + (size & 1);
+    }
+
+    let (format, channels, sample_rate, bits) = fmt.ok_or("missing `fmt ` chunk")?;
+    if format != 1 {
+        return Err(format!("not integer PCM (audioFormat {format})"));
+    }
+    if channels == 0 || sample_rate == 0 || bits == 0 || !bits.is_multiple_of(8) {
+        return Err("invalid fmt fields".to_string());
+    }
+    let (data_start, data_end) = data.ok_or("missing `data` chunk")?;
+    let sample_bytes = (bits / 8) as usize;
+    let frame_bytes = sample_bytes * channels as usize;
+    let body = &bytes[data_start..data_end];
+    let frames = body.len().checked_div(frame_bytes).unwrap_or(0);
+    let duration_ms = ((frames as u64 * 1000) / sample_rate as u64) as u32;
+    let silent = wav_is_silent(body, bits);
+    Ok(WavInfo {
+        channels,
+        sample_rate,
+        duration_ms,
+        silent,
+    })
+}
+
+/// Whether a PCM data chunk is (near) silent: every sample's normalized amplitude is
+/// below a small threshold. Handles 8/16/24/32-bit PCM.
+fn wav_is_silent(data: &[u8], bits: u16) -> bool {
+    // ~ -72 dBFS: below this a clip reads as silence rather than signal.
+    const THRESHOLD: f64 = 2.5e-4;
+    let sample_bytes = (bits / 8) as usize;
+    if sample_bytes == 0 {
+        return true;
+    }
+    let mut peak = 0.0_f64;
+    for chunk in data.chunks_exact(sample_bytes) {
+        let norm = match bits {
+            8 => {
+                // 8-bit PCM is unsigned, centered at 128.
+                (chunk[0] as f64 - 128.0) / 128.0
+            }
+            16 => i16::from_le_bytes([chunk[0], chunk[1]]) as f64 / 32768.0,
+            24 => {
+                let raw = (chunk[0] as i32) | ((chunk[1] as i32) << 8) | ((chunk[2] as i32) << 16);
+                // Sign-extend the 24-bit value.
+                let signed = (raw << 8) >> 8;
+                signed as f64 / 8_388_608.0
+            }
+            32 => {
+                i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as f64
+                    / 2_147_483_648.0
+            }
+            _ => 0.0,
+        };
+        let mag = norm.abs();
+        if mag > peak {
+            peak = mag;
+        }
+        if peak > THRESHOLD {
+            return false;
+        }
+    }
+    peak <= THRESHOLD
+}
+
 /// Dispatches validation to the validator for the case's [`TestType`]. The
 /// orchestrator holds one validator, so this composes the per-type validators
 /// behind the single [`Validator`] interface and keeps the run pipeline unaware
@@ -1064,6 +1887,9 @@ pub struct DispatchValidator {
     build: BuildValidator,
     asset: AssetGenValidator,
     voxel: VoxelGenValidator,
+    paint: PaintGenValidator,
+    particle: ParticleGenValidator,
+    audio: AudioGenValidator,
     adversarial: AdversarialValidator,
     performance: PerformanceValidator,
 }
@@ -1077,6 +1903,9 @@ impl DispatchValidator {
             build: BuildValidator::new(screenshot_dir),
             asset: AssetGenValidator::new(),
             voxel: VoxelGenValidator::new(),
+            paint: PaintGenValidator::new(),
+            particle: ParticleGenValidator::new(),
+            audio: AudioGenValidator::new(),
             adversarial: AdversarialValidator::new(),
             performance: PerformanceValidator::new(),
         }
@@ -1095,11 +1924,24 @@ impl Validator for DispatchValidator {
             TestType::EndToEnd => self
                 .build
                 .validate(test_case, artifacts, references, proofs),
-            // The two 2D sprite kinds regenerate through the drawing library; the
-            // two 3D voxel kinds regenerate through the voxel library.
+            // Each asset kind routes to the validator for the data it emits: the
+            // voxel/mesh/skinned kinds decode `.glb` + `rig.json`; the painted
+            // (`ui`/`material`) kinds decode PNG(s) + `ui.json`/`material.json`; the
+            // particle kinds parse `system.json`; the audio kinds decode `clip.wav`;
+            // and the 2D sprite kinds regenerate through the drawing library.
             TestType::AssetGeneration => {
-                if test_case.asset_kind.is_voxel() {
+                let kind = test_case.asset_kind;
+                if kind.is_voxel() {
                     self.voxel
+                        .validate(test_case, artifacts, references, proofs)
+                } else if kind.is_paint() {
+                    self.paint
+                        .validate(test_case, artifacts, references, proofs)
+                } else if kind.is_particle() {
+                    self.particle
+                        .validate(test_case, artifacts, references, proofs)
+                } else if kind.is_audio() {
+                    self.audio
                         .validate(test_case, artifacts, references, proofs)
                 } else {
                     self.asset
@@ -1140,6 +1982,10 @@ fn failed_load(
         proofs,
         asset: None,
         voxel: None,
+        ui: None,
+        material: None,
+        particle: None,
+        audio: None,
         adversarial: None,
         performance: None,
     }

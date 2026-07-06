@@ -1,0 +1,44 @@
+{
+  "name": "@test-cabinet/particle-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Framework-agnostic particle-system simulator plus optional three.js and 2D-canvas bindings, consumed by the in-repo viewer and real games. The particle analogue of @test-cabinet/voxel-runtime: a system is simulated, not posed.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./three": {
+      "types": "./dist/three/index.d.ts",
+      "default": "./dist/three/index.js"
+    },
+    "./canvas": {
+      "types": "./dist/canvas/index.d.ts",
+      "default": "./dist/canvas/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@test-cabinet/run-record": "*"
+  },
+  "peerDependencies": {
+    "three": "~0.182.0"
+  },
+  "devDependencies": {
+    "@types/three": "~0.182.0",
+    "three": "~0.182.0",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}

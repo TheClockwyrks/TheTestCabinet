@@ -141,7 +141,17 @@ export type AssetKind =
   | "sn-model"
   | "sn-animation"
   | "dc-model"
-  | "dc-animation";
+  | "dc-animation"
+  | "ui"
+  | "material"
+  | "mc-skinned"
+  | "sn-skinned"
+  | "dc-skinned"
+  | "particle-2d"
+  | "particle-3d"
+  | "sfx-synth"
+  | "sfx-sample"
+  | "music";
 
 /**
  * The subject of a run: what was run, with what, against which model.
@@ -534,6 +544,14 @@ export type VoxelGenResult = {
    */
   rig?: ModelSpec;
   /**
+   * Whether this is a **skinned** run (`mc-skinned`/`sn-skinned`/`dc-skinned`):
+   * one continuous mesh bound to the rig and deformed by linear-blend skinning,
+   * rather than the rigid per-part posing of the other voxel-family kinds. The
+   * marker tells the 3D viewer to skin the single mesh rather than pose per-part
+   * meshes. `false` for every non-skinned voxel-family run.
+   */
+  skinned: boolean;
+  /**
    * Detail about anything that could not be evaluated at the run level, or
    * `None`. Per-part detail lives on each [`VoxelPartResult`].
    */
@@ -807,6 +825,206 @@ export type AnimationTrackSpec = {
    * The keyframes, in time order, sampled over the animation's period.
    */
   keyframes: Array<KeyframeSpec>;
+};
+
+/**
+ * The resolved fixed nine-slice insets of a UI element (or as read back from
+ * `ui.json`): the stretchable border margins in pixels.
+ */
+export type NineSlice = {
+  /**
+   * Left inset in pixels.
+   */
+  left: number;
+  /**
+   * Right inset in pixels.
+   */
+  right: number;
+  /**
+   * Top inset in pixels.
+   */
+  top: number;
+  /**
+   * Bottom inset in pixels.
+   */
+  bottom: number;
+};
+
+/**
+ * The validation result of a `ui` asset-generation run — the emitted flattened
+ * PNG(s) plus the parsed `ui.json`. A `ui` run is **not** regenerated: its output
+ * is the image data the `paint`/`ui` binaries emit, which the validator decodes and
+ * well-formedness-checks. Present only on a `ui` run's [`ValidationSummary`].
+ */
+export type UiGenResult = {
+  /**
+   * The per-element results: one for a single-image case, one per declared
+   * element for a kit, in declared order.
+   */
+  elements: Array<UiElementResult>;
+  /**
+   * Detail about anything that could not be evaluated at the run level (for
+   * example a missing or malformed `ui.json`), or `None`.
+   */
+  detail: string | null;
+};
+
+/**
+ * The validation result for one element of a `ui` run: its emitted flattened PNG,
+ * its decoded dimensions, and any authored nine-slice.
+ */
+export type UiElementResult = {
+  /**
+   * The element name this result records under (`canvas` for a single-image case,
+   * the declared `[[ui.element]]` name for a kit).
+   */
+  name: string;
+  /**
+   * Run-root-relative path to this element's emitted flattened RGBA PNG — the
+   * reviewed image.
+   */
+  image: string;
+  /**
+   * The decoded pixel width of the emitted PNG.
+   */
+  width: number;
+  /**
+   * The decoded pixel height of the emitted PNG.
+   */
+  height: number;
+  /**
+   * The nine-slice insets carried in `ui.json`, when the model authored them.
+   * `None` when the element declares no stretchable region.
+   */
+  nineSlice?: NineSlice;
+  /**
+   * Detail about anything that could not be evaluated for this element (a missing
+   * PNG, a size mismatch, an out-of-bounds nine-slice), or `None`.
+   */
+  detail: string | null;
+};
+
+/**
+ * The validation result of a `material` asset-generation run — the emitted per-map
+ * PNGs plus the parsed `material.json`. Like `ui`, a `material` run is **not**
+ * regenerated: the validator decodes each declared map and parses `material.json`.
+ * Present only on a `material` run's [`ValidationSummary`].
+ */
+export type MaterialGenResult = {
+  /**
+   * The per-map results, in declared order. Always includes `base-color`.
+   */
+  maps: Array<MaterialMapResult>;
+  /**
+   * The maps' square resolution in pixels (the declared `[material].size`).
+   */
+  size: number;
+  /**
+   * The suggested world-space tiling scale carried in `material.json`, when
+   * present. `None` when `material.json` declares none.
+   */
+  tiling?: number;
+  /**
+   * Detail about anything that could not be evaluated at the run level (a missing
+   * or malformed `material.json`, an absent `base-color`), or `None`.
+   */
+  detail: string | null;
+};
+
+/**
+ * The validation result for one map channel of a `material` run: its emitted PNG
+ * and the color space it is tagged with.
+ */
+export type MaterialMapResult = {
+  /**
+   * The map channel this result records under (`base-color`, `normal`, …).
+   */
+  name: string;
+  /**
+   * Run-root-relative path to this map's emitted PNG.
+   */
+  image: string;
+  /**
+   * The color space this map is tagged with in `material.json` (`srgb` for
+   * `base-color`/`emissive`, `linear` for the data maps).
+   */
+  colorSpace: string;
+  /**
+   * Detail about anything that could not be evaluated for this map (a missing PNG,
+   * a size mismatch), or `None`.
+   */
+  detail: string | null;
+};
+
+/**
+ * The validation result of a particle asset-generation run — the parsed
+ * `system.json` (the authored emitter/force/curve definition) and the rendered
+ * preview. A particle run is **not** regenerated and there is no bake: the validator
+ * parses `system.json`, confirms it is well-formed and non-empty (it actually emits
+ * particles), and takes the preview as the reviewer sees it. Present only on a
+ * particle run's [`ValidationSummary`].
+ */
+export type ParticleGenResult = {
+  /**
+   * Run-root-relative path to the emitted `system.json` — the authored definition
+   * every consumer simulates live.
+   */
+  system: string;
+  /**
+   * Run-root-relative path to the rendered preview animation (`effect.gif`) the
+   * reviewer plays, or `None` when the model rendered none.
+   */
+  preview?: string;
+  /**
+   * How many emitters the authored system declares.
+   */
+  emitterCount: number;
+  /**
+   * Detail about anything that could not be evaluated (a missing or malformed
+   * `system.json`, or a system that emits nothing), or `None`.
+   */
+  detail: string | null;
+};
+
+/**
+ * The validation result of an audio asset-generation run — the decoded PCM
+ * `clip.wav` (and, for `music`, the portable `clip.mid`). The validator decodes the
+ * `.wav`, confirms it is well-formed, within the `[audio]` format, no longer than
+ * the cap, and not silent. Present only on an audio run's [`ValidationSummary`].
+ */
+export type AudioGenResult = {
+  /**
+   * Run-root-relative path to the emitted PCM `clip.wav` — the clip a game plays
+   * and the reviewer hears.
+   */
+  clip: string;
+  /**
+   * Run-root-relative path to the portable `clip.mid` score, for a `music` run.
+   * `None` for the two SFX kinds (and when a `music` run emitted none).
+   */
+  midi?: string;
+  /**
+   * Run-root-relative path to the rendered waveform/spectrogram preview PNG, or
+   * `None` when the model rendered none.
+   */
+  preview?: string;
+  /**
+   * The decoded sample rate in Hz.
+   */
+  sampleRate: number;
+  /**
+   * The decoded channel count (1 = mono, 2 = stereo).
+   */
+  channels: number;
+  /**
+   * The decoded clip length in milliseconds.
+   */
+  durationMs: number;
+  /**
+   * Detail about anything that could not be evaluated (a missing or malformed
+   * `.wav`, a format mismatch, an over-cap or silent clip), or `None`.
+   */
+  detail: string | null;
 };
 
 /**
@@ -1227,11 +1445,32 @@ export type RunValidation = {
    */
   asset?: AssetGenResult;
   /**
-   * The regenerate result of a voxel asset-generation run. `None` for every
+   * The regenerate result of a voxel asset-generation run — also carries the
+   * **skinned** kinds (with [`VoxelGenResult::skinned`] set). `None` for every
    * other type (and for the 2D sprite kinds, which use [`Self::asset`]), so a
    * non-voxel summary serializes with no new field at all.
    */
   voxel?: VoxelGenResult;
+  /**
+   * The validation result of a `ui` asset-generation run. `None` for every other
+   * kind/type.
+   */
+  ui?: UiGenResult;
+  /**
+   * The validation result of a `material` asset-generation run. `None` for every
+   * other kind/type.
+   */
+  material?: MaterialGenResult;
+  /**
+   * The validation result of a particle asset-generation run. `None` for every
+   * other kind/type.
+   */
+  particle?: ParticleGenResult;
+  /**
+   * The validation result of an audio asset-generation run. `None` for every
+   * other kind/type.
+   */
+  audio?: AudioGenResult;
   /**
    * The canonical-match result of an adversarial run. `None` for any other
    * type, so a non-adversarial summary serializes with no new field at all and

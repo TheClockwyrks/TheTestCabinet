@@ -1,0 +1,22 @@
+[package]
+name = "test-cabinet-particle-2d"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `particle-2d` binary: authoring a planar particle effect (`asset_kind =
+# "particle-2d"`). A thin CLI over `test-cabinet-particle-core` (the shared system
+# model and simulator); it composites its preview in a 2D raster path. The
+# volumetric sibling is `particle-3d`. See
+# `apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md`.
+[[bin]]
+name = "particle-2d"
+path = "src/main.rs"
+
+[dependencies]
+test-cabinet-particle-core = { path = "../particle-core" }
+clap = { workspace = true }
+
+[lints]
+workspace = true

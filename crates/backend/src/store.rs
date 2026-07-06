@@ -29,6 +29,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 use uuid::Uuid;
 
@@ -139,6 +140,24 @@ pub struct StoredManifest {
     /// [`Self::voxel`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelSpec>,
+    /// The painting canvas of a `ui` case. `Some` only for a `ui` case. Reuses the
+    /// core [`UiSpec`] verbatim, as with [`Self::voxel`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui: Option<UiSpec>,
+    /// The texture/PBR contract of a `material` case. `Some` only for a `material`
+    /// case. Reuses the core [`MaterialSpec`] verbatim, as with [`Self::voxel`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<MaterialSpec>,
+    /// The particle-system contract of a particle case. `Some` only for a
+    /// `particle-2d`/`particle-3d` case. Reuses the core [`ParticleSpec`] verbatim,
+    /// as with [`Self::voxel`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub particle: Option<ParticleSpec>,
+    /// The audio contract of an audio case. `Some` only for an
+    /// `sfx-synth`/`sfx-sample`/`music` case. Reuses the core [`AudioSpec`]
+    /// verbatim, as with [`Self::voxel`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<AudioSpec>,
     /// The prompt template source, inlined (the runner renders it locally).
     pub prompt_template: String,
     /// Common specs (`source` is a store-relative artifact key, `dest` the

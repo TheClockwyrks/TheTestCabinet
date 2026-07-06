@@ -17,6 +17,7 @@ import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import { GuardedVoxelViewer, type ViewerMeshes } from "./GuardedVoxelViewer";
 import { GifDownloadButton } from "./GifDownloadButton";
 import { encodeVoxelGif } from "./voxelGif";
+import { SkinnedResultSection } from "./SkinnedResultSection";
 import type { VoxelViewMode } from "./VoxelViewer";
 import styles from "./RunDetailPages.module.scss";
 
@@ -698,6 +699,9 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
  * when the run carries `validation.voxel`.
  */
 export function VoxelResultSection({ view }: { view: VoxelResultView }) {
+  // A skinned run is one continuous mesh deformed by linear-blend skinning, so it is
+  // posed through the skinning API rather than the rigid per-part path.
+  if (view.skinned) return <SkinnedResultSection view={view} />;
   return view.animated ? (
     <VoxelAnimationResult view={view} />
   ) : (

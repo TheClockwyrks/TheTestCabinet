@@ -52,6 +52,21 @@ const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 /// dimensions, so a header advertising more is dropped rather than allocated.
 const MAX_MESH_BYTES: usize = 32 * 1024 * 1024;
 
+/// A cap on the `system.json` body a particle run appends after its PNG frame — the
+/// authored emitter/force/curve definition the live viewer simulates. Compact
+/// metadata, so a small bound.
+const MAX_SYSTEM_BYTES: usize = 4 * 1024 * 1024;
+
+/// A cap on the `rig.json` body a skinned run appends after its glb — the
+/// bones/joints/animations the live viewer deforms the mesh with. Compact metadata
+/// like `system.json`, so a small bound.
+const MAX_RIG_BYTES: usize = 4 * 1024 * 1024;
+
+/// A cap on the clip `.wav` body an audio run appends after its PNG. A short (≤5s)
+/// clip is only a few MB even at a high sample rate, so a generous few-MB bound sits
+/// well above any real clip; a header over it is dropped rather than allocated.
+const MAX_AUDIO_BYTES: usize = 8 * 1024 * 1024;
+
 /// A cap on reading one frame off a connection, so a client that opens a socket
 /// and then stalls cannot tie up the listener.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
@@ -64,8 +79,11 @@ const READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// frame changed and how far along it is. A voxel run additionally carries the
 /// frame's current [`mesh`](Self::mesh) — decoded from the `PartMesh`-shaped `.glb`
 /// every voxel-family binary emits — so the live viewer can rebuild the part in 3D and
-/// assemble the scene; a 2D sprite run leaves it `None`. It is never persisted — the
-/// post-run view regenerates the asset from the recorded action log instead.
+/// assemble the scene; a 2D sprite run leaves it `None`. A skinned run instead carries
+/// its skin-preserving [`skinned_glb`](Self::skinned_glb) plus [`rig`](Self::rig) so the
+/// viewer can deform it, and an audio run carries its clip [`audio`](Self::audio). It is
+/// never persisted — the post-run view regenerates the asset from the recorded action
+/// log instead.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetPreview {
@@ -89,6 +107,30 @@ pub struct AssetPreview {
     /// (which streams only the PNG).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mesh: Option<test_cabinet_voxel_mesh::Mesh>,
+    /// The frame's current authored `system.json`, for a particle run — so the live
+    /// viewer can **simulate** the effect as it is authored, rather than show only the
+    /// rendered still. `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<serde_json::Value>,
+    /// The frame's current whole-body `.glb`, for a skinned run (`mc-skin`/`sn-skin`/
+    /// `dc-skin`), base64-encoded (no `data:` prefix) — kept **raw** so its
+    /// `JOINTS_0`/`WEIGHTS_0` and skin survive, letting the live viewer **deform** it
+    /// by linear-blend skinning rather than show the undeformed rest mesh. Paired with
+    /// [`rig`](Self::rig); `None` for every other kind (a plain voxel run decodes its
+    /// glb into [`mesh`](Self::mesh) instead).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skinned_glb: Option<String>,
+    /// The frame's current `rig.json`, for a skinned run — the bones/joints/animations
+    /// the live viewer poses [`skinned_glb`](Self::skinned_glb) with. `None` for every
+    /// other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rig: Option<serde_json::Value>,
+    /// The frame's current clip `.wav`, for an audio run, base64-encoded (no `data:`
+    /// prefix; a viewer builds the data URL) — so a watcher can play the clip as it is
+    /// built, the streamed PNG being the model's own waveform/spectrogram preview.
+    /// `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<String>,
 }
 
 /// Receives [`AssetPreview`]s as the drawing binary streams them during a run.
@@ -201,6 +243,22 @@ struct FrameHeader {
     /// run. `0` (or absent, for a 2D sprite run) means no mesh body follows.
     #[serde(default)]
     mesh_length: usize,
+    /// The number of `system.json` bytes that follow the PNG body, for a particle
+    /// run — the authored system the live viewer simulates. `0`/absent for every
+    /// other kind.
+    #[serde(default)]
+    system_length: usize,
+    /// The number of `rig.json` bytes that follow the glb body, for a skinned run —
+    /// the rig the live viewer deforms the glb with. `0`/absent for every other kind.
+    /// When set, the glb body is the skin-preserving whole-body mesh (kept raw, not
+    /// decoded to a plain [`Mesh`]). A skinned frame is the one case that carries two
+    /// bodies (glb + rig); every other kind carries at most one (mesh, system, or audio).
+    #[serde(default)]
+    rig_length: usize,
+    /// The number of clip `.wav` bytes that follow the PNG body, for an audio run —
+    /// the clip a watcher can play as it is built. `0`/absent for every other kind.
+    #[serde(default)]
+    audio_length: usize,
 }
 
 /// Read one framed preview off a connection: a JSON header line, then exactly
@@ -234,6 +292,9 @@ async fn read_frame(stream: TcpStream, token: &str) -> Option<AssetPreview> {
     if header.token != token
         || header.length > MAX_FRAME_BYTES
         || header.mesh_length > MAX_MESH_BYTES
+        || header.system_length > MAX_SYSTEM_BYTES
+        || header.rig_length > MAX_RIG_BYTES
+        || header.audio_length > MAX_AUDIO_BYTES
     {
         return None;
     }
@@ -241,21 +302,60 @@ async fn read_frame(stream: TcpStream, token: &str) -> Option<AssetPreview> {
     let mut image = vec![0u8; header.length];
     reader.read_exact(&mut image).await.ok()?;
 
-    // A voxel run appends its current part `.glb` after the PNG so the live viewer
-    // can rebuild the model in 3D. Read and decode it when present; a malformed or
-    // oversized body simply drops the mesh (the PNG preview still stands) rather
-    // than the whole frame.
-    let mesh = if header.mesh_length > 0 {
+    // A voxel run appends its current part `.glb` after the PNG so the live viewer can
+    // rebuild the model in 3D. A skinned run (its glb is followed by a `rig` body)
+    // instead keeps the glb **raw** — its `JOINTS_0`/`WEIGHTS_0`/skin must survive so
+    // the viewer can deform it — while a plain voxel run decodes it to a rest `Mesh`
+    // here. A malformed or oversized body simply drops the geometry (the PNG preview
+    // still stands) rather than the whole frame.
+    let mut mesh = None;
+    let mut skinned_glb = None;
+    if header.mesh_length > 0 {
         let mut buf = vec![0u8; header.mesh_length];
         reader.read_exact(&mut buf).await.ok()?;
-        test_cabinet_model_core::glb_to_part_mesh(&buf)
-            .ok()
-            .map(|arrays| test_cabinet_voxel_mesh::Mesh {
-                positions: arrays.positions,
-                normals: arrays.normals,
-                colors: arrays.colors,
-                indices: arrays.indices,
-            })
+        if header.rig_length > 0 {
+            skinned_glb = Some(base64::engine::general_purpose::STANDARD.encode(&buf));
+        } else {
+            mesh = test_cabinet_model_core::glb_to_part_mesh(&buf)
+                .ok()
+                .map(|arrays| test_cabinet_voxel_mesh::Mesh {
+                    positions: arrays.positions,
+                    normals: arrays.normals,
+                    colors: arrays.colors,
+                    indices: arrays.indices,
+                });
+        }
+    }
+
+    // A skinned run appends its current `rig.json` after the glb so the live viewer can
+    // pose the skin's deformation (rather than show the undeformed rest mesh). A
+    // malformed body drops the rig (the PNG preview still stands).
+    let rig = if header.rig_length > 0 {
+        let mut buf = vec![0u8; header.rig_length];
+        reader.read_exact(&mut buf).await.ok()?;
+        serde_json::from_slice::<serde_json::Value>(&buf).ok()
+    } else {
+        None
+    };
+
+    // A particle run appends its current `system.json` after the PNG so the live
+    // viewer can simulate the effect (rather than show only the rendered still).
+    // A malformed body drops the system (the PNG preview still stands).
+    let system = if header.system_length > 0 {
+        let mut buf = vec![0u8; header.system_length];
+        reader.read_exact(&mut buf).await.ok()?;
+        serde_json::from_slice::<serde_json::Value>(&buf).ok()
+    } else {
+        None
+    };
+
+    // An audio run appends its current clip `.wav` after the PNG so a watcher can play
+    // it as it is built (the PNG is the model's own waveform/spectrogram preview). A
+    // short read simply drops the clip (the PNG preview still stands).
+    let audio = if header.audio_length > 0 {
+        let mut buf = vec![0u8; header.audio_length];
+        reader.read_exact(&mut buf).await.ok()?;
+        Some(base64::engine::general_purpose::STANDARD.encode(&buf))
     } else {
         None
     };
@@ -266,19 +366,29 @@ async fn read_frame(stream: TcpStream, token: &str) -> Option<AssetPreview> {
         operation: header.operation,
         image: base64::engine::general_purpose::STANDARD.encode(&image),
         mesh,
+        system,
+        skinned_glb,
+        rig,
+        audio,
     })
 }
 
 /// Send one frame to a live-preview listener, in the wire form [`read_frame`]
-/// expects. Used by tests on this side of the channel; the in-container drawing
-/// binary has its own dependency-light sender in `crates/draw`.
+/// expects: the JSON header line, the PNG, then any optional bodies in the order the
+/// listener reads them (the `.glb` mesh, the skinned `rig.json`, then the clip `.wav`).
+/// A body is omitted by passing an empty slice. Used by tests on this side of the
+/// channel; the in-container drawing binaries have their own dependency-light senders.
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 async fn send_frame(
     endpoint: &str,
     token: &str,
     frame: u32,
     operation_count: usize,
     image: &[u8],
+    mesh: &[u8],
+    rig: &[u8],
+    audio: &[u8],
 ) -> std::io::Result<()> {
     use tokio::io::AsyncWriteExt as _;
 
@@ -288,10 +398,16 @@ async fn send_frame(
         "frame": frame,
         "operationCount": operation_count,
         "length": image.len(),
+        "meshLength": mesh.len(),
+        "rigLength": rig.len(),
+        "audioLength": audio.len(),
     }))?;
     header.push(b'\n');
     stream.write_all(&header).await?;
     stream.write_all(image).await?;
+    stream.write_all(mesh).await?;
+    stream.write_all(rig).await?;
+    stream.write_all(audio).await?;
     stream.flush().await
 }
 

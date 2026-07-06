@@ -387,6 +387,48 @@
       "required": ["slug", "name", "frames", "fps"],
       "type": "object"
     },
+    "AudioGenResult": {
+      "description": "The validation result of an audio asset-generation run — the decoded PCM\n`clip.wav` (and, for `music`, the portable `clip.mid`). The validator decodes the\n`.wav`, confirms it is well-formed, within the `[audio]` format, no longer than\nthe cap, and not silent. Present only on an audio run's [`ValidationSummary`].",
+      "properties": {
+        "channels": {
+          "description": "The decoded channel count (1 = mono, 2 = stereo).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "clip": {
+          "description": "Run-root-relative path to the emitted PCM `clip.wav` — the clip a game plays\nand the reviewer hears.",
+          "type": "string"
+        },
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated (a missing or malformed\n`.wav`, a format mismatch, an over-cap or silent clip), or `None`.",
+          "type": ["string", "null"]
+        },
+        "durationMs": {
+          "description": "The decoded clip length in milliseconds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "midi": {
+          "description": "Run-root-relative path to the portable `clip.mid` score, for a `music` run.\n`None` for the two SFX kinds (and when a `music` run emitted none).",
+          "type": ["string", "null"]
+        },
+        "preview": {
+          "description": "Run-root-relative path to the rendered waveform/spectrogram preview PNG, or\n`None` when the model rendered none.",
+          "type": ["string", "null"]
+        },
+        "sampleRate": {
+          "description": "The decoded sample rate in Hz.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["clip", "sampleRate", "channels", "durationMs"],
+      "type": "object"
+    },
     "AuthMode": {
       "description": "The authentication mode a run used, recorded so a published run is\nself-describing about how its cost should be interpreted.",
       "oneOf": [
@@ -700,6 +742,60 @@
       "required": ["tMs", "value", "interp"],
       "type": "object"
     },
+    "MaterialGenResult": {
+      "description": "The validation result of a `material` asset-generation run — the emitted per-map\nPNGs plus the parsed `material.json`. Like `ui`, a `material` run is **not**\nregenerated: the validator decodes each declared map and parses `material.json`.\nPresent only on a `material` run's [`ValidationSummary`].",
+      "properties": {
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated at the run level (a missing\nor malformed `material.json`, an absent `base-color`), or `None`.",
+          "type": ["string", "null"]
+        },
+        "maps": {
+          "description": "The per-map results, in declared order. Always includes `base-color`.",
+          "items": {
+            "$ref": "#/$defs/MaterialMapResult"
+          },
+          "type": "array"
+        },
+        "size": {
+          "description": "The maps' square resolution in pixels (the declared `[material].size`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tiling": {
+          "description": "The suggested world-space tiling scale carried in `material.json`, when\npresent. `None` when `material.json` declares none.",
+          "format": "double",
+          "type": ["number", "null"]
+        }
+      },
+      "required": ["maps", "size"],
+      "type": "object"
+    },
+    "MaterialMapResult": {
+      "description": "The validation result for one map channel of a `material` run: its emitted PNG\nand the color space it is tagged with.",
+      "properties": {
+        "colorSpace": {
+          "description": "The color space this map is tagged with in `material.json` (`srgb` for\n`base-color`/`emissive`, `linear` for the data maps).",
+          "type": "string"
+        },
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated for this map (a missing PNG,\na size mismatch), or `None`.",
+          "type": ["string", "null"]
+        },
+        "image": {
+          "description": "Run-root-relative path to this map's emitted PNG.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The map channel this result records under (`base-color`, `normal`, …).",
+          "type": "string"
+        }
+      },
+      "required": ["name", "image", "colorSpace"],
+      "type": "object"
+    },
     "MediaKind": {
       "description": "The kind of a piece of media — used for both reference media and proof\nartifacts so a UI knows whether to render an `<img>` or a `<video>`.",
       "oneOf": [
@@ -743,6 +839,37 @@
       "required": ["parts", "joints"],
       "type": "object"
     },
+    "NineSlice": {
+      "description": "The resolved fixed nine-slice insets of a UI element (or as read back from\n`ui.json`): the stretchable border margins in pixels.",
+      "properties": {
+        "bottom": {
+          "description": "Bottom inset in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "left": {
+          "description": "Left inset in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "right": {
+          "description": "Right inset in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "top": {
+          "description": "Top inset in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["left", "right", "top", "bottom"],
+      "type": "object"
+    },
     "PartSpec": {
       "description": "A resolved part of a [`ModelSpec`]: one named voxel component of the rig.",
       "properties": {
@@ -766,6 +893,32 @@
         }
       },
       "required": ["name", "pivot"],
+      "type": "object"
+    },
+    "ParticleGenResult": {
+      "description": "The validation result of a particle asset-generation run — the parsed\n`system.json` (the authored emitter/force/curve definition) and the rendered\npreview. A particle run is **not** regenerated and there is no bake: the validator\nparses `system.json`, confirms it is well-formed and non-empty (it actually emits\nparticles), and takes the preview as the reviewer sees it. Present only on a\nparticle run's [`ValidationSummary`].",
+      "properties": {
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated (a missing or malformed\n`system.json`, or a system that emits nothing), or `None`.",
+          "type": ["string", "null"]
+        },
+        "emitterCount": {
+          "description": "How many emitters the authored system declares.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "preview": {
+          "description": "Run-root-relative path to the rendered preview animation (`effect.gif`) the\nreviewer plays, or `None` when the model rendered none.",
+          "type": ["string", "null"]
+        },
+        "system": {
+          "description": "Run-root-relative path to the emitted `system.json` — the authored definition\nevery consumer simulates live.",
+          "type": "string"
+        }
+      },
+      "required": ["system", "emitterCount"],
       "type": "object"
     },
     "PerformanceCaseResult": {
@@ -1039,6 +1192,17 @@
           ],
           "description": "The regenerate-and-score result of an asset-generation run. `None` for an\nend-to-end run, so an end-to-end summary serializes with no new field at\nall and its shape is unchanged."
         },
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioGenResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The validation result of an audio asset-generation run. `None` for every\nother kind/type."
+        },
         "build": {
           "anyOf": [
             {
@@ -1078,6 +1242,28 @@
           "description": "Whether the implementation built, served, and rendered without a fatal\nerror. This is the clearest possible signal about a run.",
           "type": "boolean"
         },
+        "material": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterialGenResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The validation result of a `material` asset-generation run. `None` for every\nother kind/type."
+        },
+        "particle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParticleGenResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The validation result of a particle asset-generation run. `None` for every\nother kind/type."
+        },
         "performance": {
           "anyOf": [
             {
@@ -1097,6 +1283,17 @@
           },
           "type": "array"
         },
+        "ui": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UiGenResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The validation result of a `ui` asset-generation run. `None` for every other\nkind/type."
+        },
         "voxel": {
           "anyOf": [
             {
@@ -1106,7 +1303,7 @@
               "type": "null"
             }
           ],
-          "description": "The regenerate result of a voxel asset-generation run. `None` for every\nother type (and for the 2D sprite kinds, which use [`Self::asset`]), so a\nnon-voxel summary serializes with no new field at all."
+          "description": "The regenerate result of a voxel asset-generation run — also carries the\n**skinned** kinds (with [`VoxelGenResult::skinned`] set). `None` for every\nother type (and for the 2D sprite kinds, which use [`Self::asset`]), so a\nnon-voxel summary serializes with no new field at all."
         }
       },
       "required": ["loaded", "checks"],
@@ -1186,6 +1383,68 @@
       },
       "type": "object"
     },
+    "UiElementResult": {
+      "description": "The validation result for one element of a `ui` run: its emitted flattened PNG,\nits decoded dimensions, and any authored nine-slice.",
+      "properties": {
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated for this element (a missing\nPNG, a size mismatch, an out-of-bounds nine-slice), or `None`.",
+          "type": ["string", "null"]
+        },
+        "height": {
+          "description": "The decoded pixel height of the emitted PNG.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "image": {
+          "description": "Run-root-relative path to this element's emitted flattened RGBA PNG — the\nreviewed image.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The element name this result records under (`canvas` for a single-image case,\nthe declared `[[ui.element]]` name for a kit).",
+          "type": "string"
+        },
+        "nineSlice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NineSlice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The nine-slice insets carried in `ui.json`, when the model authored them.\n`None` when the element declares no stretchable region."
+        },
+        "width": {
+          "description": "The decoded pixel width of the emitted PNG.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["name", "image", "width", "height"],
+      "type": "object"
+    },
+    "UiGenResult": {
+      "description": "The validation result of a `ui` asset-generation run — the emitted flattened\nPNG(s) plus the parsed `ui.json`. A `ui` run is **not** regenerated: its output\nis the image data the `paint`/`ui` binaries emit, which the validator decodes and\nwell-formedness-checks. Present only on a `ui` run's [`ValidationSummary`].",
+      "properties": {
+        "detail": {
+          "default": null,
+          "description": "Detail about anything that could not be evaluated at the run level (for\nexample a missing or malformed `ui.json`), or `None`.",
+          "type": ["string", "null"]
+        },
+        "elements": {
+          "description": "The per-element results: one for a single-image case, one per declared\nelement for a kit, in declared order.",
+          "items": {
+            "$ref": "#/$defs/UiElementResult"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["elements"],
+      "type": "object"
+    },
     "VoxelGenResult": {
       "description": "The regenerate result of a voxel asset-generation run — the 3D analog of\n[`AssetGenResult`].\n\nA static model ([`crate::test_case::AssetKind::VoxelModel`]) produces one\n[part](VoxelPartResult) (the whole model); an animated model\n([`crate::test_case::AssetKind::VoxelAnimation`]) produces one per declared\npart. There is no target model and no automated fidelity score; the regenerated\nmodel is reviewed against the brief. Present only on a voxel run's\n[`ValidationSummary`].",
       "properties": {
@@ -1222,6 +1481,11 @@
             }
           ],
           "description": "The **full** rig the model actually produced (`rig.json`) — the required\nparts and joints plus any the model added of its own. This is what the\nviewer poses and a consuming game drives. `None` for a static model."
+        },
+        "skinned": {
+          "default": false,
+          "description": "Whether this is a **skinned** run (`mc-skinned`/`sn-skinned`/`dc-skinned`):\none continuous mesh bound to the rig and deformed by linear-blend skinning,\nrather than the rigid per-part posing of the other voxel-family kinds. The\nmarker tells the 3D viewer to skin the single mesh rather than pose per-part\nmeshes. `false` for every non-skinned voxel-family run.",
+          "type": "boolean"
         }
       },
       "required": ["parts"],

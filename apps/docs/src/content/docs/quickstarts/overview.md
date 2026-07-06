@@ -37,6 +37,9 @@ API key.
   asset-generation version (`asset_kind = "sprite-sheet"`).
 - [Add or Update a Model](/quickstarts/add-or-update-a-model/) — add a model to
   the catalog, or refresh the committed prices with `tcab catalog`.
+- [Publish an Audio Sample Pack](/quickstarts/publish-an-audio-sample-pack/) —
+  build an `sfx-sample`/`music` pack from its manifest, upload it to R2, and pin
+  it so the run image bakes it in.
 - [Review a Run](/quickstarts/review-a-run/) — submit a review (one per account)
   for a pushed run.
 - [Publish a Run](/quickstarts/publish-a-run/) — push, review, and publish a run

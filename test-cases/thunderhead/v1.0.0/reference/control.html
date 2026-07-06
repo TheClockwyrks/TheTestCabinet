@@ -1,0 +1,82 @@
+<!doctype html>
+<!--
+  Thunderhead — direct-control HUD (common across variants).
+  Rendered by the harness at 1280x720 as the `control` view target. HUD-ONLY: it
+  pins the direct-control HUD over a neutral dark viewport; the real build renders
+  the gunnery view (the ship, its guns, and the target) behind it. The example: an
+  Ironbound BATTLESHIP with the SURFACE GUNS class manned, aiming at a DISTANT
+  target — so the crosshair's per-turret read-out shows the long-ranged MAIN turrets
+  engaging (green ready / yellow reloading) while the short-ranged SECONDARY guns are
+  out of range (red). Steering stays active; the ship is on fire and its crew is at
+  work (the Ironbound damage-control paradigm). Values are illustrative.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- performance overlay -->
+      <div class="perf">
+        <div><b>FPS</b> 61</div>
+        <div><b>DRAWS</b> 128</div>
+      </div>
+
+      <!-- possessed unit + station-switch strip -->
+      <div class="banner">
+        <div class="unit-name"><b>IRONBOUND</b> BATTLESHIP · WROUGHT</div>
+        <div class="stations">
+          <span class="st">STEER</span>
+          <span class="st on">SURFACE GUNS</span>
+          <span class="st">ANTI-AIR</span>
+          <span class="st">DAMAGE CTRL</span>
+        </div>
+      </div>
+
+      <!--
+        Center reticle + per-turret gunnery read-out: a ring of small, unlabeled
+        dots around the crosshair — MAIN-gun pips arc ABOVE, SECONDARY-gun pips arc
+        BELOW. Green = ready, amber clock-wedge = reloading
+        (build animates it rotating), red = unavailable. Here the target is DISTANT,
+        so the long-ranged main guns engage (two ready, one reloading, one out of
+        arc) while the short-ranged secondaries are all out of range (red).
+      -->
+      <div class="reticle">
+        <div class="cross"><span class="hub"></span></div>
+
+        <!-- MAIN guns: arc above the crosshair -->
+        <span class="pip ready" style="transform: translate(calc(-50% - 26px), calc(-50% - 36px))"></span>
+        <span class="pip ready" style="transform: translate(calc(-50% - 9px), calc(-50% - 43px))"></span>
+        <span class="pip reload" style="--p: 55%; transform: translate(calc(-50% + 9px), calc(-50% - 43px))"></span>
+        <span class="pip na" style="transform: translate(calc(-50% + 26px), calc(-50% - 36px))"></span>
+
+        <!-- SECONDARY guns: arc below the crosshair (out of range at this distance) -->
+        <span class="pip na" style="transform: translate(calc(-50% - 26px), calc(-50% + 36px))"></span>
+        <span class="pip na" style="transform: translate(calc(-50% - 9px), calc(-50% + 43px))"></span>
+        <span class="pip na" style="transform: translate(calc(-50% + 9px), calc(-50% + 43px))"></span>
+        <span class="pip na" style="transform: translate(calc(-50% + 26px), calc(-50% + 36px))"></span>
+
+        <div class="range">612 u &middot; <b>SALVO</b></div>
+      </div>
+
+      <!-- movement read-out, bottom-left -->
+      <div class="move">
+        <div class="row"><span>SPEED</span><span class="v">18 / 24 u/s</span></div>
+        <div class="row"><span>HEADING</span><span class="v">041&deg;</span></div>
+        <div class="row"><span>RUDDER</span><span class="v">PORT 10&deg;</span></div>
+      </div>
+
+      <!-- condition read-out, bottom-right (Ironbound: hull + damage control) -->
+      <div class="cond">
+        <div class="label">HULL</div>
+        <div class="bar"><i style="width: 82%"></i></div>
+        <div class="dmg">
+          <div><span class="fire">&#9650; FIRE</span> — FRAME 3 &middot; SPREADING</div>
+          <div><span class="breach">&#9671; BREACH</span> — BOW &middot; −4 u/s</div>
+          <div><span class="crew">CREW</span> 2 / 4 &middot; PATCHING BREACH</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

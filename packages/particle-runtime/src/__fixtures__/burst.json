@@ -1,0 +1,36 @@
+{
+  "dimensions": 3,
+  "field": { "width": 8, "height": 8, "depth": 8 },
+  "durationMs": 800,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "blast",
+      "shape": "sphere",
+      "position": [4, 2, 4],
+      "extent": { "radius": 0.2, "size": [1, 1, 1] },
+      "emission": { "mode": "burst", "count": 200, "atMs": 0 },
+      "lifetimeMs": 400,
+      "lifetimeSpread": 80,
+      "speed": 6,
+      "speedSpread": 1,
+      "direction": [0, 1, 0],
+      "coneAngle": 360,
+      "seed": 7,
+      "forces": {},
+      "particle": {
+        "sizeCurve": { "interp": "ease-out", "from": 1, "to": 0.2 },
+        "opacityCurve": { "interp": "ease-in", "from": 1, "to": 0 },
+        "colorGradient": [
+          { "color": "#ffffff", "at": 0 },
+          { "color": "#ffb23a", "at": 0.3 },
+          { "color": "#c02010", "at": 0.7 },
+          { "color": "#333333", "at": 1 }
+        ]
+      }
+    }
+  ],
+  "forces": { "gravity": -6, "drag": 1.2 },
+  "subEmitters": []
+}

@@ -209,6 +209,43 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
             "mesh" => &part.mesh,
             _ => return None,
         }
+    } else if let Some(ui) = record.validation.ui.as_ref() {
+        // A UI run serves its flattened per-element PNG(s) — a single-image case
+        // under the bare `element.png`, a kit suffixing each element with its
+        // `-<index>` in declared order — plus the `ui.json` manifest. Matches the
+        // snapshot and driver enumerators.
+        match (kind, frame) {
+            ("ui", None) => crate::test_case::UI_JSON_DEST,
+            ("element", Some(index)) => &ui.elements.get(index as usize)?.image,
+            ("element", None) => &ui.elements.first()?.image,
+            _ => return None,
+        }
+    } else if let Some(material) = record.validation.material.as_ref() {
+        // A material run serves each map by its declared index (`map-<index>.png`,
+        // always suffixed) and the `material.json` manifest.
+        match (kind, frame) {
+            ("material", None) => crate::test_case::MATERIAL_JSON_DEST,
+            ("map", Some(index)) => &material.maps.get(index as usize)?.image,
+            _ => return None,
+        }
+    } else if let Some(particle) = record.validation.particle.as_ref() {
+        // A particle run serves the authored `system.json` (the asset a game
+        // simulates live) and, when rendered, the preview `effect.gif` under the
+        // served name `preview.gif`.
+        match (kind, frame) {
+            ("system", None) => &particle.system,
+            ("preview", None) => particle.preview.as_deref()?,
+            _ => return None,
+        }
+    } else if let Some(audio) = record.validation.audio.as_ref() {
+        // An audio run serves the rendered `clip.wav`, the portable `score.mid`
+        // (music only), and the waveform/spectrogram preview PNG.
+        match (kind, frame) {
+            ("clip", None) => &audio.clip,
+            ("score", None) => audio.midi.as_deref()?,
+            ("preview", None) => audio.preview.as_deref()?,
+            _ => return None,
+        }
     } else if let Some(adversarial) = record.validation.adversarial.as_ref() {
         match kind {
             // Each opponent's replay is one entry in `replays`, addressed by its
@@ -262,6 +299,9 @@ fn asset_content_type(file: &str) -> &'static str {
         Some("png") => "image/png",
         Some("json") => "application/json",
         Some("glb") => "model/gltf-binary",
+        Some("gif") => "image/gif",
+        Some("wav") => "audio/wav",
+        Some("mid" | "midi") => "audio/midi",
         _ => "application/octet-stream",
     }
 }

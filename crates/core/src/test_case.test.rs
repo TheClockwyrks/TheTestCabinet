@@ -1534,3 +1534,275 @@ fn slug_validation_accepts_kebab_case_and_rejects_the_rest() {
         assert!(!super::is_valid_slug(bad), "{bad} should be invalid");
     }
 }
+
+// --- ui / material / skinned / particle / audio resolution ------------------
+
+/// The shared header every new-family manifest below opens with (identity, prompt,
+/// asset-generation type, and one variant). Each test appends the kind, its tables,
+/// and the common spec/domain.
+const NEW_FAMILY_HEADER: &str = "\
+slug = \"sprite\"\n\
+name = \"Asset\"\n\
+difficulty = \"medium\"\n\
+tags = [\"asset-generation\"]\n\
+prompt = \"prompt.hbs\"\n\
+type = \"asset-generation\"\n";
+
+/// The common `[[spec]]`/`[[domain]]` tail every new-family manifest closes with.
+const NEW_FAMILY_TAIL: &str = "\
+[[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
+[[domain]]\nid = \"fidelity\"\ndescription = \"How close the asset is to the brief.\"\n";
+
+#[test]
+fn ui_kit_resolves_its_elements() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"ui\"\nvariants = [\"variants/base.toml\"]\n\
+         [canvas]\nwidth = 512\nheight = 512\nbackground = \"transparent\"\n\
+         [tool]\nbinary = \"paint\"\npreview = \"elements/{{element}}.png\"\n\
+         [output]\nactions = \"actions.json\"\n\
+         [[ui.element]]\nname = \"panel\"\nwidth = 512\nheight = 320\n\
+         nine_slice = {{ left = 24, right = 24, top = 24, bottom = 24 }}\n\
+         [[ui.element]]\nname = \"button\"\nwidth = 256\nheight = 72\n{NEW_FAMILY_TAIL}"
+    );
+    let version = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect("resolve");
+    assert_eq!(version.asset_kind, AssetKind::Ui);
+    let ui = version.ui.as_ref().expect("ui");
+    assert_eq!(ui.elements.len(), 2);
+    assert_eq!(ui.elements[0].name, "panel");
+    assert_eq!(ui.elements[0].nine_slice.expect("nine_slice").left, 24);
+    // A `ui` case reuses the base [canvas].
+    assert!(version.canvas.is_some());
+}
+
+#[test]
+fn ui_single_image_needs_no_element_token() {
+    // With no [ui] kit the preview is a single file (no `{element}`).
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"ui\"\nvariants = [\"variants/base.toml\"]\n\
+         [canvas]\nwidth = 512\nheight = 512\nbackground = \"transparent\"\n\
+         [tool]\nbinary = \"paint\"\npreview = \"canvas.png\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let version = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect("resolve");
+    assert!(version.ui.as_ref().expect("ui").elements.is_empty());
+}
+
+#[test]
+fn ui_rejects_out_of_bounds_nine_slice() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"ui\"\nvariants = [\"variants/base.toml\"]\n\
+         [canvas]\nwidth = 512\nheight = 512\nbackground = \"transparent\"\n\
+         [tool]\nbinary = \"paint\"\npreview = \"elements/{{element}}.png\"\n\
+         [output]\nactions = \"actions.json\"\n\
+         [[ui.element]]\nname = \"panel\"\nwidth = 100\nheight = 80\n\
+         nine_slice = {{ left = 60, right = 60, top = 10, bottom = 10 }}\n{NEW_FAMILY_TAIL}"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("an out-of-bounds nine_slice is rejected");
+    assert!(format!("{err}").contains("exceeds width"), "got: {err}");
+}
+
+#[test]
+fn material_resolves_its_maps() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"material\"\nvariants = [\"variants/base.toml\"]\n\
+         [material]\nsize = 512\ntile = true\nmaps = [\"base-color\", \"normal\", \"roughness\"]\n\
+         [tool]\nbinary = \"texture\"\npreview = \"maps/{{map}}.png\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let version = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect("resolve");
+    assert_eq!(version.asset_kind, AssetKind::Material);
+    let material = version.material.as_ref().expect("material");
+    assert_eq!(material.size, 512);
+    assert!(material.tile);
+    assert_eq!(material.maps, vec!["base-color", "normal", "roughness"]);
+    assert!(version.canvas.is_none(), "a material case has no [canvas]");
+}
+
+#[test]
+fn material_rejects_missing_base_color() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"material\"\nvariants = [\"variants/base.toml\"]\n\
+         [material]\nsize = 512\nmaps = [\"normal\", \"roughness\"]\n\
+         [tool]\nbinary = \"texture\"\npreview = \"maps/{{map}}.png\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a material with no base-color map is rejected");
+    assert!(format!("{err}").contains("base-color"), "got: {err}");
+}
+
+#[test]
+fn material_rejects_non_power_of_two_size() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"material\"\nvariants = [\"variants/base.toml\"]\n\
+         [material]\nsize = 500\nmaps = [\"base-color\"]\n\
+         [tool]\nbinary = \"texture\"\npreview = \"maps/{{map}}.png\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a non-power-of-two material size is rejected");
+    assert!(format!("{err}").contains("power of two"), "got: {err}");
+}
+
+#[test]
+fn skinned_resolves_single_file_and_model() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"sn-skinned\"\nvariants = [\"variants/base.toml\"]\n\
+         [voxel]\nwidth = 40\nheight = 48\ndepth = 24\nbackground = \"transparent\"\n\
+         [tool]\nbinary = \"sn-skin\"\npreview = \"model.png\"\n\
+         [output]\nactions = \"actions.json\"\n\
+         [[model.animation]]\nname = \"walk\"\n{NEW_FAMILY_TAIL}"
+    );
+    let version = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect("resolve");
+    assert_eq!(version.asset_kind, AssetKind::SnSkinned);
+    assert!(version.asset_kind.is_voxel());
+    assert!(version.asset_kind.is_animated());
+    assert!(!version.asset_kind.is_per_part(), "skinned is single-file");
+    // A skinned case declares a [voxel] volume and a [model] (animations-only) rig.
+    assert!(version.voxel.is_some());
+    let model = version.model.as_ref().expect("model");
+    assert_eq!(model.animations.len(), 1);
+    assert_eq!(model.animations[0].name, "walk");
+}
+
+#[test]
+fn skinned_rejects_a_part_token() {
+    // A skinned character is one whole-body field → one file, so `{part}` is a mistake.
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"mc-skinned\"\nvariants = [\"variants/base.toml\"]\n\
+         [voxel]\nwidth = 40\nheight = 48\ndepth = 24\nbackground = \"transparent\"\n\
+         [tool]\nbinary = \"mc-skin\"\npreview = \"parts/{{part}}.png\"\n\
+         [output]\nactions = \"actions.json\"\n\
+         [[model.animation]]\nname = \"walk\"\n{NEW_FAMILY_TAIL}"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a {part} token on a skinned case is rejected");
+    assert!(
+        format!("{err}").contains("must not contain `{part}`"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn particle_3d_resolves_its_field() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"particle-3d\"\nvariants = [\"variants/base.toml\"]\n\
+         [particle]\nwidth = 48\nheight = 48\ndepth = 48\nduration_ms = 1500\nfps = 60\n\
+         [tool]\nbinary = \"particle-3d\"\npreview = \"effect.gif\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let version = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect("resolve");
+    assert_eq!(version.asset_kind, AssetKind::Particle3d);
+    let particle = version.particle.as_ref().expect("particle");
+    assert_eq!((particle.width, particle.height), (48, 48));
+    assert_eq!(particle.depth, Some(48));
+    assert_eq!(particle.duration_ms, 1500);
+}
+
+#[test]
+fn particle_2d_rejects_depth() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"particle-2d\"\nvariants = [\"variants/base.toml\"]\n\
+         [particle]\nwidth = 48\nheight = 48\ndepth = 48\nduration_ms = 1500\nfps = 60\n\
+         [tool]\nbinary = \"particle-2d\"\npreview = \"effect.gif\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a particle-2d case with depth is rejected");
+    assert!(format!("{err}").contains("no particle.depth"), "got: {err}");
+}
+
+#[test]
+fn particle_3d_requires_depth() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"particle-3d\"\nvariants = [\"variants/base.toml\"]\n\
+         [particle]\nwidth = 48\nheight = 48\nduration_ms = 1500\nfps = 60\n\
+         [tool]\nbinary = \"particle-3d\"\npreview = \"effect.gif\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a particle-3d case without depth is rejected");
+    assert!(
+        format!("{err}").contains("requires particle.depth"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn audio_sample_resolves_its_format() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"sfx-sample\"\nvariants = [\"variants/base.toml\"]\n\
+         [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
+         sample_pack = \"naval-weapons@1\"\n\
+         [tool]\nbinary = \"sfx-sample\"\npreview = \"waveform.png\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let version = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect("resolve");
+    assert_eq!(version.asset_kind, AssetKind::SfxSample);
+    let audio = version.audio.as_ref().expect("audio");
+    assert_eq!(audio.sample_rate, 44100);
+    assert_eq!(audio.channels, "stereo");
+    assert_eq!(audio.sample_pack.as_deref(), Some("naval-weapons@1"));
+    assert!(audio.instrument_bank.is_none());
+}
+
+#[test]
+fn audio_sample_requires_a_sample_pack() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"sfx-sample\"\nvariants = [\"variants/base.toml\"]\n\
+         [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
+         [tool]\nbinary = \"sfx-sample\"\npreview = \"waveform.png\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("a sfx-sample case without a sample_pack is rejected");
+    assert!(format!("{err}").contains("sample_pack"), "got: {err}");
+}
+
+#[test]
+fn audio_rejects_over_cap_duration() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"sfx-synth\"\nvariants = [\"variants/base.toml\"]\n\
+         [audio]\nsample_rate = 44100\nchannels = \"mono\"\nmax_duration_ms = 6000\n\
+         [tool]\nbinary = \"sfx-synth\"\npreview = \"waveform.png\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("an over-cap max_duration_ms is rejected");
+    assert!(format!("{err}").contains("at most 5000"), "got: {err}");
+}

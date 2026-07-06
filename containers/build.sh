@@ -38,7 +38,7 @@
 # image at run time (see `harnesses/README.md`).
 #
 # Usage:
-#   ./build.sh                # build the base, sprite, sprite-sheet, voxel, voxel-animation, mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, and performance images (thirteen total)
+#   ./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
 #
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type and asset kind from its own registry
@@ -175,6 +175,59 @@ build_asset_image() {
 	fi
 }
 
+# Build an audio image (sfx-sample / music) that bakes a content-addressed audio
+# pack. Unlike a plain asset image, the pack is fetched from the private R2 bucket at
+# build time: this resolves the pack's pinned digest + object key from
+# `containers/sample-packs/packs.lock.json`, mints a SHORT-LIVED presigned R2 GET URL
+# for it (needs the read-only PRESIGN credentials in the environment — see
+# `scripts/lib/r2.mjs`), and passes the pack ref, that URL, and the digest as build
+# args. The Dockerfile's `ADD --checksum` then pulls + verifies the tarball; no
+# credential ever enters an image layer.
+#
+# The pack MUST be published: a missing pin, or a presign that fails (missing creds,
+# no node), is a HARD error that fails the build — an audio image is never shipped
+# with an empty palette. Publish a pack with `node scripts/build-sample-pack.mjs
+# <pack> --publish` and commit the pin before building its image.
+#
+# Arguments: <image-name> <pack-ref> <pack-arg> <url-arg> <sha-arg>.
+build_audio_image() {
+	local name="$1" pack_ref="$2" pack_arg="$3" url_arg="$4" sha_arg="$5"
+	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
+
+	# A missing pin is a hard error (not a skip): the pack must be published first.
+	if [[ ! -f "${lock}" ]] || ! grep -q "\"${pack_ref}\"" "${lock}"; then
+		echo "ERROR: cannot build ${image}: pack ${pack_ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
+		echo "       Publish it with: node scripts/build-sample-pack.mjs <pack> --publish" >&2
+		exit 1
+	fi
+
+	# Presign a download URL from the pin. The helper prints two lines: URL, then digest.
+	local presign
+	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${pack_ref}")"; then
+		echo "ERROR: ${pack_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
+		exit 1
+	fi
+	local lines
+	mapfile -t lines <<<"${presign}"
+	local url="${lines[0]}" sha="${lines[1]}"
+
+	echo "==> building ${image} (FROM ${BASE_IMAGE}) with ${pack_arg}=${pack_ref}"
+	"$DOCKER" build \
+		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "${pack_arg}=${pack_ref}" \
+		--build-arg "${url_arg}=${url}" \
+		--build-arg "${sha_arg}=${sha}" \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" "${name}")"
+		echo "==> ${name} reference: ${reference}"
+	fi
+}
+
 build_adversarial() {
 	echo "==> building ${ADVERSARIAL_IMAGE} (FROM ${BASE_IMAGE})"
 	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
@@ -236,6 +289,20 @@ build_asset_image sn
 build_asset_image sn-animation
 build_asset_image dc
 build_asset_image dc-animation
+build_asset_image ui
+build_asset_image material
+build_asset_image mc-skinned
+build_asset_image sn-skinned
+build_asset_image dc-skinned
+build_asset_image particle-2d
+build_asset_image particle-3d
+build_asset_image sfx-synth
+# The sfx-sample and music images bake a content-addressed audio pack pulled from the
+# private R2 bucket at build time (see build_audio_image). Each pack ref must match the
+# SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and be published + pinned in
+# packs.lock.json first.
+build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256
+build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256
 build_adversarial
 build_performance
 echo "==> done"

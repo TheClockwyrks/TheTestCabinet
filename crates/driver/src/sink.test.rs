@@ -123,6 +123,10 @@ fn preview(frame: u32) -> AssetPreview {
         operation: None,
         image: String::new(),
         mesh: None,
+        system: None,
+        skinned_glb: None,
+        rig: None,
+        audio: None,
     }
 }
 

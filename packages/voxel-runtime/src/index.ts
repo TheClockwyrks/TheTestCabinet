@@ -9,4 +9,6 @@
 export * from "./contract";
 export * from "./clips";
 export * from "./hierarchy";
-export { parseGlb } from "./glb";
+export { parseGlb, parseSkinnedGlb } from "./glb";
+export { skinMesh, skinningMatrices } from "./skin";
+export type { SkinnableMesh } from "./skin";

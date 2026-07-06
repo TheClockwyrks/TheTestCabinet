@@ -30,10 +30,11 @@ use crate::reference::RenderedReference;
 use crate::review::Writeup;
 use crate::run_record::{RunLinks, RunRecord};
 use crate::test_case::{
-    AssetKind, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec,
-    MediaKind, ModelSpec, OutputSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView,
-    ReplaySpec, ReviewItem, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, TestCase,
-    TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile,
+    AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
+    MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec, PerformanceCase,
+    ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec, SheetSpec,
+    SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant,
+    VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1378,11 +1379,23 @@ struct VersionBody {
     /// backend-driven voxel run carries the same volume a local one does.
     #[serde(default)]
     voxel: Option<VoxelSpec>,
-    /// The required rig of a voxel-animation case. Deserialized straight into
-    /// [`ModelSpec`] — the wire shape matches it field for field — so a
-    /// backend-driven voxel-animation run carries the same rig a local one does.
+    /// The required rig of a voxel-animation, meshed-animation, or skinned case.
+    /// Deserialized straight into [`ModelSpec`] — the wire shape matches it field for
+    /// field — so a backend-driven run carries the same rig a local one does.
     #[serde(default)]
     model: Option<ModelSpec>,
+    /// The element kit of a `ui` case (the wire shape matches [`UiSpec`]).
+    #[serde(default)]
+    ui: Option<UiSpec>,
+    /// The output of a `material` case (the wire shape matches [`MaterialSpec`]).
+    #[serde(default)]
+    material: Option<MaterialSpec>,
+    /// The field/timing of a particle case (the wire shape matches [`ParticleSpec`]).
+    #[serde(default)]
+    particle: Option<ParticleSpec>,
+    /// The clip format of an audio case (the wire shape matches [`AudioSpec`]).
+    #[serde(default)]
+    audio: Option<AudioSpec>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
     #[serde(default)]
@@ -1474,6 +1487,10 @@ impl VersionBody {
             sheet: self.sheet,
             voxel: self.voxel,
             model: self.model,
+            ui: self.ui,
+            material: self.material,
+            particle: self.particle,
+            audio: self.audio,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.iter().map(workspace_from).collect(),
             init: self.init,

@@ -37,6 +37,9 @@ guide when you are doing the task for the first time, or when you need to know
 - [Adding or Updating a Model](/guides/adding-or-updating-a-model/) — add a model
   to the catalog (its `.toml`, description, and `model_ids`) or refresh the
   bundled prices, context windows, and release dates.
+- [Publishing an Audio Sample Pack](/guides/publishing-an-audio-sample-pack/) —
+  build an `sfx-sample`/`music` pack from its manifest, publish it to the private
+  R2 bucket, and pin it into the run-container image.
 - [Reviewing Test Run Results](/guides/reviewing-test-run-results/) — play a
   finished run, read its validation signals, and write the required review.
 - [Publishing a Test Run Result](/guides/publishing-a-test-run-result/) — release

@@ -140,6 +140,10 @@ fn asset_version() -> TestCaseVersion {
         sheet: None,
         voxel: None,
         model: None,
+        ui: None,
+        material: None,
+        particle: None,
+        audio: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,
@@ -379,6 +383,10 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         sheet: None,
         voxel: None,
         model: None,
+        ui: None,
+        material: None,
+        particle: None,
+        audio: None,
         common_specs: Vec::new(),
         common_workspace: Vec::new(),
         init: None,
@@ -414,4 +422,53 @@ fn dispatch_routes_an_adversarial_case_to_the_adversarial_validator() {
     );
     assert!(summary.asset.is_none(), "not an asset-gen result");
     assert!(summary.build.is_none(), "not an end-to-end build result");
+}
+
+#[test]
+fn skinned_rig_maps_bones_to_parts_keeping_joints_and_animations() {
+    // A skinned `rig.json` as `mc-skin`/`sn-skin`/`dc-skin` emit it: a `bones` skeleton
+    // (no `parts`), joints that target bones via `part`, and an authored animation.
+    let json = r#"{
+        "skinned": true,
+        "bones": [
+            {"name": "pelvis", "head": [8.0, 2.0, 8.0], "tail": [8.0, 6.0, 8.0]},
+            {"name": "spine", "parent": "pelvis", "head": [8.4, 6.0, 8.0], "tail": [8.0, 12.0, 8.0]}
+        ],
+        "joints": [
+            {"name": "spine_bend", "part": "spine", "kind": "rotation", "axis": "x",
+             "pivot": [8, 6, 8], "min": -1.0, "max": 1.0, "rest": 0.0, "drive": "auto"}
+        ],
+        "animations": [
+            {"name": "idle", "periodMs": 1000, "looping": true, "autoPlay": true,
+             "joints": ["spine_bend"],
+             "tracks": [{"joint": "spine_bend", "keyframes": [
+                {"tMs": 0, "value": 0.0, "interp": "linear"},
+                {"tMs": 500, "value": 0.3, "interp": "linear"}
+             ]}]}
+        ]
+    }"#;
+
+    // The parts-based rig cannot parse a skinned rig — the bug the `is_skinned` branch in
+    // `read_rig` fixes (it would silently drop the produced joints/animations).
+    assert!(
+        serde_json::from_str::<test_cabinet_voxel::Rig>(json).is_err(),
+        "a bones-based skinned rig must not parse as a parts-based rig"
+    );
+
+    let doc: super::SkinnedRigDoc = serde_json::from_str(json).expect("skinned rig parses");
+    let spec = super::skinned_rig_to_model_spec(&doc);
+
+    // Each bone becomes a part; a fractional head rounds to the integer voxel grid.
+    assert_eq!(spec.parts.len(), 2);
+    assert_eq!(spec.parts[0].name, "pelvis");
+    assert_eq!(spec.parts[0].pivot, [8, 2, 8]);
+    assert_eq!(spec.parts[1].parent.as_deref(), Some("pelvis"));
+    assert_eq!(spec.parts[1].pivot, [8, 6, 8], "8.4 rounds to 8");
+
+    // Joints pass through, still targeting their bone; animations pass through intact.
+    assert_eq!(spec.joints.len(), 1);
+    assert_eq!(spec.joints[0].part, "spine");
+    assert_eq!(spec.animations.len(), 1);
+    assert!(spec.animations[0].auto_play);
+    assert_eq!(spec.animations[0].tracks[0].keyframes.len(), 2);
 }

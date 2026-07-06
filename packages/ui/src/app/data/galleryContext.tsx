@@ -12,11 +12,18 @@ import type {
   ControllerRef,
   MatchSummary,
   ModelSpec,
+  NineSlice,
   RunRecord,
   RunSubject,
   TournamentRecord,
 } from "@test-cabinet/run-record";
-import { parseGlb, type PartMesh } from "@test-cabinet/voxel-runtime";
+import {
+  parseGlb,
+  parseSkinnedGlb,
+  type PartMesh,
+  type SkinnedMesh,
+} from "@test-cabinet/voxel-runtime";
+import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 import type {
   ProgressCallback,
   ProofMedia,
@@ -386,6 +393,21 @@ export interface VoxelResultView {
   /** Whether this is an animated (rigged) model versus a static single model. */
   animated: boolean;
   /**
+   * Whether this is a **skinned** run (`mc-skinned`/`sn-skinned`/`dc-skinned`): one
+   * continuous mesh bound to the rig and deformed by linear-blend skinning, rather
+   * than the rigid per-part posing of the other voxel-family kinds. When set, the
+   * viewer decodes the single skinned mesh (see {@link skinnedMeshUrl}) and drives it
+   * through the runtime's skinning API instead of posing per-part meshes.
+   */
+  skinned: boolean;
+  /**
+   * The single skinned `mesh.glb` a skinned run emits (the first — and only —
+   * part's mesh), or null for a non-skinned run (or when the host cannot serve it).
+   * Decoded with `parseSkinnedGlb` into the {@link SkinnedMesh} the skinned viewer
+   * poses.
+   */
+  skinnedMeshUrl: string | null;
+  /**
    * The full rig the model produced (`rig.json` — the required parts/joints plus
    * any the model added), which the viewer poses and a game drives. Null for a
    * static model (the caller synthesizes a trivial single-part rig).
@@ -399,6 +421,89 @@ export interface VoxelResultView {
   /** The per-part results, in declared order (exactly one for a static model). */
   parts: VoxelPartView[];
   /** Detail about anything that could not be evaluated at the run level, or null. */
+  detail: string | null;
+}
+
+/**
+ * A UI element resolved for display: its emitted flattened PNG (reviewed against the
+ * brief), decoded dimensions, and any authored nine-slice (whose stretchable region
+ * the review UI previews).
+ */
+export interface UiElementView {
+  /** The element name (`canvas` for a single-image case, else the kit element). */
+  name: string;
+  /** Loadable URL of the emitted flattened RGBA PNG, or null if unservable. */
+  imageUrl: string | null;
+  /** Decoded pixel width. */
+  width: number;
+  /** Decoded pixel height. */
+  height: number;
+  /** The authored nine-slice insets, or null when the element has none. */
+  nineSlice: NineSlice | null;
+  /** Detail about anything that could not be evaluated for this element, or null. */
+  detail: string | null;
+}
+
+/** A `ui` run's result resolved for display: one element for a single-image case,
+ * one per declared element for a kit. */
+export interface UiResultView {
+  elements: UiElementView[];
+  detail: string | null;
+}
+
+/** One PBR map channel resolved for display. */
+export interface MaterialMapView {
+  /** The channel name (`base-color`, `normal`, `roughness`, …). */
+  name: string;
+  /** Loadable URL of the emitted map PNG, or null if unservable. */
+  imageUrl: string | null;
+  /** The color space the map is tagged with (`srgb` / `linear`). */
+  colorSpace: string;
+  /** Detail about anything that could not be evaluated for this map, or null. */
+  detail: string | null;
+}
+
+/** A `material` run's result resolved for display: its per-map images, the map
+ * resolution, and the base-color image (surfaced for the 2×2 tiling + lit preview). */
+export interface MaterialResultView {
+  maps: MaterialMapView[];
+  /** The maps' square resolution in pixels. */
+  size: number;
+  /** The suggested world-space tiling scale, or null when the material declares none. */
+  tiling: number | null;
+  /** Loadable URL of the `base-color` map — the albedo the 2×2 tiling and the lit
+   * 3D preview lead with — or null when absent/unservable. */
+  baseColorUrl: string | null;
+  detail: string | null;
+}
+
+/** A particle run's result resolved for display: the emitted `system.json` (simulated
+ * live in the review UI) and the rendered preview GIF fallback. */
+export interface ParticleResultView {
+  /** Loadable URL of the emitted `system.json`, or null if unservable. */
+  systemUrl: string | null;
+  /** Loadable URL of the rendered preview animation (`effect.gif`), or null. */
+  previewUrl: string | null;
+  /** How many emitters the authored system declares. */
+  emitterCount: number;
+  detail: string | null;
+}
+
+/** An audio run's result resolved for display: the emitted clip (played with an
+ * `<audio>` element), the optional MIDI score, and the rendered preview PNG. */
+export interface AudioResultView {
+  /** Loadable URL of the emitted PCM `clip.wav`, or null if unservable. */
+  clipUrl: string | null;
+  /** Loadable URL of the portable `clip.mid` score (`music` runs), or null. */
+  midiUrl: string | null;
+  /** Loadable URL of the rendered waveform/spectrogram (+ piano-roll) preview PNG. */
+  previewUrl: string | null;
+  /** The decoded sample rate in Hz. */
+  sampleRate: number;
+  /** The decoded channel count (1 = mono, 2 = stereo). */
+  channels: number;
+  /** The decoded clip length in milliseconds. */
+  durationMs: number;
   detail: string | null;
 }
 
@@ -487,6 +592,30 @@ export interface GalleryData extends GalleryDataInput {
    * {@link assetMediaUrl}; the rig structure travels inline in the run record.
    */
   voxelResultFor(run: RunRecord): VoxelResultView | null;
+  /**
+   * A `ui` asset-generation run's result resolved for display, or null when the run
+   * is not a `ui` run (its `validation.ui` is absent). Element image URLs are
+   * resolved via {@link assetMediaUrl}.
+   */
+  uiResultFor(run: RunRecord): UiResultView | null;
+  /**
+   * A `material` asset-generation run's result resolved for display, or null when
+   * the run is not a `material` run (its `validation.material` is absent). Map image
+   * URLs are resolved via {@link assetMediaUrl}.
+   */
+  materialResultFor(run: RunRecord): MaterialResultView | null;
+  /**
+   * A particle asset-generation run's result resolved for display, or null when the
+   * run is not a particle run (its `validation.particle` is absent). The
+   * `system.json` and preview URLs are resolved via {@link assetMediaUrl}.
+   */
+  particleResultFor(run: RunRecord): ParticleResultView | null;
+  /**
+   * An audio asset-generation run's result resolved for display, or null when the
+   * run is not an audio run (its `validation.audio` is absent). The clip, MIDI, and
+   * preview URLs are resolved via {@link assetMediaUrl}.
+   */
+  audioResultFor(run: RunRecord): AudioResultView | null;
   /**
    * An adversarial run's canonical-match result resolved for display, or null
    * when the run is not adversarial (its `validation.adversarial` is absent). The
@@ -600,14 +729,91 @@ export function GalleryDataProvider({
             detail: part.detail,
           };
         });
+        // A skinned run (`mc-skinned`/`sn-skinned`/`dc-skinned`) carries the marker
+        // in `validation.voxel.skinned`. It emits one continuous skinned mesh — the
+        // single part's `.glb` — the viewer decodes and drives by linear-blend
+        // skinning rather than posing per-part meshes.
+        const skinned = voxel.skinned ?? false;
         return {
           // A static model declares neither the required nor the produced rig; an
           // animated one carries both. The produced rig drives the viewer.
           animated,
+          skinned,
+          skinnedMeshUrl: skinned ? (parts[0]?.meshUrl ?? null) : null,
           rig: voxel.rig ?? null,
           model: voxel.model ?? null,
           parts,
           detail: voxel.detail,
+        };
+      },
+      uiResultFor(run) {
+        const ui = run.validation.ui;
+        if (!ui) return null;
+        const url = (file: string) =>
+          assetMediaUrl ? assetMediaUrl(run.id, file) : null;
+        // Elements are addressed the flat way parts/frames are: a single-image case
+        // serves its one element under a bare name, a kit suffixes each with its
+        // `-<index>` in declared order.
+        const kit = ui.elements.length > 1;
+        const elements: UiElementView[] = ui.elements.map((element, index) => ({
+          name: element.name,
+          imageUrl: url(`element${kit ? `-${index}` : ""}.png`),
+          width: element.width,
+          height: element.height,
+          nineSlice: element.nineSlice ?? null,
+          detail: element.detail,
+        }));
+        return { elements, detail: ui.detail };
+      },
+      materialResultFor(run) {
+        const material = run.validation.material;
+        if (!material) return null;
+        const url = (file: string) =>
+          assetMediaUrl ? assetMediaUrl(run.id, file) : null;
+        // Maps are addressed by their declared index, flat like a sheet's frames.
+        const maps: MaterialMapView[] = material.maps.map((map, index) => ({
+          name: map.name,
+          imageUrl: url(`map-${index}.png`),
+          colorSpace: map.colorSpace,
+          detail: map.detail,
+        }));
+        const baseColorIndex = material.maps.findIndex(
+          (m) => m.name === "base-color",
+        );
+        return {
+          maps,
+          size: material.size,
+          tiling: material.tiling ?? null,
+          baseColorUrl:
+            baseColorIndex >= 0 ? url(`map-${baseColorIndex}.png`) : null,
+          detail: material.detail,
+        };
+      },
+      particleResultFor(run) {
+        const particle = run.validation.particle;
+        if (!particle) return null;
+        const url = (file: string) =>
+          assetMediaUrl ? assetMediaUrl(run.id, file) : null;
+        return {
+          systemUrl: url("system.json"),
+          previewUrl: particle.preview ? url("preview.gif") : null,
+          emitterCount: particle.emitterCount,
+          detail: particle.detail,
+        };
+      },
+      audioResultFor(run) {
+        const audio = run.validation.audio;
+        if (!audio) return null;
+        const url = (file: string) =>
+          assetMediaUrl ? assetMediaUrl(run.id, file) : null;
+        return {
+          clipUrl: url("clip.wav"),
+          midiUrl: audio.midi ? url("score.mid") : null,
+          previewUrl: audio.preview ? url("preview.png") : null,
+          sampleRate: audio.sampleRate,
+          channels: audio.channels,
+          durationMs: audio.durationMs,
+          detail: audio.detail,
         };
       },
       replayResultFor(run) {
@@ -761,6 +967,135 @@ export function useVoxelArtifacts(
     // array each render, so we key the effect on the derived string instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  return state;
+}
+
+// A process-wide cache of fetched `system.json` definitions, keyed by resolved URL.
+// A published/produced run's system is immutable, so it is fetched at most once and
+// reused by the live viewer across mounts.
+const particleSystemCache = new Map<string, ParticleSystem>();
+
+/** Fetch (and cache) a particle run's emitted `system.json` — the authored
+ * emitter/force/curve definition the viewer simulates live. Rejects on a failed
+ * fetch or malformed JSON. */
+export async function fetchParticleSystem(
+  url: string,
+): Promise<ParticleSystem> {
+  const cached = particleSystemCache.get(url);
+  if (cached) return cached;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`system.json: ${response.status}`);
+  const system = (await response.json()) as ParticleSystem;
+  particleSystemCache.set(url, system);
+  return system;
+}
+
+/** The load state of a fetched particle `system.json`. */
+export interface ParticleSystemState {
+  system: ParticleSystem | null;
+  loading: boolean;
+  error: string | null;
+}
+
+/**
+ * Fetch (and cache) a particle run's `system.json` for the live viewer. Pass the
+ * resolved `systemUrl` (or null to fetch nothing — e.g. an unservable run, or before
+ * the WebGL guard promotes). `system` stays null until the fetch resolves.
+ */
+export function useParticleSystem(url: string | null): ParticleSystemState {
+  const [state, setState] = useState<ParticleSystemState>({
+    system: null,
+    loading: url !== null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (url === null) {
+      setState({ system: null, loading: false, error: null });
+      return;
+    }
+    let cancelled = false;
+    setState({ system: null, loading: true, error: null });
+    fetchParticleSystem(url)
+      .then((system) => {
+        if (!cancelled) setState({ system, loading: false, error: null });
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setState({
+          system: null,
+          loading: false,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  return state;
+}
+
+// A process-wide cache of decoded skinned meshes, keyed by resolved `.glb` URL. Like
+// {@link meshFileCache}, mesh geometry is immutable per run, so each file is decoded
+// at most once.
+const skinnedMeshCache = new Map<string, SkinnedMesh>();
+
+/** Fetch (and cache) a skinned run's single `mesh.glb` and decode it into a
+ * {@link SkinnedMesh} with `parseSkinnedGlb`. Rejects on a failed fetch or decode. */
+export async function fetchSkinnedMesh(url: string): Promise<SkinnedMesh> {
+  const cached = skinnedMeshCache.get(url);
+  if (cached) return cached;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`mesh.glb: ${response.status}`);
+  const mesh = parseSkinnedGlb(await response.arrayBuffer());
+  skinnedMeshCache.set(url, mesh);
+  return mesh;
+}
+
+/** The load state of a decoded skinned mesh. */
+export interface SkinnedMeshState {
+  mesh: SkinnedMesh | null;
+  loading: boolean;
+  error: string | null;
+}
+
+/**
+ * Fetch (and cache) a skinned run's single `mesh.glb`, decoded into the
+ * {@link SkinnedMesh} the skinned 3D viewer poses. Pass the resolved
+ * `skinnedMeshUrl` (or null to fetch nothing). `mesh` stays null until it resolves.
+ */
+export function useSkinnedMesh(url: string | null): SkinnedMeshState {
+  const [state, setState] = useState<SkinnedMeshState>({
+    mesh: null,
+    loading: url !== null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (url === null) {
+      setState({ mesh: null, loading: false, error: null });
+      return;
+    }
+    let cancelled = false;
+    setState({ mesh: null, loading: true, error: null });
+    fetchSkinnedMesh(url)
+      .then((mesh) => {
+        if (!cancelled) setState({ mesh, loading: false, error: null });
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setState({
+          mesh: null,
+          loading: false,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
 
   return state;
 }

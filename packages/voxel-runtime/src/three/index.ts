@@ -7,3 +7,5 @@
 export { buildPartGeometry } from "./buildMesh";
 export { VoxelRig } from "./VoxelRig";
 export type { VoxelRigOptions } from "./VoxelRig";
+export { SkinnedVoxelRig } from "./SkinnedVoxelRig";
+export type { SkinnedVoxelRigOptions } from "./SkinnedVoxelRig";

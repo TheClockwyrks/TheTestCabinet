@@ -5,9 +5,10 @@ executes in an isolated container seeded with a fresh git repository, so a model
 cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
-There are **thirteen images**, selected by a run's
+There is **one image per run kind**, selected by a run's
 [test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
-its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
+its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md).
+The full set is whatever [`build.sh`](#building) builds; the notable ones:
 
 - the **base** image, which every
   [end-to-end](../apps/docs/src/content/docs/testing/end-to-end/) run executes
@@ -19,6 +20,13 @@ its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manife
 - the **sprite-sheet** image, which every sprite-sheet asset-generation run
   (`asset_kind = "sprite-sheet"`) executes in — the base image plus the baked-in
   `draw-sheet` binary;
+- the **ui** image, which every UI asset-generation run (`asset_kind = "ui"`)
+  executes in — the base image plus the baked-in `paint` and `ui` binaries (the
+  layered raster painter and the crisp vector/text/nine-slice tool);
+- the **material** image, which every PBR-material asset-generation run
+  (`asset_kind = "material"`) executes in — the base image plus the baked-in
+  `texture` and `pbr` binaries (the seamless map painter and the derivation/assembly
+  tool);
 - the **voxel** image, which every static-voxel asset-generation run
   (`asset_kind = "voxel-model"`) executes in — the base image plus the baked-in
   `voxel` binary;
@@ -43,6 +51,24 @@ its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manife
 - the **dc-animation** image, which every rigged Dual Contouring meshing run
   (`asset_kind = "dc-animation"`) executes in — the base image plus the baked-in
   `dc-anim` binary;
+- the **mc-skinned**, **sn-skinned**, and **dc-skinned** images, which every
+  skinned-character meshing run (`asset_kind = "mc-skinned"` / `"sn-skinned"` /
+  `"dc-skinned"`) executes in — the base image plus the baked-in `mc-skin` /
+  `sn-skin` / `dc-skin` binary (a single continuous, skeleton-bound skin, one
+  image per algorithm);
+- the **particle-2d** and **particle-3d** images, which every particle-effect run
+  (`asset_kind = "particle-2d"` / `"particle-3d"`) executes in — the base image
+  plus the baked-in `particle-2d` / `particle-3d` binary;
+- the **sfx-synth** image, which every procedural sound-effect run
+  (`asset_kind = "sfx-synth"`) executes in — the base image plus the baked-in
+  `sfx-synth` binary;
+- the **sfx-sample** image, which every sample-library sound-effect run
+  (`asset_kind = "sfx-sample"`) executes in — the base image plus the baked-in
+  `sfx-sample` binary **and the baked-in sample pack** (see
+  [the sample library](#the-sample-library-and-instrument-bank) below);
+- the **music** image, which every music run (`asset_kind = "music"`) executes in
+  — the base image plus the baked-in `music` binary and the baked-in instrument
+  bank;
 - the **adversarial** image, which every
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
   run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
@@ -71,6 +97,8 @@ containers/
 ├── base/Dockerfile             # the end-to-end run image (toolchain, run user)
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
+├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
+├── material/Dockerfile         # the base image plus the baked-in `texture` + `pbr` binaries
 ├── voxel/Dockerfile            # the base image plus the baked-in `voxel` binary
 ├── voxel-animation/Dockerfile  # the base image plus the baked-in `voxel-anim` binary
 ├── mc/Dockerfile               # the base image plus the baked-in `mc` binary (Marching Cubes)
@@ -79,13 +107,24 @@ containers/
 ├── sn-animation/Dockerfile     # the base image plus the baked-in `sn-anim` binary
 ├── dc/Dockerfile               # the base image plus the baked-in `dc` binary (Dual Contouring)
 ├── dc-animation/Dockerfile     # the base image plus the baked-in `dc-anim` binary
+├── mc-skinned/Dockerfile       # the base image plus the baked-in `mc-skin` binary (skinned character)
+├── sn-skinned/Dockerfile       # the base image plus the baked-in `sn-skin` binary
+├── dc-skinned/Dockerfile       # the base image plus the baked-in `dc-skin` binary
+├── particle-2d/Dockerfile      # the base image plus the baked-in `particle-2d` binary
+├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary
+├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary
+├── sfx-sample/Dockerfile       # the base image plus the baked-in `sfx-sample` binary + sample pack
+├── music/Dockerfile            # the base image plus the baked-in `music` binary + instrument bank
+├── sample-packs/               # per-pack manifests (name/tags/license/sha256); the audio
+│                               #   files are NOT committed — a pack is a content-addressed
+│                               #   artifact the sfx-sample/music image builds pin by digest
 ├── adversarial/                # the base image plus the wasm toolchain + Foray tooling
 │   ├── Dockerfile              #   (foray CLI, references + map, controller buildkit)
 │   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
 ├── performance/                # the base image plus the wasm toolchain + Lattice tooling
 │   ├── Dockerfile              #   (lattice CLI, reference engines, training, engine buildkit)
 │   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
-└── build.sh                    # builds (and optionally pushes) all thirteen images
+└── build.sh                    # builds (and optionally pushes) all images
 ```
 
 ## Base image
@@ -133,6 +172,17 @@ a single-sprite case draws with `draw`, a sprite-sheet case draws with
 - `sprite-sheet/` is the base image plus exactly the **`draw-sheet`** binary, the
   drawing tool a sprite-sheet run uses (`draw` plus a required `--frame` on every
   operation).
+- `ui/` is the base image plus the **`paint`** and **`ui`** binaries, the
+  [UI](../apps/docs/src/content/docs/testing/asset-generation/ui-binaries.md) tools a
+  run uses to paint a high-resolution interface asset — `paint` for layered raster
+  work (brushes, blend modes, masks, filters, effects) and `ui` for crisp vector
+  shapes, text, and nine-slice. Both ship in the one image because a run interleaves
+  them over a shared workspace.
+- `material/` is the base image plus the **`texture`** and **`pbr`** binaries, the
+  [material](../apps/docs/src/content/docs/testing/asset-generation/material-binaries.md)
+  tools a run uses to build a tileable PBR material — `texture` for seamless map
+  painting and `pbr` for baking normal/AO maps, setting uniforms, assembling
+  `material.json`, and rendering the lit 3D preview.
 - `voxel/` is the base image plus exactly the **`voxel`** binary, the sculpting
   tool a static-voxel run uses.
 - `voxel-animation/` is the base image plus exactly the **`voxel-anim`** binary,
@@ -146,6 +196,23 @@ a single-sprite case draws with `draw`, a sprite-sheet case draws with
 - `dc/` and `dc-animation/` are the base image plus exactly the **`dc`** /
   **`dc-anim`** binary, the Dual Contouring meshing tool (static / rigged) a
   high-fidelity, sharp-feature meshing run uses.
+- `mc-skinned/`, `sn-skinned/`, and `dc-skinned/` are the base image plus exactly
+  the **`mc-skin`** / **`sn-skin`** / **`dc-skin`** binary, the
+  [skinned-character](../apps/docs/src/content/docs/testing/asset-generation/skinned-binaries.md)
+  tool a run uses to sculpt one continuous body field, bind it to a
+  model-invented skeleton, and animate it as a deforming skin — one image per
+  algorithm (low-poly / smooth / sharp), each inherently rigged.
+- `particle-2d/` and `particle-3d/` are the base image plus exactly the
+  **`particle-2d`** / **`particle-3d`** binary, the
+  [particle-effect](../apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md)
+  tool a run uses to author an emitter system the review UI and a game play by
+  simulating it live.
+- `sfx-synth/`, `sfx-sample/`, and `music/` are the base image plus exactly the
+  **`sfx-synth`** / **`sfx-sample`** / **`music`** binary, the
+  [audio](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
+  tool a run uses to render a `.wav`. The `sfx-sample` and `music` images
+  additionally bake in a **sample pack** / **instrument bank** — the tool's fixed
+  palette (see [the sample library](#the-sample-library-and-instrument-bank)).
 
 Each meshing image bakes in its one binary the same way `sprite`/`voxel` do; the
 `-animation` images add the rigging/F-curve authoring that
@@ -155,19 +222,47 @@ deterministic isometric rasterizer, and their output is judged from the emitted
 data plus the rendered previews — there is no cheat-divergence check on these
 binaries.
 
-Both drawing Dockerfiles are `FROM` the base, so each inherits the toolchain, the `node`
-run user, the `/work` working directory, and the keep-alive `CMD`, and adds only
-its one binary. Unlike a harness CLI, these binaries are part of The Test Cabinet
-itself and their drawing logic must match the orchestrator's — the orchestrator
-regenerates an asset-generation run's scored image from its action log through the
-*same* library they use — so each is compiled from this repo (a multi-stage build
-in its Dockerfile) and baked in rather than installed at run time. Because of this
-coupling, **build the images from the same commit as the orchestrator**: a run
-records both the orchestrator commit and the image digest, so a version mismatch
-(which would invalidate the cheat-divergence signal) is auditable after the fact.
-Compiling the binaries is why the build context is the repository root rather than
-each image's directory (see `build.sh`); `build.sh` builds both asset-generation
-images `FROM` the base it builds alongside them, so all three stay in lockstep.
+Every asset-generation Dockerfile is `FROM` the base, so each inherits the
+toolchain, the `node` run user, the `/work` working directory, and the keep-alive
+`CMD`, and adds only its binary — or, for the `ui` and `material` images, its two
+binaries. Unlike a harness CLI, these binaries are part
+of The Test Cabinet itself and must match the orchestrator's own logic — the
+orchestrator regenerates a `draw`/`draw-sheet` run's scored image from its action
+log through the *same* library those tools use, and core's validator decodes the
+emitted data every other kind produces (the UI images, PBR maps, geometry, particle
+system, or `.wav`) — so each is
+compiled from this repo (a multi-stage build in its Dockerfile) and baked in
+rather than installed at run time. Because of this coupling, **build the images
+from the same commit as the orchestrator**: a run records both the orchestrator
+commit and the image digest, so a version mismatch (which would invalidate the
+`draw`/`draw-sheet` cheat-divergence signal, and could desync any binary from the
+validator that decodes its output) is auditable after the fact. Compiling the binaries is
+why the build context is the repository root rather than each image's directory
+(see `build.sh`); `build.sh` builds every asset-generation image `FROM` the base
+it builds alongside them, so they all stay in lockstep.
+
+## The sample library and instrument bank
+
+The [`sfx-sample`](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
+tool mixes over a **sample library** and the `music` tool plays a **instrument
+bank** — the fixed audio palette each ships with, exactly as `draw` ships with its
+drawing logic. Because a run container is isolated and offline, the palette is
+**baked into the image at build time**; nothing is fetched at run time.
+
+The audio files themselves are **not committed to this repository**. What lives
+here is a per-pack **manifest** under `sample-packs/` (one `<pack>.toml` per pack)
+that lists each sample's stable `name`, `tags`, `description`, **`license`** — which
+must be CC0 or otherwise permissive so a produced clip is freely usable in a test
+case and a published run — its source URL, and a **`sha256`** content hash. The
+pack itself is a **separately-versioned, content-addressed artifact** (an
+object-storage tarball / OCI artifact) assembled by
+[`scripts/build-sample-pack.mjs`](../scripts/build-sample-pack.mjs), which fetches
+the sources the manifest names, verifies each hash, normalizes them (sample rate,
+loudness, trim, format), and packs them. The `sfx-sample` and `music` image builds
+**pin a pack version by digest** and bake it in, so updating the palette is a new
+pack version plus an image rebuild — versioned immutably with the image, and a case
+names the pack it expects (`sample_pack` / `instrument_bank`) rather than any path
+in this repo.
 
 ## Adversarial image
 
@@ -259,17 +354,12 @@ drifted from the repository's workspace dependencies fails the image build.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build all thirteen images (base, sprite, sprite-sheet, voxel, voxel-animation, mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, performance)
+./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
 DOCKER=podman ./build.sh  # build with Podman instead
 ```
 
-Build-only mode tags `test-cabinet-base:latest`, `test-cabinet-sprite:latest`,
-`test-cabinet-sprite-sheet:latest`, `test-cabinet-voxel:latest`,
-`test-cabinet-voxel-animation:latest`, `test-cabinet-mc:latest`,
-`test-cabinet-mc-animation:latest`, `test-cabinet-sn:latest`,
-`test-cabinet-sn-animation:latest`, `test-cabinet-dc:latest`,
-`test-cabinet-dc-animation:latest`, `test-cabinet-adversarial:latest`, and
-`test-cabinet-performance:latest` locally. Those are exactly the names a runner
+Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
+directory alongside this README, plus the base). Those are exactly the names a runner
 resolves (by test type and asset
 kind) when its `TCAB_CONTAINER_REGISTRY` is set to an empty string, so a
 locally-built image is used for offline development without pulling anything.
@@ -304,7 +394,7 @@ only promises an environment that honors the following contract:
 ## Status / validation
 
 This definition is authored but **not yet built or validated** — that requires a
-Docker host. When validating on Linux, build all thirteen images (`./build.sh`) and
+Docker host. When validating on Linux, build all images (`./build.sh`) and
 confirm a container from each runs and keeps alive, that `draw` is on `PATH` in
 the sprite image and `draw-sheet` is on `PATH` in the sprite-sheet image, that
 each voxel-family binary (`voxel`, `voxel-anim`, `mc`, `mc-anim`, `sn`, `sn-anim`,

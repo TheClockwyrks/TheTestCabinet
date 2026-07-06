@@ -31,6 +31,42 @@ in which case the reviewer is shown exactly those animations and frames beside t
 item — with a toggle between the live animation and the still frames — instead of
 scanning the whole sheet to find them.
 
+## UI validation
+
+A [`ui`](/testing/asset-generation/overview/#user-interface-assets) run is **not
+regenerated**. Although it is a 2D image, it is judged like the voxel and audio
+families, not like a sprite: its output is the flattened image data the
+[`paint`/`ui` binaries](/testing/asset-generation/ui-binaries/) **emit**, and
+[`crates/core`](/components/core/overview/) neither replays the operation log nor
+re-composites the layers for scoring. The validator **parses the emitted data**:
+
+- **each element's flattened RGBA PNG** — `canvas.png` for a single-image case, one
+  `elements/{element}.png` per element for a kit — confirmed well-formed and the
+  element's declared size.
+- **the emitted `ui.json`** — confirmed well-formed, with each element's `nine_slice`
+  insets (when authored) falling within its bounds and any atlas rectangles
+  self-consistent.
+
+There is no similarity score and **no cheat-divergence check**: what is scored is the
+emitted image plus a reviewer's judgment of the rendered elements. The review UI
+shows each element and can render its nine-slice **stretch previews** so a reviewer
+checks that a panel or button scales cleanly, as well as its static art.
+
+## Material validation
+
+A [`material`](/testing/asset-generation/overview/#pbr-materials) run is likewise
+**not regenerated**: its output is the maps the
+[`texture`/`pbr` binaries](/testing/asset-generation/material-binaries/) **emit**. The
+validator decodes **each declared map** (`maps/{map}.png`) — confirming it is
+well-formed, the declared `size`, and tileable — checks that **`base-color` is
+present and non-empty** (the material actually carries albedo), and parses
+**`material.json`** (the maps, their color spaces, and the tiling scale) as
+well-formed. There is no cheat check. A reviewer judges the material shown **per
+map**, as a **2×2 tiling** (so seams show), and on the **lit 3D preview** the `pbr`
+tool renders — the material applied to a test surface by
+[triplanar projection](/testing/asset-generation/material-binaries/#the-triplanar-consumption-model),
+so it is judged as it will read on a mesh.
+
 ## Voxel validation
 
 A [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run is **not
@@ -85,6 +121,50 @@ reads, such as a walk with a planted stance or the snap of a recoil — alongsid
 mesh, and the review UI plays the produced animations back beside each caller
 joint's live control.
 
+### Skinned characters
+
+A [skinned](/testing/asset-generation/skinned-binaries/) run
+(`mc-skinned`/`sn-skinned`/`dc-skinned`) is validated like an animated voxel run,
+with one shape difference: it emits **one** skinned `mesh.glb` and **one** `rig.json`
+(a skinned model is a single continuous field, not a set of parts), so there is no
+per-part set. The validator decodes the glb — confirming its skin binding is
+well-formed (per-vertex bone weights and inverse-bind matrices, the joint node
+hierarchy) — parses `rig.json`, and applies the **same rig contract** above: each
+[required animation](/testing/asset-generation/manifests/#skinned-cases) must be
+present and actually animate, a missing or empty one recorded as a zero-scored
+contract gap. The reviewer scores how well the skin **deforms** — an elbow that bends
+without tearing, a stride that reads as a walking creature — with the 3D viewer posing
+the rig by linear-blend skinning.
+
+## Particle validation
+
+A [particle](/testing/asset-generation/particle-binaries/) run
+(`particle-2d`/`particle-3d`) is **not regenerated** either: its output is the
+data the binary emits — the authored **`system.json`**, the emitter/force/curve
+definition. The validator parses it, confirms it is well-formed and **non-empty**
+(the system actually emits particles within the declared `[particle]` field and
+duration), and takes the rendered **preview animation** as the reviewer sees it.
+There is no bake and no determinism: a particle effect is **simulated live**, so it
+varies slightly from play to play — the validator judges the emitted **system**, not
+a frozen frame sequence. The reviewer scores the **character of the effect** (the
+read of an explosion, a muzzle flash, a plume) the way a sprite sheet's sequences are
+judged, the review UI **simulating the system live** — a running particle editor, not
+a replayed clip.
+
+## Audio validation
+
+An [audio](/testing/asset-generation/audio-binaries/) run
+(`sfx-synth`/`sfx-sample`/`music`) emits a rendered PCM **`clip.wav`** (and, for
+`music`, a portable **`clip.mid`** score). The validator decodes the `.wav`, confirms
+it is well-formed, within the `[audio]` format (`sample_rate`, `channels`), no longer
+than `max_duration_ms`, and **not silent** (the operations produced audible signal) —
+a silent or empty clip is recorded as a contract gap, not a crash. There is no
+runtime to pose and nothing to re-render: the clip is played as the reviewer hears it.
+The assessment is **subjective** — a reviewer plays the clip against the brief (does
+it read as a battleship's main gun, a footstep on a deck, a victory fanfare) — with
+the rendered **waveform and spectrogram** (and, for music, the **piano-roll**) shown
+alongside.
+
 ## Cheat detection
 
 Comparing the **regenerated image** against the **final image from the model's
@@ -95,10 +175,15 @@ strong sign it tried to bypass the drawing tool. The divergence is recorded so a
 reviewer sees it; because only the regenerated image is ever scored, a model gains
 nothing from drawing outside the tool, and the mismatch simply marks the attempt.
 
-This check applies only to the 2D drawing tools. A
-[voxel run](#voxel-validation) is judged on its **emitted data** (see above) and is
-not policed this way — the geometry and preview it emits are what a reviewer
-evaluates, whatever produced them.
+This check applies **only to the pixel-drawing tools** — `draw` and `draw-sheet`
+(the `sprite` and `sprite-sheet` kinds), whose scored image *is* regenerated from
+the log. Every other kind is judged on its **emitted data** and is not policed this
+way: a [`ui`](#ui-validation) or [`material`](#material-validation) run (whose
+authoritative output is the emitted image/maps, not a replay of its operations), and
+a [voxel](#voxel-validation), [skinned](#skinned-characters),
+[particle](#particle-validation), or [audio](#audio-validation) run, are each scored
+on the image, geometry, maps, effect, clip, and preview they emit — whatever produced
+them.
 
 ## Review
 

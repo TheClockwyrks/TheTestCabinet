@@ -1,0 +1,70 @@
+[package]
+name = "test-cabinet-paint"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The shared raster engine and record/preview plumbing behind the UI and material
+# asset-generation binaries. One library, four front-ends over one workspace: `paint`
+# (layered raster painter) and `ui` (crisp vector/text/nine-slice) build a
+# high-resolution interface asset; `texture` (seamless map painter) and `pbr`
+# (normal/AO derivation, uniforms, `material.json` assembly, and the lit 3D preview)
+# build a tileable PBR material. See the binary docs under
+# `apps/docs/src/content/docs/testing/asset-generation/{ui,material}-binaries.md`.
+[lib]
+name = "test_cabinet_paint"
+path = "src/lib.rs"
+
+# The four CLIs the model invokes inside the run container. All gated behind the
+# `cli` feature (on by default) so a `default-features = false` library consumer
+# (e.g. `crates/core`) links only the pure raster engine and never pulls in clap or
+# serde_json.
+[[bin]]
+name = "paint"
+path = "src/bin/paint.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "ui"
+path = "src/bin/ui.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "texture"
+path = "src/bin/texture.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "pbr"
+path = "src/bin/pbr.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+# The four CLIs, plus the `pbr` 3D preview renderer. Enabling `cli` turns on the
+# renderer stack in the two 3D deps so `pbr render` can draw the lit preview surface;
+# a `default-features = false` library consumer (e.g. `crates/core`) links only the
+# pure raster engine and never compiles wgpu/clap/serde_json.
+cli = [
+    "dep:clap",
+    "dep:serde_json",
+    "test-cabinet-model-core/cli",
+    "test-cabinet-voxel-mesh/cli",
+]
+
+[dependencies]
+serde = { workspace = true }
+# Pure-Rust PNG encoder for the emitted flattened element / map images.
+png = { workspace = true }
+clap = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+# The `pbr` binary renders a lit 3D preview of the assembled material applied to a
+# test surface: `voxel-mesh` supplies the preview surface geometry and `model-core`
+# the shared wgpu+Mesa renderer and record/preview plumbing. Linked without default
+# features so a `default-features = false` consumer never pulls in the renderer stack.
+test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
+test-cabinet-model-core = { path = "../model-core", default-features = false }
+
+[lints]
+workspace = true

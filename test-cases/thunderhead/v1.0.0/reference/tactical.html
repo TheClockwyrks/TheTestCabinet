@@ -1,0 +1,106 @@
+<!doctype html>
+<!--
+  Thunderhead — tactical HUD (common across variants).
+  Rendered by the harness at 1280x720 as the `tactical` view target. HUD-ONLY: it
+  pins the tactical command layer's HUD layout, palette, and type over a neutral
+  dark viewport. The real build renders the WebGL/WebGPU world (islands, the cloud
+  sea, and the fleets) behind this HUD, through the tilted tactical camera — flat
+  CSS cannot depict that, so it is deliberately not faked. One example moment: an
+  Ironbound fleet engaging a Meridian fleet. Values are illustrative.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- performance overlay (toggled on) -->
+      <div class="perf">
+        <div><b>FPS</b> 58</div>
+        <div><b>DRAWS</b> 141</div>
+        <div><b>UNITS</b> 34</div>
+      </div>
+
+      <!-- flagship health, top center: yours + the enemy's -->
+      <div class="flagships">
+        <div class="flag you">
+          <div class="label">YOUR FLAGSHIP · WROUGHT</div>
+          <div class="bar"><div class="fill" style="width: 82%"></div></div>
+          <div class="hp">14,800 / 18,000</div>
+        </div>
+        <div class="flag foe">
+          <div class="label">ENEMY FLAGSHIP · AURELIA</div>
+          <div class="bar"><div class="fill" style="width: 46%"></div></div>
+          <div class="hp">6,900 / 15,000</div>
+        </div>
+      </div>
+
+      <!-- requisition + income + reinforcement, top-right -->
+      <div class="req">
+        <div class="amt">§ 1,180</div>
+        <div class="rate">+§ 10 / s</div>
+        <div class="reinforce">REINFORCE <b>R</b> &middot; CRUISER INBOUND 0:22</div>
+      </div>
+
+      <!-- alert line -->
+      <div class="alert-line">&#9888; BREACHER SQUADRON — YOUR CARRIER UNDER AIR ATTACK</div>
+
+      <!-- fleet roster, left -->
+      <div class="roster">
+        <h4>FLEET</h4>
+        <div class="unit flag-unit sel">
+          <span class="nm">WROUGHT · BB</span>
+          <span class="hpbar"><i style="width: 82%"></i></span>
+        </div>
+        <div class="unit">
+          <span class="nm">FOUNDRY · CV</span>
+          <span class="hpbar"><i style="width: 64%"></i></span>
+        </div>
+        <div class="unit">
+          <span class="nm">GRINDER · CA</span>
+          <span class="hpbar"><i style="width: 91%"></i></span>
+        </div>
+        <div class="unit">
+          <span class="nm">TENDER · SP</span>
+          <span class="hpbar"><i style="width: 100%"></i></span>
+        </div>
+        <div class="unit">
+          <span class="nm">DELVE · SS</span>
+          <span class="hpbar"><i class="warn" style="width: 38%"></i></span>
+        </div>
+      </div>
+
+      <!-- selection + order panel, bottom-left -->
+      <div class="select">
+        <h4>WROUGHT — BATTLESHIP</h4>
+        <div class="row"><span>HULL</span><span class="v good">14,800 / 18,000</span></div>
+        <div class="row"><span>SPEED</span><span class="v">20 u/s</span></div>
+        <div class="row"><span>ORDER</span><span class="v">ATTACK · AURELIA</span></div>
+        <div class="orders">
+          <span class="ord">MOVE</span>
+          <span class="ord on">ATTACK</span>
+          <span class="ord">ESCORT</span>
+          <span class="ord">HOLD</span>
+          <span class="ord">POSSESS</span>
+        </div>
+      </div>
+
+      <!-- minimap / contacts, bottom-right -->
+      <div class="minimap">
+        <div class="field">
+          <div class="zone" style="left: 12px; top: 66px"></div>
+          <div class="zone" style="right: 12px; top: 66px"></div>
+          <span class="lbl">CONTACTS</span>
+          <div class="blip you flag" style="left: 30%; top: 52%"></div>
+          <div class="blip you" style="left: 26%; top: 40%"></div>
+          <div class="blip you" style="left: 34%; top: 63%"></div>
+          <div class="blip you" style="left: 22%; top: 58%"></div>
+          <div class="blip foe flag" style="left: 70%; top: 46%"></div>
+          <div class="blip foe" style="left: 64%; top: 55%"></div>
+          <div class="blip foe" style="left: 74%; top: 38%"></div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -290,6 +290,65 @@ pub async fn upload_assets_to_backend(
                 client.publish_run_asset(&record.id, &served, bytes).await?;
             }
         }
+    } else if let Some(ui) = record.validation.ui.as_ref() {
+        // A UI run mirrors its flattened per-element PNG(s) — single-image under the
+        // bare `element.png`, a kit suffixing each element with `-<index>` — plus the
+        // `ui.json` manifest (served name == on-disk name). Matches
+        // `playable::serve_asset_file` and the snapshot.
+        let is_kit = ui.elements.len() > 1;
+        let mut artifacts: Vec<(String, String)> =
+            vec![("ui.json".to_string(), "ui.json".to_string())];
+        for (index, element) in ui.elements.iter().enumerate() {
+            let suffix = if is_kit {
+                format!("-{index}")
+            } else {
+                String::new()
+            };
+            artifacts.push((format!("element{suffix}.png"), element.image.clone()));
+        }
+        publish_artifacts(&client, &record.id, &impl_dir, artifacts).await?;
+    } else if let Some(material) = record.validation.material.as_ref() {
+        let mut artifacts: Vec<(String, String)> =
+            vec![("material.json".to_string(), "material.json".to_string())];
+        for (index, map) in material.maps.iter().enumerate() {
+            artifacts.push((format!("map-{index}.png"), map.image.clone()));
+        }
+        publish_artifacts(&client, &record.id, &impl_dir, artifacts).await?;
+    } else if let Some(particle) = record.validation.particle.as_ref() {
+        let mut artifacts: Vec<(String, String)> =
+            vec![("system.json".to_string(), particle.system.clone())];
+        if let Some(preview) = &particle.preview {
+            artifacts.push(("preview.gif".to_string(), preview.clone()));
+        }
+        publish_artifacts(&client, &record.id, &impl_dir, artifacts).await?;
+    } else if let Some(audio) = record.validation.audio.as_ref() {
+        let mut artifacts: Vec<(String, String)> =
+            vec![("clip.wav".to_string(), audio.clip.clone())];
+        if let Some(midi) = &audio.midi {
+            artifacts.push(("score.mid".to_string(), midi.clone()));
+        }
+        if let Some(preview) = &audio.preview {
+            artifacts.push(("preview.png".to_string(), preview.clone()));
+        }
+        publish_artifacts(&client, &record.id, &impl_dir, artifacts).await?;
+    }
+    Ok(())
+}
+
+/// Publish a list of `(served-name, run-root-relative on-disk path)` artifacts,
+/// skipping any that are missing on disk. Shared by the UI/material/particle/audio
+/// mirror branches, whose served name and on-disk `rel` differ.
+async fn publish_artifacts(
+    client: &HttpBackendClient,
+    run_id: &str,
+    impl_dir: &Path,
+    artifacts: Vec<(String, String)>,
+) -> test_cabinet_core::Result<()> {
+    for (served, rel) in artifacts {
+        let Ok(bytes) = std::fs::read(impl_dir.join(&rel)) else {
+            continue;
+        };
+        client.publish_run_asset(run_id, &served, bytes).await?;
     }
     Ok(())
 }

@@ -37,6 +37,10 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         sheet: None,
         voxel: None,
         model: None,
+        ui: None,
+        material: None,
+        particle: None,
+        audio: None,
         prompt_template: "build it".to_string(),
         common_specs: vec![StoredSpec {
             source: "specs/overview.hbs".to_string(),

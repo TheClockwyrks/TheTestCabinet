@@ -4,9 +4,11 @@ title: Overview
 
 An **asset-generation** test case evaluates how well a model can use tools to
 **produce a graphical asset** rather than to write a program. This spans **2D
-work** — creating a sprite or a sprite sheet — and **3D work** — sculpting an
-opaque-voxel model or a rigged, animated one — and it is a deliberately different
-class of test from the others: it does not measure code generation at all, it
+work** — a small pixel-art sprite or sprite sheet, and a large, high-resolution
+**interface asset** or **PBR material** painted with layers and brushes — and **3D
+work** — sculpting an opaque-voxel model or a rigged, animated one — and it is a
+deliberately different class of test from the others: it does not measure code
+generation at all, it
 measures how well a model can drive a tool toward a goal **described in a brief**
 through many small, deliberate steps. The result is **subjective** — the model is given a
 precise written description and the freedom to draw something that matches it, so
@@ -70,15 +72,29 @@ than scored.
 ## Asset kinds
 
 A case declares, with its `asset_kind`, **what shape of asset** the model produces
-— today one of ten, split across two dimensionalities and, in 3D, two building
-paradigms:
+— one of twenty, spanning **2D pixel images**, **high-resolution painted assets**
+(interface art and PBR materials), **3D models** (built three ways — cube voxels,
+meshed signed-distance fields, and skinned characters), **particle effects** (2D and
+3D), and **audio** (sound effects and music):
 
 - **`sprite`** (the default) — a **single sprite**: one image drawn onto the whole
-  canvas with the [`draw` binary](/testing/asset-generation/binaries/).
+  canvas with the [`draw` binary](/testing/asset-generation/sprite-binaries/).
 - **`sprite-sheet`** — a **sprite sheet**: a set of animation frames, each its own
   **completely separate file** (its own canvas, not a region of one larger image),
-  drawn with the [`draw-sheet` binary](/testing/asset-generation/binaries/) and a
+  drawn with the [`draw-sheet` binary](/testing/asset-generation/sprite-binaries/) and a
   required `--frame <index>`.
+- **`ui`** — a **high-resolution interface asset**: a HUD plate, panel, button,
+  frame, icon, or full-screen background — one image, or a **kit** of named elements
+  — painted with layers, brushes, and alpha compositing on the [`paint` and `ui`
+  binaries](/testing/asset-generation/ui-binaries/), with crisp vector shapes, text,
+  and nine-slice authoring for scalable interface parts. See [User interface
+  assets](#user-interface-assets).
+- **`material`** — a **tileable PBR material**: the set of maps (base color, normal,
+  roughness, metallic, ambient occlusion, emissive) that dresses a 3D surface,
+  painted seamlessly with the [`texture` and `pbr`
+  binaries](/testing/asset-generation/material-binaries/) and applied to meshed
+  models by [triplanar projection](/testing/asset-generation/material-binaries/#the-triplanar-consumption-model).
+  See [PBR materials](#pbr-materials).
 - **`voxel-model`** / **`voxel-animation`** — the **cube voxel** kinds: an
   opaque-RGB voxel volume of **discrete cells**, sculpted with the [`voxel` /
   `voxel-anim` binaries](/testing/asset-generation/voxel-binaries/). `voxel-model`
@@ -95,9 +111,31 @@ paradigms:
   models](#meshed-voxel-models)). The `-model` kinds are static; the `-animation`
   kinds are rigged and animated exactly like `voxel-animation`, each part built
   with a required `--part <name>`.
+- **`mc-skinned`**, **`sn-skinned`**, **`dc-skinned`** — the **skinned character**
+  kinds: a **single continuous skin** — one meshed signed-distance field bound to a
+  model-invented **skeleton** with per-vertex weights — that **deforms** across its
+  joints via linear-blend skinning, built with the [`mc-skin` / `sn-skin` / `dc-skin`
+  binaries](/testing/asset-generation/skinned-binaries/). Where the meshed
+  `-animation` kinds articulate **rigidly** (separate per-part meshes, a
+  wooden-puppet read), a skinned model bends organically — the kind for characters
+  and creatures. A skinned model is inherently rigged; there is no static skinned
+  kind. See [Skinned character models](#skinned-character-models).
+- **`particle-2d`** / **`particle-3d`** — the **particle-effect** kinds: a VFX asset
+  (an explosion, a muzzle flash, an engine plume, a victory burst) the model builds
+  by **authoring an emitter system** — emitters, forces, and per-particle curves —
+  with the [`particle-2d` / `particle-3d`
+  binaries](/testing/asset-generation/particle-binaries/), which the review UI and a
+  game **simulate live**, the way a real particle editor plays a system. See
+  [Particle effects](#particle-effects).
+- **`sfx-synth`** / **`sfx-sample`** / **`music`** — the **audio** kinds: a short
+  (≤ 5 s) clip the model builds with the [audio
+  binaries](/testing/asset-generation/audio-binaries/) — `sfx-synth` synthesizes a
+  sound effect from a modular synth graph, `sfx-sample` layers one over a baked
+  sample library, and `music` sequences notes on instrument tracks — each rendering
+  to a PCM `.wav`. See [Audio](#audio).
 
 `asset_kind` is a property of the whole version, **not** a variant — a case is
-exactly one kind, never a mix, and a variant cannot change it. None of the ten
+exactly one kind, never a mix, and a variant cannot change it. None of the twenty
 carries a target: every kind is reviewed against the brief, never against a
 supplied picture.
 
@@ -106,6 +144,52 @@ by the index it is written to) and the **animation sequences** — ordered lists
 frame indices, each with a playback rate — so the review UI can play the named
 animations back from the per-frame regenerated images and a reviewer can judge a
 sheet by its motion, not just its static pixels.
+
+## User interface assets
+
+The **`ui`** kind moves 2D asset generation from a small pixel-art sprite to a
+**large, high-resolution interface asset** — the panels, HUD plates, buttons,
+frames, icons, insignia, and backgrounds a game's UI is built from. Where the
+[`draw` tool](/testing/asset-generation/sprite-binaries/) paints a 32–64 px canvas
+with replace-pixel semantics and no layers — right for an arcade sprite — the UI
+kind paints a **256–2048 px RGBA canvas** with a full **layer stack**, **alpha
+compositing** and blend modes, soft/hard/textured **brushes**, gradients,
+selections, masks, filters, and layer effects (bevels, inner shadows, strokes). It
+is authored with **two binaries** in the one `ui` image: **`paint`** for painterly
+raster work and **`ui`** for the crisp, structural parts — anti-aliased vector
+shapes, **text** in baked fonts, and **nine-slice** insets that let a game scale one
+authored panel or button to any size without distorting its corners.
+
+A `ui` case is either **one full-canvas image** (a title screen, a HUD backdrop) or
+a **kit** of named **elements** (a `panel`, a `button`, an `icon`), each its own
+document of its own size — the interface analogue of a sprite sheet's frames. Each
+element flattens to an RGBA PNG, and core emits a **`ui.json`** carrying every
+element's size, its nine-slice insets, and — when packed — its atlas rectangle, so a
+game binds the asset and addresses each piece by name. See [The UI
+binaries](/testing/asset-generation/ui-binaries/).
+
+## PBR materials
+
+The **`material`** kind produces a **tileable PBR material** — the set of maps that
+dresses a 3D surface so a [meshed model](#meshed-voxel-models) reads as painted
+metal, worn stone, or scuffed plating rather than a flat `#rrggbb`. A material
+carries a required **base-color** map and any of **normal** (surface relief),
+**roughness**, **metallic**, **ambient occlusion**, and **emissive** — each a square
+map painted seamlessly, so it tiles without a seam. It is authored with **two
+binaries** in the one `material` image: **`texture`**, the
+[`paint`](/testing/asset-generation/ui-binaries/) vocabulary restricted to one map
+at a time and made **tileable** (every brush, gradient, and filter wraps across the
+edges), plus procedural noise and patterns; and **`pbr`**, which **bakes** the
+normal and occlusion maps from a painted **height** field, sets uniform scalar maps,
+assembles the **`material.json`**, and renders a **lit 3D preview** of the material
+on a test surface.
+
+A material is applied to a mesh by **triplanar projection** — sampling each map down
+the world X/Y/Z axes and blending by the surface normal — which needs **no UVs**,
+the natural fit for the [signed-distance-field surfaces](#meshed-voxel-models) that
+have no UV layout to unwrap. Core emits one PNG per declared map plus the
+`material.json` (paths, color spaces, and the world-space tiling scale). See [The
+material binaries](/testing/asset-generation/material-binaries/).
 
 ## Voxel models and rigs
 
@@ -239,3 +323,57 @@ package for how a game poses a produced rig, and
 [Manifests](/testing/asset-generation/manifests/) for how a case declares its
 canvas or `[voxel]` volume, `asset_kind`, the `[sheet]` frames and sequences, and
 the `[model]` required animations.
+
+## Skinned character models
+
+The **skinned** kinds — `mc-skinned`, `sn-skinned`, `dc-skinned` — produce a
+**character**: a single continuous skin that **deforms** across its joints, the way
+an elbow bends without a seam. This is the paradigm the meshed `-animation` kinds
+cannot express — those articulate **rigidly**, each part a separate mesh posed about
+a pivot (the right read for a tank or a mech, wrong for a creature). A skinned model
+instead composites **one whole-body signed-distance field**, meshes it **once** into
+a single surface, and binds that surface to a model-invented **skeleton** — bones in
+a hierarchy, each carrying the same [joints and F-curve
+animations](#the-rig-parts-and-joints) a rig does — with **per-vertex weights** the
+binary derives automatically, so the mesh follows the bones by **linear-blend
+skinning**. It reuses the meshed kinds' [signed-distance-field
+authoring](#meshed-voxel-models) and the same three surface characters (low-poly,
+smooth, sharp), and — like the animated voxel kinds — a case fixes only the
+[required animations](#the-rig-parts-and-joints), leaving the skeleton and its
+binding for the model to invent. The **first-person viewmodel** an FPS wants (two
+floating hands, a weapon on an attach socket) is authored the same way, needing no
+separate tool. See [The skinned binaries](/testing/asset-generation/skinned-binaries/).
+
+## Particle effects
+
+The **particle** kinds — `particle-2d` and `particle-3d` — produce a **visual
+effect**: an explosion, a muzzle flash, an engine plume, a splash, a victory burst.
+The model does **not** place individual particles; it **authors a system** — emitters
+(what spawns, where, how fast, for how long), forces (gravity, drag, a radial
+explosion push, a vortex, curl-noise turbulence), and per-particle **curves** (size,
+color, and opacity over each particle's life, as the same
+[F-curves](#the-rig-parts-and-joints) a rig uses) — that a **live simulation** plays,
+the way a real particle editor (Unreal's Niagara, Unity's VFX Graph) plays a system.
+The authored **system definition is the asset**; the review UI and a consuming game
+each **simulate it live** from that definition. There is no bake and no determinism
+requirement — a stochastic effect **varies slightly from one play to the next**,
+which is exactly right for an explosion or a plume, and the authored system *is* the
+[recorded operations](#why-the-actions-are-the-output), so nothing is produced outside
+the tool. See [The particle binaries](/testing/asset-generation/particle-binaries/).
+
+## Audio
+
+The **audio** kinds — `sfx-synth`, `sfx-sample`, and `music` — produce a short
+(≤ 5 s) **clip**, rendered to a PCM `.wav`. Because the asset is a finished waveform
+a game plays directly, the audio kinds carry **no runtime posing or simulation
+library** — where a rig or a particle system is played live, a `.wav` is simply
+played. A model builds a clip through discrete operations exactly as it draws or
+sculpts: `sfx-synth` **layers a modular synth graph** (oscillators, noise,
+envelopes, filters, FM) the way a gunshot stacks a boom, a crack, and a tail;
+`sfx-sample` layers that same synthesis **over a baked sample library** — the
+game-audio approach the naval, weapon, and footstep effects of the harder 3D cases
+use; and `music` **sequences notes on instrument tracks**, emitting a portable
+`.mid` score beside the `.wav`. The binary renders a **waveform and spectrogram**
+(and, for music, a piano-roll) the model reads to see its progress, and a reviewer
+plays the clip against the brief. See [The audio
+binaries](/testing/asset-generation/audio-binaries/).

@@ -52,6 +52,56 @@
           "const": "dc-animation",
           "description": "A rigged, animatable surface-meshed 3D model built with the **dual contouring**\n`dc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield; declares a `[voxel]` and a `[model]` table.",
           "type": "string"
+        },
+        {
+          "const": "ui",
+          "description": "A high-resolution 2D interface asset (or kit of elements) painted with the\n`paint`/`ui` binaries. Declares a `[canvas]` (base element size) and an\noptional `[ui]` table (the kit's elements). Judged on the emitted flattened\nPNG(s) plus `ui.json`.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "A tileable PBR material — a set of maps (base color, normal, roughness, …) —\npainted with the `texture`/`pbr` binaries. Declares a `[material]` table (no\n`[canvas]`/`[voxel]`). Judged on the emitted maps plus `material.json`.",
+          "type": "string"
+        },
+        {
+          "const": "mc-skinned",
+          "description": "A skinned character (marching cubes): one whole-body field bound to a\nmodel-invented skeleton, deformed by linear-blend skinning. Declares a\n`[voxel]` and a `[model]` table but emits a **single** `mesh.glb` + `rig.json`\n(not per-part).",
+          "type": "string"
+        },
+        {
+          "const": "sn-skinned",
+          "description": "A skinned character (surface nets). See [`Self::McSkinned`].",
+          "type": "string"
+        },
+        {
+          "const": "dc-skinned",
+          "description": "A skinned character (dual contouring). See [`Self::McSkinned`].",
+          "type": "string"
+        },
+        {
+          "const": "particle-2d",
+          "description": "A 2D particle effect authored with the `particle-2d` binary. Declares a\n`[particle]` table (a planar field). Judged on the emitted `system.json`.",
+          "type": "string"
+        },
+        {
+          "const": "particle-3d",
+          "description": "A 3D particle effect authored with the `particle-3d` binary. Declares a\n`[particle]` table (a volume). Judged on the emitted `system.json`.",
+          "type": "string"
+        },
+        {
+          "const": "sfx-synth",
+          "description": "A procedurally-synthesized sound effect authored with the `sfx-synth` binary.\nDeclares an `[audio]` table. Judged on the emitted `clip.wav`.",
+          "type": "string"
+        },
+        {
+          "const": "sfx-sample",
+          "description": "A sample-library sound effect authored with the `sfx-sample` binary. Declares\nan `[audio]` table (naming its `sample_pack`). Judged on the emitted `clip.wav`.",
+          "type": "string"
+        },
+        {
+          "const": "music",
+          "description": "A short piece of music authored with the `music` sequencer binary. Declares an\n`[audio]` table (naming its `instrument_bank`). Judged on the emitted\n`clip.wav` (and portable `clip.mid`).",
+          "type": "string"
         }
       ]
     },
@@ -65,6 +115,37 @@
         }
       },
       "required": ["source", "dest"],
+      "type": "object"
+    },
+    "AudioSpec": {
+      "description": "The resolved `[audio]` of an audio asset-generation case: the rendered clip's\noutput format and (for the sample/instrument kinds) the baked palette.",
+      "properties": {
+        "channels": {
+          "description": "Channel layout: `mono` or `stereo`.",
+          "type": "string"
+        },
+        "instrumentBank": {
+          "description": "For `music`: the baked instrument bank (`name@version`). `None` otherwise.",
+          "type": ["string", "null"]
+        },
+        "maxDurationMs": {
+          "description": "Cap on the rendered clip's length in milliseconds (at most 5000).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "samplePack": {
+          "description": "For `sfx-sample`: the baked sample pack (`name@version`). `None` otherwise.",
+          "type": ["string", "null"]
+        },
+        "sampleRate": {
+          "description": "Output sample rate in Hz.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["sampleRate", "channels", "maxDurationMs"],
       "type": "object"
     },
     "BuildOut": {
@@ -216,6 +297,34 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "MaterialSpec": {
+      "description": "The resolved `[material]` of a `material` asset-generation case: the tileable PBR\nmaterial's output resolution, seamlessness, and emitted channels.",
+      "properties": {
+        "background": {
+          "description": "Preview clear color: `transparent` or a hex color.",
+          "type": "string"
+        },
+        "maps": {
+          "description": "The channels the material emits, in declared order. Always includes\n`base-color`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "size": {
+          "description": "Square map resolution in pixels (a power of two).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tile": {
+          "description": "Whether the maps are authored seamlessly (wrap toroidally).",
+          "type": "boolean"
+        }
+      },
+      "required": ["size", "tile", "maps", "background"],
+      "type": "object"
+    },
     "OutputOut": {
       "properties": {
         "actions": {
@@ -223,6 +332,57 @@
         }
       },
       "required": ["actions"],
+      "type": "object"
+    },
+    "ParticleSpec": {
+      "description": "The resolved `[particle]` of a particle asset-generation case: the field the\neffect plays in and its playback timing. [`Self::depth`] is `Some` for\n`particle-3d` (a volume) and `None` for `particle-2d` (a planar field).",
+      "properties": {
+        "background": {
+          "description": "Preview clear color: `transparent` or a hex color.",
+          "type": "string"
+        },
+        "depth": {
+          "description": "Field extent along z. `Some` for `particle-3d`, `None` for `particle-2d`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "durationMs": {
+          "description": "The effect's length in milliseconds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fps": {
+          "description": "Preview/playback frame rate (greater than zero).",
+          "format": "double",
+          "type": "number"
+        },
+        "height": {
+          "description": "Field extent along y (up).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "looping": {
+          "description": "Whether the effect loops (steady-state) or is one-shot.",
+          "type": "boolean"
+        },
+        "width": {
+          "description": "Field extent along x.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "durationMs",
+        "fps",
+        "looping",
+        "background"
+      ],
       "type": "object"
     },
     "ProofOut": {
@@ -441,6 +601,54 @@
       "required": ["binary", "preview"],
       "type": "object"
     },
+    "UiElementSpec": {
+      "description": "A resolved `[[ui.element]]`: one named element of a UI kit, its size, and an\noptional fixed nine-slice.",
+      "properties": {
+        "height": {
+          "description": "Element height in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "Stable, unique element name (targeted with `--element <name>`).",
+          "type": "string"
+        },
+        "nineSlice": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/NineSlice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The fixed stretchable insets, when the case declares them (otherwise the\nmodel authors them with `ui set-nine-slice`)."
+        },
+        "width": {
+          "description": "Element width in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["name", "width", "height"],
+      "type": "object"
+    },
+    "UiSpec": {
+      "description": "The resolved `[ui]` of a `ui` asset-generation case: the kit of named elements\nthe model paints. Empty [`Self::elements`] means the case is a single implicit\nelement (the whole `[canvas]`).",
+      "properties": {
+        "elements": {
+          "description": "The declared elements, in declared order. Empty for a single-image case.",
+          "items": {
+            "$ref": "#/$defs/UiElementSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["elements"],
+      "type": "object"
+    },
     "VariantOut": {
       "properties": {
         "description": {
@@ -561,6 +769,16 @@
       },
       "type": "array"
     },
+    "audio": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AudioSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "build": {
       "anyOf": [
         {
@@ -646,6 +864,16 @@
         }
       ]
     },
+    "material": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MaterialSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "maxRuntimeSeconds": {
       "format": "uint64",
       "minimum": 0,
@@ -668,6 +896,16 @@
       "anyOf": [
         {
           "$ref": "#/$defs/OutputOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "particle": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ParticleSpec"
         },
         {
           "type": "null"
@@ -736,6 +974,16 @@
       "anyOf": [
         {
           "$ref": "#/$defs/ToolOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ui": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UiSpec"
         },
         {
           "type": "null"

@@ -145,8 +145,17 @@ impl RepoSeeder for FsRepoSeeder {
         // sculpt through the `voxel`/`voxel-anim` binary and use their own config
         // and (for animation) a pre-seeded `rig.json`.
         if test_case.test_type == crate::test_case::TestType::AssetGeneration {
-            if test_case.asset_kind.is_voxel() {
+            let kind = test_case.asset_kind;
+            if kind.is_voxel() {
+                // The voxel/mesh/skinned kinds sculpt through their `.glb`-emitting
+                // binary (skinned single-file; see [`seed_voxel_tool`]).
                 seed_voxel_tool(test_case, &repo, request.live_preview)?;
+            } else if kind.is_paint() {
+                seed_paint_tool(test_case, &repo, request.live_preview)?;
+            } else if kind.is_particle() {
+                seed_particle_tool(test_case, &repo, request.live_preview)?;
+            } else if kind.is_audio() {
+                seed_audio_tool(test_case, &repo, request.live_preview)?;
             } else {
                 seed_asset_tool(test_case, &repo, request.live_preview)?;
             }
@@ -350,8 +359,11 @@ fn seed_voxel_tool(
     // render (sculpting operations only record; they render nothing). A static model
     // is one target; an animated model is one per declared part, at its
     // `{part}`-resolved paths.
+    // A per-part animated kind seeds one target per declared part; a static or
+    // **skinned** kind seeds a single target (the skinned exception — one whole-body
+    // field, one mesh — even though it carries a `[model]` rig).
     let targets: Vec<(PathBuf, PathBuf)> = match &test_case.model {
-        Some(model) => model
+        Some(model) if test_case.asset_kind.is_per_part() => model
             .parts
             .iter()
             .map(|part| {
@@ -361,7 +373,7 @@ fn seed_voxel_tool(
                 )
             })
             .collect(),
-        None => vec![(output.actions.clone(), tool.preview.clone())],
+        _ => vec![(output.actions.clone(), tool.preview.clone())],
     };
     let empty_preview = blank_preview_png(background.fill())?;
     for (actions_rel, preview_rel) in targets {
@@ -460,6 +472,239 @@ fn model_to_rig(model: &crate::test_case::ModelSpec) -> test_cabinet_voxel::Rig 
         joints,
         animations,
     }
+}
+
+/// Attach the live-preview `live` block to a seeded tool config when a viewer is
+/// observing the run (a driver or the Tauri app), so the binary streams each
+/// re-rendered preview back to the host. A no-op for an unobserved run.
+fn add_live(config: &mut serde_json::Value, live: Option<&crate::preview::LivePreviewEndpoint>) {
+    if let Some(live) = live {
+        config["live"] = serde_json::json!({
+            "endpoint": live.endpoint,
+            "token": live.token,
+        });
+    }
+}
+
+/// Write a seeded tool config as pretty JSON (with a trailing newline) to `dest`.
+fn write_config(repo: &Path, dest: &str, config: &serde_json::Value) -> Result<()> {
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|err| Error::Seeding(format!("serializing {dest}: {err}")))?;
+    write_file(&repo.join(dest), &format!("{json}\n"))
+}
+
+/// Seed a `ui`/`material` painted run's scaffold into `repo`: the `paint`/`texture`
+/// tool config, a single empty (interleaved) action log, and a blank starting
+/// preview per element/map so the model reads an empty surface before its first
+/// operation. The emitted `ui.json`/`material.json` and the flattened PNGs are the
+/// binary's to produce (not pre-seeded).
+fn seed_paint_tool(
+    test_case: &crate::TestCaseVersion,
+    repo: &Path,
+    live_preview: Option<&crate::preview::LivePreviewEndpoint>,
+) -> Result<()> {
+    let tool = test_case
+        .tool
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("painted case has no [tool]".to_string()))?;
+    let output = test_case
+        .output
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("painted case has no [output]".to_string()))?;
+    let preview = tool.preview.to_string_lossy().replace('\\', "/");
+    let actions = output.actions.to_string_lossy().replace('\\', "/");
+
+    // A painted run records ONE interleaved log; seed it once (empty).
+    write_file(&repo.join(&output.actions), "[]\n")?;
+
+    match test_case.asset_kind {
+        crate::test_case::AssetKind::Ui => {
+            let canvas = test_case
+                .canvas
+                .as_ref()
+                .ok_or_else(|| Error::Seeding("`ui` case has no [canvas]".to_string()))?;
+            let mut config = serde_json::json!({
+                "width": canvas.width,
+                "height": canvas.height,
+                "background": canvas.background,
+                "actions": actions,
+                "preview": preview,
+                "ui_json": crate::test_case::UI_JSON_DEST,
+            });
+            // The kit's elements (name/size + any fixed nine-slice), when declared.
+            let elements = test_case
+                .ui
+                .as_ref()
+                .map(|ui| ui.elements.as_slice())
+                .unwrap_or(&[]);
+            if !elements.is_empty() {
+                config["elements"] = serde_json::json!(
+                    elements
+                        .iter()
+                        .map(|el| {
+                            let mut value = serde_json::json!({
+                                "name": el.name,
+                                "width": el.width,
+                                "height": el.height,
+                            });
+                            if let Some(ns) = &el.nine_slice {
+                                value["nine_slice"] = serde_json::json!({
+                                    "left": ns.left,
+                                    "right": ns.right,
+                                    "top": ns.top,
+                                    "bottom": ns.bottom,
+                                });
+                            }
+                            value
+                        })
+                        .collect::<Vec<_>>()
+                );
+            }
+            add_live(&mut config, live_preview);
+            write_config(repo, crate::test_case::PAINT_CONFIG_DEST, &config)?;
+
+            let fill = test_cabinet_model_core::PreviewBackground::parse(&canvas.background)
+                .map_err(|err| Error::Seeding(format!("invalid canvas background: {err}")))?
+                .fill();
+            // A blank starting preview per element (or the single implicit element).
+            if elements.is_empty() {
+                seed_blank_png(repo, &tool.preview, canvas.width, canvas.height, fill)?;
+            } else {
+                for el in elements {
+                    let rel = crate::test_case::element_path(&tool.preview, &el.name);
+                    seed_blank_png(repo, &rel, el.width, el.height, fill)?;
+                }
+            }
+        }
+        // `material`.
+        _ => {
+            let material = test_case
+                .material
+                .as_ref()
+                .ok_or_else(|| Error::Seeding("`material` case has no [material]".to_string()))?;
+            let mut config = serde_json::json!({
+                "size": material.size,
+                "tile": material.tile,
+                "maps": material.maps,
+                "background": material.background,
+                "actions": actions,
+                "preview": preview,
+                "material_json": crate::test_case::MATERIAL_JSON_DEST,
+            });
+            add_live(&mut config, live_preview);
+            write_config(repo, crate::test_case::MATERIAL_CONFIG_DEST, &config)?;
+
+            let fill = test_cabinet_model_core::PreviewBackground::parse(&material.background)
+                .map_err(|err| Error::Seeding(format!("invalid material background: {err}")))?
+                .fill();
+            for map in &material.maps {
+                let rel = crate::test_case::map_path(&tool.preview, map);
+                seed_blank_png(repo, &rel, material.size, material.size, fill)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Seed a particle run's scaffold into `repo`: the `particle-2d`/`particle-3d` tool
+/// config and an empty action log. The preview (`effect.gif`) and the emitted
+/// `system.json` are the binary's on-request `render` to produce, so nothing else is
+/// pre-seeded.
+fn seed_particle_tool(
+    test_case: &crate::TestCaseVersion,
+    repo: &Path,
+    live_preview: Option<&crate::preview::LivePreviewEndpoint>,
+) -> Result<()> {
+    let particle = test_case
+        .particle
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("particle case has no [particle]".to_string()))?;
+    let tool = test_case
+        .tool
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("particle case has no [tool]".to_string()))?;
+    let output = test_case
+        .output
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("particle case has no [output]".to_string()))?;
+    let preview = tool.preview.to_string_lossy().replace('\\', "/");
+    let actions = output.actions.to_string_lossy().replace('\\', "/");
+
+    let mut config = serde_json::json!({
+        "width": particle.width,
+        "height": particle.height,
+        "duration_ms": particle.duration_ms,
+        "fps": particle.fps,
+        "loop": particle.looping,
+        "background": particle.background,
+        "actions": actions,
+        "preview": preview,
+        "system": crate::test_case::PARTICLE_SYSTEM_DEST,
+    });
+    if let Some(depth) = particle.depth {
+        config["depth"] = serde_json::json!(depth);
+    }
+    add_live(&mut config, live_preview);
+    write_config(repo, test_case.asset_kind.config_dest(), &config)?;
+
+    write_file(&repo.join(&output.actions), "[]\n")?;
+    Ok(())
+}
+
+/// Seed an audio run's scaffold into `repo`: the `sfx-synth`/`sfx-sample`/`music`
+/// tool config, an empty action log, and a blank starting waveform preview. The
+/// rendered `clip.wav` (and `clip.mid` for `music`) are the binary's on-request
+/// `render` to produce.
+fn seed_audio_tool(
+    test_case: &crate::TestCaseVersion,
+    repo: &Path,
+    live_preview: Option<&crate::preview::LivePreviewEndpoint>,
+) -> Result<()> {
+    let audio = test_case
+        .audio
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("audio case has no [audio]".to_string()))?;
+    let tool = test_case
+        .tool
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("audio case has no [tool]".to_string()))?;
+    let output = test_case
+        .output
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("audio case has no [output]".to_string()))?;
+    let preview = tool.preview.to_string_lossy().replace('\\', "/");
+    let actions = output.actions.to_string_lossy().replace('\\', "/");
+
+    let mut config = serde_json::json!({
+        "sample_rate": audio.sample_rate,
+        "channels": audio.channels,
+        "max_duration_ms": audio.max_duration_ms,
+        "actions": actions,
+        "preview": preview,
+        "wav": crate::test_case::AUDIO_CLIP_WAV_DEST,
+    });
+    if let Some(pack) = &audio.sample_pack {
+        config["sample_pack"] = serde_json::json!(pack);
+    }
+    if let Some(bank) = &audio.instrument_bank {
+        config["instrument_bank"] = serde_json::json!(bank);
+    }
+    if test_case.asset_kind.emits_midi() {
+        config["mid"] = serde_json::json!(crate::test_case::AUDIO_CLIP_MID_DEST);
+    }
+    add_live(&mut config, live_preview);
+    write_config(repo, test_case.asset_kind.config_dest(), &config)?;
+
+    write_file(&repo.join(&output.actions), "[]\n")?;
+    // A blank waveform preview (transparent), overwritten by the binary's `render`.
+    seed_blank_png(
+        repo,
+        &tool.preview,
+        SEED_PREVIEW_SIZE,
+        SEED_PREVIEW_SIZE,
+        [0, 0, 0, 0],
+    )?;
+    Ok(())
 }
 
 /// Seed an adversarial run's scaffolding into `repo`.
@@ -640,14 +885,20 @@ const SEED_PREVIEW_SIZE: u32 = 512;
 /// Encode a solid `SEED_PREVIEW_SIZE` square of the given straight-RGBA fill as PNG
 /// bytes — the empty-scene placeholder preview seeded before a voxel run starts.
 fn blank_preview_png(fill: [u8; 4]) -> Result<Vec<u8>> {
-    let count = (SEED_PREVIEW_SIZE * SEED_PREVIEW_SIZE) as usize;
+    solid_png(SEED_PREVIEW_SIZE, SEED_PREVIEW_SIZE, fill)
+}
+
+/// Encode a solid `width`×`height` rectangle of the given straight-RGBA fill as PNG
+/// bytes.
+fn solid_png(width: u32, height: u32, fill: [u8; 4]) -> Result<Vec<u8>> {
+    let count = (width as usize) * (height as usize);
     let mut pixels = Vec::with_capacity(count * 4);
     for _ in 0..count {
         pixels.extend_from_slice(&fill);
     }
     let mut buf = Vec::new();
     {
-        let mut encoder = png::Encoder::new(&mut buf, SEED_PREVIEW_SIZE, SEED_PREVIEW_SIZE);
+        let mut encoder = png::Encoder::new(&mut buf, width, height);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder
@@ -658,6 +909,19 @@ fn blank_preview_png(fill: [u8; 4]) -> Result<Vec<u8>> {
             .map_err(|err| Error::Seeding(format!("writing blank preview data: {err}")))?;
     }
     Ok(buf)
+}
+
+/// Write a solid `width`×`height` blank preview PNG to `rel` under `repo`, creating
+/// parent directories as needed — the empty starting preview a model reads before
+/// its first painting/rendering operation.
+fn seed_blank_png(repo: &Path, rel: &Path, width: u32, height: u32, fill: [u8; 4]) -> Result<()> {
+    let path = repo.join(rel);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(seed_err)?;
+    }
+    let bytes = solid_png(width, height, fill)?;
+    fs::write(&path, &bytes).map_err(seed_err)?;
+    Ok(())
 }
 
 /// Wrap an I/O error as a seeding error, prefixed with the operation that failed.

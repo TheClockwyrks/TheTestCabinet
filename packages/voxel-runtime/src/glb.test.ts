@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseGlb } from "./glb";
+import { parseGlb, parseSkinnedGlb } from "./glb";
 
 /** Read a fixture `.glb` as a tightly-sized `ArrayBuffer` (not a pooled Buffer view). */
 function readGlb(name: string): ArrayBuffer {
@@ -50,5 +50,61 @@ describe("parseGlb", () => {
 
   it("rejects a buffer that is not a glb", () => {
     expect(() => parseGlb(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]).buffer)).toThrow();
+  });
+});
+
+describe("parseSkinnedGlb", () => {
+  // `skinned-bar.glb` is a synthetic skinned glb: a vertical bar of 6 vertices bound
+  // to a two-bone skeleton (pelvis root + spine child). Bottom two verts weight fully
+  // to pelvis, top two fully to spine, middle two split 0.5/0.5.
+  it("decodes the base geometry, JOINTS_0/WEIGHTS_0, and the skeleton", () => {
+    const mesh = parseSkinnedGlb(readGlb("skinned-bar.glb"));
+
+    // 6 vertices → 18 floats per VEC3 attribute, 24 per VEC4 skin attribute.
+    expect(mesh.positions.length).toBe(18);
+    expect(mesh.normals.length).toBe(18);
+    expect(mesh.colors.length).toBe(18);
+    expect(mesh.joints.length).toBe(24);
+    expect(mesh.weights.length).toBe(24);
+    expect(mesh.indices.length).toBe(12);
+
+    // JOINTS_0 widens to a Uint32Array; WEIGHTS_0 stays F32.
+    expect(mesh.joints).toBeInstanceOf(Uint32Array);
+    expect(mesh.weights).toBeInstanceOf(Float32Array);
+
+    // Bottom vertex 0 is pelvis (bone 0); top vertex 4 is spine (bone 1).
+    expect(Array.from(mesh.joints.slice(0, 4) as Uint32Array)).toEqual([0, 0, 0, 0]);
+    expect(Array.from(mesh.joints.slice(16, 20) as Uint32Array)).toEqual([1, 0, 0, 0]);
+
+    // Two bones in skin.joints order, with names and parent hierarchy.
+    expect(mesh.bones.map((b) => b.name)).toEqual(["pelvis", "spine"]);
+    expect(mesh.bones[0]!.parent).toBeNull(); // pelvis is the root
+    expect(mesh.bones[1]!.parent).toBe(0); // spine's parent is pelvis (bone 0)
+    // Each bone carries a 16-element column-major inverse-bind matrix.
+    expect(mesh.bones[0]!.inverseBind.length).toBe(16);
+    expect(mesh.bones[0]!.inverseBind).toBeInstanceOf(Float32Array);
+  });
+
+  it("normalizes every vertex's four weights to sum to 1", () => {
+    const mesh = parseSkinnedGlb(readGlb("skinned-bar.glb")) as {
+      weights: Float32Array;
+    };
+    for (let v = 0; v < mesh.weights.length; v += 4) {
+      const sum =
+        mesh.weights[v]! + mesh.weights[v + 1]! + mesh.weights[v + 2]! + mesh.weights[v + 3]!;
+      expect(sum).toBeCloseTo(1, 6);
+    }
+    // The middle vertices split their influence 0.5/0.5 between the two bones.
+    expect(mesh.weights[8]).toBeCloseTo(0.5, 6);
+    expect(mesh.weights[9]).toBeCloseTo(0.5, 6);
+  });
+
+  it("decodes a non-skinned glb (no skin) to empty skin data", () => {
+    const mesh = parseSkinnedGlb(readGlb("hull.glb"));
+    // The base geometry still decodes; the skin attributes and bones are empty.
+    expect(mesh.positions.length).toBe(330);
+    expect(mesh.joints.length).toBe(0);
+    expect(mesh.weights.length).toBe(0);
+    expect(mesh.bones.length).toBe(0);
   });
 });

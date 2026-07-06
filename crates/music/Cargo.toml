@@ -1,0 +1,23 @@
+[package]
+name = "test-cabinet-music"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The `music` binary: a symbolic sequencer (`asset_kind = "music"`) — notes on
+# instrument tracks over a tempo and meter, rendered to a PCM `.wav` and emitted
+# alongside a portable `.mid` score. A thin CLI over `test-cabinet-audio-core` (the
+# DSP, mixer, render engine, and preview renderers); its run-container image
+# additionally bakes in an instrument bank. See
+# `apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md`.
+[[bin]]
+name = "music"
+path = "src/main.rs"
+
+[dependencies]
+test-cabinet-audio-core = { path = "../audio-core" }
+clap = { workspace = true }
+
+[lints]
+workspace = true

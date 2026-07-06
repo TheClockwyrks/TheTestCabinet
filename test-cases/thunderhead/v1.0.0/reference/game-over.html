@@ -1,0 +1,51 @@
+<!doctype html>
+<!--
+  Thunderhead — end screen (common across variants).
+  Rendered by the harness at 1280x720 as the `game-over` view target. A battle is
+  won by destroying the enemy flagship and lost by losing your own: this mockup shows
+  the VICTORY end. The DEFEAT end shares this exact layout, recolored to the critical
+  color with a "YOUR FLAGSHIP IS LOST" title. A dark, dimmed viewport sits behind the
+  card. Values are illustrative.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <div class="overlay"></div>
+
+      <div class="panel-card">
+        <div class="panel-eyebrow">THE SKY IS YOURS</div>
+        <div class="panel-title win">ENEMY FLAGSHIP DOWN</div>
+
+        <div class="stat">
+          <span class="k">OUTCOME</span>
+          <span class="v accent">VICTORY</span>
+        </div>
+        <div class="stat">
+          <span class="k">TIME</span>
+          <span class="v">18:47</span>
+        </div>
+        <div class="stat">
+          <span class="k">ENEMY LOST</span>
+          <span class="v">21 SHIPS</span>
+        </div>
+        <div class="stat">
+          <span class="k">YOUR LOSSES</span>
+          <span class="v">9 SHIPS</span>
+        </div>
+        <div class="stat">
+          <span class="k">FLAGSHIP HULL</span>
+          <span class="v">64%</span>
+        </div>
+
+        <div class="buttons">
+          <span class="btn primary">FIGHT AGAIN</span>
+          <span class="btn">RETURN</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

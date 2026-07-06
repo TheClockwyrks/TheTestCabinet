@@ -312,6 +312,27 @@ export interface AssetPreview {
   // `mesh.json` the 3D viewer renders, so the live view can rebuild the part in 3D
   // and assemble the scene. Absent (null/undefined) for a 2D sprite run.
   mesh?: PartMesh | null;
+  // The frame's current authored `system.json`, for a particle run — so the live
+  // view can simulate the effect as it is authored, rather than show only the
+  // rendered still. Arbitrary JSON on the wire (the receiver validates only that it
+  // parses); the particle viewer treats it as a `ParticleSystem`. Absent for every
+  // other kind.
+  system?: unknown;
+  // The frame's current whole-body `.glb`, for a skinned run (`mc-skin`/`sn-skin`/
+  // `dc-skin`), base64-encoded (no `data:` prefix) — kept raw so its
+  // `JOINTS_0`/`WEIGHTS_0` and skin survive, so the live view can deform it by
+  // linear-blend skinning rather than show the undeformed rest mesh. Paired with
+  // `rig`; absent for every other kind (a plain voxel run uses `mesh` instead).
+  skinnedGlb?: string | null;
+  // The frame's current `rig.json`, for a skinned run — the bones/joints/animations
+  // the live view poses `skinnedGlb` with. Arbitrary JSON on the wire (the live view
+  // maps it to the viewer's rig `ModelSpec`); absent for every other kind.
+  rig?: unknown;
+  // The frame's current clip `.wav`, for an audio run, base64-encoded (no `data:`
+  // prefix; the viewer builds the URL) — so a watcher can play the clip as it is
+  // built, the streamed PNG being the model's own waveform/spectrogram preview.
+  // Absent for every other kind.
+  audio?: string | null;
 }
 
 // One line of raw harness output, as recorded in a run's `raw.jsonl`. Mirrors
