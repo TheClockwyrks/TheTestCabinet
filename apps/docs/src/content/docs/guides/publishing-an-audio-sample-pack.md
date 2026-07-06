@@ -144,13 +144,34 @@ image with an empty palette.
 Updating a palette is therefore: **new pack version → `--publish` → commit the pin → image
 rebuild.**
 
-## The instrument bank (`music`) is deferred
+## Instrument banks (`music`)
 
-Only the real `combat-core` sample pack (for `sfx-sample`) ships today. The example
-`gm-lite` instrument bank and `sfx-core` pack carry **placeholder** sources and cannot be
-published as-is; the `music` image is not built until a real, permissively-licensed
-instrument bank is authored and published the same way. See the
-[README's manifest notes](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/sample-packs/README.md#manifests-here).
+An **instrument bank** (`kind = "instrument-bank"`, entries under `[[instrument]]`) is
+built and published exactly like a sample pack, with two extra per-entry fields the
+`music` sequencer needs:
+
+- `root_note` — the MIDI note the sample was recorded at. The sequencer pitch-shifts the
+  one recorded note across a track's notes relative to this, so the sample may be at **any
+  pitch** as long as `root_note` records it accurately (it need not be tuned to a fixed
+  reference).
+- `pitched` — `true` for a melodic instrument (transposed per note); `false` for
+  percussion (played at its native pitch, never transposed).
+
+The shipped `gm-lite` bank was assembled by
+[`scripts/curate-instrument-bank.mjs`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/scripts/curate-instrument-bank.mjs),
+which searches Freesound (CC0 only) for a representative note per instrument, downloads
+its preview, and **detects the recorded pitch by autocorrelation** to fill `root_note`.
+Re-run it to refresh or extend the bank, then publish as above:
+
+```sh
+node scripts/curate-instrument-bank.mjs --dry-run   # search + detect, print a table
+node scripts/curate-instrument-bank.mjs             # write containers/sample-packs/gm-lite.toml
+node scripts/build-sample-pack.mjs gm-lite --publish
+```
+
+Unlike the deliberately elemental *sfx* library, a bank entry is **named by its
+instrument** (`grand_piano`, `violin`): a `music` case measures composition, not sample
+identification, so a real instrument name is correct here.
 
 ## Troubleshooting
 

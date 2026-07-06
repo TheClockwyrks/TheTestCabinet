@@ -180,8 +180,12 @@ selecting recorded clips.
 - **`set-tempo --bpm <n>`** / **`set-time-signature --num --den`** — the clip's
   tempo and meter.
 - **`define-track --name <n> --instrument <inst>`** — an instrument voice, either a
-  **synth instrument** (from `audio-core`) or a **sample-based instrument** from the
-  baked [instrument bank](#the-sample-library).
+  **synth instrument** (a `sine`/`square`/`saw`/`triangle`/`noise` oscillator from
+  `audio-core`) or a **sample-based instrument** named from the baked
+  [instrument bank](#the-sample-library). A melodic bank instrument is pitch-shifted per
+  note from the note it was recorded at; a percussion instrument plays at its native
+  pitch. (A bank name with no baked pack falls back to a mellow triangle, so a run still
+  renders.)
 - **`add-note`** — a note event on a track: `--track <n> --pitch <C4|midi-number>
   --t <beat|ms> --dur <beat|ms>`, with an optional `--velocity 0..127`.
 - **`set-track-fx --track <n>`** — per-track processing (`--gain`, `--pan`,

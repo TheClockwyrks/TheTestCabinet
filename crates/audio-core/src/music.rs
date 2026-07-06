@@ -362,20 +362,27 @@ pub fn render_music(
     for track in &project.tracks {
         let mut track_buf = vec![0.0f32; clip_samples];
         let env = track_env(track);
-        let wave = instrument_wave(&track.instrument, library);
+        let instrument = resolve_instrument(&track.instrument, library);
         for note in &track.notes {
-            let mut voice = Voice::new(
-                track.name.clone(),
-                wave,
-                midi_to_hz(note.key),
-                velocity_db(note.velocity),
-                note.t_beats * beat_ms,
-                note.dur_beats * beat_ms,
-            );
-            voice.env = env;
-            let buf = voice.render(params, clip_samples, 0);
-            for (t, s) in track_buf.iter_mut().zip(buf.iter()) {
-                *t += *s;
+            match &instrument {
+                Instrument::Synth(wave) => {
+                    let mut voice = Voice::new(
+                        track.name.clone(),
+                        *wave,
+                        midi_to_hz(note.key),
+                        velocity_db(note.velocity),
+                        note.t_beats * beat_ms,
+                        note.dur_beats * beat_ms,
+                    );
+                    voice.env = env;
+                    let buf = voice.render(params, clip_samples, 0);
+                    for (t, s) in track_buf.iter_mut().zip(buf.iter()) {
+                        *t += *s;
+                    }
+                }
+                Instrument::Sample(sampled) => {
+                    sampled.render_note(&mut track_buf, note, env, beat_ms, params);
+                }
             }
         }
         // Per-track reverb, then gain, then pan into the mix.
@@ -417,19 +424,139 @@ fn release_pad(track: &Track) -> f64 {
     }
 }
 
-/// Resolve an instrument name to a synth waveform. A synth waveform name maps
-/// directly; anything else falls back to a triangle (a bank instrument the render
-/// approximates when no bank sample is available).
-fn instrument_wave(instrument: &str, _library: Option<&SampleLibrary>) -> Wave {
+/// A track's resolved instrument: a synth oscillator, or a bank sample played back
+/// pitched (melodic) or at native rate (percussion).
+enum Instrument {
+    Synth(Wave),
+    Sample(SampledInstrument),
+}
+
+/// A bank instrument loaded from the library: its mono PCM at the pack's own sample
+/// rate, the MIDI note it was recorded at, and whether it transposes per note.
+struct SampledInstrument {
+    pcm: Vec<f32>,
+    src_rate: f64,
+    root_note: u8,
+    pitched: bool,
+}
+
+/// Resolve an instrument name to a playable voice. A synth waveform name maps to that
+/// oscillator; otherwise, if the name is a baked bank instrument, it plays that sample.
+/// A bank instrument with no baked audio (an empty/absent library) falls back to a
+/// mellow triangle, so a run still renders without a pack (a graceful degrade).
+fn resolve_instrument(instrument: &str, library: Option<&SampleLibrary>) -> Instrument {
     match instrument.to_ascii_lowercase().as_str() {
-        "sine" => Wave::Sine,
-        "square" => Wave::Square,
-        "saw" | "sawtooth" => Wave::Saw,
-        "triangle" => Wave::Triangle,
-        "noise" => Wave::Noise,
-        // A bank instrument (strings, brass, keys, …): approximate with a mellow
-        // triangle when no bank sample is baked in.
-        _ => Wave::Triangle,
+        "sine" => return Instrument::Synth(Wave::Sine),
+        "square" => return Instrument::Synth(Wave::Square),
+        "saw" | "sawtooth" => return Instrument::Synth(Wave::Saw),
+        "triangle" => return Instrument::Synth(Wave::Triangle),
+        "noise" => return Instrument::Synth(Wave::Noise),
+        _ => {}
+    }
+    match load_bank_instrument(instrument, library) {
+        Some(sampled) => Instrument::Sample(sampled),
+        None => Instrument::Synth(Wave::Triangle),
+    }
+}
+
+/// Load a bank instrument's baked sample, or `None` if there is no library, no entry
+/// named `instrument` (matched case-sensitively, as authored), or no baked audio.
+fn load_bank_instrument(
+    instrument: &str,
+    library: Option<&SampleLibrary>,
+) -> Option<SampledInstrument> {
+    let lib = library?;
+    let entry = lib.info(instrument)?;
+    let pcm = lib.samples(instrument)?;
+    if pcm.is_empty() {
+        return None;
+    }
+    Some(SampledInstrument {
+        pcm,
+        src_rate: lib.sample_rate() as f64,
+        root_note: entry.root_note,
+        pitched: entry.pitched,
+    })
+}
+
+impl SampledInstrument {
+    /// Mix one note into `track_buf`. The source is linearly resampled, combining the
+    /// pack→render rate conversion with a per-note pitch shift of
+    /// `2^((key - root_note)/12)` for a melodic instrument (native rate for
+    /// percussion). A melodic note is shaped by the track envelope and honors the note
+    /// length (plus the envelope's release tail); an unpitched one-shot plays in full
+    /// with only a short end fade to avoid a click. Note velocity scales the level.
+    fn render_note(
+        &self,
+        track_buf: &mut [f32],
+        note: &Note,
+        env: Envelope,
+        beat_ms: f64,
+        params: &RenderParams,
+    ) {
+        let render_rate = params.sample_rate as f64;
+        let speed = if self.pitched {
+            2.0f64.powf((note.key as f64 - self.root_note as f64) / 12.0)
+        } else {
+            1.0
+        };
+        let step = (self.src_rate / render_rate) * speed;
+        if step <= 0.0 {
+            return;
+        }
+        let dur_ms = note.dur_beats * beat_ms;
+        let start = (note.t_beats * beat_ms / 1000.0 * render_rate).round() as i64;
+        let gain = 10.0f64.powf(velocity_db(note.velocity) / 20.0);
+
+        // How many output samples the resampled source spans.
+        let src_out_len = ((self.pcm.len() as f64) / step).floor() as usize;
+        // Pitched voices stop at the note's end (envelope release included); an
+        // unpitched drum hit plays its whole one-shot regardless of note length.
+        let out_len = if self.pitched {
+            let env_len = (env.total_ms(dur_ms) / 1000.0 * render_rate).ceil() as usize;
+            src_out_len.min(env_len.max(1))
+        } else {
+            src_out_len
+        };
+
+        for n in 0..out_len {
+            let dst = start + n as i64;
+            if dst < 0 {
+                continue;
+            }
+            let dst = dst as usize;
+            if dst >= track_buf.len() {
+                break;
+            }
+            let src_pos = n as f64 * step;
+            let i0 = src_pos.floor() as usize;
+            let frac = src_pos - i0 as f64;
+            let a = self.pcm.get(i0).copied().unwrap_or(0.0) as f64;
+            let b = self.pcm.get(i0 + 1).copied().unwrap_or(0.0) as f64;
+            let s = a + (b - a) * frac;
+            let amp = if self.pitched {
+                env.amplitude(n as f64 / render_rate * 1000.0, dur_ms)
+            } else {
+                declick(n, out_len, render_rate)
+            };
+            track_buf[dst] += (s * amp * gain) as f32;
+        }
+    }
+}
+
+/// A unity gain that ramps to zero over the last ~5 ms of a played one-shot, so a
+/// truncated or hot percussion sample does not end on a click. `n` is the output
+/// index and `len` the total number of samples played.
+fn declick(n: usize, len: usize, rate: f64) -> f64 {
+    let fade = (0.005 * rate) as usize;
+    if fade == 0 || len <= fade {
+        return 1.0;
+    }
+    let from_end = len - 1 - n;
+    if from_end >= fade {
+        1.0
+    } else {
+        from_end as f64 / fade as f64
     }
 }
 

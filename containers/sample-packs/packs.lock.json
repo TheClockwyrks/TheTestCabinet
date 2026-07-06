@@ -3,5 +3,10 @@
     "bucket": "test-cabinet-audio",
     "key": "combat-core/0.1.0/combat-core-0.1.0.tar",
     "sha256": "sha256:abefadccde18de0c11db1f43570eb1307b12351c9b53cf419bdef07e8c3885bb"
+  },
+  "gm-lite@0.1.0": {
+    "bucket": "test-cabinet-audio",
+    "key": "gm-lite/0.1.0/gm-lite-0.1.0.tar",
+    "sha256": "sha256:b17ec864cbdce3bcdb10b4d612f240f63720e962e2afb930ab698e48685fa972"
   }
 }

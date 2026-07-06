@@ -144,10 +144,10 @@ jobs:
       # manifest job, so a half-finished matrix never leaves `:latest` single-arch.
       #
       # The CLOUDFLARE_AUDIO_R2_* values let build.sh presign a READ-only download of
-      # the sfx-sample image's audio pack (see build_audio_image). They are read-scoped
-      # — CI never writes the bucket; publishing is a local step. They are REQUIRED: a
-      # pack that is not pinned (or that cannot be presigned) fails the build rather
-      # than shipping an image with an empty palette, so these must be set.
+      # the sfx-sample and music images' audio packs (see build_audio_image). They are
+      # read-scoped — CI never writes the bucket; publishing is a local step. They are
+      # REQUIRED: a pack that is not pinned (or that cannot be presigned) fails the
+      # build rather than shipping an image with an empty palette, so these must be set.
       - name: Build and push images
         env:
           PUSH: "1"
@@ -193,10 +193,7 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          # NOTE: `music` is intentionally absent — its instrument bank is not yet a
-          # real published pack, so the build job does not build that image (see
-          # containers/build.sh). Add it back here once a real bank ships.
-          for name in base sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned particle-2d particle-3d sfx-synth sfx-sample adversarial performance; do
+          for name in base sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned particle-2d particle-3d sfx-synth sfx-sample music adversarial performance; do
             repo="$registry/test-cabinet-$name"
             echo "==> assembling $repo:latest + $repo:$GIT_SHA from :latest-amd64 + :latest-arm64"
             docker buildx imagetools create \

@@ -9,6 +9,8 @@ fn library() -> SampleLibrary {
                 duration_ms: 900.0,
                 description: "A deep naval cannon blast.".into(),
                 file: None,
+                root_note: 60,
+                pitched: true,
             },
             SampleEntry {
                 name: "debris_metal_impact".into(),
@@ -16,6 +18,8 @@ fn library() -> SampleLibrary {
                 duration_ms: 500.0,
                 description: "Metal debris impact.".into(),
                 file: None,
+                root_note: 60,
+                pitched: true,
             },
         ],
         None,

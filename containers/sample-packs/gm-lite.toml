@@ -1,25 +1,17 @@
-# EXAMPLE instrument bank — gm-lite
+# Instrument bank — gm-lite
 #
-# A small, general-MIDI-flavoured instrument bank for the `music` sequencer to play:
-# one representative one-shot per instrument, which the renderer pitch-shifts across a
-# track's notes. This file is the COMMITTED manifest; the audio itself is NOT in this
-# repo (see `containers/README.md` and the audio-binaries doc). The bank is built from
-# this manifest with:
+# A general-MIDI-flavoured instrument bank for the `music` sequencer: one representative
+# CC0 one-shot per instrument, which the renderer pitch-shifts across a track's notes
+# (a percussion one-shot, `pitched = false`, plays at its native pitch). The audio is NOT
+# committed here — this manifest lists each source's Freesound preview `url` + content
+# `sha256`; the pack is built + published with:
 #
-#   node scripts/build-sample-pack.mjs gm-lite
+#   node scripts/build-sample-pack.mjs gm-lite --publish
 #
-# which fetches each `url`, verifies its `sha256`, normalizes it, and prints the
-# content-addressed digest the `music` image pins.
-#
-# Instrument entries use [[instrument]] (the loader treats it identically to [[sample]])
-# so the manifest reads naturally for a bank. Each `name` is the instrument name a
-# `music` track selects with `define-track --instrument <name>`.
-#
-# ⚠️  EXAMPLE / PLACEHOLDER: the `url`s and `sha256`s below are placeholders to be
-# replaced with real CC0 / permissively-licensed instrument samples (e.g. CC0 samples
-# from freesound.org or a public-domain soundfont's rendered one-shots) and their true
-# content hashes before a real build. `--check` parses this file without fetching; a
-# real build will (correctly) fail sha256/fetch on these placeholders.
+# Sourced from Freesound (CC0 only) by `scripts/curate-instrument-bank.mjs`, which
+# detects each melodic sample's recorded pitch (`root_note`, a MIDI number) so the
+# sequencer transposes it correctly. Re-run that script to refresh or extend the bank
+# (any content change is a new `version`).
 
 name = "gm-lite"
 version = "0.1.0"
@@ -36,40 +28,286 @@ max_duration_ms = 5000
 
 [[instrument]]
 name = "grand_piano"
-tags = ["keys", "piano", "melodic"]
-description = "A single sustained grand-piano note (C4), the bank's reference pitch."
+tags = ["keys", "piano"]
+description = "A single sustained acoustic grand-piano note."
 license = "CC0-1.0"
-url = "https://example.invalid/cc0/grand_piano_c4.wav"
-sha256 = "5555555555555555555555555555555555555555555555555555555555555555"
+url = "https://cdn.freesound.org/previews/68/68447_871124-hq.ogg"
+sha256 = "77193cc902f2f8c610b43818e73356dfe39548075fd96662d92d0a57721d518c"
+root_note = 68
+pitched = true
+freesound_id = 68447
+
+[[instrument]]
+name = "electric_piano"
+tags = ["keys", "electric-piano"]
+description = "A mellow electric-piano (Rhodes-style) note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/632/632255_10403690-hq.ogg"
+sha256 = "c5eda8ab1649b267db1f55007ae9dc0699168d7f85f7ef4d693d72ad85c1c3d7"
+root_note = 48
+pitched = true
+freesound_id = 632255
+
+[[instrument]]
+name = "music_box"
+tags = ["keys", "bells"]
+description = "A delicate music-box note with a bright bell-like attack."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/347/347422_4551235-hq.ogg"
+sha256 = "c0061a44f456862d00bde52f255408df781301304b133b3077b65c03558bccd5"
+root_note = 88
+pitched = true
+freesound_id = 347422
+
+[[instrument]]
+name = "nylon_guitar"
+tags = ["guitar", "plucked"]
+description = "A plucked nylon-string classical-guitar note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/331/331037_5675920-hq.ogg"
+sha256 = "2707f3826f636785784d10e9e755a2d5c2a81c487b79df39749705db049a7613"
+root_note = 57
+pitched = true
+freesound_id = 331037
+
+[[instrument]]
+name = "electric_guitar"
+tags = ["guitar", "electric"]
+description = "A clean electric-guitar note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/616/616334_12511365-hq.ogg"
+sha256 = "5ba7b4cbfc71ae5bdc00b04ab74cd36caa013a47aa9f071fbe3292d4530d9ab2"
+root_note = 40
+pitched = true
+freesound_id = 616334
+
+[[instrument]]
+name = "bass_electric"
+tags = ["bass", "plucked"]
+description = "A round electric-bass note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/736/736796_14290936-hq.ogg"
+sha256 = "b7c07bfbd1daf4ab34410f1982ba479a132cd717445ebe1646b31553a5358c4f"
+root_note = 43
+pitched = true
+freesound_id = 736796
+
+[[instrument]]
+name = "violin"
+tags = ["strings", "bowed"]
+description = "A sustained bowed-violin note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/10/10658_186-hq.ogg"
+sha256 = "db4683c3bf9f107002232f6abf8d56e61bd60756cc9ca7650932f5327f9dd289"
+root_note = 91
+pitched = true
+freesound_id = 10658
+
+[[instrument]]
+name = "cello"
+tags = ["strings", "bowed"]
+description = "A sustained bowed-cello note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/329/329777_2639130-hq.ogg"
+sha256 = "17b8466442b0cd48ebe596c9361148858d650b91f6680607a803a3513122c3d6"
+root_note = 38
+pitched = true
+freesound_id = 329777
 
 [[instrument]]
 name = "string_ensemble"
-tags = ["strings", "pad", "melodic"]
-description = "A warm bowed string-ensemble note (C4) with a slow attack."
+tags = ["strings", "ensemble", "pad"]
+description = "A warm sustained string-ensemble note."
 license = "CC0-1.0"
-url = "https://example.invalid/cc0/string_ensemble_c4.wav"
-sha256 = "6666666666666666666666666666666666666666666666666666666666666666"
+url = "https://cdn.freesound.org/previews/653/653762_7123687-hq.ogg"
+sha256 = "0050b2446c3dc6e44647278d6cfd7efc30be7c7af61a76910771436a4c807528"
+root_note = 48
+pitched = true
+freesound_id = 653762
 
 [[instrument]]
-name = "brass_section"
-tags = ["brass", "lead", "melodic"]
-description = "A bright brass-section note (C4) for stingers and fanfares."
+name = "trumpet"
+tags = ["brass"]
+description = "A bright sustained trumpet note."
 license = "CC0-1.0"
-url = "https://example.invalid/cc0/brass_section_c4.wav"
-sha256 = "7777777777777777777777777777777777777777777777777777777777777777"
+url = "https://cdn.freesound.org/previews/258/258107_4795809-hq.ogg"
+sha256 = "c77abd945055a5ef10dda32025d8d0b4ad2acba21468bda7265acda6238dae36"
+root_note = 83
+pitched = true
+freesound_id = 258107
+
+[[instrument]]
+name = "trombone"
+tags = ["brass"]
+description = "A round sustained trombone note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/722/722898_15669152-hq.ogg"
+sha256 = "8c07389ce7f1f2d45f0606195694e32dbc19500fb196368f334177f9cae09f29"
+root_note = 50
+pitched = true
+freesound_id = 722898
+
+[[instrument]]
+name = "french_horn"
+tags = ["brass"]
+description = "A mellow sustained french-horn note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/682/682231_10938187-hq.ogg"
+sha256 = "15fa2b7c6251b36b926e65636e4b511d491cb5e3f249db42dc8a7dec71378a44"
+root_note = 60
+pitched = true
+freesound_id = 682231
+
+[[instrument]]
+name = "flute"
+tags = ["woodwind"]
+description = "A breathy sustained flute note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/654/654712_11532701-hq.ogg"
+sha256 = "15291c5577f896a0abecd2330652798bd986a72bcd1b617e0fa742d6003fcf6e"
+root_note = 60
+pitched = true
+freesound_id = 654712
+
+[[instrument]]
+name = "clarinet"
+tags = ["woodwind"]
+description = "A woody sustained clarinet note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/156/156501_2507626-hq.ogg"
+sha256 = "550e8b759c940de46b73e53c4ba0fc03099e63a80ba42d57a88202668e3b04fd"
+root_note = 76
+pitched = true
+freesound_id = 156501
+
+[[instrument]]
+name = "saxophone"
+tags = ["woodwind", "reed"]
+description = "A reedy sustained saxophone note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/608/608181_11021228-hq.ogg"
+sha256 = "4698ac1629790915e7433d921de0a01b230839f4d3b3f6bf9be0248435ef6d44"
+root_note = 69
+pitched = true
+freesound_id = 608181
+
+[[instrument]]
+name = "marimba"
+tags = ["mallets", "tuned-percussion"]
+description = "A warm wooden marimba note with a soft mallet attack."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/373/373586_2475994-hq.ogg"
+sha256 = "26c02a0b08f82cbffb3bba3fc799afa1a117819af0154a8d9f697198c08375ee"
+root_note = 79
+pitched = true
+freesound_id = 373586
+
+[[instrument]]
+name = "vibraphone"
+tags = ["mallets", "tuned-percussion"]
+description = "A shimmering metallic vibraphone note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/238/238751_1951924-hq.ogg"
+sha256 = "8e90dc654ee95bfc0417b35568ad4a1d4634113cfda0590f6e5382246f4ffe7f"
+root_note = 68
+pitched = true
+freesound_id = 238751
+
+[[instrument]]
+name = "glockenspiel"
+tags = ["mallets", "bells"]
+description = "A bright metallic glockenspiel note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/661/661596_12033229-hq.ogg"
+sha256 = "89121107981b73f90597ad087aa9f689a2aed80a32929add6ac590150c2d6088"
+root_note = 87
+pitched = true
+freesound_id = 661596
+
+[[instrument]]
+name = "synth_lead"
+tags = ["synth", "lead"]
+description = "A bright sawtooth synth-lead note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/745/745075_14904072-hq.ogg"
+sha256 = "336f90d8a2cee71238f8b4b95a9c42aec2413f097281713442f3c3b7f70c3b93"
+root_note = 74
+pitched = true
+freesound_id = 745075
+
+[[instrument]]
+name = "synth_pad"
+tags = ["synth", "pad"]
+description = "A soft sustained synth-pad note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/786/786468_2520418-hq.ogg"
+sha256 = "f7409a48ef8fd48bfe831ef917f2b8638be4db9372452fdd327e78eced1ab697"
+root_note = 48
+pitched = true
+freesound_id = 786468
 
 [[instrument]]
 name = "drum_kick"
 tags = ["drum", "percussion", "kick"]
-description = "A tight acoustic kick-drum one-shot for the percussion track."
+description = "A tight acoustic kick-drum one-shot."
 license = "CC0-1.0"
-url = "https://example.invalid/cc0/drum_kick.wav"
-sha256 = "8888888888888888888888888888888888888888888888888888888888888888"
+url = "https://cdn.freesound.org/previews/347/347625_1126957-hq.ogg"
+sha256 = "8deb91ebf94c7975e7f348869892e53e20552dd72857881f3f84810f1d9cb7dd"
+root_note = 60
+pitched = false
+freesound_id = 347625
 
 [[instrument]]
 name = "drum_snare"
 tags = ["drum", "percussion", "snare"]
-description = "A crisp acoustic snare-drum one-shot for the percussion track."
+description = "A crisp acoustic snare-drum one-shot."
 license = "CC0-1.0"
-url = "https://example.invalid/cc0/drum_snare.wav"
-sha256 = "9999999999999999999999999999999999999999999999999999999999999999"
+url = "https://cdn.freesound.org/previews/693/693178_14904072-hq.ogg"
+sha256 = "fbb86fa678e7e894c5f1c8376bcfaf104ee6ee50d79c9d3412ab2026f036431e"
+root_note = 60
+pitched = false
+freesound_id = 693178
+
+[[instrument]]
+name = "drum_hat_closed"
+tags = ["drum", "percussion", "hihat"]
+description = "A short closed hi-hat tick."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/685/685866_5383810-hq.ogg"
+sha256 = "5a823294d4e050f3ff2490ebe3d794a6b6bec1243932173ae8e946bf4c68111a"
+root_note = 60
+pitched = false
+freesound_id = 685866
+
+[[instrument]]
+name = "drum_clap"
+tags = ["percussion", "clap"]
+description = "A single hand-clap one-shot."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/388/388546_14360-hq.ogg"
+sha256 = "853bf85f3913ba4d3a44f689219f76bb720201a15e1afcc4d39248364cfcc45f"
+root_note = 60
+pitched = false
+freesound_id = 388546
+
+[[instrument]]
+name = "drum_tom"
+tags = ["drum", "percussion", "tom"]
+description = "A rounded tom-drum one-shot."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/563/563333_2019171-hq.ogg"
+sha256 = "d5491eb45a754469403ed7f9c4426df5785f3373c6e55927b780ab2e188f4d4b"
+root_note = 60
+pitched = false
+freesound_id = 563333
+
+[[instrument]]
+name = "drum_crash"
+tags = ["drum", "percussion", "cymbal"]
+description = "A bright crash-cymbal one-shot."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/260/260466_2127539-hq.ogg"
+sha256 = "7088c7b0d2ab63e87a07b6f87f84681274352cbcb8fea7149b33e01a113037ec"
+root_note = 60
+pitched = false
+freesound_id = 260466

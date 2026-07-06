@@ -297,14 +297,12 @@ build_asset_image dc-skinned
 build_asset_image particle-2d
 build_asset_image particle-3d
 build_asset_image sfx-synth
-# The sfx-sample (and, once a real instrument bank exists, music) image bakes a
-# content-addressed audio pack pulled from the private R2 bucket at build time (see
-# build_audio_image). The pack ref must match the SAMPLE_PACK default in the
-# Dockerfile and be published + pinned in packs.lock.json first.
+# The sfx-sample and music images bake a content-addressed audio pack pulled from the
+# private R2 bucket at build time (see build_audio_image). Each pack ref must match the
+# SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and be published + pinned in
+# packs.lock.json first.
 build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256
-# The music image is deferred: its gm-lite instrument bank is a placeholder EXAMPLE
-# (no real sources) and cannot be published. Author + publish a real bank, then add:
-#   build_audio_image music <bank>@<ver> INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256
+build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256
 build_adversarial
 build_performance
 echo "==> done"

@@ -35,6 +35,28 @@ pub struct SampleEntry {
     /// manifest (the tooling fills it in the baked image); defaults to `<name>.wav`.
     #[serde(default)]
     pub file: Option<String>,
+    /// For an **instrument-bank** entry: the MIDI note the sample was recorded at, so
+    /// the `music` sequencer can pitch-shift it across a track's notes (a note `key`
+    /// plays the sample at `2^((key - root_note)/12)` speed). Defaults to 60 (C4),
+    /// the bank's reference pitch. Irrelevant to `sfx-sample` entries and to
+    /// unpitched instruments (see `pitched`).
+    #[serde(default = "default_root_note")]
+    pub root_note: u8,
+    /// For an **instrument-bank** entry: whether the instrument is pitched (melodic —
+    /// transposed per note relative to `root_note`) or unpitched (percussion — always
+    /// played at its native pitch, ignoring the note). Defaults to `true`.
+    #[serde(default = "default_pitched")]
+    pub pitched: bool,
+}
+
+/// The default reference pitch for a melodic instrument sample: MIDI 60 (C4).
+fn default_root_note() -> u8 {
+    60
+}
+
+/// Instruments are pitched (melodic) unless a manifest marks them otherwise.
+fn default_pitched() -> bool {
+    true
 }
 
 /// The manifest shape read from `<pack>.toml` (only the fields the loader needs).

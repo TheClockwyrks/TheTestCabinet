@@ -255,6 +255,25 @@ function loadManifest(path) {
     }
     const license = requireStr(e, "license", `${where} (${entryName})`);
     checkLicense(license, entryName);
+    // Instrument-bank pitch metadata (see `crates/audio-core/src/sample.rs`): the MIDI
+    // note the sample was recorded at, and whether it is pitched (melodic, transposed
+    // per note) or unpitched (percussion, played native). Optional and only meaningful
+    // for `music`; carried through to the baked pack.toml when present, else the loader
+    // defaults (60 / true) apply.
+    let root_note;
+    if (e.root_note !== undefined) {
+      if (
+        !Number.isInteger(e.root_note) ||
+        e.root_note < 0 ||
+        e.root_note > 127
+      ) {
+        fail(
+          `${where} (${entryName}): root_note must be a MIDI integer 0..127`,
+        );
+      }
+      root_note = e.root_note;
+    }
+    const pitched = typeof e.pitched === "boolean" ? e.pitched : undefined;
     return {
       name: entryName,
       tags: Array.isArray(e.tags) ? e.tags.map(String) : [],
@@ -262,6 +281,8 @@ function loadManifest(path) {
       license,
       url,
       sha256,
+      root_note,
+      pitched,
     };
   });
 
@@ -555,13 +576,18 @@ async function main() {
       const wav = normalize(manifest.normalize, e, ffmpeg, tmp, src);
       const file = `${e.name}.wav`;
       writeFileSync(join(stageDir, file), wav);
-      bakedEntries.push({
+      const baked = {
         name: e.name,
         tags: e.tags,
         duration_ms: wavDurationMs(wav),
         description: e.description,
         file,
-      });
+      };
+      // Carry instrument-bank pitch metadata into the baked manifest when the source
+      // set it (a sample pack omits both, and the loader defaults to 60 / true).
+      if (e.root_note !== undefined) baked.root_note = e.root_note;
+      if (e.pitched !== undefined) baked.pitched = e.pitched;
+      bakedEntries.push(baked);
     }
   } finally {
     rmSync(tmp, { recursive: true, force: true });

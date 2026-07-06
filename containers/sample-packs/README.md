@@ -32,14 +32,21 @@ See the sample-library sections of
   ship ready-made gunshots/explosions (which would collapse the task to "place one
   clip"). Its `url`/`sha256` values are **real** — `node scripts/build-sample-pack.mjs
   combat-core` builds it (with `FREESOUND_API_KEY` set).
+- **`gm-lite.toml`** — the **real** general-MIDI-flavoured instrument bank for `music`
+  (`kind = "instrument-bank"`, stereo, entries under `[[instrument]]`), sourced from
+  **Freesound CC0** single notes by
+  [`scripts/curate-instrument-bank.mjs`](../../scripts/curate-instrument-bank.mjs). Each
+  melodic entry records the MIDI note it was recorded at (`root_note`, detected by that
+  script) so the sequencer pitch-shifts it correctly across a track's notes; percussion
+  entries are `pitched = false` (played native). Unlike the elemental sfx library, a bank
+  entry is **named by its instrument** (`grand_piano`, `violin`) — a `music` case measures
+  composition, not identification, so a real instrument name is correct here.
 - **`sfx-core.toml`** — an EXAMPLE general-purpose game-SFX sample pack for
   `sfx-sample` (`kind = "sample-pack"`, mono), kept as a format reference.
-- **`gm-lite.toml`** — an EXAMPLE general-MIDI-flavoured instrument bank for `music`
-  (`kind = "instrument-bank"`, stereo, entries under `[[instrument]]`).
 
-The two EXAMPLE manifests ship **placeholder `url`/`sha256` values** and must have real
-CC0 / permissively-licensed sources dropped in before a real build (they parse and
-validate as-is, so `--check` works; a real fetch fails on the placeholders by design).
+The `sfx-core` EXAMPLE manifest ships **placeholder `url`/`sha256` values** and must have
+real CC0 / permissively-licensed sources dropped in before a real build (it parses and
+validates as-is, so `--check` works; a real fetch fails on the placeholders by design).
 
 ## Freesound sources
 
@@ -92,6 +99,10 @@ description = "…"          # NEUTRAL + informational only (see below)
 license = "CC0-1.0"        # MUST be CC0 or otherwise permissive (NC/ND is rejected)
 url = "https://…"          # source download
 sha256 = "…"               # 64-hex content hash, verified on fetch
+# Instrument-bank only (ignored by sfx-sample); optional, shown with defaults:
+root_note = 60             # the MIDI note the sample was recorded at (music transposes
+                           #   relative to it — the sample may be at ANY accurate pitch)
+pitched = true             # false = percussion: played at native pitch, never transposed
 ```
 
 ### `name` / `tags` / `description` must be neutral
@@ -157,8 +168,7 @@ expects — **no credential ever enters an image layer**, and there are no build
 pass by hand. A pack that is not pinned (or that cannot be presigned) is a **build
 error**, not a silent skip — an audio image is never shipped with an empty palette.
 Updating a palette is therefore a **new pack version → `--publish` → commit the pin →
-image rebuild**. (The `music` image is deferred until a real instrument bank replaces the
-placeholder `gm-lite` example, so `build.sh` does not build it yet.)
+image rebuild**.
 
 ### R2 environment
 
