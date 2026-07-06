@@ -49,9 +49,10 @@ test-cases/<slug>/<version>/
    key, so it must precede the first table header; first = default), and any opt-in
    `[[check]]`. A spec's `dest` defaults to its `source`.
 
-The `authoring-an-end-to-end-test-case` skill is the practical procedure to
-follow while doing this; read it before you start. The `carom` case
-(`test-cases/carom/v1.0.0/`) is the worked example a new case should resemble.
+[Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/)
+is the full procedure to follow while doing this; read it before you start. The
+`carom` case (`test-cases/carom/v1.0.0/`) is the worked example a new case should
+resemble.
 
 ## Validate
 

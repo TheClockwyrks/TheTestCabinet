@@ -14,8 +14,8 @@ every field and the rules enforced at resolution — and you should read it firs
 along with the [Overview](/testing/asset-generation/overview/) (why the recorded
 actions, not the pixels on disk, are the output) and
 [Evaluation](/testing/asset-generation/evaluation/) (how the asset is
-human-reviewed against the brief, and how cheat-divergence is detected). While
-doing the work, follow the `authoring-an-asset-generation-test-case` skill.
+human-reviewed against the brief, and how cheat-divergence is detected). This
+guide is the practical procedure that sits on top of that schema.
 
 Building a playable game instead is a different test type with its own manifest;
 see [Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/).
@@ -86,7 +86,10 @@ binary's `--help` for the operations, and states the hard requirements (draw onl
 through the tool; return when finished). The template renders in **strict mode**, so
 use only the documented variables —
 `{{variant.slug}}`/`{{variant.name}}`/`{{variant.description}}` and
-`{{#each specs}}`.
+`{{#each specs}}`. A shared **quality directive** — the brief is the floor, not the
+goal; produce the best asset you can within its constraints — is prepended to every
+asset-generation prompt automatically at render time, so keep `prompt.hbs` factual
+and do not restate that "aim high" framing yourself.
 
 ### 4. Write the manifest
 
@@ -147,8 +150,14 @@ tcab seed   --test-case <slug> --version <version> --variant <variant>
 manifest problems); `seed` writes the seeded repository to disk so you can read
 exactly what the model would receive — the brief, plus the seeded
 `draw.config.json` and blank starting frame(s) — and confirm it is self-contained.
+Lint the specs and prose with `npm run lint:specs` (markdownlint + cspell; see
+[Building](/development/building/)).
+
 When the case is ready, exercise it end to end with
-[Run a Test Case](/quickstarts/run-a-test-case/).
+[Run a Test Case](/quickstarts/run-a-test-case/). A backend the case is already
+ingested into keeps serving the old definition until you **force a re-ingest**, so
+after editing a case re-ingest it before running — see
+[Running the Local Service Stack](/guides/running-the-local-service-stack/).
 
 ## Next steps
 

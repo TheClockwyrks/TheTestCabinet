@@ -6,8 +6,7 @@ Add a new [variant](/testing/end-to-end/overview/#variants) to an existing
 single-sprite [asset-generation](/testing/asset-generation/overview/) version
 (`asset_kind = "sprite"`, the default — one sprite on the whole canvas). The full
 procedure is in
-[Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/);
-the `adding-a-sprite-variant` skill is the hands-on guide to follow.
+[Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/).
 
 The key constraint: an asset-generation case declares **no references at all**
 and resolution **rejects any** (common or per-variant). There is no target image

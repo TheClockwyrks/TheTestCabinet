@@ -7,9 +7,8 @@ is asked to build, so authoring one is mostly an exercise in writing a precise,
 **self-contained specification**. This guide is the full procedure.
 [End-to-End Tests](/testing/end-to-end/overview/) is the authoritative schema —
 every manifest field, what is seeded, how templates render, and the rules
-enforced at resolution — and you should read it first. While doing the work,
-follow the `authoring-an-end-to-end-test-case` skill, which carries the
-spec-writing guidance that sits on top of this guide.
+enforced at resolution — and you should read it first. This guide is the
+practical procedure and the spec-writing craft that sit on top of it.
 
 Authoring an [asset-generation](/testing/asset-generation/overview/) case — where
 the model draws a sprite with a drawing tool rather than building a game — is a
@@ -86,7 +85,7 @@ controls, HUD, out-of-scope), and one or more **mode** specs under
 `specs/modes/`. Common specs are seeded for every variant; mode specs are
 typically variant-only.
 
-This is the substance of the work. Two rules dominate:
+This is the substance of the work. A few rules dominate:
 
 - **Be self-contained.** A run seeds only the selected variant's specs plus the
   assets, in an isolated container with no access to these docs, the harness, or
@@ -95,10 +94,22 @@ This is the substance of the work. Two rules dominate:
   no dependence on the reference **source** mockups (you may point at the seeded
   **screenshots**). See
   [Self-Contained Specifications](/testing/end-to-end/overview/#self-contained-specifications).
+- **Specify *what*, not *how*.** Leave the language, framework, bundler, and
+  rendering approach to the model — state them as free choices — and pin down
+  observable behavior and exact values instead. Describe the bounce, not the
+  function that computes it. The test rewards a model that builds the game from
+  the spec; a spec that dictates the implementation just measures whether it can
+  follow instructions. (The one thing that is *not* a free choice is the
+  build-and-serve interface — see step 6.)
 - **Be precise and testable.** Every visual detail a model needs — palette,
   layout, measurements, screen contents — must be written into the spec in real
   numbers; the screenshots illustrate the target, they do not replace it. Vague
   prose is the most common failure.
+- **Call out the "simple" requirements explicitly.** Models trip over obvious
+  things. When a requirement is simple enough that a model *should* get it right
+  but a real run still got it wrong, state it as a hard, observable requirement
+  rather than leaving it implied — describe the end state to satisfy, still
+  without prescribing how.
 
 ### 4. Write `prompt.hbs`
 
@@ -136,7 +147,15 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/):
   with no defaults, so a case always records exactly how its implementation is
   built. `npm ci` is conventional because it requires a committed lockfile and
   installs exactly what it pins; the build must emit a static site into `dist/`,
-  `build/`, or `out/`.
+  `build/`, or `out/`. This build-and-serve interface is the one thing that is
+  **not** a free choice — the harness load check and the per-run deploy build
+  every case the same hardcoded way — so state it as a hard requirement in the
+  spec and prompt: a Node project with a root `package.json`, built with only
+  Node and npm-installed dependencies, emitting an `index.html` at the root of
+  the output directory. Because a finished run is also played back from a
+  **per-run sub-path** (`/runs/<id>/build/`), a build that loads files at runtime
+  by URL must keep working under any base path (e.g. Vite's `base: './'`); see
+  [Design Requirements](/testing/end-to-end/overview/#design-requirements).
 - **Common `[[spec]]` and `[[reference]]`** lists — seeded for every variant. A
   `.hbs` source is rendered; anything else is seeded verbatim, and a spec's `dest`
   defaults to its `source` (a trailing `.hbs` stripped), so most specs just name
@@ -147,10 +166,19 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/):
   [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/).
 - Any opt-in **`[[check]]`** — reference comparisons are not automatic. A checked
   view's baseline must resolve for **every** variant.
+- A common **`[[proof]]`** list — the evidence the build must submit that its
+  features work. Declare it two ways that must agree: a seeded `proof.md` spec
+  that tells the build to capture screenshots and/or short `.mp4` clips at fixed
+  paths under `proof/`, and one `[[proof]]` per file whose `dest` matches that
+  path exactly. If the two drift, the build writes a file the validator never
+  checks, or vice versa. Proofs are recorded present/missing but never fail a run.
+  See [Proofs](/testing/end-to-end/evaluation/#proofs).
 - A common **`[[review_item]]`** list — the major, observable requirements a
   reviewer must check by playing the build (a variant adds its own for the mode it
   introduces). These are reporter-side and **not seeded**; the reviewer records a
-  verdict for each before a run can be published. See
+  verdict for each before a run can be published. An item may **pair** an expected
+  `reference` view with the submitted `proof` so the reviewer compares the two
+  side by side. See
   [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
 
 ### 7. Write the non-seeded docs
@@ -171,8 +199,14 @@ tcab seed   --test-case <slug> --version <version> --variant <variant>
 `prompt` renders the instruction (catching strict-mode template errors and
 manifest problems); `seed` writes the seeded repository to disk (under `tmp/` by
 default) so you can read exactly what the model would receive and confirm the
-seeded set is self-contained. When the case is ready, exercise it end to end with
-[Run a Test Case](/quickstarts/run-a-test-case/).
+seeded set is self-contained. Lint the specs and prose with `npm run lint:specs`
+(markdownlint + cspell; see [Building](/development/building/)).
+
+When the case is ready, exercise it end to end with
+[Run a Test Case](/quickstarts/run-a-test-case/). A backend the case is already
+ingested into keeps serving the old definition until you **force a re-ingest**,
+so after editing a case re-ingest it before running — see
+[Running the Local Service Stack](/guides/running-the-local-service-stack/).
 
 ## Next steps
 

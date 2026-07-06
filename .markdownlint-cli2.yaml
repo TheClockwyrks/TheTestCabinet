@@ -3,7 +3,8 @@
 # Scoped to the authored test-case specifications under `test-cases/**`, which is
 # the prose a test case version ships to a model. Keeping the specs lint-clean
 # keeps them readable and the rendered catalog tidy. See the `lint:md` script in
-# `package.json` and the `adding-a-variant` skill under `.claude/skills/`.
+# `package.json` and the test-case authoring/variant guides under
+# `apps/docs/src/content/docs/guides/`.
 
 config:
   # Fenced code blocks used for plain text shouldn't need a language tag.
