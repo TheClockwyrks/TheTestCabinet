@@ -33,8 +33,7 @@ Each tick, in this exact order:
 3. **Resolve collision.** Test the new head cell for a fatal collision (see
    Collision). If it is fatal, the round ends immediately and steps 4–6 do not
    run.
-4. **Eat or move.** If the new head cell holds a pellet (or a bonus orb, in
-   modes that have them), the snake **grows**: prepend the new head and do
+4. **Eat or move.** If the new head cell holds a pellet, the snake **grows**: prepend the new head and do
    **not** remove the tail. Otherwise the snake **moves**: prepend the new head
    and remove the current tail cell.
 5. **Resolve food.** If a pellet was eaten, apply scoring and the combo (see

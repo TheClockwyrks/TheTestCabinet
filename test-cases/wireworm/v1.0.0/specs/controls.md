@@ -36,9 +36,10 @@ The cursor fires **bolts straight up** (`specs/charge.md`, `specs/worm.md`).
   continuous beam; tune them to taste but keep a cap.)
 - **Bolt travel.** A bolt spawns at the cursor's muzzle and travels straight
   up at
-  about **900 px/s**, stopping at the **first** node or worm segment in its column
-  (resolving the hit per `specs/charge.md` for a node or `specs/worm.md` for a
-  segment) or vanishing at the top of the board if it hits nothing.
+  about **900 px/s**, stopping at the **first** node, worm segment, or foe in its column
+  (resolving the hit per `specs/charge.md` for a node, `specs/worm.md` for a
+  segment, or `specs/foes.md` for a foe) or vanishing at the top of the board if
+  it hits nothing.
   A bolt hits at
   most one thing.
 

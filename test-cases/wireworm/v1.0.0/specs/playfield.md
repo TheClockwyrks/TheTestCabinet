@@ -52,9 +52,8 @@ charge and detonate (`specs/charge.md`). Each node fills one tile.
   descends through (`specs/flow.md`), so late levels are denser and more
   dangerous.
 - Nodes are only ever removed by your shots or a discharge
-  (`specs/charge.md`), by
-  a glitch eating them, or by losing a life (`specs/foes.md`, `specs/flow.md`).
-  They do not decay on their own.
+  (`specs/charge.md`) or by a glitch eating them (`specs/foes.md`). They do not
+  decay on their own.
 
 ## The player band
 

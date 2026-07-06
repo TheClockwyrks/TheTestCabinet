@@ -52,7 +52,7 @@ C = min(3, C + 1)
 ## What your shots do to a node
 
 Your cursor fires bolts straight up (`specs/controls.md`). A bolt travels up its
-column until it hits the **first** node or worm segment in its path, then stops.
+column until it hits the **first** node, worm segment, or foe in its path, then stops.
 What a bolt does to a node it hits depends on that node's charge:
 
 - **`C = 0` (inert): destroyed.** An inert node has no charge holding it together;
