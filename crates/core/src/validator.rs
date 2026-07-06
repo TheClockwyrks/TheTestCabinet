@@ -615,7 +615,7 @@ impl Validator for VoxelGenValidator {
         let is_skinned = test_case.asset_kind.is_skinned();
         let mut run_notes: Vec<String> = Vec::new();
         let produced_rig = if is_anim {
-            match read_rig(repo) {
+            match read_rig(repo, is_skinned) {
                 Ok(rig) => Some(rig),
                 Err(detail) => {
                     run_notes.push(detail);
@@ -948,7 +948,7 @@ fn validate_mesh(mesh: &test_cabinet_voxel_mesh::Mesh) -> std::result::Result<()
 
 /// Read the model-written `rig.json` and convert it into a [`ModelSpec`] superset
 /// (the full produced rig — required parts/joints plus any the model added).
-fn read_rig(repo: &Path) -> std::result::Result<ModelSpec, String> {
+fn read_rig(repo: &Path, is_skinned: bool) -> std::result::Result<ModelSpec, String> {
     let rig_path = repo.join(crate::test_case::VOXEL_RIG_DEST);
     let raw = std::fs::read_to_string(&rig_path).map_err(|err| {
         format!(
@@ -956,29 +956,50 @@ fn read_rig(repo: &Path) -> std::result::Result<ModelSpec, String> {
             crate::test_case::VOXEL_RIG_DEST
         )
     })?;
-    let rig: test_cabinet_voxel::Rig = serde_json::from_str(&raw).map_err(|err| {
+    let invalid = |err: serde_json::Error| {
         format!(
             "`{}` is not a valid rig: {err}",
             crate::test_case::VOXEL_RIG_DEST
         )
-    })?;
-    Ok(rig_to_model_spec(&rig))
+    };
+    // A skinned kind writes a bones-based rig (`SkinnedRig`), not the parts-based rig
+    // every rigid voxel/mesh kind writes, so parse it accordingly — a plain `Rig` parse
+    // would fail on the missing `parts` and lose the produced joints/animations. Both
+    // share the same joint/animation shapes; only the skeleton differs (bones vs parts).
+    if is_skinned {
+        let rig: SkinnedRigDoc = serde_json::from_str(&raw).map_err(invalid)?;
+        Ok(skinned_rig_to_model_spec(&rig))
+    } else {
+        let rig: test_cabinet_voxel::Rig = serde_json::from_str(&raw).map_err(invalid)?;
+        Ok(rig_to_model_spec(&rig))
+    }
 }
 
 /// Convert the voxel binary's on-disk [`Rig`](test_cabinet_voxel::Rig) into the
 /// contract [`ModelSpec`] carried in the run record.
 fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
-    let parts = rig
-        .parts
-        .iter()
-        .map(|part| PartSpec {
-            name: part.name.clone(),
-            parent: part.parent.clone(),
-            pivot: part.pivot,
-        })
-        .collect();
-    let joints = rig
-        .joints
+    ModelSpec {
+        parts: rig.parts.iter().map(part_to_spec).collect(),
+        joints: joints_to_specs(&rig.joints),
+        animations: animations_to_specs(&rig.animations),
+    }
+}
+
+/// Convert one voxel [`Part`](test_cabinet_voxel::Part) into a contract [`PartSpec`].
+fn part_to_spec(part: &test_cabinet_voxel::Part) -> PartSpec {
+    PartSpec {
+        name: part.name.clone(),
+        parent: part.parent.clone(),
+        pivot: part.pivot,
+    }
+}
+
+/// Convert the shared joint list into [`JointSpec`]s. Identical for a rigid rig
+/// (voxel/mesh, whose joints target parts) and a skinned rig (whose joints target
+/// bones): both use the same [`Joint`](test_cabinet_voxel::Joint) shape, and a skinned
+/// joint's target bone rides in the same `part` field.
+fn joints_to_specs(joints: &[test_cabinet_voxel::Joint]) -> Vec<JointSpec> {
+    joints
         .iter()
         .map(|joint| {
             let kind = match joint.kind {
@@ -1010,11 +1031,14 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
                 drive,
             }
         })
-        .collect();
-    // The model's animations ride in the produced `rig.json` (the required
-    // declarations, seeded with empty tracks, plus the F-curves the model authored).
-    let animations = rig
-        .animations
+        .collect()
+}
+
+/// Convert the shared animation list into [`AnimationSpec`]s. Identical for a rigid and
+/// a skinned rig. The model's animations ride in the produced `rig.json` (the required
+/// declarations, seeded with empty tracks, plus the F-curves the model authored).
+fn animations_to_specs(animations: &[test_cabinet_voxel::Animation]) -> Vec<AnimationSpec> {
+    animations
         .iter()
         .map(|animation| AnimationSpec {
             name: animation.name.clone(),
@@ -1031,11 +1055,57 @@ fn rig_to_model_spec(rig: &test_cabinet_voxel::Rig) -> ModelSpec {
                 })
                 .collect(),
         })
+        .collect()
+}
+
+/// The model-written **skinned** `rig.json` (`mc-skin`/`sn-skin`/`dc-skin`): a minimal
+/// deserialize view, since `core` does not depend on the skinning crate. Its skeleton is
+/// `bones` rather than `parts`; its `joints` and `animations` are the same shapes a rigid
+/// rig uses, so they reuse the shared converters. Only the fields the run record needs are
+/// read — the skinning weights live in the mesh, not here.
+#[derive(serde::Deserialize)]
+struct SkinnedRigDoc {
+    #[serde(default)]
+    bones: Vec<SkinnedBoneDoc>,
+    #[serde(default)]
+    joints: Vec<test_cabinet_voxel::Joint>,
+    #[serde(default)]
+    animations: Vec<test_cabinet_voxel::Animation>,
+}
+
+/// One bone of a [`SkinnedRigDoc`]: its name, parent, and head (which becomes the mapped
+/// part's pivot). The bone's tail/roll/weights are irrelevant to the run-record rig.
+#[derive(serde::Deserialize)]
+struct SkinnedBoneDoc {
+    name: String,
+    #[serde(default)]
+    parent: Option<String>,
+    head: [f64; 3],
+}
+
+/// Convert a skinned `rig.json` into the contract [`ModelSpec`] the skinned result view
+/// poses. Each bone maps to a part, its head rounded to the integer grid parts use as the
+/// pivot; the skinned viewer takes its actual skeleton from the mesh, so these parts are
+/// cosmetic, but they keep the spec complete and named. Joints and animations convert
+/// exactly as a rigid rig's.
+fn skinned_rig_to_model_spec(rig: &SkinnedRigDoc) -> ModelSpec {
+    let parts = rig
+        .bones
+        .iter()
+        .map(|bone| PartSpec {
+            name: bone.name.clone(),
+            parent: bone.parent.clone(),
+            pivot: [
+                bone.head[0].round() as i64,
+                bone.head[1].round() as i64,
+                bone.head[2].round() as i64,
+            ],
+        })
         .collect();
     ModelSpec {
         parts,
-        joints,
-        animations,
+        joints: joints_to_specs(&rig.joints),
+        animations: animations_to_specs(&rig.animations),
     }
 }
 
