@@ -8,7 +8,7 @@
 //! the [`draw`](test_cabinet_draw) tools share their `cli` module.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::de::DeserializeOwned;
 
@@ -37,7 +37,7 @@ pub fn apply_ui_op(
     let composite = composite_target(&template, &actions, &target)?;
     let png = write_png(&composite, &config.preview_for(&target))?;
     let ws = replay_workspace(&template, &actions)?;
-    write_ui_json(&ui_json_path(&config.actions), &config, &ws)?;
+    write_ui_json(&config.ui_json, &config, &ws)?;
     if let Some(live) = &config.live {
         send_live_preview(live, template.target_index(&target), op_name, actions.len(), &png);
     }
@@ -63,7 +63,7 @@ pub fn apply_material_op(
     let actions = append(&config.actions, Action::targeted(Some(target.clone()), op))?;
     let composite = composite_target(&template, &actions, &target)?;
     let png = write_png(&composite, &config.preview_for(&target))?;
-    write_material_json(&material_json_path(&config.actions), &config, 1.0)?;
+    write_material_json(&config.material_json, &config, 1.0)?;
     if let Some(live) = &config.live {
         let tiled = tile_2x2(&composite).to_png_bytes();
         send_live_preview(live, template.target_index(&target), op_name, actions.len(), &tiled);
@@ -87,7 +87,7 @@ pub fn recomposite_ui(config_path: &Path) -> Result<(), String> {
         write_png(&composite, &config.preview_for(&el.name))?;
     }
     let ws = replay_workspace(&template, &actions)?;
-    write_ui_json(&ui_json_path(&config.actions), &config, &ws)
+    write_ui_json(&config.ui_json, &config, &ws)
 }
 
 /// Re-render every material map's preview from the current log, refreshing
@@ -100,7 +100,7 @@ pub fn recomposite_material(config_path: &Path) -> Result<(), String> {
         let composite = composite_target(&template, &actions, map)?;
         write_png(&composite, &config.preview_for(map))?;
     }
-    write_material_json(&material_json_path(&config.actions), &config, 1.0)
+    write_material_json(&config.material_json, &config, 1.0)
 }
 
 fn plural(n: usize) -> &'static str {
@@ -338,16 +338,6 @@ pub fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// The conventional path a UI run writes `ui.json` to (beside the op log).
-pub fn ui_json_path(actions: &Path) -> PathBuf {
-    sibling(actions, "ui.json")
-}
-
-/// The conventional path a material run writes `material.json` to.
-pub fn material_json_path(actions: &Path) -> PathBuf {
-    sibling(actions, "material.json")
-}
-
 /// Parse a brush profile name.
 pub fn parse_brush(value: &str) -> Result<crate::paint_core::BrushKind, String> {
     use crate::paint_core::BrushKind::*;
@@ -463,11 +453,4 @@ pub fn parse_stops(value: &str) -> Result<Vec<(f32, Color)>, String> {
             Ok((pos, parse_color(col.trim())?))
         })
         .collect()
-}
-
-fn sibling(reference: &Path, name: &str) -> PathBuf {
-    match reference.parent() {
-        Some(p) if !p.as_os_str().is_empty() => p.join(name),
-        _ => PathBuf::from(name),
-    }
 }

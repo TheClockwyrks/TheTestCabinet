@@ -117,7 +117,7 @@ fn run(cli: Cli) -> Result<String, String> {
         Command::Assemble { tiling } => {
             let config: MaterialConfig = cli::read_config(&cli.config)?;
             cli::recomposite_material(&cli.config)?;
-            cli::write_material_json(&cli::material_json_path(&config.actions), &config, tiling)?;
+            cli::write_material_json(&config.material_json, &config, tiling)?;
             Ok(format!("assembled material.json ({} maps)", config.maps.len()))
         }
         Command::Render { shape, map, out, tiling } => render(&cli.config, &shape, map, &out, tiling),

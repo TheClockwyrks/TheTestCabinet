@@ -66,6 +66,11 @@ pub struct PaintConfig {
     /// file for a single element).
     #[serde(default = "default_ui_preview")]
     pub preview: String,
+    /// The `ui.json` manifest output path. Core seeds this to its `UI_JSON_DEST`, so
+    /// the emitted manifest lands exactly where the validator reads it — independent
+    /// of where `[output].actions` sits.
+    #[serde(default = "default_ui_json")]
+    pub ui_json: PathBuf,
     /// The asset seed (recorded by `init`; per-op seeds derive from it).
     #[serde(default)]
     pub seed: u64,
@@ -134,6 +139,11 @@ pub struct MaterialConfig {
     /// The per-map preview PNG path template (`{map}`).
     #[serde(default = "default_material_preview")]
     pub preview: String,
+    /// The `material.json` manifest output path. Core seeds this to its
+    /// `MATERIAL_JSON_DEST`, so the emitted manifest lands exactly where the
+    /// validator reads it — independent of where `[output].actions` sits.
+    #[serde(default = "default_material_json")]
+    pub material_json: PathBuf,
     /// The asset seed.
     #[serde(default)]
     pub seed: u64,
@@ -258,8 +268,14 @@ fn default_actions() -> PathBuf {
 fn default_ui_preview() -> String {
     "canvas.png".to_string()
 }
+fn default_ui_json() -> PathBuf {
+    PathBuf::from("ui.json")
+}
 fn default_material_preview() -> String {
     "maps/{map}.png".to_string()
+}
+fn default_material_json() -> PathBuf {
+    PathBuf::from("material.json")
 }
 fn default_true() -> bool {
     true
