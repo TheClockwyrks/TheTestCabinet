@@ -108,41 +108,69 @@ reason a case brief does not tell a model how to structure its solution). Avoid
 role-labelling tags (`body`, `tail`, `glue`, `sweetener`) for the same reason; prefer
 neutral classifiers (`metal`, `impact`, `sub-bass`, `sustained`).
 
-## Building a pack (pin-by-digest + rebuild flow)
+## Building & publishing a pack
+
+The pack tarballs live in a **private [Cloudflare R2](https://developers.cloudflare.com/r2/)
+bucket** (zero egress, not publicly listable) — separate from the backend's *public*
+snapshot bucket, since these are private and written by a different principal. Freesound
+(and any other source) is fetched **once**, by a developer, at curation time; nothing
+downloads a source at image-build or run time. The flow has two halves:
+
+### Publish (a developer, locally — CI never writes)
 
 1. **Author / update the manifest** here. Any content change is a **new `version`** —
    packs are immutable and versioned with the image; never edit a baked pack in place.
-2. **Build the pack** (needs `ffmpeg` on `PATH` for real normalization; without it the
+2. **Build + publish** (needs `ffmpeg` on `PATH` for real normalization; without it the
    script still produces the layout + a stable digest but writes an un-normalized
    skeleton copy and says so):
 
    ```sh
-   node scripts/build-sample-pack.mjs sfx-core
+   # FREESOUND_API_KEY + the CLOUDFLARE_AUDIO_R2_PUBLISH_* creds come from repo-root .env
+   node scripts/build-sample-pack.mjs combat-core --publish
    ```
 
-   It fetches each `url`, **verifies each `sha256`**, normalizes to PCM-16 `.wav`,
-   writes the loader-facing layout (`pack.toml` + `<name>.wav` beside it — exactly what
-   `crates/audio-core/src/sample.rs` reads), tars it deterministically, and prints:
+   It fetches each `url` (**caching each by `sha256`** under `dist/sample-packs/.cache/`
+   so a rebuild never re-fetches a clip it already has), **verifies each `sha256`**,
+   normalizes to PCM-16 `.wav`, writes the loader-facing layout (`pack.toml` +
+   `<name>.wav` beside it — exactly what `crates/audio-core/src/sample.rs` reads), tars
+   it deterministically, then **uploads the tarball to R2** and records its pin in
+   [`packs.lock.json`](packs.lock.json):
 
-   ```
-   pack digest: sha256:<digest>
-   ```
-
-3. **Publish** the resulting `dist/sample-packs/<name>-<version>.tar` to the object
-   store / registry.
-4. **Pin it in the image build.** The `sfx-sample` and `music` Dockerfiles take the
-   pack ref, its digest, and its URL as build args and pin by digest:
-
-   ```sh
-   docker build -f containers/sfx-sample/Dockerfile \
-     --build-arg SAMPLE_PACK=sfx-core@0.1.0 \
-     --build-arg SAMPLE_PACK_SHA256=sha256:<digest> \
-     --build-arg SAMPLE_PACK_URL=<url of sfx-core-0.1.0.tar> .
+   ```json
+   { "combat-core@0.1.0": { "bucket": "test-cabinet-audio",
+       "key": "combat-core/0.1.0/combat-core-0.1.0.tar", "sha256": "sha256:<digest>" } }
    ```
 
-   The Dockerfile fetches the tarball with the digest as an integrity check
-   (`ADD --checksum`), unpacks it to the path the loader expects, and points the binary
-   at it. Updating the palette is therefore a **new pack version + an image rebuild**.
+   (Omit `--publish` to build + print the digest without uploading — the manual-pin
+   escape hatch.)
+3. **Commit `packs.lock.json`.** That pin is the source of truth the image build reads;
+   committing it is what lets CI and other machines build the pack.
+
+### Build the image (local `./build.sh` and CI — read-only)
+
+`containers/build.sh` builds the `sfx-sample`/`music` images by resolving the pack's pin,
+**minting a short-lived presigned R2 GET URL** for it (via
+`scripts/presign-sample-pack.mjs`, using the read-only `CLOUDFLARE_AUDIO_R2_PRESIGN_*`
+creds), and passing the pack ref, that URL, and the digest as build args. The Dockerfile's
+`ADD --checksum` fetches + verifies the tarball and unpacks it to the path the loader
+expects — **no credential ever enters an image layer**, and there are no build args to
+pass by hand. A pack that is not pinned (or that cannot be presigned) is a **build
+error**, not a silent skip — an audio image is never shipped with an empty palette.
+Updating a palette is therefore a **new pack version → `--publish` → commit the pin →
+image rebuild**. (The `music` image is deferred until a real instrument bank replaces the
+placeholder `gm-lite` example, so `build.sh` does not build it yet.)
+
+### R2 environment
+
+Read from repo-root `.env` locally, and from GitHub secrets/vars in CI (the container
+build workflow needs only the read-only PRESIGN pair):
+
+| Variable | Role | Where |
+| --- | --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | derives the S3 endpoint | publish + presign |
+| `CLOUDFLARE_AUDIO_R2_BUCKET` | the private bucket | publish + presign |
+| `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | **write** | local publish only |
+| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | **read** | local + CI image build |
 
 ## On-disk layout the loader expects
 

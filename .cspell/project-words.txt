@@ -236,3 +236,7 @@ playstyle
 hpbar
 firemode
 autofire
+# R2 sample-pack publish/presign tooling (scripts/lib/r2.mjs, build.sh).
+presign
+presigned
+cloudflarestorage

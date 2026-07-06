@@ -121,6 +121,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # `build.sh` runs `scripts/presign-sample-pack.mjs` (node-only, no npm install)
+      # to mint the R2 download URL for the sfx-sample/music audio packs.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       # Authenticate to GHCR with the built-in token (packages: write above).
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -136,12 +142,22 @@ jobs:
       # lowercase), which is the resolver's default for the canonical repo. Only the
       # arch tag is written here; the bare `:latest` manifest list is created by the
       # manifest job, so a half-finished matrix never leaves `:latest` single-arch.
+      #
+      # The CLOUDFLARE_AUDIO_R2_* values let build.sh presign a READ-only download of
+      # the sfx-sample image's audio pack (see build_audio_image). They are read-scoped
+      # — CI never writes the bucket; publishing is a local step. They are REQUIRED: a
+      # pack that is not pinned (or that cannot be presigned) fails the build rather
+      # than shipping an image with an empty palette, so these must be set.
       - name: Build and push images
         env:
           PUSH: "1"
           DOCKER: docker
           OWNER: ${{ github.repository_owner }}
           IMAGE_TAG: latest-${{ matrix.arch }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_AUDIO_R2_BUCKET: ${{ vars.CLOUDFLARE_AUDIO_R2_BUCKET }}
+          CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID }}
+          CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY }}
         run: |
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
           echo "Pushing $IMAGE_TAG images to $registry"
@@ -177,7 +193,10 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          for name in base sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned particle-2d particle-3d sfx-synth sfx-sample music adversarial performance; do
+          # NOTE: `music` is intentionally absent — its instrument bank is not yet a
+          # real published pack, so the build job does not build that image (see
+          # containers/build.sh). Add it back here once a real bank ships.
+          for name in base sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned particle-2d particle-3d sfx-synth sfx-sample adversarial performance; do
             repo="$registry/test-cabinet-$name"
             echo "==> assembling $repo:latest + $repo:$GIT_SHA from :latest-amd64 + :latest-arm64"
             docker buildx imagetools create \
