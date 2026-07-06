@@ -34,17 +34,18 @@ FROM docker.io/library/node:24-bookworm-slim AS build
 WORKDIR /src
 COPY . .
 # Deterministic, lockfile-pinned install of the whole workspace, then build the
-# web console. run-record and voxel-runtime are built first: the console's
-# `tsc -b` needs run-record's compiled types, and the @test-cabinet/ui library it
-# bundles from source imports voxel-runtime's `./three` subpath, whose typings
-# only resolve once dist/three/ exists (voxel-runtime is not a tsc project
-# reference of the console, so it must be built explicitly). The npm cache is a
-# BuildKit cache mount so re-installs reuse the downloaded tarballs across builds
-# instead of refetching every dependency.
+# web console. run-record, voxel-runtime and particle-runtime are built first: the
+# console's `tsc -b` needs run-record's compiled types, and the @test-cabinet/ui
+# library it bundles from source imports voxel-runtime's and particle-runtime's
+# `./three` subpaths, whose typings only resolve once dist/three/ exists (neither
+# runtime is a tsc project reference of the console, so they must be built
+# explicitly). The npm cache is a BuildKit cache mount so re-installs reuse the
+# downloaded tarballs across builds instead of refetching every dependency.
 RUN --mount=type=cache,target=/root/.npm \
     npm ci \
     && npm run build -w @test-cabinet/run-record \
     && npm run build -w @test-cabinet/voxel-runtime \
+    && npm run build -w @test-cabinet/particle-runtime \
     && npm run build -w @test-cabinet/web
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
