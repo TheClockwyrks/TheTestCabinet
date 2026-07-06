@@ -60,7 +60,10 @@ fn add_layer_then_brush_targets_the_new_layer() {
     let mut ws = ws_single();
     let actions = vec![
         Action::global(Op::Init { seed: 1 }),
-        Action::targeted(Some("canvas".to_string()), Op::AddLayer { name: "top".into() }),
+        Action::targeted(
+            Some("canvas".to_string()),
+            Op::AddLayer { name: "top".into() },
+        ),
         Action::targeted(
             Some("canvas".to_string()),
             Op::Fill {
@@ -118,7 +121,12 @@ fn set_uniform_fills_the_map() {
 fn bake_normal_reads_height_writes_normal() {
     let mut ws = Workspace::new(WrapMode::Wrap);
     ws.insert("normal", 8, 8, Background::Transparent);
-    ws.insert("height", 8, 8, Background::Solid(Color::new(0.5, 0.5, 0.5, 1.0)));
+    ws.insert(
+        "height",
+        8,
+        8,
+        Background::Solid(Color::new(0.5, 0.5, 0.5, 1.0)),
+    );
     let actions = vec![
         Action::global(Op::Init { seed: 1 }),
         Action::targeted(

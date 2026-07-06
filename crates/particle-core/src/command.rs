@@ -139,11 +139,15 @@ impl AddEmitterArgs {
     fn to_op(&self, dims: Dimensionality) -> Result<Op, String> {
         let two_d = dims == Dimensionality::D2;
         if two_d && (self.z.is_some() || self.size_z.is_some() || self.dir_z.is_some()) {
-            return Err("particle-2d is planar: --z, --size-z, and --dir-z are not accepted".into());
+            return Err(
+                "particle-2d is planar: --z, --size-z, and --dir-z are not accepted".into(),
+            );
         }
         let emission = match (self.rate, self.burst) {
             (Some(_), Some(_)) => {
-                return Err("specify either --rate (continuous) or --burst (one-shot), not both".into());
+                return Err(
+                    "specify either --rate (continuous) or --burst (one-shot), not both".into(),
+                );
             }
             (Some(rate), None) => Emission::Rate { rate },
             (None, Some(count)) => Emission::Burst {
@@ -282,16 +286,20 @@ pub struct SetParticleArgs {
 
 impl SetParticleArgs {
     fn to_op(&self) -> Result<Op, String> {
-        let size_curve = if self.size_curve.is_some() || self.size_from.is_some() || self.size_to.is_some() {
-            Some(Curve {
-                interp: self.size_curve.unwrap_or(Interp::Linear),
-                from: self.size_from.unwrap_or(1.0),
-                to: self.size_to.unwrap_or(0.0),
-            })
-        } else {
-            None
-        };
-        let opacity_curve = if self.opacity_curve.is_some() || self.opacity_from.is_some() || self.opacity_to.is_some() {
+        let size_curve =
+            if self.size_curve.is_some() || self.size_from.is_some() || self.size_to.is_some() {
+                Some(Curve {
+                    interp: self.size_curve.unwrap_or(Interp::Linear),
+                    from: self.size_from.unwrap_or(1.0),
+                    to: self.size_to.unwrap_or(0.0),
+                })
+            } else {
+                None
+            };
+        let opacity_curve = if self.opacity_curve.is_some()
+            || self.opacity_from.is_some()
+            || self.opacity_to.is_some()
+        {
             Some(Curve {
                 interp: self.opacity_curve.unwrap_or(Interp::Linear),
                 from: self.opacity_from.unwrap_or(1.0),
@@ -383,13 +391,17 @@ impl RenderArgs {
 fn parse_vec3(spec: &str, dims: Dimensionality) -> Result<[f32; 3], String> {
     let parts: Vec<f32> = spec
         .split(',')
-        .map(|p| p.trim().parse::<f32>().map_err(|_| format!("invalid number `{p}` in `{spec}`")))
+        .map(|p| {
+            p.trim()
+                .parse::<f32>()
+                .map_err(|_| format!("invalid number `{p}` in `{spec}`"))
+        })
         .collect::<Result<_, _>>()?;
     match (dims, parts.as_slice()) {
         (Dimensionality::D2, [x, y]) => Ok([*x, *y, 0.0]),
-        (Dimensionality::D2, _) => {
-            Err(format!("particle-2d is planar: expected `x,y`, got `{spec}`"))
-        }
+        (Dimensionality::D2, _) => Err(format!(
+            "particle-2d is planar: expected `x,y`, got `{spec}`"
+        )),
         (Dimensionality::D3, [x, y]) => Ok([*x, *y, 0.0]),
         (Dimensionality::D3, [x, y, z]) => Ok([*x, *y, *z]),
         (Dimensionality::D3, _) => Err(format!("expected `x,y` or `x,y,z`, got `{spec}`")),
@@ -400,7 +412,11 @@ fn parse_vec3(spec: &str, dims: Dimensionality) -> Result<[f32; 3], String> {
 fn parse_turbulence(spec: &str) -> Result<Turbulence, String> {
     let parts: Vec<f32> = spec
         .split(',')
-        .map(|p| p.trim().parse::<f32>().map_err(|_| format!("invalid number `{p}` in `{spec}`")))
+        .map(|p| {
+            p.trim()
+                .parse::<f32>()
+                .map_err(|_| format!("invalid number `{p}` in `{spec}`"))
+        })
         .collect::<Result<_, _>>()?;
     match parts.as_slice() {
         [amplitude, scale] => Ok(Turbulence {

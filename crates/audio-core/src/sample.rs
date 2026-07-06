@@ -65,7 +65,12 @@ fn default_pitched() -> bool {
 struct PackManifest {
     #[serde(default)]
     sample_rate: Option<u32>,
-    #[serde(default, alias = "samples", alias = "instrument", alias = "instruments")]
+    #[serde(
+        default,
+        alias = "samples",
+        alias = "instrument",
+        alias = "instruments"
+    )]
     sample: Vec<SampleEntry>,
 }
 
@@ -90,7 +95,11 @@ impl SampleLibrary {
 
     /// Build a library directly from entries (used by tests and non-CLI callers). The
     /// audio for each entry is loaded from `pack_dir/<file>` on demand.
-    pub fn from_entries(entries: Vec<SampleEntry>, pack_dir: Option<PathBuf>, sample_rate: u32) -> SampleLibrary {
+    pub fn from_entries(
+        entries: Vec<SampleEntry>,
+        pack_dir: Option<PathBuf>,
+        sample_rate: u32,
+    ) -> SampleLibrary {
         SampleLibrary {
             entries,
             pack_dir,
@@ -157,13 +166,11 @@ pub fn load_pack(pack_dir: Option<&std::path::Path>) -> SampleLibrary {
         return SampleLibrary::empty();
     }
     // Find a manifest: the first `*.toml` in the pack directory.
-    let manifest_path = std::fs::read_dir(dir)
-        .ok()
-        .and_then(|rd| {
-            rd.filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .find(|p| p.extension().is_some_and(|x| x == "toml"))
-        });
+    let manifest_path = std::fs::read_dir(dir).ok().and_then(|rd| {
+        rd.filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .find(|p| p.extension().is_some_and(|x| x == "toml"))
+    });
     let Some(manifest_path) = manifest_path else {
         return SampleLibrary::empty();
     };

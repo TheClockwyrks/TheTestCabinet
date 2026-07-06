@@ -36,7 +36,10 @@ fn generated_noise_map_tiles_at_edges() {
         let right = r.get(31, y, WrapMode::Clamp).unwrap().r;
         assert_eq!(wrapped, right);
         // Continuity across the seam: column 0 and column 31 should be close.
-        assert!((left - right).abs() < 0.35, "seam jump at y={y}: {left} {right}");
+        assert!(
+            (left - right).abs() < 0.35,
+            "seam jump at y={y}: {left} {right}"
+        );
     }
 }
 
@@ -54,7 +57,10 @@ fn gradient_map_recolors_by_luma() {
     let mut doc = Document::new(2, 1, Background::Transparent);
     doc.layers[0].raster.pixels[0] = Color::new(0.0, 0.0, 0.0, 1.0);
     doc.layers[0].raster.pixels[1] = Color::new(1.0, 1.0, 1.0, 1.0);
-    let stops = [(0.0, Color::new(1.0, 0.0, 0.0, 1.0)), (1.0, Color::new(0.0, 0.0, 1.0, 1.0))];
+    let stops = [
+        (0.0, Color::new(1.0, 0.0, 0.0, 1.0)),
+        (1.0, Color::new(0.0, 0.0, 1.0, 1.0)),
+    ];
     doc.gradient_map(0, &stops);
     assert!(doc.layers[0].raster.pixels[0].r > 0.9); // dark -> red
     assert!(doc.layers[0].raster.pixels[1].b > 0.9); // light -> blue

@@ -9,7 +9,10 @@ fn rect_selection_clips_a_fill() {
     doc.fill_layer(0, false, Color::new(1.0, 0.0, 0.0, 1.0));
     // Inside the selection is painted; outside is untouched.
     assert!(doc.layers[0].raster.get(3, 3, WrapMode::Clamp).unwrap().a > 0.9);
-    assert_eq!(doc.layers[0].raster.get(0, 0, WrapMode::Clamp).unwrap().a, 0.0);
+    assert_eq!(
+        doc.layers[0].raster.get(0, 0, WrapMode::Clamp).unwrap().a,
+        0.0
+    );
 }
 
 #[test]

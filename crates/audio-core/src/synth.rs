@@ -276,7 +276,14 @@ pub struct Voice {
 
 impl Voice {
     /// A bare voice: a full-gain, centered oscillator with the default envelope.
-    pub fn new(name: String, wave: Wave, freq: f64, gain_db: f64, start_ms: f64, dur_ms: f64) -> Voice {
+    pub fn new(
+        name: String,
+        wave: Wave,
+        freq: f64,
+        gain_db: f64,
+        start_ms: f64,
+        dur_ms: f64,
+    ) -> Voice {
         Voice {
             name,
             wave,

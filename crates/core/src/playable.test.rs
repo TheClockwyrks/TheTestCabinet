@@ -242,7 +242,9 @@ fn serve_asset_file_resolves_the_new_asset_families() {
         ],
     );
     assert_eq!(
-        serve_asset_file(dir.path(), "element-1.png").expect("element").body,
+        serve_asset_file(dir.path(), "element-1.png")
+            .expect("element")
+            .body,
         b"\x89PNG button"
     );
     let served = serve_asset_file(dir.path(), "ui.json").expect("ui.json");
@@ -338,7 +340,9 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     assert_eq!(served.content_type, "audio/midi");
     assert_eq!(served.body, b"MThd-midi-bytes");
     assert_eq!(
-        serve_asset_file(dir.path(), "preview.png").expect("preview").body,
+        serve_asset_file(dir.path(), "preview.png")
+            .expect("preview")
+            .body,
         b"\x89PNG wave"
     );
 }

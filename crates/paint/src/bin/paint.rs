@@ -20,7 +20,10 @@ use test_cabinet_paint::paint_core::BrushKind;
 use test_cabinet_paint::{cli, config::PaintConfig};
 
 #[derive(Parser)]
-#[command(name = "paint", about = "Paint a high-resolution interface asset, one operation at a time.")]
+#[command(
+    name = "paint",
+    about = "Paint a high-resolution interface asset, one operation at a time."
+)]
 struct Cli {
     /// Path to the seeded workspace config JSON.
     #[arg(long, default_value = "paint.config.json", global = true)]
@@ -392,7 +395,10 @@ fn run(cli: Cli) -> Result<String, String> {
         let config: PaintConfig = cli::read_config(&cli.config)?;
         cli::init_log(&config.actions, config.seed)?;
         cli::recomposite_ui(&cli.config)?;
-        return Ok(format!("initialized {} element(s)", config.element_list().len()));
+        return Ok(format!(
+            "initialized {} element(s)",
+            config.element_list().len()
+        ));
     }
     if let Command::Render = cli.command {
         cli::recomposite_ui(&cli.config)?;
@@ -443,9 +449,19 @@ fn to_op(command: Command) -> Result<Op, String> {
             jitter: a.jitter,
         },
         Command::Fill { layer, mask, color } => Op::Fill { layer, mask, color },
-        Command::Bucket { layer, x, y, color, tolerance } => {
-            Op::Bucket { layer, x, y, color, tolerance }
-        }
+        Command::Bucket {
+            layer,
+            x,
+            y,
+            color,
+            tolerance,
+        } => Op::Bucket {
+            layer,
+            x,
+            y,
+            color,
+            tolerance,
+        },
         Command::FillRect(a) => Op::FillRect {
             layer: a.layer,
             mask: a.mask,
@@ -472,18 +488,50 @@ fn to_op(command: Command) -> Result<Op, String> {
             from: a.from,
             to: a.to,
         },
-        Command::SelectRect { x, y, width, height } => Op::SelectRect { x, y, width, height },
+        Command::SelectRect {
+            x,
+            y,
+            width,
+            height,
+        } => Op::SelectRect {
+            x,
+            y,
+            width,
+            height,
+        },
         Command::SelectEllipse { cx, cy, rx, ry } => Op::SelectEllipse { cx, cy, rx, ry },
-        Command::SelectLasso { points } => Op::SelectLasso { points: cli::parse_points(&points)? },
+        Command::SelectLasso { points } => Op::SelectLasso {
+            points: cli::parse_points(&points)?,
+        },
         Command::SelectNone => Op::SelectNone,
         Command::InvertSelection => Op::InvertSelection,
         Command::Feather { radius } => Op::Feather { radius },
         Command::Blur { layer, radius } => Op::Blur { layer, radius },
         Command::Sharpen { layer } => Op::Sharpen { layer },
         Command::Noise { layer, amount } => Op::Noise { layer, amount },
-        Command::Levels { layer, black, white, gamma } => Op::Levels { layer, black, white, gamma },
+        Command::Levels {
+            layer,
+            black,
+            white,
+            gamma,
+        } => Op::Levels {
+            layer,
+            black,
+            white,
+            gamma,
+        },
         Command::Curves { layer, amount } => Op::Curves { layer, amount },
-        Command::HueSat { layer, hue, sat, lightness } => Op::HueSat { layer, hue, sat, lightness },
+        Command::HueSat {
+            layer,
+            hue,
+            sat,
+            lightness,
+        } => Op::HueSat {
+            layer,
+            hue,
+            sat,
+            lightness,
+        },
         Command::Desaturate { layer } => Op::Desaturate { layer },
         Command::LayerEffect(a) => Op::LayerEffect {
             layer: a.layer,

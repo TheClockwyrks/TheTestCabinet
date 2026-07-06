@@ -139,7 +139,8 @@ fn hash2(ix: i64, iy: i64, period: i64, seed: u64) -> u64 {
 }
 
 fn gradient(ix: i64, iy: i64, period: i64, seed: u64) -> (f32, f32) {
-    let angle = (hash2(ix, iy, period, seed) >> 40) as f32 / ((1u32 << 24) as f32) * std::f32::consts::TAU;
+    let angle =
+        (hash2(ix, iy, period, seed) >> 40) as f32 / ((1u32 << 24) as f32) * std::f32::consts::TAU;
     (angle.cos(), angle.sin())
 }
 
@@ -210,7 +211,11 @@ fn pattern_value(kind: PatternKind, u: f32, v: f32) -> f32 {
         PatternKind::Checker => {
             let cx = u.floor() as i64;
             let cy = v.floor() as i64;
-            if (cx + cy).rem_euclid(2) == 0 { 1.0 } else { 0.0 }
+            if (cx + cy).rem_euclid(2) == 0 {
+                1.0
+            } else {
+                0.0
+            }
         }
         PatternKind::Bricks => {
             let row = v.floor() as i64;
@@ -219,17 +224,29 @@ fn pattern_value(kind: PatternKind, u: f32, v: f32) -> f32 {
             let bx = (u + shift).fract();
             let by = v.fract();
             let mortar = 0.08;
-            if bx < mortar || by < mortar { 0.25 } else { 1.0 }
+            if bx < mortar || by < mortar {
+                0.25
+            } else {
+                1.0
+            }
         }
         PatternKind::Planks => {
             let bx = u.fract();
             let gap = 0.06;
-            if bx < gap { 0.3 } else { 0.9 - (u.floor() as i64).rem_euclid(3) as f32 * 0.1 }
+            if bx < gap {
+                0.3
+            } else {
+                0.9 - (u.floor() as i64).rem_euclid(3) as f32 * 0.1
+            }
         }
         PatternKind::Hex => {
             // Distance to the nearest of two offset hex-lattice centers.
             let row = (v * 1.1547).floor();
-            let shift = if (row as i64).rem_euclid(2) == 0 { 0.0 } else { 0.5 };
+            let shift = if (row as i64).rem_euclid(2) == 0 {
+                0.0
+            } else {
+                0.5
+            };
             let hx = (u + shift).fract() - 0.5;
             let hy = (v * 1.1547).fract() - 0.5;
             let d = (hx * hx + hy * hy).sqrt();

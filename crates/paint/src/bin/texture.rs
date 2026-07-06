@@ -21,7 +21,10 @@ use test_cabinet_paint::proc::{NoiseKind, PatternKind};
 use test_cabinet_paint::{cli, config::MaterialConfig};
 
 #[derive(Parser)]
-#[command(name = "texture", about = "Paint a tileable PBR material map, one operation at a time.")]
+#[command(
+    name = "texture",
+    about = "Paint a tileable PBR material map, one operation at a time."
+)]
 struct Cli {
     /// Path to the seeded material config JSON (shared with `pbr`).
     #[arg(long, default_value = "material.config.json", global = true)]
@@ -347,10 +350,24 @@ fn to_op(command: Command) -> Result<Op, String> {
             scatter: a.scatter,
             jitter: a.jitter,
         },
-        Command::Fill { layer, color } => Op::Fill { layer, mask: false, color },
-        Command::Bucket { layer, x, y, color, tolerance } => {
-            Op::Bucket { layer, x, y, color, tolerance }
-        }
+        Command::Fill { layer, color } => Op::Fill {
+            layer,
+            mask: false,
+            color,
+        },
+        Command::Bucket {
+            layer,
+            x,
+            y,
+            color,
+            tolerance,
+        } => Op::Bucket {
+            layer,
+            x,
+            y,
+            color,
+            tolerance,
+        },
         Command::FillRect(a) => Op::FillRect {
             layer: a.layer,
             mask: false,
@@ -368,23 +385,78 @@ fn to_op(command: Command) -> Result<Op, String> {
             from: a.from,
             to: a.to,
         },
-        Command::SelectRect { x, y, width, height } => Op::SelectRect { x, y, width, height },
+        Command::SelectRect {
+            x,
+            y,
+            width,
+            height,
+        } => Op::SelectRect {
+            x,
+            y,
+            width,
+            height,
+        },
         Command::SelectNone => Op::SelectNone,
         Command::InvertSelection => Op::InvertSelection,
         Command::Feather { radius } => Op::Feather { radius },
         Command::Blur { layer, radius } => Op::Blur { layer, radius },
         Command::Sharpen { layer } => Op::Sharpen { layer },
-        Command::Levels { layer, black, white, gamma } => Op::Levels { layer, black, white, gamma },
+        Command::Levels {
+            layer,
+            black,
+            white,
+            gamma,
+        } => Op::Levels {
+            layer,
+            black,
+            white,
+            gamma,
+        },
         Command::Curves { layer, amount } => Op::Curves { layer, amount },
-        Command::HueSat { layer, hue, sat, lightness } => Op::HueSat { layer, hue, sat, lightness },
+        Command::HueSat {
+            layer,
+            hue,
+            sat,
+            lightness,
+        } => Op::HueSat {
+            layer,
+            hue,
+            sat,
+            lightness,
+        },
         Command::Desaturate { layer } => Op::Desaturate { layer },
-        Command::Noise { layer, r#type, scale, octaves } => {
-            Op::GenNoise { layer, kind: r#type, scale, octaves }
-        }
-        Command::Pattern { layer, r#type, scale } => Op::Pattern { layer, kind: r#type, scale },
-        Command::Warp { layer, source, amount } => Op::Warp { layer, source, amount },
-        Command::GradientMap { layer, stops } => {
-            Op::GradientMap { layer, stops: cli::parse_stops(&stops)? }
-        }
+        Command::Noise {
+            layer,
+            r#type,
+            scale,
+            octaves,
+        } => Op::GenNoise {
+            layer,
+            kind: r#type,
+            scale,
+            octaves,
+        },
+        Command::Pattern {
+            layer,
+            r#type,
+            scale,
+        } => Op::Pattern {
+            layer,
+            kind: r#type,
+            scale,
+        },
+        Command::Warp {
+            layer,
+            source,
+            amount,
+        } => Op::Warp {
+            layer,
+            source,
+            amount,
+        },
+        Command::GradientMap { layer, stops } => Op::GradientMap {
+            layer,
+            stops: cli::parse_stops(&stops)?,
+        },
     })
 }

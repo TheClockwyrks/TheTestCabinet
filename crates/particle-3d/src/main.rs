@@ -19,7 +19,10 @@ use test_cabinet_particle_core::{Dimensionality, ParticleConfig};
 
 /// The 3D particle-effect tool for particle asset-generation cases.
 #[derive(Parser)]
-#[command(name = "particle-3d", about = "Author a 3D particle effect, one operation at a time.")]
+#[command(
+    name = "particle-3d",
+    about = "Author a 3D particle effect, one operation at a time."
+)]
 struct Cli {
     /// Path to the seeded config JSON (volume dimensions, duration and playback fps,
     /// and the log / preview / `system.json` paths, plus an optional `live` block).

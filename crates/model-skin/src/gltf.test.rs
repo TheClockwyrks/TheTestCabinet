@@ -47,11 +47,24 @@ fn skinned_glb_round_trips_mesh_and_skin() {
         },
     ];
     let bones = two_bones();
-    let node_locals = vec![Mat4::IDENTITY, Mat4::from_translation(glam::Vec3::new(0.0, 5.0, 0.0))];
-    let ibm = vec![Mat4::IDENTITY, Mat4::from_translation(glam::Vec3::new(0.0, -5.0, 0.0))];
+    let node_locals = vec![
+        Mat4::IDENTITY,
+        Mat4::from_translation(glam::Vec3::new(0.0, 5.0, 0.0)),
+    ];
+    let ibm = vec![
+        Mat4::IDENTITY,
+        Mat4::from_translation(glam::Vec3::new(0.0, -5.0, 0.0)),
+    ];
 
     let glb = skinned_glb(
-        &positions, &normals, &colors, &indices, &skins, &bones, &node_locals, &ibm,
+        &positions,
+        &normals,
+        &colors,
+        &indices,
+        &skins,
+        &bones,
+        &node_locals,
+        &ibm,
     );
     assert_eq!(&glb[0..4], b"glTF", "starts with the glTF magic");
     assert_eq!(glb.len() % 4, 0, "the glb is 4-byte aligned");
@@ -66,7 +79,10 @@ fn skinned_glb_round_trips_mesh_and_skin() {
     // The skin decodes through the skinned decoder.
     let skin = decode_skinned_glb(&glb).expect("decode skin");
     assert_eq!(skin.skin_joint_count, 2, "the skin lists both bones");
-    assert_eq!(skin.inverse_bind_count, 2, "one inverse-bind matrix per bone");
+    assert_eq!(
+        skin.inverse_bind_count, 2,
+        "one inverse-bind matrix per bone"
+    );
     assert_eq!(skin.joints.len(), 3);
     assert_eq!(skin.weights.len(), 3);
     assert_eq!(skin.joints[1], [0, 1, 0, 0]);
@@ -88,7 +104,10 @@ fn empty_mesh_still_emits_skeleton_and_skin() {
     let skin = decode_skinned_glb(&glb).expect("decode skeleton-only glb");
     assert_eq!(skin.skin_joint_count, 2);
     assert_eq!(skin.inverse_bind_count, 2);
-    assert!(skin.joints.is_empty(), "a hollow character has no per-vertex skins");
+    assert!(
+        skin.joints.is_empty(),
+        "a hollow character has no per-vertex skins"
+    );
 
     // The base decoder sees an empty mesh.
     let base = glb_to_part_mesh(&glb).expect("decode empty base mesh");

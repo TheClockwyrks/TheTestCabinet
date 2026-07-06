@@ -10,7 +10,10 @@ fn parses_rgb_and_rgba() {
 
 #[test]
 fn tolerates_missing_hash() {
-    assert_eq!(Color::parse_hex("00ff00").unwrap().to_rgba8(), [0, 255, 0, 255]);
+    assert_eq!(
+        Color::parse_hex("00ff00").unwrap().to_rgba8(),
+        [0, 255, 0, 255]
+    );
 }
 
 #[test]
@@ -29,7 +32,16 @@ fn roundtrips_8bit() {
 
 #[test]
 fn background_parses() {
-    assert_eq!(Background::parse("transparent").unwrap(), Background::Transparent);
-    assert_eq!(Background::parse("TRANSPARENT").unwrap(), Background::Transparent);
-    assert!(matches!(Background::parse("#000000").unwrap(), Background::Solid(_)));
+    assert_eq!(
+        Background::parse("transparent").unwrap(),
+        Background::Transparent
+    );
+    assert_eq!(
+        Background::parse("TRANSPARENT").unwrap(),
+        Background::Transparent
+    );
+    assert!(matches!(
+        Background::parse("#000000").unwrap(),
+        Background::Solid(_)
+    ));
 }

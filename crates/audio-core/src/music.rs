@@ -12,7 +12,7 @@ use crate::effect::Effect;
 use crate::format::{Channels, RenderParams};
 use crate::midi::{MidiNote, MidiScore, MidiTrack, TICKS_PER_QUARTER};
 use crate::sample::SampleLibrary;
-use crate::synth::{Envelope, EnvCurve, Voice, Wave};
+use crate::synth::{EnvCurve, Envelope, Voice, Wave};
 
 /// The default tempo when a piece sets none.
 pub const DEFAULT_BPM: u32 = 120;

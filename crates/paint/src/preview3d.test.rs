@@ -15,7 +15,10 @@ fn surfaces_are_non_degenerate() {
         assert_eq!(pos.len(), nrm.len(), "{shape:?}");
         assert!(pos.len() % 3 == 0);
         assert!(!idx.is_empty(), "{shape:?} has no triangles");
-        assert!(idx.iter().all(|&i| (i as usize) < pos.len() / 3), "{shape:?} index oob");
+        assert!(
+            idx.iter().all(|&i| (i as usize) < pos.len() / 3),
+            "{shape:?} index oob"
+        );
     }
 }
 

@@ -54,12 +54,7 @@ impl Color {
 
     /// Quantize to four 8-bit channels (rounded, clamped).
     pub fn to_rgba8(self) -> [u8; 4] {
-        [
-            to_u8(self.r),
-            to_u8(self.g),
-            to_u8(self.b),
-            to_u8(self.a),
-        ]
+        [to_u8(self.r), to_u8(self.g), to_u8(self.b), to_u8(self.a)]
     }
 
     /// The `#rrggbbaa` hex form, used as the wire form in the operation log.
@@ -80,8 +75,8 @@ impl Color {
         for (i, chunk) in bytes.as_bytes().chunks_exact(2).enumerate() {
             let pair =
                 std::str::from_utf8(chunk).map_err(|_| ColorError::BadDigit(value.to_string()))?;
-            channels[i] =
-                u8::from_str_radix(pair, 16).map_err(|_| ColorError::BadDigit(value.to_string()))?;
+            channels[i] = u8::from_str_radix(pair, 16)
+                .map_err(|_| ColorError::BadDigit(value.to_string()))?;
         }
         Ok(Color::from_rgba8(channels))
     }

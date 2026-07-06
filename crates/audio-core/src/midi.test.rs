@@ -30,7 +30,10 @@ fn score() -> MidiScore {
 fn header_is_format_1_with_expected_tracks() {
     let bytes = encode(&score());
     assert_eq!(&bytes[0..4], b"MThd");
-    assert_eq!(u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]), 6);
+    assert_eq!(
+        u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+        6
+    );
     // format 1
     assert_eq!(u16::from_be_bytes([bytes[8], bytes[9]]), 1);
     // tempo track + 1 instrument track
@@ -45,10 +48,7 @@ fn header_is_format_1_with_expected_tracks() {
 #[test]
 fn contains_two_mtrk_chunks() {
     let bytes = encode(&score());
-    let count = bytes
-        .windows(4)
-        .filter(|w| *w == b"MTrk")
-        .count();
+    let count = bytes.windows(4).filter(|w| *w == b"MTrk").count();
     assert_eq!(count, 2);
 }
 

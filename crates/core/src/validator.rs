@@ -1441,9 +1441,9 @@ impl SystemJsonEmitter {
     /// Whether this emitter actually emits particles (a positive rate or burst count),
     /// rather than declaring an emitter that produces nothing.
     fn emits(&self) -> bool {
-        self.emission.as_ref().is_some_and(|e| {
-            e.rate.is_some_and(|r| r > 0.0) || e.count.is_some_and(|c| c > 0)
-        })
+        self.emission
+            .as_ref()
+            .is_some_and(|e| e.rate.is_some_and(|r| r > 0.0) || e.count.is_some_and(|c| c > 0))
     }
 }
 

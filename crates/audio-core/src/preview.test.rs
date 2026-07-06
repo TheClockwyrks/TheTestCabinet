@@ -1,5 +1,5 @@
 use super::*;
-use crate::music::{MusicProject, MusicOp};
+use crate::music::{MusicOp, MusicProject};
 
 fn tone(freq: f64, secs: f64) -> Vec<f32> {
     let n = (44100.0 * secs) as usize;

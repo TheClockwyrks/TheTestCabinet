@@ -1821,8 +1821,5 @@ fn audio_rejects_zero_duration() {
         .1
         .resolve("sprite", "v1.0.0")
         .expect_err("a zero max_duration_ms is rejected");
-    assert!(
-        format!("{err}").contains("greater than zero"),
-        "got: {err}"
-    );
+    assert!(format!("{err}").contains("greater than zero"), "got: {err}");
 }

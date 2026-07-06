@@ -15,7 +15,10 @@ use test_cabinet_paint::text::{Align, FONTS};
 use test_cabinet_paint::{cli, config::PaintConfig};
 
 #[derive(Parser)]
-#[command(name = "ui", about = "Compose crisp UI shapes, text, and nine-slice insets.")]
+#[command(
+    name = "ui",
+    about = "Compose crisp UI shapes, text, and nine-slice insets."
+)]
 struct Cli {
     /// Path to the seeded workspace config JSON (shared with `paint`).
     #[arg(long, default_value = "paint.config.json", global = true)]
@@ -212,7 +215,10 @@ fn run(cli: Cli) -> Result<String, String> {
             let config: PaintConfig = cli::read_config(&cli.config)?;
             cli::init_log(&config.actions, config.seed)?;
             cli::recomposite_ui(&cli.config)?;
-            Ok(format!("initialized {} element(s)", config.element_list().len()))
+            Ok(format!(
+                "initialized {} element(s)",
+                config.element_list().len()
+            ))
         }
         Command::Render => {
             cli::recomposite_ui(&cli.config)?;
@@ -240,7 +246,10 @@ fn run(cli: Cli) -> Result<String, String> {
 
 fn default_nine_slice_out(config: &PaintConfig, target: &str) -> PathBuf {
     let base = config.preview_for(target);
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("element");
+    let stem = base
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("element");
     let name = format!("{stem}.nine-slice.png");
     match base.parent() {
         Some(p) if !p.as_os_str().is_empty() => p.join(name),
@@ -313,8 +322,16 @@ fn to_op(command: Command) -> Result<Op, String> {
             x: a.x,
             y: a.y,
         },
-        Command::SetNineSlice { left, right, top, bottom } => {
-            Op::SetNineSlice { left, right, top, bottom }
-        }
+        Command::SetNineSlice {
+            left,
+            right,
+            top,
+            bottom,
+        } => Op::SetNineSlice {
+            left,
+            right,
+            top,
+            bottom,
+        },
     })
 }

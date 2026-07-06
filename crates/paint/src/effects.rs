@@ -120,7 +120,8 @@ fn shadow_layer(
 /// An outline hugging the shape's edge: the dilated alpha minus the original.
 fn stroke_layer(alpha: &[f32], w: u32, h: u32, size: f32, color: Color) -> Raster {
     let r = size.max(1.0).round() as i64;
-    let idx = |x: i64, y: i64| (y.clamp(0, h as i64 - 1) * w as i64 + x.clamp(0, w as i64 - 1)) as usize;
+    let idx =
+        |x: i64, y: i64| (y.clamp(0, h as i64 - 1) * w as i64 + x.clamp(0, w as i64 - 1)) as usize;
     let mut out = Raster::filled(w, h, Color::TRANSPARENT);
     for y in 0..h as i64 {
         for x in 0..w as i64 {
@@ -175,7 +176,8 @@ fn bevel(raster: &Raster, alpha: &[f32], w: u32, h: u32, params: EffectParams) -
         let rad = params.angle.to_radians();
         (rad.cos(), -rad.sin())
     };
-    let idx = |x: i64, y: i64| (y.clamp(0, h as i64 - 1) * w as i64 + x.clamp(0, w as i64 - 1)) as usize;
+    let idx =
+        |x: i64, y: i64| (y.clamp(0, h as i64 - 1) * w as i64 + x.clamp(0, w as i64 - 1)) as usize;
     let strength = (params.size / 8.0).clamp(0.1, 1.0);
     let mut out = raster.clone();
     for y in 0..h as i64 {

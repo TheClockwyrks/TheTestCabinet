@@ -18,7 +18,10 @@ use test_cabinet_particle_core::{Dimensionality, ParticleConfig};
 
 /// The 2D particle-effect tool for particle asset-generation cases.
 #[derive(Parser)]
-#[command(name = "particle-2d", about = "Author a 2D particle effect, one operation at a time.")]
+#[command(
+    name = "particle-2d",
+    about = "Author a 2D particle effect, one operation at a time."
+)]
 struct Cli {
     /// Path to the seeded config JSON (field dimensions, duration and playback fps,
     /// and the log / preview / `system.json` paths, plus an optional `live` block).

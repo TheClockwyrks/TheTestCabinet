@@ -12,8 +12,8 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-pub use test_cabinet_model_core::config::{LiveConfig, read_config};
 use test_cabinet_model_core::color::PreviewBackground;
+pub use test_cabinet_model_core::config::{LiveConfig, read_config};
 
 use crate::system::{Dimensionality, Field};
 

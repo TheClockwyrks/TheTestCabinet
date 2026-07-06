@@ -16,15 +16,35 @@ fn filled(fill: Color) -> ShapeStyle {
 #[test]
 fn rect_fills_interior() {
     let mut doc = Document::new(32, 32, Background::Transparent);
-    doc.shape_rect(0, 8.0, 8.0, 16.0, 16.0, filled(opaque(0.2, 0.5, 0.9)), WrapMode::Clamp);
+    doc.shape_rect(
+        0,
+        8.0,
+        8.0,
+        16.0,
+        16.0,
+        filled(opaque(0.2, 0.5, 0.9)),
+        WrapMode::Clamp,
+    );
     assert!(doc.layers[0].raster.get(16, 16, WrapMode::Clamp).unwrap().a > 0.9);
-    assert_eq!(doc.layers[0].raster.get(0, 0, WrapMode::Clamp).unwrap().a, 0.0);
+    assert_eq!(
+        doc.layers[0].raster.get(0, 0, WrapMode::Clamp).unwrap().a,
+        0.0
+    );
 }
 
 #[test]
 fn rounded_rect_clips_corners() {
     let mut doc = Document::new(40, 40, Background::Transparent);
-    doc.shape_rounded_rect(0, 4.0, 4.0, 32.0, 32.0, 12.0, filled(opaque(1.0, 1.0, 1.0)), WrapMode::Clamp);
+    doc.shape_rounded_rect(
+        0,
+        4.0,
+        4.0,
+        32.0,
+        32.0,
+        12.0,
+        filled(opaque(1.0, 1.0, 1.0)),
+        WrapMode::Clamp,
+    );
     // The extreme corner is rounded away, the center is filled.
     assert!(doc.layers[0].raster.get(20, 20, WrapMode::Clamp).unwrap().a > 0.9);
     assert!(doc.layers[0].raster.get(5, 5, WrapMode::Clamp).unwrap().a < 0.5);
@@ -33,7 +53,15 @@ fn rounded_rect_clips_corners() {
 #[test]
 fn ellipse_is_round() {
     let mut doc = Document::new(40, 40, Background::Transparent);
-    doc.shape_ellipse(0, 20.0, 20.0, 15.0, 15.0, filled(opaque(0.0, 1.0, 0.0)), WrapMode::Clamp);
+    doc.shape_ellipse(
+        0,
+        20.0,
+        20.0,
+        15.0,
+        15.0,
+        filled(opaque(0.0, 1.0, 0.0)),
+        WrapMode::Clamp,
+    );
     assert!(doc.layers[0].raster.get(20, 20, WrapMode::Clamp).unwrap().a > 0.9);
     // A point outside the circle but inside the bbox corner is empty.
     assert!(doc.layers[0].raster.get(6, 6, WrapMode::Clamp).unwrap().a < 0.5);
@@ -42,7 +70,16 @@ fn ellipse_is_round() {
 #[test]
 fn line_draws_a_stroke() {
     let mut doc = Document::new(32, 32, Background::Transparent);
-    doc.shape_line(0, 2.0, 2.0, 30.0, 30.0, opaque(1.0, 0.0, 0.0), 2.0, WrapMode::Clamp);
+    doc.shape_line(
+        0,
+        2.0,
+        2.0,
+        30.0,
+        30.0,
+        opaque(1.0, 0.0, 0.0),
+        2.0,
+        WrapMode::Clamp,
+    );
     assert!(doc.layers[0].raster.get(16, 16, WrapMode::Clamp).unwrap().a > 0.5);
     assert!(doc.layers[0].raster.get(2, 30, WrapMode::Clamp).unwrap().a < 0.2);
 }

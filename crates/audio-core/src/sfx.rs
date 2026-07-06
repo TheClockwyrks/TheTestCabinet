@@ -13,7 +13,7 @@ use crate::effect::{Effect, FilterType};
 use crate::format::RenderParams;
 use crate::rng::derive_seed;
 use crate::sample::SampleLibrary;
-use crate::synth::{Arpeggio, Envelope, EnvCurve, Fm, PitchSweep, Vibrato, Voice, Wave};
+use crate::synth::{Arpeggio, EnvCurve, Envelope, Fm, PitchSweep, Vibrato, Voice, Wave};
 
 /// The target of a processing effect: a named synth voice, or a bus (`master`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -276,7 +276,12 @@ impl SamplePlacement {
     /// Render this layer into a fresh mono buffer of `clip_samples` samples. Silence
     /// if the library is absent or the named sample is missing (a graceful degrade so
     /// runs pass without a baked pack).
-    fn render(&self, params: &RenderParams, clip_samples: usize, library: Option<&SampleLibrary>) -> Vec<f32> {
+    fn render(
+        &self,
+        params: &RenderParams,
+        clip_samples: usize,
+        library: Option<&SampleLibrary>,
+    ) -> Vec<f32> {
         let mut out = vec![0.0f32; clip_samples];
         let Some(lib) = library else { return out };
         let Some(src) = lib.samples(&self.name) else {
@@ -559,7 +564,11 @@ impl SfxProject {
 /// baked samples for any placed layers (pass `None` for a pure-synth render or when
 /// no pack is baked — placed samples then contribute silence). Interleaved by channel;
 /// for stereo, `[l0, r0, l1, r1, …]`.
-pub fn render_sfx(project: &SfxProject, params: &RenderParams, library: Option<&SampleLibrary>) -> Vec<f32> {
+pub fn render_sfx(
+    project: &SfxProject,
+    params: &RenderParams,
+    library: Option<&SampleLibrary>,
+) -> Vec<f32> {
     let chan = params.channels.count();
     // Clip length = the latest voice/sample end, capped at the format's max.
     let mut end_ms = 0.0f64;

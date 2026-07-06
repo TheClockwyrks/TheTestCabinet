@@ -211,8 +211,16 @@ fn allpass(buf: &[f32], delay: usize, gain: f64) -> Vec<f32> {
     let delay = delay.max(1);
     let mut out = vec![0.0f32; buf.len()];
     for i in 0..buf.len() {
-        let delayed_in = if i >= delay { buf[i - delay] as f64 } else { 0.0 };
-        let delayed_out = if i >= delay { out[i - delay] as f64 } else { 0.0 };
+        let delayed_in = if i >= delay {
+            buf[i - delay] as f64
+        } else {
+            0.0
+        };
+        let delayed_out = if i >= delay {
+            out[i - delay] as f64
+        } else {
+            0.0
+        };
         out[i] = (-gain * buf[i] as f64 + delayed_in + gain * delayed_out) as f32;
     }
     out

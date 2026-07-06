@@ -10,8 +10,18 @@ fn opaque(r: f32, g: f32, b: f32) -> Color {
 fn fill_rect_covers_the_region() {
     let mut doc = Document::new(8, 8, Background::Transparent);
     doc.fill_rect(0, false, 2, 2, 4, 4, opaque(1.0, 0.0, 0.0), WrapMode::Clamp);
-    assert_eq!(doc.layers[0].raster.get(3, 3, WrapMode::Clamp).unwrap().to_rgba8()[0], 255);
-    assert_eq!(doc.layers[0].raster.get(0, 0, WrapMode::Clamp).unwrap().a, 0.0);
+    assert_eq!(
+        doc.layers[0]
+            .raster
+            .get(3, 3, WrapMode::Clamp)
+            .unwrap()
+            .to_rgba8()[0],
+        255
+    );
+    assert_eq!(
+        doc.layers[0].raster.get(0, 0, WrapMode::Clamp).unwrap().a,
+        0.0
+    );
 }
 
 #[test]

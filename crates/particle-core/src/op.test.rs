@@ -64,7 +64,10 @@ fn empty_or_non_emitting_system_reports_empty() {
     let ops = vec![Op::AddEmitter { def }];
     let system = build_system(&ops, Dimensionality::D3, field_3d(), 1000, 60, false);
     assert_eq!(system.emitters.len(), 1);
-    assert!(!system.is_non_empty(), "an emitter that emits nothing is empty");
+    assert!(
+        !system.is_non_empty(),
+        "an emitter that emits nothing is empty"
+    );
 }
 
 #[test]

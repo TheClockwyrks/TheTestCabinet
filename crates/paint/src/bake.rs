@@ -28,10 +28,18 @@ pub fn bake_normal(height: &[f32], w: u32, h: u32, strength: f32) -> Raster {
         for x in 0..w {
             // Sobel gradient of the height field.
             let (xi, yi) = (x as i64, y as i64);
-            let gx = (at(height, w, h, xi + 1, yi - 1) + 2.0 * at(height, w, h, xi + 1, yi) + at(height, w, h, xi + 1, yi + 1))
-                - (at(height, w, h, xi - 1, yi - 1) + 2.0 * at(height, w, h, xi - 1, yi) + at(height, w, h, xi - 1, yi + 1));
-            let gy = (at(height, w, h, xi - 1, yi + 1) + 2.0 * at(height, w, h, xi, yi + 1) + at(height, w, h, xi + 1, yi + 1))
-                - (at(height, w, h, xi - 1, yi - 1) + 2.0 * at(height, w, h, xi, yi - 1) + at(height, w, h, xi + 1, yi - 1));
+            let gx = (at(height, w, h, xi + 1, yi - 1)
+                + 2.0 * at(height, w, h, xi + 1, yi)
+                + at(height, w, h, xi + 1, yi + 1))
+                - (at(height, w, h, xi - 1, yi - 1)
+                    + 2.0 * at(height, w, h, xi - 1, yi)
+                    + at(height, w, h, xi - 1, yi + 1));
+            let gy = (at(height, w, h, xi - 1, yi + 1)
+                + 2.0 * at(height, w, h, xi, yi + 1)
+                + at(height, w, h, xi + 1, yi + 1))
+                - (at(height, w, h, xi - 1, yi - 1)
+                    + 2.0 * at(height, w, h, xi, yi - 1)
+                    + at(height, w, h, xi + 1, yi - 1));
             let nx = -gx * strength;
             let ny = -gy * strength;
             let nz = 1.0;

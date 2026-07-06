@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::system::{
-    Dimensionality, Emitter, Emission, Extent, Field, Forces, ParticleAppearance, Shape,
+    Dimensionality, Emission, Emitter, Extent, Field, Forces, ParticleAppearance, Shape,
     SubEmitter, SubTrigger, System,
 };
 

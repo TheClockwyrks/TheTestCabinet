@@ -38,8 +38,7 @@ pub fn point_in_polygon(px: f32, py: f32, points: &[(f32, f32)]) -> bool {
     for i in 0..n {
         let (xi, yi) = points[i];
         let (xj, yj) = points[j];
-        if ((yi > py) != (yj > py))
-            && (px < (xj - xi) * (py - yi) / (yj - yi + f32::EPSILON) + xi)
+        if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi + f32::EPSILON) + xi)
         {
             inside = !inside;
         }

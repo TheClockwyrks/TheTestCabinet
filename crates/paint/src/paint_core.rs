@@ -89,7 +89,8 @@ fn deposit(layer: &mut Layer, into_mask: bool, i: usize, color: Color, alpha: f3
         // Grayscale paint: white (luma 1) reveals, black hides.
         mask[i] = mask[i] * (1.0 - alpha) + color.luma() * alpha;
     } else {
-        layer.raster.pixels[i] = composite_over(layer.raster.pixels[i], color, BlendMode::Normal, alpha);
+        layer.raster.pixels[i] =
+            composite_over(layer.raster.pixels[i], color, BlendMode::Normal, alpha);
     }
 }
 
@@ -267,7 +268,13 @@ impl Document {
                 // Approximate 1px AA using the local gradient scale.
                 let scale = rx.min(ry).max(1.0);
                 let cov = ((1.0 - d) * scale).clamp(0.0, 1.0);
-                deposit(layer_ref, into_mask, i, color, color.a * cov * sel_cov(sel, i));
+                deposit(
+                    layer_ref,
+                    into_mask,
+                    i,
+                    color,
+                    color.a * cov * sel_cov(sel, i),
+                );
             }
         }
     }

@@ -186,7 +186,10 @@ fn rest_pose_skinning_matrices_are_identity() {
     for m in skinning_matrices(&rig, &rest) {
         let d = m - Mat4::IDENTITY;
         let max = d.to_cols_array().iter().fold(0.0f32, |a, x| a.max(x.abs()));
-        assert!(max < 1.0e-5, "rest skinning matrix is identity, off by {max}");
+        assert!(
+            max < 1.0e-5,
+            "rest skinning matrix is identity, off by {max}"
+        );
     }
 }
 
@@ -202,6 +205,9 @@ fn lbs_with_identity_matrices_is_a_no_op() {
     let mats = vec![Mat4::IDENTITY; bones.len()];
     let (pos, _norm) = lbs_deform(&positions, &normals, &skins, &mats);
     for (a, b) in pos.iter().zip(&positions) {
-        assert!((a - b).abs() < 1.0e-4, "identity LBS leaves positions in place");
+        assert!(
+            (a - b).abs() < 1.0e-4,
+            "identity LBS leaves positions in place"
+        );
     }
 }
