@@ -66,14 +66,14 @@ contradict these three.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                    |
-| ---------------- | -------------- | ---------------------------------------------------------- |
-| `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.            |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
+| Path             | Seeded to run? | Purpose                                                     |
+| ---------------- | -------------- | ----------------------------------------------------------- |
+| `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.             |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.               |
 | `test-case.toml` | No             | Manifest: volume, tool, skinned output, animations, review. |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
-| `description.md` | No             | Site blurb.                                                |
-| `README.md`      | No             | This overview.                                             |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).           |
+| `description.md` | No             | Site blurb.                                                 |
+| `README.md`      | No             | This overview.                                              |
 
 A run receives the seeded brief, the `mc-skin` binary, and a pre-seeded
 `rig.json` holding only the required animation declarations (with an empty

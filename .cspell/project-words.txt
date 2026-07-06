@@ -240,3 +240,16 @@ autofire
 presign
 presigned
 cloudflarestorage
+
+# First cases per new asset-generation kind (material, skinned, audio, ui, music).
+worley
+triplanar
+unoccluded
+mesoscale
+sulphurous
+hotspot
+mecha
+chiptune
+bitcrush
+bezelled
+voicings

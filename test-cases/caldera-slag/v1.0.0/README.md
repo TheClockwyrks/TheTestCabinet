@@ -61,14 +61,14 @@ must produce these three animations by these names.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                       |
-| ---------------- | -------------- | ------------------------------------------------------------ |
-| `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.              |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                |
-| `test-case.toml` | No             | Manifest: field volume, tool, output, the rig, and review.   |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).            |
-| `description.md` | No             | Site blurb.                                                  |
-| `README.md`      | No             | This overview.                                               |
+| Path             | Seeded to run? | Purpose                                                    |
+| ---------------- | -------------- | ---------------------------------------------------------- |
+| `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.            |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
+| `test-case.toml` | No             | Manifest: field volume, tool, output, the rig, and review. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
+| `description.md` | No             | Site blurb.                                                |
+| `README.md`      | No             | This overview.                                             |
 
 A run receives the seeded brief, the `sn-skin` binary, a seeded `sn-skin.config.json`
 (field dimensions, background, and the log / preview / `mesh.glb` / `rig.json` paths),

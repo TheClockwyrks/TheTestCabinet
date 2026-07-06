@@ -39,14 +39,14 @@ contract.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                    |
-| ---------------- | -------------- | ---------------------------------------------------------- |
+| Path             | Seeded to run? | Purpose                                                       |
+| ---------------- | -------------- | ------------------------------------------------------------- |
 | `specs/brief.md` | **Yes**        | The self-contained painting brief (elements, palette, tools). |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: canvas, ui kit, tool, output, domain, review.    |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
-| `description.md` | No             | Site blurb.                                                |
-| `README.md`      | No             | This overview.                                             |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                 |
+| `test-case.toml` | No             | Manifest: canvas, ui kit, tool, output, domain, review.       |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).             |
+| `description.md` | No             | Site blurb.                                                   |
+| `README.md`      | No             | This overview.                                                |
 
 A run receives only the seeded brief, plus the `paint` and `ui` binaries, a
 seeded `paint.config.json`, and a blank workspace per element. Core emits the
