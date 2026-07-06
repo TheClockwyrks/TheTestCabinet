@@ -26,6 +26,20 @@ guide when you are doing the task for the first time, or when you need to know
 - [Authoring an Asset-Generation Test Case](/guides/authoring-an-asset-generation-test-case/)
   — write a new sprite-drawing case or version: its brief, target, operations
   schema, and manifest.
+- [Authoring a UI Test Case](/guides/authoring-a-ui-test-case/) — write a
+  high-resolution interface asset (`asset_kind = "ui"`): one image or a kit of
+  named elements, painted with the `paint` and `ui` binaries.
+- [Authoring a Material Test Case](/guides/authoring-a-material-test-case/) —
+  write a tileable PBR material (`asset_kind = "material"`): a set of maps painted
+  with the `texture` and `pbr` binaries.
+- [Authoring a Skinned Character Test Case](/guides/authoring-a-skinned-test-case/)
+  — write a single continuous deforming skin bound to a model-invented skeleton
+  (`asset_kind = "mc-skinned"`/`"sn-skinned"`/`"dc-skinned"`).
+- [Authoring a Particle Test Case](/guides/authoring-a-particle-test-case/) —
+  write an emitter system simulated live (`asset_kind =
+  "particle-2d"`/`"particle-3d"`).
+- [Authoring an Audio Test Case](/guides/authoring-an-audio-test-case/) — write a
+  short rendered clip (`asset_kind = "sfx-synth"`/`"sfx-sample"`/`"music"`).
 - [Creating an End-to-End Variant](/guides/creating-an-end-to-end-variant/) — add
   a new playable mode to an existing end-to-end version.
 - [Creating a Single-Sprite Variant](/guides/creating-a-sprite-variant/)
