@@ -80,7 +80,7 @@ into the run), not to `tcab` itself.
 Every run executes inside a run-container image selected by the test case's
 [test type](/testing/) and — for asset-generation — its
 [`asset_kind`](/testing/asset-generation/manifests/): an
-[end-to-end](/testing/end-to-end/) run uses the **base image**, a single-sprite
+[end-to-end](/testing/end-to-end/overview/) run uses the **base image**, a single-sprite
 [asset-generation](/testing/asset-generation/overview/) run uses the **sprite
 image** (the base plus the baked-in `draw` tool), and a sprite-sheet run uses the
 **sprite-sheet image** (the base plus the baked-in `draw-sheet` tool). The
