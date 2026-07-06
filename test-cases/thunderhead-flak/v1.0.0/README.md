@@ -17,7 +17,7 @@ next — the character of the burst is what is judged, not a frozen frame.
 
 ```text
 v1.0.0/
-  test-case.toml      # manifest: type, asset_kind, [particle], [tool], [output], domains, review items
+  test-case.toml      # manifest: type, asset_kind, [particle]/[tool]/[output], domains, review
   prompt.hbs          # the instruction rendered per run (NOT seeded)
   description.md      # site-facing blurb (NOT seeded)
   README.md           # this file (NOT seeded)

@@ -56,7 +56,7 @@ drop or contradict the required animations.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                     |
+| Path             | Seeded to run? | Purpose                                                    |
 | ---------------- | -------------- | ---------------------------------------------------------- |
 | `specs/brief.md` | **Yes**        | The self-contained sculpting-and-rigging brief.            |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |

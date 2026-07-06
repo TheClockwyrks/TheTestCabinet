@@ -49,14 +49,14 @@ cheat-divergence check** for a material case.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                     |
-| ---------------- | -------------- | ---------------------------------------------------------- |
-| `specs/brief.md` | **Yes**        | The self-contained material brief.                         |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: material maps, tools, op-log output, review.     |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
-| `description.md` | No             | Site blurb.                                                |
-| `README.md`      | No             | This overview.                                             |
+| Path             | Seeded to run? | Purpose                                                |
+| ---------------- | -------------- | ------------------------------------------------------ |
+| `specs/brief.md` | **Yes**        | The self-contained material brief.                     |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.          |
+| `test-case.toml` | No             | Manifest: material maps, tools, op-log output, review. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).      |
+| `description.md` | No             | Site blurb.                                            |
+| `README.md`      | No             | This overview.                                         |
 
 A run receives the seeded brief, the `texture` and `pbr` binaries, and a seeded
 `material.config.json` the orchestrator writes (the map size, the declared channels
