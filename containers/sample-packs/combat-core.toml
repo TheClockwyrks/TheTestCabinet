@@ -1,0 +1,201 @@
+name = "combat-core"
+version = "0.1.0"
+kind = "sample-pack"
+
+[normalize]
+sample_rate = 44100
+channels = 1
+loudness_lufs = -23.0
+true_peak_dbfs = -1.0
+trim_silence = true
+max_duration_ms = 5000
+
+# Freesound #338869 "machination-dry.wav" by newagesoup — CC0
+[[sample]]
+name = "boom_sub_rumble"
+tags = ["boom","sub-bass","low","rumble","deep"]
+description = "A dry, deep sub-bass rumble with a soft onset and no sharp transient; low-frequency and sustained for about two seconds."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/338/338869_4067257-hq.ogg"
+sha256 = "5e541687a9d7a2daef3ec7f8c8115e10e0e402f9b9840d59018bd90c19853c03"
+freesound_id = 338869
+
+# Freesound #135357 "boom.wav" by Blackie666 — CC0
+[[sample]]
+name = "boom_low_kick"
+tags = ["boom","low","sub","short","punch"]
+description = "A short low-frequency boom with a soft attack and a quick decay; predominantly sub-bass with little high-frequency content."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/135/135357_872714-hq.ogg"
+sha256 = "3a03d01411b5c37f089a10492c255b3fe31c484c8ae472b92a4b62910c7693a0"
+freesound_id = 135357
+
+# Freesound #184650 "Cannon1.wav" by Isaac200000 — CC0
+[[sample]]
+name = "cannon_body_heavy"
+tags = ["cannon","blast","heavy","low"]
+description = "The report of a heavy black-powder cannon: a broadband blast with a strong low-mid body and a short natural decay."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/184/184650_2906575-hq.ogg"
+sha256 = "1ca6a640ea159834d3ed2f7336ea62972958e97d098dee673200317969d890c4"
+freesound_id = 184650
+
+# Freesound #406562 "hit - metallic 01.wav" by Anthousai — CC0
+[[sample]]
+name = "impact_metal_dry"
+tags = ["metal","impact","hit","dry","short"]
+description = "A single close-miked metallic hit — bright and dry, very short, with almost no tail."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/406/406562_5923045-hq.ogg"
+sha256 = "0b8141eb3e2d284d8c0f7835eb87e31c92ec83a0bc3adfb5a92f399ccd8863f8"
+freesound_id = 406562
+
+# Freesound #406493 "hit - metallic - deep hollow thunk.wav" by Anthousai — CC0
+[[sample]]
+name = "impact_metal_hollow"
+tags = ["metal","impact","hollow","resonant"]
+description = "A deep, hollow metallic thunk with a resonant low-mid ring, as of a struck large empty steel shell."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/406/406493_5923045-hq.ogg"
+sha256 = "4584ac28d0752897ed7058a21ade9c458dabd73d4af0eb52285c9ded0cff281b"
+freesound_id = 406493
+
+# Freesound #435681 "Metallic Clang" by eben-frostey — CC0
+[[sample]]
+name = "clang_metal"
+tags = ["metal","clang","ring","iron"]
+description = "A ringing iron clang with a bright attack and a short decaying metallic tail."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/435/435681_8905624-hq.ogg"
+sha256 = "d898f61e9f02d55b190655ae9eb709bb2323ec5b0c10d333c26249c07cf2d8b1"
+freesound_id = 435681
+
+# Freesound #429402 "Brick dropped on other bricks" by jackthemurray — CC0
+[[sample]]
+name = "debris_rubble"
+tags = ["debris","rubble","stone","concrete"]
+description = "Bricks and masonry tumbling onto rubble: a broadband, gritty stone-and-concrete scatter lasting a few seconds."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/429/429402_5618682-hq.ogg"
+sha256 = "0a663ee9ea1e9120f256f95d2c12a400f1594c18bac3ab4628aff5703ae6c850"
+freesound_id = 429402
+
+# Freesound #521341 "ZXAudiocraft - Glass - Break 005.wav" by zxaudiocraft — CC0
+[[sample]]
+name = "debris_glass"
+tags = ["glass","shatter","break","debris"]
+description = "A pane of glass shattering and shards scattering — bright, brittle, and broadband."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/521/521341_11532980-hq.ogg"
+sha256 = "131efca8ac41f5d0ef6c11312268ed46bf329de0b9a429a286b971b253937795"
+freesound_id = 521341
+
+# Freesound #94119 "ClipLoad2.wav" by BMacZero — CC0
+[[sample]]
+name = "mech_clip_load"
+tags = ["mechanical","metal","click","short"]
+description = "A brief spring-loaded metallic click, as of a magazine seating; very short and dry."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/94/94119_1554918-hq.ogg"
+sha256 = "0a83742db0489f4ff48082a0c6bf689d2e36aa27414c902bdcfe6427d77290aa"
+freesound_id = 94119
+
+# Freesound #94131 "Rattle1.wav" by BMacZero — CC0
+[[sample]]
+name = "mech_ratchet"
+tags = ["mechanical","ratchet","lever","spring","metal"]
+description = "A metallic lever ratchet with a spring release — a short mechanical rattle."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/94/94131_1554918-hq.ogg"
+sha256 = "33e96b3af021ac2439b62659fd09b9938d845ae7bff71adaf287b37c6c6b061f"
+freesound_id = 94131
+
+# Freesound #94133 "SqueakyClick1.wav" by BMacZero — CC0
+[[sample]]
+name = "mech_clank"
+tags = ["mechanical","clank","metal","dull"]
+description = "A short, dull metallic clank, as of a small machine part or a latch."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/94/94133_1554918-hq.ogg"
+sha256 = "2c1ae460c9224fb9f22ae630517f80576ea6f46029477b28ce62ae702ca9d3ed"
+freesound_id = 94133
+
+# Freesound #60013 "Whoosh" by qubodup — CC0
+[[sample]]
+name = "whoosh_air"
+tags = ["whoosh","air","swish","fast"]
+description = "A fast, dry air whoosh — a clean broadband swish with a quick decay."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/60/60013_71257-hq.ogg"
+sha256 = "eb8ac4dc0345f6d608dd96e517f27001e8f3ada58cca9b680f87409a3197c814"
+freesound_id = 60013
+
+# Freesound #60007 "Swipe Whoosh" by qubodup — CC0
+[[sample]]
+name = "whoosh_swipe"
+tags = ["whoosh","swipe","air","fast"]
+description = "A light, quick air swipe; shorter and thinner than a full whoosh."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/60/60007_71257-hq.ogg"
+sha256 = "cc5a3896745c35cf0b8751ef978e9aa8958fc4856aebaa085c578470140344b8"
+freesound_id = 60007
+
+# Freesound #399934 "[Perc] Short Click/Snap Perc" by waveplaySFX — CC0
+[[sample]]
+name = "snap_transient"
+tags = ["snap","click","sharp","short"]
+description = "A tight percussive click with a sharp attack and almost no tail."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/399/399934_1676145-hq.ogg"
+sha256 = "12cb3020b643fe64cb22eeee620d2eb40f3a23e580dc15dbaabab11496f045a5"
+freesound_id = 399934
+
+# Freesound #188038 "Fire Crackling" by AntumDeluge — CC0
+[[sample]]
+name = "fire_crackle"
+tags = ["fire","crackle","flame","sustained"]
+description = "Steady flame crackle: an irregular, mid-to-high-frequency sputtering texture that sustains."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/188/188038_3403708-hq.ogg"
+sha256 = "60d401cde74e36463086c5b0c0338ba42193c4d6a45be9e3b4ae4a1294dc671a"
+freesound_id = 188038
+
+# Freesound #512471 "Electric zap.wav" by michael_grinnell — CC0
+[[sample]]
+name = "zap_electric"
+tags = ["electric","zap","spark","short"]
+description = "A very short electric arc zap — a bright, buzzy spark with a fast decay."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/512/512471_7372230-hq.ogg"
+sha256 = "cca8d4161c5cf2daca229b571c7d0566953b59f8b84746f7155fc99fdb685fce"
+freesound_id = 512471
+
+# Freesound #87304 "ELECTRO 01.aif" by maria@gmdthree.com — CC0
+[[sample]]
+name = "arc_electric"
+tags = ["electric","arc","spark","crackle","sustained"]
+description = "A sustained crackling electric arc, as of a welder: a rough, buzzy, mid-frequency texture."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/87/87304_582374-hq.ogg"
+sha256 = "749a6f9a13dfaa1d7c4b1c15269af4b59554365f2c68918b32ffa4ca30f2e1de"
+freesound_id = 87304
+
+# Freesound #216563 "IDLE_ENGINE_001.ogg" by pgi — CC0
+[[sample]]
+name = "engine_diesel_idle"
+tags = ["engine","diesel","idle","motor","loop"]
+description = "A diesel engine idling: a low, rhythmic mechanical rumble, recorded as a seamless loop."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/216/216563_1654571-hq.ogg"
+sha256 = "f79e3cc3fd7978252417219d3bbfe59e472a20af6c7fff75efc87fbe8d8646fa"
+freesound_id = 216563
+
+# Freesound #264592 "servomotor.wav" by vacuumfan7072 — CC0
+[[sample]]
+name = "servo_motor"
+tags = ["servo","motor","whir","mechanical"]
+description = "A small electric servomotor: a mid-frequency mechanical whir of short duration."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/264/264592_2884593-hq.ogg"
+sha256 = "8d7a36687224a04834977abf245f6829f159e971f3822fc79296caca517c37b0"
+freesound_id = 264592

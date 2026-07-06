@@ -226,7 +226,24 @@ commits is a small **pack manifest** — `containers/sample-packs/<pack>.toml` �
 listing, for each sample, its stable `name`, `tags`, `description`, `license`, a
 source URL, and a `sha256` content hash. The **`license`** must be **CC0 or
 otherwise permissive**, so that produced clips are freely usable in test cases and
-published runs.
+published runs. The shipped combat palette (`combat-core`) is sourced from
+[Freesound](https://freesound.org) CC0 clips through its free token API — see
+`containers/sample-packs/README.md` ("Freesound sources") for the sourcing details.
+
+The library must be a palette of **elemental ingredients, not finished effects**. An
+entry is a single *layer* — a sub-bass body, a dry metal impact, a debris tail, a
+mechanical reload click, an air whoosh, an electric arc — that the model **composites**
+into a specific weapon, vehicle, or explosion by selecting, layering, timing, pitching,
+and processing several (with synth voices for glue). This is what makes `sfx-sample` an
+*authoring* task rather than a lookup: if the library instead held ready-made gunshots
+or explosions, a single `add-sample; render` would satisfy the brief and there would be
+nothing to author. A sample is a **primitive**; the finished clip is the **composite** —
+the same relationship the [mesh](/testing/asset-generation/mesh-binaries/) and
+[voxel](/testing/asset-generation/voxel-binaries/) tools have between a CSG primitive and
+the sculpted field. For the same reason, the browse metadata (`name`, `tags`,
+`description`) states only what each clip **is** — its source, timbre, and character —
+and gives **no** usage, layering, or processing guidance; how to combine the primitives
+is the reasoning under test, not something the palette supplies.
 
 The pack itself is a **separately-versioned, content-addressed artifact** (an
 object-storage tarball / OCI artifact), built by `scripts/build-sample-pack.mjs`,

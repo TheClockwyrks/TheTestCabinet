@@ -52,12 +52,14 @@ COPY --from=audio-build /build/target/release/sfx-sample /usr/local/bin/sfx-samp
 # so nothing is fetched at RUN time; this fetch happens at BUILD time and is pinned.
 #
 # Supply all three build args from the `build-sample-pack.mjs` run that produced the
-# pack (see `containers/sample-packs/README.md`); the defaults are placeholders that
-# fail the build until a real pack is pinned:
-#   --build-arg SAMPLE_PACK=sfx-core@0.1.0
+# pack (see `containers/sample-packs/README.md`). `SAMPLE_PACK` names the committed
+# manifest's real combat palette; the SHA256/URL are the digest+location of the tarball
+# that run produced (they default to placeholders that fail the build until pinned,
+# since the normalized tarball's digest depends on the building ffmpeg):
+#   --build-arg SAMPLE_PACK=combat-core@0.1.0
 #   --build-arg SAMPLE_PACK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
-#   --build-arg SAMPLE_PACK_URL=<object-storage URL of sfx-core-0.1.0.tar>
-ARG SAMPLE_PACK=sfx-core@0.1.0
+#   --build-arg SAMPLE_PACK_URL=<object-storage URL of combat-core-0.1.0.tar>
+ARG SAMPLE_PACK=combat-core@0.1.0
 ARG SAMPLE_PACK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
 ARG SAMPLE_PACK_URL
 
@@ -65,12 +67,13 @@ ARG SAMPLE_PACK_URL
 # or a missing URL fails the build) and unpack it to the path the `audio-core` loader
 # reads (`load_pack` in `crates/audio-core/src/sample.rs`: a `*.toml` manifest plus the
 # `<name>.wav` audio beside it). The pack tar's root holds `pack.toml` + the `.wav`
-# files, so strip its leading `.` component into the target dir. Make it world-readable
-# for the unprivileged run user.
+# files, so strip its leading `.` component into the target dir. The dir name is
+# pack-agnostic (the loader is pointed at it by env below), so a new pack version needs
+# no path change here. Make it world-readable for the unprivileged run user.
 USER root
 ADD --checksum=${SAMPLE_PACK_SHA256} ${SAMPLE_PACK_URL} /tmp/sample-pack.tar
-RUN mkdir -p /opt/sample-packs/sfx-core \
-	&& tar -xf /tmp/sample-pack.tar -C /opt/sample-packs/sfx-core \
+RUN mkdir -p /opt/sample-packs/pack \
+	&& tar -xf /tmp/sample-pack.tar -C /opt/sample-packs/pack \
 	&& rm /tmp/sample-pack.tar \
 	&& chmod -R a+rX /opt/sample-packs
 USER node
@@ -80,4 +83,4 @@ USER node
 # run config only names the pack as `sample_pack = "<name>@<version>"`). Kept here so
 # the image, not a run's seeded config, owns where the palette physically lives.
 ENV TCAB_SAMPLE_PACK=${SAMPLE_PACK}
-ENV TCAB_SAMPLE_PACK_DIR=/opt/sample-packs/sfx-core
+ENV TCAB_SAMPLE_PACK_DIR=/opt/sample-packs/pack

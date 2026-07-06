@@ -266,11 +266,34 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** Fetch a URL to a Buffer, following redirects; aborts on a non-OK response. */
+/**
+ * A source hosted on Freesound. Its per-sample `url` is a preview transcode on the
+ * Freesound CDN (`cdn.freesound.org/previews/…`) — the token-tier download that needs
+ * only a free API key, never the OAuth2 flow the original files require. The preview
+ * CDN currently serves those files without auth once the URL is known, but a curator
+ * finds and verifies them through the authenticated API, so we send the token when one
+ * is set: harmless if the CDN ignores it, and future-proof if it ever starts gating.
+ * See `containers/sample-packs/README.md` ("Freesound sources").
+ */
+function isFreesound(url) {
+  try {
+    return /(^|\.)freesound\.org$/.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Fetch a URL to a Buffer, following redirects; aborts on a non-OK response. A
+ * Freesound URL carries the `FREESOUND_API_KEY` token when one is in the environment
+ * (see {@link isFreesound}). */
 async function fetchBytes(url) {
+  const headers = {};
+  if (isFreesound(url) && process.env.FREESOUND_API_KEY) {
+    headers.Authorization = `Token ${process.env.FREESOUND_API_KEY}`;
+  }
   let res;
   try {
-    res = await fetch(url, { redirect: "follow" });
+    res = await fetch(url, { redirect: "follow", headers });
   } catch (err) {
     fail(`fetching ${url}: ${err.message}`);
   }

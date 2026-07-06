@@ -21,14 +21,54 @@ See the sample-library sections of
 
 ## Manifests here
 
+- **`combat-core.toml`** — the **real** combat-SFX sample pack for `sfx-sample`
+  (`kind = "sample-pack"`, mono), sourced from **Freesound CC0** clips (see
+  [Freesound sources](#freesound-sources) below). Its entries are deliberately
+  **elemental** — a sub-bass body, a dry metal impact, a debris tail, a mechanical
+  reload click, an air whoosh, an electric arc, a diesel idle — **layers, not finished
+  effects**. A single clip is never the briefed sound; the model must select, layer,
+  time, pitch, and process several (plus synth glue) into a specific weapon, vehicle,
+  or explosion. That composition is what the case measures, so the palette must *not*
+  ship ready-made gunshots/explosions (which would collapse the task to "place one
+  clip"). Its `url`/`sha256` values are **real** — `node scripts/build-sample-pack.mjs
+  combat-core` builds it (with `FREESOUND_API_KEY` set).
 - **`sfx-core.toml`** — an EXAMPLE general-purpose game-SFX sample pack for
-  `sfx-sample` (`kind = "sample-pack"`, mono).
+  `sfx-sample` (`kind = "sample-pack"`, mono), kept as a format reference.
 - **`gm-lite.toml`** — an EXAMPLE general-MIDI-flavoured instrument bank for `music`
   (`kind = "instrument-bank"`, stereo, entries under `[[instrument]]`).
 
-Both ship **placeholder `url`/`sha256` values** and must have real CC0 / permissively-
-licensed sources dropped in before a real build (they parse and validate as-is, so
-`--check` works; a real fetch fails on the placeholders by design).
+The two EXAMPLE manifests ship **placeholder `url`/`sha256` values** and must have real
+CC0 / permissively-licensed sources dropped in before a real build (they parse and
+validate as-is, so `--check` works; a real fetch fails on the placeholders by design).
+
+## Freesound sources
+
+`combat-core` sources its clips from [Freesound](https://freesound.org) filtered to the
+**CC0** license. Freesound gates access in two tiers: a free **API key** (token) lets
+you search, read metadata, and download the **preview** transcodes
+(`cdn.freesound.org/previews/…-hq.ogg`), while **OAuth2** (an interactive per-user grant)
+is required only for the pristine **original** files. We stay entirely in the token tier:
+the pack normalizes every source to 44.1 kHz mono PCM-16 anyway, so an hq-ogg preview run
+through that is indistinguishable from the original for a short SFX layer — and it needs
+no OAuth2. (CC0 governs *reuse rights*, not *access*: the token is a HuggingFace-style
+free-account gate, orthogonal to the license.)
+
+So each `combat-core` entry's `url` is a preview-CDN URL and its `sha256` is that
+preview's content hash. `build-sample-pack.mjs` sends `FREESOUND_API_KEY` (from the
+environment) as a `Token` header when fetching a `*.freesound.org` URL — the preview CDN
+currently serves those without auth once the URL is known, but the header is harmless and
+future-proofs the fetch. Set it before a real build:
+
+```sh
+export FREESOUND_API_KEY=<your key from https://freesound.org/apiv2/apply>
+node scripts/build-sample-pack.mjs combat-core
+```
+
+Because Freesound serves **per-file** previews (not bundles), the existing per-entry
+`url` + `sha256` manifest schema fits directly — no archive-extraction step is needed.
+Each entry also records a `freesound_id` for provenance (CC0 waives attribution; it is
+kept for traceability). To add or refresh clips, curate CC0 sounds via the API, add
+`[[sample]]` blocks, and rebuild (any content change is a new pack `version`).
 
 ## Manifest format
 
@@ -48,11 +88,25 @@ max_duration_ms = 5000     # clip ceiling is 5000ms
 [[sample]]                 # or [[instrument]] — both are accepted and merged
 name = "impact_wood_heavy" # the name the model addresses with `list-samples` / a track
 tags = ["impact", "wood"]
-description = "…"          # the model reasons over this, since it cannot audition audio
+description = "…"          # NEUTRAL + informational only (see below)
 license = "CC0-1.0"        # MUST be CC0 or otherwise permissive (NC/ND is rejected)
 url = "https://…"          # source download
 sha256 = "…"               # 64-hex content hash, verified on fetch
 ```
+
+### `name` / `tags` / `description` must be neutral
+
+The model browses the library through the `name`, `tags`, and `description` alone (it
+cannot audition audio), so these must convey **what each clip is** — its source, timbre,
+frequency character, and duration/decay. They must **not** give any usage, layering,
+timing, pitching, or role guidance. Describe the sound, not what to do with it: *"a dry,
+deep sub-bass rumble with a soft onset and no sharp transient"* — **not** *"the low body
+under an explosion; layer beneath a sharper crack and pitch to size the blast."* Whether
+and how to combine the clips is exactly the composition skill an `sfx-sample` case
+measures; a description that hands the model that reasoning defeats the test (the same
+reason a case brief does not tell a model how to structure its solution). Avoid
+role-labelling tags (`body`, `tail`, `glue`, `sweetener`) for the same reason; prefer
+neutral classifiers (`metal`, `impact`, `sub-bass`, `sustained`).
 
 ## Building a pack (pin-by-digest + rebuild flow)
 
