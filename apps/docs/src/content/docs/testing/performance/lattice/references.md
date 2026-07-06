@@ -26,9 +26,9 @@ The performance run-container image provides, under the case's reference root:
   model is expected to infer from examples. Lattice is a *reimplement-this-exactly*
   problem, not a *guess-the-rules* one.
 - A set of **training scenarios**, each a
-  [`scenario.json`](/testing/performance/lattice/architecture/#scenario-the-input)
+  [`scenario.json`](/testing/performance/lattice/architecture/#scenario--the-input)
   paired with the reference engine's
-  [expected canonical output](/testing/performance/lattice/architecture/#state-the-output)
+  [expected canonical output](/testing/performance/lattice/architecture/#state--the-output)
   (full state and checksum). These span the entity set and the tricky cases on
   purpose — a single side-loaded lane, a backed-up inserter, a saturated splitter, an
   assembler starved then flooded — so the model can check its engine against the exact

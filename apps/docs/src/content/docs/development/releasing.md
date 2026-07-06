@@ -101,7 +101,7 @@ projects have no deploy hook, so they could not be rebuilt that way.
 
 Per-run builds are served from Cloudflare Pages at their own `pages.dev`
 subdomain root (see [Site Hosting](/components/site/overview/#hosting) and
-[Results](/components/core/results/#publishing)); serving each at a root rather
+[Results](/components/core/results/#publish)); serving each at a root rather
 than a subpath keeps it playable exactly as the test case's
 [build interface](/testing/end-to-end/overview/#design-requirements) requires.
 

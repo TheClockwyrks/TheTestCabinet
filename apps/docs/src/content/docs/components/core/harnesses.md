@@ -17,7 +17,7 @@ how each one's activity is translated into the normalized stream defined in
 ## Supported Harnesses
 
 The agent harness layer supports the harnesses catalogued under
-[Harnesses](/harnesses/), each identified by a stable slug (`claude`, `codex`,
+[Harnesses](/harnesses/overview/), each identified by a stable slug (`claude`, `codex`,
 `cline`, and so on) used throughout run records and the site. That catalogue is
 the authoritative list — its pages cover each harness's website, accepted model
 IDs, invocation, and per-harness event and metric mapping. This page defines the
@@ -112,7 +112,7 @@ The Test Cabinet authenticates a harness in one of two modes:
 
 Credentials and keys are supplied only as container secrets or copied-in files;
 they are never written into the seeded repository or committed anywhere. Each
-harness's **Authentication** page under [Harnesses](/harnesses/) names the exact
+harness's **Authentication** page under [Harnesses](/harnesses/overview/) names the exact
 variables and credential files it uses.
 
 ### Selecting a mode
@@ -196,7 +196,7 @@ model ID to the slug OpenRouter lists it under. Harnesses that route through
 OpenRouter already use OpenRouter model IDs and pass them through unchanged;
 harnesses that take a provider-native model ID map it to its OpenRouter
 equivalent. Which case a harness falls into, and the exact mapping it applies,
-is documented on that harness's Metrics page under [Harnesses](/harnesses/).
+is documented on that harness's Metrics page under [Harnesses](/harnesses/overview/).
 
 ## Event Reporting
 
@@ -233,4 +233,4 @@ against an actual stream.
 
 The mapping each individual harness applies — its raw stream shape, tool names,
 and quirks, including which strategy it uses — is documented on that harness's
-**Events** page under [Harnesses](/harnesses/).
+**Events** page under [Harnesses](/harnesses/overview/).

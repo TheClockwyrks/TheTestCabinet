@@ -134,7 +134,7 @@ The backend performs publish (and the snapshot regeneration it triggers) as the
 **synchronized** half of the lifecycle: because the backend is the single entity
 doing this, two operators publishing at once cannot race on the store or the
 snapshot. See
-[Publishing and Synchronization](/components/backend/overview/#publishing-and-synchronization).
+[Publishing and Synchronization](/components/backend/overview/#review-publish-and-synchronization).
 
 #### Secret redaction
 

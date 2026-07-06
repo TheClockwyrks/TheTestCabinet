@@ -10,7 +10,7 @@ touches the seeded repository; it is injected into the run container as a secret
 fastest path for each. The full contract — mode resolution, credential refresh,
 and the exact variables and files each harness uses — is in
 [Agent Harnesses → Authentication](/components/core/harnesses/#authentication)
-and each harness's **Authentication** page under [Harnesses](/harnesses/).
+and each harness's **Authentication** page under [Harnesses](/harnesses/overview/).
 
 ## Option A: API key
 

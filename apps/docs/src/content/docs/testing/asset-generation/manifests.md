@@ -149,7 +149,7 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
 - The `[sheet]` table is **required for — and only for — `asset_kind =
   "sprite-sheet"`**. It declares the case's frames as `[[sheet.frame]]` entries —
   each just the `index` it is written to (passed as
-  [`draw-sheet --frame`](/testing/asset-generation/draw-tool/)) — plus one or more
+  [`draw-sheet --frame`](/testing/asset-generation/sprite-binaries/)) — plus one or more
   `[[sheet.sequence]]` entries. The number of frames is just how many are declared;
   for a sprite sheet `[canvas]` describes **one frame** (every frame is a separate
   file of that size). Resolution validates that frame indices are unique, and that
@@ -186,7 +186,7 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   a sheet, one preview per frame), so the model can read a real image to see its
   progress. There is **no operations schema** — the binary's `--help` is the
   contract, and the brief tells the model to read it (see
-  [The drawing binaries](/testing/asset-generation/draw-tool/)). The binary is the
+  [The drawing binaries](/testing/asset-generation/sprite-binaries/)). The binary is the
   **only** channel for drawing — anything produced outside it is discarded (see
   [Overview](/testing/asset-generation/overview/#why-the-actions-are-the-output)).
 - The `[output]` table names the `actions` log the binary records and returns (a

@@ -31,7 +31,7 @@ operations â€” brushes and other image mutations, as ordinary CLI subcommands â€
 the model produces the asset by **calling the binary repeatedly**, one operation
 at a time, until it decides the image is finished and returns. The binary's
 `--help` is the contract (a case seeds no operations schema); see
-[The drawing binaries](/testing/asset-generation/draw-tool/).
+[The drawing binaries](/testing/asset-generation/sprite-binaries/).
 
 Two properties make this work as a benchmark:
 

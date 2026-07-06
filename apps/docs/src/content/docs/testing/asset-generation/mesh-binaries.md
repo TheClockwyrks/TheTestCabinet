@@ -58,7 +58,7 @@ the binary (see the per-algorithm sections below), not a per-case knob.
 ## The field operations are ordinary CLI subcommands
 
 A case seeds **no** operations schema. The vocabulary is the binary's own `--help`,
-exactly as with the [drawing](/testing/asset-generation/binaries/) and
+exactly as with the [drawing](/testing/asset-generation/sprite-binaries/) and
 [voxel](/testing/asset-generation/voxel-binaries/) tools, and the brief tells the
 model to read it:
 
@@ -236,7 +236,7 @@ When a run is being **watched** — driven by a [driver](/components/driver/over
 or the [Tauri app](/components/tauri/overview/) rather than a plain `tcab run` — the
 model's sculpting is streamed to the viewer in real time, mechanically identical to
 the [voxel](/testing/asset-generation/voxel-binaries/#live-preview) and
-[drawing](/testing/asset-generation/binaries/#live-preview) tools: the orchestrator
+[drawing](/testing/asset-generation/sprite-binaries/#live-preview) tools: the orchestrator
 adds a `live` block (a `host.docker.internal` endpoint and an opaque per-run token)
 to the seeded config, and **when the model runs `render`** the binary connects back
 to the run host and streams a one-line JSON header

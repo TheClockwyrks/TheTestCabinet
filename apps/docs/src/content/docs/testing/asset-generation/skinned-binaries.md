@@ -245,7 +245,7 @@ or the [Tauri app](/components/tauri/overview/) rather than a plain `tcab run` â
 model's sculpting is streamed to the viewer in real time, mechanically identical to
 the [mesh](/testing/asset-generation/mesh-binaries/#live-preview),
 [voxel](/testing/asset-generation/voxel-binaries/#live-preview), and
-[drawing](/testing/asset-generation/binaries/#live-preview) tools: the orchestrator
+[drawing](/testing/asset-generation/sprite-binaries/#live-preview) tools: the orchestrator
 adds a `live` block (a `host.docker.internal` endpoint and an opaque per-run token)
 to the seeded config, and **when the model runs `render`** the binary connects back
 to the run host and streams a one-line JSON header
