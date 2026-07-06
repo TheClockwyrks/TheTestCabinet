@@ -123,7 +123,11 @@ async fn forwards_a_skinned_glb_and_rig_body() {
         .expect("the sink channel stays open");
     assert_eq!(
         preview.skinned_glb.as_deref(),
-        Some(base64::engine::general_purpose::STANDARD.encode(glb).as_str()),
+        Some(
+            base64::engine::general_purpose::STANDARD
+                .encode(glb)
+                .as_str()
+        ),
         "the skinned glb is forwarded raw and base64-encoded (never decoded to a Mesh)"
     );
     assert!(
@@ -172,7 +176,11 @@ async fn forwards_an_audio_body() {
         .expect("the sink channel stays open");
     assert_eq!(
         preview.audio.as_deref(),
-        Some(base64::engine::general_purpose::STANDARD.encode(wav).as_str()),
+        Some(
+            base64::engine::general_purpose::STANDARD
+                .encode(wav)
+                .as_str()
+        ),
         "the clip is forwarded base64-encoded byte-for-byte"
     );
 }

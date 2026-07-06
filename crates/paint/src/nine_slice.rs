@@ -51,7 +51,13 @@ pub fn stretch(src: &Raster, ns: NineSlice, out_w: u32, out_h: u32) -> Raster {
     let dy = [0, ns.top, out_h - ns.bottom, out_h];
     for by in 0..3 {
         for bx in 0..3 {
-            let src_band = crop(src, sx[bx], sy[by], sx[bx + 1] - sx[bx], sy[by + 1] - sy[by]);
+            let src_band = crop(
+                src,
+                sx[bx],
+                sy[by],
+                sx[bx + 1] - sx[bx],
+                sy[by + 1] - sy[by],
+            );
             let dw = dx[bx + 1] - dx[bx];
             let dh = dy[by + 1] - dy[by];
             let resized = resize_nearest(&src_band, dw, dh);

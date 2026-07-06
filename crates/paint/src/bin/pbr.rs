@@ -20,7 +20,10 @@ use test_cabinet_paint::{cli, config::MaterialConfig};
 const PREVIEW_SIZE: u32 = 512;
 
 #[derive(Parser)]
-#[command(name = "pbr", about = "Bake, set uniforms, assemble material.json, and render the lit preview.")]
+#[command(
+    name = "pbr",
+    about = "Bake, set uniforms, assemble material.json, and render the lit preview."
+)]
 struct Cli {
     /// Path to the seeded material config JSON (shared with `texture`).
     #[arg(long, default_value = "material.config.json", global = true)]
@@ -118,9 +121,17 @@ fn run(cli: Cli) -> Result<String, String> {
             let config: MaterialConfig = cli::read_config(&cli.config)?;
             cli::recomposite_material(&cli.config)?;
             cli::write_material_json(&config.material_json, &config, tiling)?;
-            Ok(format!("assembled material.json ({} maps)", config.maps.len()))
+            Ok(format!(
+                "assembled material.json ({} maps)",
+                config.maps.len()
+            ))
         }
-        Command::Render { shape, map, out, tiling } => render(&cli.config, &shape, map, &out, tiling),
+        Command::Render {
+            shape,
+            map,
+            out,
+            tiling,
+        } => render(&cli.config, &shape, map, &out, tiling),
     }
 }
 

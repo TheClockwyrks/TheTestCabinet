@@ -550,7 +550,11 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
     // borrowing the target mutably.
     match &action.op {
         Op::Init { .. } => return Ok(()),
-        Op::Warp { source, amount, layer } => {
+        Op::Warp {
+            source,
+            amount,
+            layer,
+        } => {
             let src = ws
                 .documents
                 .get(source)
@@ -589,11 +593,16 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
     let wrap = ws.wrap;
     let (_, doc) = ws.resolve(action.target.as_deref())?;
     match &action.op {
-        Op::Init { .. } | Op::Warp { .. } | Op::BakeNormal { .. } | Op::BakeAo { .. } | Op::BakeCurvature { .. } => {
+        Op::Init { .. }
+        | Op::Warp { .. }
+        | Op::BakeNormal { .. }
+        | Op::BakeAo { .. }
+        | Op::BakeCurvature { .. } => {
             unreachable!("handled above")
         }
         Op::AddLayer { name } => {
-            doc.layers.push(Layer::new(name.clone(), doc.width, doc.height));
+            doc.layers
+                .push(Layer::new(name.clone(), doc.width, doc.height));
         }
         Op::RemoveLayer { layer } => {
             let i = doc.layer_index(layer)?;
@@ -626,7 +635,19 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
             doc.layers[i].mask = Some(vec![1.0; count]);
         }
         Op::Brush {
-            layer, mask, brush, size, hardness, flow, opacity, color, x, y, spacing, scatter, jitter,
+            layer,
+            mask,
+            brush,
+            size,
+            hardness,
+            flow,
+            opacity,
+            color,
+            x,
+            y,
+            spacing,
+            scatter,
+            jitter,
         } => {
             let li = layer_idx(doc, layer)?;
             let b = Brush {
@@ -638,10 +659,31 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
                 color: *color,
             };
             let _ = spacing;
-            doc.brush_stroke(li, *mask, &b, &[(*x, *y)], 1.0, *scatter, *jitter, wrap, &mut rng);
+            doc.brush_stroke(
+                li,
+                *mask,
+                &b,
+                &[(*x, *y)],
+                1.0,
+                *scatter,
+                *jitter,
+                wrap,
+                &mut rng,
+            );
         }
         Op::Stroke {
-            layer, mask, brush, size, hardness, flow, opacity, color, points, spacing, scatter, jitter,
+            layer,
+            mask,
+            brush,
+            size,
+            hardness,
+            flow,
+            opacity,
+            color,
+            points,
+            spacing,
+            scatter,
+            jitter,
         } => {
             let li = layer_idx(doc, layer)?;
             let b = Brush {
@@ -652,29 +694,65 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
                 opacity: *opacity,
                 color: *color,
             };
-            doc.brush_stroke(li, *mask, &b, points, *spacing, *scatter, *jitter, wrap, &mut rng);
+            doc.brush_stroke(
+                li, *mask, &b, points, *spacing, *scatter, *jitter, wrap, &mut rng,
+            );
         }
         Op::Fill { layer, mask, color } => {
             let li = layer_idx(doc, layer)?;
             doc.fill_layer(li, *mask, *color);
         }
-        Op::Bucket { layer, x, y, color, tolerance } => {
+        Op::Bucket {
+            layer,
+            x,
+            y,
+            color,
+            tolerance,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.bucket(li, *x, *y, *color, *tolerance, wrap);
         }
-        Op::FillRect { layer, mask, x, y, width, height, color } => {
+        Op::FillRect {
+            layer,
+            mask,
+            x,
+            y,
+            width,
+            height,
+            color,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.fill_rect(li, *mask, *x, *y, *width, *height, *color, wrap);
         }
-        Op::FillEllipse { layer, mask, cx, cy, rx, ry, color } => {
+        Op::FillEllipse {
+            layer,
+            mask,
+            cx,
+            cy,
+            rx,
+            ry,
+            color,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.fill_ellipse(li, *mask, *cx, *cy, *rx, *ry, *color, wrap);
         }
-        Op::Gradient { layer, mask, radial, stops, from, to } => {
+        Op::Gradient {
+            layer,
+            mask,
+            radial,
+            stops,
+            from,
+            to,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.gradient(li, *mask, *radial, stops, *from, *to);
         }
-        Op::SelectRect { x, y, width, height } => doc.select_rect(*x, *y, *width, *height),
+        Op::SelectRect {
+            x,
+            y,
+            width,
+            height,
+        } => doc.select_rect(*x, *y, *width, *height),
         Op::SelectEllipse { cx, cy, rx, ry } => doc.select_ellipse(*cx, *cy, *rx, *ry),
         Op::SelectLasso { points } => doc.select_lasso(points),
         Op::SelectNone => doc.select_none(),
@@ -692,7 +770,12 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
             let li = layer_idx(doc, layer)?;
             doc.noise_filter(li, *amount, rng.next_u64());
         }
-        Op::Levels { layer, black, white, gamma } => {
+        Op::Levels {
+            layer,
+            black,
+            white,
+            gamma,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.levels(li, *black, *white, *gamma);
         }
@@ -700,7 +783,12 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
             let li = layer_idx(doc, layer)?;
             doc.curves(li, *amount);
         }
-        Op::HueSat { layer, hue, sat, lightness } => {
+        Op::HueSat {
+            layer,
+            hue,
+            sat,
+            lightness,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.hue_sat(li, *hue, *sat, *lightness);
         }
@@ -708,11 +796,32 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
             let li = layer_idx(doc, layer)?;
             doc.desaturate(li);
         }
-        Op::LayerEffect { layer, effect, size, color, angle, distance } => {
+        Op::LayerEffect {
+            layer,
+            effect,
+            size,
+            color,
+            angle,
+            distance,
+        } => {
             let li = layer_idx(doc, layer)?;
-            doc.layer_effect(li, *effect, EffectParams { size: *size, color: *color, angle: *angle, distance: *distance });
+            doc.layer_effect(
+                li,
+                *effect,
+                EffectParams {
+                    size: *size,
+                    color: *color,
+                    angle: *angle,
+                    distance: *distance,
+                },
+            );
         }
-        Op::TransformLayer { layer, translate, scale, rotate } => {
+        Op::TransformLayer {
+            layer,
+            translate,
+            scale,
+            rotate,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.transform_layer(li, *translate, *scale, *rotate, wrap);
         }
@@ -724,38 +833,143 @@ pub fn apply(ws: &mut Workspace, action: &Action, index: usize, seed: u64) -> Re
             let li = layer_idx(doc, layer)?;
             doc.mirror(li, *axis_x);
         }
-        Op::Rect { layer, x, y, width, height, fill, stroke, stroke_width } => {
+        Op::Rect {
+            layer,
+            x,
+            y,
+            width,
+            height,
+            fill,
+            stroke,
+            stroke_width,
+        } => {
             let li = layer_idx(doc, layer)?;
-            doc.shape_rect(li, *x, *y, *width, *height, style(*fill, *stroke, *stroke_width), wrap);
+            doc.shape_rect(
+                li,
+                *x,
+                *y,
+                *width,
+                *height,
+                style(*fill, *stroke, *stroke_width),
+                wrap,
+            );
         }
-        Op::RoundedRect { layer, x, y, width, height, corner_radius, fill, stroke, stroke_width } => {
+        Op::RoundedRect {
+            layer,
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            fill,
+            stroke,
+            stroke_width,
+        } => {
             let li = layer_idx(doc, layer)?;
-            doc.shape_rounded_rect(li, *x, *y, *width, *height, *corner_radius, style(*fill, *stroke, *stroke_width), wrap);
+            doc.shape_rounded_rect(
+                li,
+                *x,
+                *y,
+                *width,
+                *height,
+                *corner_radius,
+                style(*fill, *stroke, *stroke_width),
+                wrap,
+            );
         }
-        Op::Ellipse { layer, cx, cy, rx, ry, fill, stroke, stroke_width } => {
+        Op::Ellipse {
+            layer,
+            cx,
+            cy,
+            rx,
+            ry,
+            fill,
+            stroke,
+            stroke_width,
+        } => {
             let li = layer_idx(doc, layer)?;
-            doc.shape_ellipse(li, *cx, *cy, *rx, *ry, style(*fill, *stroke, *stroke_width), wrap);
+            doc.shape_ellipse(
+                li,
+                *cx,
+                *cy,
+                *rx,
+                *ry,
+                style(*fill, *stroke, *stroke_width),
+                wrap,
+            );
         }
-        Op::Line { layer, x0, y0, x1, y1, stroke, stroke_width } => {
+        Op::Line {
+            layer,
+            x0,
+            y0,
+            x1,
+            y1,
+            stroke,
+            stroke_width,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.shape_line(li, *x0, *y0, *x1, *y1, *stroke, *stroke_width, wrap);
         }
-        Op::Polygon { layer, points, fill, stroke, stroke_width } => {
+        Op::Polygon {
+            layer,
+            points,
+            fill,
+            stroke,
+            stroke_width,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.shape_polygon(li, points, style(*fill, *stroke, *stroke_width), wrap);
         }
-        Op::Text { layer, content, font, size, color, align, bold, letter_spacing, wrap: wrap_w, x, y } => {
+        Op::Text {
+            layer,
+            content,
+            font,
+            size,
+            color,
+            align,
+            bold,
+            letter_spacing,
+            wrap: wrap_w,
+            x,
+            y,
+        } => {
             let li = layer_idx(doc, layer)?;
             let mut face = font_by_name(font);
             if *bold {
                 face.bold = true;
             }
-            doc.draw_text(li, content, face, *size, *color, *align, *letter_spacing, *wrap_w, *x, *y);
+            doc.draw_text(
+                li,
+                content,
+                face,
+                *size,
+                *color,
+                *align,
+                *letter_spacing,
+                *wrap_w,
+                *x,
+                *y,
+            );
         }
-        Op::SetNineSlice { left, right, top, bottom } => {
-            doc.nine_slice = Some(crate::nine_slice::NineSlice { left: *left, right: *right, top: *top, bottom: *bottom });
+        Op::SetNineSlice {
+            left,
+            right,
+            top,
+            bottom,
+        } => {
+            doc.nine_slice = Some(crate::nine_slice::NineSlice {
+                left: *left,
+                right: *right,
+                top: *top,
+                bottom: *bottom,
+            });
         }
-        Op::GenNoise { layer, kind, scale, octaves } => {
+        Op::GenNoise {
+            layer,
+            kind,
+            scale,
+            octaves,
+        } => {
             let li = layer_idx(doc, layer)?;
             doc.gen_noise(li, *kind, *scale, *octaves, rng.next_u64());
         }
@@ -812,15 +1026,23 @@ fn group_layers(doc: &mut Document, layers: &[String], name: Option<String>) -> 
         }
         for p in 0..merged.pixels.len() {
             let cov = layer.opacity * layer.mask.as_ref().map(|m| m[p]).unwrap_or(1.0);
-            merged.pixels[p] =
-                crate::blend::composite_over(merged.pixels[p], layer.raster.pixels[p], layer.blend, cov);
+            merged.pixels[p] = crate::blend::composite_over(
+                merged.pixels[p],
+                layer.raster.pixels[p],
+                layer.blend,
+                cov,
+            );
         }
     }
     // Remove originals (high to low) then insert the merged layer.
     for &i in indices.iter().rev() {
         doc.layers.remove(i);
     }
-    let mut layer = Layer::new(name.unwrap_or_else(|| "group".to_string()), doc.width, doc.height);
+    let mut layer = Layer::new(
+        name.unwrap_or_else(|| "group".to_string()),
+        doc.width,
+        doc.height,
+    );
     layer.raster = merged;
     doc.layers.insert(insert_at.min(doc.layers.len()), layer);
     Ok(())
@@ -839,7 +1061,8 @@ impl Document {
     /// Fill the map with a constant grayscale value.
     fn set_uniform(&mut self, value: f32) {
         let v = value.clamp(0.0, 1.0);
-        let raster = crate::raster::Raster::filled(self.width, self.height, Color::new(v, v, v, 1.0));
+        let raster =
+            crate::raster::Raster::filled(self.width, self.height, Color::new(v, v, v, 1.0));
         self.replace_with(raster);
     }
 }

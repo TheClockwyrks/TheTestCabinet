@@ -49,10 +49,21 @@ pub struct RenderRequest {
 /// Run `render`: emit `system.json`, simulate, and write the preview (GIF, or a single
 /// still for `--frame`). Streams a representative frame + the system to a watching
 /// viewer, best-effort.
-pub fn run(config: &ParticleConfig, dims: Dimensionality, request: &RenderRequest) -> Result<(), String> {
+pub fn run(
+    config: &ParticleConfig,
+    dims: Dimensionality,
+    request: &RenderRequest,
+) -> Result<(), String> {
     let ops: Vec<Op> = read_actions(&config.actions)?;
     let field = config.field(dims);
-    let system = build_system(&ops, dims, field, config.duration_ms, config.fps(), config.looping);
+    let system = build_system(
+        &ops,
+        dims,
+        field,
+        config.duration_ms,
+        config.fps(),
+        config.looping,
+    );
 
     // `system.json` is the authoritative output — write it first so it exists even if
     // a later render step is interrupted.
@@ -81,7 +92,10 @@ pub fn run(config: &ParticleConfig, dims: Dimensionality, request: &RenderReques
     }
 
     let gif = encode_gif(&frames, background, config.fps(), system.looping)?;
-    let out = request.out.clone().unwrap_or_else(|| config.preview.clone());
+    let out = request
+        .out
+        .clone()
+        .unwrap_or_else(|| config.preview.clone());
     ensure_parent(&out)?;
     fs::write(&out, &gif).map_err(|err| format!("writing {}: {err}", out.display()))?;
 
@@ -173,7 +187,15 @@ fn raster_2d(system: &System, background: PreviewBackground, frame: &Frame) -> R
         let cy = size as f32 - (oy + particle.position[1] * scale);
         let radius = (base_radius * particle.size).max(0.75);
         let [r, g, b] = to_bytes(particle.color);
-        stamp_disc(&mut pixels, size, cx, cy, radius, [r, g, b], particle.opacity);
+        stamp_disc(
+            &mut pixels,
+            size,
+            cx,
+            cy,
+            radius,
+            [r, g, b],
+            particle.opacity,
+        );
     }
 
     RgbaFrame {

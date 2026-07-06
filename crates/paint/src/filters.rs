@@ -13,7 +13,9 @@ impl Document {
     /// Apply `f` to a copy of the layer's pixels and blend the result back by the
     /// selection coverage (fully where nothing is selected).
     fn map_layer(&mut self, layer: usize, f: impl FnOnce(&Raster) -> Vec<Color>) {
-        let sel: Vec<f32> = (0..self.pixel_count()).map(|i| self.selection_at(i)).collect();
+        let sel: Vec<f32> = (0..self.pixel_count())
+            .map(|i| self.selection_at(i))
+            .collect();
         let raster = &mut self.layers[layer].raster;
         let filtered = f(raster);
         for (i, out) in filtered.into_iter().enumerate() {
@@ -244,7 +246,11 @@ pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
     if s <= 0.0 {
         return (l, l, l);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let hue = |t: f32| {
         let t = t.rem_euclid(1.0);

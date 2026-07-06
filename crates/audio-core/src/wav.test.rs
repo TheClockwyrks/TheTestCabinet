@@ -19,10 +19,7 @@ fn header_is_canonical_pcm16() {
     assert_eq!(u16::from_le_bytes([wav[34], wav[35]]), 16);
     assert_eq!(&wav[36..40], b"data");
     // 2 samples * 2 bytes = 4 data bytes
-    assert_eq!(
-        u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]),
-        4
-    );
+    assert_eq!(u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]), 4);
     assert_eq!(wav.len(), 44 + 4);
 }
 

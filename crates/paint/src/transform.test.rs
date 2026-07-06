@@ -29,7 +29,10 @@ fn translate_moves_content() {
     doc.fill_rect(0, false, 0, 0, 2, 2, opaque(0.0, 1.0, 0.0), WrapMode::Clamp);
     doc.transform_layer(0, (4.0, 4.0), (1.0, 1.0), 0.0, WrapMode::Clamp);
     assert!(doc.layers[0].raster.get(4, 4, WrapMode::Clamp).unwrap().g > 0.5);
-    assert_eq!(doc.layers[0].raster.get(0, 0, WrapMode::Clamp).unwrap().a, 0.0);
+    assert_eq!(
+        doc.layers[0].raster.get(0, 0, WrapMode::Clamp).unwrap().a,
+        0.0
+    );
 }
 
 #[test]

@@ -190,15 +190,26 @@ fn bank_instrument_renders_from_its_sample() {
     let lib = bank("render");
     let project = MusicProject::from_ops(&one_note("tone", 60));
     let mix = render_music(&project, &params(), Some(&lib));
-    assert!(mix.iter().any(|&s| s.abs() > 1e-3), "sampled instrument was silent");
+    assert!(
+        mix.iter().any(|&s| s.abs() > 1e-3),
+        "sampled instrument was silent"
+    );
 }
 
 #[test]
 fn pitched_instrument_transposes_per_note() {
     let lib = bank("pitch");
     // The same source, an octave up, resamples ~twice as fast so it sounds shorter.
-    let low = render_music(&MusicProject::from_ops(&one_note("tone", 60)), &params(), Some(&lib));
-    let high = render_music(&MusicProject::from_ops(&one_note("tone", 72)), &params(), Some(&lib));
+    let low = render_music(
+        &MusicProject::from_ops(&one_note("tone", 60)),
+        &params(),
+        Some(&lib),
+    );
+    let high = render_music(
+        &MusicProject::from_ops(&one_note("tone", 72)),
+        &params(),
+        Some(&lib),
+    );
     assert!(
         sounding_len(&high) < sounding_len(&low),
         "octave-up note should be shorter: high={} low={}",
@@ -211,8 +222,16 @@ fn pitched_instrument_transposes_per_note() {
 fn unpitched_instrument_ignores_note_pitch() {
     let lib = bank("perc");
     // A percussion one-shot plays identically regardless of the note it is triggered on.
-    let a = render_music(&MusicProject::from_ops(&one_note("perc", 36)), &params(), Some(&lib));
-    let b = render_music(&MusicProject::from_ops(&one_note("perc", 72)), &params(), Some(&lib));
+    let a = render_music(
+        &MusicProject::from_ops(&one_note("perc", 36)),
+        &params(),
+        Some(&lib),
+    );
+    let b = render_music(
+        &MusicProject::from_ops(&one_note("perc", 72)),
+        &params(),
+        Some(&lib),
+    );
     assert_eq!(a, b, "an unpitched instrument must not transpose");
     assert!(a.iter().any(|&s| s.abs() > 1e-3), "percussion was silent");
 }
@@ -223,5 +242,8 @@ fn unknown_bank_instrument_without_pack_still_renders() {
     // run does not render silence.
     let project = MusicProject::from_ops(&one_note("grand_piano", 60));
     let mix = render_music(&project, &params(), None);
-    assert!(mix.iter().any(|&s| s.abs() > 1e-3), "fallback synth was silent");
+    assert!(
+        mix.iter().any(|&s| s.abs() > 1e-3),
+        "fallback synth was silent"
+    );
 }

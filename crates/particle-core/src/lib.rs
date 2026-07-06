@@ -35,8 +35,8 @@ pub mod render;
 pub use op::{EmitterDef, Op, build_system};
 pub use sim::{Frame, RenderParticle, Simulation, simulate};
 pub use system::{
-    ColorStop, Curve, Dimensionality, Emission, Emitter, Extent, Field, Forces,
-    ParticleAppearance, Shape, SubEmitter, SubTrigger, System, Turbulence,
+    ColorStop, Curve, Dimensionality, Emission, Emitter, Extent, Field, Forces, ParticleAppearance,
+    Shape, SubEmitter, SubTrigger, System, Turbulence,
 };
 
 #[cfg(feature = "cli")]

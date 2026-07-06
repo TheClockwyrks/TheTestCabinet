@@ -125,7 +125,15 @@ fn draw_waveform(canvas: &mut Canvas, x: i64, y: i64, w: u32, h: u32, mono: &[f3
 
 /// Draw a log-magnitude spectrogram: time on x, frequency on y (low at the bottom),
 /// magnitude mapped through a dark→hot colormap.
-fn draw_spectrogram(canvas: &mut Canvas, x: i64, y: i64, w: u32, h: u32, mono: &[f32], _sample_rate: u32) {
+fn draw_spectrogram(
+    canvas: &mut Canvas,
+    x: i64,
+    y: i64,
+    w: u32,
+    h: u32,
+    mono: &[f32],
+    _sample_rate: u32,
+) {
     panel_frame(canvas, x, y, w, h);
     if mono.is_empty() {
         return;

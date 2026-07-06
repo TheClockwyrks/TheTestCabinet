@@ -40,7 +40,9 @@ impl Shape {
             "cube" => Ok(Shape::Cube),
             "cylinder" => Ok(Shape::Cylinder),
             "plane" => Ok(Shape::Plane),
-            other => Err(format!("unknown shape `{other}` (sphere|cube|cylinder|plane)")),
+            other => Err(format!(
+                "unknown shape `{other}` (sphere|cube|cylinder|plane)"
+            )),
         }
     }
 }
@@ -148,11 +150,7 @@ fn uv_sphere(stacks: u32, slices: u32, r: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>)
         let phi = PI * i as f32 / stacks as f32;
         for j in 0..=slices {
             let theta = TAU * j as f32 / slices as f32;
-            let n = [
-                phi.sin() * theta.cos(),
-                phi.cos(),
-                phi.sin() * theta.sin(),
-            ];
+            let n = [phi.sin() * theta.cos(), phi.cos(), phi.sin() * theta.sin()];
             push_vertex(&mut pos, &mut nrm, [n[0] * r, n[1] * r, n[2] * r], n);
         }
     }
@@ -172,12 +170,30 @@ fn cube(h: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
     let mut nrm = Vec::new();
     let mut idx = Vec::new();
     let faces = [
-        ([1.0, 0.0, 0.0], [[h, -h, -h], [h, h, -h], [h, h, h], [h, -h, h]]),
-        ([-1.0, 0.0, 0.0], [[-h, -h, h], [-h, h, h], [-h, h, -h], [-h, -h, -h]]),
-        ([0.0, 1.0, 0.0], [[-h, h, -h], [-h, h, h], [h, h, h], [h, h, -h]]),
-        ([0.0, -1.0, 0.0], [[-h, -h, h], [-h, -h, -h], [h, -h, -h], [h, -h, h]]),
-        ([0.0, 0.0, 1.0], [[-h, -h, h], [h, -h, h], [h, h, h], [-h, h, h]]),
-        ([0.0, 0.0, -1.0], [[h, -h, -h], [-h, -h, -h], [-h, h, -h], [h, h, -h]]),
+        (
+            [1.0, 0.0, 0.0],
+            [[h, -h, -h], [h, h, -h], [h, h, h], [h, -h, h]],
+        ),
+        (
+            [-1.0, 0.0, 0.0],
+            [[-h, -h, h], [-h, h, h], [-h, h, -h], [-h, -h, -h]],
+        ),
+        (
+            [0.0, 1.0, 0.0],
+            [[-h, h, -h], [-h, h, h], [h, h, h], [h, h, -h]],
+        ),
+        (
+            [0.0, -1.0, 0.0],
+            [[-h, -h, h], [-h, -h, -h], [h, -h, -h], [h, -h, h]],
+        ),
+        (
+            [0.0, 0.0, 1.0],
+            [[-h, -h, h], [h, -h, h], [h, h, h], [-h, h, h]],
+        ),
+        (
+            [0.0, 0.0, -1.0],
+            [[h, -h, -h], [-h, -h, -h], [-h, h, -h], [h, h, -h]],
+        ),
     ];
     for (n, quad) in faces {
         let base = (pos.len() / 3) as u32;

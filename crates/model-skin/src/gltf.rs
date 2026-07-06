@@ -97,9 +97,20 @@ pub fn skinned_glb(
         let norm_acc = push_f32_vec3(&mut bin, &mut accessors, &mut buffer_views, normals);
         let col_acc = push_f32_vec3(&mut bin, &mut accessors, &mut buffer_views, colors);
         // JOINTS_0 (u16 VEC4), WEIGHTS_0 (f32 VEC4).
-        let joints_acc = push_joints(&mut bin, &mut accessors, &mut buffer_views, skins, vertex_count);
-        let weights_acc =
-            push_weights(&mut bin, &mut accessors, &mut buffer_views, skins, vertex_count);
+        let joints_acc = push_joints(
+            &mut bin,
+            &mut accessors,
+            &mut buffer_views,
+            skins,
+            vertex_count,
+        );
+        let weights_acc = push_weights(
+            &mut bin,
+            &mut accessors,
+            &mut buffer_views,
+            skins,
+            vertex_count,
+        );
         // Indices.
         let idx_acc = push_indices(&mut bin, &mut accessors, &mut buffer_views, indices);
 
@@ -475,9 +486,13 @@ fn accessor_view(
     acc_idx: usize,
     expect_component: u64,
 ) -> Result<(usize, usize), String> {
-    let acc = accessors.get(acc_idx).ok_or("accessor index out of range")?;
+    let acc = accessors
+        .get(acc_idx)
+        .ok_or("accessor index out of range")?;
     if acc.get("componentType").and_then(|v| v.as_u64()) != Some(expect_component) {
-        return Err(format!("accessor {acc_idx} has an unexpected componentType"));
+        return Err(format!(
+            "accessor {acc_idx} has an unexpected componentType"
+        ));
     }
     let count = acc
         .get("count")

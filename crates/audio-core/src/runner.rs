@@ -46,7 +46,10 @@ pub fn render_sfx(config: &AudioConfig, library: Option<&SampleLibrary>) -> Resu
 /// Render a music clip (`music`): mix the op log down, write the `.wav` and the
 /// portable `.mid`, draw the waveform + spectrogram + piano-roll preview, and stream
 /// the live update.
-pub fn render_music(config: &AudioConfig, library: Option<&SampleLibrary>) -> Result<usize, String> {
+pub fn render_music(
+    config: &AudioConfig,
+    library: Option<&SampleLibrary>,
+) -> Result<usize, String> {
     let ops: Vec<MusicOp> = record::read_actions(&config.actions)?;
     let params = config.render_params();
     let project = MusicProject::from_ops(&ops);
@@ -59,7 +62,8 @@ pub fn render_music(config: &AudioConfig, library: Option<&SampleLibrary>) -> Re
     write_file(&config.mid, &mid_bytes)?;
 
     let roll = project.piano_roll();
-    let png = preview::render_music_preview(&samples, params.channels.count(), params.sample_rate, &roll);
+    let png =
+        preview::render_music_preview(&samples, params.channels.count(), params.sample_rate, &roll);
     write_file(&config.preview, &png)?;
 
     if let Some(live) = &config.live {

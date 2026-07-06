@@ -195,10 +195,7 @@ impl Workspace {
     /// The zero-based index of `name` in declaration order (for the live-preview
     /// `frame` field), or `0` if unknown.
     pub fn target_index(&self, name: &str) -> u32 {
-        self.order
-            .iter()
-            .position(|n| n == name)
-            .unwrap_or(0) as u32
+        self.order.iter().position(|n| n == name).unwrap_or(0) as u32
     }
 
     /// Resolve `target` (an explicit `--element`/`--map`, or `None` for a
@@ -212,7 +209,7 @@ impl Workspace {
                 [] => return Err("workspace declares no documents".to_string()),
                 _ => {
                     return Err(
-                        "this case declares multiple targets; pass --element/--map".to_string(),
+                        "this case declares multiple targets; pass --element/--map".to_string()
                     );
                 }
             },

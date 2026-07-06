@@ -403,7 +403,11 @@ fn sample_shape(emitter: &Emitter, two_d: bool, rng: &mut Rng) -> [f32; 3] {
                 c[2] + rng.symmetric() * s[2] * 0.5
             },
         ],
-        Shape::Edge => [c[0] + rng.symmetric() * s[0] * 0.5, c[1], if two_d { 0.0 } else { c[2] }],
+        Shape::Edge => [
+            c[0] + rng.symmetric() * s[0] * 0.5,
+            c[1],
+            if two_d { 0.0 } else { c[2] },
+        ],
     }
 }
 
@@ -527,9 +531,18 @@ fn curl_noise(pos: [f32; 3], scale_freq: f32) -> [f32; 3] {
             value_noise(add(q, [7.1, 23.9, 55.3])),
         ]
     };
-    let dx = sub(potential(add(p, [e, 0.0, 0.0])), potential(sub(p, [e, 0.0, 0.0])));
-    let dy = sub(potential(add(p, [0.0, e, 0.0])), potential(sub(p, [0.0, e, 0.0])));
-    let dz = sub(potential(add(p, [0.0, 0.0, e])), potential(sub(p, [0.0, 0.0, e])));
+    let dx = sub(
+        potential(add(p, [e, 0.0, 0.0])),
+        potential(sub(p, [e, 0.0, 0.0])),
+    );
+    let dy = sub(
+        potential(add(p, [0.0, e, 0.0])),
+        potential(sub(p, [0.0, e, 0.0])),
+    );
+    let dz = sub(
+        potential(add(p, [0.0, 0.0, e])),
+        potential(sub(p, [0.0, 0.0, e])),
+    );
     let inv = 1.0 / (2.0 * e);
     [
         (dy[2] - dz[1]) * inv,
@@ -566,9 +579,7 @@ fn smooth(t: f32) -> f32 {
 
 /// A hash of integer lattice coordinates to `[-1, 1]`.
 fn hash3(x: i64, y: i64, z: i64) -> f32 {
-    let mut h = mix(x as u64)
-        ^ mix(y as u64).rotate_left(21)
-        ^ mix(z as u64).rotate_left(42);
+    let mut h = mix(x as u64) ^ mix(y as u64).rotate_left(21) ^ mix(z as u64).rotate_left(42);
     h = mix(h);
     ((h >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0
 }

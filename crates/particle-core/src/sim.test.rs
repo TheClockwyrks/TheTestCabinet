@@ -32,13 +32,27 @@ fn emitter(name: &str, emission: Emission, lifetime_ms: f32) -> EmitterDef {
 }
 
 fn build(ops: Vec<Op>, duration_ms: u32, fps: u32, looping: bool) -> System {
-    build_system(&ops, Dimensionality::D3, field_3d(), duration_ms, fps, looping)
+    build_system(
+        &ops,
+        Dimensionality::D3,
+        field_3d(),
+        duration_ms,
+        fps,
+        looping,
+    )
 }
 
 #[test]
 fn burst_spawns_its_particles_on_the_first_frame() {
     let ops = vec![Op::AddEmitter {
-        def: emitter("blast", Emission::Burst { count: 200, at_ms: 0.0 }, 400.0),
+        def: emitter(
+            "blast",
+            Emission::Burst {
+                count: 200,
+                at_ms: 0.0,
+            },
+            400.0,
+        ),
     }];
     let system = build(ops, 500, 60, false);
     let sim = simulate(&system, 1);
@@ -50,7 +64,14 @@ fn burst_spawns_its_particles_on_the_first_frame() {
 fn one_shot_burst_decays_to_empty() {
     // A 200 ms lifetime over a 1000 ms one-shot: the last frame is empty.
     let ops = vec![Op::AddEmitter {
-        def: emitter("blast", Emission::Burst { count: 150, at_ms: 0.0 }, 200.0),
+        def: emitter(
+            "blast",
+            Emission::Burst {
+                count: 150,
+                at_ms: 0.0,
+            },
+            200.0,
+        ),
     }];
     let system = build(ops, 1000, 60, false);
     let sim = simulate(&system, 2);
@@ -76,7 +97,14 @@ fn looping_rate_emitter_holds_a_steady_state() {
 #[test]
 fn simulation_is_deterministic_for_a_fixed_seed() {
     let ops = vec![Op::AddEmitter {
-        def: emitter("blast", Emission::Burst { count: 120, at_ms: 0.0 }, 400.0),
+        def: emitter(
+            "blast",
+            Emission::Burst {
+                count: 120,
+                at_ms: 0.0,
+            },
+            400.0,
+        ),
     }];
     let system = build(ops, 600, 60, false);
     let a = simulate(&system, 99);
@@ -98,7 +126,14 @@ fn two_d_simulation_keeps_particles_planar() {
         depth: None,
     };
     let ops = vec![Op::AddEmitter {
-        def: emitter("planar", Emission::Burst { count: 80, at_ms: 0.0 }, 400.0),
+        def: emitter(
+            "planar",
+            Emission::Burst {
+                count: 80,
+                at_ms: 0.0,
+            },
+            400.0,
+        ),
     }];
     let system = build_system(&ops, Dimensionality::D2, field, 500, 60, false);
     let sim = simulate(&system, 5);
@@ -116,10 +151,24 @@ fn death_subemitter_spawns_children() {
     // children are alive.
     let ops = vec![
         Op::AddEmitter {
-            def: emitter("shell", Emission::Burst { count: 10, at_ms: 0.0 }, 100.0),
+            def: emitter(
+                "shell",
+                Emission::Burst {
+                    count: 10,
+                    at_ms: 0.0,
+                },
+                100.0,
+            ),
         },
         Op::AddEmitter {
-            def: emitter("embers", Emission::Burst { count: 8, at_ms: 0.0 }, 400.0),
+            def: emitter(
+                "embers",
+                Emission::Burst {
+                    count: 8,
+                    at_ms: 0.0,
+                },
+                400.0,
+            ),
         },
         Op::AddSubemitter {
             parent: "shell".to_string(),

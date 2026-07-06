@@ -142,8 +142,8 @@ fn default_mid() -> PathBuf {
 
 /// Read a JSON config file into an [`AudioConfig`].
 pub fn read_config(path: &Path) -> Result<AudioConfig, String> {
-    let raw =
-        std::fs::read_to_string(path).map_err(|err| format!("reading {}: {err}", path.display()))?;
+    let raw = std::fs::read_to_string(path)
+        .map_err(|err| format!("reading {}: {err}", path.display()))?;
     serde_json::from_str(&raw).map_err(|err| format!("invalid config {}: {err}", path.display()))
 }
 

@@ -24,11 +24,7 @@ use crate::raster::{Raster, WrapMode};
 /// Apply one UI operation (`paint`/`ui`): append it to the shared log, re-composite
 /// the affected element to its emitted PNG, refresh `ui.json`, and stream the live
 /// frame. Returns a human-readable confirmation line.
-pub fn apply_ui_op(
-    config_path: &Path,
-    element: Option<String>,
-    op: Op,
-) -> Result<String, String> {
+pub fn apply_ui_op(config_path: &Path, element: Option<String>, op: Op) -> Result<String, String> {
     let config: PaintConfig = read_config(config_path)?;
     let template = config.workspace()?;
     let target = template.resolve_name(element.as_deref())?;
@@ -39,7 +35,13 @@ pub fn apply_ui_op(
     let ws = replay_workspace(&template, &actions)?;
     write_ui_json(&config.ui_json, &config, &ws)?;
     if let Some(live) = &config.live {
-        send_live_preview(live, template.target_index(&target), op_name, actions.len(), &png);
+        send_live_preview(
+            live,
+            template.target_index(&target),
+            op_name,
+            actions.len(),
+            &png,
+        );
     }
     Ok(format!(
         "applied {op_name} to {target} ({} operation{})",
@@ -66,7 +68,13 @@ pub fn apply_material_op(
     write_material_json(&config.material_json, &config, 1.0)?;
     if let Some(live) = &config.live {
         let tiled = tile_2x2(&composite).to_png_bytes();
-        send_live_preview(live, template.target_index(&target), op_name, actions.len(), &tiled);
+        send_live_preview(
+            live,
+            template.target_index(&target),
+            op_name,
+            actions.len(),
+            &tiled,
+        );
     }
     let _ = png;
     Ok(format!(
@@ -109,8 +117,7 @@ fn plural(n: usize) -> &'static str {
 
 /// Read a JSON config file into `T`.
 pub fn read_config<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
-    let raw =
-        fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let raw = fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
     serde_json::from_str(&raw).map_err(|e| format!("invalid config {}: {e}", path.display()))
 }
 
@@ -201,11 +208,7 @@ pub fn tile_2x2(src: &Raster) -> Raster {
 
 /// Emit `ui.json` beside the workspace, describing every element (size, emitted
 /// path, and any nine-slice insets from the replayed workspace).
-pub fn write_ui_json(
-    path: &Path,
-    config: &PaintConfig,
-    ws: &Workspace,
-) -> Result<(), String> {
+pub fn write_ui_json(path: &Path, config: &PaintConfig, ws: &Workspace) -> Result<(), String> {
     let mut elements = Vec::new();
     for el in config.element_list() {
         let nine_slice: Option<NineSlice> = ws
@@ -308,11 +311,10 @@ fn try_send(
     use std::time::Duration;
 
     const TIMEOUT: Duration = Duration::from_millis(750);
-    let addr = live
-        .endpoint
-        .to_socket_addrs()?
-        .next()
-        .ok_or_else(|| Error::new(ErrorKind::NotFound, "live endpoint resolved to no address"))?;
+    let addr =
+        live.endpoint.to_socket_addrs()?.next().ok_or_else(|| {
+            Error::new(ErrorKind::NotFound, "live endpoint resolved to no address")
+        })?;
     let mut stream = TcpStream::connect_timeout(&addr, TIMEOUT)?;
     stream.set_write_timeout(Some(TIMEOUT))?;
     let mut header = serde_json::to_vec(&serde_json::json!({
@@ -430,8 +432,12 @@ pub fn parse_pair(value: &str) -> Result<(f32, f32), String> {
         .split_once(',')
         .ok_or_else(|| format!("`{value}` is not an x,y pair"))?;
     Ok((
-        x.trim().parse().map_err(|_| format!("bad x in `{value}`"))?,
-        y.trim().parse().map_err(|_| format!("bad y in `{value}`"))?,
+        x.trim()
+            .parse()
+            .map_err(|_| format!("bad x in `{value}`"))?,
+        y.trim()
+            .parse()
+            .map_err(|_| format!("bad y in `{value}`"))?,
     ))
 }
 
@@ -449,7 +455,10 @@ pub fn parse_stops(value: &str) -> Result<Vec<(f32, Color)>, String> {
             let (pos, col) = s
                 .split_once(':')
                 .ok_or_else(|| format!("`{s}` is not pos:#color"))?;
-            let pos: f32 = pos.trim().parse().map_err(|_| format!("bad stop pos `{pos}`"))?;
+            let pos: f32 = pos
+                .trim()
+                .parse()
+                .map_err(|_| format!("bad stop pos `{pos}`"))?;
             Ok((pos, parse_color(col.trim())?))
         })
         .collect()

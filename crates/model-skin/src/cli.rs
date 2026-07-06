@@ -297,7 +297,12 @@ fn dispatch(algorithm: Algorithm, config_path: &Path, command: Command) -> Resul
         } => {
             let config = read_config(config_path)?;
             let mut rig = SkinnedRig::load(&config.rig)?;
-            if !rig.set_bone(&name, [head_x, head_y, head_z], [tail_x, tail_y, tail_z], roll) {
+            if !rig.set_bone(
+                &name,
+                [head_x, head_y, head_z],
+                [tail_x, tail_y, tail_z],
+                roll,
+            ) {
                 return Err(format!("no such bone `{name}` in the rig"));
             }
             rig.save(&config.rig)?;
@@ -502,7 +507,14 @@ impl RenderArgs {
         let view = self.view.map(View::from).unwrap_or(View::Iso);
         let prepared = prepare(algorithm, config)?;
         match self.time {
-            Some(time_ms) => render_posed(config, &prepared, self.animation.as_deref(), time_ms, view, self.out.as_deref()),
+            Some(time_ms) => render_posed(
+                config,
+                &prepared,
+                self.animation.as_deref(),
+                time_ms,
+                view,
+                self.out.as_deref(),
+            ),
             None => render_rest(config, &prepared, view, self.out.as_deref()),
         }
     }
@@ -538,7 +550,9 @@ fn render_rest(
         config.background()?,
         mesh_render::PREVIEW_SIZE,
     )?;
-    let preview = out.map(Path::to_path_buf).unwrap_or_else(|| config.preview.clone());
+    let preview = out
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| config.preview.clone());
     record::ensure_parent(&preview)?;
     fs::write(&preview, &image)
         .map_err(|err| format!("writing preview {}: {err}", preview.display()))?;
@@ -577,7 +591,9 @@ fn render_posed(
         config.background()?,
         mesh_render::PREVIEW_SIZE,
     )?;
-    let out = out.map(Path::to_path_buf).unwrap_or_else(|| config.pose.clone());
+    let out = out
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| config.pose.clone());
     record::ensure_parent(&out)?;
     fs::write(&out, &image).map_err(|err| format!("writing {}: {err}", out.display()))?;
 

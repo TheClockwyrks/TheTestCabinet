@@ -11,7 +11,10 @@ fn clamp_drops_off_image() {
 #[test]
 fn wrap_is_toroidal() {
     let r = Raster::filled(4, 4, Color::TRANSPARENT);
-    assert_eq!(r.index(-1, 0, WrapMode::Wrap), r.index(3, 0, WrapMode::Wrap));
+    assert_eq!(
+        r.index(-1, 0, WrapMode::Wrap),
+        r.index(3, 0, WrapMode::Wrap)
+    );
     assert_eq!(r.index(4, 5, WrapMode::Wrap), r.index(0, 1, WrapMode::Wrap));
 }
 
@@ -41,5 +44,8 @@ fn png_roundtrips_through_bytes() {
     let mut out = vec![0; reader.output_buffer_size()];
     let info = reader.next_frame(&mut out).unwrap();
     let back = Raster::from_rgba8(info.width, info.height, &out[..info.buffer_size()]);
-    assert_eq!(back.get(1, 1, WrapMode::Clamp).unwrap().to_rgba8(), [51, 102, 153, 255]);
+    assert_eq!(
+        back.get(1, 1, WrapMode::Clamp).unwrap().to_rgba8(),
+        [51, 102, 153, 255]
+    );
 }

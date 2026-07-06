@@ -271,7 +271,10 @@ pub fn bind_matrices(rig: &SkinnedRig) -> Vec<Mat4> {
 /// The **inverse-bind** matrix of each bone, in bone order — `inverse(bindWorld)`, the
 /// glTF skin's `inverseBindMatrices`.
 pub fn inverse_bind_matrices(rig: &SkinnedRig) -> Vec<Mat4> {
-    bind_matrices(rig).into_iter().map(|m| m.inverse()).collect()
+    bind_matrices(rig)
+        .into_iter()
+        .map(|m| m.inverse())
+        .collect()
 }
 
 /// The **skinning** matrix of each bone at the given caller/animation values, in bone
