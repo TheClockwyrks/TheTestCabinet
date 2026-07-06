@@ -447,7 +447,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "testing/asset-generation/overview",
-                "testing/asset-generation/binaries",
+                "testing/asset-generation/sprite-binaries",
                 "testing/asset-generation/voxel-binaries",
                 "testing/asset-generation/mesh-binaries",
                 "testing/asset-generation/rigging-walkers",

@@ -1,5 +1,5 @@
 ---
-title: Binaries
+title: Sprite binaries
 ---
 
 An asset-generation run draws through a **drawing binary** on its `PATH` — the
