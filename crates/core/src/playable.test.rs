@@ -9,7 +9,10 @@ use crate::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
 use crate::test_case::MediaKind;
-use crate::validation::{ProofResult, ValidationSummary, VoxelGenResult, VoxelPartResult};
+use crate::validation::{
+    AudioGenResult, MaterialGenResult, MaterialMapResult, ParticleGenResult, ProofResult,
+    UiElementResult, UiGenResult, ValidationSummary, VoxelGenResult, VoxelPartResult,
+};
 
 /// Build a fake implementation directory containing one named build output with
 /// the given files (path within the build → contents).
@@ -208,6 +211,136 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
     assert_eq!(served.body, b"glTF static-mesh-bytes");
     let served = serve_asset_file(dir.path(), "preview.png").expect("preview");
     assert_eq!(served.body, b"\x89PNG static-preview");
+}
+
+#[test]
+fn serve_asset_file_resolves_the_new_asset_families() {
+    // UI kit: per-element PNGs by declared index, plus the `ui.json` manifest.
+    let element = |name: &str, image: &str| UiElementResult {
+        name: name.to_string(),
+        image: image.to_string(),
+        width: 512,
+        height: 320,
+        nine_slice: None,
+        detail: None,
+    };
+    let dir = run_dir_with_validation(
+        ValidationSummary {
+            ui: Some(UiGenResult {
+                elements: vec![
+                    element("panel", "elements/panel.png"),
+                    element("button", "elements/button.png"),
+                ],
+                detail: None,
+            }),
+            ..Default::default()
+        },
+        &[
+            ("elements/panel.png", b"\x89PNG panel"),
+            ("elements/button.png", b"\x89PNG button"),
+            ("ui.json", b"{\"elements\":[]}"),
+        ],
+    );
+    assert_eq!(
+        serve_asset_file(dir.path(), "element-1.png").expect("element").body,
+        b"\x89PNG button"
+    );
+    let served = serve_asset_file(dir.path(), "ui.json").expect("ui.json");
+    assert_eq!(served.content_type, "application/json");
+    assert_eq!(served.body, b"{\"elements\":[]}");
+    // An out-of-range element index is a miss (404), not a panic.
+    assert!(serve_asset_file(dir.path(), "element-9.png").is_none());
+
+    // Material: each map by its declared index, plus `material.json`.
+    let dir = run_dir_with_validation(
+        ValidationSummary {
+            material: Some(MaterialGenResult {
+                maps: vec![
+                    MaterialMapResult {
+                        name: "base-color".to_string(),
+                        image: "maps/base-color.png".to_string(),
+                        color_space: "srgb".to_string(),
+                        detail: None,
+                    },
+                    MaterialMapResult {
+                        name: "normal".to_string(),
+                        image: "maps/normal.png".to_string(),
+                        color_space: "linear".to_string(),
+                        detail: None,
+                    },
+                ],
+                size: 512,
+                tiling: Some(1.0),
+                detail: None,
+            }),
+            ..Default::default()
+        },
+        &[
+            ("maps/base-color.png", b"\x89PNG base"),
+            ("maps/normal.png", b"\x89PNG norm"),
+        ],
+    );
+    assert_eq!(
+        serve_asset_file(dir.path(), "map-0.png").expect("map").body,
+        b"\x89PNG base"
+    );
+    assert_eq!(
+        serve_asset_file(dir.path(), "map-1.png").expect("map").body,
+        b"\x89PNG norm"
+    );
+
+    // Particle: the authored `system.json` and the preview GIF (new content type).
+    let dir = run_dir_with_validation(
+        ValidationSummary {
+            particle: Some(ParticleGenResult {
+                system: "system.json".to_string(),
+                preview: Some("effect.gif".to_string()),
+                emitter_count: 2,
+                detail: None,
+            }),
+            ..Default::default()
+        },
+        &[
+            ("system.json", b"{\"emitters\":[]}"),
+            ("effect.gif", b"GIF89a-bytes"),
+        ],
+    );
+    let served = serve_asset_file(dir.path(), "system.json").expect("system");
+    assert_eq!(served.content_type, "application/json");
+    let served = serve_asset_file(dir.path(), "preview.gif").expect("gif");
+    assert_eq!(served.content_type, "image/gif");
+    assert_eq!(served.body, b"GIF89a-bytes");
+
+    // Audio: `clip.wav`, the music-only `score.mid`, and the waveform preview PNG.
+    let dir = run_dir_with_validation(
+        ValidationSummary {
+            audio: Some(AudioGenResult {
+                clip: "clip.wav".to_string(),
+                midi: Some("clip.mid".to_string()),
+                preview: Some("waveform.png".to_string()),
+                sample_rate: 44100,
+                channels: 2,
+                duration_ms: 1200,
+                detail: None,
+            }),
+            ..Default::default()
+        },
+        &[
+            ("clip.wav", b"RIFF-wav-bytes"),
+            ("clip.mid", b"MThd-midi-bytes"),
+            ("waveform.png", b"\x89PNG wave"),
+        ],
+    );
+    let served = serve_asset_file(dir.path(), "clip.wav").expect("wav");
+    assert_eq!(served.content_type, "audio/wav");
+    assert_eq!(served.body, b"RIFF-wav-bytes");
+    let served = serve_asset_file(dir.path(), "score.mid").expect("mid");
+    assert_eq!(served.content_type, "audio/midi");
+    assert_eq!(served.body, b"MThd-midi-bytes");
+    assert_eq!(
+        serve_asset_file(dir.path(), "preview.png").expect("preview").body,
+        b"\x89PNG wave"
+    );
 }
 
 #[test]

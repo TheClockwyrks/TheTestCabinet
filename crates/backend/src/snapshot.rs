@@ -440,6 +440,51 @@ impl SnapshotBuilder {
                     ]
                 })
                 .collect()
+        } else if let Some(ui) = run.record.validation.ui.as_ref() {
+            // A UI run publishes its flattened per-element PNG(s) — a single-image
+            // case under the bare `element.png`, a kit suffixing each element with
+            // `-<index>` — plus the `ui.json` manifest. Matches
+            // `playable::serve_asset_file` and the driver mirror.
+            let is_kit = ui.elements.len() > 1;
+            std::iter::once("ui.json".to_string())
+                .chain(ui.elements.iter().enumerate().map(|(index, _)| {
+                    let suffix = if is_kit {
+                        format!("-{index}")
+                    } else {
+                        String::new()
+                    };
+                    format!("element{suffix}.png")
+                }))
+                .collect()
+        } else if let Some(material) = run.record.validation.material.as_ref() {
+            // Each map by its declared index (always suffixed) plus `material.json`.
+            std::iter::once("material.json".to_string())
+                .chain(
+                    material
+                        .maps
+                        .iter()
+                        .enumerate()
+                        .map(|(index, _)| format!("map-{index}.png")),
+                )
+                .collect()
+        } else if let Some(particle) = run.record.validation.particle.as_ref() {
+            // The authored `system.json` plus, when rendered, the preview GIF.
+            let mut files = vec!["system.json".to_string()];
+            if particle.preview.is_some() {
+                files.push("preview.gif".to_string());
+            }
+            files
+        } else if let Some(audio) = run.record.validation.audio.as_ref() {
+            // The rendered `clip.wav`, the portable `score.mid` (music), and the
+            // waveform/spectrogram preview PNG.
+            let mut files = vec!["clip.wav".to_string()];
+            if audio.midi.is_some() {
+                files.push("score.mid".to_string());
+            }
+            if audio.preview.is_some() {
+                files.push("preview.png".to_string());
+            }
+            files
         } else if run.record.validation.adversarial.is_some() {
             vec!["replay.json".to_string()]
         } else {
@@ -544,6 +589,9 @@ fn media_content_type(extension: &str) -> &'static str {
         "gif" => "image/gif",
         "mp4" => "video/mp4",
         "json" => "application/json",
+        "glb" => "model/gltf-binary",
+        "wav" => "audio/wav",
+        "mid" | "midi" => "audio/midi",
         _ => "application/octet-stream",
     }
 }
