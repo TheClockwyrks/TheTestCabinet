@@ -622,10 +622,7 @@ fn voxel_variant_rejects_a_zero_extent() {
     let err = catalog
         .resolve("sprite", "v1.0.0")
         .expect_err("a zero-extent variant volume is rejected");
-    assert!(
-        format!("{err}").contains("greater than zero"),
-        "got: {err}"
-    );
+    assert!(format!("{err}").contains("greater than zero"), "got: {err}");
 }
 
 #[test]

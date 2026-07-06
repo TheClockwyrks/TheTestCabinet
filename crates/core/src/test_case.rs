@@ -4095,9 +4095,7 @@ impl TestCaseCatalog {
             // and background exactly as the common `[voxel]` is validated above.
             let voxel = match &variant.voxel {
                 Some(voxel) => {
-                    if !(test_type == TestType::AssetGeneration
-                        && manifest.asset_kind.is_voxel())
-                    {
+                    if !(test_type == TestType::AssetGeneration && manifest.asset_kind.is_voxel()) {
                         return Err(invalid(format!(
                             "variant `{}` declares a [voxel] volume, but only a voxel \
                              asset-generation case may override the volume per variant",
