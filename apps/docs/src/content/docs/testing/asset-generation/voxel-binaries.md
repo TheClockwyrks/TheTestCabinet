@@ -5,7 +5,7 @@ title: Voxel binaries
 A [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs)
 asset-generation run sculpts through a **voxel binary** on its `PATH` — the only
 channel for placing a voxel, the 3D counterpart of the
-[drawing binaries](/testing/asset-generation/binaries/). There are two, both built
+[drawing binaries](/testing/asset-generation/sprite-binaries/). There are two, both built
 on the shared `model-core` library:
 
 - **`voxel`** — for a [static model](/testing/asset-generation/manifests/#voxel-cases)
@@ -77,7 +77,7 @@ so the recorded log produces an exact, order-only volume.
 ## How a call records; rendering is on request
 
 Each operation **only appends itself to the run's operation log** — that is all a
-sculpting call does. Unlike the 2D [drawing binaries](/testing/asset-generation/binaries/),
+sculpting call does. Unlike the 2D [drawing binaries](/testing/asset-generation/sprite-binaries/),
 the voxel tools do **not** re-render after every call: meshing a volume and
 rasterizing it through the `wgpu`+Mesa renderer is far more expensive than stamping
 2D pixels, and a voxel model takes many operations, so rendering is a separate,
@@ -122,7 +122,7 @@ not something the binary produces.
 When a run is being **watched** — driven by a [driver](/components/driver/overview/)
 or the [Tauri app](/components/tauri/overview/) rather than a plain `tcab run` —
 the model's sculpting can be streamed to the viewer in real time, exactly as for
-the [drawing binaries](/testing/asset-generation/binaries/#live-preview): the
+the [drawing binaries](/testing/asset-generation/sprite-binaries/#live-preview): the
 orchestrator adds a `live` block to the seeded config, and **when the model runs
 `render`** the binary connects back to the run host and streams a one-line JSON header
 (`{ token, frame, operationCount, operation, length, meshLength }`) followed by the

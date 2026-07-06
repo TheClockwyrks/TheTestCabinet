@@ -31,7 +31,7 @@ the in-process sinks for backend-streaming ones:
   core.
 - It streams the run's live [harness events](/components/core/events/) (and, for an
   [asset-generation](/testing/asset-generation/overview/) run, the live drawing
-  [preview frames](/testing/asset-generation/binaries/#live-preview)) to the backend
+  [preview frames](/testing/asset-generation/sprite-binaries/#live-preview)) to the backend
   as they happen, which the backend's relay fans out to the watching console.
 - It produces the same [run record](/components/core/run-records/) a local run
   would and reports it with the terminal status; the backend persists it using the

@@ -38,7 +38,7 @@ in-tree path, and the built-in orchestrators use exactly the same machinery as a
 custom one.
 
 The built-in orchestrators live under `orchestrators/<slug>/` in the repo and are
-catalogued under [Orchestrators](/orchestrators/). Today there are two:
+catalogued under [Orchestrators](/orchestrators/overview/). Today there are two:
 
 - **`one-shot`** — a single harness session driven to completion. This is the
   default, and it reproduces the original single-session behaviour exactly.

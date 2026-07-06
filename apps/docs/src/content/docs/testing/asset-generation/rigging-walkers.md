@@ -171,7 +171,7 @@ Two consequences for the design:
 
 Legs carry weight, and weight means the motion is **not** a constant-speed slide
 between poses. Author the joint tracks as **F-curves**
-([Manifests](/testing/asset-generation/manifests/#f-curves-the-curve-model)), not
+([The voxel binaries](/testing/asset-generation/voxel-binaries/#f-curves)), not
 linear interpolation — linear keys read as weightless, mechanical flailing however
 correct the poses are.
 

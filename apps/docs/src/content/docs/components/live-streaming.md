@@ -4,13 +4,13 @@ title: Live Streaming
 
 Some of the work a run does happens **inside the run container** — most visibly
 the drawing an [asset-generation](/testing/asset-generation/overview/) run does
-through the [`draw` binary](/testing/asset-generation/binaries/). When a person is
+through the [`draw` binary](/testing/asset-generation/sprite-binaries/). When a person is
 watching that run, we want to show them the progress *as it happens*, not just the
 finished result. This page describes the general pattern The Test Cabinet uses to
 stream live data out of a sandboxed in-container process, back to the host
 [runner](/components/architecture/#runners-and-reporters), and onward to a viewer —
 and how to add a new instance of it. The asset-generation
-[live preview](/testing/asset-generation/binaries/#live-preview) is the first.
+[live preview](/testing/asset-generation/sprite-binaries/#live-preview) is the first.
 
 ## Why a dedicated channel
 
@@ -122,5 +122,5 @@ adding a new transport:
    stream as a tagged line; the desktop shell emits it on a per-run Tauri event.
 4. **In the UI**, add the subscription handler and render the live view.
 
-The asset-generation [live preview](/testing/asset-generation/binaries/#live-preview)
+The asset-generation [live preview](/testing/asset-generation/sprite-binaries/#live-preview)
 is a worked example of every step.

@@ -35,10 +35,10 @@ example by deleting files.
   runtime, a pod `hostAlias` to the driver pod's own IP under the Kubernetes
   runtime — so the in-container drawing or
   [voxel](/testing/asset-generation/voxel-binaries/#live-preview) binary can stream
-  its [live preview](/testing/asset-generation/binaries/#live-preview) back to a
+  its [live preview](/testing/asset-generation/sprite-binaries/#live-preview) back to a
   listener on the run host. No host mapping is added for an unwatched run.
 - A run executes in one of **five run-container images**, selected by the test
-  case's [test type](/testing/) and — for asset-generation — its
+  case's [test type](/testing/overview/) and — for asset-generation — its
   [`asset_kind`](/testing/asset-generation/manifests/): an
   [end-to-end](/testing/end-to-end/overview/) run uses the **base image**; a single-sprite
   [asset-generation](/testing/asset-generation/overview/) run

@@ -78,7 +78,7 @@ into the run), not to `tcab` itself.
 ## 3. The run-container image
 
 Every run executes inside a run-container image selected by the test case's
-[test type](/testing/) and — for asset-generation — its
+[test type](/testing/overview/) and — for asset-generation — its
 [`asset_kind`](/testing/asset-generation/manifests/): an
 [end-to-end](/testing/end-to-end/overview/) run uses the **base image**, a single-sprite
 [asset-generation](/testing/asset-generation/overview/) run uses the **sprite

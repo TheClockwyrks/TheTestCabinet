@@ -34,7 +34,7 @@ so a caller always sees what the run is currently doing.
 This page is the authoritative definition of the normalized event types. How a
 specific harness's raw output is mapped onto them — the structured stream it
 emits, its tool names, and its quirks — is documented per harness under
-[Harnesses](/harnesses/), and the cross-cutting translation contract every
+[Harnesses](/harnesses/overview/), and the cross-cutting translation contract every
 harness shares lives in the [agent harness
 layer](/components/core/harnesses/#event-reporting).
 
@@ -250,4 +250,4 @@ fallback for those whose format is not yet modeled, and the standard handling of
 standard error and non-zero exits — are the cross-cutting concern of the [agent
 harness layer](/components/core/harnesses/#event-reporting). The exact mapping
 for each harness — its raw stream, tool names, and quirks — lives on that
-harness's **Events** page under [Harnesses](/harnesses/).
+harness's **Events** page under [Harnesses](/harnesses/overview/).
