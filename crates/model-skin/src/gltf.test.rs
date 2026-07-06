@@ -71,8 +71,8 @@ fn skinned_glb_round_trips_mesh_and_skin() {
     assert_eq!(skin.weights.len(), 3);
     assert_eq!(skin.joints[1], [0, 1, 0, 0]);
     for (got, want) in skin.weights.iter().zip(skins.iter()) {
-        for k in 0..4 {
-            assert!((got[k] - want.weights[k]).abs() < 1.0e-6);
+        for (g, w) in got.iter().zip(want.weights.iter()) {
+            assert!((g - w).abs() < 1.0e-6);
         }
     }
 }

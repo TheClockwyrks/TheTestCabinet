@@ -38,7 +38,7 @@
 # image at run time (see `harnesses/README.md`).
 #
 # Usage:
-#   ./build.sh                # build the base, sprite, sprite-sheet, voxel, voxel-animation, mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, and performance images (thirteen total)
+#   ./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
 #
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type and asset kind from its own registry

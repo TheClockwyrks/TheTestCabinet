@@ -5,9 +5,10 @@ executes in an isolated container seeded with a fresh git repository, so a model
 cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
-There are **twenty-three images**, selected by a run's
+There is **one image per run kind**, selected by a run's
 [test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
-its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
+its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md).
+The full set is whatever [`build.sh`](#building) builds; the notable ones:
 
 - the **base** image, which every
   [end-to-end](../apps/docs/src/content/docs/testing/end-to-end/) run executes
@@ -123,7 +124,7 @@ containers/
 ├── performance/                # the base image plus the wasm toolchain + Lattice tooling
 │   ├── Dockerfile              #   (lattice CLI, reference engines, training, engine buildkit)
 │   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
-└── build.sh                    # builds (and optionally pushes) all twenty-three images
+└── build.sh                    # builds (and optionally pushes) all images
 ```
 
 ## Base image
@@ -353,17 +354,12 @@ drifted from the repository's workspace dependencies fails the image build.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build all twenty-three images (the base, every asset-generation kind, adversarial, and performance)
+./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
 DOCKER=podman ./build.sh  # build with Podman instead
 ```
 
-Build-only mode tags `test-cabinet-base:latest`, `test-cabinet-sprite:latest`,
-`test-cabinet-sprite-sheet:latest`, `test-cabinet-voxel:latest`,
-`test-cabinet-voxel-animation:latest`, `test-cabinet-mc:latest`,
-`test-cabinet-mc-animation:latest`, `test-cabinet-sn:latest`,
-`test-cabinet-sn-animation:latest`, `test-cabinet-dc:latest`,
-`test-cabinet-dc-animation:latest`, `test-cabinet-adversarial:latest`, and
-`test-cabinet-performance:latest` locally. Those are exactly the names a runner
+Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
+directory alongside this README, plus the base). Those are exactly the names a runner
 resolves (by test type and asset
 kind) when its `TCAB_CONTAINER_REGISTRY` is set to an empty string, so a
 locally-built image is used for offline development without pulling anything.
@@ -398,7 +394,7 @@ only promises an environment that honors the following contract:
 ## Status / validation
 
 This definition is authored but **not yet built or validated** — that requires a
-Docker host. When validating on Linux, build all twenty-three images (`./build.sh`) and
+Docker host. When validating on Linux, build all images (`./build.sh`) and
 confirm a container from each runs and keeps alive, that `draw` is on `PATH` in
 the sprite image and `draw-sheet` is on `PATH` in the sprite-sheet image, that
 each voxel-family binary (`voxel`, `voxel-anim`, `mc`, `mc-anim`, `sn`, `sn-anim`,
