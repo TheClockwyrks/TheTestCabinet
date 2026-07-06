@@ -129,7 +129,7 @@
           "type": ["string", "null"]
         },
         "maxDurationMs": {
-          "description": "Cap on the rendered clip's length in milliseconds (at most 5000).",
+          "description": "Cap on the rendered clip's length in milliseconds.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
