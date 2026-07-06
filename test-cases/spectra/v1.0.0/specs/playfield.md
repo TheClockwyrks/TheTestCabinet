@@ -9,10 +9,12 @@ and sizes are in the logical-pixel coordinate system defined in
 
 Everything that moves — the player ship, the drones, and every bullet — lives in
 the **play field**, the region `y` in `[64, 656]` spanning the full width
-`x` in `[0, 1280]`. The starfield is drawn behind it. The HUD strips above
-(`y` in `[0, 64]`) and below (`y` in `[656, 720]`) are never overlapped by play.
-A drone diving to the bottom turns back before `y = 656` (see Dives in
-`specs/enemies.md`).
+`x` in `[0, 1280]`. The starfield is drawn behind it. The HUD strips above (`y` in `[0, 64]`) and
+below (`y` in `[656, 720]`) are reserved for the HUD and are never overlapped by
+play, other than a drone crossing a strip purely in transit — a diving drone
+wrapping down through the bottom to reappear from the top, or a drone flying in
+from above at the start of a wave. The player ship, the formation, and bullets
+all stay within `[64, 656]` (see Dives in `specs/enemies.md`).
 
 ## The player ship
 
