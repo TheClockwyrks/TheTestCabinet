@@ -85,8 +85,8 @@ spawn on a wall, on the snake, or on an obstacle.
 
 - The placement must remain correct and performant even when very few valid
   cells remain — for example, when the snake has grown to fill most of the
-  board. Do not rely on rejection-sampling a random cell forever; when the board
-  is nearly full, choose uniformly among the cells that are actually free.
+  board, still selecting a uniformly random valid cell without noticeable
+  delay.
 - **First pellet.** The first pellet of a round spawns at a valid cell *after*
   the snake has been placed at its starting position, so it never overlaps the
   initial body.
