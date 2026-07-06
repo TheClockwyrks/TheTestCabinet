@@ -665,7 +665,7 @@ asset_kind = "sfx-sample"
 [audio]
 sample_rate     = 44100      # output sample rate in Hz (required)
 channels        = "stereo"   # "mono" | "stereo" (required)
-max_duration_ms = 5000       # cap on the rendered clip's length (required, ≤ 5000)
+max_duration_ms = 5000       # cap on the rendered clip's length in ms (required, positive)
 sample_pack     = "naval-weapons@1"  # for sfx-sample: the baked sample pack (name@version)
                              # instrument_bank = "orchestral@1"  # for music: the baked instrument bank
 
@@ -680,7 +680,7 @@ actions = "actions.json"     # the recorded op record; the rendered clip.wav (an
 ```
 
 - The **`[audio]`** table fixes the output format: its `sample_rate`, `channels`,
-  and `max_duration_ms` (at most 5000). A **`sfx-sample`** case additionally names
+  and `max_duration_ms` (any positive clip-length cap). A **`sfx-sample`** case additionally names
   the **`sample_pack`** it mixes over, and a **`music`** case names the
   **`instrument_bank`** it plays — each a `name@version` identifying the palette
   **baked into the run-container image**, never a path in this repo (see [the sample

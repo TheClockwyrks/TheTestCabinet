@@ -24,15 +24,15 @@ impl Channels {
 }
 
 /// The fixed parameters every render threads through the DSP: the output sample
-/// rate, channel layout, the hard length cap (`max_duration_ms`, at most 5000), and
-/// the fixed synthesis seed that makes the noisy voices reproducible.
+/// rate, channel layout, the length cap (`max_duration_ms`), and the fixed
+/// synthesis seed that makes the noisy voices reproducible.
 #[derive(Debug, Clone, Copy)]
 pub struct RenderParams {
     /// Output sample rate in Hz.
     pub sample_rate: u32,
     /// Output channel layout.
     pub channels: Channels,
-    /// The hard cap on the rendered clip's length in milliseconds (at most 5000).
+    /// The cap on the rendered clip's length in milliseconds.
     pub max_duration_ms: u32,
     /// The fixed seed the synthesis PRNG is seeded from, so noise is reproducible.
     pub seed: u64,

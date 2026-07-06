@@ -1,7 +1,7 @@
 //! The shared DSP, mixer, offline render engine, encoders, and preview renderers
 //! behind the `sfx-synth`, `sfx-sample`, and `music` binaries.
 //!
-//! An audio asset-generation run authors a short clip (at most five seconds) by
+//! An audio asset-generation run authors a clip by
 //! recording operations to an op log; rendering is a separate, on-request step that
 //! mixes the recorded voices, samples, and effects down to interleaved PCM, encodes
 //! a `.wav` (and, for `music`, a `.mid`), and draws a preview PNG (waveform +
