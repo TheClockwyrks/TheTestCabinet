@@ -96,43 +96,18 @@ Task-oriented walkthroughs:
 
 ## Working in this repo (skills)
 
-When working on the tasks below, read the matching skill in
-[`.claude/skills/`](.claude/skills/) first — these define the repo's policies and
-authoring conventions:
-
-- **Writing code:** [`coding`](.claude/skills/coding/SKILL.md).
-- **Creating/revising a test case** (pick by [test type](apps/docs/src/content/docs/testing/)):
-  [`authoring-an-end-to-end-test-case`](.claude/skills/authoring-an-end-to-end-test-case/SKILL.md)
-  for a playable game, or — for an asset-generation case, picked by its
-  [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests.md) —
-  [`authoring-an-asset-generation-test-case`](.claude/skills/authoring-an-asset-generation-test-case/SKILL.md)
-  for a 2D sprite or sprite sheet drawn with the `draw`/`draw-sheet` tool,
-  [`authoring-a-voxel-model-test-case`](.claude/skills/authoring-a-voxel-model-test-case/SKILL.md)
-  for a static 3D voxel (cube) model,
-  [`authoring-a-voxel-animation-test-case`](.claude/skills/authoring-a-voxel-animation-test-case/SKILL.md)
-  for a rigged, animated 3D voxel (cube) model,
-  [`authoring-a-mesh-model-test-case`](.claude/skills/authoring-a-mesh-model-test-case/SKILL.md)
-  for a static meshed model (the `mc-model`/`sn-model`/`dc-model` SDF/CSG kinds), or
-  [`authoring-a-mesh-animation-test-case`](.claude/skills/authoring-a-mesh-animation-test-case/SKILL.md)
-  for a rigged, animated meshed model (the `mc-animation`/`sn-animation`/`dc-animation`
-  kinds).
-- **Adding a variant to an existing case:**
-  [`adding-an-end-to-end-variant`](.claude/skills/adding-an-end-to-end-variant/SKILL.md)
-  (a playable mode), or — for an asset-generation case, picked by its
-  [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests.md) —
-  [`adding-a-sprite-variant`](.claude/skills/adding-a-sprite-variant/SKILL.md)
-  (a single-sprite case),
-  [`adding-a-sprite-sheet-variant`](.claude/skills/adding-a-sprite-sheet-variant/SKILL.md)
-  (a sprite-sheet case),
-  [`adding-a-voxel-model-variant`](.claude/skills/adding-a-voxel-model-variant/SKILL.md)
-  (a static-voxel case),
-  [`adding-a-voxel-animation-variant`](.claude/skills/adding-a-voxel-animation-variant/SKILL.md)
-  (a voxel-animation case),
-  [`adding-a-mesh-model-variant`](.claude/skills/adding-a-mesh-model-variant/SKILL.md)
-  (a static meshed `mc-model`/`sn-model`/`dc-model` case), or
-  [`adding-a-mesh-animation-variant`](.claude/skills/adding-a-mesh-animation-variant/SKILL.md)
-  (a meshed `mc-animation`/`sn-animation`/`dc-animation` case); each is a brief
-  variation against the shared target.
+- **Writing code:** read the [`coding`](.claude/skills/coding/SKILL.md) skill
+  first — it defines the repo's code policies.
+- **Authoring or revising a test case, or adding a variant:** the procedures now
+  live in the documentation site (so they serve developers browsing the Starlight
+  site *and* agents), not in per-task skills. Read the
+  [`authoring-test-cases`](.claude/skills/authoring-test-cases/SKILL.md) skill,
+  which points to the right
+  [quickstart](apps/docs/src/content/docs/quickstarts/) and
+  [user guide](apps/docs/src/content/docs/guides/) for the test type and
+  [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests.md)
+  you are working on. The [`testing/`](apps/docs/src/content/docs/testing/) pages
+  remain authoritative for what each manifest field means.
 
 ## Definitions & assets
 

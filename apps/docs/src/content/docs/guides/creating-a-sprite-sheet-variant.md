@@ -15,8 +15,7 @@ every result is attributed to a specific build.
 This guide is the full procedure for adding a variant to an **existing**
 sprite-sheet asset-generation version. The authoritative rules live in
 [Manifests](/testing/asset-generation/manifests/) — including the `[sheet]` rules;
-read them first. While doing the work, follow the `adding-a-sprite-sheet-variant`
-skill.
+read them first.
 
 For a **single-sprite** case (`asset_kind = "sprite"`) — one sprite on the whole
 canvas, with no `[sheet]` table — see
@@ -148,5 +147,9 @@ tcab prompt --test-case <slug> --version <version> --variant <new-variant>
 ```
 
 Read the seeded output to confirm the new variant's brief is self-contained and
-leaves the `[sheet]` frames and sequences intact. Then exercise it with
-[Run a Test Case](/quickstarts/run-a-test-case/).
+leaves the `[sheet]` frames and sequences intact, and lint the specs with
+`npm run lint:specs` (markdownlint + cspell; see [Building](/development/building/)).
+Then exercise it with [Run a Test Case](/quickstarts/run-a-test-case/) — a backend
+that already holds this version keeps serving the old definition until you **force a
+re-ingest**, so re-ingest the case after adding the variant (see
+[Running the Local Service Stack](/guides/running-the-local-service-stack/)).

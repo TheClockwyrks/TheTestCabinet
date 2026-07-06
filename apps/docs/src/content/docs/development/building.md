@@ -156,6 +156,18 @@ npm run build
 Other root scripts delegate to each workspace that defines them: `npm run dev`,
 `npm run lint`, `npm run test`, and `npm run typecheck`.
 
+Lint the authored **test-case specs** — the Markdown, and the spelling of the
+prose, TOML, and HTML under `test-cases/**` a case ships to a model — with:
+
+```sh
+npm run lint:specs
+```
+
+It runs `markdownlint-cli2` and `cspell` over that tree. If `cspell` flags a
+legitimate domain term, add it to `.cspell/project-words.txt` rather than
+rewording good prose to dodge the dictionary. This is the linter the test-case
+authoring and variant guides refer to under **Validate your work**.
+
 ## Generating the data contract
 
 The run-record (and arena/job-API/backend) data contract has a single source of

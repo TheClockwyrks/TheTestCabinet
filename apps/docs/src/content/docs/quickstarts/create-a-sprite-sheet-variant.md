@@ -6,8 +6,7 @@ Add a new [variant](/testing/end-to-end/overview/#variants) to an existing
 sprite-sheet [asset-generation](/testing/asset-generation/overview/) version
 (`asset_kind = "sprite-sheet"` — a `[sheet]` of frames, each a separate file). The
 full procedure is in
-[Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/);
-the `adding-a-sprite-sheet-variant` skill is the hands-on guide to follow.
+[Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/).
 
 The key constraint: an asset-generation case declares **no references at all**
 (resolution rejects any, common or per-variant) and **forbids per-variant

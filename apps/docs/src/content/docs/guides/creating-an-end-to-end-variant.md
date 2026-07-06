@@ -13,10 +13,10 @@ attributed to a specific build.
 This guide is the full procedure for adding a variant to an **existing**
 end-to-end version. The authoritative rules live in
 [End-to-End Tests](/testing/end-to-end/overview/) (see its *Variants* and
-*Self-Contained Specifications* sections); read them first. While doing the work,
-follow the `adding-an-end-to-end-variant` skill. The worked example is the
-**Gyre** variant of the `carom` case, in which the obstacles oscillate and rotate
-— read the existing `frenzy`, `multi`, and `gyre` mode specs alongside this guide.
+*Self-Contained Specifications* sections); read them first. The worked example is
+the **Gyre** variant of the `carom` case, in which the obstacles oscillate and
+rotate — read the existing `frenzy`, `multi`, and `gyre` mode specs alongside this
+guide.
 
 To author a brand-new case rather than add a mode to one, see
 [Authoring an End-to-End Test Case](/guides/authoring-an-end-to-end-test-case/).
@@ -150,7 +150,13 @@ Rules enforced at resolution:
   slug must not be declared both commonly and by a variant.
 - A variant's own `[[domain]]` tables are **additional** to the case's common
   domains; a domain id must be unique across the common domains and this variant's
-  own. A variant's review item may name a common domain or one of its own.
+  own. A variant's review item may name a common domain or one of its own, and may
+  pair an expected `reference` view with a submitted `proof` (each must resolve for
+  this variant).
+- `[[proof]]` entries are additive on the common proofs — declare one only if this
+  variant asks for evidence a standard mode doesn't. A proof `id` must be unique
+  within the variant's effective set, and the seeded mode spec must instruct the
+  build to write the file at that same `dest`.
 - Any **checked** view (declared under `[[check]]`) must be supplied by *every*
   variant — for `carom`, every variant provides its own `title`, which is what the
   `title` check baselines against.
@@ -169,5 +175,9 @@ tcab prompt --test-case <slug> --version <version> --variant <new-variant>
 ```
 
 Read the seeded output to confirm the new variant's set is self-contained and
-that the menu mockup renders. Then exercise it with
-[Run a Test Case](/quickstarts/run-a-test-case/).
+that the menu mockup renders, and lint the specs with `npm run lint:specs`
+(markdownlint + cspell; see [Building](/development/building/)). Then exercise it
+with [Run a Test Case](/quickstarts/run-a-test-case/) — a backend that already
+holds this version keeps serving the old definition until you **force a
+re-ingest**, so re-ingest the case after adding the variant (see
+[Running the Local Service Stack](/guides/running-the-local-service-stack/)).
