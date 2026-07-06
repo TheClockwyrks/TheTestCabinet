@@ -1,0 +1,7 @@
+# The default (and only) variant for this asset-generation case. Listed first in
+# the case manifest's `variants`, so it is the default. Every path here resolves
+# against the version folder, exactly like the main manifest. It adds no specs of
+# its own: the model builds toward the common brief.
+slug = "base"
+name = "Base"
+spec = []

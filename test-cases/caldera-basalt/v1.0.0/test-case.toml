@@ -1,0 +1,111 @@
+slug = "caldera-basalt"
+name = "Caldera Basalt"
+difficulty = "medium"
+tags = ["asset-generation", "material", "pbr", "3d"]
+summary = """
+Author the Caldera basalt: a tileable, seamless PBR material of weathered \
+volcanic rock — near-black cooled lava cut by hairline ashen and faintly \
+glowing fissures — that dresses the terraced hex terrain of the Caldera \
+tower-defense case by triplanar projection, built one recorded operation at a \
+time with the `texture` and `pbr` tools."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+asset_kind = "material"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The maps this material carries and how they are baked. A material case declares
+# a [material] table in place of [canvas]/[voxel], and no [model]. `size` is a
+# power of two; `tile` keeps every brush/gradient/filter wrapping across the map
+# edges so the material tiles without a seam (required for triplanar application).
+[material]
+size = 1024
+tile = true
+maps = ["base-color", "normal", "roughness", "ao"]
+# The channels this material emits. "base-color" is required; the rest are a
+# subset of normal | roughness | metallic | ao | emissive. No "metallic" — basalt
+# is a dielectric — and no "emissive" (the faint ember is painted into base-color,
+# not self-illuminated). "height" is an authoring aid the relief maps are baked
+# FROM, not an emitted map, so it is deliberately absent here.
+background = "transparent"
+
+# The tools. `binary` names the PRIMARY painter (`texture`); the companion `pbr`
+# binary — bake normal/AO from height, set uniform scalar maps, assemble
+# material.json, render the lit 3D preview — ships in the SAME `material`
+# run-container image and is on PATH. The brief directs the model to both.
+# `preview` is a {map} template: one preview per declared map, each shown
+# 2x2-tiled so seams (or their absence) are immediately visible.
+[tool]
+binary = "texture"
+preview = "maps/{map}.png"
+
+# The recorded op log — a SINGLE interleaved record (both binaries share one
+# stream; every op carries its own --map). NOT a {map} template. Core emits the
+# per-map PNGs (maps/{map}.png) and material.json automatically; neither is
+# manifest-declared.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the emitted maps realize the brief's surface, palette, and tiling \
+scale — weathered near-black basalt cut by ashen, faintly glowing fissures, at \
+the stated ~2 m tile span."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+How cleanly the material tiles, how coherently the relief, roughness, and AO read \
+against the base-color on the lit preview, and how convincingly it dresses a \
+surface as cooled volcanic rock."""
+
+[[review_item]]
+id = "seamless"
+title = "Tiles without a visible seam"
+text = """
+In the 2x2 tiling the base-color and normal show no repeat line, edge join, or \
+hotspot — no fissure or crust patch obviously interrupted at a map edge."""
+weight = 3
+domain = "craft"
+
+[[review_item]]
+id = "maps-coherent"
+title = "Maps describe the same surface"
+text = """
+The normal, roughness, and AO agree with the base-color: the fissures read as \
+recessed (normal), glassier (lower roughness), and occluded (AO) all at once, and \
+the crusted highlights read raised, matte, and unoccluded — one coherent relief."""
+weight = 2
+domain = "craft"
+
+[[review_item]]
+id = "palette"
+title = "On-palette weathered basalt"
+text = """
+The albedo stays within the brief's basalt-black / cooled-fissure / mineral-crust \
+/ ash / faint-ember palette, with no out-of-palette colors, and reads as weathered \
+volcanic rock at the stated tile scale rather than generic grey stone."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "relief"
+title = "Believable basalt relief"
+text = """
+The baked normal and AO carry real mesoscale structure — a hairline fissure \
+network, vesicle pitting, and raised crust lips — legible at the ~2 m tile span, \
+not a flat swatch or uniform noise."""
+weight = 1
+domain = "fidelity"

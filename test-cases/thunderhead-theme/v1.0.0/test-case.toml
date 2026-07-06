@@ -1,0 +1,119 @@
+slug = "thunderhead-theme"
+name = "Thunderhead Theme"
+difficulty = "medium"
+tags = ["asset-generation", "audio", "music", "naval"]
+summary = """
+Compose the Thunderhead battle theme: a short, clean-looping naval-battle cue for \
+the fleet-command game, sequenced note by note as instrument tracks over the \
+gm-lite bank."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+asset_kind = "music"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `gm-lite@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                 # output sample rate in Hz (required)
+channels = "stereo"                 # "mono" | "stereo" (required)
+max_duration_ms = 8000              # cap on the rendered clip's length in ms (required, positive)
+instrument_bank = "gm-lite@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the Thunderhead battle theme the brief \
+describes — a driving, militaristic minor-key naval cue with a steady low pulse, \
+a determined melodic line, and a sense of building tension that loops cleanly."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — coherent tempo and key, sensible instrument \
+choices and voicings from the gm-lite bank, a clean loop, and a balanced stereo \
+mix."""
+
+[[review_item]]
+id = "driving-minor-cue"
+title = "Driving militaristic minor cue"
+text = """
+The clip reads at once as a determined, militaristic naval battle theme in a \
+minor key — tense and forward-driving, not calm, cheerful, or ambient. It carries \
+real momentum from the first bar."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "low-pulse"
+title = "Steady low pulse"
+text = """
+A steady low pulse underpins the whole cue — a driving bass line reinforced by \
+low percussion (or low strings) on the beat — giving the theme its relentless, \
+marching drive."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "melodic-line"
+title = "Determined melodic line"
+text = """
+A clear, determined melodic line — carried by strings and/or brass from the bank \
+— sits over the pulse and states a memorable martial theme, not just held chords."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "building-tension"
+title = "Building tension"
+text = """
+The arrangement builds over its length — instruments or intensity accumulate and \
+the harmony pushes toward the dominant — so the cue feels like it is tightening, \
+not repeating one static bar."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "clean-loop"
+title = "Clean loop"
+text = """
+The end flows back into the start with no click, gap, or jarring harmonic seam — \
+the last bar sets up the return to the opening downbeat so the cue can loop under \
+gameplay indefinitely."""
+weight = 2
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Balanced stereo mix"
+text = """
+The clip is stereo with a deliberate image — the pulse anchored center, the \
+melodic and harmony voices given width — and a clean balance with no clipping or \
+one voice swamping the rest."""
+weight = 1
+domain = "craft"

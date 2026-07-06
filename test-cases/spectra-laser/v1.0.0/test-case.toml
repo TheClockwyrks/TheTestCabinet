@@ -1,0 +1,103 @@
+slug = "spectra-laser"
+name = "Spectra Laser"
+difficulty = "medium"
+tags = ["asset-generation", "audio", "sfx", "synth"]
+summary = """
+Synthesize the Spectra fighter's laser-fire sound: a short, bright arcade-retro \
+"pew" — a fast pitch-down zap built from oscillators alone, one recorded \
+operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+asset_kind = "sfx-synth"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip must land in. A mono 44.1 kHz clip capped at
+# 800 ms keeps every run comparable. An sfx-synth case names NO sample_pack and NO
+# instrument_bank — the sound is built from oscillators and noise alone.
+[audio]
+sample_rate = 44100
+channels = "mono"
+max_duration_ms = 800
+
+# The synthesis tool. `sfx-synth` is the only way to shape sound; it records every
+# operation to the action log and, on the `render` command, mixes the clip down to
+# the .wav and draws the waveform + spectrogram preview. Run `sfx-synth --help` to
+# see the operations; no operations schema is seeded.
+[tool]
+binary = "sfx-synth"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the score is regenerated
+# from. Core emits the rendered clip.wav automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the Spectra fighter's laser fire the brief \
+describes — a short, bright, synthetic "pew" with a fast downward pitch sweep, a \
+crisp attack, and a quick decay, energetic and arcade-retro."""
+
+[[review_item]]
+id = "reads-as-laser"
+title = "Reads as a laser 'pew'"
+text = """
+Played blind, the clip is unmistakably an arcade laser blip — a bright, snappy \
+"pew" a fighter fires — not a hum, a beep, an explosion, or an ambiguous tone. It \
+sounds energetic and playful, the sort of shot a fast formation shooter fires \
+many times a second."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "pitch-sweep"
+title = "Fast downward pitch zap"
+text = """
+The tone sweeps clearly DOWNWARD in pitch over its length — the falling "zap" \
+that gives the shot its motion — starting bright and high and dropping fast, \
+rather than holding a steady pitch or sliding up."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "attack-decay"
+title = "Crisp attack, quick decay"
+text = """
+The sound begins on a sharp transient attack — an instant, percussive onset with \
+no slow fade-in — and decays quickly to silence, the whole event tight and short \
+(well under the 800 ms cap), leaving no long tail or dead air."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "synthetic-character"
+title = "Bright, synthetic, arcade-retro"
+text = """
+The timbre is overtly electronic — clean oscillator tone (with a touch of noise \
+grit on the attack if it helps), bright and retro, reading as synthesized rather \
+than a recorded or organic sound. It fits the neon, chiptune-adjacent voice of \
+Spectra."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "well-formed-mono"
+title = "Mono, in-format, not silent"
+text = """
+The rendered clip is a single mono channel at 44.1 kHz, no longer than the 800 ms \
+cap, and audibly present (not silent or clipped into distortion) — a clean, \
+well-formed asset a game could drop straight in."""
+weight = 1
+domain = "fidelity"

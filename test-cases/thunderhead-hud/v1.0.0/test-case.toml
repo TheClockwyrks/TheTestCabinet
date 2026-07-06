@@ -1,0 +1,137 @@
+slug = "thunderhead-hud"
+name = "Thunderhead HUD"
+difficulty = "medium"
+tags = ["asset-generation", "ui", "2d"]
+summary = """
+Paint the Thunderhead fleet-command HUD kit — a bezelled command panel, a \
+stretchable health-bar frame, a square minimap bezel, a faction crest, and a \
+primary button — as high-resolution interface art with the paint and ui \
+binaries, one recorded operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "ui"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The base element size (also the single-image size) and initial background. A
+# 512x512 transparent canvas keeps every element's declared size relative to a
+# common frame.
+[canvas]
+width = 512
+height = 512
+background = "transparent"
+
+# The drawing tools. `binary` names the PRIMARY painter (`paint`); the companion
+# `ui` binary (crisp shapes, text, nine-slice) ships in the SAME run-container
+# image and is on PATH — the brief directs the model to both. `preview` carries
+# the {element} token: one preview file per element in the kit.
+[tool]
+binary = "paint"
+preview = "elements/{element}.png"
+
+# The recorded op log — a SINGLE interleaved record for the whole kit (each op
+# carries its own --element). NOT an {element} template. Core emits the flattened
+# per-element PNGs and ui.json automatically; those are not declared here.
+[output]
+actions = "actions.json"
+
+# The KIT of named elements. Each is its own document of its own size — the
+# interface analogue of a sprite sheet's frames.
+[ui]
+
+# A bezelled readout plate that stretches to any size: the corners and the top
+# bezel bar stay fixed while the center readout field and edges tile to fit.
+[[ui.element]]
+name = "command-panel"
+width = 512
+height = 512
+nine_slice = { left = 48, right = 48, top = 48, bottom = 48 }
+
+# A wide gauge housing that stretches horizontally: the left cap, right cap, and
+# top/bottom rails stay fixed while the center rail tiles to any bar length.
+[[ui.element]]
+name = "health-bar-frame"
+width = 512
+height = 96
+nine_slice = { left = 40, right = 40, top = 24, bottom = 24 }
+
+# A square radar surround that stretches to any minimap size, its riveted corners
+# held while the framed edges tile.
+[[ui.element]]
+name = "minimap-bezel"
+width = 384
+height = 384
+nine_slice = { left = 48, right = 48, top = 48, bottom = 48 }
+
+# A fixed-size insignia — no nine-slice, it is never stretched.
+[[ui.element]]
+name = "faction-crest"
+width = 256
+height = 256
+
+# A stretchable primary button: the rounded caps stay fixed while the label field
+# stretches to fit any label.
+[[ui.element]]
+name = "button-primary"
+width = 256
+height = 72
+nine_slice = { left = 24, right = 24, top = 20, bottom = 24 }
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the painted kit matches the brief — its industrial riveted-naval \
+role, the exact brass-and-gunmetal palette with its cyan tactical glow and \
+warning amber, and each element's declared form and nine-slice stretch."""
+
+[[review_item]]
+id = "palette"
+title = "Industrial naval palette"
+text = """
+Every element is built from the Thunderhead palette in the brief (gunmetal \
+chassis, brass trim, steel edge, tactical cyan and its deep glow, warning amber, \
+readout black, rivet highlight) with no out-of-palette colors."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "riveted-naval-read"
+title = "Reads as riveted fleet-command hardware"
+text = """
+The kit reads as one cold, industrial naval interface — a bezelled gunmetal \
+chassis with brass trim and rivets, cyan tactical readouts glowing against a \
+dark field — not a generic or clean flat UI. It uses `paint` for the shading, \
+glow, and grime and `ui` for the crisp bezels, rails, and labels."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "nine-slice-holds"
+title = "Panel, gauge, bezel, and button stretch cleanly"
+text = """
+The command-panel, health-bar-frame, minimap-bezel, and button-primary keep \
+their corners, caps, and rivets crisp when stretched to a game size — the \
+nine-slice stretch preview shows no distorted corners or smeared trim, only the \
+center and edges tiling."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "crest-reads"
+title = "Faction crest reads as insignia"
+text = """
+The faction crest reads clearly as a military naval emblem at its 256x256 size — \
+a bold, centered silhouette in brass and gunmetal with a cyan accent, not a soft \
+blob — using both crisp `ui` shapes and `paint` shading."""
+weight = 2
+domain = "fidelity"
