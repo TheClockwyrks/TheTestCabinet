@@ -100,9 +100,9 @@ just count. Apply these multipliers to each archetype's Tier I base stats above:
 
 | Tier | Appears | HP | Damage | Armor |
 | --- | --- | --- | --- | --- |
-| **I** | early in a phase | ×`1.0` | ×`1.0` | as listed |
-| **II** | mid phase | ×`1.8` | ×`1.4` | +25% damage reduction |
-| **III** | late phase | ×`2.8` | ×`1.9` | +40% damage reduction |
+| **I** | at a low kill count | ×`1.0` | ×`1.0` | as listed |
+| **II** | at a mid kill count | ×`1.8` | ×`1.4` | +25% damage reduction |
+| **III** | at a high kill count | ×`2.8` | ×`1.9` | +40% damage reduction |
 
 - **Armor** reduces incoming damage by the listed percentage — **except** from
   **anti-armor** sources, which **ignore armor entirely**: the Marksman's long

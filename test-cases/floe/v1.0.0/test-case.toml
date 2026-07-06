@@ -202,7 +202,7 @@ proof = "hunt"
 [[review_item]]
 id = "bear-navigates"
 title = "The bear navigates the hazards"
-text = "The bear is not immune to the world: it avoids the sliding vehicles and routes AROUND them (a vehicle-choked lane delays and detours it), and if a vehicle catches it, the bear is RESET — knocked out, removed, and re-emerging from the near shore after a delay — NOT merely staggered or dropped down a row. Luring it in front of a plow or dogsled is a real way to open distance; the hunt returns rather than being permanently removed."
+text = "The bear is not immune to the world: it avoids the sliding vehicles and routes AROUND them (a vehicle-choked lane delays and detours it), and if a vehicle catches it, the bear is RESET — knocked out, removed, and re-emerging from the near shore after a delay — NOT merely staggered or dropped down a row. Luring it in front of a moving obstacle is a real way to open distance; the hunt returns rather than being permanently removed."
 weight = 1
 domain = "hunter"
 proof = "hunt"
@@ -233,7 +233,7 @@ proof = "cross"
 [[review_item]]
 id = "ice-hazards"
 title = "The ice band of sliding hazards"
-text = "The ice band is solid lanes the critter hops freely on, each carrying sliding multi-tile vehicles — a 3-tile snow plow and a 2-tile dogsled — moving at set speeds in alternating directions; contact with ANY tile a vehicle covers is death. The critter is safe in the gaps and on the shores/median (from vehicles), but never from the bear."
+text = "The ice band is solid lanes the critter hops freely on, each carrying sliding multi-tile vehicles — a 3-tile snow plow, a 2-tile dogsled, and a 2-tile car — moving at set speeds in alternating directions; contact with ANY tile a vehicle covers is death. The critter is safe in the gaps and on the shores/median (from vehicles), but never from the bear."
 weight = 1
 domain = "crossing"
 reference = "gameplay"
@@ -264,7 +264,7 @@ domain = "crossing"
 [[review_item]]
 id = "uses-assets"
 title = "Renders with the provided sprites"
-text = "The game renders the critter (4-dir hop) and bear (4-dir run, submerged swim, lunge) at 32x32, the 3-tile snow plow and 2-tile dogsled hazards at their wider native sizes, and the floes (the 1-tile pan and the solid 3-tile/4-tile rafts) — all using the provided assets/ sprites with nearest-neighbor scaling — while the strait (water, ice, bays), the HUD, and the splash/wake VFX are drawn in code."
+text = "The game renders the critter (4-dir hop) and bear (4-dir run, submerged swim, lunge) at 32x32, the 3-tile snow plow, 2-tile dogsled, and 2-tile car hazards at their wider native sizes, and the floes (the 1-tile pan and the solid 3-tile/4-tile rafts) — all using the provided assets/ sprites with nearest-neighbor scaling — while the strait (water, ice, bays), the HUD, and the splash/wake VFX are drawn in code."
 weight = 1
 domain = "crossing"
 

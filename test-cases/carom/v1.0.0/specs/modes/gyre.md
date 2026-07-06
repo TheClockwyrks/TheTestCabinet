@@ -36,11 +36,11 @@ in the HUD (see `specs/flow.md`) during a Gyre match is `GYRE`.
 
 ## Moving, rotating obstacles
 
-This section **overrides** the static-obstacle statements for this mode: the
-"Obstacles do not move in this version" note in `specs/playfield.md`, the
-axis-aligned obstacle treatment in `specs/physics.md`, and the "moving obstacles
-are out of scope" note in `specs/flow.md`. For the Gyre mode, the obstacles are
-live. Everything else in those files still applies unchanged.
+For the Gyre mode, the obstacles are **live**. `specs/playfield.md` and
+`specs/flow.md` already leave obstacle motion to the mode spec; this section
+supplies that motion, and it **overrides** the axis-aligned obstacle collision
+treatment in `specs/physics.md` (the obstacles rotate, so the ball reflects off
+oriented faces). Everything else in those files still applies unchanged.
 
 Keep the two obstacles from `specs/playfield.md` — each a rounded bar **20 wide
 x 140 tall**, with **base centers** at `A = (490, 220)` and `B = (790, 500)`. In
