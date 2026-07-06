@@ -32,35 +32,27 @@ cross-reference each other by name — treat them as one specification.
 
 ## Build requirements
 
-Deliver a complete, polished, playable game, not a tech demo. It must:
+Deliver a complete, polished, playable game, not a tech demo. The **hard
+requirements** — real graphics drawn in code (no art files or runtime fetches),
+no backend or credentials, the palette and type, a `README.md`, and the game
+states — are stated in full in `specs/overview.md` (and the files it points to).
+That specification is authoritative; build to it rather than to a summary here.
+Two things bear restating, because the harness depends on them:
 
-- **Render real graphics** (Canvas 2D, WebGL/WebGPU, or positioned DOM) — not a
-  text-only or ASCII rendering. Draw every unit, structure, and piece of terrain
-  yourself, in code, in the specified palette; you are given no art files and must
-  not fetch any at runtime.
-- **Run in the browser with no backend** — no server, accounts, database, or
-  network calls at runtime; everything needed to play is self-contained.
-- Require **no API keys or credentials** of any kind to build, run, or play.
-- Stay a **Node project** built with only Node.js and npm-installed dependencies —
-  no separately installed language toolchain. Extend the provided `package.json`
-  at `{{workspace}}` and **commit a `package-lock.json`** (run `npm install` after
-  you change dependencies so the lockfile matches) — the build is installed with
-  `npm ci`, which requires it. `npm ci` then `npm run build` must produce the
-  static site, with no other manual step, into one of `dist/`, `build/`, or
-  `out/` at the project root, with an `index.html` at the root of that directory.
-  Serving that directory as-is at the root of any static file server must run the
-  game; it is deployed to static hosting exactly that way.
-- Include a `README.md` at `{{workspace}}` explaining what the game is, how to
-  install dependencies, how to run it in development, how to produce the static
-  production build, and the controls.
-
-You choose the language, framework, bundler, and rendering approach within those
-constraints — only the `npm ci` / `npm run build` commands and their
-`dist`/`build`/`out` output are fixed (plain TypeScript with Canvas 2D is
-entirely sufficient). The `reference/` folder under `{{workspace}}` holds
-screenshots that are visual targets for the title, gameplay, and game-over
-screens — match their layout, palette, and type, but build the screens from the
-specification rather than copying the images.
+- **The fixed build/serve interface.** The project stays a **Node project** built
+  with only Node.js and npm-installed dependencies. Extend the provided
+  `package.json` at `{{workspace}}` and **commit a `package-lock.json`** (run
+  `npm install` after you change dependencies so the lockfile matches). `npm ci`
+  then `npm run build` must produce the static site — with no other manual step —
+  into one of `dist/`, `build/`, or `out/` at the project root, with an
+  `index.html` at the root of that directory. Serving that directory as-is at the
+  root of any static file server must run the game; it is deployed to static
+  hosting exactly that way. `specs/overview.md` states this in full; follow it
+  exactly.
+- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
+  screenshots that are visual targets for the title, gameplay, and game-over
+  screens — match their layout, palette, and type, but build the screens from the
+  specification rather than copying the images.
 
 ## Verify before you finish
 

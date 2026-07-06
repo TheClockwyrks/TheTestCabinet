@@ -38,42 +38,33 @@ constraints in `playfield` and `enemies`; there is no fixed set of paths to copy
 
 ## Build requirements
 
-Deliver a complete, polished, playable game, not a tech demo. It must:
+Deliver a complete, polished, playable game, not a tech demo. The **hard
+requirements** — real graphics rendered from the provided sprite art, no backend
+or credentials, the palette and type, a `README.md`, and the game states — are
+stated in full in `specs/overview.md` (and the files it points to). That
+specification is authoritative; build to it rather than to a summary here. Three
+things bear restating, because the harness depends on them:
 
-- **Render real graphics** (Canvas 2D, WebGL/WebGPU, or positioned DOM) — not a
-  text-only or ASCII rendering.
-- **Run in the browser with no backend** — no server, accounts, database, or
-  network calls at runtime; everything needed to play is self-contained.
-- Require **no API keys or credentials** of any kind to build, run, or play.
-- Stay a **Node project** built with only Node.js and npm-installed dependencies —
-  no separately installed language toolchain. Extend the provided `package.json`
-  at `{{workspace}}` and **commit a `package-lock.json`** (run `npm install` after
-  you change dependencies so the lockfile matches) — the build is installed with
-  `npm ci`, which requires it. `npm ci` then `npm run build` must produce the
-  static site, with no other manual step, into one of `dist/`, `build/`, or
-  `out/` at the project root, with an `index.html` at the root of that directory.
-  That directory must run **at any base path, not only the server root** — when
-  played back it is mounted under a per-run sub-path (`/runs/<id>/build/`), so
-  every URL the build requests (the bundled JS/CSS and the seeded sprites alike)
-  must resolve relative to the page, never a root-absolute `/…` URL; use a relative
-  bundler base (for Vite, `base: './'`). `specs/assets.md` states this in full.
-- **Render the ship and drones from the provided sprites.** The player fighter and
-  the three drones are seeded as pre-drawn PNGs under `assets/` — render the game
-  from that art rather than drawing your own, deriving each entity's other band by
-  re-tinting and swapping its glyph, exactly as `specs/assets.md` specifies.
-  Bullets, effects, and the HUD you draw in code.
-- Include a `README.md` at `{{workspace}}` explaining what the game is, how to
-  install dependencies, how to run it in development, how to produce the static
-  production build, and the controls.
-
-You choose the language, framework, bundler, and rendering approach within those
-constraints — only the `npm ci` / `npm run build` commands and their
-`dist`/`build`/`out` output are fixed (plain TypeScript with Canvas 2D is entirely
-sufficient). The `reference/` folder under `{{workspace}}` holds screenshots that
-are visual targets for the title, gameplay, and game-over screens — match their
-layout, palette, and type, but build the screens from the specification rather
-than copying the images, and remember the formation and paths they show are just
-one example moment.
+- **The fixed build/serve interface.** The project stays a **Node project** built
+  with only Node.js and npm-installed dependencies. Extend the provided
+  `package.json` at `{{workspace}}` and **commit a `package-lock.json`** (run
+  `npm install` after you change dependencies so the lockfile matches). `npm ci`
+  then `npm run build` must produce the static site — with no other manual step —
+  into one of `dist/`, `build/`, or `out/` at the project root, with an
+  `index.html` at the root of that directory. Serving that directory as-is must run
+  the game, and it must work **at any base path** (it is played back from a per-run
+  sub-path, so any URL the build constructs at runtime must be page-relative — never
+  a leading `/`; for a bundler, set a relative base such as `base: './'`).
+  `specs/overview.md` states this in full; follow it exactly.
+- **The provided art.** The game's sprites are seeded under `{{workspace}}/assets/`;
+  render from that art rather than drawing your own, and load it with page-relative
+  URLs so it resolves from the served sub-path. `specs/assets.md` is the
+  authoritative contract for every asset's layout, how to composite and animate it,
+  and the short list of things you do draw in code.
+- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
+  screenshots that are visual targets for the title, gameplay, and game-over
+  screens — match their layout, palette, and type, but build the screens from the
+  specification rather than copying the images.
 
 ## Verify before you finish
 
