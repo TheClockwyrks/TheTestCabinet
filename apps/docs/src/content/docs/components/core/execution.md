@@ -40,7 +40,7 @@ example by deleting files.
 - A run executes in one of **five run-container images**, selected by the test
   case's [test type](/testing/) and — for asset-generation — its
   [`asset_kind`](/testing/asset-generation/manifests/): an
-  [end-to-end](/testing/end-to-end/) run uses the **base image**; a single-sprite
+  [end-to-end](/testing/end-to-end/overview/) run uses the **base image**; a single-sprite
   [asset-generation](/testing/asset-generation/overview/) run
   (`asset_kind = "sprite"`) uses the **sprite image** (the base image plus the
   baked-in `draw` tool); a sprite-sheet run (`asset_kind = "sprite-sheet"`) uses
