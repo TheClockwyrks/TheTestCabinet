@@ -4,9 +4,11 @@ title: Overview
 
 An **asset-generation** test case evaluates how well a model can use tools to
 **produce a graphical asset** rather than to write a program. This spans **2D
-work** — creating a sprite or a sprite sheet — and **3D work** — sculpting an
-opaque-voxel model or a rigged, animated one — and it is a deliberately different
-class of test from the others: it does not measure code generation at all, it
+work** — a small pixel-art sprite or sprite sheet, and a large, high-resolution
+**interface asset** or **PBR material** painted with layers and brushes — and **3D
+work** — sculpting an opaque-voxel model or a rigged, animated one — and it is a
+deliberately different class of test from the others: it does not measure code
+generation at all, it
 measures how well a model can drive a tool toward a goal **described in a brief**
 through many small, deliberate steps. The result is **subjective** — the model is given a
 precise written description and the freedom to draw something that matches it, so
@@ -70,16 +72,29 @@ than scored.
 ## Asset kinds
 
 A case declares, with its `asset_kind`, **what shape of asset** the model produces
-— one of eighteen, spanning **2D images**, **3D models** (built three ways —
-cube voxels, meshed signed-distance fields, and skinned characters), **particle
-effects** (2D and 3D), and **audio** (sound effects and music):
+— one of twenty, spanning **2D pixel images**, **high-resolution painted assets**
+(interface art and PBR materials), **3D models** (built three ways — cube voxels,
+meshed signed-distance fields, and skinned characters), **particle effects** (2D and
+3D), and **audio** (sound effects and music):
 
 - **`sprite`** (the default) — a **single sprite**: one image drawn onto the whole
-  canvas with the [`draw` binary](/testing/asset-generation/binaries/).
+  canvas with the [`draw` binary](/testing/asset-generation/sprite-binaries/).
 - **`sprite-sheet`** — a **sprite sheet**: a set of animation frames, each its own
   **completely separate file** (its own canvas, not a region of one larger image),
-  drawn with the [`draw-sheet` binary](/testing/asset-generation/binaries/) and a
+  drawn with the [`draw-sheet` binary](/testing/asset-generation/sprite-binaries/) and a
   required `--frame <index>`.
+- **`ui`** — a **high-resolution interface asset**: a HUD plate, panel, button,
+  frame, icon, or full-screen background — one image, or a **kit** of named elements
+  — painted with layers, brushes, and alpha compositing on the [`paint` and `ui`
+  binaries](/testing/asset-generation/ui-binaries/), with crisp vector shapes, text,
+  and nine-slice authoring for scalable interface parts. See [User interface
+  assets](#user-interface-assets).
+- **`material`** — a **tileable PBR material**: the set of maps (base color, normal,
+  roughness, metallic, ambient occlusion, emissive) that dresses a 3D surface,
+  painted seamlessly with the [`texture` and `pbr`
+  binaries](/testing/asset-generation/material-binaries/) and applied to meshed
+  models by [triplanar projection](/testing/asset-generation/material-binaries/#the-triplanar-consumption-model).
+  See [PBR materials](#pbr-materials).
 - **`voxel-model`** / **`voxel-animation`** — the **cube voxel** kinds: an
   opaque-RGB voxel volume of **discrete cells**, sculpted with the [`voxel` /
   `voxel-anim` binaries](/testing/asset-generation/voxel-binaries/). `voxel-model`
@@ -120,7 +135,7 @@ effects** (2D and 3D), and **audio** (sound effects and music):
   to a PCM `.wav`. See [Audio](#audio).
 
 `asset_kind` is a property of the whole version, **not** a variant — a case is
-exactly one kind, never a mix, and a variant cannot change it. None of the eighteen
+exactly one kind, never a mix, and a variant cannot change it. None of the twenty
 carries a target: every kind is reviewed against the brief, never against a
 supplied picture.
 
@@ -129,6 +144,52 @@ by the index it is written to) and the **animation sequences** — ordered lists
 frame indices, each with a playback rate — so the review UI can play the named
 animations back from the per-frame regenerated images and a reviewer can judge a
 sheet by its motion, not just its static pixels.
+
+## User interface assets
+
+The **`ui`** kind moves 2D asset generation from a small pixel-art sprite to a
+**large, high-resolution interface asset** — the panels, HUD plates, buttons,
+frames, icons, insignia, and backgrounds a game's UI is built from. Where the
+[`draw` tool](/testing/asset-generation/sprite-binaries/) paints a 32–64 px canvas
+with replace-pixel semantics and no layers — right for an arcade sprite — the UI
+kind paints a **256–2048 px RGBA canvas** with a full **layer stack**, **alpha
+compositing** and blend modes, soft/hard/textured **brushes**, gradients,
+selections, masks, filters, and layer effects (bevels, inner shadows, strokes). It
+is authored with **two binaries** in the one `ui` image: **`paint`** for painterly
+raster work and **`ui`** for the crisp, structural parts — anti-aliased vector
+shapes, **text** in baked fonts, and **nine-slice** insets that let a game scale one
+authored panel or button to any size without distorting its corners.
+
+A `ui` case is either **one full-canvas image** (a title screen, a HUD backdrop) or
+a **kit** of named **elements** (a `panel`, a `button`, an `icon`), each its own
+document of its own size — the interface analogue of a sprite sheet's frames. Each
+element flattens to an RGBA PNG, and core emits a **`ui.json`** carrying every
+element's size, its nine-slice insets, and — when packed — its atlas rectangle, so a
+game binds the asset and addresses each piece by name. See [The UI
+binaries](/testing/asset-generation/ui-binaries/).
+
+## PBR materials
+
+The **`material`** kind produces a **tileable PBR material** — the set of maps that
+dresses a 3D surface so a [meshed model](#meshed-voxel-models) reads as painted
+metal, worn stone, or scuffed plating rather than a flat `#rrggbb`. A material
+carries a required **base-color** map and any of **normal** (surface relief),
+**roughness**, **metallic**, **ambient occlusion**, and **emissive** — each a square
+map painted seamlessly, so it tiles without a seam. It is authored with **two
+binaries** in the one `material` image: **`texture`**, the
+[`paint`](/testing/asset-generation/ui-binaries/) vocabulary restricted to one map
+at a time and made **tileable** (every brush, gradient, and filter wraps across the
+edges), plus procedural noise and patterns; and **`pbr`**, which **bakes** the
+normal and occlusion maps from a painted **height** field, sets uniform scalar maps,
+assembles the **`material.json`**, and renders a **lit 3D preview** of the material
+on a test surface.
+
+A material is applied to a mesh by **triplanar projection** — sampling each map down
+the world X/Y/Z axes and blending by the surface normal — which needs **no UVs**,
+the natural fit for the [signed-distance-field surfaces](#meshed-voxel-models) that
+have no UV layout to unwrap. Core emits one PNG per declared map plus the
+`material.json` (paths, color spaces, and the world-space tiling scale). See [The
+material binaries](/testing/asset-generation/material-binaries/).
 
 ## Voxel models and rigs
 

@@ -5,7 +5,7 @@ executes in an isolated container seeded with a fresh git repository, so a model
 cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
-There are **twenty-one images**, selected by a run's
+There are **twenty-three images**, selected by a run's
 [test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
 its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
 
@@ -19,6 +19,13 @@ its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manife
 - the **sprite-sheet** image, which every sprite-sheet asset-generation run
   (`asset_kind = "sprite-sheet"`) executes in — the base image plus the baked-in
   `draw-sheet` binary;
+- the **ui** image, which every UI asset-generation run (`asset_kind = "ui"`)
+  executes in — the base image plus the baked-in `paint` and `ui` binaries (the
+  layered raster painter and the crisp vector/text/nine-slice tool);
+- the **material** image, which every PBR-material asset-generation run
+  (`asset_kind = "material"`) executes in — the base image plus the baked-in
+  `texture` and `pbr` binaries (the seamless map painter and the derivation/assembly
+  tool);
 - the **voxel** image, which every static-voxel asset-generation run
   (`asset_kind = "voxel-model"`) executes in — the base image plus the baked-in
   `voxel` binary;
@@ -89,6 +96,8 @@ containers/
 ├── base/Dockerfile             # the end-to-end run image (toolchain, run user)
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
+├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
+├── material/Dockerfile         # the base image plus the baked-in `texture` + `pbr` binaries
 ├── voxel/Dockerfile            # the base image plus the baked-in `voxel` binary
 ├── voxel-animation/Dockerfile  # the base image plus the baked-in `voxel-anim` binary
 ├── mc/Dockerfile               # the base image plus the baked-in `mc` binary (Marching Cubes)
@@ -114,7 +123,7 @@ containers/
 ├── performance/                # the base image plus the wasm toolchain + Lattice tooling
 │   ├── Dockerfile              #   (lattice CLI, reference engines, training, engine buildkit)
 │   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
-└── build.sh                    # builds (and optionally pushes) all twenty-one images
+└── build.sh                    # builds (and optionally pushes) all twenty-three images
 ```
 
 ## Base image
@@ -162,6 +171,17 @@ a single-sprite case draws with `draw`, a sprite-sheet case draws with
 - `sprite-sheet/` is the base image plus exactly the **`draw-sheet`** binary, the
   drawing tool a sprite-sheet run uses (`draw` plus a required `--frame` on every
   operation).
+- `ui/` is the base image plus the **`paint`** and **`ui`** binaries, the
+  [UI](../apps/docs/src/content/docs/testing/asset-generation/ui-binaries.md) tools a
+  run uses to paint a high-resolution interface asset — `paint` for layered raster
+  work (brushes, blend modes, masks, filters, effects) and `ui` for crisp vector
+  shapes, text, and nine-slice. Both ship in the one image because a run interleaves
+  them over a shared workspace.
+- `material/` is the base image plus the **`texture`** and **`pbr`** binaries, the
+  [material](../apps/docs/src/content/docs/testing/asset-generation/material-binaries.md)
+  tools a run uses to build a tileable PBR material — `texture` for seamless map
+  painting and `pbr` for baking normal/AO maps, setting uniforms, assembling
+  `material.json`, and rendering the lit 3D preview.
 - `voxel/` is the base image plus exactly the **`voxel`** binary, the sculpting
   tool a static-voxel run uses.
 - `voxel-animation/` is the base image plus exactly the **`voxel-anim`** binary,
@@ -203,16 +223,19 @@ binaries.
 
 Every asset-generation Dockerfile is `FROM` the base, so each inherits the
 toolchain, the `node` run user, the `/work` working directory, and the keep-alive
-`CMD`, and adds only its one binary. Unlike a harness CLI, these binaries are part
+`CMD`, and adds only its binary — or, for the `ui` and `material` images, its two
+binaries. Unlike a harness CLI, these binaries are part
 of The Test Cabinet itself and must match the orchestrator's own logic — the
-orchestrator regenerates a 2D drawing run's scored image from its action log
-through the *same* library the `draw` tools use, and core's validator decodes the
-emitted geometry / particle system / `.wav` the 3D and audio tools produce — so each is
+orchestrator regenerates a `draw`/`draw-sheet` run's scored image from its action
+log through the *same* library those tools use, and core's validator decodes the
+emitted data every other kind produces (the UI images, PBR maps, geometry, particle
+system, or `.wav`) — so each is
 compiled from this repo (a multi-stage build in its Dockerfile) and baked in
 rather than installed at run time. Because of this coupling, **build the images
 from the same commit as the orchestrator**: a run records both the orchestrator
-commit and the image digest, so a version mismatch (which would invalidate the 2D
-cheat-divergence signal) is auditable after the fact. Compiling the binaries is
+commit and the image digest, so a version mismatch (which would invalidate the
+`draw`/`draw-sheet` cheat-divergence signal, and could desync any binary from the
+validator that decodes its output) is auditable after the fact. Compiling the binaries is
 why the build context is the repository root rather than each image's directory
 (see `build.sh`); `build.sh` builds every asset-generation image `FROM` the base
 it builds alongside them, so they all stay in lockstep.
@@ -330,7 +353,7 @@ drifted from the repository's workspace dependencies fails the image build.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build all thirteen images (base, sprite, sprite-sheet, voxel, voxel-animation, mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, performance)
+./build.sh                # build all twenty-three images (the base, every asset-generation kind, adversarial, and performance)
 DOCKER=podman ./build.sh  # build with Podman instead
 ```
 
@@ -375,7 +398,7 @@ only promises an environment that honors the following contract:
 ## Status / validation
 
 This definition is authored but **not yet built or validated** — that requires a
-Docker host. When validating on Linux, build all thirteen images (`./build.sh`) and
+Docker host. When validating on Linux, build all twenty-three images (`./build.sh`) and
 confirm a container from each runs and keeps alive, that `draw` is on `PATH` in
 the sprite image and `draw-sheet` is on `PATH` in the sprite-sheet image, that
 each voxel-family binary (`voxel`, `voxel-anim`, `mc`, `mc-anim`, `sn`, `sn-anim`,

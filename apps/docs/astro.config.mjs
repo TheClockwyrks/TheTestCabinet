@@ -448,6 +448,8 @@ export default defineConfig({
               items: [
                 "testing/asset-generation/overview",
                 "testing/asset-generation/sprite-binaries",
+                "testing/asset-generation/ui-binaries",
+                "testing/asset-generation/material-binaries",
                 "testing/asset-generation/voxel-binaries",
                 "testing/asset-generation/mesh-binaries",
                 "testing/asset-generation/skinned-binaries",

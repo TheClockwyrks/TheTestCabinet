@@ -24,6 +24,8 @@ prompt = "prompt.hbs"        # the prompt template handed to the harness (requir
 max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
 type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
 asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-sheet" (per-frame files)
+                             # | a high-res painted kind: "ui" (interface art) — see "UI cases"
+                             # | "material" (tileable PBR material) — see "Material cases"
                              # | a 3D voxel kind: "voxel-model"/"voxel-animation" (cube cells),
                              # "mc-model"/"mc-animation", "sn-model"/"sn-animation",
                              # "dc-model"/"dc-animation" (meshed) — see "Voxel cases" below
@@ -122,7 +124,10 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   score against — declaring one, common or per-variant, is rejected).
 - `asset_kind` chooses the **shape** of the asset within an asset-generation
   case: `"sprite"` (the default — one sprite drawn onto the whole canvas),
-  `"sprite-sheet"` (a set of animation frames, each a separate file), or one of the
+  `"sprite-sheet"` (a set of animation frames, each a separate file); the high-res
+  painted kinds `"ui"` (an interface asset or kit — see [UI cases](#ui-cases)) and
+  `"material"` (a tileable PBR material — see [Material cases](#material-cases)); or
+  one of the
   3D **voxel** kinds — the **cube** kinds `"voxel-model"` (static) and
   `"voxel-animation"` (rigged, animated), or the **meshed** kinds `"mc-model"`,
   `"sn-model"`, `"dc-model"` (static) and `"mc-animation"`, `"sn-animation"`,
@@ -132,13 +137,15 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   (see [Particle cases](#particle-cases)); or the **audio** kinds `"sfx-synth"`,
   `"sfx-sample"`, `"music"` (see [Audio cases](#audio-cases)). It is a property of
   the whole version, **not** a variant axis — a case is exactly one kind, never a
-  mix, and a variant cannot change it. `asset_kind` (and the `[sheet]`, `[voxel]`,
-  `[model]`, `[particle]`, and `[audio]` tables) are only valid for an
-  asset-generation case; an explicit value on any other type is rejected. The two
-  2D image kinds declare a `[canvas]`; every voxel, meshed, and skinned kind
-  declares a `[voxel]` volume instead (see [Voxel cases](#voxel-cases)); a particle
-  kind declares a `[particle]` field; and an audio kind declares an `[audio]`
-  table — a case declares exactly the one its kind requires.
+  mix, and a variant cannot change it. `asset_kind` (and the `[sheet]`, `[ui]`,
+  `[material]`, `[voxel]`, `[model]`, `[particle]`, and `[audio]` tables) are only
+  valid for an asset-generation case; an explicit value on any other type is
+  rejected. The two 2D pixel kinds and `ui` declare a `[canvas]` (a `ui` kit adds a
+  `[ui]` table of elements); a `material` case declares a `[material]` table; every
+  voxel, meshed, and skinned kind declares a `[voxel]` volume instead (see [Voxel
+  cases](#voxel-cases)); a particle kind declares a `[particle]` field; and an audio
+  kind declares an `[audio]` table — a case declares exactly the one(s) its kind
+  requires.
 - The `[sheet]` table is **required for — and only for — `asset_kind =
   "sprite-sheet"`**. It declares the case's frames as `[[sheet.frame]]` entries —
   each just the `index` it is written to (passed as
@@ -223,6 +230,131 @@ domain = "fidelity"
   declared frame. Both are valid **only** for a sprite-sheet case (`asset_kind =
   "sprite-sheet"`): a single sprite, or any non-asset case, has no sheet, so
   declaring either is rejected.
+
+## UI cases
+
+A **`ui`** case produces a [high-resolution interface
+asset](/testing/asset-generation/overview/#user-interface-assets) — one image or a
+**kit** of named elements — painted with the
+[`paint` and `ui` binaries](/testing/asset-generation/ui-binaries/). It reuses
+`[canvas]` for the base element size and adds an **optional `[ui]`** table declaring
+the kit's elements; omit `[ui]` for a single full-canvas image. Everything else on
+the page — `type`, `variants`, `[[spec]]`, `[[domain]]`, `[[review_item]]`, the
+no-`[[reference]]`/no-`[build]`/no-`[[check]]` rules — behaves exactly as above.
+
+```toml
+asset_kind = "ui"
+
+# The base element size (and single-image size) and initial background — the same
+# [canvas] table a sprite uses.
+[canvas]
+width  = 512
+height = 512
+background = "transparent"
+
+# The drawing tools. `binary` names the PRIMARY tool (`paint`); the companion `ui`
+# binary (vector shapes, text, nine-slice) ships in the SAME run-container image and
+# is on PATH — the brief directs the model to both. `preview` is a {element} template
+# for a kit, a single file for a single-image case.
+[tool]
+binary  = "paint"
+preview = "elements/{element}.png"   # or "canvas.png" for a single-element case
+
+# The recorded op log — a SINGLE interleaved record for the whole asset (each op
+# carries --element). Core emits the flattened per-element PNG(s) and ui.json
+# automatically (not manifest-declared).
+[output]
+actions = "actions.json"
+
+# OPTIONAL: a KIT of named elements (omit for a single full-canvas image). Each
+# element is its own document of its own size — the interface analogue of a sheet's
+# frames.
+[ui]
+
+[[ui.element]]                 # >=1 when [ui] is present; a declared element
+name   = "panel"               # stable, unique name (draw with --element panel)
+width  = 512                   # element width in pixels (required)
+height = 320                   # element height in pixels (required)
+nine_slice = { left = 24, right = 24, top = 24, bottom = 24 }  # OPTIONAL fixed insets
+
+[[ui.element]]
+name   = "button-primary"
+width  = 256
+height = 72
+```
+
+- The **`[ui]`** table is **optional** and valid only for `asset_kind = "ui"`. When
+  present it declares one or more `[[ui.element]]` entries — each a `name` (unique)
+  and its `width`/`height`; a `nine_slice` (`left`/`right`/`top`/`bottom`) may fix
+  the stretchable insets, otherwise the model authors them with
+  [`ui set-nine-slice`](/testing/asset-generation/ui-binaries/#ui--crisp-shapes-text-and-nine-slice).
+  When `[ui]` is **absent**, the case has a single implicit element (the whole
+  `[canvas]`). Resolution validates that element names are unique and that any fixed
+  `nine_slice` insets fit within the element's bounds.
+- `[tool].binary` names the primary painter (`paint`); the companion `ui` binary is
+  baked into the same `ui` image and available on `PATH`. `[tool].preview` carries
+  the `{element}` token when `[ui]` declares elements, and is a single file
+  otherwise (as a sheet's `preview` carries `{frame}`). `[output].actions` is a
+  **single** interleaved op log — **not** an `{element}` template — since the two
+  binaries share one recorded stream. The emitted per-element PNGs and the `ui.json`
+  (element sizes, nine-slice insets, atlas rectangles) are produced automatically by
+  core, so they are not manifest-declared (see [the output
+  contract](/testing/asset-generation/ui-binaries/#the-output-contract)).
+
+## Material cases
+
+A **`material`** case produces a [tileable PBR
+material](/testing/asset-generation/overview/#pbr-materials) — a set of maps
+(base color, and any of normal, roughness, metallic, ambient occlusion, emissive) —
+painted with the [`texture` and `pbr`
+binaries](/testing/asset-generation/material-binaries/). It replaces
+`[canvas]`/`[voxel]` with a **`[material]`** table and declares no `[model]` — a
+material is judged subjectively against its brief, with no required-animation
+contract, and a case authors **one material** (as a single sprite is one image).
+
+```toml
+asset_kind = "material"
+
+# The maps the material carries and how they are baked.
+[material]
+size = 512                   # square map resolution in pixels, a power of two (required)
+tile = true                  # seamless authoring: brushes/gradients/filters wrap across
+                             # the map edges so it tiles without a seam (default true)
+maps = ["base-color", "normal", "roughness", "metallic", "ao"]
+                             # the channels the material emits; "base-color" is REQUIRED,
+                             # the rest optional — a subset of: base-color | normal |
+                             # roughness | metallic | ao | emissive
+background = "transparent"   # preview clear color only
+
+# The tools. `binary` names the PRIMARY painter (`texture`); the companion `pbr`
+# binary (bake normal/AO, uniforms, assemble, 3D preview) ships in the SAME image and
+# is on PATH. `preview` is a {map} template — one preview per map, shown 2×2-tiled.
+[tool]
+binary  = "texture"
+preview = "maps/{map}.png"
+
+# The recorded op log — a SINGLE interleaved record (each op carries --map). Core
+# emits the per-map PNGs and material.json automatically (not manifest-declared).
+[output]
+actions = "actions.json"
+```
+
+- The **`[material]`** table fixes the material's output: its square `size` (a power
+  of two), whether it is authored `tile`able (seamless — the default, required for
+  [triplanar application](/testing/asset-generation/material-binaries/#the-triplanar-consumption-model)),
+  and the `maps` it emits. `maps` must include **`base-color`** and is otherwise any
+  subset of `normal`, `roughness`, `metallic`, `ao`, `emissive`. (The `height`
+  channel a case bakes relief from is an authoring aid, not an emitted map, so it is
+  not declared here.) It is required for — and only for — a material case, and
+  replaces `[canvas]`/`[voxel]`.
+- `[tool].binary` names the primary painter (`texture`); the companion `pbr` binary
+  is baked into the same `material` image and on `PATH`. `[tool].preview` carries the
+  `{map}` token (one preview per declared map); `[output].actions` is a **single**
+  interleaved op log — **not** a `{map}` template — since the two binaries share one
+  recorded stream. Core emits one PNG per declared map (`maps/{map}.png`) plus the
+  `material.json` (paths, per-map color space, and the world-space tiling scale)
+  automatically; neither is manifest-declared (see [the output
+  contract](/testing/asset-generation/material-binaries/#the-output-contract)).
 
 ## Voxel cases
 
@@ -561,8 +693,8 @@ actions = "actions.json"     # the recorded op record; the rendered clip.wav (an
 
 :::caution[Re-ingest after editing]
 The test type and the
-`[canvas]`/`[voxel]`/`[tool]`/`[output]`/`[model]`/`[particle]`/`[audio]` tables
-are stored in the backend's immutable def store. Because they are newer fields,
+`[canvas]`/`[ui]`/`[material]`/`[voxel]`/`[tool]`/`[output]`/`[model]`/`[particle]`/`[audio]`
+tables are stored in the backend's immutable def store. Because they are newer fields,
 editing an
 already-ingested case (or adding a type to one) requires a **forced re-ingest**
 (`POST /ingest {"force": true}`) — otherwise the backend keeps serving the stale
