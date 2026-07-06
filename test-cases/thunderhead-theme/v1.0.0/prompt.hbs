@@ -1,0 +1,51 @@
+Compose the **Thunderhead battle theme**, a short looping naval-battle music cue,
+using only the sequencer tool.
+
+It is the combat theme for *Thunderhead*, a real-time fleet-command game: it plays
+under a fleet engagement, so it must be a **driving, militaristic minor-key** cue
+with a steady low pulse, a determined melodic line, and building tension — and it
+must **loop cleanly**. You sequence it note by note as instrument tracks over the
+`gm-lite` instrument bank.
+
+## How the tool works
+
+The only way to make sound is the `music` binary already on your `PATH`. It is the
+sole channel: you build the cue by calling it **one operation at a time**, and the
+ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, not any file you write by hand. Anything
+produced another way is discarded and flagged.
+
+Each operation is an ordinary subcommand with flags: set the tempo and meter,
+`define-track` an instrument from the `gm-lite` bank, `add-note` the events, and
+`set-track-fx` for gain, pan, and reverb. Unlike a drawing tool, `music` does
+**not** re-render after every call — rendering is a separate step. Run
+**`music render`** to mix the cue to `music.wav`, draw the waveform + spectrogram +
+**piano-roll** preview at `{{workspace}}`, and emit the portable `music.mid` score.
+You cannot hear the clip, so **read the preview after you render** to judge your
+progress. A config, an empty log, and the `gm-lite` bank are already in place at
+`{{workspace}}`.
+
+Run `music --help` to list every operation and `music <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. Inspect
+the instruments the `gm-lite` bank offers before naming them on your tracks.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the mood and role, the tempo and key, the instrument
+tracks and their parts, the arrangement over the clip's length, the clean loop,
+and the stereo image. Run `music --help` for the exact operation contract.
+
+## What to deliver
+
+Sequence the cue up operation by operation — tempo and meter, the tracks and their
+notes, the mix — rendering to check the piano-roll and waveform as you go, until it
+matches the brief: a driving militaristic minor-key naval theme that builds and
+loops cleanly, stereo, within the 8000 ms cap. When you are satisfied, stop: the
+recorded `actions.json` is your finished submission.

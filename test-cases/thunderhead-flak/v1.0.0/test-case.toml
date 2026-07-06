@@ -1,0 +1,134 @@
+slug = "thunderhead-flak"
+name = "Thunderhead Flak Burst"
+difficulty = "medium"
+tags = ["asset-generation", "particle", "vfx", "3d"]
+summary = """
+Author the Thunderhead anti-air flak burst: a volumetric mid-air shell detonation \
+— a white-hot core flash, an outward burst of hot sparks, and a lingering dark \
+smoke puff — as a particle-3d emitter system simulated live, built one recorded \
+operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 3D particle effect: a volumetric anti-air flak-shell detonation the model
+# authors as an emitter SYSTEM, simulated live by the review UI and the game.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]); the burst is centered in it. duration_ms is a one-shot ~1.5s
+# detonation played at 60 fps; the effect never loops.
+[particle]
+width       = 48             # extent along x
+height      = 48             # extent along y — up
+depth       = 48             # extent along z
+duration_ms = 1500           # a ~1.5s airburst that decays to empty
+fps         = 60             # preview/playback frame rate
+loop        = false          # one-shot — a shell that bursts and decays to empty
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "read"
+name = "Effect read"
+description = """
+How clearly the simulated effect reads as an anti-air flak burst — a white-hot \
+detonation core, an outward burst of hot orange sparks, and a lingering grey-black \
+smoke puff — in the declared palette, from multiple orbit angles and across \
+replays."""
+
+[[domain]]
+id = "motion"
+name = "Motion & timing"
+description = """
+How well the effect's lifecycle plays over its 1.5s duration — a hard initial \
+flash and spark burst, sparks arcing and falling under gravity and drag while the \
+smoke rises and spreads, and a clean decay to empty by the end of a one-shot."""
+
+[[review_item]]
+id = "reads-as-flak"
+title = "Reads as an anti-air flak burst"
+text = """
+The effect reads at a glance as a mid-air anti-air shell detonation: a brief \
+white-hot core flash, an outward burst of hot sparks/shrapnel, and a lingering \
+dark smoke puff — not a fireball on the ground, a muzzle flash, or an abstract \
+sphere. It is legible as a flak burst from multiple orbit angles."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id = "three-stages"
+title = "Core flash, spark burst, and smoke"
+text = """
+All three authored stages are present and distinct: a bright, short-lived \
+detonation core; a radial burst of small hot sparks thrown outward; and a slower, \
+darker smoke puff that drifts and dissipates. Each is a distinct emitter, not one \
+undifferentiated cloud."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id = "lifecycle"
+title = "Lifecycle over the duration"
+text = """
+Bursts hard at the start (the core flash and spark burst fire together in the \
+first fraction of a second), expands and drifts through the middle (sparks arc out \
+and fall while the smoke rises and spreads), and decays cleanly to empty by the \
+end of duration_ms. It reads the same across replays despite the live simulation \
+varying slightly."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "forces"
+title = "Believable forces"
+text = """
+The motion reads as physical: sparks are thrown outward by the detonation and then \
+arc down under gravity while air drag bleeds their speed; the smoke rises gently \
+on buoyancy and spreads as it slows. Nothing floats unnaturally or shoots off in a \
+straight line forever."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "curves"
+title = "Color, opacity & size over life"
+text = """
+Each particle's look changes over its life as the brief describes: the core runs \
+white-hot to orange as it fades; sparks fade and shrink as they die; the smoke \
+grows, greys toward black, and fades out to nothing rather than popping off. Sizes \
+and opacities ease rather than snap."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "palette"
+title = "Flak palette"
+text = """
+Uses only the declared flak colors — white-hot core, hot-orange sparks, and \
+grey-black smoke — with no out-of-palette hues (no blues, greens, or purples) \
+bleeding into the burst."""
+weight = 1
+domain = "read"

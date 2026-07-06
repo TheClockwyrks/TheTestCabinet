@@ -1,0 +1,186 @@
+slug = "sunfront-trooper"
+name = "Sunfront Trooper"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "skinned", "character"]
+summary = """
+Sculpt and rig the Sunfront Trooper: a 24x48x20 hard-surface armored Duneforged \
+infantry soldier built as ONE continuous skin bound to a model-invented skeleton, \
+sculpted with the dc-skin tool one recorded operation at a time. The whole plated \
+body deforms across its joints — no seam per limb. The model invents whatever bones \
+and joints it needs; the fixed contract is three animations it must author — a \
+looping `march`, a one-shot `fire`, and a one-shot `brace` — the reviewer can play \
+back."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "dc-skinned"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The field bounds — the SAME [voxel] volume table a meshed case frames, here
+# bounding the ONE whole-body signed-distance field the skin is extracted from (NOT a
+# per-part volume; a skinned character is a single field). `width` across (x),
+# `height` up (y), `depth` front-to-back (z), in field units. The field starts EMPTY;
+# material is opaque `#rrggbb` (no alpha); `background` is only the clear color behind
+# the rasterized preview PNG. A skinned case must NOT declare [canvas].
+[voxel]
+width = 24
+height = 48
+depth = 20
+background = "transparent"
+
+# The skinning tool. `dc-skin` is the only way to sculpt the field and edit the
+# skeleton; it produces a SHARP-EDGED, hard-surface surface (Dual Contouring) fit for
+# armored plate. It sculpts ONE whole-body field — there is NO `--part` flag — records
+# every operation to a single log, and renders nothing: rendering is on request via
+# `dc-skin render`. Run `dc-skin --help` for the field ops AND the skeleton/animation
+# subcommands; no operations schema is seeded.
+#
+# THE SKINNED EXCEPTION: because the character is one field / one mesh, `preview` is a
+# SINGLE file and MUST NOT carry a `{part}` token (unlike the rigid `-animation` kinds).
+[tool]
+binary = "dc-skin"
+preview = "model.png"
+
+# The recorded operation log — a SINGLE ordered record of every field and skeleton
+# operation (NOT a `{part}` template), the authoritative output the regenerated
+# character is rebuilt from. The skinned `mesh.glb` (geometry + the glTF skin: the
+# per-vertex bone weights and inverse-bind matrices) and `rig.json` (skeleton, joint
+# interface, and F-curve animations) are emitted automatically by core — they are NOT
+# declared here.
+[output]
+actions = "actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe bones, joints, pivots, ranges, or the per-vertex weights that
+# bind the skin: the model invents the whole skeleton and its binding at run time and
+# is judged on whether the plated body deforms convincingly across its joints. What is
+# fixed is the set of NAMED ANIMATIONS the model must author (a game plays them by name)
+# and whether each loops or plays once and holds. The model authors each animation's
+# F-curves at run time with `dc-skin define-animation`/`add-keyframe`; `rig.json` is
+# pre-seeded with these declarations so the contract exists from the first operation.
+[model]
+
+# `march` — the WALK. A game-triggered playable that strides the trooper forward in a
+# purposeful two-phase gait: each foot plants and holds while the body passes over it,
+# then lifts, swings, and plants, the two legs in opposite phase, with the arms
+# counter-swinging. As ONE continuous skin, the armor rides the body while the skin
+# folds and stretches across the hips, knees, waist, and shoulders — no seam tears at a
+# joint. Authored IN PLACE: the leg cycle carries the stride; a game supplies the real
+# travel.
+[[model.animation]]
+name = "march"
+loop = true
+auto_play = false
+
+# `fire` — the SHOULDER-RIFLE SHOT. A game-triggered playable that plays ONCE: the
+# trooper snaps the rifle up to the shoulder, braces, and takes a single shot — the
+# recoil kicks back through the shoulder and torso and settles. The skin folds at the
+# shoulder and elbow as the arm raises and the recoil ripples through the torso as one
+# continuous surface; the legs hold planted.
+[[model.animation]]
+name = "fire"
+loop = false
+auto_play = false
+
+# `brace` — CROUCH BEHIND COVER. A game-triggered playable that plays ONCE and holds:
+# the trooper drops into a low crouch, knees bending deeply, hips and spine flexing
+# forward and the head tucking down behind cover, then holds the crouched pose. The
+# deep knee, hip, and waist bends read as one continuous skin folding across the joints,
+# the plate compressing over it — not rigid segments pivoting with a gap.
+[[model.animation]]
+name = "brace"
+loop = false
+auto_play = false
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged character reads as the Sunfront Trooper and \
+deforms correctly — an armored Duneforged foot-soldier whose ONE continuous skin folds \
+smoothly across its hips, knees, shoulders, and waist as it marches, fires, and braces, \
+the hard-surface plate riding the body without a seam tearing at any joint, in the \
+disciplined bronze-and-canvas Duneforged palette with its amber visor glow."""
+
+[[review_item]]
+id = "reads-as-trooper"
+title = "Reads as an armored infantry trooper"
+text = """
+From more than one angle the model reads unmistakably as an armored Duneforged \
+foot-soldier: an upright humanoid on two legs, a plated torso and helmeted head, two \
+arms, and a shouldered rifle. It is a hard-surface armored soldier standing to \
+attention, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "one-continuous-skin"
+title = "Deforms as one continuous skin, not rigid segments"
+text = """
+The whole body is ONE continuous skin bound to a skeleton: when any animation plays, \
+the surface folds and stretches smoothly ACROSS its joints — an elbow, knee, or waist \
+bends without the mesh tearing open or a limb detaching, and there is no rigid gap or \
+hard seam at a joint the way a bolted-together puppet would show. The plate rides the \
+deforming body as one piece."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "march-strides"
+title = "Marches on planted feet across a folding body"
+text = """
+Playing `march` strides the trooper forward in a purposeful two-phase gait. It is \
+authored IN PLACE — the body holds its ground; the leg cycle alone carries the stride \
+(played on its own the planted foot slides straight back under the body, a treadmill), \
+while a game supplies the real travel. Each foot plants and holds while the body passes \
+over it, then lifts, swings, and plants again with weight, the two legs in opposite \
+phase, arms counter-swinging. The skin folds cleanly across the hips, knees, and waist \
+through the whole cycle rather than the legs swinging as rigid poles, and no foot is \
+dragged or driven through the ground."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "fire-shot"
+title = "Shoulders the rifle and takes a single shot"
+text = """
+Playing `fire` once shoulders the rifle and shoots: the trooper raises the weapon to \
+the shoulder, braces, and takes a single recoil kick that ripples back through the \
+shoulder and torso and settles, then holds — it plays once, not on a loop. The skin \
+folds at the shoulder and elbow as the arm raises and the recoil carries through the \
+torso as one continuous surface, with nothing tearing away from the arm; the legs stay \
+planted."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "brace-crouch"
+title = "Crouches behind cover and holds"
+text = """
+Playing `brace` once drops the trooper into a low crouch behind cover and holds the \
+pose: the knees bend deeply, the hips and spine flex forward, and the head tucks down. \
+The deep knee, hip, and waist bends read as the continuous skin folding across those \
+joints — the plate compressing over the deforming body — rather than rigid segments \
+pivoting with a gap, and nothing tears away as it settles into the held crouch."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (bronze and gold plate, sand-bleached \
+canvas wraps, gunmetal rifle and fittings, dark recesses, and the amber visor glow) \
+with a clear amber visor on the helmet, no out-of-palette colors, and no stray surface \
+drifting off the body."""
+weight = 1
+domain = "fidelity"

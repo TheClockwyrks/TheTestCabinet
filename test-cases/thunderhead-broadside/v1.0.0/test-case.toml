@@ -1,0 +1,111 @@
+slug = "thunderhead-broadside"
+name = "Thunderhead Broadside"
+difficulty = "medium"
+tags = ["asset-generation", "audio", "sfx", "naval"]
+summary = """
+Author the Thunderhead capital-ship broadside: a heavy, layered naval-gun \
+report — concussion, sub boom, barrel ring, and debris tail — mixed from the \
+combat-core sample pack one recorded operation at a time."""
+description = "description.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+asset_kind = "sfx-sample"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The output format. A stereo 44.1 kHz clip, capped at four seconds — long enough
+# for the whole broadside to bloom and its debris tail to settle.
+[audio]
+sample_rate = 44100
+channels = "stereo"
+max_duration_ms = 4000
+sample_pack = "combat-core@0.1.0"
+
+# The audio tool. `sfx-sample` is the only way to shape sound; it records every
+# operation to the action log and re-draws the waveform + spectrogram preview when
+# the model runs `render` (rendering is on request, not after every op). Run
+# `sfx-sample --help` for the operations; no operations schema is seeded.
+[tool]
+binary = "sfx-sample"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated from.
+# Core emits the rendered clip.wav automatically; it is not declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as a capital-ship main-gun broadside — the \
+percussive concussion, the deep sub boom, the metallic barrel ring, and the \
+settling rubble tail, big and weighty rather than a small-arms crack."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+The DAW-tier craft: how the combat-core library clips are selected, layered, \
+timed, pitched, and processed into one coherent effect, with the stereo image \
+placed deliberately and the whole clip fitting inside the four-second cap."""
+
+[[review_item]]
+id = "reads-as-broadside"
+title = "Reads as a naval broadside"
+text = """
+Played blind, the clip reads as a heavy capital-ship gun firing — a big, \
+concussive naval report, not a rifle crack, a firework, or a generic explosion. \
+It has real weight and low-end power."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "layered-envelope"
+title = "Layered concussion → boom → ring → tail"
+text = """
+The effect is clearly built from stacked layers with a deliberate envelope: a \
+sharp percussive concussion transient at the front, a deep sub boom body \
+blooming just behind it, a metallic barrel ring through the middle, and a \
+rubble/debris tail decaying out at the end — not a single flat sample."""
+weight = 3
+domain = "craft"
+
+[[review_item]]
+id = "sample-mixing"
+title = "Library clips mixed, not dropped in"
+text = """
+The layers are drawn from the combat-core pack and genuinely mixed — timed \
+against each other, gain-balanced, pitched or trimmed for weight, and glued \
+together — rather than a lone sample played once. A synth sub or transient may \
+reinforce the low end."""
+weight = 2
+domain = "craft"
+
+[[review_item]]
+id = "stereo-image"
+title = "Deliberate stereo image"
+text = """
+The clip is stereo and uses its width on purpose — a broad concussion and tail \
+spread across the field with the boom body anchored to the center — rather than \
+a dual-mono clip with no image."""
+weight = 1
+domain = "craft"
+
+[[review_item]]
+id = "within-cap"
+title = "Clean, full, within the cap"
+text = """
+The whole broadside — attack through tail — fits inside the four-second cap \
+without being clipped short, is not silent, and stays clear of harsh digital \
+clipping on the peaks."""
+weight = 1
+domain = "fidelity"
