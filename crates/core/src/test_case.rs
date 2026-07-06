@@ -591,7 +591,7 @@ struct ManifestAudio {
     sample_rate: u32,
     /// Channel layout: `mono` or `stereo`.
     channels: String,
-    /// Cap on the rendered clip's length in milliseconds (at most 5000).
+    /// Cap on the rendered clip's length in milliseconds.
     max_duration_ms: u32,
     /// For `sfx-sample`: the baked sample pack (`name@version`) the clip mixes over.
     #[serde(default)]
@@ -1715,7 +1715,7 @@ pub struct AudioSpec {
     pub sample_rate: u32,
     /// Channel layout: `mono` or `stereo`.
     pub channels: String,
-    /// Cap on the rendered clip's length in milliseconds (at most 5000).
+    /// Cap on the rendered clip's length in milliseconds.
     pub max_duration_ms: u32,
     /// For `sfx-sample`: the baked sample pack (`name@version`). `None` otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4839,13 +4839,9 @@ fn resolve_particle(
     })
 }
 
-/// The cap on an audio clip's rendered length, in milliseconds (matching the
-/// `[audio]` contract).
-const AUDIO_MAX_DURATION_MS: u32 = 5000;
-
 /// Resolve and validate an audio case's required `[audio]` table into an
 /// [`AudioSpec`]. `sample_rate` must be positive; `channels` must be `mono` or
-/// `stereo`; `max_duration_ms` must be positive and at most 5000. A `sfx-sample`
+/// `stereo`; `max_duration_ms` must be positive. A `sfx-sample`
 /// case requires `sample_pack` (and no `instrument_bank`); a `music` case requires
 /// `instrument_bank` (and no `sample_pack`); a `sfx-synth` case names neither.
 /// `invalid` is the resolver's error constructor.
@@ -4867,11 +4863,10 @@ fn resolve_audio(
             audio.channels
         )));
     }
-    if audio.max_duration_ms == 0 || audio.max_duration_ms > AUDIO_MAX_DURATION_MS {
-        return Err(invalid(format!(
-            "audio.max_duration_ms ({}) must be greater than zero and at most {AUDIO_MAX_DURATION_MS}",
-            audio.max_duration_ms
-        )));
+    if audio.max_duration_ms == 0 {
+        return Err(invalid(
+            "audio.max_duration_ms must be greater than zero".to_string(),
+        ));
     }
     // Each audio kind draws from a different palette: `sfx-sample` mixes over a baked
     // sample pack, `music` plays a baked instrument bank, and `sfx-synth`

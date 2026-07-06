@@ -4,7 +4,7 @@
 //! Every effect is a pure function of its parameters and the mono buffer it runs over
 //! (the mixer applies a stereo effect per channel), so an effect chain replayed from
 //! the op log reproduces the same output. The filters recompute their coefficients
-//! per sample to support a cutoff sweep; at a clip length of at most five seconds the
+//! per sample to support a cutoff sweep; at the clip lengths these runs produce the
 //! cost is irrelevant.
 
 use std::f64::consts::PI;

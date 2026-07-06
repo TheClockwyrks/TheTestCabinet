@@ -1793,16 +1793,36 @@ fn audio_sample_requires_a_sample_pack() {
 }
 
 #[test]
-fn audio_rejects_over_cap_duration() {
+fn audio_accepts_a_long_duration() {
+    // There is no hard ceiling on clip length: a case may declare any positive
+    // `max_duration_ms`, including one longer than five seconds.
     let manifest = format!(
         "{NEW_FAMILY_HEADER}asset_kind = \"sfx-synth\"\nvariants = [\"variants/base.toml\"]\n\
-         [audio]\nsample_rate = 44100\nchannels = \"mono\"\nmax_duration_ms = 6000\n\
+         [audio]\nsample_rate = 44100\nchannels = \"mono\"\nmax_duration_ms = 30000\n\
+         [tool]\nbinary = \"sfx-synth\"\npreview = \"waveform.png\"\n\
+         [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
+    );
+    let version = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect("a long max_duration_ms resolves");
+    assert_eq!(version.audio.as_ref().unwrap().max_duration_ms, 30000);
+}
+
+#[test]
+fn audio_rejects_zero_duration() {
+    let manifest = format!(
+        "{NEW_FAMILY_HEADER}asset_kind = \"sfx-synth\"\nvariants = [\"variants/base.toml\"]\n\
+         [audio]\nsample_rate = 44100\nchannels = \"mono\"\nmax_duration_ms = 0\n\
          [tool]\nbinary = \"sfx-synth\"\npreview = \"waveform.png\"\n\
          [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
     );
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
-        .expect_err("an over-cap max_duration_ms is rejected");
-    assert!(format!("{err}").contains("at most 5000"), "got: {err}");
+        .expect_err("a zero max_duration_ms is rejected");
+    assert!(
+        format!("{err}").contains("greater than zero"),
+        "got: {err}"
+    );
 }

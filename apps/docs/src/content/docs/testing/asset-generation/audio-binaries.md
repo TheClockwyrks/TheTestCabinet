@@ -3,8 +3,8 @@ title: Audio binaries
 description: The procedural-synthesis, sample-mixing, and sequencer authoring interfaces and PCM .wav (+ .mid) output contract for the sfx-synth, sfx-sample, and music audio binaries.
 ---
 
-An **audio** asset-generation run authors a short clip — at most **five seconds**
-— through an **audio binary** on its `PATH`, the only channel for shaping sound.
+An **audio** asset-generation run authors a clip through an **audio binary** on
+its `PATH`, the only channel for shaping sound.
 The clips are game audio: **sound effects** (weapons firing, footsteps, engines,
 impacts, explosions) and **short music** (stingers, fanfares, loops). There are
 three binaries, one per `asset_kind`, each measuring a different tier of
@@ -58,7 +58,7 @@ carrying the audio parameters and the log, preview, and output (`.wav`, and for
 `init` seeds an **empty log**; a run starts pre-seeded.
 
 The `[audio]` table a case declares fixes the clip's format: `sample_rate`,
-`channels` (`mono` or `stereo`), and `max_duration_ms` (**at most 5000**). See
+`channels` (`mono` or `stereo`), and `max_duration_ms` (the clip-length cap). See
 [Manifests](/testing/asset-generation/manifests/) for the table. The output is PCM
 `.wav` — **binary**, per the [data-format
 principle](/testing/asset-generation/overview/): bulk numeric audio is never JSON.

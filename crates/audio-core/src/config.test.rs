@@ -13,10 +13,10 @@ fn defaults_fill_a_minimal_config() {
 }
 
 #[test]
-fn render_params_clamp_duration_to_ceiling() {
+fn render_params_pass_duration_through_unclamped() {
     let json = r#"{ "max_duration_ms": 99999 }"#;
     let cfg: AudioConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(cfg.render_params().max_duration_ms, 5000);
+    assert_eq!(cfg.render_params().max_duration_ms, 99999);
 }
 
 #[test]

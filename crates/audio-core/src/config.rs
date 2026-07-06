@@ -39,7 +39,8 @@ pub struct AudioConfig {
     /// Output channel layout (`mono` or `stereo`).
     #[serde(default = "default_channels")]
     pub channels: Channels,
-    /// The hard cap on the rendered clip's length in ms (at most 5000).
+    /// Cap on the rendered clip's length in ms (defaults to
+    /// [`default_max_duration`] when the config omits it).
     #[serde(default = "default_max_duration")]
     pub max_duration_ms: u32,
     /// The fixed synthesis seed (reproducible noise).
@@ -78,8 +79,7 @@ impl AudioConfig {
         RenderParams {
             sample_rate: self.sample_rate,
             channels: self.channels,
-            // Clamp to the documented ceiling regardless of what the config declares.
-            max_duration_ms: self.max_duration_ms.min(5000),
+            max_duration_ms: self.max_duration_ms,
             seed: self.seed,
         }
     }
