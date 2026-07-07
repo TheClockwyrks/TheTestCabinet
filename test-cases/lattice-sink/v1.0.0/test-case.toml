@@ -1,7 +1,7 @@
 slug = "lattice-sink"
 name = "Lattice Sink"
 difficulty = "easy"
-tags = ["asset-generation", "2d", "sprite-sheet", "fixture"]
+tags = ["sprite-sheet", "fixture"]
 summary = """
 Draw the Lattice sink: the top-down test-fixture drain for a deterministic \
 factory simulation, as six 32x32 frames whose West intake aperture swallows a \

@@ -1,7 +1,7 @@
 slug = "sunfront-scarab-hatchery"
 name = "Sunfront Scarab Hatchery"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Scarab Hatchery: an opaque-voxel squat \
 hive-mound whose central hatch iris slowly turns and a side vent bobs, each a \

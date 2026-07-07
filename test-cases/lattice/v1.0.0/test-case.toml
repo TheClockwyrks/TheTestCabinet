@@ -22,7 +22,7 @@ name = "Lattice"
 difficulty = "hard"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
-tags = ["performance", "factorio", "simulation", "wasm"]
+tags = ["factorio", "simulation", "wasm"]
 
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.

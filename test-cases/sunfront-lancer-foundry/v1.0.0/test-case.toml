@@ -1,7 +1,7 @@
 slug = "sunfront-lancer-foundry"
 name = "Sunfront Lancer Foundry"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Lancer Foundry: an opaque-voxel spire whose \
 rail-arm slides up and down its shaft and whose focus-ring spins at the crown, each \

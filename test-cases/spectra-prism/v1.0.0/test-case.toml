@@ -1,7 +1,7 @@
 slug = "spectra-prism"
 name = "Spectra Prism"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "enemy", "boss"]
+tags = ["sprite", "enemy", "boss"]
 summary = """
 Draw the Spectra Prism: the two-band boss drone for a two-band formation shooter \
 — a cyan shell around a magenta core — as a 64x64 enemy sprite produced one \

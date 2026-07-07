@@ -1,7 +1,7 @@
 slug = "thunderhead-flak"
 name = "Thunderhead Flak Burst"
 difficulty = "medium"
-tags = ["asset-generation", "particle", "vfx", "3d"]
+tags = ["vfx", "3d"]
 summary = """
 Author the Thunderhead anti-air flak burst: a volumetric mid-air shell detonation \
 — a white-hot core flash, an outward burst of hot sparks, and a lingering dark \

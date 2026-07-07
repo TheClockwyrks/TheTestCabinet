@@ -1,7 +1,7 @@
 slug = "wireworm-corruptor"
 name = "Wireworm Corruptor"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+tags = ["sprite-sheet", "enemy"]
 summary = """
 Draw the corruptor — the leggy crawler that scuttles across the Wireworm \
 circuit board charging every node it touches — as a 32x32 four-frame sprite sheet: \

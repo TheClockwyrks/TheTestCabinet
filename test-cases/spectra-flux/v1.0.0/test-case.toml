@@ -1,7 +1,7 @@
 slug = "spectra-flux"
 name = "Spectra Flux"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "enemy"]
+tags = ["sprite", "enemy"]
 summary = """
 Draw the Spectra Flux: the oscillating-band drone for a two-band formation \
 shooter, caught mid-shimmer showing both bands, as a 64x64 enemy sprite produced \

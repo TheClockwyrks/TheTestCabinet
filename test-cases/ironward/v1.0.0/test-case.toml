@@ -1,7 +1,7 @@
 slug = "ironward"
 name = "Ironward Siege Tank"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "vehicle"]
+tags = ["voxel", "rig", "vehicle"]
 summary = """
 Sculpt and rig the Ironward Siege Tank: an opaque-voxel tank whose turret \
 swivels to aim its forward gun, built by painting discrete cells one recorded \

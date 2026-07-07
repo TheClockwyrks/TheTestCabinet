@@ -1,7 +1,7 @@
 slug = "aegis-dc"
 name = "Aegis (Dual Contouring)"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "mesh", "dual-contouring", "fortress"]
+tags = ["mesh", "dual-contouring", "fortress"]
 summary = """
 Sculpt the Aegis: a colossal, hard-edged six-legged walking fortress \
 built as a signed-distance field and extracted with the Dual \

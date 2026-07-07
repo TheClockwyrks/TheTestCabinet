@@ -1,7 +1,7 @@
 slug = "lattice-source"
 name = "Lattice Source"
 difficulty = "easy"
-tags = ["asset-generation", "2d", "sprite-sheet", "fixture"]
+tags = ["sprite-sheet", "fixture"]
 summary = """
 Draw the Lattice source: a top-down test-fixture item emitter for a deterministic \
 factory simulation, as six 32x32 frames whose green-lit East aperture pulses out a \

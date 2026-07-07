@@ -1,7 +1,7 @@
 slug = "wireworm-cursor"
 name = "Wireworm Cursor"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "player"]
+tags = ["sprite", "player"]
 summary = """
 Draw the defrag cursor — the player's craft in the Wireworm circuit-board arcade \
 game — as a 32x32 sprite: a symmetric, upward-pointing delta ship with a glowing \

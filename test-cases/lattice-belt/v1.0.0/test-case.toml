@@ -1,7 +1,7 @@
 slug = "lattice-belt"
 name = "Lattice Transport Belt"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "belt"]
+tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice transport belt: an animated, top-down straight belt surface for \
 a deterministic factory simulation, as eight 32x32 frames whose amber chevrons \

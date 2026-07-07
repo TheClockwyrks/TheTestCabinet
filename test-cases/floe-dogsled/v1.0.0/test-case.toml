@@ -1,7 +1,7 @@
 slug = "floe-dogsled"
 name = "Floe Dogsled"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "hazard"]
+tags = ["sprite", "hazard"]
 summary = """
 Draw the dogsled — a fast sled-dog team hazard in the Floe arctic-crossing game — \
 as a 64x32 (two-tile) top-down sprite seen from overhead: two running huskies \

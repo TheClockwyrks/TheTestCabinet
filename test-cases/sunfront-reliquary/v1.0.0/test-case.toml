@@ -1,7 +1,7 @@
 slug = "sunfront-reliquary"
 name = "Sunfront Reliquary"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Reliquary: an opaque-voxel monument cradling a \
 glowing solar core — built not from a fixed skeleton but by painting discrete cells \

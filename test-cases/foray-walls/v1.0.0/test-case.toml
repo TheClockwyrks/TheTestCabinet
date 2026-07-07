@@ -1,7 +1,7 @@
 slug = "foray-walls"
 name = "Foray Maze Walls"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "tileset"]
+tags = ["sprite-sheet", "tileset"]
 summary = """
 Draw the Foray maze wall tileset: pac-man-style rounded soil-tunnel walls for a \
 top-down ant-colony raiding game, as a twenty-frame 16x16 sprite sheet — the \

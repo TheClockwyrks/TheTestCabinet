@@ -1,7 +1,7 @@
 slug = "sunfront-bombard-foundry"
 name = "Sunfront Bombard Foundry"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Bombard Foundry: an opaque-voxel mortar-works \
 whose overhead crane arm swings and loading piston bobs on their own self-playing \

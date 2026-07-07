@@ -1,7 +1,7 @@
 slug = "floe-bear"
 name = "Floe Bear"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+tags = ["sprite-sheet", "enemy"]
 summary = """
 Draw the ice bear that hunts the player in the Floe arctic-crossing game — a huge \
 white predator — as a 32x32 eighteen-frame sprite sheet, all from a top-down \

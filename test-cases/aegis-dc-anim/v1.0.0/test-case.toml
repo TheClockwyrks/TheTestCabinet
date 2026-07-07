@@ -1,7 +1,7 @@
 slug = "aegis-dc-anim"
 name = "Aegis (Dual Contouring, Animated)"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "dc", "dual-contouring", "rig", "walker"]
+tags = ["mesh", "dual-contouring", "rig", "walker"]
 summary = """
 Composite and rig the Aegis: a colossal six-legged walking fortress meshed with \
 Dual Contouring into a high-fidelity, crisp surface that preserves sharp edges and \

@@ -1,7 +1,7 @@
 slug = "sunfront-lancer"
 name = "Sunfront Lancer"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
+tags = ["voxel", "rig", "mech"]
 summary = """
 Sculpt and rig the Sunfront Lancer: an opaque-voxel bipedal marksman-mech \
 whose long center rail-lance aims up and down at the chest while it strides on two \

@@ -1,7 +1,7 @@
 slug = "sunfront-bulwark-foundry"
 name = "Sunfront Bulwark Foundry"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Bulwark Foundry: an opaque-voxel heavy \
 armored bunker-forge whose blast door raises and whose flywheel turns on their \

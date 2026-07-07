@@ -1,7 +1,7 @@
 slug = "sunfront-scarab"
 name = "Sunfront Scarab"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
+tags = ["voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Scarab: an opaque-voxel four-legged war-beetle \
 that walks on its legs so every foot lifts clear of the ground and plants flat, and \

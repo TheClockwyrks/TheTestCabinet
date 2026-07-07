@@ -1,7 +1,7 @@
 slug = "wireworm-node"
 name = "Wireworm Node"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "prop"]
+tags = ["sprite-sheet", "prop"]
 summary = """
 Draw the capacitor node that tiles the Wireworm circuit board — the terrain a \
 data-worm charges as it descends — as a 32x32 five-frame sprite sheet: a small \

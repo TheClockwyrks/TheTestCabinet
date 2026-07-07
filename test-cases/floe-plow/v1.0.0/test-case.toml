@@ -1,7 +1,7 @@
 slug = "floe-plow"
 name = "Floe Plow"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "hazard"]
+tags = ["sprite", "hazard"]
 summary = """
 Draw the snow plow — a big, long tracked hazard vehicle in the Floe arctic-crossing \
 game — as a 96x32 (three-tile) top-down sprite seen from overhead: a hard-edged \

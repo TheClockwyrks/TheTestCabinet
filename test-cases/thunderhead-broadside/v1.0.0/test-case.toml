@@ -1,7 +1,7 @@
 slug = "thunderhead-broadside"
 name = "Thunderhead Broadside"
 difficulty = "medium"
-tags = ["asset-generation", "audio", "sfx", "naval"]
+tags = ["sfx", "sample", "naval"]
 summary = """
 Author the Thunderhead capital-ship broadside: a heavy, layered naval-gun \
 report — concussion, sub boom, barrel ring, and debris tail — mixed from the \

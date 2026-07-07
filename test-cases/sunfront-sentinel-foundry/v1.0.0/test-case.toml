@@ -1,7 +1,7 @@
 slug = "sunfront-sentinel-foundry"
 name = "Sunfront Sentinel Foundry"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Sentinel Foundry: an opaque-voxel assembly \
 tower whose stamping press hammers down and drive gear spins on their own \

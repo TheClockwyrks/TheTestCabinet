@@ -1,7 +1,7 @@
 slug = "caldera-basalt"
 name = "Caldera Basalt"
 difficulty = "medium"
-tags = ["asset-generation", "material", "pbr", "3d"]
+tags = ["material", "pbr"]
 summary = """
 Author the Caldera basalt: a tileable, seamless PBR material of weathered \
 volcanic rock — near-black cooled lava cut by hairline ashen and faintly \

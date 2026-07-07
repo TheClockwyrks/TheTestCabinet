@@ -1,7 +1,7 @@
 slug = "sunfront-bastion"
 name = "Sunfront Bastion"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Bastion: an opaque-voxel fortified keep \
 whose solar collector crown rotates, whose gate raises, and whose beacon slowly \

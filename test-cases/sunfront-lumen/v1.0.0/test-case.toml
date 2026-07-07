@@ -1,7 +1,7 @@
 slug = "sunfront-lumen"
 name = "Sunfront Lumen"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
+tags = ["voxel", "rig", "mech"]
 summary = """
 Sculpt and rig the Sunfront Lumen: an opaque-voxel floating beacon drone \
 with a glowing solar-hot core, two counter-rotating rings, and a forward beam \

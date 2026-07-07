@@ -1,7 +1,7 @@
 slug = "sunfront-flak-foundry"
 name = "Sunfront Flak Foundry"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Flak Foundry: an opaque-voxel works crowned \
 with a sweeping radar dish and carrying a bobbing piston on its flank — painted cell \

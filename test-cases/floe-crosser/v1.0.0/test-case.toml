@@ -1,7 +1,7 @@
 slug = "floe-crosser"
 name = "Floe Crosser"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "player"]
+tags = ["sprite-sheet", "player"]
 summary = """
 Draw the crosser — the player critter of the Floe arctic-crossing game — as a \
 32x32 eight-frame sprite sheet: a small, round, warm-furred, big-eyed tundra \

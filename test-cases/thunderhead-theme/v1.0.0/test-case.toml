@@ -1,7 +1,7 @@
 slug = "thunderhead-theme"
 name = "Thunderhead Theme"
 difficulty = "medium"
-tags = ["asset-generation", "audio", "music", "naval"]
+tags = ["music", "naval"]
 summary = """
 Compose the Thunderhead battle theme: a short, clean-looping naval-battle cue for \
 the fleet-command game, sequenced note by note as instrument tracks over the \

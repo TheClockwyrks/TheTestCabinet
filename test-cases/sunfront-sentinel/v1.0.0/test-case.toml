@@ -1,7 +1,7 @@
 slug = "sunfront-sentinel"
 name = "Sunfront Sentinel"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
+tags = ["voxel", "rig", "mech"]
 summary = """
 Sculpt and rig the Sunfront Sentinel: an opaque-voxel bipedal war-mech \
 that strides on two legs, aims a right-arm rifle up and down, and stands its \

@@ -1,7 +1,7 @@
 slug = "spectra-fighter"
 name = "Spectra Fighter"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "ship"]
+tags = ["sprite", "ship"]
 summary = """
 Draw the Spectra resonator-fighter: the player's ship for a two-band formation \
 shooter, as a 64x64 sprite produced one drawing operation at a time."""

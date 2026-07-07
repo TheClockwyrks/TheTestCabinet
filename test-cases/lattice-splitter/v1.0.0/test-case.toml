@@ -1,7 +1,7 @@
 slug = "lattice-splitter"
 name = "Lattice Splitter"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "belt"]
+tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice splitter — the two-tile belt balancer — as a 32x64 sprite sheet: \
 a top-down housing spanning two tile cells with an animated belt surface of amber \

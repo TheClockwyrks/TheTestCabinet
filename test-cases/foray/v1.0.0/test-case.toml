@@ -19,7 +19,7 @@ name = "Foray"
 difficulty = "hard"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
-tags = ["adversarial", "ctf", "wasm", "ai", "2d"]
+tags = ["ctf", "wasm", "ai", "2d"]
 
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.

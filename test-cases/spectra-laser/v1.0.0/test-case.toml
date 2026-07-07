@@ -1,7 +1,7 @@
 slug = "spectra-laser"
 name = "Spectra Laser"
 difficulty = "medium"
-tags = ["asset-generation", "audio", "sfx", "synth"]
+tags = ["sfx", "synth"]
 summary = """
 Synthesize the Spectra fighter's laser-fire sound: a short, bright arcade-retro \
 "pew" — a fast pitch-down zap built from oscillators alone, one recorded \

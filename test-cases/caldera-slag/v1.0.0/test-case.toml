@@ -1,7 +1,7 @@
 slug = "caldera-slag"
 name = "Caldera Slag"
 difficulty = "medium"
-tags = ["asset-generation", "skinned", "creature", "3d"]
+tags = ["skinned", "creature"]
 summary = """
 Sculpt and rig the Caldera Slag: a molten elemental creature — a hunched \
 mass of glowing magma sheathed in cracked cooling-basalt crust — built as ONE \

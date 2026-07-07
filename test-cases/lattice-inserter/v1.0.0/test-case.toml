@@ -1,7 +1,7 @@
 slug = "lattice-inserter"
 name = "Lattice Inserter"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "machine"]
+tags = ["sprite-sheet", "machine"]
 summary = """
 Draw the Lattice inserter: a swing-arm machine for a deterministic factory \
 simulation, drawn in Factorio's high-angle pseudo-3D style, as twelve 64x64 \

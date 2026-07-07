@@ -1,7 +1,7 @@
 slug = "floe-pan"
 name = "Floe Pan"
 difficulty = "easy"
-tags = ["asset-generation", "2d", "sprite", "prop"]
+tags = ["sprite", "prop"]
 summary = """
 Draw the ice floe — the safe drifting platform in the Floe arctic-crossing game — \
 as a 32x32 sprite: a flat ice pan with the jagged, broken edges of real fractured \

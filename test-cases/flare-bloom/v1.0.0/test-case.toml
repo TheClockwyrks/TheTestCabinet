@@ -1,7 +1,7 @@
 slug = "flare-bloom"
 name = "Flare Bloom"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "effect"]
+tags = ["sprite-sheet", "effect"]
 summary = """
 Draw the flare bloom: the bright radial burst the Flarefish predator sets off to \
 hunt in a lightless trench, as a 128x128 eight-frame sprite sheet — a warm \

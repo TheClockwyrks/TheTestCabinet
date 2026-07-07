@@ -1,7 +1,7 @@
 slug = "gloamfin"
 name = "Gloamfin"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+tags = ["sprite-sheet", "enemy"]
 summary = """
 Draw the Gloamfin: the Listener, an eyeless deep-sea predator that hunts by \
 sound, as a 32x32 four-direction swim sprite sheet — eight frames carrying its \

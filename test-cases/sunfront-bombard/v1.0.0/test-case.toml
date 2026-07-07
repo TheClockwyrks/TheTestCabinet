@@ -1,7 +1,7 @@
 slug = "sunfront-bombard"
 name = "Sunfront Bombard"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
+tags = ["voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Bombard: an opaque-voxel four-legged siege \
 mortar walker whose turret swivels and whose long mortar barrel lobs high — built \

@@ -1,7 +1,7 @@
 slug = "sunfront-lumen-spire"
 name = "Sunfront Lumen Spire"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Lumen Spire: a slim opaque-voxel beacon spire \
 painted cell by cell with the `voxel-anim` tool. The model invents whatever parts and \

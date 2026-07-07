@@ -1,7 +1,7 @@
 slug = "foray-nest"
 name = "Foray Nest"
 difficulty = "easy"
-tags = ["asset-generation", "2d", "sprite", "tile"]
+tags = ["sprite", "tile"]
 summary = """
 Draw the Foray nest: a colony's home-tile spawn mound in a top-down ant-colony \
 raiding game, as a 16x16 sprite — a centered domed earthwork with a central \

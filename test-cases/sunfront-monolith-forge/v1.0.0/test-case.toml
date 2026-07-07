@@ -1,7 +1,7 @@
 slug = "sunfront-monolith-forge"
 name = "Sunfront Monolith Forge"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Monolith Forge: an opaque-voxel great forge \
 whose massive hammer stamps down and back up and whose gear crown turns on their \

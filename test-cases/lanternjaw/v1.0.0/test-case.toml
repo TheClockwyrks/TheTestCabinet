@@ -1,7 +1,7 @@
 slug = "lanternjaw"
 name = "Lanternjaw"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+tags = ["sprite-sheet", "enemy"]
 summary = """
 Draw the Lanternjaw: the Lure, an anglerfish-style deep-sea predator that hunts \
 by light with a dangling lure-light, as a 128x128 sprite sheet — four-direction \

@@ -1,7 +1,7 @@
 slug = "thunderhead-hud"
 name = "Thunderhead HUD"
 difficulty = "medium"
-tags = ["asset-generation", "ui", "2d"]
+tags = ["ui", "naval"]
 summary = """
 Paint the Thunderhead fleet-command HUD kit — a bezelled command panel, a \
 stretchable health-bar frame, a square minimap bezel, a faction crest, and a \

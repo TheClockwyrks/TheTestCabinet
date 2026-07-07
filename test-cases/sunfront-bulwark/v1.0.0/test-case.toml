@@ -1,7 +1,7 @@
 slug = "sunfront-bulwark"
 name = "Sunfront Bulwark"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
+tags = ["voxel", "rig", "mech"]
 summary = """
 Sculpt and rig the Sunfront Bulwark: an opaque-voxel heavy bipedal mech \
 that braces a broad tower shield on its left arm and swings a heavy siege maul on \

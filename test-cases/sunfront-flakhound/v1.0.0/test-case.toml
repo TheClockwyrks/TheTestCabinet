@@ -1,7 +1,7 @@
 slug = "sunfront-flakhound"
 name = "Sunfront Flakhound"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
+tags = ["voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Flakhound: an opaque-voxel four-legged \
 anti-air walker painted cell by cell with the `voxel-anim` tool — it strides on \

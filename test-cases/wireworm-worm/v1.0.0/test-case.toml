@@ -1,7 +1,7 @@
 slug = "wireworm-worm"
 name = "Wireworm"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+tags = ["sprite-sheet", "enemy"]
 summary = """
 Draw the segmented data-worm that descends the Wireworm circuit board — the enemy \
 the player splits — as a 32x32 six-frame sprite sheet of tileable parts: a \

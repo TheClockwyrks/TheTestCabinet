@@ -1,7 +1,7 @@
 slug = "foray-raider"
 name = "Foray Raider"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+tags = ["sprite-sheet", "enemy"]
 summary = """
 Draw the Foray raider: the lean forager caste of a top-down ant-colony raiding \
 game, as a thirty-two-frame 16x16 sprite sheet — a four-step walk cycle in each \

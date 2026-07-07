@@ -1,7 +1,7 @@
 slug = "glimmerfin"
 name = "Glimmerfin"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "player"]
+tags = ["sprite-sheet", "player"]
 summary = """
 Draw the Glimmerfin: the player's bioluminescent forager in a deep-sea maze \
 chase, as a 32x32 sprite sheet — a four-direction swim with a chomp cycle as it \

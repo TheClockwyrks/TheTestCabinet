@@ -1,7 +1,7 @@
 slug = "lattice-assembler"
 name = "Lattice Assembler"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "machine"]
+tags = ["sprite-sheet", "machine"]
 summary = """
 Draw the Lattice assembler: a chunky pseudo-3D 3x3 industrial crafting machine \
 with visible height, as a 96x96 sprite sheet — eight frames of a seamless working \

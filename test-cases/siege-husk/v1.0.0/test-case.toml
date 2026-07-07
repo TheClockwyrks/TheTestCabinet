@@ -1,7 +1,7 @@
 slug = "siege-husk"
 name = "Siege Husk"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "skinned", "character"]
+tags = ["skinned", "character"]
 summary = """
 Sculpt and rig the Siege Husk: a low-poly, shambling humanoid enemy for the Siege \
 first-person last-stand game, built as ONE continuous skin with the `mc-skin` tool — a \

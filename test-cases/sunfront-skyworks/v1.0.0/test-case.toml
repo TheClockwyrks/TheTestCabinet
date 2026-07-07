@@ -1,7 +1,7 @@
 slug = "sunfront-skyworks"
 name = "Sunfront Skyworks"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Skyworks: an opaque-voxel open launch-pad \
 hangar whose turbine spins fast overhead and launch door raises and lowers on their \

@@ -1,7 +1,7 @@
 slug = "sunfront-aegis"
 name = "Sunfront Aegis"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
+tags = ["voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Aegis: a colossal six-legged walking fortress painted as \
 an opaque-voxel model — built not by compositing a field but by placing \

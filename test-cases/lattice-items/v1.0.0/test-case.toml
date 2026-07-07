@@ -1,7 +1,7 @@
 slug = "lattice-items"
 name = "Lattice Items"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "item"]
+tags = ["sprite-sheet", "item"]
 summary = """
 Draw the Lattice item icon set — eight distinct factory items that ride the \
 belts (iron/copper/steel plates, iron/copper ore, stone, an iron gear wheel, and \

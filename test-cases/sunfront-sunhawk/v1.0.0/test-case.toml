@@ -1,7 +1,7 @@
 slug = "sunfront-sunhawk"
 name = "Sunfront Sunhawk"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "aircraft"]
+tags = ["voxel", "rig", "aircraft"]
 summary = """
 Sculpt and rig the Sunfront Sunhawk: an opaque-voxel gunship aircraft — a \
 wide, flat armored fuselage with a rotor out on each side and an underslung forward \

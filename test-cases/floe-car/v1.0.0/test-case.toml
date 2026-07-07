@@ -1,7 +1,7 @@
 slug = "floe-car"
 name = "Floe Car"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "hazard"]
+tags = ["sprite", "hazard"]
 summary = """
 Draw the car — a normal two-tile sedan hazard vehicle in the Floe arctic-crossing \
 game — as a 64x32 top-down sprite seen from overhead: a rounded red car body with a \

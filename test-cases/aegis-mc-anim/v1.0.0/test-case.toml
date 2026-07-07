@@ -1,7 +1,7 @@
 slug = "aegis-mc-anim"
 name = "Aegis (Marching Cubes, Animated)"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "mc", "marching-cubes", "rig", "walker"]
+tags = ["mesh", "marching-cubes", "rig", "walker"]
 summary = """
 Composite and rig the Aegis: a colossal six-legged walking fortress meshed with \
 Marching Cubes into a bold, low-poly faceted surface — built not by painting cells \
