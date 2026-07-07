@@ -42,9 +42,9 @@ lists `SKIRMISH` then `HOW TO PLAY`.
 
 The `gameplay.html` mockup is **HUD-only**: the in-match HUD overlay over a neutral
 viewport — the sol and income readout, the wave countdown, both base health bars,
-the build palette, a selected-spawner panel, and the performance overlay. The 3D
+the build palette, a selected-structure panel, and the performance overlay. The 3D
 world it sits over — the front-line battle, both legions' units, air units above
-the line, the player's staging yard with placed, levelled spawners, and the **fog**
+the line, the player's staging yard with placed, levelled build-grid structures, and the **fog**
 blacking out the enemy staging yard and far lane — is rendered by the build from
 the specification, not faked here. The values shown are just one example moment.
 

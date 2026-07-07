@@ -153,9 +153,9 @@ path = "reference/game-over.html"
 
 # Proof of implementation, requested for every variant. Each declares a `dest`
 # path (relative to the run workspace root) the build must write a screenshot or
-# `.mp4` to; `specs/proof.md` instructs the build to produce them at exactly these
-# paths. Validation records whether each turned up (informational). The media kind
-# is inferred from the extension: `.png` is an image, `.mp4` a video.
+# `.webm` clip to; `specs/proof.md` instructs the build to produce them at exactly
+# these paths. Validation records whether each turned up (informational). The media
+# kind is inferred from the extension: `.png` is an image, `.webm` a video.
 [[proof]]
 id = "title"
 name = "Title menu"
@@ -174,7 +174,12 @@ dest = "proof/game-over.png"
 [[proof]]
 id = "wave"
 name = "Wave march clip"
-dest = "proof/wave.mp4"
+dest = "proof/wave.webm"
+
+[[proof]]
+id = "wireframe"
+name = "Wireframe frame"
+dest = "proof/wireframe.png"
 
 # Validation checks (opt-in). Only the checks declared here run. Each drives the
 # built implementation, screenshots it, and compares against the rendered
@@ -308,15 +313,22 @@ reference = "title"
 proof = "title"
 
 [[review_item]]
+id = "renderer-3d"
+title = "3D rendering, camera & wireframe"
+text = "The battlefield renders as a real 3D world in WebGL/WebGPU — provided unit and structure models with real height on generated terrain — seen through a tilted overhead camera that keeps the whole diagonal front framed; a flat top-down or purely-2D rendering does not satisfy this case. The game sustains a playable frame rate in a heavy late-match battle, the performance overlay shows the live FPS, and wireframe mode reveals the geometry of the models, terrain, structures, and effects."
+weight = 2
+proof = "wireframe"
+
+[[review_item]]
 id = "hud-complete"
 title = "HUD"
-text = "The HUD shows the sol balance and total income rate, the wave number and countdown, both base health bars, the build palette (ten unit spawners plus Solar Extractor) with costs and affordability, and a selected-structure panel — all inside the fitted 16:9 view."
+text = "The HUD overlay shows the sol balance and total income rate, the wave number and countdown, both base health bars, the build palette (ten unit spawners plus Solar Extractor) with costs and affordability, and a selected-structure panel — plus the toggleable performance overlay (FPS) and wireframe mode — all on screen over the 3D world."
 weight = 1
 
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
-text = "The entire 16:9 field — both bases in their opposite corners, the full diagonal arena, both staging yards, every HUD element, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+text = "The tilted overhead camera keeps the whole diagonal battlefield — both bases, the full lane, the player's staging yard, the fog-covered enemy staging-yard region, and all four edges — framed, and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on load before any input."
 weight = 1
 
 [[review_item]]

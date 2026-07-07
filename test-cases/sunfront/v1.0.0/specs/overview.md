@@ -2,13 +2,14 @@
 
 ## Overview
 
-**Sunfront** is a real-time **tug-of-war** for the browser, rendered in **3D**. Two
-rival legions of solar-powered war automatons — the **Duneforged** — face each other
-across a diagonal stretch of desert, their bases in opposite corners. You never
-command a single unit. Instead you spend a steadily ticking income on **spawner
-structures** and **Solar Extractors** in your walled staging yard; every **wave**,
-each spawner you own stamps out its unit, and those units march across the sand
-toward the enemy base, fighting whatever they meet on the way.
+**Sunfront** is a real-time **tug-of-war** for the browser, rendered in **3D** through
+a tilted overhead command camera. Two rival legions of solar-powered war automatons —
+the **Duneforged** — face each other across a diagonal stretch of desert, their bases
+in opposite corners. You never command a single unit. Instead you spend a steadily
+ticking income on **spawner structures** and **Solar Extractors** in your walled
+staging yard; every **wave**, each spawner you own stamps out its unit, and those
+units march across the sand toward the enemy base, fighting whatever they meet on the
+way.
 Win by grinding a hole through the enemy line and levelling their base; lose if
 they level yours.
 
@@ -31,8 +32,8 @@ This specification is split across several files. Read **every one** before you
 start; they cross-reference each other **by name** and form a single spec.
 
 - `specs/overview.md` — this file: goals, hard requirements, free choices, the
-  coordinate system, the palette and type, the game states, and the reference
-  index.
+  coordinate system, the palette and type, the game states, the **rendering,
+  camera, and performance** requirements, and the reference index.
 - `specs/playfield.md` — the battlefield geometry: the diagonal lane, the two
   corner bases, the Reliquaries, the staging yards and their build grid, and the
   **fog of war**.
@@ -53,11 +54,11 @@ The main menu lists the playable mode, then `HOW TO PLAY`.
 ## Goal of this build
 
 Produce a complete, polished, **playable** game that runs entirely in a browser.
-This is a substantial front-end task: a real-time simulation of dozens of units,
-a resource economy, a placement UI, fog of war, an AI opponent, several unit
-types with a rock-paper-scissors combat model, a mid-map objective, and multiple
-game states and menus. Aim for a build a person would actually enjoy playing, not
-a tech demo.
+This is a substantial front-end task: a real-time **3D** simulation of dozens of
+units, a resource economy, a placement UI, fog of war, an AI opponent, several unit
+types with a rock-paper-scissors combat model, a mid-map objective, and multiple game
+states and menus. Aim for a build a person would actually enjoy playing, not a tech
+demo.
 
 ### Hard requirements
 
@@ -124,15 +125,42 @@ is presentation (model height, the camera, the Sunhawk's flight altitude).
   window size and pixel density.
 - Gameplay logic operates in logical ground-plane units, independent of the rendered
   scale or camera.
+- The simulation must be **frame-rate independent**, as a modern game is: movement,
+  combat cadence, income, and the wave clock advance in real time (scaled by elapsed
+  time between frames), never per rendered frame, so behavior is the same whether a
+  machine draws fast or slow.
 - **The whole field must be on screen.** At every window size the complete arena is
   in frame at once — **both bases in their opposite corners**, the full diagonal
-  lane, both staging yards, every HUD element, and all four edges — fitted and
-  centered, with nothing clipped or pushed past the edges. The build must fit
-  correctly on load, before any input.
+  lane, the player's staging yard, the fog-covered enemy staging-yard region, every
+  HUD element, and all four edges — fitted and centered, with nothing clipped or
+  pushed past the edges. The build must fit correctly on load, before any input.
 - **The two sides mirror.** The player holds **one corner**; the AI holds the
   **opposite** corner. The layout has **180° rotational symmetry about the arena
   center**: every position and distance given for the player's side has a mirror-image
   counterpart on the enemy's side through the center point (`specs/playfield.md`).
+
+## Rendering, Camera, and Performance
+
+This is a 3D battlefield, and it must run at an **interactive frame rate**, not
+just render a still. These are hard requirements:
+
+- **Tilted overhead camera.** Show the battlefield through a fixed tilted overhead
+  command camera, not a flat top-down map. The camera should make model height,
+  formation depth, and the diagonal front readable while keeping the full arena in
+  frame. Optional rotate/zoom controls are fine only if the default view remains clear.
+- **The whole front stays framed.** At every window size the camera keeps the complete
+  battlefield in view — both bases, the full diagonal lane, the player's staging yard,
+  the fog-covered enemy staging-yard region, and every HUD element — fitted and
+  legible, with nothing important pushed off screen, on load before any input and at
+  any pixel density.
+- **Frame rate.** On a mid-range laptop the game must sustain a **playable frame rate
+  (target 30 FPS or better)** during a heavy late-match battle — dozens of units, both
+  Reliquaries and an Aegis, and effects on screen at once. The **performance overlay**
+  (`specs/flow.md`) must display the live FPS so this is observable.
+- **Wireframe mode.** A toggle (`specs/flow.md`) must switch rendering to
+  **wireframe** for units, structures, terrain, and generated effects, so the
+  underlying 3D geometry is inspectable. Provided models may use a mesh wireframe
+  material or an equivalent inspection material.
 
 ## Visual design
 
@@ -185,17 +213,19 @@ and behave as `specs/flow.md` describes.
 
 ## Reference images
 
-The `reference/` folder holds screenshots showing how key screens should look:
+The `reference/` folder holds screenshots showing how key screens should look. The
+in-match reference is **HUD-only** — a flat mockup cannot fake the 3D battlefield
+convincingly, so the gameplay reference shows the HUD overlay (its layout, palette,
+and type) over a neutral viewport; you render the 3D world itself from this
+specification.
 
 - `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — a representative in-match frame: the diagonal arena
-  mid-battle, the player's staging yard with placed build-grid structures, the HUD,
-  and the fog over the enemy yard.
+- `reference/gameplay.png` — the in-match **HUD** over a neutral viewport: the sol
+  and income readout, the wave number and countdown, both base health bars, the build
+  palette, a selected-structure panel, and the performance overlay.
 - `reference/game-over.png` — the match-over screen.
 
 Treat them as visual targets: match their layout, palette, and type. They are
-images only — and, being static mockups, they only **approximate** the 3D look;
-build the screens from this specification (a real 3D scene rendered through a
-camera), not as flat drawings.
+images only — build the screens from this specification.
 </content>
 </invoke>
