@@ -80,27 +80,16 @@
   border-radius: t.$radius-lg;
 }
 
-// The control strip pairs the tab navigation with the page-level variant
-// selector, wrapping to stacked rows on narrow screens.
+// The tab navigation strip. It carries only the tabs — the page-level variant
+// selector and Run action live in the header — so it mirrors the run and model
+// detail strips and the three detail pages read as one family.
 .controls {
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
   flex-wrap: wrap;
   gap: t.$space-md;
   margin-bottom: t.$space-xl;
   border-bottom: t.$border-hairline solid t.$color-border;
-
-  // On narrow screens the tabs and the variant/Run controls each take their own
-  // full-width row rather than crowding the strip. The baseline border moves to
-  // the tabs row (so the active underline still meets a baseline), and the
-  // actions stack beneath it.
-  @include bp.below(t.$bp-md) {
-    flex-direction: column;
-    align-items: stretch;
-    gap: t.$space-md;
-    border-bottom: none;
-  }
 }
 
 .tabs {
@@ -109,9 +98,8 @@
   gap: t.$space-sm;
 
   // On narrow screens the tabs read as a single swipeable strip rather than
-  // wrapping, matching the run and model detail strips. Since the controls strip
-  // drops its border when stacked, the baseline border lives here so the active
-  // underline still has a baseline to meet. The row scrolls horizontally; the
+  // wrapping, matching the run and model detail strips. The row scrolls
+  // horizontally beneath the controls strip's fixed baseline border; the
   // negative inline margins bleed it to the content edges so the first and last
   // tabs aren't clipped by the page gutter, and the padding restores the gutter.
   @include bp.below(t.$bp-md) {
@@ -121,7 +109,6 @@
     scrollbar-width: none;
     margin-inline: calc(-1 * t.$space-md);
     padding-inline: t.$space-md;
-    border-bottom: t.$border-hairline solid t.$color-border;
 
     &::-webkit-scrollbar {
       display: none;
@@ -171,35 +158,28 @@
   border-bottom-color: t.$color-accent;
 }
 
-// The right side of the control strip: the variant selector paired with the Run
-// action (consoles only). Bottom-aligned so both sit on the tabs' baseline.
-.actions {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: t.$space-md;
-
-  // Stacked into its own full-width row below the tabs on narrow screens. The
-  // variant control takes the available width and the Run button keeps its
-  // intrinsic (tappable) size beside it; neither shrinks to an unusable size.
-  @include bp.below(t.$bp-md) {
-    display: flex;
-    align-items: center;
-    gap: t.$space-md;
-  }
+// Page-level actions in the header: the variant selector paired with the Run
+// action (consoles only), right-aligned beneath the difficulty rating so they
+// read as the header's control column and never crowd the tab strip. Wraps to a
+// second line only if the variant name is extreme; the Run button stays beside
+// it.
+.actionRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
 }
 
 .variant {
   display: inline-flex;
   align-items: center;
   gap: t.$space-sm;
-  margin-bottom: t.$space-sm;
 
-  // Grow to fill the stacked actions row so the select is comfortably tappable;
-  // the bottom margin (which aligned it to the tabs baseline) is no longer
-  // needed once it sits in its own row.
+  // Grow to a comfortable tap target on narrow screens, with the Run button
+  // keeping its intrinsic size beside it.
   @include bp.below(t.$bp-md) {
     flex: 1 1 auto;
-    margin-bottom: 0;
   }
 }
 
@@ -207,7 +187,6 @@
 // (and selected variant) into the new-run form. Mirrors the "+ New run" primary
 // so the two run entry points read alike.
 .run {
-  margin-bottom: t.$space-sm;
   padding: t.$space-xs t.$space-md;
   font-size: t.$font-sm;
   text-transform: uppercase;
@@ -229,11 +208,9 @@
     outline-offset: 2px;
   }
 
-  // In the stacked actions row the button no longer aligns to the tabs baseline,
-  // so drop the bottom margin; a slightly larger tap target reads better here.
+  // A slightly larger tap target reads better on narrow screens.
   @include bp.below(t.$bp-md) {
     flex: none;
-    margin-bottom: 0;
     padding: t.$space-sm t.$space-md;
   }
 }
@@ -262,7 +239,7 @@
     border-color: t.$color-accent;
   }
 
-  // Fill the remaining width of the stacked actions row and grow the tap target
+  // Fill the width the growing variant control gives it and grow the tap target
   // a touch so the selector is comfortable on mobile. Bump only the block/inline
   // padding with longhands so the chevron room (padding-right) survives.
   @include bp.below(t.$bp-md) {

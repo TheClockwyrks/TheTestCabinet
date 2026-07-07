@@ -121,25 +121,13 @@ export function TestCaseDetailLayout({
             {testCase.difficulty}
           </span>
         </div>
-      </header>
-
-      <div className={styles.controls}>
-        <nav className={styles.tabs} aria-label="Test case sections">
-          {tabs.map((entry) => (
-            <NavLink
-              key={entry.key}
-              to={{ pathname: entry.to, search }}
-              className={
-                entry.key === tab
-                  ? `${styles.tab} ${styles.tabActive}`
-                  : styles.tab
-              }
-            >
-              {entry.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className={styles.actions}>
+        {/* Page-level actions live in the header (not the tab strip): the
+            variant selector drives every tab at once, and the Run action carries
+            the viewed case + variant into the new-run form. Keeping them here
+            leaves the tab strip a clean single row that reads like the run and
+            model detail strips, and a long variant name can no longer shove the
+            Run action onto its own line. */}
+        <div className={styles.actionRow}>
           <label className={styles.variant}>
             <span className={styles.variantLabel}>Variant</span>
             <select
@@ -170,6 +158,24 @@ export function TestCaseDetailLayout({
             </Link>
           )}
         </div>
+      </header>
+
+      <div className={styles.controls}>
+        <nav className={styles.tabs} aria-label="Test case sections">
+          {tabs.map((entry) => (
+            <NavLink
+              key={entry.key}
+              to={{ pathname: entry.to, search }}
+              className={
+                entry.key === tab
+                  ? `${styles.tab} ${styles.tabActive}`
+                  : styles.tab
+              }
+            >
+              {entry.label}
+            </NavLink>
+          ))}
+        </nav>
       </div>
 
       {children({ testCase, variant })}
