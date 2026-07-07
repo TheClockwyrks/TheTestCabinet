@@ -38,6 +38,16 @@
   padding: t.$space-sm t.$space-md;
   color: t.$color-text;
   white-space: nowrap;
+  // Grow the row box to the full width its columns occupy so its background, top
+  // border and hover wash span the entire scrolled width — not just the panel's
+  // visible edge. Without this the grid tracks overflow the box (which stays at
+  // the panel width) once resized columns exceed it, leaving the styling to stop
+  // mid-row while the cells scroll on past. `fit-content` still collapses to the
+  // panel at rest, so flexible tracks keep absorbing slack and cells truncate;
+  // the per-scope `min-width` below (raised to at least `100%`) keeps every row
+  // filling the visible width.
+  width: fit-content;
+  min-width: 100%;
 }
 
 .log[data-scope="global"] .row {
@@ -46,19 +56,19 @@
   // boundaries) overrides the resting template; the fallback keeps the layout
   // identical when unset or for a non-resizable instance.
   grid-template-columns: var(--ttc-cols, 1.2rem 1fr 7rem 6rem 1.6fr 5rem 5rem 6rem);
-  min-width: 46rem;
+  min-width: max(100%, 46rem);
 }
 
 .log[data-scope="variant"] .row {
   // caret · harness · model · tokens · cost · rating
   grid-template-columns: 1.2rem 7rem 1.6fr 5rem 5rem 6rem;
-  min-width: 30rem;
+  min-width: max(100%, 30rem);
 }
 
 .log[data-scope="model"] .row {
   // caret · test · harness · variant · tokens · cost · rating
   grid-template-columns: 1.2rem 1fr 7rem 6rem 5rem 5rem 6rem;
-  min-width: 40rem;
+  min-width: max(100%, 40rem);
 }
 
 a.row {
@@ -256,6 +266,9 @@ a.row {
     gap: t.$space-xs;
     padding: t.$space-md;
     white-space: normal;
+    // The desktop rows grow to their columns' width; a card is a plain block that
+    // should just fill the panel, so drop the content-sized width here.
+    width: auto;
   }
 
   // Neutralize the per-scope fixed templates / min-widths so nothing forces an

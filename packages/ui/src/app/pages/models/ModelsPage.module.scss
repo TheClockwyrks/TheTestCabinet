@@ -41,7 +41,13 @@
   // drags header boundaries) overrides the resting template below.
   grid-template-columns: var(--ttc-cols, 1.2rem 1.6fr 8rem 7rem 7rem 6rem);
   gap: t.$space-md;
-  min-width: 42rem;
+  // Grow the row box to its columns' full width so the background, top border and
+  // hover wash span the whole scrolled width rather than stopping at the panel's
+  // visible edge when resized columns overflow. `fit-content` still collapses to
+  // the panel at rest (flexible tracks absorb the slack, cells truncate); the
+  // `min-width` floor keeps every row at least panel-wide.
+  width: fit-content;
+  min-width: max(100%, 42rem);
   padding: t.$space-sm t.$space-md;
   color: t.$color-text;
   white-space: nowrap;
@@ -175,6 +181,9 @@ a.row:hover .logo {
     grid-template-columns: none;
     gap: t.$space-xs;
     min-width: 0;
+    // A card is a plain block that just fills the panel — drop the desktop rows'
+    // content-sized width.
+    width: auto;
     padding: t.$space-md;
     white-space: normal;
   }
