@@ -1,0 +1,58 @@
+@use "../styles/tokens" as t;
+
+// The header cell: positioning context for the column's resize handle, which
+// pins to its right edge. A numeric column right-aligns its label and insets it
+// to match the figures below (whose `.num` cells carry the same right padding).
+.cell {
+  position: relative;
+
+  &[data-numeric] {
+    text-align: right;
+    padding-right: t.$space-sm;
+  }
+}
+
+// A sortable column's header is a button so it's keyboard- and pointer-clickable;
+// it inherits the header row's muted type and brightens to the accent on hover or
+// when it's the active sort.
+.sortButton {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: color 0.12s ease;
+
+  > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &:hover,
+  &[data-active] {
+    color: t.$color-accent;
+    text-shadow: var(--ttc-glow);
+  }
+}
+
+// The direction indicator. A faint ↕ marks an unsorted-but-sortable column so the
+// affordance reads; the active column shows a solid ▲/▼ in the accent. A fixed
+// slot keeps the label from shifting as the arrow changes.
+.sortArrow {
+  flex: none;
+  min-width: 0.8em;
+  text-align: center;
+  font-size: 0.7em;
+  opacity: 0.3;
+
+  .sortButton:hover &,
+  .sortButton[data-active] & {
+    opacity: 1;
+  }
+}

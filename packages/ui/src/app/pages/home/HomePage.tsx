@@ -1,10 +1,10 @@
 import type { RunRecord } from "@test-cabinet/run-record";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
-import { RunLog } from "../../components/RunLog";
+import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { findModelByModelId } from "../../data/models";
 import { type Rating, worstRating } from "../../data/ratings";
@@ -17,17 +17,21 @@ import styles from "./HomePage.module.scss";
 
 // Home: the most recent runs, newest first, framed as the cabinet's "recent
 // results". A single featured run leads, the rest follow in the dense,
-// column-aligned run log carried over from the gallery. It is not a
-// leaderboard and shows no ranking — runs are ordered purely by recency.
+// column-aligned run log carried over from the gallery. The log defaults to
+// recency order, but its headers can be clicked to re-sort by any column.
 export function HomePage() {
   const { runs, localIds, localWriteups } = useRuns();
   const findReview = useFindReview();
-  const recent = [...runs].sort(byRecencyDesc);
+  const recent = useMemo(() => [...runs].sort(byRecencyDesc), [runs]);
   // The hero spotlights the latest *completed* run: a failed run produced no
   // stats or rating, so featuring it would lead with zeros. Failed runs still
   // appear (mixed in, recency-ordered) in the log below.
   const featured = recent.find((r) => r.status.state === "completed") ?? null;
-  const rest = featured ? recent.filter((r) => r.id !== featured.id) : recent;
+  const rest = useMemo(
+    () => (featured ? recent.filter((r) => r.id !== featured.id) : recent),
+    [recent, featured],
+  );
+  const table = useRunTable({ runs: rest, localIds, localWriteups });
   const featuredRating = featured
     ? (worstRating(
         findReview(featured.id, localWriteups)?.ratings.map((r) => r.rating) ??
@@ -58,12 +62,7 @@ export function HomePage() {
               />
             )}
             {rest.length > 0 && (
-              <RunLog
-                runs={rest}
-                localIds={localIds}
-                localWriteups={localWriteups}
-                resizable
-              />
+              <RunLog rows={table.rows} controls={table.controls} />
             )}
           </>
         )}

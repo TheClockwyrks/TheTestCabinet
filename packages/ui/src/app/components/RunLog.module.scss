@@ -2,6 +2,20 @@
 @use "../styles/surfaces" as s;
 @use "../styles/breakpoints" as bp;
 
+// Positioning context for the column-picker trigger, which hangs off the panel's
+// top-right corner outside the scroll region so it never scrolls away with a wide
+// table.
+.wrap {
+  position: relative;
+}
+
+.menuAnchor {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 5;
+}
+
 // Translucent neon-outlined panel so the grid + scanlines read through behind
 // the table.
 .log {
@@ -62,9 +76,11 @@ a.row {
   font-size: t.$font-sm;
   letter-spacing: 0.1em;
   color: t.$color-text-muted;
+  // Keep the picker trigger clear of the last header label.
+  padding-right: 2rem;
 
   // Positioning context so each column's resize handle can pin to the cell's
-  // right edge.
+  // right edge. (The shared SortableHeaderCell also sets this on itself.)
   > span {
     position: relative;
   }
@@ -164,6 +180,25 @@ a.row {
 .model {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+// The optional test-category cell: a muted, uppercase tag matching the variant
+// treatment.
+.category {
+  overflow: hidden;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  color: t.$color-text-muted;
+}
+
+// The optional start-time cell: a muted, monospaced-figure timestamp that
+// truncates rather than widening its track.
+.when {
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  color: t.$color-text-muted;
 }
 
 .num {

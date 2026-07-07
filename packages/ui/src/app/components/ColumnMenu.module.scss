@@ -1,0 +1,77 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// The always-visible trigger: a compact, muted glyph button that brightens to
+// the accent on hover, echoing the resize handle's restraint so it doesn't
+// compete with the header labels.
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 30%, transparent);
+  border-radius: t.$radius-sm;
+  background: transparent;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+
+  &:hover,
+  &[aria-expanded="true"] {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.5rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+// The picker itself: a fixed, neon-outlined panel positioned imperatively (see
+// ColumnMenu) so it can hang off either the trigger or a right-click point.
+.popover {
+  position: fixed;
+  z-index: 20;
+  min-width: 11rem;
+  padding: t.$space-xs;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
+    0 0.5rem 1.5rem color-mix(in srgb, #000 55%, transparent);
+}
+
+.heading {
+  padding: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+  }
+
+  input {
+    accent-color: t.$color-accent;
+    cursor: pointer;
+  }
+}

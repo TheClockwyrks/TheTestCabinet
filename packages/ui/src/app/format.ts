@@ -1,5 +1,5 @@
-// Display helpers. These format numbers for the gallery; they never derive a
-// ranking or aggregate score, per the site's no-leaderboard constraint.
+// Display helpers. These format numbers for the gallery; they don't compute
+// rankings or aggregate scores themselves — that's the leaderboard's job.
 
 import type { RunMetrics } from "@test-cabinet/run-record";
 
@@ -104,4 +104,21 @@ export function formatRunTime(seconds: number): string {
     return `${rest}s`;
   }
   return `${minutes}m ${rest}s`;
+}
+
+// A run's start time for a dense table cell: calendar date + 24h local time
+// ("Jul 6, 2026, 14:05"). An unparseable timestamp reads as an em dash.
+export function formatTimestamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }

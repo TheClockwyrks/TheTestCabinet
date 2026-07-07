@@ -6,10 +6,10 @@ interface RatingBadgeProps {
   className?: string;
 }
 
-// A run's reviewer-assigned quality rating, shown as a color-coded chip. This is
-// per-run context, never a ranking: the gallery never sorts or aggregates by it.
-// The tier's full description is exposed as the title so the shorthand label
-// stays legible inline.
+// A run's reviewer-assigned quality rating, shown as a color-coded chip. It's
+// per-run context — a run log can sort by it, but the badge itself carries no
+// aggregate or rank. The tier's full description is exposed as the title so the
+// shorthand label stays legible inline.
 export function RatingBadge({ rating, className }: RatingBadgeProps) {
   const meta = RATING_META[rating];
   return (
