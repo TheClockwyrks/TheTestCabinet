@@ -6,6 +6,7 @@ function run(runId: string): InProgressRun {
   return {
     runId,
     testCaseSlug: "siege",
+    testCaseVersion: "v1.0.0",
     variant: "base",
     harnessSlug: "claude",
     modelId: "claude-opus-4-8",

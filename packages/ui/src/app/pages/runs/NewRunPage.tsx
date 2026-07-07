@@ -113,6 +113,7 @@ export function NewRunPage() {
       runtime.track({
         runId,
         testCaseSlug: sel.slug,
+        testCaseVersion: sel.version,
         variant: sel.variant,
         harnessSlug: harness,
         modelId,

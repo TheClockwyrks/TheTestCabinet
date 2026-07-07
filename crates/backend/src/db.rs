@@ -959,6 +959,8 @@ pub struct NewJob {
     pub request_json: String,
     /// The test-case slug, lifted for the active-run list.
     pub test_case_slug: String,
+    /// The test-case version, lifted for the active-run list.
+    pub test_case_version: String,
     /// The variant, lifted for the active-run list.
     pub variant: String,
     /// The harness slug, lifted for the active-run list.
@@ -996,6 +998,7 @@ impl Db {
             state: Set("queued".to_string()),
             request_json: Set(new.request_json),
             test_case_slug: Set(new.test_case_slug),
+            test_case_version: Set(new.test_case_version),
             variant: Set(new.variant),
             harness_slug: Set(new.harness_slug),
             model_id: Set(new.model_id),

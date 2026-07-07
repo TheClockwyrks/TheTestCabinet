@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord, TestType } from "@test-cabinet/run-record";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import { type Rating, RATINGS, worstRating } from "../data/ratings";
@@ -49,6 +49,9 @@ export interface RunRenderContext {
   visible: ReadonlySet<string>;
   /** Resolver for an in-progress run's case name (finished rows are pre-resolved). */
   testCaseName: (slug: string) => string;
+  /** Resolver for an in-progress run's test type (finished rows read it off the
+   * record). Null when the catalog doesn't know the slug. */
+  testCaseType: (slug: string) => TestType | null;
 }
 
 /**
@@ -150,8 +153,13 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         {row.record.subject.testCaseVersion}
       </span>
     ),
-    // An in-progress run doesn't carry its case version, so stand in with a dash.
-    renderActive: () => activeDash("Version", false),
+    // The launched version is fixed at enqueue, so an in-progress run already
+    // knows it — no dash needed.
+    renderActive: (run) => (
+      <span className={styles.version} data-label="Version">
+        {run.testCaseVersion}
+      </span>
+    ),
   },
   {
     id: "category",
@@ -166,7 +174,19 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         {categoryLabel(row.record.subject.testType)}
       </span>
     ),
-    renderActive: () => activeDash("Category", false),
+    // The category is the case's type, which the catalog carries independently of
+    // the run — resolve it by slug rather than dashing. Falls back to a dash only
+    // when the catalog doesn't know the slug.
+    renderActive: (run, ctx) => {
+      const testType = ctx.testCaseType(run.testCaseSlug);
+      return testType == null ? (
+        activeDash("Category", false)
+      ) : (
+        <span className={styles.category} data-label="Category">
+          {categoryLabel(testType)}
+        </span>
+      );
+    },
   },
   {
     id: "harness",

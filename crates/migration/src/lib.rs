@@ -15,6 +15,7 @@ mod m20260619_000001_create_initial_schema;
 mod m20260621_000002_create_tournament;
 mod m20260623_000003_create_job;
 mod m20260628_000004_create_publish_job;
+mod m20260707_000005_add_job_test_case_version;
 
 pub struct Migrator;
 
@@ -26,6 +27,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260621_000002_create_tournament::Migration),
             Box::new(m20260623_000003_create_job::Migration),
             Box::new(m20260628_000004_create_publish_job::Migration),
+            Box::new(m20260707_000005_add_job_test_case_version::Migration),
         ]
     }
 }

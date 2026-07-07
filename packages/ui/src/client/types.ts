@@ -431,6 +431,7 @@ export interface RunJob {
 export interface InProgressRun {
   runId: string;
   testCaseSlug: string;
+  testCaseVersion: string;
   variant: string;
   harnessSlug: string;
   modelId: string;

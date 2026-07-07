@@ -481,6 +481,7 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         id: id.to_string(),
         request_json: format!("{{\"jobId\":\"{id}\"}}"),
         test_case_slug: "pong".to_string(),
+        test_case_version: "v1.0.0".to_string(),
         variant: "base".to_string(),
         harness_slug: "claude".to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
