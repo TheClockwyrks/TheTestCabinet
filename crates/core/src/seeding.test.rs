@@ -29,6 +29,40 @@ fn reserve_unique_dir_uses_the_bare_stem_when_free() {
     assert!(reserved.is_dir(), "the reserved directory is created");
 }
 
+/// A requested Test Cabinet package is injected into the seeded `package.json` as
+/// a `file:` dependency under the baked-in packages directory, and the rest of the
+/// manifest is preserved.
+#[test]
+fn inject_packages_adds_file_dependencies() {
+    use crate::test_case::TCAB_PACKAGES_DIR;
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let package_json = dir.path().join("package.json");
+    std::fs::write(
+        &package_json,
+        r#"{"name":"spectra","version":"0.1.0","devDependencies":{"playwright":"1.61.0"}}"#,
+    )
+    .expect("write package.json");
+
+    super::inject_packages(&package_json, &["@test-cabinet/particle-runtime".to_string()])
+        .expect("inject packages");
+
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&package_json).expect("read package.json"))
+            .expect("valid json");
+
+    assert_eq!(
+        value["dependencies"]["@test-cabinet/particle-runtime"],
+        serde_json::Value::String(format!(
+            "file:{TCAB_PACKAGES_DIR}/@test-cabinet/particle-runtime"
+        )),
+        "the package is a file: dependency pointing at its baked-in copy"
+    );
+    // Pre-existing fields survive the rewrite.
+    assert_eq!(value["name"], "spectra");
+    assert_eq!(value["devDependencies"]["playwright"], "1.61.0");
+}
+
 /// When the bare stem and earlier tiebreakers are taken, reservation walks
 /// `-1`, `-2`, … until it finds a free name and creates exactly that directory.
 #[test]

@@ -9,11 +9,18 @@ drones and are the **same for every build** — your job is to build the game
 **not** substitute your own fighter or drone art, and do not restyle the
 silhouettes. What you *do* derive at runtime is the **band** each sprite is drawn
 in — see *One sprite per entity, both bands at runtime* below — because Spectra's
-whole point is that these things change band. Everything else the game
-draws — bullets, effects, the HUD, menus — has **no** sprite and you draw it in
-code as the other specs describe. Every measurement, color, and glyph here is
-consistent with `specs/overview.md`, `specs/playfield.md`, `specs/polarity.md`,
-and `specs/enemies.md`; when this file gives a value it matches them.
+whole point is that these things change band.
+
+Spectra also ships **one provided effect**: the **drone-burst**, a particle
+`system.json` at **`assets/drone-burst.json`** that you **play when a drone pops**
+(see *The drone-burst effect* below). It is not a sprite and not something you
+hand-code — it is a system you play with a **provided runtime library**. Aside
+from the sprites and this one effect, everything else the game draws — bullets,
+the other effects (glow, starfield, discharge, inversion), the HUD, menus — has
+**no** asset and you draw it in code as the other specs describe. Every
+measurement, color, and glyph here is consistent with `specs/overview.md`,
+`specs/playfield.md`, `specs/polarity.md`, and `specs/enemies.md`; when this file
+gives a value it matches them.
 
 ## Loading the assets — they must work under any base path
 
@@ -159,6 +166,67 @@ around a **magenta core** (diamond) (`specs/enemies.md`).
   the **core's** band.
 - The Prism enters escorted by two Shards (one cyan, one magenta), each drawn from
   the Shard sprite as above.
+
+## The drone-burst effect — `assets/drone-burst.json` (provided; play it)
+
+When the player's fire pops a drone, the drone throws a **sharp neon
+detonation** — a white-hot flash, an expanding cyan ring, and a scatter of cyan
+and magenta spark streaks, gone in about `0.7 s`. That effect is **provided**, and
+you **must play it** rather than hand-code your own or substitute another: it is
+seeded at **`assets/drone-burst.json`** as a particle **system** — a description
+of emitters, forces, and per-particle curves — authored in this game's neon
+two-band palette (white `#ffffff`, cyan `#34e2ff`, magenta `#ff4ec7`) on a
+**128×128** planar field as a **one-shot** that bursts at the start and decays to
+an empty field by the end.
+
+It is a **system, not a frozen clip**: there are no baked frames. You play it by
+**simulating it live**, so it looks slightly different every pop — the sparks
+scatter differently each time — while the *character* (flash, ring, two-band spark
+burst) reads the same. That variation is correct for an explosion; do not try to
+freeze it to one arrangement.
+
+### Play it with the provided runtime
+
+You do **not** write a particle simulator, and you do **not** fetch anything: the
+runtime that plays this system, **`@test-cabinet/particle-runtime`**, is already
+installed as a dependency of your project (it is in your `package.json`; run your
+install as usual and import it like any other dependency). It is the *same*
+library the effect was authored against, so the burst plays in your game exactly
+as intended.
+
+- For Spectra's 2D canvas, use the package's **`/canvas`** binding — its
+  `ParticleCanvasPlayer`. Construct one from the parsed `drone-burst.json` and a
+  2D canvas context; advance it each frame with your frame delta; it simulates the
+  system and composites the particles as soft additive discs (its default
+  `"lighter"` blend, which is what reads right for a neon detonation). The
+  package's own types are the authoritative API — read them for the exact
+  constructor and update signatures; the effect's field size, duration, and fps
+  are carried inside the system itself, so you need not supply them.
+- If you would rather composite the particles yourself, the package root also
+  exports the pure `ParticleSimulator` (step it and read back the live particles);
+  either way the *system you play is the provided one*.
+
+### Where, when, and how to place it
+
+- **Spawn one burst at the moment a drone is destroyed** (`specs/enemies.md`),
+  centred on that drone's position, over the dark field. A **Prism** pops
+  **twice** — once when its **shell** is destroyed and once when its **core** is —
+  so play a burst at each (`specs/enemies.md`). The screen-clearing **discharge**
+  and the **spectral inversion** are *not* this effect — they are their own,
+  drawn in code (below).
+- Play it at roughly the **popped drone's footprint** (a Shard is small, a Prism
+  large; `specs/playfield.md`, `specs/enemies.md`) — scale the `128×128` effect to
+  the drone rather than filling the screen — and composite it **additively** over
+  the field so it reads as light. It is a **one-shot**: let it run to its end and
+  then dispose of it; nothing loops or lingers.
+
+### Loading rule — page-relative, same as the sprites
+
+`assets/drone-burst.json` is loaded at runtime, so it obeys the **same base-path
+rule** as the sprites above (*Loading the assets*): reference it **page-relative**
+(import the JSON through your bundler, or resolve it with a page-relative URL) and
+**never** by a root-absolute `/assets/…` path, so it resolves under the per-run
+sub-path the finished build is served from.
 
 ## What has no asset — draw these in code
 

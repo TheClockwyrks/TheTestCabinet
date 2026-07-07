@@ -218,6 +218,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         common_workspace: Vec::new(),
         init: None,
         asset_paths: Vec::new(),
+        packages: Vec::new(),
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),

@@ -181,6 +181,12 @@ pub struct StoredManifest {
     pub init: Option<String>,
     /// Asset files, directories already expanded to individual files.
     pub assets: Vec<StoredAsset>,
+    /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this case's
+    /// build consumes (the manifest's `packages`). Injected into the seeded
+    /// workspace `package.json` as `file:` dependencies. Defaulted for manifests
+    /// stored before the field existed.
+    #[serde(default)]
+    pub packages: Vec<String>,
     /// Variants, each with additive specs and references.
     pub variants: Vec<StoredVariant>,
     /// Common references rendered (or served as-is) for every variant.

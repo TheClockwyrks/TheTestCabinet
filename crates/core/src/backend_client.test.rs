@@ -70,6 +70,7 @@ impl BackendClient for StubBackend {
             }],
             init: Some("npm install".to_string()),
             asset_paths: vec![std::path::PathBuf::from("assets/ball.png")],
+            packages: Vec::new(),
             variants: vec![Variant {
                 slug: "base".to_string(),
                 name: "Base".to_string(),

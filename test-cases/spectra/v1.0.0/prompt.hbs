@@ -56,11 +56,16 @@ things bear restating, because the harness depends on them:
   sub-path, so any URL the build constructs at runtime must be page-relative — never
   a leading `/`; for a bundler, set a relative base such as `base: './'`).
   `specs/overview.md` states this in full; follow it exactly.
-- **The provided art.** The game's sprites are seeded under `{{workspace}}/assets/`;
-  render from that art rather than drawing your own, and load it with page-relative
-  URLs so it resolves from the served sub-path. `specs/assets.md` is the
-  authoritative contract for every asset's layout, how to composite and animate it,
-  and the short list of things you do draw in code.
+- **The provided art and effect.** The game's sprites are seeded under
+  `{{workspace}}/assets/`; render from that art rather than drawing your own, and
+  load it with page-relative URLs so it resolves from the served sub-path. One
+  effect is also provided: the **drone-burst** particle system at
+  `assets/drone-burst.json`, which you play when a drone pops using the
+  **`@test-cabinet/particle-runtime`** library already installed as a dependency of
+  your project — import it like any other dependency; do not fetch or reimplement
+  it. `specs/assets.md` is the authoritative contract for every asset's layout, how
+  to composite and animate the sprites, how to play the provided effect, and the
+  short list of things you do draw in code.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
   screenshots that are visual targets for the title, gameplay, and game-over
   screens — match their layout, palette, and type, but build the screens from the

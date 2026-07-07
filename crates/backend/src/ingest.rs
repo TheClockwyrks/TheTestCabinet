@@ -508,6 +508,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         workspace,
         init: resolved.init.clone(),
         assets,
+        packages: resolved.packages.clone(),
         variants,
         common_references: resolved
             .common_references

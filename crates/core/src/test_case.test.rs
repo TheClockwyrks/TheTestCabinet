@@ -1421,6 +1421,65 @@ fn workspace_files_resolve_with_run_relative_dests_and_init() {
 }
 
 #[test]
+fn packages_resolve_when_shippable_and_workspace_ships_a_package_json() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("workspaces/base/package.json", "{\"name\":\"demo\"}")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(
+        version.packages,
+        vec!["@test-cabinet/particle-runtime".to_string()]
+    );
+}
+
+#[test]
+fn packages_reject_an_unknown_name() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/not-a-real-package\"]\n",
+        "",
+    );
+    let (_dir, catalog) =
+        catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unknown package name is rejected");
+    assert!(format!("{err}").contains("not a shippable"), "got: {err}");
+}
+
+#[test]
+fn packages_require_a_workspace_package_json() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "",
+    );
+    // The workspace exists but ships no package.json for the dependency to land in.
+    let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/README.md", "hi")]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a package-declaring case without a package.json is rejected");
+    assert!(format!("{err}").contains("package.json"), "got: {err}");
+}
+
+#[test]
+fn packages_are_end_to_end_only() {
+    // `packages` is a root key, so it must precede the first table; prepend it.
+    let manifest = format!("packages = [\"@test-cabinet/particle-runtime\"]\n{VALID_ASSET_MANIFEST}");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("`packages` on an asset-generation case is rejected");
+    assert!(
+        format!("{err}").contains("only valid for an end-to-end case"),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn workspace_dotfiles_are_not_seeded_except_the_allowlist() {
     // A dotfile in the workspace is skipped (matching how the backend copies a
     // version into its store), so it is not listed as a seeded workspace file —

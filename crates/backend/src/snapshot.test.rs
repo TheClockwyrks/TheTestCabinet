@@ -147,6 +147,7 @@ fn manifest() -> StoredManifest {
         workspace: vec![],
         init: None,
         assets: vec![],
+        packages: vec![],
         variants: vec![StoredVariant {
             slug: "base".to_string(),
             name: "Base".to_string(),

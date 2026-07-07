@@ -54,6 +54,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         }],
         init: Some("npm install".to_string()),
         assets: vec![],
+        packages: vec![],
         variants: vec![StoredVariant {
             slug: "base".to_string(),
             name: "Base".to_string(),

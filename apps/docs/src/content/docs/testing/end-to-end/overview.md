@@ -227,6 +227,71 @@ diagnosis. `init` is **not** run by `tcab seed`, which only materializes the
 seeded files on disk without a container; a real run is where it executes. See
 [Execution](/components/core/execution/#init).
 
+## Packages
+
+A test case may declare a list of **packages** — The Test Cabinet's own
+`@test-cabinet/*` runtime libraries — that the build should be able to `import`
+as ordinary dependencies. This exists for one reason: some **produced assets are
+not self-describing data the way a sprite PNG is**. A
+[particle](/testing/asset-generation/particle-binaries/) effect is authored as a
+`system.json` an editor and a game **play by simulating it live**; a voxel or
+mesh rig is **posed** at runtime. Handing a game that `system.json` is only half
+the gift — it also needs the *simulator*. Rather than ask the model to
+reimplement that runtime from a schema (fragile, and different in every build),
+a case names the in-repo library that already plays the asset, and the harness
+makes it available. The libraries themselves are the `@test-cabinet/particle-runtime`
+(see [The particle binaries](/testing/asset-generation/particle-binaries/)) and
+[`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/) packages the
+in-repo viewers use, so a game plays a produced asset **the same way the review
+UI does**.
+
+Declare them with the manifest's
+[`packages`](/testing/end-to-end/manifests/) key, naming each package by its npm
+name:
+
+```toml
+packages = ["@test-cabinet/particle-runtime"]
+```
+
+Only the repo's **shippable packages** may be named — the curated set baked into
+the run image (see
+[`containers/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md#the-shippable-test-cabinet-packages));
+an unknown name is rejected when the case resolves, before any run is spent. A
+case that names any package **must** ship a [workspace](#workspace) containing a
+`package.json`, because that is the file the dependency is added to.
+
+### What the model sees
+
+From the build's point of view a declared package is **just an installed
+dependency**. The harness bakes each shippable package into the run image and, at
+seed time, adds it to the workspace `package.json` as a dependency that resolves
+to that baked-in copy. The model therefore does **not** fetch anything, learn an
+install command, or know any in-container path: it installs its project as usual
+(its `init` runs `npm install`) and imports the library by its bare name, exactly
+as it would any dependency —
+
+```js
+import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
+```
+
+The spec that relies on the package should describe it as *a provided dependency
+you import*, not as a file path — the same way the [asset](#contents) specs
+describe the seeded art as sprites to render, never as bytes to parse.
+
+### Why `init` must install, not `npm ci`
+
+The injected dependency is added to `package.json` at seed time but the seeded
+repository ships **no lockfile entry for it** (the harness does not synthesize a
+lockfile). So a `packages` case's [init](#init) command must run **`npm install`**
+(or the equivalent), which resolves the injected dependency and writes it into the
+lockfile the model then commits — after which the `[build]` step's `npm ci`
+reinstalls it reproducibly from that committed lockfile against the copy still
+present in the image. An `init` that runs `npm ci` against a frozen, pre-committed
+lockfile would instead fail, because the injected dependency is absent from that
+lockfile. The convention `npm install && npx playwright install chromium` already
+satisfies this; a case that pins a different toolchain must likewise install
+(resolving fresh) at init rather than assuming a frozen lockfile.
+
 ## Variants
 
 A test case version offers one or more **variants**, and a run selects exactly

@@ -54,6 +54,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         common_workspace: vec![],
         init: None,
         asset_paths: vec![],
+        packages: Vec::new(),
         variants: vec![],
         common_references: vec![],
         common_proofs: vec![],

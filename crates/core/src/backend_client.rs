@@ -1405,6 +1405,8 @@ struct VersionBody {
     #[serde(default)]
     init: Option<String>,
     assets: Vec<AssetBody>,
+    #[serde(default)]
+    packages: Vec<String>,
     variants: Vec<VariantBody>,
     common_references: Vec<ReferenceBody>,
     #[serde(default)]
@@ -1505,6 +1507,7 @@ impl VersionBody {
                 .iter()
                 .map(|a| PathBuf::from(&a.source))
                 .collect(),
+            packages: self.packages,
             variants: self
                 .variants
                 .into_iter()

@@ -37,6 +37,7 @@ max_runtime_hours = 0.5      # cap on the harness session before it's stopped (d
 workspace = "workspaces/base" # optional starter directory; its files seed the run root before the specs
 init = "npm install"         # optional command run in the container after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
+packages = []                # Test Cabinet packages installed into the run, e.g. ["@test-cabinet/particle-runtime"]
 
 # Variants: an ORDERED list of paths to standalone variant files (the first is the
 # default). Exactly one variant runs per run, and its slug is recorded in the run
@@ -196,6 +197,26 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
 - `init` is an optional **init command** run inside the run container once the
   workspace and specs are seeded and before the harness starts (see
   [Init](/testing/end-to-end/overview/#init)). It must be non-empty when declared.
+- `packages` is an optional list of **Test Cabinet packages** — the repo's own
+  `@test-cabinet/*` runtime libraries — to make available to the build as
+  ordinary installed dependencies (see
+  [Packages](/testing/end-to-end/overview/#packages)). It is how a case that must
+  consume a *produced* asset whose format needs a runtime to interpret — a
+  [particle](/testing/asset-generation/particle-binaries/) `system.json` a game
+  plays by simulating it live, a voxel rig a game poses — hands the model the
+  library that plays it, rather than asking the model to reimplement the runtime
+  from a schema. Each entry is a package **name** (not a path), and every name
+  must be one of the **shippable packages** baked into the run image (listed in
+  [`containers/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md#the-shippable-test-cabinet-packages));
+  an unknown name is rejected at resolution. `packages` is **end-to-end only** —
+  an asset-generation case that declares it is rejected — and a case that
+  declares any package **must** ship a `workspace` containing a `package.json`
+  (the file the dependency is injected into). At seed time each named package is
+  added to that `package.json` as a dependency resolving to the copy baked into
+  the run image, so the model installs and imports it like any other dependency;
+  see [Packages](/testing/end-to-end/overview/#packages) for the model-facing
+  contract and why a `packages` case's `init` must run `npm install` (not
+  `npm ci`).
 - The `[build]` table is **required** and declares the commands validation runs
   to turn a produced implementation into a served static site: `install`
   (dependency install) and `build` (the static build). Both must be stated

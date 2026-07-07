@@ -181,6 +181,17 @@ struct Manifest {
     /// Asset files or directories, relative to the version folder (seeded).
     #[serde(default)]
     assets: Vec<PathBuf>,
+    /// The Test Cabinet runtime libraries this case's build should be able to
+    /// `import` — the repo's own `@test-cabinet/*` packages, named by npm name
+    /// (for example `@test-cabinet/particle-runtime`). Each is baked into the run
+    /// image and injected into the workspace `package.json` as a `file:`
+    /// dependency at seed time, so a game consumes a produced asset that needs a
+    /// runtime to play it (a particle `system.json`, a voxel rig) as an ordinary
+    /// installed dependency. End-to-end only; each name must be one of
+    /// [`SHIPPABLE_PACKAGES`], and the case must ship a `package.json` in its
+    /// workspace. `None`/empty requests no packages.
+    #[serde(default)]
+    packages: Vec<String>,
     /// The variants this case offers, each as a path to a standalone variant
     /// manifest (a `[[variant]]`-shaped [`ManifestVariant`] in its own file, by
     /// convention under `variants/`), relative to the version folder. Listed in
@@ -794,6 +805,35 @@ struct ManifestDomain {
 
 /// The manifest file name expected in every version folder.
 const MANIFEST_FILE: &str = "test-case.toml";
+
+/// The in-container directory the shippable Test Cabinet packages are baked into
+/// (see `containers/README.md`). A case that declares `packages` has each named
+/// package injected into its workspace `package.json` as a `file:` dependency
+/// pointing under this directory, so a game consumes it as an ordinary installed
+/// dependency without knowing the path.
+pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
+
+/// The Test Cabinet's own `@test-cabinet/*` runtime libraries an end-to-end case
+/// may request via the manifest's `packages` key. Each is baked into the run
+/// image under [`TCAB_PACKAGES_DIR`] and injected into the seeded workspace
+/// `package.json` at seed time, so a built game can `import` it to play a produced
+/// asset (a particle `system.json`, a voxel rig) the same way the in-repo viewers
+/// do.
+///
+/// This list is the allowlist a case's `packages` names are validated against. It
+/// **must stay in lockstep** with the shippable list in
+/// `scripts/stage-tcab-packages.mjs`, which bakes exactly these into the image:
+/// a name here but not there resolves to a missing dependency at run time, and a
+/// name there but not here can never be requested.
+pub const SHIPPABLE_PACKAGES: &[&str] =
+    &["@test-cabinet/particle-runtime", "@test-cabinet/voxel-runtime"];
+
+/// The `package.json` dependency spec that resolves a shippable package to its
+/// baked-in copy — a `file:` path under [`TCAB_PACKAGES_DIR`]. Used by the seeder
+/// when injecting a declared package into the workspace `package.json`.
+pub(crate) fn tcab_package_file_dep(name: &str) -> String {
+    format!("file:{TCAB_PACKAGES_DIR}/{name}")
+}
 
 /// The run-workspace-relative path the orchestrator seeds an asset-generation
 /// run's canvas configuration to. The drawing binary reads it from here by
@@ -2327,6 +2367,12 @@ pub struct TestCaseVersion {
     pub init: Option<String>,
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,
+    /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this
+    /// case's build consumes, from the manifest's `packages` key. Each is injected
+    /// into the seeded workspace `package.json` as a `file:` dependency resolving
+    /// under [`TCAB_PACKAGES_DIR`]. Empty when the case declares none. Validated
+    /// against [`SHIPPABLE_PACKAGES`] at resolution.
+    pub packages: Vec<String>,
     /// The variants this case offers, in declared order. At least one is always
     /// present.
     pub variants: Vec<Variant>,
@@ -3846,6 +3892,38 @@ impl TestCaseCatalog {
             })
             .collect();
 
+        // Packages: the Test Cabinet runtime libraries this case's build consumes.
+        // They are consumed by a built game, so only an end-to-end case may request
+        // them; each name must be one this repo actually ships into the run image
+        // (see [`SHIPPABLE_PACKAGES`]); and because the dependency is injected into
+        // the workspace's root `package.json` at seed time, the case must ship one.
+        if !manifest.packages.is_empty() {
+            if test_type != TestType::EndToEnd {
+                return Err(invalid(
+                    "`packages` is only valid for an end-to-end case".to_string(),
+                ));
+            }
+            for package in &manifest.packages {
+                if !SHIPPABLE_PACKAGES.contains(&package.as_str()) {
+                    return Err(invalid(format!(
+                        "package `{package}` is not a shippable Test Cabinet package; \
+                         valid names are: {}",
+                        SHIPPABLE_PACKAGES.join(", ")
+                    )));
+                }
+            }
+            let ships_package_json = common_workspace
+                .iter()
+                .any(|file| file.dest == Path::new("package.json"));
+            if !ships_package_json {
+                return Err(invalid(
+                    "a case that declares `packages` must ship a workspace containing a \
+                     package.json at its root (the file the dependency is injected into)"
+                        .to_string(),
+                ));
+            }
+        }
+
         // Resolve one reference mapping. A reference is either an HTML mockup
         // rendered to a screenshot (`path`) or a static image/video served as-is
         // (`media`); exactly one must be declared. The source must exist inside the
@@ -4464,6 +4542,7 @@ impl TestCaseCatalog {
             common_workspace,
             init: manifest.init,
             asset_paths,
+            packages: manifest.packages,
             variants,
             common_references,
             common_proofs,
