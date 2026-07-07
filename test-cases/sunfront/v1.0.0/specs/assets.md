@@ -50,9 +50,9 @@ clips with a standard animation mixer.
 Each model is delivered with its **named parts, joints, and clips enumerated** in
 `assets/models.json`, so you know which part is which and which clip to play for each
 game event. Clip names follow a stable convention — a locomotion clip (a `march` /
-`fly`), an attack clip (a `fire` / `bombardment`), and any idle or self-playing clip
-(the Aegis `radar_spin`; the Trooper `brace`) — but always read the exact names from
-the manifest rather than hard-coding them.
+`fly`), an attack clip (a `fire` / `bombardment`), a death clip (`death`), and any
+idle or self-playing clip (the Aegis `radar_spin`; the Trooper `brace`) — but always
+read the exact names from the manifest rather than hard-coding them.
 
 ## What you must do with them
 
@@ -66,8 +66,9 @@ the manifest rather than hard-coding them.
   while it advances and its attack clip when it fires (`specs/units.md`); the Aegis
   strides under `march`, works its guns under `bombardment`, and sweeps its radar
   under the self-playing `radar_spin` (`specs/waves.md`); a spawner plays its emit
-  clip as it stamps out a unit each wave (`specs/waves.md`). A unit at `0 HP` reads as
-  wrecked as it is removed.
+  clip as it stamps out a unit each wave (`specs/waves.md`). Every unit model,
+  including the Aegis, must provide and play a death clip when it reaches `0 HP`;
+  remove the unit only after that death animation has visibly started or completed.
 - **Orient** each model to its facing on the field: a unit faces along its travel or
   toward its target; the Aegis **rotates its hull** to bring its main-gun target into
   its forward cone, while its side turrets traverse independently (`specs/waves.md`).

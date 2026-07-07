@@ -61,11 +61,12 @@ team accent:
 - **Player Reliquary:** centred on the diagonal at `(360, 360)`.
 - **Enemy Reliquary:** the mirror, centred at `(840, 840)`.
 
-A Reliquary has **900 HP** and belongs to the side on whose half it stands. It blocks
-nothing — units path around it — but enemy units in range attack it. Destroying the
-**enemy** Reliquary is a major objective; its rewards and the Aegis it summons are in
-`specs/waves.md`. A Reliquary that has taken no damage regenerates slowly (`+8 HP/s`) up
-to its maximum, so bringing one down needs a committed push, not a stray shot.
+A Reliquary has **2000 HP** and belongs to the side on whose half it stands. It
+blocks nothing — units path around it — but enemy units in range attack it.
+Destroying the **enemy** Reliquary is a major objective; its rewards and the Aegis
+it summons are in `specs/waves.md`. A Reliquary that has taken no damage
+regenerates at **`4 HP/s`** up to its maximum, so bringing one down needs a
+committed push, not a stray shot.
 
 ## The staging yards and build grid
 

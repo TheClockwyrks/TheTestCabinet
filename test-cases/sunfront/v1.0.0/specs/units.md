@@ -11,7 +11,7 @@ its **provided 3D model** (`specs/assets.md`) — you are given the models and m
 load and use them, not draw your own — tinted to its owner's team color (Ember for
 the player, Azure for the enemy) with the team energy accent, and shown at the
 relative scale its authored dimensions imply. The model's locomotion clip plays while
-it advances and its attack clip when it fires.
+it advances, its attack clip when it fires, and its death clip when it is destroyed.
 
 ## Armor classes and attack types — the counter system
 
@@ -99,8 +99,8 @@ The simulation advances every frame in logical-pixel space:
 - **Attacking.** A unit fires once per its **cadence** while a valid target is in
   range, dealing `base damage × upgrade bonus × counter multiplier` (splash as
   above). Attacks are hitscan/instant for simulation purposes; you may draw a
-  brief projectile or muzzle effect. A unit at `0 HP` is removed and pays its kill
-  bounty (`specs/economy.md`).
+  brief projectile or muzzle effect. A unit at `0 HP` plays its provided death
+  animation and is then removed; it pays no bounty (`specs/economy.md`).
 - **Attacking structures.** With no enemy units in range, a unit that reaches an
   enemy **Reliquary** or **base** within its range attacks it with the same damage
   rules (structures count as **Heavy** armor for the multiplier). Reaching and
@@ -110,5 +110,5 @@ The simulation advances every frame in logical-pixel space:
 - **Determinism is not required**, but the model must be stable: units must not
   jitter between targets every frame (keep a target until it dies or leaves the
   acquisition range), and two opposing armies of equal composition and upgrades
-  must grind to a **rough stalemate near the center of the diagonal front**, so that advantage comes from
-  economy and counters, not from a lopsided default.
+  must grind to a **rough stalemate near the center of the diagonal front**, so
+  that advantage comes from economy and counters, not from a lopsided default.

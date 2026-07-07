@@ -11,15 +11,16 @@ that runs entirely in the browser, rendering **provided** unit and structure mod
 
 ## What the game is
 
-Two legions of solar automatons (the Duneforged) fight a diagonal, corner-to-corner
-tug-of-war rendered in 3D. The player spends a ticking **sol** income on **spawner
-structures** placed in a fogged staging yard; every wave (first at 20 s, then every
-45 s) each spawner emits one unit that auto-marches and auto-fights toward the enemy
-base. Units follow an armor/attack **counter matrix** (Normal / Piercing / Splash /
-Flak / Support × Light / Heavy / Air), a strict **fog of war** hides the enemy's
-build, and a mid-map **Reliquary** funds whoever razes it but spawns a lone **Aegis**
-defender for the losing side. Every unit and structure is rendered from a **provided
-3D model** the build loads and animates. Raze the enemy base to win. The opponent is an
+Two legions of solar automatons (the Duneforged) fight a diagonal,
+corner-to-corner tug-of-war rendered in 3D. The player spends a ticking **sol**
+income on **spawner structures** placed in a fogged staging yard; every wave
+(first at 20 s, then every 45 s) each spawner emits one unit that auto-marches
+and auto-fights toward the enemy base. Units follow an armor/attack **counter
+matrix** (Normal / Piercing / Splash / Flak / Support × Light / Heavy / Air), a
+strict **fog of war** hides the enemy's build, and a mid-map **Reliquary**
+funds whoever razes it but spawns a lone **Aegis** defender for the losing
+side. Every unit and structure is rendered from a **provided 3D model** the
+build loads and animates. Raze the enemy base to win. The opponent is an
 adaptive, non-cheating, beatable AI.
 
 ## Layout

@@ -14,8 +14,8 @@ Combat is paced by a repeating **wave clock**, shown as a countdown in the HUD:
 - **Every wave after** fires **`45 s`** after the previous one. The countdown
   resets to `45` on each wave.
 - When the countdown reaches `0`, a **wave fires** for **both sides at once**: the
-  wave number increments (starting at wave 1), the income rate rises by `+3` sol/s
-  (`specs/economy.md`), and every spawner emits (below).
+  wave number increments (starting at wave 1), and every spawner emits (below).
+  The passive income rate does not change when waves fire (`specs/economy.md`).
 
 Building, upgrading, and selling happen **continuously in real time** — the wave
 clock does not pause the game or the economy; it only marks when new units are
@@ -46,8 +46,8 @@ side is losing, which is the tug-of-war.
 ## The Reliquary and the Aegis
 
 Each side owns one **Reliquary** standing on its half of the field
-(`specs/playfield.md`): `900 HP`, slowly self-repairing when undamaged. It is a
-tempo objective, not a wall.
+(`specs/playfield.md`): `2000 HP`, self-repairing at `4 HP/s` when undamaged. It
+is a tempo objective, not a wall.
 
 When a side's Reliquary is **destroyed** (brought to `0 HP` by the enemy):
 

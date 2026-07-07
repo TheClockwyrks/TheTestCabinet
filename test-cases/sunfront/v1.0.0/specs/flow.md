@@ -92,7 +92,7 @@ The match is one human (left) against one AI (right). The AI must be a real
 opponent, not a scripted script:
 
 - It runs the **same economy** with **no cheating** (`specs/economy.md`): same
-  starting sol, same income schedule, same costs. It spends only sol it has
+  starting sol, same fixed income rate, same costs. It spends only sol it has
   earned.
 - It **builds and upgrades spawners on its own hidden grid**, growing its army
   over the match, and **adapts its composition** to what it has seen of your

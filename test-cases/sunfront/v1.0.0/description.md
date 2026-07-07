@@ -11,8 +11,8 @@ the enemy's staging yard, so you can't see what they're building — you read th
 strategy only from the units that crest the horizon, then answer with counters:
 piercing marksmen gut heavies, splash artillery erases swarms, flak is the only
 thing that touches the airborne gunships, and every choice has a hard counter.
-Partway down each side stands a **Reliquary**, a fortified objective that floods
-its destroyer with resources but summons a lone **Aegis** guardian to defend the
+Partway down each side stands a **Reliquary**, a durable regenerating objective that
+floods its destroyer with resources but summons a lone **Aegis** guardian to defend the
 losing side's half and punish the very push that felled it — the built-in comeback
 valve. Win by grinding
 a hole through the enemy line and levelling their base.

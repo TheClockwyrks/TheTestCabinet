@@ -222,8 +222,8 @@ proof = "wave"
 
 [[review_item]]
 id = "income"
-title = "Escalating income"
-text = "Sol accrues continuously at the shown rate; the rate starts at 16/s and rises by +3/s at the start of every wave, with no cap, so later waves fund heavier units. Kill and Reliquary bounties are paid."
+title = "Fixed income"
+text = "Both sides start with 200 sol. Sol accrues continuously at the shown fixed rate of 10/s, and that passive rate does not rise automatically when waves fire. Destroying enemy units pays no bounty; destroying the enemy Reliquary still pays its Reliquary bounty."
 weight = 1
 domain = "economy"
 
@@ -269,7 +269,7 @@ proof = "gameplay"
 [[review_item]]
 id = "reliquary-aegis"
 title = "Reliquary and Aegis"
-text = "Destroying the enemy Reliquary pays +700 sol and immediately spawns a single Aegis for the losing side as a defender's-advantage guardian: a large, powerful fortress that defends only its own half (never crossing the diagonal midline) and fights with independent per-turret targeting (a Heavy-first main gun that orients the hull, two Light-first side turrets firing opportunistically). It fights until destroyed — no decay — and only one per side ever appears. A destroyed Reliquary does not end the match."
+text = "Each Reliquary has 2000 HP and regenerates at 4 HP/s when undamaged. Destroying the enemy Reliquary pays +700 sol and immediately spawns a single Aegis for the losing side as a defender's-advantage guardian: a large, powerful fortress that defends only its own half (never crossing the diagonal midline) and fights with independent per-turret targeting (a Heavy-first main gun that orients the hull, two Light-first side turrets firing opportunistically). It fights until destroyed — no decay — and only one per side ever appears. A destroyed Reliquary does not end the match."
 weight = 2
 domain = "combat"
 
@@ -319,5 +319,5 @@ weight = 1
 [[review_item]]
 id = "provided-models"
 title = "Provided models rendered"
-text = "The game renders every unit and structure using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, the Aegis radar sweeping on its own. The world (arena, fog, effects, HUD) is generated in code."
+text = "The game renders every unit and structure using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, death clips before destroyed units are removed, and the Aegis radar sweeping on its own. The world (arena, fog, effects, HUD) is generated in code."
 weight = 2
