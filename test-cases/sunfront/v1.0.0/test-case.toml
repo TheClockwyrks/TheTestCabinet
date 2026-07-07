@@ -10,22 +10,23 @@ slug = "sunfront"
 name = "Sunfront"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Sunfront asks
-# for a real-time simulation of dozens of units, a ticking economy with placement
-# and upgrades, a nine-unit roster with an armor/attack counter matrix, strict fog
-# of war, a mid-map Reliquary objective with a comeback unit, an adaptive AI
-# opponent, and multiple states — a heavy build, so it sits at hard.
+# for a real-time 3D simulation of dozens of provided, articulated models, a ticking
+# economy with placement and upgrades, a ten-unit roster with an armor/attack counter
+# matrix, strict fog of war, a mid-map Reliquary objective with a comeback unit, an
+# adaptive AI opponent, and multiple states — a heavy build, so it sits at hard.
 difficulty = "hard"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
-tags = ["strategy", "2d", "tug-of-war", "real-time"]
+tags = ["strategy", "3d", "tug-of-war", "real-time"]
 
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.
 summary = """
-A top-down tug-of-war between two legions of solar automatons: spend a ticking \
-income on spawner structures that stamp out waves, read the enemy's build through \
-the fog, counter it, and grind a hole to their base — while a mid-field Reliquary \
-funds whoever razes it but summons a guardian to punish the push."""
+A 3D tug-of-war between two legions of solar automatons, fought corner-to-corner \
+across a diagonal front with provided, articulated models: spend a ticking income on \
+spawner structures that stamp out waves, read the enemy's build through the fog, \
+counter it, and grind a hole to their base — while a mid-field Reliquary funds whoever \
+razes it but summons a guardian to punish the push."""
 
 # Site-facing prose describing the case, relative to this version folder. NOT
 # seeded into a run; it exists only to introduce the case on the site.
@@ -63,6 +64,37 @@ init = "npm install && npx playwright install chromium"
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = ["variants/base.toml"]
 
+# Provided models, seeded into the run root. Each listed directory is seeded
+# verbatim (so `assets/scarab/` lands at `assets/scarab/` in the run), alongside
+# the `assets/models.json` manifest. These are the ONLY art the case supplies —
+# the finished 3D models the build loads and renders for every unit and structure;
+# everything else (arena, fog, effects, HUD) is generated in code. `specs/assets.md`
+# tells the build what they are, how to scale/pose/animate them, and to load them by
+# page-relative URL. This is a root key, so it must precede the first table header.
+#
+# The `assets` key is COMMENTED OUT until the model files exist: the harness rejects a
+# manifest whose `assets` paths do not exist, so listing the entity directories before
+# they are populated would fail resolution. This case is NOT run until then. When every
+# model directory (including `assets/garrison`) exists under `assets/`, UNCOMMENT the
+# block below to seed them:
+#
+# assets = [
+#   "assets/models.json",
+#   # Buildable units
+#   "assets/scarab", "assets/sentinel", "assets/trooper", "assets/bulwark",
+#   "assets/lancer", "assets/bombard", "assets/flakhound", "assets/sunhawk",
+#   "assets/lumen", "assets/monolith",
+#   # Super-unit
+#   "assets/aegis",
+#   # Structures
+#   "assets/bastion", "assets/reliquary",
+#   # Spawner structures (one per buildable unit; `garrison` pending its asset case)
+#   "assets/scarab-hatchery", "assets/sentinel-foundry", "assets/garrison",
+#   "assets/bulwark-foundry", "assets/lancer-foundry", "assets/bombard-foundry",
+#   "assets/flak-foundry", "assets/skyworks", "assets/lumen-spire",
+#   "assets/monolith-forge",
+# ]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a
@@ -79,6 +111,9 @@ source = "specs/overview.md"
 
 [[spec]]
 source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/assets.md"
 
 [[spec]]
 source = "specs/economy.md"
@@ -216,7 +251,7 @@ domain = "combat"
 [[review_item]]
 id = "front-line"
 title = "Front-line tug-of-war"
-text = "Units advance, acquire the nearest enemy they can damage, and stop to fight; the front line drifts toward the losing side. Two equal armies grind to a rough stalemate near midfield, so advantage comes from economy and counters, not a lopsided default. Units hold a target rather than jittering."
+text = "Units advance along the diagonal, acquire the nearest enemy they can damage, and stop to fight; the front line drifts toward the losing side. Two equal armies grind to a rough stalemate near the center of the diagonal front, so advantage comes from economy and counters, not a lopsided default. Units hold a target rather than jittering."
 weight = 2
 domain = "combat"
 reference = "gameplay"
@@ -234,7 +269,7 @@ proof = "gameplay"
 [[review_item]]
 id = "reliquary-aegis"
 title = "Reliquary and Aegis"
-text = "Destroying the enemy Reliquary pays +700 sol and immediately spawns a single Aegis for the losing side as a defender's-advantage guardian: a large, powerful fortress that defends only its own half (never crossing midfield) and fights with independent per-turret targeting (a Heavy-first main gun that orients the hull, two Light-first side turrets firing opportunistically). It fights until destroyed — no decay — and only one per side ever appears. A destroyed Reliquary does not end the match."
+text = "Destroying the enemy Reliquary pays +700 sol and immediately spawns a single Aegis for the losing side as a defender's-advantage guardian: a large, powerful fortress that defends only its own half (never crossing the diagonal midline) and fights with independent per-turret targeting (a Heavy-first main gun that orients the hull, two Light-first side turrets firing opportunistically). It fights until destroyed — no decay — and only one per side ever appears. A destroyed Reliquary does not end the match."
 weight = 2
 domain = "combat"
 
@@ -272,11 +307,17 @@ proof = "title"
 [[review_item]]
 id = "hud-complete"
 title = "HUD"
-text = "The HUD shows the sol balance and income rate, the wave number and countdown, both base health bars, the build palette with costs and affordability, and a selected-spawner panel — all inside the fitted 1280x720 field."
+text = "The HUD shows the sol balance and income rate, the wave number and countdown, both base health bars, the build palette (all ten buildable units) with costs and affordability, and a selected-spawner panel — all inside the fitted 16:9 view."
 weight = 1
 
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
-text = "The entire 1280x720 field — both bases, the full lane, the staging yard, every HUD element, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+text = "The entire 16:9 field — both bases in their opposite corners, the full diagonal arena, both staging yards, every HUD element, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
 weight = 1
+
+[[review_item]]
+id = "provided-models"
+title = "Provided models rendered"
+text = "The game renders every unit and structure using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, the Aegis radar sweeping on its own. The world (arena, fog, effects, HUD) is generated in code."
+weight = 2

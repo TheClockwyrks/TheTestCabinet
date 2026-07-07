@@ -3,12 +3,15 @@
 This file defines every unit, the armor/attack **counter system** that makes
 composition the game, and how combat resolves. Costs and upgrades are in
 `specs/economy.md`; spawning, movement, and the front line are in
-`specs/waves.md`; distances and speeds are logical pixels and `px/s` on the
-`1280 x 720` stage.
+`specs/waves.md`; distances and speeds are logical units and units/s on the arena
+ground plane defined in `specs/playfield.md`.
 
-Both sides field the **same roster** (a mirror match). A unit is drawn in its
-owner's team color with a dark outline, at roughly the pixel size in its entry,
-reading as the silhouette described.
+Both sides field the **same roster** (a mirror match). Each unit is rendered with
+its **provided 3D model** (`specs/assets.md`) — you are given the models and must
+load and use them, not draw your own — tinted to its owner's team color (Ember for
+the player, Azure for the enemy) with the team energy accent, and shown at the
+relative scale its authored dimensions imply. The model's locomotion clip plays while
+it advances and its attack clip when it fires.
 
 ## Armor classes and attack types — the counter system
 
@@ -38,16 +41,17 @@ This triangle is the game: read what crosses the sand and build its counter.
 
 ## The roster
 
-Nine buildable units, plus the **Aegis** — not buildable, far larger and more
+Ten buildable units, plus the **Aegis** — not buildable, far larger and more
 powerful than anything here, and the only unit with **independent per-turret
-targeting**; it defends its own half and never crosses midfield (full definition
-in `specs/waves.md`). Stats are base values at spawner level 1; upgrades scale HP
-and damage per `specs/economy.md`.
+targeting**; it defends its own half and never crosses the diagonal midline (full
+definition in `specs/waves.md`). Stats are base values at spawner level 1; upgrades
+scale HP and damage per `specs/economy.md`.
 
 | Unit | Cost | HP | Armor | Attack type | Dmg | Cadence | Range | Speed | Targets | Role |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Scarab** | 60 | 55 | Light | Normal | 8 | 0.6 s | 22 | 95 | Ground | Cheap fast melee swarm; screens the line, soaks fire. |
-| **Sentinel** | 100 | 90 | Light | Normal | 12 | 0.9 s | 130 | 65 | Ground | Backbone ranged trooper; cost-efficient staple. |
+| **Trooper** | 80 | 70 | Light | Normal | 9 | 0.8 s | 90 | 70 | Ground | Cheap rifle infantry; short-ranged body that braces and holds ground. |
+| **Sentinel** | 100 | 90 | Light | Normal | 12 | 0.9 s | 130 | 65 | Ground | Backbone ranged rifleman; longer reach, cost-efficient staple. |
 | **Bulwark** | 200 | 420 | Heavy | Normal | 16 | 1.1 s | 26 | 45 | Ground | Heavy frontline; walks the line forward and eats fire. |
 | **Lancer** | 180 | 80 | Light | Piercing | 26 | 1.4 s | 200 | 55 | Ground | Long-range marksman; deletes Heavy units, fragile. |
 | **Bombard** | 280 | 130 | Light | Splash | 22 | 2.0 s | 240 | 40 | Ground | Siege artillery; erases swarms, helpless up close. |
@@ -58,6 +62,11 @@ and damage per `specs/economy.md`.
 
 Notes on specific units:
 
+- **Trooper** is the cheapest **ranged** body — a short-range rifle infantry that
+  fills the line between the melee Scarab and the longer-reaching Sentinel. It is the
+  one **skinned** model (its whole body deforms as one skin; `specs/assets.md`); when
+  it stops to fire it plays its **`brace`** clip (a crouch-and-hold), a presentation
+  behavior only — it confers no stat change.
 - **Bombard** has a **minimum range of `70`**: an enemy closer than that is inside
   its arc and it cannot fire on it, so Bombards must be screened.
 - **Flakhound** always targets an **Air** unit in range if one exists (its natural
@@ -84,7 +93,7 @@ The simulation advances every frame in logical-pixel space:
   whose nearest valid target is within the acquisition buffer but not yet in range
   advances to close the gap; a unit with no valid target keeps advancing down the
   lane toward the enemy base. The **Aegis is the sole exception**: it holds to its
-  own half of the field (never crossing midfield) and its three turrets each
+  own half of the field (never crossing the diagonal midline) and its three turrets each
   acquire a target independently — the main turret hunting Heavy in a forward cone,
   each side turret sweeping its own flank for Light — per `specs/waves.md`.
 - **Attacking.** A unit fires once per its **cadence** while a valid target is in
@@ -101,5 +110,5 @@ The simulation advances every frame in logical-pixel space:
 - **Determinism is not required**, but the model must be stable: units must not
   jitter between targets every frame (keep a target until it dies or leaves the
   acquisition range), and two opposing armies of equal composition and upgrades
-  must grind to a **rough stalemate near midfield**, so that advantage comes from
+  must grind to a **rough stalemate near the center of the diagonal front**, so that advantage comes from
   economy and counters, not from a lopsided default.

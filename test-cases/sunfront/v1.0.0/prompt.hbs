@@ -1,5 +1,5 @@
-Build **Sunfront**, a top-down real-time tug-of-war strategy game that runs
-entirely in the browser.
+Build **Sunfront**, a real-time **3D** tug-of-war strategy game — fought
+corner-to-corner across a diagonal desert front — that runs entirely in the browser.
 
 Your project root is `{{workspace}}`. Create the game there.
 
@@ -11,7 +11,9 @@ installed for you — `node_modules/` is populated and Playwright's headless
 **Chromium** is downloaded — so you can build and verify right away. Build on this
 project rather than replacing it: keep the `package.json`, add your framework,
 bundler, and a `build` script on top of it, and keep the lockfile in sync (see
-below).
+below). The **provided models** you must render are seeded under `{{workspace}}/assets/`
+alongside their manifest `assets/models.json`; load them by **page-relative** URL
+(`specs/assets.md`).
 
 ## What to read first
 
@@ -24,18 +26,20 @@ they describe as a single, cohesive build:
 {{/each}}
 
 Start with `overview` for the goals, hard requirements, coordinate system, and
-palette; then `playfield` for the field and its fog of war; then `economy`,
-`units`, and `waves` for the resource loop, the unit roster and its counter
-system, and the wave clock and Reliquary objective; then `flow` for states,
-controls, the HUD, and the AI; then `standard` for the playable mode. The specs
+palette; then `playfield` for the diagonal arena and its fog of war; then `assets`
+for the **provided models** you must load and render; then `economy`, `units`, and
+`waves` for the resource loop, the unit roster and its counter system, and the wave
+clock and Reliquary objective; then `flow` for states, controls, the HUD, and the AI;
+then `standard` for the playable mode. The specs
 cross-reference each other by name — treat them as one specification.
 
 ## Build requirements
 
 Deliver a complete, polished, playable game, not a tech demo. The **hard
-requirements** — real graphics drawn in code (no art files or runtime fetches),
-no backend or credentials, the palette and type, a `README.md`, and the game
-states — are stated in full in `specs/overview.md` (and the files it points to).
+requirements** — real 3D graphics (WebGL/WebGPU; the world generated in code and the
+**provided models loaded** and rendered, not drawn as 2D), no backend or credentials,
+the palette and type, a `README.md`, and the game states — are stated in full in
+`specs/overview.md` and `specs/assets.md` (and the files they point to).
 That specification is authoritative; build to it rather than to a summary here.
 Two things bear restating, because the harness depends on them:
 

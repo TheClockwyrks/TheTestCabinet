@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "_note": "Provided-model manifest for the Sunfront build (specs/assets.md). 'dimensions' are the model extents [width, height, depth] and are the on-field relative-scale contract. 'kind' is 'rigid' (parts on named joints) or 'skinned' (linear-blend skinning). 'clips' maps a game role to the animation clip name to play. Per-model 'parts'/'joints' lists are added with each model.",
+  "units": {
+    "scarab":    { "model": "scarab/mesh.glb",    "kind": "rigid",   "dimensions": [26, 12, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
+    "sentinel":  { "model": "sentinel/mesh.glb",  "kind": "rigid",   "dimensions": [20, 40, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
+    "trooper":   { "model": "trooper/mesh.glb",   "kind": "skinned", "dimensions": [24, 48, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire", "brace": "brace" } },
+    "bulwark":   { "model": "bulwark/mesh.glb",   "kind": "rigid",   "dimensions": [40, 60, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
+    "lancer":    { "model": "lancer/mesh.glb",    "kind": "rigid",   "dimensions": [24, 50, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
+    "bombard":   { "model": "bombard/mesh.glb",   "kind": "rigid",   "dimensions": [40, 40, 60], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
+    "flakhound": { "model": "flakhound/mesh.glb", "kind": "rigid",   "dimensions": [36, 32, 46], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
+    "sunhawk":   { "model": "sunhawk/mesh.glb",   "kind": "rigid",   "dimensions": [74, 28, 76], "clips": { "idle": "idle", "move": "fly", "attack": "fire" } },
+    "lumen":     { "model": "lumen/mesh.glb",     "kind": "rigid",   "dimensions": [20, 26, 20], "clips": { "idle": "idle", "move": "march", "attack": "heal" } },
+    "monolith":  { "model": "monolith/mesh.glb",  "kind": "rigid",   "dimensions": [50, 80, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" } }
+  },
+  "special": {
+    "aegis": { "model": "aegis/mesh.glb", "kind": "rigid", "dimensions": [120, 110, 150], "clips": { "move": "march", "attack": "bombardment", "idle_auto": "radar_spin" } }
+  },
+  "structures": {
+    "base":      { "model": "bastion/mesh.glb",   "kind": "rigid", "dimensions": [90, 120, 90], "clips": { "idle": "idle" } },
+    "reliquary": { "model": "reliquary/mesh.glb", "kind": "rigid", "dimensions": [60, 100, 60], "clips": { "idle": "idle" } }
+  },
+  "spawners": {
+    "scarab":    { "model": "scarab-hatchery/mesh.glb",  "kind": "rigid", "dimensions": [60, 40, 60], "clips": { "idle": "idle", "emit": "emit" } },
+    "sentinel":  { "model": "sentinel-foundry/mesh.glb", "kind": "rigid", "dimensions": [56, 76, 56], "clips": { "idle": "idle", "emit": "emit" } },
+    "trooper":   { "model": "garrison/mesh.glb",         "kind": "rigid", "dimensions": null, "clips": { "idle": "idle", "emit": "emit" } },
+    "bulwark":   { "model": "bulwark-foundry/mesh.glb",  "kind": "rigid", "dimensions": [66, 56, 66], "clips": { "idle": "idle", "emit": "emit" } },
+    "lancer":    { "model": "lancer-foundry/mesh.glb",   "kind": "rigid", "dimensions": [46, 86, 46], "clips": { "idle": "idle", "emit": "emit" } },
+    "bombard":   { "model": "bombard-foundry/mesh.glb",  "kind": "rigid", "dimensions": [60, 70, 60], "clips": { "idle": "idle", "emit": "emit" } },
+    "flakhound": { "model": "flak-foundry/mesh.glb",     "kind": "rigid", "dimensions": [56, 80, 56], "clips": { "idle": "idle", "emit": "emit" } },
+    "sunhawk":   { "model": "skyworks/mesh.glb",         "kind": "rigid", "dimensions": [70, 60, 70], "clips": { "idle": "idle", "emit": "emit" } },
+    "lumen":     { "model": "lumen-spire/mesh.glb",      "kind": "rigid", "dimensions": [46, 90, 46], "clips": { "idle": "idle", "emit": "emit" } },
+    "monolith":  { "model": "monolith-forge/mesh.glb",   "kind": "rigid", "dimensions": [90, 110, 90], "clips": { "idle": "idle", "emit": "emit" } }
+  }
+}

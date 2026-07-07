@@ -2,9 +2,10 @@
 
 ## Overview
 
-**Sunfront** is a top-down, real-time **tug-of-war** for the browser. Two rival
-legions of solar-powered war automatons — the **Duneforged** — face each other
-across a stretch of desert. You never command a single unit. Instead you spend a
+**Sunfront** is a real-time **tug-of-war** for the browser, rendered in **3D**. Two
+rival legions of solar-powered war automatons — the **Duneforged** — face each other
+across a diagonal stretch of desert, their bases in opposite corners. You never
+command a single unit. Instead you spend a
 steadily ticking income on **spawner structures** in your walled staging yard;
 every **wave**, each spawner you own stamps out its unit, and those units march
 across the sand toward the enemy base, fighting whatever they meet on the way.
@@ -32,8 +33,11 @@ start; they cross-reference each other **by name** and form a single spec.
 - `specs/overview.md` — this file: goals, hard requirements, free choices, the
   coordinate system, the palette and type, the game states, and the reference
   index.
-- `specs/playfield.md` — the battlefield geometry: the lane, the two bases, the
-  Reliquaries, the staging yard and its build grid, and the **fog of war**.
+- `specs/playfield.md` — the battlefield geometry: the diagonal lane, the two
+  corner bases, the Reliquaries, the staging yards and their build grid, and the
+  **fog of war**.
+- `specs/assets.md` — the **provided models**: every unit and structure is given to
+  you as a 3D model file to load, scale, tint, and animate (the only art you get).
 - `specs/economy.md` — income, the resource economy, and placing and upgrading
   spawner structures.
 - `specs/units.md` — the **unit roster**: every unit's stats, the armor/attack
@@ -57,9 +61,12 @@ a tech demo.
 
 ### Hard requirements
 
-- **Renders real graphics.** Draw the game with Canvas 2D, WebGL/WebGPU, or
-  positioned DOM elements. A text-only or ASCII rendering does not satisfy this
-  test case.
+- **Renders real 3D graphics.** Render the battlefield with **WebGL or WebGPU** (a
+  helper library such as a scene-graph or math library is fine). A **Canvas 2D**,
+  positioned-DOM, text-only, or ASCII battlefield does **not** satisfy this test
+  case — the field, its units, and its structures are a real 3D scene viewed through
+  a camera. (The **HUD and menus** may be a 2D overlay — HTML/DOM or 2D canvas — laid
+  over the 3D view; only the battlefield must be 3D.)
 - **Runs in the browser with no backend.** No server, accounts, database, or
   network calls at runtime. Everything needed to play must be self-contained.
 - **No API keys or credentials** of any kind to build, run, or play.
@@ -71,13 +78,21 @@ a tech demo.
   static site, with no further manual step, into one of `dist/`, `build/`, or
   `out/` at the project root, with an `index.html` at the root of that directory
   as the entry point. That output directory must run correctly when served as-is
-  at the root of any static file server, since it is deployed to static hosting
-  exactly that way. You choose the language, framework, bundler, and rendering
-  approach behind this interface; only the `npm ci` and `npm run build` commands
-  and where the build output lands are fixed.
-- **Self-contained rendering.** The game draws every unit, structure, and piece
-  of terrain itself, in code, in the palette below — it is **not** given sprite
-  or model files and must not fetch any at runtime.
+  from a static file server, and **at any base path** — it is played back from a
+  per-run sub-path, not only a server root, so any URL the build constructs at
+  runtime (including every URL it uses to **load the provided model files** and
+  `assets/models.json`) must be **page-relative**: never begin with a leading `/`;
+  for a bundler, set a relative base such as `base: './'` (`specs/assets.md`). You
+  choose the language, framework, bundler, and rendering approach behind this
+  interface; only the `npm ci` and `npm run build` commands and where the build
+  output lands are fixed.
+- **Provided models, world in code.** Every **unit and structure** is **provided**
+  to you as a 3D model file that you must **load and render** — you must **not**
+  replace them with primitives of your own (`specs/assets.md`). Everything else — the
+  sand arena, the staging yards, the fog, projectiles and effects, and all HUD/menu
+  furniture — the game **generates in code**, in the palette below. Apart from the
+  provided models, the game fetches **no** art, fonts, data, or code from the network
+  at runtime.
 - **Documentation.** Include a `README.md` in the produced repository explaining
   what the game is, how to install dependencies, how to run it in development,
   how to produce the static production build, and the controls.
@@ -85,33 +100,39 @@ a tech demo.
 ### Free choices
 
 You choose the language, framework, bundler, and rendering approach, subject to
-the requirements above. Plain TypeScript with Canvas 2D is entirely sufficient;
-a framework is not required. Favor a clean, well-structured codebase over any
-particular technology. Exact unit artwork is yours to design as long as each unit
-reads as the silhouette its entry in `specs/units.md` describes, in its team
-color.
+the requirements above. TypeScript with a thin WebGL layer or a lightweight 3D
+library is entirely sufficient; a heavy engine is not required. Favor a clean,
+well-structured codebase over any particular technology. The **units and structures
+are provided** as models, so their form is fixed (`specs/assets.md`); how you camera,
+light, pose, animate, and tint them, and how you generate the arena, fog, and effects
+around them, is yours — as long as it reads as the world these specs describe.
 
 ## Coordinate system and presentation
 
-All positions, sizes, speeds, and ranges in this document are given in **logical
-pixels** on a fixed **1280 x 720** play area (16:9). The origin `(0, 0)` is the
-**top-left**; `x` increases to the right and `y` increases downward. Distances
-and ranges are in logical pixels; speeds are in logical pixels per second
-(`px/s`); times are in seconds.
+The **simulation runs on a logical horizontal ground plane** — a flat arena the
+units move and fight across. All positions, sizes, speeds, and ranges in this
+document are **logical units** on that plane (`specs/playfield.md` fixes its extent
+and the two corner bases); speeds are logical units per second, times in seconds. The
+plane is **rendered in 3D**: the provided models stand up off it, and a fixed camera
+views the whole arena at an angle. Keeping the gameplay on a 2D ground plane while
+rendering it in 3D is deliberate — the combat numbers are planar; the third dimension
+is presentation (model height, the camera, the Sunhawk's flight altitude).
 
-- The play area scales uniformly to fit the browser window while preserving its
-  16:9 aspect ratio, letterboxed with the background color on the remaining
-  space. The game must remain correct and centered at any window size.
-- Gameplay logic operates in logical-pixel space, independent of the rendered
-  scale.
-- **The whole field must be on screen.** At every window size the complete
-  `1280 x 720` area is visible at once — both bases, the full lane, the staging
-  yard, every HUD element, and all four edges — fitted to the window and
+- **The presentation is a fixed 16:9 view.** The rendered view preserves a **16:9**
+  aspect ratio, scaled uniformly to fit the browser window and letterboxed with the
+  background color on the remaining space. It must remain correct and centered at any
+  window size and pixel density.
+- Gameplay logic operates in logical ground-plane units, independent of the rendered
+  scale or camera.
+- **The whole field must be on screen.** At every window size the complete arena is
+  in frame at once — **both bases in their opposite corners**, the full diagonal
+  lane, both staging yards, every HUD element, and all four edges — fitted and
   centered, with nothing clipped or pushed past the edges. The build must fit
-  correctly on load, before any input, and at any pixel density.
-- **The two sides mirror.** The player holds the **left**; the AI holds the
-  **right**. Every distance given for the left side has a mirror-image
-  counterpart on the right about the vertical centerline `x = 640`.
+  correctly on load, before any input.
+- **The two sides mirror.** The player holds **one corner**; the AI holds the
+  **opposite** corner. The layout has **180° rotational symmetry about the arena
+  center**: every position and distance given for the player's side has a mirror-image
+  counterpart on the enemy's side through the center point (`specs/playfield.md`).
 
 ## Visual design
 
@@ -142,12 +163,15 @@ cool **Azure**. The canonical palette and type are defined below; match them.
 - Use a **monospace** type family for all text (resource counts, menus, labels,
   timers). Do not depend on a web font that must be downloaded; a system
   monospace stack is required so the game renders identically offline.
-- Units and structures are drawn in their owner's team color (Ember for the
-  player, Azure for the enemy), each with a **dark outline** (use the rock color)
-  so they read against the sand. A unit's amber/azure **energy accent** (a core,
-  visor, or eye) is drawn in the team's *light* shade.
+- Units and structures use their **provided models** (`specs/assets.md`), **tinted
+  to their owner's team color** (Ember for the player, Azure for the enemy) so the two
+  legions read apart at a glance, with the team **energy accent** (a core, visor, or
+  eye) in the team's *light* shade. Light the scene and keep enough contrast against
+  the sand that the models read clearly; the neutral Reliquary keeps its own color
+  with the owner's accent.
 - Bases, Reliquaries, and structures each carry a **health bar** when damaged
-  (healthy → critical color by fraction remaining), drawn just above them.
+  (healthy → critical color by fraction remaining), drawn as a **billboard just above
+  them** that faces the camera.
 - The three canonical menu screens — the title screen, the in-match view, and the
   match-over screen — are described in full under **Game states** in
   `specs/flow.md`. Implement each as described, in this palette and type.
@@ -164,12 +188,14 @@ and behave as `specs/flow.md` describes.
 The `reference/` folder holds screenshots showing how key screens should look:
 
 - `reference/title.png` — the title screen and main menu.
-- `reference/gameplay.png` — a representative in-match frame: the lane mid-battle,
-  the staging yard with placed spawners, the HUD, and the fog over the enemy
-  yard.
+- `reference/gameplay.png` — a representative in-match frame: the diagonal arena
+  mid-battle, the player's staging yard with placed spawners, the HUD, and the fog
+  over the enemy yard.
 - `reference/game-over.png` — the match-over screen.
 
 Treat them as visual targets: match their layout, palette, and type. They are
-images only — build the screens from this specification.
+images only — and, being static mockups, they only **approximate** the 3D look;
+build the screens from this specification (a real 3D scene rendered through a
+camera), not as flat drawings.
 </content>
 </invoke>

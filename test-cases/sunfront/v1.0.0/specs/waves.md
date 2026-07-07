@@ -29,10 +29,12 @@ When a wave fires, for each side:
 - **Every spawner the side owns emits exactly one unit of its type**, at that
   spawner's current **level** (its units carry the level's HP/damage bonus and
   level marker, per `specs/economy.md`).
-- Units appear at that side's **muster line** (`specs/playfield.md`: player at
-  `x = 96`, enemy at `x = 1184`), distributed across the lane's vertical extent
-  so a wave enters as a spread rank, not a single stack. Stagger their entry
-  over a fraction of a second if it helps them separate.
+- Units appear at that side's **muster line** (`specs/playfield.md`: the player's
+  just ahead of the player base near `(230, 230)`, the enemy's near `(970, 970)`),
+  spread across the diagonal corridor's width so a wave enters as a spread rank, not a
+  single stack. Stagger their entry over a fraction of a second if it helps them
+  separate. Each unit plays its provided model's locomotion clip as it marches
+  (`specs/assets.md`).
 - A side with **no spawners** emits nothing that wave (and is surely losing).
 
 Emitted units immediately begin advancing and fighting per `specs/units.md`: they
@@ -56,22 +58,28 @@ When a side's Reliquary is **destroyed** (brought to `0 HP` by the enemy):
    an over-commitment to the push that just felled the Reliquary.
 
 The **Aegis** is **not buildable** and appears only this way. It is a giant
-Duneforged **siege fortress on treads** — deliberately **much larger and far more
-powerful than any buildable unit**, and rare enough (at most two ever exist in a
-match, and usually only one) that it can afford this special behavior:
+Duneforged **walking siege fortress** — a colossal armored citadel that strides on
+multiple heavy legs, deliberately **much larger and far more powerful than any
+buildable unit**, and rare enough (at most two ever exist in a match, and usually only
+one) that it can afford this special behavior. It is rendered from its provided model
+(`specs/assets.md`, the `aegis`): it repositions on its legs with its **`march`** clip,
+works its guns with **`bombardment`**, and its radar vane sweeps continuously on its
+own (the self-playing **`radar_spin`**):
 
-- **Bulk and armor.** `2200 HP`, **Heavy** armor, speed `40`. It is a colossal
-  tracked fortress that dwarfs everything else on the field, drawn noticeably
-  larger than any buildable unit.
+- **Bulk and armor.** `2200 HP`, **Heavy** armor, speed `40`. It is a colossal legged
+  fortress that dwarfs everything else on the field, rendered noticeably larger than any
+  buildable unit (its authored dimensions are the largest in the roster;
+  `specs/assets.md`).
 - **It defends its own half only — it never crosses midfield.** Unlike every
   other unit, the Aegis does **not** march toward the enemy base. It patrols and
   repositions **only on its owner's half of the field** (the owner's side of the
-  vertical centerline `x = 640`) and **must never cross the middle of the map**:
-  it hunts the enemy units that have pushed across onto its side, holding the
-  line while its owner recovers. With no enemy in reach on its half, it holds
-  position near the front of its own half rather than advancing over the
-  centerline. This is its defender's-advantage identity — it blunts the very push
-  that felled the Reliquary without becoming an attacker of its own.
+  **diagonal midline**, where `x + z < 1200` for the player, `x + z > 1200` for the
+  enemy; `specs/playfield.md`) and **must never cross that midline**: it hunts the
+  enemy units that have pushed across onto its side, holding the line while its owner
+  recovers. With no enemy in reach on its half, it holds position near the front of its
+  own half rather than advancing over the midline. This is its defender's-advantage
+  identity — it blunts the very push that felled the Reliquary without becoming an
+  attacker of its own.
 - **Independent multi-turret targeting — the only unit in the game with it.**
   Every other unit acquires and fires on a single target (`specs/units.md`); the
   Aegis fights with **three turrets that each acquire and fire on their own

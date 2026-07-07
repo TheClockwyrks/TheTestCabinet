@@ -45,8 +45,9 @@ both.
 - **Menus / pause / match-over:** `Up`/`Down` (or `W`/`S`) move the selection,
   `Enter` or `Space` confirms, `Esc` goes back; menu items are also clickable.
 - **Selecting what to build:** the **build palette** (below) lists the buildable
-  units with their costs. Click a palette entry — or press its number key `1`–`9`
-  — to arm that spawner type. The cursor then shows a ghost of the spawner.
+  units with their costs. Click a palette entry — or press its number key (`1`–`9`,
+  and `0` for the tenth) — to arm that spawner type. The cursor then shows a ghost of
+  the spawner.
 - **Placing:** click an **empty** build-grid cell in your staging yard to place
   the armed spawner (if you can afford it — `specs/economy.md`). An invalid or
   unaffordable cell shows the invalid-placement color and does not place. `Esc`
@@ -63,8 +64,9 @@ one, but mouse placement is the primary path and must work.
 
 ## HUD
 
-Drawn in the top strip (`y = 0` to `64`, `specs/playfield.md`) and around the
-staging yard, in the palette and monospace type from `specs/overview.md`:
+Drawn as a **2D overlay** over the 3D view — a top strip and controls around the
+player's staging yard (`specs/playfield.md`) — in the palette and monospace type from
+`specs/overview.md`:
 
 - **Top-left:** your **sol** balance (large) and your current **income rate**
   (`+N/s`), in the Ember color.
@@ -73,15 +75,15 @@ staging yard, in the palette and monospace type from `specs/overview.md`:
 - **Top strip, flanking center:** the two **base health bars** — the player's
   base HP on the left, the enemy's on the right — each labelled, filling from the
   healthy to the critical color as HP drops.
-- **Build palette:** a row or column of the nine buildable units near the player's
+- **Build palette:** a row or column of the ten buildable units near the player's
   staging yard, each showing its icon (in team color), name, cost, and number
-  key. An unaffordable entry is dimmed. The armed entry is highlighted.
+  key (`1`–`9`, `0`). An unaffordable entry is dimmed. The armed entry is highlighted.
 - **Selected-spawner panel:** when a placed spawner is selected, its type, level
   pips, and the Upgrade/Sell actions with their sol figures.
 - Units and structures show a **health bar** above them only while damaged
   (`specs/overview.md`).
 
-Keep every HUD element inside the `1280 x 720` field at all window sizes
+Keep every HUD element inside the fitted 16:9 view at all window sizes
 (`specs/overview.md`).
 
 ## The AI opponent

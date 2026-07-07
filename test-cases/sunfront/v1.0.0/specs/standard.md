@@ -20,7 +20,7 @@ The main menu lists this mode first, as:
   commands the **right**. The field, both bases, and both Reliquaries are the
   standard layout in `specs/playfield.md`.
 - Both sides start with `250` sol and the standard income schedule
-  (`specs/economy.md`), and share the **full nine-unit roster** in
+  (`specs/economy.md`), and share the **full ten-unit roster** in
   `specs/units.md` — every spawner type is buildable from the first second.
 - The **wave clock** runs as in `specs/waves.md` (first wave at `20 s`, then every
   `45 s`), and the match ends when a base is razed (`specs/flow.md`).
