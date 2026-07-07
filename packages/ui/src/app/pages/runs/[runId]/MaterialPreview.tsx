@@ -3,6 +3,7 @@ import { OrbitControls } from "@react-three/drei";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { MaterialMapView } from "../../../data/galleryContext";
+import { useViewportWheelLock } from "./useViewportWheelLock";
 
 // Which glTF-style PBR channel each declared map name drives on the standard
 // material. Names outside this map (e.g. `ambient-occlusion`) are shown per-map but
@@ -90,8 +91,14 @@ export default function MaterialPreview({
     };
   }, [maps]);
 
+  // Scrolling over the viewport zooms the camera; stop it from scrolling the page too.
+  const containerRef = useViewportWheelLock<HTMLDivElement>(true);
+
   return (
-    <div style={{ width: "100%", height, borderRadius: 4, overflow: "hidden" }}>
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height, borderRadius: 4, overflow: "hidden" }}
+    >
       <Canvas
         aria-label={label}
         dpr={[1, 1.5]}

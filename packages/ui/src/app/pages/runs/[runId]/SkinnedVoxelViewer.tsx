@@ -14,6 +14,7 @@ import {
   type Vec3,
 } from "./voxelScene";
 import type { VoxelViewMode } from "./VoxelViewer";
+import { useViewportWheelLock } from "./useViewportWheelLock";
 
 /**
  * The scene contents inside the {@link Canvas}: the posed skinned rig (centered at
@@ -106,8 +107,16 @@ export default function SkinnedVoxelViewer({
   const animate =
     animation != null || (rig.animations?.some((a) => a.autoPlay) ?? false);
 
+  // When zoom is on, keep the wheel from scrolling the page while it zooms the camera.
+  const containerRef = useViewportWheelLock<HTMLDivElement>(
+    enableZoom ?? false,
+  );
+
   return (
-    <div style={{ width: "100%", height, borderRadius: 4, overflow: "hidden" }}>
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height, borderRadius: 4, overflow: "hidden" }}
+    >
       <Canvas
         aria-label={label}
         dpr={[1, 1.5]}

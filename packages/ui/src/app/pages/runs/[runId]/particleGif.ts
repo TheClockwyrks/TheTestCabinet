@@ -3,7 +3,7 @@ import * as THREE from "three";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 import { ParticleSystemPlayer } from "@test-cabinet/particle-runtime/three";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
-import type { ParticleBlend } from "./ParticleViewer";
+import { fieldCenter, type ParticleBlend } from "./ParticleViewer";
 
 // The exported GIF's square pixel size, capture rate, and a cap on total frames (so a
 // long effect stays a reasonable download). Mirrors the voxel bake's budget.
@@ -84,7 +84,13 @@ export function particleGifPlan(system: ParticleSystem): {
   const ideal = Math.ceil((captureMs / 1000) * FPS);
   const frameCount = Math.max(2, Math.min(MAX_FRAMES, ideal));
   const stepMs = captureMs / frameCount;
-  return { captureMs, prewarmMs, frameCount, stepMs, delayMs: Math.round(stepMs) };
+  return {
+    captureMs,
+    prewarmMs,
+    frameCount,
+    stepMs,
+    delayMs: Math.round(stepMs),
+  };
 }
 
 /** Advance the player by `ms`, sub-stepping at {@link SUBSTEP_MS} so integration is
@@ -146,6 +152,10 @@ export async function encodeParticleGif({
     // for so they read the same size as in the preview.
     pixelScale: extent * 6 * (SIZE / STAGE_SIZE),
   });
+  // Offset by -center so the field's middle sits at the origin the camera targets
+  // (matching ParticleViewer's centering group), rather than the field's corner.
+  const center = fieldCenter(system);
+  player.points.position.set(-center[0], -center[1], -center[2]);
   scene.add(player.points);
 
   // A 2D canvas to composite each rendered frame onto and read pixels back from
