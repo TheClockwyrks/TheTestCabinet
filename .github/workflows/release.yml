@@ -152,11 +152,17 @@ jobs:
         run: cargo install tauri-cli --version "^2" --locked
       - name: Install npm workspace
         run: npm ci
-      # The desktop UI imports the run-record package's compiled types, so build
-      # it before the Tauri build runs the UI's own `vite build` (its
-      # beforeBuildCommand).
-      - name: Build run-record package
-        run: npm run build -w @test-cabinet/run-record
+      # The desktop UI (via @test-cabinet/ui) imports the compiled types of the
+      # run-record, voxel-runtime, and particle-runtime packages, so build each
+      # before the Tauri build runs the UI's own `tsc -b && vite build` (its
+      # beforeBuildCommand) — otherwise those imports resolve to `any` and the
+      # UI's typecheck fails.
+      - name: Build workspace type packages
+        run: >-
+          npm run build
+          -w @test-cabinet/run-record
+          -w @test-cabinet/voxel-runtime
+          -w @test-cabinet/particle-runtime
       # The shipped app stands up its own k3d cluster, so it bundles the k3d and
       # kubectl CLIs as externalBin sidecars. Fetch the host-triple build of each
       # into crates/desktop/binaries/ before the bundle runs (the committed config
