@@ -12,8 +12,8 @@ name = "Floe"
 # tile-based hopping across lanes of sliding hazards and drifting carry-floes, a
 # pursuing hunter with real pathfinding across the hazard board and the water, a
 # row of goal bays, a timer, an 8-level progression with a win and a loss, and
-# multiple states — a substantial build, so it sits at medium.
-difficulty = "medium"
+# multiple states — a self-contained 2D build, so it sits at easy.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "crossing"]

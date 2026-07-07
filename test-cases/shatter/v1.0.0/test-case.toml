@@ -11,9 +11,8 @@ name = "Shatter"
 # Relative difficulty of this case, surfaced on the site. Shatter asks for inertial
 # flight, a live gravity field acting on many bodies at once, splitting rocks,
 # escalating waves, a hunting saucer, lives/respawns, and a full state machine — a
-# meatier front-end build than the easy cases, but well-specified — so it sits in
-# the middle of the range.
-difficulty = "medium"
+# meaty but well-specified 2D front-end build, so it sits at easy.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "space", "shooter", "physics"]

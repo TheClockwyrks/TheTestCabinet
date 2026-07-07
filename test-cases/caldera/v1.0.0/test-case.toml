@@ -14,9 +14,10 @@ name = "Caldera"
 # carved rivers, and animated water rendered in real-time 3D from a tilted RTS
 # camera; a two-fluid flow-network simulation with elevation-aware flow; a
 # build/economy layer; 3D-pathfinding enemy AI funneled by the terrain; and a
-# discrete escalating wave loop with a win and a loss — a build on the scale of the
-# catalog's largest, so it sits at hard.
-difficulty = "hard"
+# discrete escalating wave loop with a win and a loss — a substantial 3D build, but
+# short of the flagship hard cases (Sunfront, Siege, Thunderhead), so it sits at
+# medium.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["strategy", "tower-defense", "3d", "hex", "simulation"]

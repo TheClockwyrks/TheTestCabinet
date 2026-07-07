@@ -11,9 +11,9 @@ name = "Wireworm"
 # Relative difficulty (easy | medium | hard), surfaced on the site. Wireworm asks
 # for a segmented worm that winds and splits over a tile field, a charged-terrain
 # model with a chain-reaction discharge, three distinct foes, a persistent growing
-# field, a 12-level progression with win and loss, and multiple states — a substantial
-# build, so it sits at medium.
-difficulty = "medium"
+# field, a 12-level progression with win and loss, and multiple states — a
+# self-contained 2D build, so it sits at easy.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "shooter"]

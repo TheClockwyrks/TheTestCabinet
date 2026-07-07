@@ -14,9 +14,8 @@ name = "Meltdown"
 # upgrade and economy systems, several surge types including maze-ignoring flyers,
 # a 20-wave progression with win and loss, and multiple states. Those are several
 # systems that want to be split out behind interfaces — real planning — but it is
-# still a bounded, single-screen build, well short of the package-scale simulation
-# games (SimCity and the like) that define hard, so it sits at medium.
-difficulty = "medium"
+# still a bounded, single-screen 2D build, so it sits at easy.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["strategy", "2d", "tower-defense"]

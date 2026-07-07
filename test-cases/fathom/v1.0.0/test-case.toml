@@ -10,9 +10,9 @@ name = "Fathom"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Fathom asks
 # for a fog-of-war visibility system, tile-locked maze movement, three distinct
-# sensory predator behaviors, and several states — meaningfully more than the
-# easy paddle/grid cases, so it sits at medium.
-difficulty = "medium"
+# sensory predator behaviors, and several states — a self-contained 2D build, so it
+# sits at easy.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "maze", "stealth"]

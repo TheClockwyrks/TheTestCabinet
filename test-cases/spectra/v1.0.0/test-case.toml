@@ -12,10 +12,9 @@ name = "Spectra"
 # for choreographed entrance and dive paths, a swaying formation, two-band
 # polarity combat with a dual-use shield, three distinct drone behaviors, the
 # resonance/discharge economy, challenge stages, and several states — several
-# systems that want encapsulating behind interfaces, but a bounded arcade shooter,
-# well short of the package-scale simulation games (SimCity and the like) that
-# define hard, so it sits at medium.
-difficulty = "medium"
+# systems that want encapsulating behind interfaces, but a bounded 2D arcade
+# shooter, so it sits at easy.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "shooter", "space"]
