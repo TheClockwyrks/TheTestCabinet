@@ -73,47 +73,51 @@ patches:
 # rather than :latest in a real deployment.
 #
 # All service images are pinned to ONE git-sha so they version together, currently
-# `3e7b41d`.
+# `ba19bd69` (the v0.4.0 release build — the tag itself is at `2ebbcde5`, but the two
+# commits after `ba19bd69` touch only the changelog and release.yml, so neither the
+# `build-service-images` nor the `build-containers` workflow ran for them and no
+# images exist at those shas; `ba19bd69` is the newest sha both workflows published).
 #
 # The RUN-CONTAINER images (test-cabinet-base/-sprite/-sprite-sheet/-adversarial/
-# -performance) are pinned SEPARATELY to `c461b06` via TCAB_CONTAINER_TAG in
-# patch-dispatcher-driver-image.yaml. They are NOT in lockstep with the service
-# images here: the commits since `c461b06` changed only service code, so the
-# `build-containers` workflow did not run for them and no run images exist at those
-# shas. The run images are decoupled from service-image rolls — only re-pin
-# TCAB_CONTAINER_TAG to a sha at which `build-containers` actually published
-# (multi-arch — required for the arm64 nodes). Roll the service images — staging
-# before prod — when promoting a build.
+# -performance, plus the voxel/mesh/skin/ui/material/particle/audio kinds) are pinned
+# SEPARATELY via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml and are NOT
+# generally in lockstep with the service images — they only rebuild when
+# `build-containers` runs. For this roll they HAPPEN to match at `ba19bd69`: v0.4.0
+# reworked the run-container tooling (the asset-generation crates), so
+# `build-containers` did publish multi-arch (amd64+arm64 — required for the arm64
+# nodes) at `ba19bd69`. Still re-pin TCAB_CONTAINER_TAG only to a sha at which
+# `build-containers` actually published. Roll the service images — staging before
+# prod — when promoting a build.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: 3e7b41d7b24d947e1caf41c050551fd29e397b22
+    newTag: ba19bd69c95402df6e443b08d94250a8aac73eab
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: 3e7b41d7b24d947e1caf41c050551fd29e397b22
+    newTag: ba19bd69c95402df6e443b08d94250a8aac73eab
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: 3e7b41d7b24d947e1caf41c050551fd29e397b22
+    newTag: ba19bd69c95402df6e443b08d94250a8aac73eab
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: 3e7b41d7b24d947e1caf41c050551fd29e397b22
+    newTag: ba19bd69c95402df6e443b08d94250a8aac73eab
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: 3e7b41d7b24d947e1caf41c050551fd29e397b22
+    newTag: ba19bd69c95402df6e443b08d94250a8aac73eab
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: 3e7b41d7b24d947e1caf41c050551fd29e397b22
+    newTag: ba19bd69c95402df6e443b08d94250a8aac73eab
   # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
   # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
   # rewrites nothing today — it is kept for parity so the registry/tag set stays
   # complete and a future container-image reference to the publisher is covered.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: 3e7b41d7b24d947e1caf41c050551fd29e397b22
+    newTag: ba19bd69c95402df6e443b08d94250a8aac73eab
   # The in-cluster web console image (the internal-ingress component's tcab-web
   # Deployment). One environment-agnostic build per git-sha; the per-env backend/auth
   # URLs are injected at runtime via env, not baked. GHCR package is Public/anonymously
   # pullable.
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: 3e7b41d7b24d947e1caf41c050551fd29e397b22
+    newTag: ba19bd69c95402df6e443b08d94250a8aac73eab

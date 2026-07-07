@@ -11,8 +11,10 @@
 # service images and is NOT kept in lockstep: the run images only rebuild when the
 # `build-containers` workflow runs, so this tracks the latest sha at which that
 # workflow published multi-arch (amd64+arm64) run images — required for the arm64
-# nodes — which is `c461b06`. The service images are ahead at `88a572d` (later
-# service-only changes that did not rebuild the run images). Without this the base
+# nodes — which for the v0.4.0 roll is `ba19bd69`. That sha matches the service-image
+# pin this time because v0.4.0 reworked the run-container tooling (the asset-generation
+# crates) and so `build-containers` did publish there; they are decoupled in general
+# and will drift apart again on the next service-only roll. Without this the base
 # default (latest) would leave the run images tracking the mutable tag.
 apiVersion: apps/v1
 kind: Deployment
@@ -26,6 +28,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:3e7b41d7b24d947e1caf41c050551fd29e397b22"
+              value: "ghcr.io/theclockwyrks/tcab-driver:ba19bd69c95402df6e443b08d94250a8aac73eab"
             - name: TCAB_CONTAINER_TAG
-              value: "c461b06d5ccbacab29d1738f84ef09239c386235"
+              value: "ba19bd69c95402df6e443b08d94250a8aac73eab"
