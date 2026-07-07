@@ -362,6 +362,8 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         Some(path) => Some(std::fs::read_to_string(path)?),
         None => None,
     };
+    // The changelog is required, so it is always present to read.
+    let changelog = std::fs::read_to_string(&resolved.changelog_path)?;
 
     let common_specs = resolved
         .common_specs
@@ -432,6 +434,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         tags: resolved.tags.clone(),
         summary: resolved.summary.clone(),
         description,
+        changelog,
         max_runtime_seconds: resolved.max_runtime_seconds,
         test_type: resolved.test_type,
         build: resolved.build.as_ref().map(|build| StoredBuild {
@@ -505,6 +508,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         workspace,
         init: resolved.init.clone(),
         assets,
+        packages: resolved.packages.clone(),
         variants,
         common_references: resolved
             .common_references

@@ -17,6 +17,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         tags: vec!["arcade".to_string()],
         summary: Some("A sample.".to_string()),
         description: None,
+        changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
         build: Some(StoredBuild {
@@ -53,6 +54,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         }],
         init: Some("npm install".to_string()),
         assets: vec![],
+        packages: vec![],
         variants: vec![StoredVariant {
             slug: "base".to_string(),
             name: "Base".to_string(),

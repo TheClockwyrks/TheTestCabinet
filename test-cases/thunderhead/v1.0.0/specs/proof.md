@@ -25,7 +25,7 @@ Write exactly these files:
 - **`proof/wireframe.png`** — the same scene (or any battle scene) with the
   **wireframe** toggle on, showing the generated **terrain** and the provided **unit
   models** as wireframe (`specs/overview.md`, `specs/assets.md`).
-- **`proof/engagement.mp4`** — a short (roughly 10–20 second) clip of a **live
+- **`proof/engagement.webm`** — a short (roughly 10–20 second) clip of a **live
   engagement**: both fleets in action across the terrain, weapons firing, aircraft
   aloft, and at least one **possession** (dropping into a unit and firing a station),
   with the **performance overlay** visible so the frame rate is on screen

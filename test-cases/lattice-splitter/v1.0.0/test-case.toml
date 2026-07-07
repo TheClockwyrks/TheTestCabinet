@@ -1,12 +1,17 @@
 slug = "lattice-splitter"
 name = "Lattice Splitter"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "belt"]
+tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice splitter — the two-tile belt balancer — as a 32x64 sprite sheet: \
 a top-down housing spanning two tile cells with an animated belt surface of amber \
 chevrons scrolling East, produced one drawing operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
 type = "asset-generation"

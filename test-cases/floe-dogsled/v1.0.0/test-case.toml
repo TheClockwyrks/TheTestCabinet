@@ -1,13 +1,18 @@
 slug = "floe-dogsled"
 name = "Floe Dogsled"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "hazard"]
+tags = ["sprite", "hazard"]
 summary = """
 Draw the dogsled — a fast sled-dog team hazard in the Floe arctic-crossing game — \
 as a 64x32 (two-tile) top-down sprite seen from overhead: two running huskies \
 leading a low sled on runners with a warm-parka musher and a little snow spray, \
 racing right, produced one drawing operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.5
 type = "asset-generation"

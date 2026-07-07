@@ -332,11 +332,19 @@ impl SnapshotBuilder {
     /// The set of proofs is taken from the run record's `validation.proofs` (the
     /// authoritative declaration), not from whatever happens to be in the store — so
     /// a wiped store still produces the full list, each resolved through the
-    /// store-then-artifact-service fallback ([`Self::read_media`]). Each present
-    /// proof is served as `<proof-id>.<ext>` (the `<ext>` from its recorded `dest`),
-    /// the same name the driver mirror writes and the gallery requests. A proof the
+    /// store-then-artifact-service fallback ([`Self::read_media`]). A proof the
     /// agent did not produce, or whose bytes are in neither place, contributes
     /// nothing.
+    ///
+    /// A **video** proof is published as `<proof-id>.mp4`, transcoded here from the
+    /// `.webm` a run captures natively (see [`transcode_webm_to_mp4`]) so the public
+    /// gallery plays on every browser — webm/VP8 does not on iOS/Safari. An **image**
+    /// proof is published under its recorded extension unchanged. Either way the
+    /// published name matches [`proof_published_extension`], which the gallery keys
+    /// its snapshot lookup off. If the clip is already `.mp4` in the store (a legacy
+    /// capture, or a re-run snapshot) it is used as-is; only a raw `.webm` is
+    /// transcoded, and a transcode that fails falls back to serving the webm so the
+    /// proof still appears rather than vanishing.
     async fn run_proofs(
         &self,
         record: &RunRecord,
@@ -349,11 +357,37 @@ impl SnapshotBuilder {
             if !proof.present {
                 continue;
             }
-            let extension = test_cabinet_core::proof_served_extension(&proof.dest);
-            let file = format!("{}.{}", proof.id, extension);
-            let Some(bytes) = self.read_media(run_id, "proof", &file).await else {
+            let published_ext =
+                test_cabinet_core::proof_published_extension(proof.kind, &proof.dest);
+            let published_file = format!("{}.{}", proof.id, published_ext);
+
+            // Prefer a copy already at the published extension (an image, or a clip
+            // that is already mp4); otherwise pull the raw webm and transcode it.
+            let (file, extension, bytes) = if let Some(bytes) =
+                self.read_media(run_id, "proof", &published_file).await
+            {
+                (published_file, published_ext, bytes)
+            } else if proof.kind == test_cabinet_core::MediaKind::Video {
+                let served_ext = test_cabinet_core::proof_served_extension(&proof.dest);
+                let served_file = format!("{}.{}", proof.id, served_ext);
+                let Some(raw) = self.read_media(run_id, "proof", &served_file).await else {
+                    continue;
+                };
+                match transcode_webm_to_mp4(&raw).await {
+                    Some(mp4) => (published_file, published_ext, mp4),
+                    None => {
+                        tracing::warn!(
+                            run_id = %run_id,
+                            proof = %proof.id,
+                            "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
+                        );
+                        (served_file, served_ext, raw)
+                    }
+                }
+            } else {
                 continue;
             };
+
             let key = format!("{prefix}/runs/{run_id}/proof/{file}");
             objects.push(SnapshotObject {
                 key: key.clone(),
@@ -580,6 +614,55 @@ impl SnapshotBuilder {
     }
 }
 
+/// Transcode a Playwright-recorded `.webm` proof clip to an H.264/AAC `.mp4` for
+/// the public snapshot, so the gallery plays on every browser (webm/VP8 does not
+/// on iOS/Safari). Shells out to `ffmpeg` (carried in the backend image); returns
+/// `None` on any failure — a missing binary, an unreadable clip, a non-zero exit
+/// — so the caller can fall back to serving the original webm rather than dropping
+/// the proof from the snapshot entirely.
+async fn transcode_webm_to_mp4(webm: &[u8]) -> Option<Vec<u8>> {
+    // ffmpeg rewrites the mp4 moov atom to the front for progressive playback
+    // (`-movflags +faststart`), which needs a seekable output, so stage the clip
+    // through a unique temp dir rather than stdin/stdout pipes.
+    let dir = std::env::temp_dir().join(format!("tcab-proof-{}", uuid::Uuid::new_v4()));
+    tokio::fs::create_dir_all(&dir).await.ok()?;
+    let input = dir.join("in.webm");
+    let output = dir.join("out.mp4");
+    let result = async {
+        tokio::fs::write(&input, webm).await.ok()?;
+        let status = tokio::process::Command::new("ffmpeg")
+            .args(["-nostdin", "-loglevel", "error", "-y", "-i"])
+            .arg(&input)
+            .args([
+                "-c:v",
+                "libx264",
+                // 4:2:0 chroma is what QuickTime/iOS can decode; libx264 would
+                // otherwise keep webm's 4:4:4/4:2:2 and Safari would refuse it.
+                "-pix_fmt",
+                "yuv420p",
+                "-preset",
+                "veryfast",
+                // Re-encode any audio to AAC; a no-op for Playwright clips, which
+                // carry no audio track.
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+            ])
+            .arg(&output)
+            .stdin(std::process::Stdio::null())
+            .status()
+            .await
+            .ok()?;
+        status.success().then_some(())?;
+        tokio::fs::read(&output).await.ok()
+    }
+    .await;
+    // Best-effort cleanup regardless of outcome.
+    let _ = tokio::fs::remove_dir_all(&dir).await;
+    result
+}
+
 /// A best-effort content type for reference/proof/asset media from its extension.
 fn media_content_type(extension: &str) -> &'static str {
     match extension.to_ascii_lowercase().as_str() {
@@ -587,6 +670,7 @@ fn media_content_type(extension: &str) -> &'static str {
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
         "gif" => "image/gif",
+        "webm" => "video/webm",
         "mp4" => "video/mp4",
         "json" => "application/json",
         "glb" => "model/gltf-binary",
@@ -831,18 +915,24 @@ pub struct CaseMetadata {
     pub version: String,
     pub name: String,
     /// The case's test type, so the static gallery can scope its catalog tabs to
-    /// a single type (E2E / Sprite / Voxel / Adversarial / Performance) exactly
+    /// a single type (E2E / asset-generation / Adversarial / Performance) exactly
     /// as the backend-connected consoles do. Without it the site cannot tell a
     /// case's type and treats every case as end-to-end.
     pub test_type: test_cabinet_core::TestType,
-    /// The asset shape an asset-generation case produces, so the gallery can split
-    /// its Sprite (2D) and Voxel (3D) tabs. Defaults to `sprite` for every
-    /// non-asset case (harmless — the split is only consulted for asset cases).
+    /// The asset shape an asset-generation case produces, so the gallery can
+    /// partition asset cases across its 2D (sprite/paint), 3D (voxel/mesh/skinned),
+    /// Particle, and Audio tabs. Defaults to `sprite` for every non-asset case
+    /// (harmless — the split is only consulted for asset cases).
     pub asset_kind: test_cabinet_core::AssetKind,
     pub difficulty: String,
     pub tags: Vec<String>,
     pub summary: Option<String>,
     pub description: Option<String>,
+    /// This version's own changelog entry (its `changelog.md` body), inlined.
+    /// Always present — a changelog is required on every version. The site collects
+    /// every published version's entry into one newest-first changelog on the
+    /// case's detail page.
+    pub changelog: String,
     pub variants: Vec<CaseVariantOut>,
     /// The seeded spec files shared by every variant, with their bodies inlined so
     /// the static gallery's Inputs tab can show them without a live backend. A
@@ -1043,6 +1133,7 @@ fn case_metadata(
         tags: manifest.tags.clone(),
         summary: manifest.summary.clone(),
         description: manifest.description.clone(),
+        changelog: manifest.changelog.clone(),
         variants,
         common_seeded_inputs,
         checks: manifest

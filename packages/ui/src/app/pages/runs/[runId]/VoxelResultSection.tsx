@@ -17,29 +17,10 @@ import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import { GuardedVoxelViewer, type ViewerMeshes } from "./GuardedVoxelViewer";
 import { GifDownloadButton } from "./GifDownloadButton";
 import { encodeVoxelGif } from "./voxelGif";
+import { panelBackground, gifFilename } from "./previewDownload";
 import { SkinnedResultSection } from "./SkinnedResultSection";
 import type { VoxelViewMode } from "./VoxelViewer";
 import styles from "./RunDetailPages.module.scss";
-
-/** The preview panel's background, resolved from the theme so a baked GIF's solid
- * backdrop matches the on-screen preview box (which uses the same var). */
-function panelBackground(): string {
-  if (typeof document === "undefined") return "#1c1c1c";
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue("--tc-panel-2")
-    .trim();
-  return value || "#1c1c1c";
-}
-
-/** A filesystem-friendly `<name>.gif` for a downloaded clip. */
-function voxelGifFilename(name: string): string {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return `${slug || "animation"}.gif`;
-}
 
 // A stable empty animations list used as the fallback when a rig declares none, so
 // the fallback is one shared constant rather than a fresh `[]` on every render.
@@ -648,7 +629,7 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
           </div>
           {downloadable && webglOk ? (
             <GifDownloadButton
-              filename={voxelGifFilename(downloadable.name)}
+              filename={gifFilename(downloadable.name)}
               encode={async () => {
                 const gifMeshes = await fetchMeshesByPart(view.parts);
                 return encodeVoxelGif({

@@ -143,8 +143,9 @@ full `1280 x 720` field, fitted and centered) — a screenshot and a short clip 
 | Path | What it must show |
 | --- | --- |
 | `proof/warhead.png` | A live Warhead frame: an **armored** Large rock showing visible damage (a hit or two already taken), a **torpedo** in flight with its exhaust homing toward a rock in its forward cone, and the HUD **torpedo-charge indicator**. |
-| `proof/torpedo.mp4` | A short clip of a torpedo run: the torpedo launches straight, acquires a rock in its forward cone and curves onto it, and detonates it — the fragments blasting outward harder than a bullet shatter. |
+| `proof/torpedo.webm` | A short clip of a torpedo run: the torpedo launches straight, acquires a rock in its forward cone and curves onto it, and detonates it — the fragments blasting outward harder than a bullet shatter. |
 
-Same rules as `specs/proof.md`: a PNG for the still and an `.mp4` for the clip,
-written to exactly those paths from the built game (not hand-edited); create the
-`proof/` directory if it does not exist.
+Same rules as `specs/proof.md`: a PNG for the still and a `.webm` for the clip
+(the format Playwright records natively via `recordVideo`, so no conversion is
+needed), written to exactly those paths from the built game (not hand-edited);
+create the `proof/` directory if it does not exist.

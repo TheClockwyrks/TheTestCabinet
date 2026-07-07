@@ -16,6 +16,9 @@ name = "Sunfront"
 # adaptive AI opponent, and multiple states — a heavy build, so it sits at hard.
 difficulty = "hard"
 
+# Site-facing version changelog. NOT seeded into a run.
+changelog = "changelog.md"
+
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["strategy", "3d", "tug-of-war", "real-time"]
 

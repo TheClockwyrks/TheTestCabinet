@@ -1,13 +1,18 @@
 slug = "lattice-sink"
 name = "Lattice Sink"
 difficulty = "easy"
-tags = ["asset-generation", "2d", "sprite-sheet", "fixture"]
+tags = ["sprite-sheet", "fixture"]
 summary = """
 Draw the Lattice sink: the top-down test-fixture drain for a deterministic \
 factory simulation, as six 32x32 frames whose West intake aperture swallows a \
 single item in a red consume pulse that loops seamlessly, produced one drawing \
 operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
 type = "asset-generation"

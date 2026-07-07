@@ -1,7 +1,7 @@
 slug = "sunfront-bastion"
 name = "Sunfront Bastion"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "rig", "building"]
+tags = ["voxel", "rig", "building"]
 summary = """
 Sculpt and rig the Sunfront Bastion: an opaque-voxel fortified keep \
 whose solar collector crown rotates, whose gate raises, and whose beacon slowly \
@@ -10,6 +10,11 @@ invents whatever parts and joints it needs; the fixed contract is three animatio
 it must author — a `crown_spin`, a `gate_raise`, and a `beacon_spin` — that a game \
 plays back."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
 type = "asset-generation"

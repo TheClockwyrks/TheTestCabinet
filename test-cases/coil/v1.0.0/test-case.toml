@@ -30,6 +30,11 @@ the most efficient route, not just staying alive."""
 # Site-facing prose describing the case, relative to this version folder. This is
 # NOT seeded into a run; it exists only to introduce the case on the site.
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 
 # Handlebars prompt template, relative to this version folder. It is rendered per
 # run (with the seeded specs and the selected variant) and handed to the model as
@@ -136,12 +141,14 @@ view = "game-over"
 path = "reference/game-over.html"
 
 # Proof of implementation, requested for every variant. Each declares a `dest`
-# path (relative to the run workspace root) the build must write a screenshot or
-# `.mp4` to as evidence the feature works; `specs/proof.md` instructs the build to
-# produce them at exactly these paths. Validation records whether each turned up
-# (informational — a missing proof does not fail the run), and a reviewer pairs
-# each with its expected reference (see the `review_item` links below). The media
-# kind is inferred from the extension: `.png` is an image, `.mp4` a video.
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to as evidence the feature works; `specs/proof.md` instructs
+# the build to produce them at exactly these paths. Validation records whether
+# each turned up (informational — a missing proof does not fail the run), and a
+# reviewer pairs each with its expected reference (see the `review_item` links
+# below). The media kind is inferred from the extension: `.png` is an image,
+# `.webm` a video (the format Playwright records natively; the public gallery
+# transcodes it to mp4).
 [[proof]]
 id = "title"
 name = "Title menu"
@@ -160,7 +167,7 @@ dest = "proof/game-over.png"
 [[proof]]
 id = "combo"
 name = "Combo clip"
-dest = "proof/combo.mp4"
+dest = "proof/combo.webm"
 
 # Validation checks (opt-in). Only the checks declared here run. Each drives the
 # built implementation through `actions`, screenshots it, and compares against the

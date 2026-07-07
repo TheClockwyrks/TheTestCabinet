@@ -28,6 +28,11 @@ and two fixed obstacles turn the open field into a bank-shot puzzle."""
 # Site-facing prose describing the case, relative to this version folder. This is
 # NOT seeded into a run; it exists only to introduce the case on the site.
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 
 # Handlebars prompt template, relative to this version folder. It is rendered per
 # run (with the seeded specs and the selected variant) and handed to the model as

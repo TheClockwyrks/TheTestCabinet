@@ -1,7 +1,7 @@
 slug = "sunfront-scarab"
 name = "Sunfront Scarab"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
+tags = ["voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Scarab: an opaque-voxel four-legged war-beetle \
 that walks on its legs so every foot lifts clear of the ground and plants flat, and \
@@ -10,6 +10,11 @@ one recorded operation at a time. The model invents whatever parts and joints it
 needs; the fixed contract is two animations it must author — a walking `walk` and a \
 weapon `bite` — the reviewer can play back."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
 type = "asset-generation"

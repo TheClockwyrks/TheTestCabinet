@@ -168,8 +168,9 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/):
   view's baseline must resolve for **every** variant.
 - A common **`[[proof]]`** list — the evidence the build must submit that its
   features work. Declare it two ways that must agree: a seeded `proof.md` spec
-  that tells the build to capture screenshots and/or short `.mp4` clips at fixed
-  paths under `proof/`, and one `[[proof]]` per file whose `dest` matches that
+  that tells the build to capture screenshots and/or short `.webm` clips (the
+  format Playwright records natively) at fixed paths under `proof/`, and one
+  `[[proof]]` per file whose `dest` matches that
   path exactly. If the two drift, the build writes a file the validator never
   checks, or vice versa. Proofs are recorded present/missing but never fail a run.
   See [Proofs](/testing/end-to-end/evaluation/#proofs).

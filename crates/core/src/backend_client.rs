@@ -1344,6 +1344,8 @@ struct VersionBody {
     tags: Vec<String>,
     summary: Option<String>,
     description: Option<String>,
+    // The response also carries a required `changelog`, but the driver never reads
+    // it (it is site-facing only), so it is left out here and serde ignores it.
     max_runtime_seconds: u64,
     #[serde(default)]
     test_type: TestType,
@@ -1403,6 +1405,8 @@ struct VersionBody {
     #[serde(default)]
     init: Option<String>,
     assets: Vec<AssetBody>,
+    #[serde(default)]
+    packages: Vec<String>,
     variants: Vec<VariantBody>,
     common_references: Vec<ReferenceBody>,
     #[serde(default)]
@@ -1428,6 +1432,9 @@ impl VersionBody {
             .description
             .as_ref()
             .map(|_| PathBuf::from("description.md"));
+        // The changelog is required, so its store-relative key is fixed; the driver
+        // never reads it (it is site-facing only).
+        let changelog_path = PathBuf::from("changelog.md");
         TestCaseVersion {
             slug: self.slug,
             version: self.version,
@@ -1436,6 +1443,7 @@ impl VersionBody {
             tags: self.tags,
             summary: self.summary,
             description_path,
+            changelog_path,
             // A remote resolution has no host checkout; the store key is empty
             // until `materialize_version` roots it at the on-disk store dir.
             root: PathBuf::new(),
@@ -1499,6 +1507,7 @@ impl VersionBody {
                 .iter()
                 .map(|a| PathBuf::from(&a.source))
                 .collect(),
+            packages: self.packages,
             variants: self
                 .variants
                 .into_iter()

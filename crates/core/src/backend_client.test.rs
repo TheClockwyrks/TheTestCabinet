@@ -34,6 +34,7 @@ impl BackendClient for StubBackend {
             tags: vec![],
             summary: None,
             description_path: None,
+            changelog_path: std::path::PathBuf::new(),
             root: std::path::PathBuf::new(),
             prompt_path: std::path::PathBuf::from("prompt.hbs"),
             max_runtime_seconds: 1800,
@@ -69,6 +70,7 @@ impl BackendClient for StubBackend {
             }],
             init: Some("npm install".to_string()),
             asset_paths: vec![std::path::PathBuf::from("assets/ball.png")],
+            packages: Vec::new(),
             variants: vec![Variant {
                 slug: "base".to_string(),
                 name: "Base".to_string(),

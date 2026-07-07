@@ -1,7 +1,7 @@
 slug = "trench-walls"
 name = "Trench Walls"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "tileset"]
+tags = ["sprite-sheet", "tileset"]
 summary = """
 Draw the Fathom trench tileset: pac-man-style rounded rock walls for a \
 bioluminescent deep-sea maze chase, as a nineteen-frame 32x32 sprite sheet — the \
@@ -9,6 +9,11 @@ sixteen 4-neighbor autotile wall pieces plus the corridor floor, the unrevealed 
 fog, and the den gate, each a seamless edge-to-edge tile, produced one drawing \
 operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
 type = "asset-generation"

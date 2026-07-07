@@ -1,13 +1,18 @@
 slug = "thunderhead-flak"
 name = "Thunderhead Flak Burst"
 difficulty = "medium"
-tags = ["asset-generation", "particle", "vfx", "3d"]
+tags = ["vfx", "3d"]
 summary = """
 Author the Thunderhead anti-air flak burst: a volumetric mid-air shell detonation \
 — a white-hot core flash, an outward burst of hot sparks, and a lingering dark \
 smoke puff — as a particle-3d emitter system simulated live, built one recorded \
 operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.75
 type = "asset-generation"

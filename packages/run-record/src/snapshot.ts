@@ -237,21 +237,29 @@ export type CaseMetadata = {
   name: string;
   /**
    * The case's test type, so the static gallery can scope its catalog tabs to
-   * a single type (E2E / Sprite / Voxel / Adversarial / Performance) exactly
+   * a single type (E2E / asset-generation / Adversarial / Performance) exactly
    * as the backend-connected consoles do. Without it the site cannot tell a
    * case's type and treats every case as end-to-end.
    */
   testType: TestType;
   /**
-   * The asset shape an asset-generation case produces, so the gallery can split
-   * its Sprite (2D) and Voxel (3D) tabs. Defaults to `sprite` for every
-   * non-asset case (harmless — the split is only consulted for asset cases).
+   * The asset shape an asset-generation case produces, so the gallery can
+   * partition asset cases across its 2D (sprite/paint), 3D (voxel/mesh/skinned),
+   * Particle, and Audio tabs. Defaults to `sprite` for every non-asset case
+   * (harmless — the split is only consulted for asset cases).
    */
   assetKind: AssetKind;
   difficulty: string;
   tags: Array<string>;
   summary: string | null;
   description: string | null;
+  /**
+   * This version's own changelog entry (its `changelog.md` body), inlined.
+   * Always present — a changelog is required on every version. The site collects
+   * every published version's entry into one newest-first changelog on the
+   * case's detail page.
+   */
+  changelog: string;
   variants: Array<CaseVariantOut>;
   /**
    * The seeded spec files shared by every variant, with their bodies inlined so

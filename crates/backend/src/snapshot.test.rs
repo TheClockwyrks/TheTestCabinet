@@ -117,6 +117,7 @@ fn manifest() -> StoredManifest {
         tags: vec!["arcade".to_string()],
         summary: Some("A duel.".to_string()),
         description: Some("## Carom".to_string()),
+        changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
         build: Some(StoredBuild {
@@ -146,6 +147,7 @@ fn manifest() -> StoredManifest {
         workspace: vec![],
         init: None,
         assets: vec![],
+        packages: vec![],
         variants: vec![StoredVariant {
             slug: "base".to_string(),
             name: "Base".to_string(),
@@ -663,6 +665,126 @@ async fn per_run_file_exports_proof_media_from_the_record() {
     assert_eq!(ids, vec!["title", "rally"]);
     let rally_meta = media.iter().find(|m| m["id"] == "rally").unwrap();
     assert_eq!(rally_meta["kind"], "video");
+}
+
+/// Generate a tiny real `.webm` clip with ffmpeg, or `None` if ffmpeg (or a VP8
+/// encoder) is unavailable — the caller then skips the transcode round-trip test.
+fn make_test_webm() -> Option<Vec<u8>> {
+    let dir = TempDir::new().ok()?;
+    let out = dir.path().join("in.webm");
+    let ok = std::process::Command::new("ffmpeg")
+        .args([
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=1:size=64x64:rate=10",
+            "-c:v",
+            "libvpx",
+            "-b:v",
+            "50k",
+        ])
+        .arg(&out)
+        .status()
+        .ok()
+        .is_some_and(|s| s.success());
+    ok.then(|| std::fs::read(&out).ok()).flatten()
+}
+
+#[tokio::test]
+async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
+    // A run captures its clip as the `.webm` Playwright records; the snapshot must
+    // publish it as an iOS-playable `.mp4`, keyed `<proof-id>.mp4`.
+    let Some(webm) = make_test_webm() else {
+        eprintln!("skipping: ffmpeg/libvpx unavailable");
+        return;
+    };
+    let (_tmp, store) = empty_store();
+    store.write_run_proof("p1", "rally.webm", &webm).unwrap();
+
+    let run = proof_run(
+        "p1",
+        vec![proof("rally", "proof/rally.webm", MediaKind::Video, true)],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    // The webm is gone from the snapshot; the exported object is a real mp4.
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.ends_with("/rally.webm")),
+        "the raw webm must not be published",
+    );
+    let rally = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1/proof/rally.mp4"))
+        .expect("video proof published as mp4");
+    assert_eq!(rally.content_type, "video/mp4");
+    // The bytes are a valid mp4: the `ftyp` box tag sits at offset 4.
+    assert_eq!(&rally.bytes[4..8], b"ftyp", "transcoded bytes are not mp4");
+
+    // The per-run doc points at the mp4 key with a video kind.
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let rally_meta = parsed["proofMedia"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == "rally")
+        .unwrap();
+    assert_eq!(rally_meta["kind"], "video");
+    assert_eq!(
+        rally_meta["key"],
+        format!("{prefix}/runs/p1/proof/rally.mp4")
+    );
+}
+
+#[tokio::test]
+async fn video_proof_falls_back_to_webm_when_transcode_fails() {
+    // The webm bytes are unusable (or ffmpeg is absent): rather than dropping the
+    // proof, the builder publishes the raw webm so it still appears in the gallery.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_proof("p1", "rally.webm", b"not a real webm")
+        .unwrap();
+
+    let run = proof_run(
+        "p1",
+        vec![proof("rally", "proof/rally.webm", MediaKind::Video, true)],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    let rally = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1/proof/rally.webm"))
+        .expect("video proof falls back to raw webm");
+    assert_eq!(rally.content_type, "video/webm");
+    assert_eq!(rally.bytes, b"not a real webm");
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.ends_with("/rally.mp4")),
+        "no mp4 should be published when the transcode fails",
+    );
 }
 
 #[tokio::test]

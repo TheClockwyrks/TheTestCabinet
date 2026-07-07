@@ -806,7 +806,7 @@
         },
         {
           "const": "video",
-          "description": "A video clip (`mp4`).",
+          "description": "A video clip (`webm`, `mp4`). A run captures its clip as the `.webm`\nPlaywright records natively; the public snapshot transcodes it to `.mp4`\nfor universal (incl. iOS/Safari) playback.",
           "type": "string"
         }
       ]

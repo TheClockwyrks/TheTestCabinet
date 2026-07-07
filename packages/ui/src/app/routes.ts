@@ -2,22 +2,25 @@
 // functions so every route is defined in exactly one place.
 
 // The catalog's type tabs, each its own route so the selected tab survives a
-// reload and is linkable. "Asset" is split into the 2D `sprite` and 3D `voxel`
-// tabs; the rest map one-to-one to a `TestType`. Each tab slug is a literal path
+// reload and is linkable. Asset-generation is split into four tabs by asset
+// family — 2D (sprite + paint), 3D (voxel/mesh/skinned), particle, and audio;
+// the rest map one-to-one to a `TestType`. Each tab slug is a literal path
 // segment under `/test-cases`, a sibling of the `:slug` detail route (the same
 // literal-beside-param shape as `/runs/failures` beside `/runs/:runId`) — none
 // collides with a real case slug.
 export type CatalogTab =
   | "end-to-end"
-  | "sprite"
-  | "voxel"
+  | "2d"
+  | "3d"
+  | "particle"
+  | "audio"
   | "adversarial"
   | "performance";
 
 export const routes = {
   home: (): string => "/",
   testCases: (): string => "/test-cases",
-  // The catalog scoped to one type tab (e.g. `/test-cases/sprite`).
+  // The catalog scoped to one type tab (e.g. `/test-cases/2d`).
   testCasesCatalog: (tab: CatalogTab): string => `/test-cases/${tab}`,
   testCaseDetail: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}`,
@@ -29,6 +32,9 @@ export const routes = {
     `/test-cases/${encodeURIComponent(slug)}/leaderboard`,
   testCaseMetrics: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/metrics`,
+  // The case's changelog: every version's entry, newest first.
+  testCaseChangelog: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/changelog`,
   // The adversarial arena for a case (consoles only): pit two controllers in a
   // quick match or run a tournament over a field.
   testCaseArena: (slug: string): string =>
@@ -115,8 +121,10 @@ export const routePatterns = {
   // The catalog's type tabs — literal siblings of `:slug` below (static segments
   // rank above the dynamic `:slug`, and no case slug matches these words).
   testCasesE2E: "/test-cases/end-to-end",
-  testCasesSprite: "/test-cases/sprite",
-  testCasesVoxel: "/test-cases/voxel",
+  testCases2D: "/test-cases/2d",
+  testCases3D: "/test-cases/3d",
+  testCasesParticle: "/test-cases/particle",
+  testCasesAudio: "/test-cases/audio",
   testCasesAdversarial: "/test-cases/adversarial",
   testCasesPerformance: "/test-cases/performance",
   testCaseDetail: "/test-cases/:slug",
@@ -124,6 +132,7 @@ export const routePatterns = {
   testCaseRuns: "/test-cases/:slug/runs",
   testCaseLeaderboard: "/test-cases/:slug/leaderboard",
   testCaseMetrics: "/test-cases/:slug/metrics",
+  testCaseChangelog: "/test-cases/:slug/changelog",
   testCaseArena: "/test-cases/:slug/arena",
   models: "/models",
   modelDetail: "/models/:modelId",

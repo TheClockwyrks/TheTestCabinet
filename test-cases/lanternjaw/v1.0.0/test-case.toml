@@ -1,12 +1,17 @@
 slug = "lanternjaw"
 name = "Lanternjaw"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "enemy"]
+tags = ["sprite-sheet", "enemy"]
 summary = """
 Draw the Lanternjaw: the Lure, an anglerfish-style deep-sea predator that hunts \
 by light with a dangling lure-light, as a 128x128 sprite sheet — four-direction \
 movement plus a lure-bob animation, produced one drawing operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
 type = "asset-generation"

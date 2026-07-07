@@ -30,7 +30,7 @@ dest = "proof/warhead.png"
 [[proof]]
 id = "torpedo"
 name = "Torpedo run clip"
-dest = "proof/torpedo.mp4"
+dest = "proof/torpedo.webm"
 
 # The Warhead mode's scoring domain, rated only when this variant runs.
 [[domain]]

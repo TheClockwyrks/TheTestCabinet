@@ -112,14 +112,17 @@ interface SnapshotCaseFile {
   // The case's test type. Optional for snapshots written before it was published;
   // defaults to "end-to-end" when absent.
   testType?: TestType;
-  // The asset shape an asset-generation case produces, splitting the catalog's
-  // Sprite (2D) and Voxel (3D) tabs. Optional for snapshots written before it was
+  // The asset shape an asset-generation case produces, partitioning the catalog's
+  // 2D / 3D / Particle / Audio tabs. Optional for snapshots written before it was
   // published; treated as `sprite` when absent.
   assetKind?: AssetKind;
   difficulty: string;
   tags: string[];
   summary: string | null;
   description: string | null;
+  // This version's own changelog entry (its `changelog.md` body). Optional for
+  // snapshots written before changelogs existed.
+  changelog?: string | null;
   variants: Array<{
     slug: string;
     name: string;
@@ -242,6 +245,13 @@ interface AssembledDomain {
   description: string;
 }
 
+// One changelog entry the app consumes (mirrors `ChangelogEntry` in the UI's
+// testCases): the version it describes and that version's `changelog.md` body.
+interface AssembledChangelogEntry {
+  version: string;
+  body: string;
+}
+
 // A seeded input the app consumes (mirrors `SeededInput` in the UI's testCases).
 // The public snapshot only carries text specs, so `kind` is always "text" here.
 interface AssembledSeededInput {
@@ -267,13 +277,17 @@ interface AssembledTestCase {
   slug: string;
   name: string;
   testType: TestType;
-  // The asset shape (sprite/voxel family) an asset-generation case produces, so
-  // the catalog can split its Sprite and Voxel tabs. Null for a non-asset case.
+  // The asset shape an asset-generation case produces, so the catalog can
+  // partition its 2D / 3D / Particle / Audio tabs. Null for a non-asset case.
   assetKind: AssetKind | null;
   difficulty: string;
   tags: string[];
   summary: string | null;
   description: string | null;
+  // This version's own changelog entry, if it declared one — 0 or 1 element per
+  // mapped version. `collapseCases` concatenates these across a slug's versions
+  // (newest first) into the case's full changelog.
+  changelog: AssembledChangelogEntry[];
   versions: string[];
   latestVersion: string;
   variants: AssembledVariant[];
@@ -457,6 +471,11 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     tags: file.tags,
     summary: file.summary,
     description: file.description,
+    // This version's changelog entry, if any — collapseCases merges these across
+    // the slug's versions into one newest-first changelog.
+    changelog: file.changelog
+      ? [{ version: file.version, body: file.changelog }]
+      : [],
     versions: [file.version],
     latestVersion: file.version,
     variants,
@@ -494,6 +513,9 @@ function collapseCases(
     result.push({
       ...newest,
       versions: versions.map((v) => v.latestVersion),
+      // Each version contributes 0 or 1 entry; `versions` is newest-first, so the
+      // concatenation is already ordered newest changelog entry first.
+      changelog: versions.flatMap((v) => v.changelog),
     });
   }
   return result;

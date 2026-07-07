@@ -462,6 +462,37 @@ fn proof_content_type_follows_the_request_extension() {
 }
 
 #[test]
+fn serves_a_webm_clip_verbatim_from_the_tree() {
+    // A run captures its clip as webm; the live path serves it as-is (only the
+    // public snapshot transcodes to mp4).
+    let dir = run_dir_with_proofs(
+        &[("rally", "proof/rally.webm", MediaKind::Video)],
+        &[("proof/rally.webm", b"\x1aE\xdf\xa3webm")],
+    );
+    let served = serve_proof_file(dir.path(), "rally.webm").expect("proof served");
+    assert_eq!(served.content_type, "video/webm");
+    assert_eq!(served.body, b"\x1aE\xdf\xa3webm");
+}
+
+#[test]
+fn published_extension_is_mp4_for_video_and_verbatim_for_images() {
+    // The public snapshot serves a video proof as mp4 (transcoded from webm)
+    // regardless of the captured extension; an image keeps its own extension.
+    assert_eq!(
+        proof_published_extension(MediaKind::Video, "proof/rally.webm"),
+        "mp4"
+    );
+    assert_eq!(
+        proof_published_extension(MediaKind::Video, "proof/rally.mp4"),
+        "mp4"
+    );
+    assert_eq!(
+        proof_published_extension(MediaKind::Image, "proof/title.png"),
+        "png"
+    );
+}
+
+#[test]
 fn unknown_proof_id_is_none() {
     let dir = run_dir_with_proofs(
         &[("title", "proof/title.png", MediaKind::Image)],

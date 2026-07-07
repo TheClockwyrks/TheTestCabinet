@@ -1,10 +1,15 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import {
+  fetchParticleSystem,
   useParticleSystem,
   type ParticleResultView,
 } from "../../../data/galleryContext";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
+import { FullscreenViewport } from "./FullscreenViewport";
+import { GifDownloadButton } from "./GifDownloadButton";
+import { encodeParticleGif } from "./particleGif";
+import { panelBackground, gifFilename } from "./previewDownload";
 import type { ParticleBlend } from "./ParticleViewer";
 import styles from "./RunDetailPages.module.scss";
 
@@ -91,25 +96,47 @@ function ParticleStage({
       ? "live preview unavailable"
       : "loading…";
 
+  // A 2D effect is inspected face-on (its orbit is locked), so its overlay hint drops
+  // the "drag to rotate"; a 3D effect keeps it.
+  const hint =
+    system && system.dimensions === 2
+      ? "Scroll to zoom · Esc to close"
+      : "Drag to rotate · scroll to zoom · Esc to close";
+
   return (
     <div style={STAGE_BOX}>
       {enabled && system ? (
-        <Suspense
-          fallback={
-            <ParticleFallback
-              previewUrl={view.previewUrl}
-              message="loading…"
-              label="Effect preview"
-            />
-          }
+        <FullscreenViewport
+          label="Live particle effect"
+          hint={hint}
+          renderExpanded={(expandedHeight) => (
+            <Suspense fallback={null}>
+              <ParticleViewer
+                system={system}
+                blend={blend}
+                height={expandedHeight}
+                label="Live particle effect (expanded)"
+              />
+            </Suspense>
+          )}
         >
-          <ParticleViewer
-            system={system}
-            blend={blend}
-            height={STAGE_SIZE}
-            label="Live particle effect"
-          />
-        </Suspense>
+          <Suspense
+            fallback={
+              <ParticleFallback
+                previewUrl={view.previewUrl}
+                message="loading…"
+                label="Effect preview"
+              />
+            }
+          >
+            <ParticleViewer
+              system={system}
+              blend={blend}
+              height={STAGE_SIZE}
+              label="Live particle effect"
+            />
+          </Suspense>
+        </FullscreenViewport>
       ) : (
         <ParticleFallback
           previewUrl={view.previewUrl}
@@ -134,6 +161,12 @@ function ParticleStage({
  */
 export function ParticleResultSection({ view }: { view: ParticleResultView }) {
   const [blend, setBlend] = useState<ParticleBlend>("additive");
+  // Baking a GIF renders offscreen with WebGL, so only offer it where WebGL is
+  // available (the same capability the live simulator needs) and the system is
+  // servable to fetch and simulate.
+  const [webglOk, setWebglOk] = useState(false);
+  useEffect(() => setWebglOk(supportsWebGL()), []);
+  const systemUrl = view.systemUrl;
   return (
     <>
       <h3 className={`${styles.section} ${styles.leadHeading}`}>
@@ -162,27 +195,45 @@ export function ParticleResultSection({ view }: { view: ParticleResultView }) {
         }}
       >
         <ParticleStage view={view} blend={blend} />
-        <dl
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr",
-            gap: "4px 16px",
-            margin: 0,
-          }}
-        >
-          <dt>Emitters</dt>
-          <dd>{view.emitterCount}</dd>
-          <dt>System</dt>
-          <dd>
-            {view.systemUrl ? (
-              <a href={view.systemUrl} target="_blank" rel="noreferrer">
-                system.json
-              </a>
-            ) : (
-              <span className={styles.secondary}>not available</span>
-            )}
-          </dd>
-        </dl>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <dl
+            style={{
+              display: "grid",
+              gridTemplateColumns: "auto 1fr",
+              gap: "4px 16px",
+              margin: 0,
+            }}
+          >
+            <dt>Emitters</dt>
+            <dd>{view.emitterCount}</dd>
+            <dt>System</dt>
+            <dd>
+              {view.systemUrl ? (
+                <a href={view.systemUrl} target="_blank" rel="noreferrer">
+                  system.json
+                </a>
+              ) : (
+                <span className={styles.secondary}>not available</span>
+              )}
+            </dd>
+          </dl>
+          {/* The GIF bakes the effect as the reviewer's selected blend plays it. A
+              particle sim varies play to play, so the download is a seeded,
+              reproducible capture — one representative loop of the live effect. */}
+          {webglOk && systemUrl ? (
+            <GifDownloadButton
+              filename={gifFilename("effect")}
+              encode={async () => {
+                const system = await fetchParticleSystem(systemUrl);
+                return encodeParticleGif({
+                  system,
+                  blend,
+                  background: panelBackground(),
+                });
+              }}
+            />
+          ) : null}
+        </div>
       </div>
       {view.detail ? <p className={styles.secondary}>{view.detail}</p> : null}
     </>

@@ -1,13 +1,18 @@
 slug = "floe-car"
 name = "Floe Car"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite", "hazard"]
+tags = ["sprite", "hazard"]
 summary = """
 Draw the car — a normal two-tile sedan hazard vehicle in the Floe arctic-crossing \
 game — as a 64x32 top-down sprite seen from overhead: a rounded red car body with a \
 glass cabin, four wheels, headlights, and taillights, produced one drawing \
 operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.5
 type = "asset-generation"

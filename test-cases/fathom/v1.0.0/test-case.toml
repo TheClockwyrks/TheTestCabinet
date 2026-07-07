@@ -10,9 +10,9 @@ name = "Fathom"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Fathom asks
 # for a fog-of-war visibility system, tile-locked maze movement, three distinct
-# sensory predator behaviors, and several states — meaningfully more than the
-# easy paddle/grid cases, so it sits at medium.
-difficulty = "medium"
+# sensory predator behaviors, and several states — a self-contained 2D build, so it
+# sits at easy.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "maze", "stealth"]
@@ -27,6 +27,11 @@ different signal you give off — your light, your sound, or its own flare."""
 # Site-facing prose describing the case, relative to this version folder. NOT
 # seeded into a run; it exists only to introduce the case on the site.
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 
 # Handlebars prompt template, relative to this version folder. Rendered per run
 # (with the seeded specs and the selected variant) and handed to the model as the
@@ -153,10 +158,12 @@ view = "game-over"
 path = "reference/game-over.html"
 
 # Proof of implementation, requested for every variant. Each declares a `dest`
-# path (relative to the run workspace root) the build must write a screenshot or
-# `.mp4` to; `specs/proof.md` instructs the build to produce them at exactly these
-# paths. Validation records whether each turned up (informational). The media kind
-# is inferred from the extension: `.png` is an image, `.mp4` a video.
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to; `specs/proof.md` instructs the build to produce them at
+# exactly these paths. Validation records whether each turned up (informational).
+# The media kind is inferred from the extension: `.png` is an image, `.webm` a
+# video (the format Playwright records natively; the public gallery transcodes
+# it to mp4).
 [[proof]]
 id = "title"
 name = "Title menu"
@@ -175,12 +182,12 @@ dest = "proof/game-over.png"
 [[proof]]
 id = "sonar"
 name = "Sonar pulse clip"
-dest = "proof/sonar.mp4"
+dest = "proof/sonar.webm"
 
 [[proof]]
 id = "hunt"
 name = "Predator hunt clip"
-dest = "proof/hunt.mp4"
+dest = "proof/hunt.webm"
 
 # Validation checks (opt-in). Only the checks declared here run. Each drives the
 # built implementation, screenshots it, and compares against the rendered

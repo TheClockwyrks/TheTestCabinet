@@ -1,7 +1,7 @@
 slug = "aegis-sn"
 name = "Aegis (Surface Nets)"
 difficulty = "medium"
-tags = ["asset-generation", "3d", "voxel", "mesh", "surface-nets", "sn", "walker"]
+tags = ["mesh", "surface-nets", "walker"]
 summary = """
 Sculpt the Aegis as a static smooth-surfaced model with the Surface \
 Nets meshing tool (`sn`): a colossal six-legged walking fortress — a rounded, \
@@ -9,6 +9,11 @@ watertight, mid-fidelity mesh of softly beveled armor — composited from \
 signed-distance primitives one recorded operation at a time and emitted as a \
 single mesh.glb."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
 type = "asset-generation"

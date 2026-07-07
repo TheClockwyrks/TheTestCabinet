@@ -1,7 +1,7 @@
 slug = "sunfront-aegis"
 name = "Sunfront Aegis"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "walker"]
+tags = ["voxel", "rig", "walker"]
 summary = """
 Sculpt and rig the Sunfront Aegis: a colossal six-legged walking fortress painted as \
 an opaque-voxel model — built not by compositing a field but by placing \
@@ -11,6 +11,11 @@ sweeps a radar vane. The model invents whatever parts and joints it needs; the f
 contract is three animations it must author — a walking `march`, a weapon \
 `bombardment`, and a self-playing `radar_spin` — the reviewer can play back."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
 type = "asset-generation"

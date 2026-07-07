@@ -373,10 +373,11 @@ fn every_stored_manifest_preserves_its_asset_shape() {
 fn write_e2e_case(checkout: &std::path::Path, folder: &str, slug: &str) {
     let base = checkout.join("test-cases").join(folder).join("v1.0.0");
     write(&base.join("prompt.hbs"), "Build it.");
+    write(&base.join("changelog.md"), "Introduced.");
     write(&base.join("variants/base.toml"), "slug = \"base\"\n");
     let manifest = format!(
         "slug = \"{slug}\"\nname = \"Case\"\ndifficulty = \"easy\"\ntags = []\n\
-         prompt = \"prompt.hbs\"\nvariants = [\"variants/base.toml\"]\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\nvariants = [\"variants/base.toml\"]\n\
          [build]\ninstall = \"x\"\nbuild = \"y\"\n\
          [[domain]]\nid = \"g\"\ndescription = \"d\"\n"
     );

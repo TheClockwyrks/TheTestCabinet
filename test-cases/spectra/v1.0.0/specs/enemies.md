@@ -26,6 +26,15 @@ Drone bodies cost the player a life on contact, regardless of band
 (`specs/polarity.md`). Drones get faster in later stages (see Stage scaling in
 `specs/flow.md`); the speeds below are the stage-1 values.
 
+**When a drone is destroyed, play the provided drone-burst.** Each pop throws the
+seeded **drone-burst** detonation — the neon flash/ring/spark effect at
+`assets/drone-burst.json`, played with the provided particle runtime — centred on
+the drone's position and scaled to its footprint; `specs/assets.md` is the
+contract for playing it. The **Prism** detonates **twice**: once when its shell is
+destroyed and once when its core is (see *The Prism*). This is the per-drone pop
+only — the screen-clearing discharge (`specs/polarity.md`) and the spectral
+inversion (below) are separate effects drawn in code.
+
 ### Entrances (you design the paths)
 
 At the start of a wave the formation is **empty** and the drones **fly in**:

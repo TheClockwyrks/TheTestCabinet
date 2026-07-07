@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
-import { RunLog } from "../../components/RunLog";
+import { RunLog, useRunTable } from "../../components/RunLog";
 import { findModelByModelId } from "../../data/models";
 import { useGalleryData, type InProgressRun } from "../../data/galleryContext";
 import { useRuns } from "../../data/useRuns";
@@ -22,7 +22,8 @@ const PAGE_SIZE = 20;
 // in the same dense run log the home page leads with — but here the full history
 // is browsable a page at a time rather than just the most recent results, and a
 // search narrows by test case, harness, or model name. It carries no featured
-// run and shows no ranking — rows are ordered purely by recency (docs/site.md).
+// run; rows default to recency order but the run log's headers re-sort the whole
+// history, which is then paged.
 export function RunsPage() {
   const { runs, localIds, localWriteups } = useRuns();
   const { canExecute } = useGalleryData();
@@ -49,21 +50,26 @@ export function RunsPage() {
     );
   }, [canExecute, inProgress, query]);
 
-  // A new query reshapes the result set, so jump back to the first page.
+  // Enrich and sort the full matched set before paging: sorting only the current
+  // page would order each page independently.
+  const table = useRunTable({ runs: matched, localIds, localWriteups });
+
+  // A new query — or a re-sort of the whole history — reshapes the result set, so
+  // jump back to the first page.
   useEffect(() => {
     setPage(0);
-  }, [query]);
+  }, [query, table.controls.sort]);
 
-  const pageCount = Math.max(1, Math.ceil(matched.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(table.rows.length / PAGE_SIZE));
   // Clamp in case the result set shrank under the current page (e.g. a local
   // run dropped out before a reset, or the query tightened).
   const current = Math.min(page, pageCount - 1);
   const start = current * PAGE_SIZE;
-  const pageRuns = matched.slice(start, start + PAGE_SIZE);
+  const pageRows = table.rows.slice(start, start + PAGE_SIZE);
   // In-progress runs lead the list, pinned to the first page so they don't repeat
   // across pages. A run only here until it finishes — then it joins `matched`.
   const showActive = activeRuns.length > 0 && current === 0;
-  const hasContent = matched.length > 0 || showActive;
+  const hasContent = table.rows.length > 0 || showActive;
 
   return (
     <PageLayout>
@@ -105,11 +111,9 @@ export function RunsPage() {
       ) : (
         <section className={styles.results}>
           <RunLog
-            runs={pageRuns}
+            rows={pageRows}
             active={showActive ? activeRuns : []}
-            localIds={localIds}
-            localWriteups={localWriteups}
-            resizable
+            controls={table.controls}
           />
           <Pagination
             page={current}

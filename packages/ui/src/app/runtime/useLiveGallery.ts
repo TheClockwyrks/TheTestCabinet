@@ -20,7 +20,11 @@ import type {
   GalleryDataInput,
   HarnessAuthApi,
 } from "../data/galleryContext";
-import type { SeededInput, TestCaseSummary } from "../data/testCases";
+import type {
+  ChangelogEntry,
+  SeededInput,
+  TestCaseSummary,
+} from "../data/testCases";
 import { useRunsRuntime } from "./runsRuntime";
 
 // The shared live gallery data source for the consoles (web and desktop). It is
@@ -122,6 +126,7 @@ async function toTestCaseSummary(
   backend: BackendClient,
   tc: TestCase,
   info: VersionInfo,
+  changelog: ChangelogEntry[],
 ): Promise<TestCaseSummary> {
   const variants = await Promise.all(
     info.variants.map(async (v) => ({
@@ -167,13 +172,14 @@ async function toTestCaseSummary(
     slug: info.slug,
     name: info.name,
     testType: info.testType,
-    // The asset shape (sprite/voxel family), so the catalog can split its Sprite
-    // and Voxel tabs. Null for a non-asset case or a host that omits it.
+    // The asset shape (asset family), so the catalog can partition its 2D / 3D /
+    // Particle / Audio tabs. Null for a non-asset case or a host that omits it.
     assetKind: info.assetKind ?? null,
     difficulty: info.difficulty,
     tags: info.tags,
     summary: info.summary,
     description: info.description ?? null,
+    changelog,
     versions: tc.versions,
     latestVersion: tc.versions[0] ?? info.version,
     variants,
@@ -197,13 +203,31 @@ async function fetchTestCases(
   backend: BackendClient,
 ): Promise<TestCaseSummary[]> {
   const cases = await backend.listTestCases();
-  // Resolve each case's latest version for its display metadata and variants.
   return Promise.all(
     cases
-      .filter((tc) => tc.versions[0])
+      .filter((tc) => tc.versions.length > 0)
       .map(async (tc) => {
-        const info = await backend.resolveVersion(tc.slug, tc.versions[0]!);
-        return toTestCaseSummary(backend, tc, info);
+        // The backend lists a case's versions oldest-first; the catalog presents
+        // them newest-first (see TestCaseSummary.versions), so sort before use.
+        // The newest then supplies the case's display metadata and variants, and
+        // resolving in this order yields the changelog newest-first — each version
+        // contributing its own entry (every version declares a changelog).
+        const versions = [...tc.versions].sort((a, b) =>
+          b.localeCompare(a, undefined, { numeric: true }),
+        );
+        const infos = await Promise.all(
+          versions.map((version) => backend.resolveVersion(tc.slug, version)),
+        );
+        const changelog: ChangelogEntry[] = infos.map((info) => ({
+          version: info.version,
+          body: info.changelog,
+        }));
+        return toTestCaseSummary(
+          backend,
+          { ...tc, versions },
+          infos[0]!,
+          changelog,
+        );
       }),
   );
 }

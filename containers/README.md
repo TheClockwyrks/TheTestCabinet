@@ -94,7 +94,7 @@ the image by test type and asset kind via
 
 ```
 containers/
-├── base/Dockerfile             # the end-to-end run image (toolchain, run user)
+├── base/Dockerfile             # the end-to-end run image (toolchain, run user, /opt/tcab-packages)
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
@@ -158,6 +158,84 @@ harness CLI is installed into the container at run time from the harness's
 case prepares its workspace with an init command. End-to-end runs never touch a
 drawing tool, so neither lives in the base — they live in the asset-generation
 images below.
+
+It does, however, bake in one thing every end-to-end run may opt into: the
+**shippable Test Cabinet packages** (below), staged under `/opt/tcab-packages` so
+a case that declares
+[`packages`](../apps/docs/src/content/docs/testing/end-to-end/manifests.md) can
+consume a produced asset that needs a runtime to play it.
+
+## The shippable Test Cabinet packages
+
+Some produced assets are **not self-describing data** the way a sprite PNG is: a
+[particle](../apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md)
+effect is a `system.json` a game plays by **simulating it live**, and a voxel/mesh
+rig is **posed** at runtime. A game that consumes one needs the *runtime that
+plays it*, not just the asset. Those runtimes already exist in this repo as the
+`@test-cabinet/*` libraries the in-repo viewers use
+([`@test-cabinet/particle-runtime`](../packages/particle-runtime),
+[`@test-cabinet/voxel-runtime`](../packages/voxel-runtime)); an end-to-end case
+names the ones it needs with the manifest's
+[`packages`](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)
+key, and the run consumes them as ordinary installed dependencies.
+
+Because a run container must work **offline-first and in lockstep with this
+repo** — and because these packages are private (never npm-published) and must
+match the format the validator and review UI play — the packages are **baked into
+the base image**, exactly like the drawing binaries and the Foray/Lattice
+buildkits, rather than fetched from a registry at run time. They live under
+`/opt/tcab-packages/@test-cabinet/<name>/` (world-readable), each a publish-shaped
+copy: its `package.json` plus its built `dist/`. Any dependency **between** two
+shippable packages (for example `particle-runtime`'s type-only dependency on
+`run-record`) is rewritten to a `file:` path within `/opt/tcab-packages`, so the
+staged set resolves entirely offline with no npm-published `@test-cabinet/*`
+package required.
+
+Staging is done by [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs),
+run in a builder stage of [`base/Dockerfile`](base/Dockerfile) (the build context
+is the repository root, so the stage can see `packages/`). The script builds the
+npm workspace, then for each package in its **shippable list** copies the package's
+`package.json` and the files its `files` field publishes into
+`/opt/tcab-packages/@test-cabinet/<name>/`, pulling in and rewriting transitive
+`@test-cabinet/*` dependencies. The final base stage `COPY --from`s that tree in.
+
+**How a case uses them, end to end.** A case declares
+`packages = ["@test-cabinet/particle-runtime"]`; at seed time `crates/core`
+injects `"@test-cabinet/particle-runtime": "file:/opt/tcab-packages/@test-cabinet/particle-runtime"`
+into the seeded workspace `package.json`, so the model installs and imports it
+like any other dependency (see
+[Packages](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)).
+The `/opt` path is an internal detail the model never types.
+
+**The lockstep rule** is the same one the baked binaries carry: the staged
+package format must match what `crates/core` and the review UI expect, so **build
+the base image from the same commit as the orchestrator**. The set of names a case
+may declare is validated in `crates/core` (the `SHIPPABLE_PACKAGES` allowlist in
+[`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs)) and must stay in
+lockstep with the script's shippable list — a name in one but not the other either
+fails resolution (a case names a package the image lacks) or bakes an unused package.
+
+### Adding a package to the shippable set
+
+The set is meant to grow as more produced-asset runtimes are consumed by games.
+To add one:
+
+1. **Make the package shippable.** It must build to a `dist/` with a package
+   `exports` map and a `files` field listing what to publish (as
+   `packages/particle-runtime` and `packages/voxel-runtime` already do). It should
+   be framework-agnostic and MIT-licensed; a peer dependency the *game* provides
+   (for example `three`) is fine — the game installs it — but a hard dependency on
+   an npm-published package the run container cannot reach offline is not.
+2. **Add it to the shippable list** in
+   [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs). Any
+   `@test-cabinet/*` package it depends on is staged and rewritten automatically;
+   it need not be listed separately unless a case imports it directly.
+3. **Add its name to the `SHIPPABLE_PACKAGES` allowlist** in
+   [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) so a case may
+   declare it. Keep this in lockstep with step 2.
+4. **Rebuild the base image** (`./build.sh`; for the local cluster,
+   `make -C deployments/local run-images` to rebuild and re-import). The
+   asset-generation images inherit it via `FROM` the base.
 
 ## Asset-generation images
 

@@ -7,6 +7,19 @@
   font-family: var(--ttc-font);
 }
 
+// Positioning context for the column-picker trigger, hung off the panel's
+// top-right corner outside the scroll region so it never scrolls away.
+.wrap {
+  position: relative;
+}
+
+.menuAnchor {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 5;
+}
+
 // Translucent neon-outlined panel so the grid + scanlines read through behind
 // the table, matching the home gallery's run log.
 .table {
@@ -49,6 +62,8 @@ a.row {
   font-size: t.$font-sm;
   letter-spacing: 0.1em;
   color: t.$color-text-muted;
+  // Keep the picker trigger clear of the last header label.
+  padding-right: 2rem;
 
   // Positioning context so each column's resize handle can pin to the cell's
   // right edge.

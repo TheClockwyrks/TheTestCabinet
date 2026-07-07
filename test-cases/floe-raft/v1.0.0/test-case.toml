@@ -1,7 +1,7 @@
 slug = "floe-raft"
 name = "Floe Raft"
 difficulty = "medium"
-tags = ["asset-generation", "2d", "sprite-sheet", "prop"]
+tags = ["sprite-sheet", "prop"]
 summary = """
 Draw the long, solid drifting ice floes of the Floe arctic-crossing game — the \
 rafts the player rides — as a 128x32 two-frame sprite sheet: a three-tile floe and \
@@ -9,6 +9,11 @@ a four-tile floe, each one continuous slab with the jagged, broken edges of real
 sea ice (not separate pans), a snow top, and a waterline, produced one drawing \
 operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.75
 type = "asset-generation"

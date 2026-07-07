@@ -70,6 +70,13 @@ pub struct StoredManifest {
     /// The resolved `description.md` body, inlined (the site shows it; it is not
     /// seeded). `None` when the manifest declared no description.
     pub description: Option<String>,
+    /// The resolved per-version `changelog.md` body, inlined (the site shows it; it
+    /// is not seeded). A changelog is **required** on every version, so this is
+    /// always populated for a freshly ingested manifest; it is defaulted (to an
+    /// empty string) only so a manifest stored before the field existed still
+    /// deserializes.
+    #[serde(default)]
+    pub changelog: String,
     /// Per-case maximum harness runtime, in seconds.
     pub max_runtime_seconds: u64,
     /// The test type. Defaulted to end-to-end for manifests stored before the
@@ -174,6 +181,12 @@ pub struct StoredManifest {
     pub init: Option<String>,
     /// Asset files, directories already expanded to individual files.
     pub assets: Vec<StoredAsset>,
+    /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this case's
+    /// build consumes (the manifest's `packages`). Injected into the seeded
+    /// workspace `package.json` as `file:` dependencies. Defaulted for manifests
+    /// stored before the field existed.
+    #[serde(default)]
+    pub packages: Vec<String>,
     /// Variants, each with additive specs and references.
     pub variants: Vec<StoredVariant>,
     /// Common references rendered (or served as-is) for every variant.

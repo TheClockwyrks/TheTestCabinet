@@ -4,10 +4,15 @@ import type { AnimationSpec, JointSpec, ModelSpec } from "@test-cabinet/run-reco
 import type { SkinnedMesh } from "@test-cabinet/voxel-runtime";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import {
+  fetchSkinnedMesh,
   useSkinnedMesh,
   type VoxelResultView,
 } from "../../../data/galleryContext";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
+import { FullscreenViewport } from "./FullscreenViewport";
+import { GifDownloadButton } from "./GifDownloadButton";
+import { encodeSkinnedGif } from "./skinnedGif";
+import { panelBackground, gifFilename } from "./previewDownload";
 import styles from "./RunDetailPages.module.scss";
 
 // `three` (and the drei/runtime bindings) are heavy, so the skinned WebGL viewer is
@@ -72,17 +77,35 @@ function GuardedSkinnedViewer({
   if (!ready) return fallback;
 
   return (
-    <Suspense fallback={fallback}>
-      <SkinnedVoxelViewer
-        mesh={mesh}
-        rig={rig}
-        mode="orbit"
-        callerJoints={callerJoints}
-        animation={animation}
-        height={RIG_PREVIEW_SIZE}
-        label={label}
-      />
-    </Suspense>
+    <FullscreenViewport
+      label={label}
+      renderExpanded={(expandedHeight) => (
+        <Suspense fallback={null}>
+          <SkinnedVoxelViewer
+            mesh={mesh}
+            rig={rig}
+            mode="orbit"
+            callerJoints={callerJoints}
+            animation={animation}
+            enableZoom
+            height={expandedHeight}
+            label={`${label} (expanded)`}
+          />
+        </Suspense>
+      )}
+    >
+      <Suspense fallback={fallback}>
+        <SkinnedVoxelViewer
+          mesh={mesh}
+          rig={rig}
+          mode="orbit"
+          callerJoints={callerJoints}
+          animation={animation}
+          height={RIG_PREVIEW_SIZE}
+          label={label}
+        />
+      </Suspense>
+    </FullscreenViewport>
   );
 }
 
@@ -163,6 +186,18 @@ export function SkinnedResultSection({ view }: { view: VoxelResultView }) {
     mode === "animations" && activeAnimation
       ? { animation: activeAnimation }
       : { animation: null };
+
+  // Only an animation — which loops over a period — can be baked to a GIF; posed
+  // joints have no motion over time to capture.
+  const downloadable =
+    mode === "animations" && activeAnimation && activeAnimation.periodMs > 0
+      ? activeAnimation
+      : null;
+  // Baking a GIF renders offscreen with WebGL, so only offer it where WebGL is
+  // available (the same capability the preview itself needs).
+  const [webglOk, setWebglOk] = useState(false);
+  useEffect(() => setWebglOk(supportsWebGL()), []);
+  const meshUrl = view.skinnedMeshUrl;
 
   const part = view.parts[0];
 
@@ -253,6 +288,22 @@ export function SkinnedResultSection({ view }: { view: VoxelResultView }) {
               </p>
             )}
           </div>
+          {downloadable && webglOk && meshUrl ? (
+            <GifDownloadButton
+              filename={gifFilename(downloadable.name)}
+              encode={async () => {
+                const gifMesh = await fetchSkinnedMesh(meshUrl);
+                return encodeSkinnedGif({
+                  mesh: gifMesh,
+                  rig,
+                  animation: downloadable,
+                  callerJoints: callerValues,
+                  periodMs: downloadable.periodMs,
+                  background: panelBackground(),
+                });
+              }}
+            />
+          ) : null}
         </div>
         <div className={styles.rigPreviewStage}>
           <div style={RIG_PREVIEW_BOX}>

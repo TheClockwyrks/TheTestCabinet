@@ -12,14 +12,21 @@ import styles from "./useResizableColumns.module.scss";
 /**
  * One grid track of a resizable table, left→right.
  *
+ * `id` is a stable key for the track — persisted widths are stored under it, so
+ * a column keeps its width even when the visible set changes (a column toggled
+ * off and back on, or a differently-scoped table that shares some columns).
+ *
  * `default` is the track's resting size — any valid `grid-template-columns`
  * value (`"1fr"`, `"7rem"`, …). It's used verbatim until the user drags this
  * column, so an untouched table renders pixel-identically to its static SCSS
- * template. `min` is the floor (in px) a drag can shrink the column to.
- * A column with `resizable: false` gets no drag handle on its right edge (e.g.
- * a caret gutter).
+ * template. `min` is the floor (in px) a drag can shrink the column to — the
+ * effective floor is raised to the header label's own width so a column can
+ * never be dragged narrower than its label (see the label clamp below). A
+ * column with `resizable: false` gets no drag handle on its right edge (e.g. a
+ * caret gutter).
  */
 export interface ResizableColumn {
+  id: string;
   default: string;
   min: number;
   resizable?: boolean;
@@ -31,7 +38,11 @@ interface Options {
    * share widths (e.g. the same run log on two pages) pass the same key.
    */
   storageKey: string;
-  /** One entry per grid track, in render order. Must be a stable reference. */
+  /**
+   * The grid tracks currently rendered, in render order. May change as columns
+   * are shown/hidden; widths are keyed by column `id`, not position, so a
+   * changing set doesn't disturb the widths of the columns that remain.
+   */
   columns: ResizableColumn[];
   /**
    * When false the table renders exactly as before — no handles, no persisted
@@ -52,37 +63,41 @@ interface Resizable {
   handle: (index: number) => ReactNode;
 }
 
-// A pinned width per column, or null to keep the column's `default` track. Only
-// columns the user has actually dragged are pinned; the rest keep flexing, so
-// the table still fills its container the way its static template did.
-type Widths = (number | null)[];
+// A pinned pixel width per column id. Columns the user hasn't dragged are absent
+// and keep flexing on their `default` track, so the table still fills its
+// container the way its static template did.
+type Widths = Record<string, number>;
 
-function loadWidths(storageKey: string, count: number): Widths | null {
-  if (typeof localStorage === "undefined") return null;
+// Extra room, in px, added over the header label's measured width when clamping
+// a drag's floor: enough to clear the numeric cells' right inset and the resize
+// handle so the label never abuts either edge.
+const LABEL_CLEARANCE = 12;
+
+function loadWidths(storageKey: string): Widths {
+  if (typeof localStorage === "undefined") return {};
   try {
     const raw = localStorage.getItem(storageKey);
-    if (!raw) return null;
+    if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
-    if (
-      Array.isArray(parsed) &&
-      parsed.length === count &&
-      parsed.every(
-        (n) =>
-          n === null || (typeof n === "number" && Number.isFinite(n) && n > 0),
-      )
-    ) {
-      return parsed as Widths;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const widths: Widths = {};
+      for (const [id, value] of Object.entries(parsed)) {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+          widths[id] = value;
+        }
+      }
+      return widths;
     }
   } catch {
     // Corrupt or unavailable storage: fall back to the default template.
   }
-  return null;
+  return {};
 }
 
 function saveWidths(storageKey: string, widths: Widths): void {
   if (typeof localStorage === "undefined") return;
   try {
-    if (widths.every((w) => w == null)) localStorage.removeItem(storageKey);
+    if (Object.keys(widths).length === 0) localStorage.removeItem(storageKey);
     else localStorage.setItem(storageKey, JSON.stringify(widths));
   } catch {
     // Non-fatal: the widths just won't survive a reload.
@@ -96,10 +111,11 @@ function saveWidths(storageKey: string, widths: Widths): void {
  *
  * The mechanism is a single custom property, `--ttc-cols`, set on the
  * container and read by the row template (`grid-template-columns: var(--ttc-cols,
- * <default>)`). Dragging pins the grabbed column to a pixel width and leaves the
- * others on their default tracks, so flexible columns keep absorbing slack.
- * Widths persist under `storageKey`. During a drag the property is written
- * imperatively so only the container restyles — the rows never re-render.
+ * <default>)`). Each track resolves to its pinned pixel width if the user has
+ * dragged it, else its `default` (so flexible columns keep absorbing slack).
+ * Widths persist under `storageKey`, keyed by column id. During a drag the
+ * property is written imperatively so only the container restyles — the rows
+ * never re-render.
  */
 export function useResizableColumns({
   storageKey,
@@ -107,25 +123,24 @@ export function useResizableColumns({
   enabled = true,
 }: Options): Resizable {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const count = columns.length;
-  const [widths, setWidths] = useState<Widths | null>(() =>
-    enabled ? loadWidths(storageKey, count) : null,
+  const [widths, setWidths] = useState<Widths>(() =>
+    enabled ? loadWidths(storageKey) : {},
   );
   // Mirrors `widths` for event handlers so a drag always starts from the latest
   // committed state without re-subscribing listeners on every change.
-  const widthsRef = useRef<Widths | null>(widths);
+  const widthsRef = useRef<Widths>(widths);
   const draggingRef = useRef(false);
 
   const applyTemplate = useCallback(
-    (ws: Widths | null) => {
+    (ws: Widths) => {
       const el = containerRef.current;
       if (!el) return;
-      if (!enabled || !ws) {
+      if (!enabled) {
         el.style.removeProperty("--ttc-cols");
         return;
       }
-      const tracks = columns.map((col, i) => {
-        const w = ws[i];
+      const tracks = columns.map((col) => {
+        const w = ws[col.id];
         return w == null ? col.default : `${w}px`;
       });
       el.style.setProperty("--ttc-cols", tracks.join(" "));
@@ -133,8 +148,9 @@ export function useResizableColumns({
     [columns, enabled],
   );
 
-  // Apply committed widths on mount and whenever they change — but never stomp
-  // an in-flight drag, which drives the property imperatively.
+  // Apply committed widths on mount and whenever they (or the visible column
+  // set) change — but never stomp an in-flight drag, which drives the property
+  // imperatively.
   useLayoutEffect(() => {
     if (draggingRef.current) return;
     applyTemplate(widths);
@@ -166,15 +182,22 @@ export function useResizableColumns({
       // drag is seamless, whatever its default track resolved to.
       const startWidth = cell.getBoundingClientRect().width;
       const startX = event.clientX;
-      const base = widthsRef.current
-        ? widthsRef.current.slice()
-        : columns.map(() => null);
+      // The column can't be dragged narrower than its own header label (plus a
+      // little clearance), so an overlong label never spills past its cell. The
+      // label is marked with `data-ttc-label`; fall back to the column's own
+      // `min` when a table doesn't mark one.
+      const label = cell.querySelector<HTMLElement>("[data-ttc-label]");
+      const labelFloor = label
+        ? Math.ceil(label.getBoundingClientRect().width) + LABEL_CLEARANCE
+        : 0;
+      const floor = Math.max(col.min, labelFloor);
+      const base: Widths = { ...widthsRef.current };
       let latest: Widths = base;
 
       const onMove = (e: PointerEvent) => {
-        const next = base.slice();
-        next[index] = Math.max(
-          col.min,
+        const next = { ...base };
+        next[col.id] = Math.max(
+          floor,
           Math.round(startWidth + (e.clientX - startX)),
         );
         latest = next;
@@ -204,7 +227,12 @@ export function useResizableColumns({
   const handle = useCallback(
     (index: number): ReactNode => {
       const col = columns[index];
-      if (!enabled || !col || index >= count - 1 || col.resizable === false) {
+      if (
+        !enabled ||
+        !col ||
+        index >= columns.length - 1 ||
+        col.resizable === false
+      ) {
         return null;
       }
       return (
@@ -217,7 +245,7 @@ export function useResizableColumns({
         />
       );
     },
-    [columns, count, enabled, onPointerDown],
+    [columns, enabled, onPointerDown],
   );
 
   return { containerRef, handle };

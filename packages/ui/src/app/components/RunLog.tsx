@@ -1,38 +1,94 @@
 import type { RunRecord } from "@test-cabinet/run-record";
+import { Fragment, useMemo, useRef } from "react";
 import { Link } from "react-router";
-import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
-import { UnpublishedTag } from "./UnpublishedTag";
-import {
-  useResizableColumns,
-  type ResizableColumn,
-} from "./useResizableColumns";
-import { type Rating, worstRating } from "../data/ratings";
 import { describeRunState } from "../data/runState";
-import { useFindReview } from "../data/writeups";
 import { useTestCaseName } from "../data/useTestCaseName";
-import { formatTokenTotal, formatUsd } from "../format";
+import { ColumnMenu, type ColumnMenuHandle } from "./ColumnMenu";
+import { SortableHeaderCell } from "./SortableHeaderCell";
+import {
+  columnsForScope,
+  isSortable,
+  sortRuns,
+  useEnrichedRuns,
+  type EnrichedRun,
+  type RunColumn,
+  type RunRenderContext,
+  type RunScope,
+} from "./runColumns";
+import { useColumnVisibility } from "./useColumnVisibility";
+import { useResizableColumns } from "./useResizableColumns";
+import { useTableSort, type SortState } from "./useTableSort";
 import { routes } from "../routes";
 import styles from "./RunLog.module.scss";
 
-/**
- * Which columns the log carries.
- *
- * - `"global"` shows every column for cross-case listings (the home page).
- * - `"variant"` drops the test and variant columns for pages already scoped to
- *   a single test case and variant, where they would be constant.
- * - `"model"` drops the model column for the model detail page, where every row
- *   is the same model; it keeps the test and variant columns.
- */
-export type RunLogScope = "global" | "variant" | "model";
+// Kept for callers that still reference the scope names by this alias.
+export type RunLogScope = RunScope;
 
-interface RunLogProps {
-  /** The runs to list, in the order they should appear (the caller sorts). */
-  runs: RunRecord[];
+/**
+ * The state driving a run log's columns: which columns its scope offers, the
+ * active sort, and which optional columns are shown. Produced by
+ * {@link useRunTable} so a page can sort (and page) the full run set before
+ * handing a slice to {@link RunLog} — sorting only the visible page would order
+ * each page independently.
+ */
+export interface RunTableControls {
+  scope: RunScope;
+  columns: RunColumn[];
+  sort: SortState | null;
+  cycleSort: (columnId: string) => void;
+  isVisible: (id: string) => boolean;
+  toggle: (id: string) => void;
+}
+
+interface RunTable {
+  /** Every run for this table, enriched and ordered by the active sort. */
+  rows: EnrichedRun[];
+  /** Column/sort/visibility state to hand to {@link RunLog}. */
+  controls: RunTableControls;
+}
+
+interface UseRunTableArgs {
+  /** The runs to list, in their default (recency) order. */
+  runs: readonly RunRecord[];
   /** Ids of runs sourced from local disk — flagged as unpublished. */
   localIds: ReadonlySet<string>;
   /** Raw local writeups, keyed by run id, used to resolve a run's rating. */
   localWriteups: Readonly<Record<string, string>>;
+  /** Column set to render. Defaults to the full cross-case layout. */
+  scope?: RunScope;
+}
+
+/**
+ * Enrich, sort, and expose the column controls for a run log. The returned
+ * `rows` are the full set in sorted order; a page slices them and passes the
+ * slice plus `controls` to {@link RunLog}. Sort and visibility persist per scope,
+ * so the ordering and chosen columns are shared across the pages that use the
+ * same layout (e.g. the home gallery and the all-runs index).
+ */
+export function useRunTable({
+  runs,
+  localIds,
+  localWriteups,
+  scope = "global",
+}: UseRunTableArgs): RunTable {
+  const columns = useMemo(() => columnsForScope(scope), [scope]);
+  const { sort, cycle } = useTableSort(`ttc:runlog:${scope}:sort`);
+  const { isVisible, toggle } = useColumnVisibility(
+    `ttc:runlog:${scope}:visible`,
+    columns,
+  );
+  const enriched = useEnrichedRuns(runs, localIds, localWriteups);
+  const rows = useMemo(() => sortRuns(enriched, sort), [enriched, sort]);
+  return {
+    rows,
+    controls: { scope, columns, sort, cycleSort: cycle, isVisible, toggle },
+  };
+}
+
+interface RunLogProps {
+  /** The runs to display — already enriched, sorted, and (if paged) sliced. */
+  rows: readonly EnrichedRun[];
   /**
    * Runs still executing, rendered as spinner rows pinned above the finished
    * ones (each links to its live monitor instead of a run detail). A run gains no
@@ -40,220 +96,118 @@ interface RunLogProps {
    * table so the styling matches. Defaults to none.
    */
   active?: InProgressRun[];
-  /** Column set to render. Defaults to the full cross-case layout. */
-  scope?: RunLogScope;
-  /**
-   * Opt this instance into user-resizable columns (drag the header boundaries;
-   * widths persist locally). Only honored for the full `"global"` layout — the
-   * scoped variants drop columns and aren't wired for it. Defaults to off.
-   */
-  resizable?: boolean;
+  /** Column/sort/visibility state from {@link useRunTable}. */
+  controls: RunTableControls;
 }
 
-// The tracks of the full cross-case ("global") layout, matching the header/row
-// grid in RunLog.module.scss: caret · test · harness · variant · model · tokens ·
-// cost · rating. The caret gutter isn't resizable; the rest drag to a minimum.
-const GLOBAL_COLUMNS: ResizableColumn[] = [
-  { default: "1.2rem", min: 20, resizable: false },
-  { default: "1fr", min: 96 },
-  { default: "7rem", min: 64 },
-  { default: "6rem", min: 56 },
-  { default: "1.6fr", min: 96 },
-  { default: "5rem", min: 56 },
-  { default: "5rem", min: 56 },
-  { default: "6rem", min: 56 },
-];
-
 // The dense, column-aligned run log shared by the home gallery and the per-case
-// Runs tab. It is not a leaderboard and shows no ranking — rows appear in the
-// order the caller passes them (see docs/site.md). Rendering lives here so both
-// pages stay pixel-identical; the caller owns sorting, slicing, and paging.
-export function RunLog({
-  runs,
-  localIds,
-  localWriteups,
-  active = [],
-  scope = "global",
-  resizable = false,
-}: RunLogProps) {
-  // The test/variant columns are constant on a variant-scoped log; the model
-  // column is constant on a model-scoped one. Each is dropped where redundant.
-  const showCase = scope !== "variant";
-  const showModel = scope !== "model";
-  const findReview = useFindReview();
-  // Resizing is wired for the full column set only, so the handle indices line
-  // up with the header cells; scoped layouts render exactly as before.
+// Runs tab. Columns are user-resizable (drag the header boundaries) and sortable
+// (click a header to cycle ascending → descending → default), and the optional
+// timestamp/category/duration columns can be shown via the picker (the ▦ button
+// or a header right-click). Rendering lives here so every page stays
+// pixel-identical; the caller owns enrichment, sorting, slicing, and paging via
+// useRunTable.
+export function RunLog({ rows, active = [], controls }: RunLogProps) {
+  const { scope, columns, sort, cycleSort, isVisible, toggle } = controls;
+  const testCaseName = useTestCaseName();
+  const menuRef = useRef<ColumnMenuHandle>(null);
+
+  // The columns actually rendered this pass: the scope's set minus any the user
+  // has hidden. Both the header and every row map over this, so they stay in
+  // lockstep, and the resize handles' indices line up with the header cells.
+  const visible = useMemo(
+    () => columns.filter((column) => isVisible(column.id)),
+    [columns, isVisible],
+  );
+  const visibleIds = useMemo(
+    () => new Set(visible.map((column) => column.id)),
+    [visible],
+  );
+
   const table = useResizableColumns({
-    storageKey: "ttc:cols:runlog",
-    columns: GLOBAL_COLUMNS,
-    enabled: resizable && scope === "global",
+    storageKey: `ttc:runlog:${scope}:widths`,
+    columns: visible,
   });
+
+  const ctx: RunRenderContext = { visible: visibleIds, testCaseName };
+
   return (
-    <div className={styles.log} data-scope={scope} ref={table.containerRef}>
-      <div
-        className={`${styles.row} ${styles.head}`}
-        data-ttc-head
-        aria-hidden="true"
-      >
-        <span>{table.handle(0)}</span>
-        {showCase && <span>TEST{table.handle(1)}</span>}
-        <span>HARNESS{table.handle(2)}</span>
-        {showCase && <span>VARIANT{table.handle(3)}</span>}
-        {showModel && <span>MODEL{table.handle(4)}</span>}
-        <span className={styles.num}>TOKENS{table.handle(5)}</span>
-        <span className={styles.num}>COST{table.handle(6)}</span>
-        <span>RATING{table.handle(7)}</span>
+    <div className={styles.wrap}>
+      <div className={styles.menuAnchor}>
+        <ColumnMenu
+          ref={menuRef}
+          columns={columns}
+          isVisible={isVisible}
+          onToggle={toggle}
+        />
       </div>
-      {active.map((run) => (
-        <ActiveRow
-          key={run.runId}
-          run={run}
-          showCase={showCase}
-          showModel={showModel}
-        />
-      ))}
-      {runs.map((run) => (
-        <RunRow
-          key={run.id}
-          run={run}
-          local={localIds.has(run.id)}
-          rating={
-            worstRating(
-              findReview(run.id, localWriteups)?.ratings.map((r) => r.rating) ??
-                [],
-            ) ?? null
-          }
-          showCase={showCase}
-          showModel={showModel}
-        />
-      ))}
+      <div className={styles.log} data-scope={scope} ref={table.containerRef}>
+        <div
+          className={`${styles.row} ${styles.head}`}
+          data-ttc-head
+          onContextMenu={(event) => {
+            event.preventDefault();
+            menuRef.current?.openAt(event.clientX, event.clientY);
+          }}
+        >
+          {visible.map((column, index) => (
+            <SortableHeaderCell
+              key={column.id}
+              columnId={column.id}
+              label={column.label}
+              numeric={column.numeric}
+              sortable={isSortable(column)}
+              sort={sort}
+              onSort={cycleSort}
+              handle={table.handle(index)}
+            />
+          ))}
+        </div>
+        {active.map((run) => (
+          <Link
+            key={run.runId}
+            to={routes.runMonitor(run.runId)}
+            className={styles.row}
+            data-active=""
+            data-failed={run.state === "failed" ? "" : undefined}
+          >
+            {visible.map((column) => (
+              <Fragment key={column.id}>
+                {column.renderActive(run, ctx)}
+              </Fragment>
+            ))}
+          </Link>
+        ))}
+        {rows.map((row) => (
+          <RunRow key={row.record.id} row={row} columns={visible} ctx={ctx} />
+        ))}
+      </div>
     </div>
   );
 }
 
-// A run still executing, rendered in the same grid as a finished row. The left
-// caret gutter holds a spinner instead of the hover chevron; the metric and
-// rating cells show placeholders since a run has no record (and so no metrics)
-// until it finishes. The whole row links to the live monitor.
-function ActiveRow({
-  run,
-  showCase,
-  showModel,
-}: {
-  run: InProgressRun;
-  showCase: boolean;
-  showModel: boolean;
-}) {
-  const testCaseName = useTestCaseName();
-  const failed = run.state === "failed";
-  return (
-    <Link
-      to={routes.runMonitor(run.runId)}
-      className={styles.row}
-      data-active=""
-      data-failed={failed ? "" : undefined}
-    >
-      <span className={styles.spinner} aria-hidden="true" />
-      {showCase && (
-        <span className={styles.test}>
-          <span className={styles.testName}>
-            {testCaseName(run.testCaseSlug)}
-          </span>
-        </span>
-      )}
-      <span className={styles.harness} data-label="Harness">
-        {run.harnessSlug}
-      </span>
-      {showCase && (
-        <span className={styles.variant} data-label="Variant">
-          {run.variant}
-        </span>
-      )}
-      {showModel && (
-        <span className={styles.model} data-label="Model">
-          {canonicalModelId(run.modelId)}
-        </span>
-      )}
-      <span className={`${styles.num} ${styles.noRating}`} data-label="Tokens">
-        &mdash;
-      </span>
-      <span className={`${styles.num} ${styles.noRating}`} data-label="Cost">
-        &mdash;
-      </span>
-      <span className={styles.activeStatus} data-label="Status">
-        {failed ? "failed" : "running…"}
-      </span>
-    </Link>
-  );
-}
-
 function RunRow({
-  run,
-  local,
-  rating,
-  showCase,
-  showModel,
+  row,
+  columns,
+  ctx,
 }: {
-  run: RunRecord;
-  local: boolean;
-  rating: Rating | null;
-  showCase: boolean;
-  showModel: boolean;
+  row: EnrichedRun;
+  columns: readonly RunColumn[];
+  ctx: RunRenderContext;
 }) {
-  const { subject, metrics } = run;
-  const testCaseName = useTestCaseName();
   // A failed run (any non-completed tier) is listed inline so the failure can be
-  // inspected, marked with the same negative styling an active row uses. It
-  // carries no rating — its tier is shown in the rating cell instead.
-  const presentation = describeRunState(run.status.state);
-  const failed = presentation.isFailure;
+  // inspected, marked with the same negative styling an active row uses; its
+  // rating cell shows the failure tier instead of a badge.
+  const failed = describeRunState(row.record.status.state).isFailure;
   return (
     <Link
-      to={routes.runDetail(run.id)}
+      to={routes.runDetail(row.record.id)}
       className={styles.row}
       data-failed={failed ? "" : undefined}
     >
-      <span className={styles.rowCaret}>&rsaquo;</span>
-      {showCase && (
-        <span className={styles.test}>
-          <span className={styles.testName}>
-            {testCaseName(subject.testCaseSlug)}
-          </span>
-          {local && <UnpublishedTag className={styles.tag} />}
-        </span>
-      )}
-      <span className={styles.harness} data-label="Harness">
-        {subject.harnessSlug}
-        {/* Without a TEST column to host it, flag unpublished runs here. */}
-        {!showCase && local && <UnpublishedTag className={styles.tag} />}
-      </span>
-      {showCase && (
-        <span className={styles.variant} data-label="Variant">
-          {subject.variant}
-        </span>
-      )}
-      {showModel && (
-        <span className={styles.model} data-label="Model">
-          {canonicalModelId(subject.modelId)}
-        </span>
-      )}
-      <span className={styles.num} data-label="Tokens">
-        {formatTokenTotal(metrics)}
-      </span>
-      <span className={styles.num} data-label="Cost">
-        {formatUsd(metrics.cost.comparable)}
-      </span>
-      <span className={styles.rating} data-label="Rating">
-        {failed ? (
-          <span className={styles.activeStatus} data-state={run.status.state}>
-            {presentation.chip}
-          </span>
-        ) : rating ? (
-          <RatingBadge rating={rating} />
-        ) : (
-          <span className={styles.noRating}>&mdash;</span>
-        )}
-      </span>
+      {columns.map((column) => (
+        <Fragment key={column.id}>{column.render(row, ctx)}</Fragment>
+      ))}
     </Link>
   );
 }

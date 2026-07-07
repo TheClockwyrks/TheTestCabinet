@@ -86,8 +86,11 @@ export interface VariantInfo {
   domains: Domain[];
 }
 
-// The 3D voxel/mesh asset kinds — everything except the two flat `sprite*`
-// kinds. Mirrors `AssetKind::is_voxel` on the Rust side.
+// The 3D voxel-family asset kinds — the two cube kinds, the six surface-meshed
+// kinds, and the three skinned kinds. Everything else (the two flat `sprite*`
+// kinds and the `ui`/`material` paint kinds, plus particle and audio) is not
+// voxel-family. Mirrors `AssetKind::is_voxel` on the Rust side — including the
+// skinned kinds, which are voxel-family (one whole-body field) and render in 3D.
 const VOXEL_ASSET_KINDS: ReadonlySet<AssetKind> = new Set<AssetKind>([
   "voxel-model",
   "voxel-animation",
@@ -97,12 +100,44 @@ const VOXEL_ASSET_KINDS: ReadonlySet<AssetKind> = new Set<AssetKind>([
   "sn-animation",
   "dc-model",
   "dc-animation",
+  "mc-skinned",
+  "sn-skinned",
+  "dc-skinned",
 ]);
 
-/** Whether an asset kind is one of the 3D voxel/mesh kinds (vs a 2D sprite). An
+/** Whether an asset kind is one of the 3D voxel-family kinds (voxel/mesh/skinned)
+ * — as opposed to a 2D sprite or paint kind, a particle system, or audio. An
  * absent kind is treated as the default `sprite` (2D), so it reads as false. */
 export function isVoxelAssetKind(kind: AssetKind | null | undefined): boolean {
   return kind != null && VOXEL_ASSET_KINDS.has(kind);
+}
+
+// The particle-system asset kinds. Mirrors `AssetKind::is_particle` on the Rust
+// side.
+const PARTICLE_ASSET_KINDS: ReadonlySet<AssetKind> = new Set<AssetKind>([
+  "particle-2d",
+  "particle-3d",
+]);
+
+/** Whether an asset kind is a particle system (`particle-2d`/`particle-3d`). An
+ * absent kind reads as false. */
+export function isParticleAssetKind(
+  kind: AssetKind | null | undefined,
+): boolean {
+  return kind != null && PARTICLE_ASSET_KINDS.has(kind);
+}
+
+// The audio asset kinds. Mirrors `AssetKind::is_audio` on the Rust side.
+const AUDIO_ASSET_KINDS: ReadonlySet<AssetKind> = new Set<AssetKind>([
+  "sfx-synth",
+  "sfx-sample",
+  "music",
+]);
+
+/** Whether an asset kind is an audio clip (`sfx-synth`/`sfx-sample`/`music`). An
+ * absent kind reads as false. */
+export function isAudioAssetKind(kind: AssetKind | null | undefined): boolean {
+  return kind != null && AUDIO_ASSET_KINDS.has(kind);
 }
 
 export interface VersionInfo {
@@ -116,12 +151,16 @@ export interface VersionInfo {
   // run-launch orchestrator selector, which is offered only for "end-to-end".
   testType: TestType;
   // For an asset-generation case, which asset shape it produces — the finer
-  // discriminator the catalog splits its Sprite vs Voxel tabs on. Absent (null)
-  // on hosts that don't carry it (e.g. the static snapshot); backend-connected
-  // consoles always resolve it.
+  // discriminator the catalog partitions its 2D / 3D / Particle / Audio tabs on.
+  // Carried by every host, including the static snapshot; null only for a
+  // non-asset case or a snapshot that predates the field.
   assetKind?: AssetKind | null;
   // The site-facing Markdown description, when the source carries it.
   description?: string | null;
+  // This version's own changelog entry (its `changelog.md` body). Required — every
+  // version declares a changelog — so always present from the backend. The console
+  // aggregates every version's entry into the case's changelog tab (newest first).
+  changelog: string;
   variants: VariantInfo[];
   // The case's COMMON domains (every variant is rated on these; a variant may add
   // its own — see VariantInfo.domains). A reviewer rates each independently; a

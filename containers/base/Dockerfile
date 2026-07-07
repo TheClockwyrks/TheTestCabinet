@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # The base run-container image for The Test Cabinet.
 #
 # This is the image an end-to-end run executes in, and the foundation the
@@ -33,6 +34,27 @@
 # is deliberate: an end-to-end run never touches them, so the binary (and the Rust
 # toolchain that compiles it) does not belong in the image every run shares.
 
+# ── Stage: build & stage the shippable Test Cabinet packages ──────────────────
+# The repo's own `@test-cabinet/*` runtime libraries (particle-runtime,
+# voxel-runtime, …) that an end-to-end case can opt into via the manifest's
+# `packages` key are baked into this base image, so a produced asset that needs a
+# runtime to play it (a particle `system.json`, a voxel rig) is consumed as an
+# ordinary installed dependency — see containers/README.md#the-shippable-test-cabinet-packages.
+#
+# This mirrors deployments/images/web.Dockerfile: `npm ci` over the whole npm
+# workspace (the repo-root `.dockerignore` re-includes exactly this slice — the
+# root manifests, every member's package.json, and the packages' sources), then
+# `scripts/stage-tcab-packages.mjs` builds the shippable libraries and stages them
+# (with inter-`@test-cabinet` deps rewritten to `file:` paths) under
+# /opt/tcab-packages. The npm cache is a BuildKit cache mount, as in the web image.
+FROM docker.io/library/node:24-bookworm-slim AS tcab-packages
+WORKDIR /repo
+COPY . .
+RUN --mount=type=cache,target=/root/.npm \
+	npm ci \
+	&& node scripts/stage-tcab-packages.mjs /opt/tcab-packages
+
+# ── The base run image ────────────────────────────────────────────────────────
 FROM docker.io/library/node:24-bookworm-slim
 
 # Common system packages:
@@ -97,6 +119,13 @@ RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
 # work as the unprivileged user.
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global \
 	PATH=/home/node/.npm-global/bin:/home/node/.local/bin:$PATH
+
+# Bake the shippable Test Cabinet packages in, world-readable so the unprivileged
+# run user can install them. A case that declares `packages` has each injected
+# into its workspace `package.json` as a `file:` dependency resolving under here,
+# so `npm install`/`npm ci` pick them up offline. See containers/README.md.
+COPY --from=tcab-packages /opt/tcab-packages /opt/tcab-packages
+RUN chmod -R a+rX /opt/tcab-packages
 
 USER node
 

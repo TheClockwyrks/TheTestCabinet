@@ -1,7 +1,7 @@
 slug = "sunfront-lumen"
 name = "Sunfront Lumen"
 difficulty = "hard"
-tags = ["asset-generation", "3d", "voxel", "rig", "mech"]
+tags = ["voxel", "rig", "mech"]
 summary = """
 Sculpt and rig the Sunfront Lumen: an opaque-voxel floating beacon drone \
 with a glowing solar-hot core, two counter-rotating rings, and a forward beam \
@@ -10,6 +10,11 @@ time. The model invents whatever parts and joints it needs; the fixed contract i
 three animations it must author — a self-playing ring_spin, a hover, and an emitter \
 pulse — the reviewer can play back."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
 type = "asset-generation"

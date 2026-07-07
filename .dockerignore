@@ -79,6 +79,12 @@
 !/packages/ui
 !/packages/voxel-runtime
 !/packages/particle-runtime
+# The run-container BASE image (containers/base/Dockerfile) reuses this same npm
+# slice: its builder stage `npm ci`s the workspace and runs the staging script to
+# bake the shippable @test-cabinet packages into /opt/tcab-packages (see
+# containers/README.md#the-shippable-test-cabinet-packages). The script is the one
+# extra file that build needs beyond the console's slice, so re-include it.
+!/scripts/stage-tcab-packages.mjs
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block, the config.js
 # envsubst template, and the entrypoint that renders it) — the Rust images embed

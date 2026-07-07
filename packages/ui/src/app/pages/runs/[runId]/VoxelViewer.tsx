@@ -13,6 +13,7 @@ import {
   framing,
   type Vec3,
 } from "./voxelScene";
+import { useViewportWheelLock } from "./useViewportWheelLock";
 
 // How the viewer presents the model: `auto-rotate` slowly orbits the camera on
 // its own (the static-model gallery view); `orbit` is a still, drag-to-inspect
@@ -107,10 +108,7 @@ export default function VoxelViewer({
   // Frame the camera so any size of model fills the view from the mesh bounds.
   // Derived from the data, not the rig, so the camera is correct on the first render
   // even though the rig builds a tick later in the effect above.
-  const { center, distance, far } = useMemo(
-    () => framing(meshes),
-    [meshes],
-  );
+  const { center, distance, far } = useMemo(() => framing(meshes), [meshes]);
 
   // Play the requested animation (or stop it with `null`, which falls back to the
   // rig's `autoPlay` idle if it has one).
@@ -133,8 +131,16 @@ export default function VoxelViewer({
   const animate =
     animation != null || (rig.animations?.some((a) => a.autoPlay) ?? false);
 
+  // When zoom is on, keep the wheel from scrolling the page while it zooms the camera.
+  const containerRef = useViewportWheelLock<HTMLDivElement>(
+    enableZoom ?? false,
+  );
+
   return (
-    <div style={{ width: "100%", height, borderRadius: 4, overflow: "hidden" }}>
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height, borderRadius: 4, overflow: "hidden" }}
+    >
       <Canvas
         aria-label={label}
         dpr={[1, 1.5]}

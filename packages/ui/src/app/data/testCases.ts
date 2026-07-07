@@ -54,6 +54,16 @@ export interface DomainSummary {
   description: string;
 }
 
+/** One entry in a case's changelog: the version it describes and the inlined
+ * Markdown body recording what changed in that version. The detail page's
+ * Changelog tab lists these newest first. */
+export interface ChangelogEntry {
+  /** The version the entry describes (e.g. `v1.0.1`). */
+  version: string;
+  /** The version's `changelog.md` body, rendered as Markdown. */
+  body: string;
+}
+
 /** A reference used as a visual target for a view: a rendered mockup or static
  * image (`kind: "image"`) or a static clip (`kind: "video"`). */
 export interface ReferenceScreenshot {
@@ -101,8 +111,10 @@ export interface TestCaseSummary {
    * adversarial Arena tab. */
   testType: TestType;
   /** For an asset-generation case, the asset shape it produces — the catalog
-   * splits its Sprite (2D) and Voxel (3D) tabs on this. Null for a non-asset
-   * case or on hosts that don't carry it (e.g. the static snapshot). */
+   * partitions its 2D / 3D / Particle / Audio asset-family tabs on this. Carried
+   * by every host, including the static snapshot (see the backend's
+   * `CaseMetadata`); null only for a non-asset case or a snapshot old enough to
+   * predate the field. */
   assetKind?: AssetKind | null;
   /** Relative difficulty, e.g. `easy` | `medium` | `hard`. */
   difficulty: string;
@@ -111,6 +123,9 @@ export interface TestCaseSummary {
   summary: string | null;
   /** Inlined site-facing Markdown from the case's `description.md`, or null. */
   description: string | null;
+  /** The case's changelog, one entry per version that declares a `changelog.md`,
+   * ordered newest version first. Empty when no version carries one. */
+  changelog: ChangelogEntry[];
   /** Every published version, newest first. */
   versions: string[];
   /** The newest version (first of `versions`). */

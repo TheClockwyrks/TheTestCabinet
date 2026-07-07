@@ -1,7 +1,7 @@
 slug = "caldera-basalt"
 name = "Caldera Basalt"
 difficulty = "medium"
-tags = ["asset-generation", "material", "pbr", "3d"]
+tags = ["material", "pbr"]
 summary = """
 Author the Caldera basalt: a tileable, seamless PBR material of weathered \
 volcanic rock — near-black cooled lava cut by hairline ashen and faintly \
@@ -9,6 +9,11 @@ glowing fissures — that dresses the terraced hex terrain of the Caldera \
 tower-defense case by triplanar projection, built one recorded operation at a \
 time with the `texture` and `pbr` tools."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.5
 type = "asset-generation"

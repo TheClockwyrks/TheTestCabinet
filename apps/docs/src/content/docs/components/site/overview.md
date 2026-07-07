@@ -58,11 +58,17 @@ surfaces:
   every domain of every review the run carries — shown as a per-run quality badge,
   with a note of how many reviewers contributed.
 
-The home page and the global runs index are ordered purely by recency, not by
-score — the cost and token metrics in particular are never used to sort or rank
-runs. Ranking lives in each test case's [leaderboard](#leaderboard) instead, where
-it is meaningful (models on the same case and variant), and is by review score
-rather than by resource metrics.
+The home page and the global runs index default to recency order, newest first,
+but their columns are sortable: clicking a header re-sorts the whole list by that
+column — test, harness, model, timestamp, category, duration, tokens, cost, or
+rating — ascending, then descending, then back to the default. The columns are
+also user-resizable, and the optional timestamp, category, and duration columns
+can be shown or hidden (drag the header boundaries, or right-click a header — or
+use the picker button — to choose columns). Sorting a run listing is a browsing
+convenience across differing cases; the authoritative, score-based ranking of
+*models* for a given case and variant still lives in that case's
+[leaderboard](#leaderboard), where a comparison is meaningful and is by review
+score rather than by resource metrics.
 
 Alongside the home page, which leads with the most recent results, a dedicated
 runs index lists the cabinet's full run history one page at a time, newest
@@ -92,9 +98,10 @@ that has a scored run of that case and variant by
 [score](/components/core/results/#reviews) (points): each model appears once,
 represented by its best-scoring run (ties broken by the better overall rating,
 then recency), and the table shows the rank, model, `earned / total` points, and
-overall rating badge. This is the one place the gallery deliberately *does* rank,
-because models on the same case and variant are directly comparable; the home
-page and runs index stay recency-ordered. Like the rest of the site it is built
+overall rating badge. This is where the gallery presents an explicit, canonical
+ranking — a rank column and a single score-ordered row per model — because models
+on the same case and variant are directly comparable; the sortable run listings
+elsewhere reorder rows for browsing but assign no rank. Like the rest of the site it is built
 from the static snapshot, computing each run's score client-side: each review's
 earned-over-declared checklist weight, then **averaged across the run's reviews**.
 Ties are broken by the better aggregate overall rating (the worst across reviews),

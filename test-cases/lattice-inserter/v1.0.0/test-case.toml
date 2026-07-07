@@ -1,7 +1,7 @@
 slug = "lattice-inserter"
 name = "Lattice Inserter"
 difficulty = "hard"
-tags = ["asset-generation", "2d", "sprite-sheet", "machine"]
+tags = ["sprite-sheet", "machine"]
 summary = """
 Draw the Lattice inserter: a swing-arm machine for a deterministic factory \
 simulation, drawn in Factorio's high-angle pseudo-3D style, as twelve 64x64 \
@@ -9,6 +9,11 @@ frames whose arm sweeps an item across the floor from the left pickup tile to th
 right drop tile and swings back empty in a seamless loop, produced one drawing \
 operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
 type = "asset-generation"

@@ -16,6 +16,7 @@ export type DetailTab =
   | "runs"
   | "leaderboard"
   | "metrics"
+  | "changelog"
   | "arena";
 
 interface TestCaseDetailLayoutProps {
@@ -61,15 +62,32 @@ export function TestCaseDetailLayout({
   // Tab links carry the current query string so switching tabs preserves the
   // selected variant.
   const tabs: { key: DetailTab; label: string; to: string }[] = [
-    { key: "overview", label: "Overview", to: routes.testCaseDetail(testCase.slug) },
-    { key: "inputs", label: "Inputs", to: routes.testCaseInputs(testCase.slug) },
+    {
+      key: "overview",
+      label: "Overview",
+      to: routes.testCaseDetail(testCase.slug),
+    },
+    {
+      key: "inputs",
+      label: "Inputs",
+      to: routes.testCaseInputs(testCase.slug),
+    },
     { key: "runs", label: "Runs", to: routes.testCaseRuns(testCase.slug) },
     {
       key: "leaderboard",
       label: "Leaderboard",
       to: routes.testCaseLeaderboard(testCase.slug),
     },
-    { key: "metrics", label: "Metrics", to: routes.testCaseMetrics(testCase.slug) },
+    {
+      key: "metrics",
+      label: "Metrics",
+      to: routes.testCaseMetrics(testCase.slug),
+    },
+    {
+      key: "changelog",
+      label: "Changelog",
+      to: routes.testCaseChangelog(testCase.slug),
+    },
   ];
   // The Arena tab is shown only for an adversarial case on a console that can run
   // matches (a connected worker exposes the arena capability); it is hidden on the
@@ -103,25 +121,13 @@ export function TestCaseDetailLayout({
             {testCase.difficulty}
           </span>
         </div>
-      </header>
-
-      <div className={styles.controls}>
-        <nav className={styles.tabs} aria-label="Test case sections">
-          {tabs.map((entry) => (
-            <NavLink
-              key={entry.key}
-              to={{ pathname: entry.to, search }}
-              className={
-                entry.key === tab
-                  ? `${styles.tab} ${styles.tabActive}`
-                  : styles.tab
-              }
-            >
-              {entry.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className={styles.actions}>
+        {/* Page-level actions live in the header (not the tab strip): the
+            variant selector drives every tab at once, and the Run action carries
+            the viewed case + variant into the new-run form. Keeping them here
+            leaves the tab strip a clean single row that reads like the run and
+            model detail strips, and a long variant name can no longer shove the
+            Run action onto its own line. */}
+        <div className={styles.actionRow}>
           <label className={styles.variant}>
             <span className={styles.variantLabel}>Variant</span>
             <select
@@ -152,6 +158,24 @@ export function TestCaseDetailLayout({
             </Link>
           )}
         </div>
+      </header>
+
+      <div className={styles.controls}>
+        <nav className={styles.tabs} aria-label="Test case sections">
+          {tabs.map((entry) => (
+            <NavLink
+              key={entry.key}
+              to={{ pathname: entry.to, search }}
+              className={
+                entry.key === tab
+                  ? `${styles.tab} ${styles.tabActive}`
+                  : styles.tab
+              }
+            >
+              {entry.label}
+            </NavLink>
+          ))}
+        </nav>
       </div>
 
       {children({ testCase, variant })}

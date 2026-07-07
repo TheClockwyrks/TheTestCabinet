@@ -14,11 +14,13 @@ fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCa
     let version = dir.path().join("demo/v1.0.0");
     fs::create_dir_all(version.join("variants")).expect("create version dir");
     fs::write(version.join("prompt.hbs"), "Build it.").expect("write prompt");
+    fs::write(version.join("changelog.md"), "Introduced.").expect("write changelog");
     // Variants live in their own files; the manifest lists one `base` variant. The
     // `variants` list is a root key, so it precedes `manifest_extra` (which usually
-    // opens with a `[build]`/`[canvas]` table header).
+    // opens with a `[build]`/`[canvas]` table header). A `changelog` is required.
     let manifest = format!(
         "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\"]\n{manifest_extra}\n\
          [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
     );
@@ -37,6 +39,43 @@ fn build_table_is_required() {
         .expect_err("a missing [build] table is rejected");
     assert!(
         format!("{err}").contains("the [build] table is required"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn changelog_is_required() {
+    // A manifest that omits `changelog` is rejected: every version must record what
+    // changed in it, so no revision can ship without a changelog entry. The header
+    // this manifest writes has the required keys except `changelog`.
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nvariants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[domain]]\nid = \"g\"\ndescription = \"d\"\n";
+    let (_dir, catalog) = catalog_with_files(manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a manifest without a changelog is rejected");
+    assert!(
+        format!("{err}").contains("changelog"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_missing_changelog_file_is_rejected() {
+    // The `changelog` key is declared but the file it names does not exist: like
+    // every other declared path, it is validated to exist.
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"missing.md\"\nvariants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[domain]]\nid = \"g\"\ndescription = \"d\"\n";
+    let (_dir, catalog) = catalog_with_files(manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a changelog naming a missing file is rejected");
+    assert!(
+        format!("{err}").contains("changelog") && format!("{err}").contains("does not exist"),
         "unexpected error: {err}"
     );
 }
@@ -81,6 +120,7 @@ name = \"Sprite\"\n\
 difficulty = \"medium\"\n\
 tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
 type = \"asset-generation\"\n\
 variants = [\"variants/base.toml\"]\n\
 [canvas]\nwidth = 64\nheight = 64\nbackground = \"transparent\"\n\
@@ -100,6 +140,7 @@ fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     fs::create_dir_all(version.join("specs")).expect("specs dir");
     fs::create_dir_all(version.join("variants")).expect("variants dir");
     fs::write(version.join("prompt.hbs"), "Draw it.").expect("prompt");
+    fs::write(version.join("changelog.md"), "Introduced.").expect("changelog");
     fs::write(version.join("specs/brief.md"), "The brief.").expect("brief");
     fs::write(version.join("variants/base.toml"), "slug = \"base\"\n").expect("variant");
     fs::write(version.join("test-case.toml"), manifest).expect("manifest");
@@ -209,6 +250,7 @@ name = \"Sheet\"\n\
 difficulty = \"medium\"\n\
 tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
 type = \"asset-generation\"\n\
 asset_kind = \"sprite-sheet\"\n\
 variants = [\"variants/base.toml\"]\n\
@@ -488,6 +530,7 @@ name = \"Jet\"\n\
 difficulty = \"medium\"\n\
 tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
 type = \"asset-generation\"\n\
 asset_kind = \"voxel-model\"\n\
 variants = [\"variants/base.toml\"]\n\
@@ -507,6 +550,7 @@ name = \"Tank\"\n\
 difficulty = \"hard\"\n\
 tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
 type = \"asset-generation\"\n\
 asset_kind = \"voxel-animation\"\n\
 variants = [\"variants/base.toml\"]\n\
@@ -793,6 +837,7 @@ name = \"Foray\"\n\
 difficulty = \"hard\"\n\
 tags = [\"adversarial\"]\n\
 prompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
 type = \"adversarial\"\n\
 variants = [\"variants/base.toml\"]\n\
 [build]\ninstall = \"cargo fetch\"\nbuild = \"cargo build --release --target wasm32-unknown-unknown\"\nmodule = \"target/wasm32-unknown-unknown/release/controller.wasm\"\n\
@@ -813,6 +858,7 @@ fn adversarial_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     fs::create_dir_all(version.join("replay")).expect("replay dir");
     fs::create_dir_all(version.join("variants")).expect("variants dir");
     fs::write(version.join("prompt.hbs"), "Write a controller.").expect("prompt");
+    fs::write(version.join("changelog.md"), "Introduced.").expect("changelog");
     fs::write(version.join("schemas/world.json"), "{}").expect("world schema");
     fs::write(version.join("schemas/action.json"), "{}").expect("action schema");
     fs::write(version.join("replay/index.html"), "<html></html>").expect("renderer");
@@ -1013,6 +1059,7 @@ fn build_and(extra: &str) -> String {
 fn resolves_common_and_variant_review_items() {
     // A common item plus a `frenzy` variant (in its own file) that adds its own.
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\", \"variants/frenzy.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[review_item]]\nid = \"ball-spin\"\ntitle = \"Paddle spin\"\n\
@@ -1046,6 +1093,7 @@ fn resolves_common_and_variant_review_items() {
 #[test]
 fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\", \"variants/frenzy.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[review_item]]\nid = \"dup\"\ntitle = \"A common item\"\ntext = \"A common item.\"\nweight = 1\n\
@@ -1129,6 +1177,7 @@ fn a_case_with_no_domains_is_rejected() {
     // `catalog_with_files` supplies the whole manifest (and a default base variant
     // file), so we can omit domains.
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n"
         .to_string();
@@ -1145,6 +1194,7 @@ fn a_case_with_no_domains_is_rejected() {
 #[test]
 fn resolves_domains_with_humanized_default_names() {
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n\
@@ -1165,6 +1215,7 @@ fn resolves_domains_with_humanized_default_names() {
 /// tests below; `override_gyre` replaces the gyre variant file's body.
 fn per_variant_domain_catalog(gyre_body: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\", \"variants/gyre.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[domain]]\nid = \"single-player\"\ndescription = \"Solo play.\"\n"
@@ -1235,6 +1286,7 @@ fn a_common_review_item_cannot_name_a_variant_only_domain() {
     // A common item is rated on every variant, so it may not roll up to a domain
     // only one variant declares.
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\", \"variants/gyre.toml\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [[review_item]]\nid = \"x\"\ntitle = \"X\"\ntext = \"Prose.\"\nweight = 1\ndomain = \"gyre\"\n\
@@ -1298,6 +1350,7 @@ fn catalog_with_files(
     let version = dir.path().join("demo/v1.0.0");
     fs::create_dir_all(&version).expect("create version dir");
     fs::write(version.join("prompt.hbs"), "Build it.").expect("write prompt");
+    fs::write(version.join("changelog.md"), "Introduced.").expect("write changelog");
     for (path, contents) in files {
         let full = version.join(path);
         if let Some(parent) = full.parent() {
@@ -1327,6 +1380,7 @@ fn catalog_with_files(
 fn manifest_with(body: &str, after_build: &str) -> String {
     format!(
         "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\"]\n\
          {body}\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
@@ -1364,6 +1418,65 @@ fn workspace_files_resolve_with_run_relative_dests_and_init() {
     // A variant with no override inherits the common workspace.
     let base = version.variant("base").expect("base");
     assert_eq!(version.workspace_for(base).len(), 2);
+}
+
+#[test]
+fn packages_resolve_when_shippable_and_workspace_ships_a_package_json() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("workspaces/base/package.json", "{\"name\":\"demo\"}")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(
+        version.packages,
+        vec!["@test-cabinet/particle-runtime".to_string()]
+    );
+}
+
+#[test]
+fn packages_reject_an_unknown_name() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/not-a-real-package\"]\n",
+        "",
+    );
+    let (_dir, catalog) =
+        catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unknown package name is rejected");
+    assert!(format!("{err}").contains("not a shippable"), "got: {err}");
+}
+
+#[test]
+fn packages_require_a_workspace_package_json() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "",
+    );
+    // The workspace exists but ships no package.json for the dependency to land in.
+    let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/README.md", "hi")]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a package-declaring case without a package.json is rejected");
+    assert!(format!("{err}").contains("package.json"), "got: {err}");
+}
+
+#[test]
+fn packages_are_end_to_end_only() {
+    // `packages` is a root key, so it must precede the first table; prepend it.
+    let manifest = format!("packages = [\"@test-cabinet/particle-runtime\"]\n{VALID_ASSET_MANIFEST}");
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("`packages` on an asset-generation case is rejected");
+    assert!(
+        format!("{err}").contains("only valid for an end-to-end case"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -1413,6 +1526,7 @@ fn a_variant_workspace_overrides_the_common_one() {
     // `special`, whose own file overrides the workspace. `base.toml` is provided by
     // `catalog_with_files`; `special.toml` is supplied here.
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
          variants = [\"variants/base.toml\", \"variants/special.toml\"]\n\
          workspace = \"workspaces/base\"\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
@@ -1508,10 +1622,11 @@ fn write_slugged_case(root: &std::path::Path, folder: &str, version: &str, slug:
     let dir = root.join(folder).join(version);
     fs::create_dir_all(dir.join("variants")).expect("version dir");
     fs::write(dir.join("prompt.hbs"), "Build it.").expect("prompt");
+    fs::write(dir.join("changelog.md"), "Introduced.").expect("changelog");
     fs::write(dir.join("variants/base.toml"), "slug = \"base\"\n").expect("variant");
     let manifest = format!(
         "slug = \"{slug}\"\nname = \"Case\"\ndifficulty = \"easy\"\ntags = []\n\
-         prompt = \"prompt.hbs\"\nvariants = [\"variants/base.toml\"]\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\nvariants = [\"variants/base.toml\"]\n\
          [build]\ninstall = \"x\"\nbuild = \"y\"\n\
          [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
     );
@@ -1623,6 +1738,7 @@ name = \"Asset\"\n\
 difficulty = \"medium\"\n\
 tags = [\"asset-generation\"]\n\
 prompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
 type = \"asset-generation\"\n";
 
 /// The common `[[spec]]`/`[[domain]]` tail every new-family manifest closes with.

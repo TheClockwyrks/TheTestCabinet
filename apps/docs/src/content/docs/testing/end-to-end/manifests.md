@@ -31,11 +31,13 @@ difficulty = "medium"        # relative difficulty: easy | medium | hard (requir
 tags = ["arcade", "2d"]      # free-form classification tags (site-facing, required)
 summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
+changelog = "changelog.md"   # REQUIRED per-version changelog entry (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
 workspace = "workspaces/base" # optional starter directory; its files seed the run root before the specs
 init = "npm install"         # optional command run in the container after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
+packages = []                # Test Cabinet packages installed into the run, e.g. ["@test-cabinet/particle-runtime"]
 
 # Variants: an ORDERED list of paths to standalone variant files (the first is the
 # default). Exactly one variant runs per run, and its slug is recorded in the run
@@ -79,9 +81,9 @@ path = "reference/gameplay.html" # rendered mockup (relative to this folder)
 # media = "reference/intro.mp4"  # served as-is; kind inferred from the extension
 
 # Proof of implementation, requested for EVERY variant. Each declares a `dest`
-# path the build must write a screenshot or .mp4 to as evidence; the spec that
-# asks for it must reference the same path. Validation records whether each is
-# present (informational). The media kind is inferred from the extension.
+# path the build must write a screenshot or .webm clip to as evidence; the spec
+# that asks for it must reference the same path. Validation records whether each
+# is present (informational). The media kind is inferred from the extension.
 [[proof]]
 id = "title"                 # stable slug, recorded in validation and paired by review items
 name = "Title menu"          # display name (optional; default humanizes the id)
@@ -167,6 +169,14 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   the site. Unlike the specs and `assets`, it is **never seeded** into a run — it
   is site-only prose. Like every other path it must resolve inside the version
   folder, and it is validated to exist when declared.
+- `changelog` is **required** and points at a Markdown file recording what changed
+  **in this version** of the case, so no revision ships without a note. The first
+  version typically just reads `Introduced.`; a later version describes its change
+  (for example, a proof clip switching format). Each version folder carries its own
+  entry, and the site aggregates every version's entry into one **newest-first**
+  changelog on the case's detail page. Like `description` it is site-only prose —
+  **never seeded** into a run — must resolve inside the version folder, and is
+  validated to exist.
 - `prompt` is **required** and points at the Handlebars template that becomes
   the instruction handed to the harness. The template is **rendered, not
   seeded**; see [Prompt template](/testing/end-to-end/overview/#prompt-template).
@@ -187,6 +197,26 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
 - `init` is an optional **init command** run inside the run container once the
   workspace and specs are seeded and before the harness starts (see
   [Init](/testing/end-to-end/overview/#init)). It must be non-empty when declared.
+- `packages` is an optional list of **Test Cabinet packages** — the repo's own
+  `@test-cabinet/*` runtime libraries — to make available to the build as
+  ordinary installed dependencies (see
+  [Packages](/testing/end-to-end/overview/#packages)). It is how a case that must
+  consume a *produced* asset whose format needs a runtime to interpret — a
+  [particle](/testing/asset-generation/particle-binaries/) `system.json` a game
+  plays by simulating it live, a voxel rig a game poses — hands the model the
+  library that plays it, rather than asking the model to reimplement the runtime
+  from a schema. Each entry is a package **name** (not a path), and every name
+  must be one of the **shippable packages** baked into the run image (listed in
+  [`containers/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md#the-shippable-test-cabinet-packages));
+  an unknown name is rejected at resolution. `packages` is **end-to-end only** —
+  an asset-generation case that declares it is rejected — and a case that
+  declares any package **must** ship a `workspace` containing a `package.json`
+  (the file the dependency is injected into). At seed time each named package is
+  added to that `package.json` as a dependency resolving to the copy baked into
+  the run image, so the model installs and imports it like any other dependency;
+  see [Packages](/testing/end-to-end/overview/#packages) for the model-facing
+  contract and why a `packages` case's `init` must run `npm install` (not
+  `npm ci`).
 - The `[build]` table is **required** and declares the commands validation runs
   to turn a produced implementation into a served static site: `install`
   (dependency install) and `build` (the static build). Both must be stated
@@ -235,7 +265,10 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   (defaulting to a humanized `id`), and a `dest` path the build must write the
   proof to, relative to the run workspace root. The media kind (image or video)
   is inferred from the `dest` extension (`png`/`jpg`/`jpeg`/`webp`/`gif` →
-  image, `mp4` → video); any other extension is rejected. Unlike specs and
+  image, `webm`/`mp4` → video); any other extension is rejected. A **video
+  proof** should be a `.webm` — the format Playwright records natively, so a run
+  captures it without transcoding; the public gallery transcodes it to `.mp4` at
+  snapshot time for universal (incl. iOS/Safari) playback. Unlike specs and
   references a proof is **not seeded** — it is *output* the agent produces during
   the run — so the spec that requests it must reference the same `dest`. A
   variant may declare additive proofs through its own `proof` array; an id must

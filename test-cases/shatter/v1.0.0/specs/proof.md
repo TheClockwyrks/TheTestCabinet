@@ -17,12 +17,13 @@ Playwright that `package.json` pins and `init` installs; do not hand-edit images
 | `proof/title.png` | The title screen on load, with the title, tagline, and every menu item visible. |
 | `proof/gameplay.png` | A live in-game frame: the ship, the star with its halo, several rocks mid-field, at least one bullet, and the HUD (score and remaining lives). |
 | `proof/game-over.png` | The game-over screen after a finished game, with `GAME OVER`, the final score, and the wave reached. |
-| `proof/gravity.mp4` | A short (a few seconds) screen recording that shows the gravity well at work: a bullet's path visibly bending as it passes near the star, and/or rocks curving on their paths past it. |
+| `proof/gravity.webm` | A short (a few seconds) screen recording that shows the gravity well at work: a bullet's path visibly bending as it passes near the star, and/or rocks curving on their paths past it. |
 
 Notes:
 
 - Create the `proof/` directory if it does not exist.
-- A screenshot must be a PNG; the clip must be an `.mp4`.
+- A screenshot must be a PNG; the clip must be a `.webm` — the format Playwright
+  records natively (`recordVideo`), so no format conversion is needed.
 - These files are **outputs** committed alongside the implementation — they are
   not part of the playable build and need not be served by it.
 - Producing them is part of finishing the task: a missing proof is recorded against

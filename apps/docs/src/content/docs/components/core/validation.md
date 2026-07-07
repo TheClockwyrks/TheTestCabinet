@@ -55,8 +55,10 @@ targets.
 ## Proofs
 
 A test case can ask the build to produce **proof of implementation** — a
-screenshot or short `.mp4` written to a known path as evidence that a feature
-works (see [`[[proof]]`](/testing/end-to-end/manifests/)). Validation does
+screenshot or short `.webm` clip written to a known path as evidence that a
+feature works (see [`[[proof]]`](/testing/end-to-end/manifests/)). Clips are
+captured as `.webm` (Playwright's native recording format); the public gallery
+transcodes them to `.mp4` at snapshot time for universal playback. Validation does
 not judge a proof's contents; it records, for each declared proof, whether the
 file turned up in the produced tree and is non-empty. A proof that the build did
 not produce is recorded as **missing** rather than failing the run.
