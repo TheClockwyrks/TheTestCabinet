@@ -1,7 +1,7 @@
 slug = "aegis-sn"
 name = "Aegis (Surface Nets)"
 difficulty = "medium"
-tags = ["mesh", "surface-nets", "fortress"]
+tags = ["mesh", "surface-nets", "walker"]
 summary = """
 Sculpt the Aegis as a static smooth-surfaced model with the Surface \
 Nets meshing tool (`sn`): a colossal six-legged walking fortress — a rounded, \

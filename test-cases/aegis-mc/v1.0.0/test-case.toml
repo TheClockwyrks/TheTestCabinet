@@ -1,7 +1,7 @@
 slug = "aegis-mc"
 name = "Aegis (Marching Cubes)"
 difficulty = "medium"
-tags = ["mesh", "marching-cubes", "fortress"]
+tags = ["mesh", "marching-cubes", "walker"]
 summary = """
 Sculpt the Aegis: a colossal, standing six-legged war-fortress meshed \
 from a signed-distance field with the `mc` Marching Cubes binary — a bold, chunky, \
