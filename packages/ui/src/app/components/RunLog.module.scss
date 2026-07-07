@@ -38,6 +38,14 @@
   padding: t.$space-sm t.$space-md;
   color: t.$color-text;
   white-space: nowrap;
+  // Reserve room on the right for the floating column-picker trigger (it hangs
+  // over the panel's top-right corner). Every row carries this gutter — not just
+  // the header — so all rows share one width. Otherwise the header, which alone
+  // reserved it, ends up ~1rem wider than the data rows: it then sets the scroll
+  // width and the narrower data rows' background/border stop short of it. Because
+  // the row grows by the same amount its right padding does, the grid content box
+  // is unchanged, so the columns stay put and only the background extends.
+  padding-right: 2rem;
   // Grow the row box to the full width its columns occupy so its background, top
   // border and hover wash span the entire scrolled width — not just the panel's
   // visible edge. Without this the grid tracks overflow the box (which stays at
@@ -90,8 +98,8 @@ a.row {
   font-size: t.$font-sm;
   letter-spacing: 0.1em;
   color: t.$color-text-muted;
-  // Keep the picker trigger clear of the last header label.
-  padding-right: 2rem;
+  // The picker-trigger clearance (`padding-right`) now lives on the base `.row`
+  // so the header and data rows stay the same width — see the note there.
 
   // Positioning context so each column's resize handle can pin to the cell's
   // right edge. (The shared SortableHeaderCell also sets this on itself.)

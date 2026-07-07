@@ -49,6 +49,12 @@
   width: fit-content;
   min-width: max(100%, 42rem);
   padding: t.$space-sm t.$space-md;
+  // Reserve the floating column-picker gutter on every row — not just the header
+  // — so the header and data rows share one width; otherwise the wider header
+  // sets the scroll width and the data rows' styling stops short of it. The row
+  // grows by the same amount as its right padding, so the grid content box (and
+  // thus the columns) is unchanged and only the background extends. See RunLog.
+  padding-right: 2rem;
   color: t.$color-text;
   white-space: nowrap;
 }
@@ -68,8 +74,8 @@ a.row {
   font-size: t.$font-sm;
   letter-spacing: 0.1em;
   color: t.$color-text-muted;
-  // Keep the picker trigger clear of the last header label.
-  padding-right: 2rem;
+  // The picker-trigger clearance (`padding-right`) now lives on the base `.row`
+  // so the header and data rows stay the same width — see the note there.
 
   // Positioning context so each column's resize handle can pin to the cell's
   // right edge.
