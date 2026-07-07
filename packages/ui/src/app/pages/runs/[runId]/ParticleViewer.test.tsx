@@ -37,8 +37,12 @@ describe("fieldCenter", () => {
     const center = fieldCenter(system({ width: 128, height: 128 }));
     expect(center).toEqual([64, 64, 0]);
 
-    const emitter = [64, 64, 0];
-    const rendered = emitter.map((v, i) => v - center[i]);
+    const emitter: [number, number, number] = [64, 64, 0];
+    const rendered = [
+      emitter[0] - center[0],
+      emitter[1] - center[1],
+      emitter[2] - center[2],
+    ];
     expect(rendered).toEqual([0, 0, 0]);
   });
 
