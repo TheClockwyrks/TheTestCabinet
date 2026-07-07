@@ -34,6 +34,11 @@ engine's exact state, bit for bit, with as little fuel as you can spend."""
 # Site-facing prose introducing the case, relative to this version folder. NOT
 # seeded into a run; it exists only to describe the case on the site.
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 
 # Handlebars prompt template, relative to this version folder. Rendered per run
 # (with the seeded specs and the selected variant) and handed to the model as the

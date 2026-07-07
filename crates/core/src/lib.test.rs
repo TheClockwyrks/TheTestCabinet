@@ -188,6 +188,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         tags: Vec::new(),
         summary: None,
         description_path: None,
+        changelog_path: std::path::PathBuf::new(),
         root: PathBuf::from("/tmp/pong"),
         prompt_path: PathBuf::from("/tmp/pong/prompt.hbs"),
         max_runtime_seconds: seconds,

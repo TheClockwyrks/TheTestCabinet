@@ -7,6 +7,11 @@ Draw the Spectra Prism: the two-band boss drone for a two-band formation shooter
 — a cyan shell around a magenta core — as a 64x64 enemy sprite produced one \
 drawing operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.75
 type = "asset-generation"

@@ -82,17 +82,18 @@ describe("TestCasesPage", () => {
     const nav = screen.getByRole("navigation", { name: "Test type" });
     for (const label of [
       "E2E",
-      "Sprite",
-      "Voxel",
+      "2D",
+      "3D",
+      "Particle",
+      "Audio",
       "Adversarial",
       "Performance",
     ]) {
       within(nav).getByRole("link", { name: label });
     }
-    expect(within(nav).getByRole("link", { name: "Adversarial" })).toHaveAttribute(
-      "href",
-      routes.testCasesCatalog("adversarial"),
-    );
+    expect(
+      within(nav).getByRole("link", { name: "Adversarial" }),
+    ).toHaveAttribute("href", routes.testCasesCatalog("adversarial"));
     expect(within(nav).getByRole("link", { name: "E2E" })).toHaveAttribute(
       "aria-current",
       "page",
@@ -111,30 +112,55 @@ describe("TestCasesPage", () => {
     expect(screen.queryByText("Sunfront")).not.toBeInTheDocument();
   });
 
-  it("splits asset-generation into a Sprite tab and a Voxel tab by asset kind", () => {
+  it("partitions asset-generation into 2D, 3D, Particle, and Audio tabs by asset kind", () => {
     const cases = [
+      // 2D family: the sprite kinds and the paint kinds.
       testCase("Skyshard", "asset-generation", { assetKind: "sprite" }),
       testCase("Flarefish", "asset-generation", { assetKind: "sprite-sheet" }),
+      testCase("Thunderhead", "asset-generation", { assetKind: "ui" }),
+      testCase("Basalt", "asset-generation", { assetKind: "material" }),
+      // 3D family: the voxel/mesh kinds and the skinned kinds.
       testCase("Aegis", "asset-generation", { assetKind: "voxel-animation" }),
       testCase("Lanternjaw", "asset-generation", { assetKind: "mc-model" }),
+      testCase("Trooper", "asset-generation", { assetKind: "sn-skinned" }),
+      // Particle and audio families.
+      testCase("Spectra", "asset-generation", { assetKind: "particle-3d" }),
+      testCase("Broadside", "asset-generation", { assetKind: "sfx-sample" }),
+      testCase("Theme", "asset-generation", { assetKind: "music" }),
     ];
 
-    // The Sprite tab keeps the two 2D sprite kinds.
+    // The 2D tab keeps the sprite and paint kinds.
     ready(cases);
-    const sprite = renderPage("sprite");
-    expect(cardTitles()).toEqual(["Flarefish", "Skyshard"]);
-    sprite.unmount();
+    const twoD = renderPage("2d");
+    expect(cardTitles()).toEqual([
+      "Basalt",
+      "Flarefish",
+      "Skyshard",
+      "Thunderhead",
+    ]);
+    twoD.unmount();
 
-    // The Voxel tab keeps the 3D voxel/mesh kinds.
+    // The 3D tab keeps the voxel/mesh and skinned kinds.
     ready(cases);
-    renderPage("voxel");
-    expect(cardTitles()).toEqual(["Aegis", "Lanternjaw"]);
+    const threeD = renderPage("3d");
+    expect(cardTitles()).toEqual(["Aegis", "Lanternjaw", "Trooper"]);
+    threeD.unmount();
+
+    // Particle and audio each get their own tab.
+    ready(cases);
+    const particle = renderPage("particle");
+    expect(cardTitles()).toEqual(["Spectra"]);
+    particle.unmount();
+
+    ready(cases);
+    renderPage("audio");
+    expect(cardTitles()).toEqual(["Broadside", "Theme"]);
   });
 
-  it("treats an asset case with no asset kind as a sprite", () => {
+  it("treats an asset case with no asset kind as a 2D sprite", () => {
     ready([testCase("Skyshard", "asset-generation")]);
 
-    renderPage("sprite");
+    renderPage("2d");
 
     expect(cardTitles()).toEqual(["Skyshard"]);
   });

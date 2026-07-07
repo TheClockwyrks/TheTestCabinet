@@ -56,9 +56,14 @@ COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs /op
 # the OS libraries it links against (`playwright install --with-deps`). The npm
 # install skips Playwright's own browser download so only the single Chromium we
 # ask for lands, in PLAYWRIGHT_BROWSERS_PATH.
+# ffmpeg transcodes each run's proof clip from the `.webm` Playwright records to
+# an H.264 `.mp4` when the public snapshot is built (crates/backend snapshot.rs
+# `transcode_webm_to_mp4`), so the gallery plays on every browser — webm/VP8 does
+# not on iOS/Safari. Only the snapshot path uses it; live proof serving is untouched.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        ca-certificates \
+       ffmpeg \
        fonts-dejavu-core fonts-liberation fonts-noto-core \
   && cd /opt/browser-driver \
   && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --omit=dev --no-audit --no-fund \

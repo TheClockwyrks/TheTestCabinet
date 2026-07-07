@@ -35,13 +35,19 @@
 			"**/.env*": true,
 		},
 		"workbench.browser.openLocalhostLinks": false,
+		"[handlebars]": {
+			"editor.suggest.showSnippets": false,
+			"editor.suggest.showWords": false,
+			"editor.acceptSuggestionOnCommitCharacter": false,
+			"editor.acceptSuggestionOnEnter": "off"
+		},
 		"[markdown]": {
 			"editor.defaultFormatter": "DavidAnson.vscode-markdownlint",
 			"editor.formatOnType": false,
 			"editor.formatOnPaste": true,
 			"editor.formatOnSave": true,
 		},
-		"[handlebars]": {
+		"[plaintext]": {
 			"editor.suggest.showSnippets": false,
 			"editor.suggest.showWords": false,
 			"editor.acceptSuggestionOnCommitCharacter": false,

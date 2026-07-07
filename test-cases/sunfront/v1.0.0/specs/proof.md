@@ -17,12 +17,13 @@ Playwright that `package.json` pins and `init` installs; do not hand-edit images
 | `proof/title.png` | The title screen and main menu on load, with every menu item visible. |
 | `proof/gameplay.png` | A live mid-match frame: both armies fighting in the lane, the player's staging yard with several **placed spawners**, the HUD (sol, income, wave timer, both base health bars), and the **fog** blacking out the enemy staging yard. |
 | `proof/game-over.png` | The match-over screen after a finished match, showing `VICTORY` or `DEFEAT` and the wave count. |
-| `proof/wave.mp4` | A short (a few seconds) screen recording spanning a **wave firing**: fresh units mustering at your base and marching into the lane, engaging the enemy line, and the front line shifting — enough to show units move, fight, and die. |
+| `proof/wave.webm` | A short (a few seconds) screen recording spanning a **wave firing**: fresh units mustering at your base and marching into the lane, engaging the enemy line, and the front line shifting — enough to show units move, fight, and die. |
 
 Notes:
 
 - Create the `proof/` directory if it does not exist.
-- A screenshot must be a PNG; the clip must be an `.mp4`.
+- A screenshot must be a PNG; the clip must be a `.webm` — the format Playwright
+  records natively (`recordVideo`), so no format conversion is needed.
 - These files are **outputs** committed alongside the implementation — they are
   not part of the playable build and need not be served by it.
 - Producing them is part of finishing the task: a missing proof is recorded

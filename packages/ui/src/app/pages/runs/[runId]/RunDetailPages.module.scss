@@ -750,8 +750,8 @@
 // --- The 3D voxel viewer (GuardedVoxelViewer) --------------------------------
 
 // The inline viewer's positioning context, so the expand button can sit over its
-// top-right corner.
-.voxelStage {
+// top-right corner. Shared by the voxel, skinned, and particle previews.
+.viewerStage {
   position: relative;
   width: 100%;
   height: 100%;
@@ -759,7 +759,7 @@
 
 // The expand-to-fullscreen button, floated over the viewer's top-right corner. Kept
 // unobtrusive until hovered so it doesn't compete with the model.
-.voxelExpandButton {
+.viewerExpandButton {
   position: absolute;
   top: t.$space-xs;
   right: t.$space-xs;
@@ -784,7 +784,7 @@
 
 // The expanded (fullscreen) overlay: a fixed, near-opaque sheet over the whole
 // page, portalled to the body so it escapes any panel's overflow/stacking.
-.voxelFullscreen {
+.viewerFullscreen {
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -797,12 +797,12 @@
   background: color-mix(in srgb, t.$color-bg 94%, #000);
 }
 
-.voxelFullscreenStage {
+.viewerFullscreenStage {
   width: 100%;
   max-width: 72rem;
 }
 
-.voxelFullscreenClose {
+.viewerFullscreenClose {
   position: absolute;
   top: t.$space-lg;
   right: t.$space-lg;
@@ -821,7 +821,7 @@
   }
 }
 
-.voxelFullscreenHint {
+.viewerFullscreenHint {
   margin: 0;
   font-size: t.$font-sm;
   color: t.$color-text-muted;

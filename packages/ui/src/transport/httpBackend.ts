@@ -41,7 +41,11 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "../client";
-import type { AssetSheet, ModelSpec, RunRecord } from "@test-cabinet/run-record";
+import type {
+  AssetSheet,
+  ModelSpec,
+  RunRecord,
+} from "@test-cabinet/run-record";
 import {
   delJson,
   getJson,
@@ -105,6 +109,8 @@ interface ResolvedVersion {
   tags: string[];
   summary: string | null;
   description: string | null;
+  // This version's changelog entry (its `changelog.md` body); required.
+  changelog: string;
   maxRuntimeSeconds: number;
   testType: TestType;
   // The asset shape an asset-generation case produces (camelCase `AssetKind`),
@@ -230,6 +236,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         tags: r.tags,
         summary: r.summary,
         description: r.description,
+        changelog: r.changelog,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
         assetKind: r.assetKind ?? null,

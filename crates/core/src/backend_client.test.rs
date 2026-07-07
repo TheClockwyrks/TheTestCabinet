@@ -34,6 +34,7 @@ impl BackendClient for StubBackend {
             tags: vec![],
             summary: None,
             description_path: None,
+            changelog_path: std::path::PathBuf::new(),
             root: std::path::PathBuf::new(),
             prompt_path: std::path::PathBuf::from("prompt.hbs"),
             max_runtime_seconds: 1800,

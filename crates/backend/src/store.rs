@@ -70,6 +70,13 @@ pub struct StoredManifest {
     /// The resolved `description.md` body, inlined (the site shows it; it is not
     /// seeded). `None` when the manifest declared no description.
     pub description: Option<String>,
+    /// The resolved per-version `changelog.md` body, inlined (the site shows it; it
+    /// is not seeded). A changelog is **required** on every version, so this is
+    /// always populated for a freshly ingested manifest; it is defaulted (to an
+    /// empty string) only so a manifest stored before the field existed still
+    /// deserializes.
+    #[serde(default)]
+    pub changelog: String,
     /// Per-case maximum harness runtime, in seconds.
     pub max_runtime_seconds: u64,
     /// The test type. Defaulted to end-to-end for manifests stored before the

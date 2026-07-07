@@ -10,6 +10,11 @@ invents whatever parts and joints it needs; the fixed contract is three animatio
 it must author — a `crown_spin`, a `gate_raise`, and a `beacon_spin` — that a game \
 plays back."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.0
 type = "asset-generation"

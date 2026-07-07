@@ -1,8 +1,8 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import type { AnimationSpec, ModelSpec } from "@test-cabinet/run-record";
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
+import { FullscreenViewport } from "./FullscreenViewport";
 import type { VoxelViewMode } from "./VoxelViewer";
 import styles from "./RunDetailPages.module.scss";
 
@@ -67,68 +67,6 @@ interface ViewerProps {
   label: string;
 }
 
-/** The full-viewport expanded view: the same model with scroll-to-zoom and
- * grab-to-rotate enabled, rendered into a portal over the page with a close button
- * (and Escape to dismiss). */
-function FullscreenOverlay({
-  viewer,
-  label,
-  onClose,
-}: {
-  viewer: ViewerProps;
-  label: string;
-  onClose: () => void;
-}) {
-  const [height, setHeight] = useState(() =>
-    typeof window === "undefined" ? 600 : Math.round(window.innerHeight * 0.9),
-  );
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    const onResize = () => setHeight(Math.round(window.innerHeight * 0.9));
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", onResize);
-    };
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      className={styles.voxelFullscreen}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${label} — expanded`}
-    >
-      <button
-        type="button"
-        className={styles.voxelFullscreenClose}
-        onClick={onClose}
-        aria-label="Close expanded view"
-      >
-        Close ✕
-      </button>
-      <div className={styles.voxelFullscreenStage}>
-        <Suspense fallback={null}>
-          <VoxelViewer
-            {...viewer}
-            mode="orbit"
-            enableZoom
-            height={height}
-            label={`${label} (expanded)`}
-          />
-        </Suspense>
-      </div>
-      <p className={styles.voxelFullscreenHint}>
-        Drag to rotate · scroll to zoom · Esc to close
-      </p>
-    </div>,
-    document.body,
-  );
-}
-
 /**
  * The guarded 3D voxel viewer with a fullscreen affordance. Mounts the lazy
  * {@link VoxelViewer} only on a WebGL-capable browser whose user hasn't asked for
@@ -169,7 +107,6 @@ export function GuardedVoxelViewer({
   useEffect(() => {
     setEnabled(supportsWebGL() && !prefersReducedMotion());
   }, []);
-  const [fullscreen, setFullscreen] = useState(false);
 
   const fallback = (
     <VoxelFallback url={fallbackUrl} label={label} height={height} />
@@ -187,28 +124,24 @@ export function GuardedVoxelViewer({
   };
 
   return (
-    <div className={styles.voxelStage}>
+    <FullscreenViewport
+      label={label}
+      expandable={fullscreenable}
+      renderExpanded={(expandedHeight) => (
+        <Suspense fallback={null}>
+          <VoxelViewer
+            {...viewer}
+            mode="orbit"
+            enableZoom
+            height={expandedHeight}
+            label={`${label} (expanded)`}
+          />
+        </Suspense>
+      )}
+    >
       <Suspense fallback={fallback}>
         <VoxelViewer {...viewer} mode={mode} height={height} label={label} />
       </Suspense>
-      {fullscreenable && (
-        <button
-          type="button"
-          className={styles.voxelExpandButton}
-          onClick={() => setFullscreen(true)}
-          aria-label={`Expand ${label} to fullscreen`}
-          title="Expand"
-        >
-          ⛶
-        </button>
-      )}
-      {fullscreen && (
-        <FullscreenOverlay
-          viewer={viewer}
-          label={label}
-          onClose={() => setFullscreen(false)}
-        />
-      )}
-    </div>
+    </FullscreenViewport>
   );
 }

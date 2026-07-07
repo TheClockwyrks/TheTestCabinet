@@ -103,6 +103,7 @@ fn performance_version(root: PathBuf, module_rel: &str, case: PerformanceCase) -
         tags: Vec::new(),
         summary: None,
         description_path: None,
+        changelog_path: std::path::PathBuf::new(),
         root,
         prompt_path: PathBuf::from("prompt.hbs"),
         max_runtime_seconds: 3600,

@@ -16,6 +16,7 @@ export type DetailTab =
   | "runs"
   | "leaderboard"
   | "metrics"
+  | "changelog"
   | "arena";
 
 interface TestCaseDetailLayoutProps {
@@ -61,15 +62,32 @@ export function TestCaseDetailLayout({
   // Tab links carry the current query string so switching tabs preserves the
   // selected variant.
   const tabs: { key: DetailTab; label: string; to: string }[] = [
-    { key: "overview", label: "Overview", to: routes.testCaseDetail(testCase.slug) },
-    { key: "inputs", label: "Inputs", to: routes.testCaseInputs(testCase.slug) },
+    {
+      key: "overview",
+      label: "Overview",
+      to: routes.testCaseDetail(testCase.slug),
+    },
+    {
+      key: "inputs",
+      label: "Inputs",
+      to: routes.testCaseInputs(testCase.slug),
+    },
     { key: "runs", label: "Runs", to: routes.testCaseRuns(testCase.slug) },
     {
       key: "leaderboard",
       label: "Leaderboard",
       to: routes.testCaseLeaderboard(testCase.slug),
     },
-    { key: "metrics", label: "Metrics", to: routes.testCaseMetrics(testCase.slug) },
+    {
+      key: "metrics",
+      label: "Metrics",
+      to: routes.testCaseMetrics(testCase.slug),
+    },
+    {
+      key: "changelog",
+      label: "Changelog",
+      to: routes.testCaseChangelog(testCase.slug),
+    },
   ];
   // The Arena tab is shown only for an adversarial case on a console that can run
   // matches (a connected worker exposes the arena capability); it is hidden on the

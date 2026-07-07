@@ -7,6 +7,11 @@ Synthesize the Spectra fighter's laser-fire sound: a short, bright arcade-retro 
 "pew" — a fast pitch-down zap built from oscillators alone, one recorded \
 operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 0.75
 type = "asset-generation"

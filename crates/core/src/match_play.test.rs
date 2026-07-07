@@ -26,6 +26,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         tags: Vec::new(),
         summary: None,
         description_path: None,
+        changelog_path: std::path::PathBuf::new(),
         root: case_root(),
         prompt_path: PathBuf::from("prompt.hbs"),
         max_runtime_seconds: 1800,

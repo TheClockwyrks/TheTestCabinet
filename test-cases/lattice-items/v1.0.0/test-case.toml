@@ -8,6 +8,11 @@ belts (iron/copper/steel plates, iron/copper ore, stone, an iron gear wheel, and
 an electronic circuit) — as a 16x16 sprite sheet, one item per frame, produced \
 one drawing operation at a time."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1
 type = "asset-generation"

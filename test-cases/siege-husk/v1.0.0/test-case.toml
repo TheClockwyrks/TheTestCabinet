@@ -11,6 +11,11 @@ parts. The model invents the whole skeleton; the fixed contract is three animati
 must author so the skin deforms convincingly — a looping `walk` shamble, a one-shot \
 `lunge` attack, and a one-shot `collapse` death crumple — the reviewer can play back."""
 description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
 prompt = "prompt.hbs"
 max_runtime_hours = 1.5
 type = "asset-generation"

@@ -275,6 +275,7 @@ fn temp_catalog(
     std::fs::create_dir_all(version.join("variants")).expect("create variants dir");
     std::fs::write(version.join("test-case.toml"), manifest).expect("write manifest");
     std::fs::write(version.join("prompt.hbs"), "Build in {{workspace}}.").expect("write prompt");
+    std::fs::write(version.join("changelog.md"), "Introduced.").expect("write changelog");
     std::fs::write(version.join("overview.md"), "# Overview").expect("write spec");
     for name in ["menu-base.html", "menu-frenzy.html", "gameplay.html"] {
         std::fs::write(version.join("reference").join(name), "<html></html>").expect("write ref");
@@ -296,6 +297,7 @@ name = "Demo"
 difficulty = "easy"
 tags = []
 prompt = "prompt.hbs"
+changelog = "changelog.md"
 [build]
 install = "npm ci"
 build = "npm run build"

@@ -21,6 +21,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         tags: vec![],
         summary: None,
         description_path: None,
+        changelog_path: std::path::PathBuf::new(),
         root: PathBuf::from("/tmp/pong"),
         prompt_path,
         max_runtime_seconds: 1800,

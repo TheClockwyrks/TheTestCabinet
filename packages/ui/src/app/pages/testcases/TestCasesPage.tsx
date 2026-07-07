@@ -2,7 +2,11 @@ import { useMemo, useState } from "react";
 import { Link, NavLink } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { isVoxelAssetKind } from "../../../client";
+import {
+  isAudioAssetKind,
+  isParticleAssetKind,
+  isVoxelAssetKind,
+} from "../../../client";
 import { useTestCases } from "../../data/useTestCases";
 import type { TestCaseSummary } from "../../data/testCases";
 import { routes } from "../../routes";
@@ -11,12 +15,15 @@ import styles from "./TestCasesPage.module.scss";
 
 // The catalog's type tabs, always shown in this order so the bar's shape is
 // stable regardless of which types the catalog currently holds. The catalog
-// shows exactly one tab at a time. "Asset" is split into the 2D `sprite` and 3D
-// `voxel` tabs; the other three map one-to-one to a test type.
+// shows exactly one tab at a time. Asset-generation is split into four
+// asset-family tabs — "2D" (sprite + paint), "3D" (voxel/mesh/skinned),
+// "Particle", and "Audio"; the other three map one-to-one to a test type.
 const CATALOG_TABS: ReadonlyArray<{ tab: CatalogTab; label: string }> = [
   { tab: "end-to-end", label: "E2E" },
-  { tab: "sprite", label: "Sprite" },
-  { tab: "voxel", label: "Voxel" },
+  { tab: "2d", label: "2D" },
+  { tab: "3d", label: "3D" },
+  { tab: "particle", label: "Particle" },
+  { tab: "audio", label: "Audio" },
   { tab: "adversarial", label: "Adversarial" },
   { tab: "performance", label: "Performance" },
 ];
@@ -148,20 +155,34 @@ function matches(
   return haystack.includes(needle);
 }
 
-// Whether a case belongs under a given tab. The Sprite and Voxel tabs both scope
-// to asset-generation cases, split on whether the case's asset kind is a 3D
-// voxel/mesh shape; the other tabs map straight to a test type.
+// Whether a case belongs under a given tab. The four asset-family tabs all scope
+// to asset-generation cases, partitioned by the case's asset kind: 3D is the
+// voxel/mesh/skinned family, Particle and Audio are their own families, and 2D
+// is the remainder (the sprite and paint kinds, plus a case with no asset kind,
+// which defaults to `sprite`). The other tabs map straight to a test type.
 function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
   switch (tab) {
-    case "sprite":
+    case "2d":
       return (
         testCase.testType === "asset-generation" &&
-        !isVoxelAssetKind(testCase.assetKind)
+        !isVoxelAssetKind(testCase.assetKind) &&
+        !isParticleAssetKind(testCase.assetKind) &&
+        !isAudioAssetKind(testCase.assetKind)
       );
-    case "voxel":
+    case "3d":
       return (
         testCase.testType === "asset-generation" &&
         isVoxelAssetKind(testCase.assetKind)
+      );
+    case "particle":
+      return (
+        testCase.testType === "asset-generation" &&
+        isParticleAssetKind(testCase.assetKind)
+      );
+    case "audio":
+      return (
+        testCase.testType === "asset-generation" &&
+        isAudioAssetKind(testCase.assetKind)
       );
     case "end-to-end":
       return testCase.testType === "end-to-end";

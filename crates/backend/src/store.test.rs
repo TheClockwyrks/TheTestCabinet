@@ -17,6 +17,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         tags: vec!["arcade".to_string()],
         summary: Some("A sample.".to_string()),
         description: None,
+        changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
         build: Some(StoredBuild {

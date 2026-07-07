@@ -18,13 +18,15 @@ media.
 | `proof/title.png` | The title menu on load, with every menu item visible. |
 | `proof/gameplay.png` | A live in-trench frame mid-dark: the forager with its lit pocket of revealed maze fading into black fog, plankton, the HUD, and at least one predator visible where light or sonar reaches. |
 | `proof/game-over.png` | The game-over screen after a finished game, with the final score and depth reached. |
-| `proof/sonar.mp4` | A short clip of a **sonar pulse**: the pulse flooding outward through the corridors and revealing the maze **around a corner** (reaching tiles your straight-line light does not), and marking a predator beyond the bend for its brief window. |
-| `proof/hunt.mp4` | A short clip of a **predator hunting**: a predator appearing out of the dark and chasing the forager, then being shaken — for example the Listener overshooting a junction during a juke, or the Lure pulled in as you brighten and lost as you go dim or ink. |
+| `proof/sonar.webm` | A short clip of a **sonar pulse**: the pulse flooding outward through the corridors and revealing the maze **around a corner** (reaching tiles your straight-line light does not), and marking a predator beyond the bend for its brief window. |
+| `proof/hunt.webm` | A short clip of a **predator hunting**: a predator appearing out of the dark and chasing the forager, then being shaken — for example the Listener overshooting a junction during a juke, or the Lure pulled in as you brighten and lost as you go dim or ink. |
 
 Notes:
 
 - Create the `proof/` directory if it does not exist.
-- A screenshot must be a PNG; each clip must be an `.mp4` of a few seconds.
+- A screenshot must be a PNG; each clip must be a `.webm` of a few seconds — the
+  format Playwright records natively (`recordVideo`), so no format conversion is
+  needed.
 - These files are **outputs** committed alongside the implementation — they are
   not part of the playable build and need not be served by it.
 - Producing them is part of finishing the task: a missing proof is recorded

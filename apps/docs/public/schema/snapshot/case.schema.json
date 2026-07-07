@@ -290,7 +290,11 @@
   "properties": {
     "assetKind": {
       "$ref": "#/$defs/AssetKind",
-      "description": "The asset shape an asset-generation case produces, so the gallery can split\nits Sprite (2D) and Voxel (3D) tabs. Defaults to `sprite` for every\nnon-asset case (harmless — the split is only consulted for asset cases)."
+      "description": "The asset shape an asset-generation case produces, so the gallery can\npartition asset cases across its 2D (sprite/paint), 3D (voxel/mesh/skinned),\nParticle, and Audio tabs. Defaults to `sprite` for every non-asset case\n(harmless — the split is only consulted for asset cases)."
+    },
+    "changelog": {
+      "description": "This version's own changelog entry (its `changelog.md` body), inlined.\nAlways present — a changelog is required on every version. The site collects\nevery published version's entry into one newest-first changelog on the\ncase's detail page.",
+      "type": "string"
     },
     "checks": {
       "items": {
@@ -354,7 +358,7 @@
     },
     "testType": {
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TestType",
-      "description": "The case's test type, so the static gallery can scope its catalog tabs to\na single type (E2E / Sprite / Voxel / Adversarial / Performance) exactly\nas the backend-connected consoles do. Without it the site cannot tell a\ncase's type and treats every case as end-to-end."
+      "description": "The case's test type, so the static gallery can scope its catalog tabs to\na single type (E2E / asset-generation / Adversarial / Performance) exactly\nas the backend-connected consoles do. Without it the site cannot tell a\ncase's type and treats every case as end-to-end."
     },
     "variants": {
       "items": {
@@ -375,6 +379,7 @@
     "assetKind",
     "difficulty",
     "tags",
+    "changelog",
     "variants",
     "commonSeededInputs",
     "checks",

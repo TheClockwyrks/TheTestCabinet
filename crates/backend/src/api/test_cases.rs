@@ -212,6 +212,7 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         tags: manifest.tags.clone(),
         summary: manifest.summary.clone(),
         description: manifest.description.clone(),
+        changelog: manifest.changelog.clone(),
         max_runtime_seconds: manifest.max_runtime_seconds,
         test_type: manifest.test_type,
         build: manifest.build.as_ref().map(|build| BuildOut {
@@ -443,6 +444,10 @@ pub struct VersionResponse {
     tags: Vec<String>,
     summary: Option<String>,
     description: Option<String>,
+    /// The version's own changelog entry (its `changelog.md` body), inlined.
+    /// Always present — a changelog is required on every version. The console
+    /// aggregates every version's entry into the case's changelog tab.
+    changelog: String,
     max_runtime_seconds: u64,
     test_type: TestType,
     #[serde(skip_serializing_if = "Option::is_none")]

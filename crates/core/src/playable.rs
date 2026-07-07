@@ -133,6 +133,23 @@ pub fn proof_served_extension(dest: &str) -> String {
     }
 }
 
+/// The file extension a proof is served under **in the public snapshot** — as
+/// opposed to [`proof_served_extension`], which is how it is served live from the
+/// produced tree.
+///
+/// They differ for video only. A run captures its clip as the `.webm` Playwright
+/// records natively (the single format a case's `dest` names), which the live
+/// console serves verbatim; but the snapshot builder transcodes it to H.264
+/// `.mp4` so the public gallery plays on every browser (webm/VP8 does not on
+/// iOS/Safari). So a `Video` proof publishes as `mp4` regardless of its `dest`,
+/// while an `Image` proof publishes under its recorded extension unchanged.
+pub fn proof_published_extension(kind: crate::test_case::MediaKind, dest: &str) -> String {
+    match kind {
+        crate::test_case::MediaKind::Video => "mp4".to_string(),
+        crate::test_case::MediaKind::Image => proof_served_extension(dest),
+    }
+}
+
 /// An asset-generation media file resolved from a run, ready to write to an HTTP
 /// or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -320,6 +337,7 @@ fn proof_content_type(file: &str) -> &'static str {
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("webp") => "image/webp",
         Some("gif") => "image/gif",
+        Some("webm") => "video/webm",
         Some("mp4") => "video/mp4",
         _ => "application/octet-stream",
     }

@@ -11,6 +11,7 @@ import {
   KEY_LIGHT,
   cameraPosition,
   framing,
+  type Vec3,
 } from "./voxelScene";
 
 // The exported GIF's square pixel size, capture rate, and a cap on total frames
@@ -52,28 +53,58 @@ export function voxelGifTiming(periodMs: number): {
 }
 
 /**
- * Bake one voxel animation into a looping GIF, on an offscreen three.js renderer
- * that mirrors the
- * interactive preview's camera framing and lighting (see {@link framing} and the
- * shared light constants) so the download looks like what the reviewer saw.
+ * The minimal posable-rig surface the offscreen bake drives: a scene node to add
+ * under the capture's centering pivot, a deterministic {@link seek} to an absolute
+ * time, and a {@link dispose}. Both {@link VoxelRig} and
+ * `@test-cabinet/voxel-runtime`'s `SkinnedVoxelRig` satisfy it, so the rigid and
+ * skinned GIF encoders share one renderer/encoder core.
+ */
+export interface PosableRig {
+  /** The scene node to add under the capture's centering pivot. */
+  readonly root: THREE.Object3D;
+  /** Seek the playback clock to an absolute time (ms) and re-pose. */
+  seek(timeMs: number): void;
+  /** Release GPU geometry and detach. */
+  dispose(): void;
+}
+
+/**
+ * Bake one posed rig's animation into a looping GIF on an offscreen three.js renderer
+ * that mirrors the interactive preview's camera framing and lighting (see
+ * {@link framing} and the shared light constants) so the download looks like what the
+ * reviewer saw.
  *
- * The rig is stepped deterministically with {@link VoxelRig.seek} at evenly
- * spaced times across one period, each pose rendered over a solid background and
- * quantized into a GIF frame. Using a separate, disposed-immediately renderer
- * keeps the page's single shared WebGL context (and the live preview) untouched.
+ * The rig — already built, posed, and cued to its animation by {@link buildRig} — is
+ * stepped deterministically with {@link PosableRig.seek} at evenly spaced times across
+ * one period, each pose rendered over a solid background and quantized into a GIF
+ * frame. Using a separate, disposed-immediately renderer keeps the page's single
+ * shared WebGL context (and the live preview) untouched.
+ *
+ * Shared by {@link encodeVoxelGif} (rigid per-part meshes) and `encodeSkinnedGif`
+ * (one skinned mesh); the only per-family differences are which rig class is built and
+ * which geometry is measured for framing, both passed in.
  *
  * Throws if a WebGL context can't be created.
  */
-export async function encodeVoxelGif({
-  meshes,
-  rig,
-  animation,
-  callerJoints,
+export async function encodeRigGif({
+  buildRig,
+  framing: bounds,
   periodMs,
   background,
-}: VoxelGifInput): Promise<Blob> {
+}: {
+  /** Builds the rig to bake — already posed and cued to its animation — and returns
+   * it added-ready. Called once, inside the capture, so its geometry is disposed with
+   * the renderer. */
+  buildRig: () => PosableRig;
+  /** The camera framing (from {@link framing} over the family's geometry). */
+  framing: { center: Vec3; distance: number; far: number };
+  /** The loop length in ms — the animation's `periodMs`. */
+  periodMs: number;
+  /** Solid background color composited behind the model. */
+  background: string;
+}): Promise<Blob> {
   const { frameCount, stepMs, delayMs } = voxelGifTiming(periodMs);
-  const { center, distance, far } = framing(meshes);
+  const { center, distance, far } = bounds;
 
   // Opaque solid background: no alpha needed, and it gives clean anti-aliased
   // edges the way transparency (1-bit in a GIF) can't.
@@ -107,11 +138,8 @@ export async function encodeVoxelGif({
   pivot.position.set(-center[0], -center[1], -center[2]);
   scene.add(pivot);
 
-  const voxelRig = new VoxelRig(rig, meshes);
-  pivot.add(voxelRig.root);
-  voxelRig.pose(callerJoints);
-  // A named animation to bake, or `null` to fall back to the rig's `autoPlay` idle.
-  voxelRig.playAnimation(animation);
+  const rig = buildRig();
+  pivot.add(rig.root);
 
   // A 2D canvas to composite each rendered frame onto and read pixels back from
   // (drawing our own WebGL canvas onto it is same-origin, so it never taints).
@@ -120,7 +148,7 @@ export async function encodeVoxelGif({
   readback.height = SIZE;
   const ctx = readback.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
-    voxelRig.dispose();
+    rig.dispose();
     renderer.dispose();
     throw new Error("Canvas 2D context is unavailable");
   }
@@ -128,7 +156,7 @@ export async function encodeVoxelGif({
   const gif = GIFEncoder();
   try {
     for (let frame = 0; frame < frameCount; frame++) {
-      voxelRig.seek(frame * stepMs);
+      rig.seek(frame * stepMs);
       renderer.render(scene, camera);
       ctx.drawImage(renderer.domElement, 0, 0, SIZE, SIZE);
       const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
@@ -141,7 +169,7 @@ export async function encodeVoxelGif({
   } finally {
     // Release the model geometry and the WebGL context promptly — this renderer
     // exists only for the capture and must not linger against the context budget.
-    voxelRig.dispose();
+    rig.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
   }
@@ -150,4 +178,33 @@ export async function encodeVoxelGif({
   const bytes = new Uint8Array(encoded.length);
   bytes.set(encoded);
   return new Blob([bytes], { type: "image/gif" });
+}
+
+/**
+ * Bake one voxel animation into a looping GIF (see {@link encodeRigGif}). Builds a
+ * {@link VoxelRig} from the run's rig and per-part meshes, poses it at the static
+ * caller joints, and cues its animation (or `null` for the rig's `autoPlay` idle).
+ *
+ * Throws if a WebGL context can't be created.
+ */
+export async function encodeVoxelGif({
+  meshes,
+  rig,
+  animation,
+  callerJoints,
+  periodMs,
+  background,
+}: VoxelGifInput): Promise<Blob> {
+  return encodeRigGif({
+    buildRig: () => {
+      const voxelRig = new VoxelRig(rig, meshes);
+      voxelRig.pose(callerJoints);
+      // A named animation to bake, or `null` to fall back to the `autoPlay` idle.
+      voxelRig.playAnimation(animation);
+      return voxelRig;
+    },
+    framing: framing(meshes),
+    periodMs,
+    background,
+  });
 }

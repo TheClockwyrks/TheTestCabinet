@@ -47,6 +47,14 @@ struct Manifest {
     /// runs; it exists only to describe the case on the site.
     #[serde(default)]
     description: Option<PathBuf>,
+    /// The per-version changelog entry, relative to the version folder, pointing at
+    /// a Markdown file (for example `changelog.md`). **Required** — every version
+    /// must record what changed **in it** so no revision ships without a note (the
+    /// first version typically just reads "Introduced."). The site aggregates every
+    /// version's entry into a single newest-first changelog on the case's detail
+    /// page. Like [`Self::description`] it is site-facing only and **not** seeded
+    /// into runs.
+    changelog: PathBuf,
     /// The prompt template handed to the harness, relative to the version folder.
     /// Rendered through Handlebars with the run's workspace and seeded spec paths;
     /// see [`crate::prompt`].
@@ -1274,7 +1282,9 @@ impl AssetKind {
 pub enum MediaKind {
     /// A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`).
     Image,
-    /// A video clip (`mp4`).
+    /// A video clip (`webm`, `mp4`). A run captures its clip as the `.webm`
+    /// Playwright records natively; the public snapshot transcodes it to `.mp4`
+    /// for universal (incl. iOS/Safari) playback.
     Video,
 }
 
@@ -1285,7 +1295,7 @@ impl MediaKind {
         let ext = path.extension()?.to_str()?.to_ascii_lowercase();
         match ext.as_str() {
             "png" | "jpg" | "jpeg" | "webp" | "gif" => Some(Self::Image),
-            "mp4" => Some(Self::Video),
+            "webm" | "mp4" => Some(Self::Video),
             _ => None,
         }
     }
@@ -2207,6 +2217,12 @@ pub struct TestCaseVersion {
     /// the version folder. `None` when the manifest declares none. This is
     /// **not** seeded into runs.
     pub description_path: Option<PathBuf>,
+    /// Path to the per-version changelog Markdown, resolved inside the version
+    /// folder. Always present — a changelog is **required** on every version.
+    /// Records what changed in this version; the site aggregates every version's
+    /// entry into a newest-first changelog. This is **not** seeded into runs.
+    #[serde(default)]
+    pub changelog_path: PathBuf,
     /// The version folder on the host: `test-cases/<slug>/<version>/`.
     pub root: PathBuf,
     /// Host path to the prompt template handed to the harness. Rendered through
@@ -3795,6 +3811,18 @@ impl TestCaseCatalog {
             None => None,
         };
 
+        // The per-version changelog is required: every version must record what
+        // changed in it. It is validated to exist with the same self-containment
+        // guard as the description, and is likewise never seeded into a run — it is
+        // purely site-facing.
+        let changelog_path = resolve_inside(&manifest.changelog, "changelog")?;
+        if !changelog_path.is_file() {
+            return Err(invalid(format!(
+                "changelog `{}` does not exist",
+                manifest.changelog.display()
+            )));
+        }
+
         let mut asset_paths = Vec::with_capacity(manifest.assets.len());
         for asset in &manifest.assets {
             let path = resolve_inside(asset, "asset")?;
@@ -4410,6 +4438,7 @@ impl TestCaseCatalog {
             tags: manifest.tags,
             summary: manifest.summary,
             description_path,
+            changelog_path,
             root,
             prompt_path,
             max_runtime_seconds: crate::runtime_hours_to_seconds(manifest.max_runtime_hours),

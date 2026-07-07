@@ -44,8 +44,10 @@ though they seed more references as targets. See
 ## Proofs
 
 A case can ask the build to produce **proof of implementation** — a screenshot or
-short `.mp4` written to a known path as evidence that a feature works, declared
-with a [`[[proof]]`](/testing/end-to-end/manifests/). Validation does not judge a
+short `.webm` clip written to a known path as evidence that a feature works,
+declared with a [`[[proof]]`](/testing/end-to-end/manifests/). A clip is a
+`.webm` (the format Playwright records natively; the public gallery transcodes it
+to `.mp4` for universal playback). Validation does not judge a
 proof's contents; it records only whether each declared proof turned up in the
 produced tree and is non-empty. This is **informational**: a missing proof never
 changes whether the run loaded or its status. It is surfaced so a reviewer sees

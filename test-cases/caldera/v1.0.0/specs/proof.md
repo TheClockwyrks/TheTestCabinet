@@ -27,12 +27,13 @@ without playing the openers.
 | `proof/terrain.png` | A close, tilted camera frame that clearly shows the terrain rendering: **terraced** single-level slopes, a **cliff** face where levels differ by two or more, the carved **river** channel with its animated water, and the procedural surface variation — so the hex-mesh generation is inspectable. |
 | `proof/overlay.png` | A frame with the **fluid-network overlay** enabled (`specs/flow.md`), showing the water and steam networks with flow, the boilers and sources, and at least one tower's powered/brownout/dark state. |
 | `proof/wireframe.png` | A frame with **wireframe mode** enabled (`specs/flow.md`), showing the terrain hex mesh (its terraces and cliffs) and the structure/unit geometry as wireframe, so the generated geometry is visible. |
-| `proof/assault.mp4` | A short (a few seconds) screen recording of a live wave: Slag spawning at a breach and **pathing over the terrain** — up terraces, around a cliff, wading a river — toward the Core, towers firing and destroying Slag, and either a **Sapper cutting a pipe** (a tower browning out) or a **Breaker/Colossus** being brought down by anti-armor fire. Enough to show units path, the towers fight, and the fluid network matter. |
+| `proof/assault.webm` | A short (a few seconds) screen recording of a live wave: Slag spawning at a breach and **pathing over the terrain** — up terraces, around a cliff, wading a river — toward the Core, towers firing and destroying Slag, and either a **Sapper cutting a pipe** (a tower browning out) or a **Breaker/Colossus** being brought down by anti-armor fire. Enough to show units path, the towers fight, and the fluid network matter. |
 
 Notes:
 
 - Create the `proof/` directory if it does not exist.
-- A screenshot must be a PNG; the clip must be an `.mp4`.
+- A screenshot must be a PNG; the clip must be a `.webm` — the format Playwright
+  records natively (`recordVideo`), so no format conversion is needed.
 - These files are **outputs** committed alongside the implementation — they are not
   part of the playable build and need not be served by it.
 - Producing them is part of finishing the task: a missing proof is recorded against

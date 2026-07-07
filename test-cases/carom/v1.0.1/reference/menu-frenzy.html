@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!--
+  Carom — title / main menu reference mockup for the `frenzy` variant.
+  Canonical view slug: title
+  Lists the standard SOLO and VERSUS modes plus the FRENZY mode this variant adds.
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title / main menu)
+  and ../specs/modes/frenzy.md (Menu entry).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Carom — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- Dimmed gameplay furniture behind the menu. -->
+      <div class="net dim"></div>
+      <div class="paddle player dim" style="left: 48px; top: 250px"></div>
+      <div class="paddle opponent dim" style="left: 1216px; top: 380px"></div>
+      <div class="obstacle dim" style="left: 480px; top: 150px"></div>
+      <div class="obstacle dim" style="left: 780px; top: 430px"></div>
+      <div class="ball dim" style="left: 689px; top: 319px"></div>
+
+      <div class="center">
+        <h1 class="title">CAROM</h1>
+        <div class="tagline">NEON PADDLE DUEL</div>
+        <nav class="menu">
+          <div class="menu-item selected">SOLO</div>
+          <div class="menu-item">VERSUS</div>
+          <div class="menu-item">FRENZY</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT</div>
+    </div>
+  </body>
+</html>
