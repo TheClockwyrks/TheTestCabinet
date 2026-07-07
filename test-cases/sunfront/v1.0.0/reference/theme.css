@@ -44,35 +44,29 @@ body {
   background: #000;
 }
 
-/* The fixed logical stage the mockups are authored on. These mockups pin the HUD
- * layout, palette, and type at a 1280x720 viewport; the game's world is a 3D
- * ground plane in world units (see ../specs/overview.md). */
+/* The fixed logical stage the mockups are authored on, and the neutral dark
+ * viewport the HUD/menu chrome sits over. The mockups pin the HUD layout,
+ * palette, and type at a 1280x720 viewport; the game's 3D world (the sand
+ * battlefield, both bases and Reliquaries, the armies, the staging yard, and the
+ * fog) is rendered by the build in WebGL/WebGPU (see ../specs/overview.md), not
+ * faked here in flat CSS. */
 .stage {
   position: relative;
   width: 1280px;
   height: 720px;
   overflow: hidden;
-  background: var(--sand);
-  font-family: var(--mono);
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
-}
-
-/* Neutral dark viewport for the HUD-only gameplay mockup: the 3D battlefield is
- * rendered by the build (WebGL/WebGPU), so the mockup shows only the HUD overlay
- * over this neutral backdrop rather than faking the world in flat CSS. */
-.viewport {
-  position: absolute;
-  inset: 0;
   background: radial-gradient(
       ellipse at 50% 44%,
       #241a10 0%,
       #17110a 68%,
       #0e0a05 100%
     );
+  font-family: var(--mono);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ---- Zones ------------------------------------------------------------- */
+/* ---- HUD strip --------------------------------------------------------- */
 
 .hud-strip {
   position: absolute;
@@ -82,158 +76,6 @@ body {
   height: 64px;
   background: rgba(20, 15, 8, 0.82);
   border-bottom: 2px solid var(--rock);
-}
-
-.lane {
-  position: absolute;
-  left: 0;
-  top: 64px;
-  width: 1280px;
-  height: 404px;
-  background: repeating-linear-gradient(
-    to bottom,
-    var(--sand) 0,
-    var(--sand) 34px,
-    var(--sand-shadow) 34px,
-    var(--sand-shadow) 36px
-  );
-}
-
-.yard {
-  position: absolute;
-  left: 0;
-  top: 480px;
-  width: 1280px;
-  height: 240px;
-  background: var(--yard);
-  border-top: 2px solid var(--rock);
-}
-
-/* the fogged enemy half of the yard */
-.yard-fog {
-  position: absolute;
-  left: 640px;
-  top: 480px;
-  width: 640px;
-  height: 240px;
-  background: var(--fog);
-  border-left: 2px solid var(--rock);
-}
-
-/* a soft fog gradient creeping over the right end of the lane */
-.lane-fog {
-  position: absolute;
-  right: 0;
-  top: 64px;
-  width: 360px;
-  height: 404px;
-  pointer-events: none;
-  background: linear-gradient(
-    to right,
-    rgba(21, 15, 8, 0) 0%,
-    rgba(21, 15, 8, 0.55) 55%,
-    rgba(21, 15, 8, 0.92) 100%
-  );
-}
-
-/* ---- Structures -------------------------------------------------------- */
-
-.base {
-  position: absolute;
-  width: 72px;
-  height: 180px;
-  top: 176px;
-  border-radius: 6px;
-  border: 2px solid var(--rock);
-}
-.base.player {
-  left: 8px;
-  background: var(--ember);
-  box-shadow: 0 0 26px rgba(255, 138, 61, 0.5);
-}
-.base.enemy {
-  left: 1200px;
-  background: var(--azure);
-  box-shadow: 0 0 26px rgba(70, 180, 224, 0.5);
-}
-
-.reliquary {
-  position: absolute;
-  width: 72px;
-  height: 96px;
-  top: 218px; /* centered on lane center y=266 */
-  border-radius: 6px;
-  background: var(--relic);
-  border: 2px solid var(--rock);
-  box-shadow: 0 0 22px rgba(236, 213, 140, 0.55);
-}
-
-/* a placed spawner on the build grid (72x72 cells) */
-.spawner {
-  position: absolute;
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-  background: var(--ember);
-  border: 2px solid var(--rock);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  letter-spacing: 0;
-  color: var(--rock);
-  font-weight: 700;
-}
-.spawner .pips {
-  position: absolute;
-  bottom: 4px;
-  right: 6px;
-  font-size: 11px;
-  color: var(--ember-light);
-}
-.spawner.selected {
-  outline: 3px solid var(--ember-light);
-  outline-offset: 2px;
-}
-
-/* ---- Units ------------------------------------------------------------- */
-
-/* A unit is a chevron pointing its travel direction, in team color with a dark
- * outline; its energy accent is the light shade. Player points right, enemy
- * points left. */
-.unit {
-  position: absolute;
-  width: 0;
-  height: 0;
-  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));
-}
-.unit.ember {
-  border-top: 9px solid transparent;
-  border-bottom: 9px solid transparent;
-  border-left: 16px solid var(--ember);
-}
-.unit.azure {
-  border-top: 9px solid transparent;
-  border-bottom: 9px solid transparent;
-  border-right: 16px solid var(--azure);
-}
-.unit.big.ember {
-  border-top: 15px solid transparent;
-  border-bottom: 15px solid transparent;
-  border-left: 26px solid var(--ember-light);
-}
-.unit.big.azure {
-  border-top: 15px solid transparent;
-  border-bottom: 15px solid transparent;
-  border-right: 26px solid var(--azure-light);
-}
-
-/* small health bar above a damaged thing */
-.hp {
-  position: absolute;
-  height: 5px;
-  background: var(--hp-good);
-  border: 1px solid var(--rock);
 }
 
 /* ---- HUD --------------------------------------------------------------- */

@@ -21,7 +21,9 @@ it usefully. The real build renders the world in **WebGL/WebGPU**
 (`../specs/overview.md`) through a tilted overhead camera; the mockup exists to pin
 the **palette, HUD layout, and type**, so it is **HUD-only**: the HUD overlay over
 a neutral viewport, with the 3D world left to the build. The `title` and
-`game-over` mockups keep a dim, stylized slice of the field behind their menus.
+`game-over` mockups likewise show only their menu/card chrome over a neutral
+viewport — none of the mockups fake the 3D world; the build renders it (dimmed,
+where a menu or card sits over it) from the specification.
 
 ## Views
 
@@ -46,11 +48,12 @@ the line, the player's staging yard with placed, levelled spawners, and the **fo
 blacking out the enemy staging yard and far lane — is rendered by the build from
 the specification, not faked here. The values shown are just one example moment.
 
-`theme.css` holds the shared palette, type, and field/HUD furniture referenced by
+`theme.css` holds the shared palette, type, and HUD/menu furniture referenced by
 every view and by the specification (the seeded specs under
-[`../specs/`](../specs/)): the sand lane and its banding, the two team colors
-(Ember and Azure) with dark unit outlines, the neutral Reliquary color, the fog
-color, and the HUD/menu styling.
+[`../specs/`](../specs/)): the sand and fog colors, the two team colors (Ember and
+Azure) and the neutral Reliquary color, the health-bar colors, and the HUD/menu
+styling. The 3D world's geometry is built by the implementation from the specs,
+not defined here.
 
 ## Generating screenshots
 
