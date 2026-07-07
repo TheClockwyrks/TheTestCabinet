@@ -9,7 +9,11 @@ import {
 } from "react";
 import styles from "./ColumnMenu.module.scss";
 
-/** A column offered in the picker. Only optional columns are listed. */
+/**
+ * A column offered in the picker. Every column the user may show or hide is
+ * `optional` and therefore listed; a column left non-optional (the caret gutter)
+ * is a fixed structural column, always shown and never offered.
+ */
 export interface ColumnMenuItem {
   id: string;
   label: string;
@@ -44,7 +48,9 @@ const VIEWPORT_MARGIN = 8;
 
 /**
  * The column picker for a resizable table: a small always-visible trigger button
- * plus a popover of checkboxes for the table's optional columns. The popover
+ * plus a popover listing every hideable column with a checkbox for its shown/
+ * hidden state, so the user has full control over which columns render (the one
+ * remaining visible column stays locked so the table never empties). The popover
  * opens from the trigger (keyboard- and pointer-reachable) or, via the exposed
  * `openAt` handle, from a right-click on the header — so the feature is
  * discoverable without relying on right-click alone.
@@ -60,6 +66,12 @@ export function ColumnMenu({
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   const optional = columns.filter((col) => col.optional);
+  // The count of currently-shown hideable columns; when it drops to one, that
+  // last column's checkbox locks so the user can't hide everything.
+  const visibleCount = optional.reduce(
+    (n, col) => (isVisible(col.id) ? n + 1 : n),
+    0,
+  );
 
   useImperativeHandle(
     ref,
@@ -146,16 +158,29 @@ export function ColumnMenu({
           style={{ left: anchor.x, top: anchor.y }}
         >
           <p className={styles.heading}>Columns</p>
-          {optional.map((col) => (
-            <label key={col.id} className={styles.item} role="menuitemcheckbox" aria-checked={isVisible(col.id)}>
-              <input
-                type="checkbox"
-                checked={isVisible(col.id)}
-                onChange={() => onToggle(col.id)}
-              />
-              <span>{col.label}</span>
-            </label>
-          ))}
+          {optional.map((col) => {
+            const checked = isVisible(col.id);
+            // Don't let the user hide the only column left standing.
+            const locked = checked && visibleCount === 1;
+            return (
+              <label
+                key={col.id}
+                className={`${styles.item}${locked ? ` ${styles.itemLocked}` : ""}`}
+                role="menuitemcheckbox"
+                aria-checked={checked}
+                aria-disabled={locked || undefined}
+                title={locked ? "At least one column must stay visible" : undefined}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={locked}
+                  onChange={() => onToggle(col.id)}
+                />
+                <span>{col.label}</span>
+              </label>
+            );
+          })}
         </div>
       )}
     </>

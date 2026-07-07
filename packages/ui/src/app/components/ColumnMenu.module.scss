@@ -49,7 +49,8 @@
 }
 
 .heading {
-  padding: t.$space-xs t.$space-sm;
+  margin: 0;
+  padding: 0;
   font-size: t.$font-sm;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -73,5 +74,20 @@
   input {
     accent-color: t.$color-accent;
     cursor: pointer;
+  }
+}
+
+// The sole remaining visible column: shown so the set stays complete, but its
+// checkbox is locked (unchecking it would collapse the table to just row carets).
+.itemLocked {
+  opacity: 0.55;
+  cursor: default;
+
+  &:hover {
+    background: transparent;
+  }
+
+  input {
+    cursor: default;
   }
 }

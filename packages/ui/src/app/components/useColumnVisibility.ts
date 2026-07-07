@@ -5,8 +5,8 @@ export interface ToggleableColumn {
   id: string;
   /**
    * Whether the user may hide this column. A column that isn't optional is
-   * always shown and never appears in the picker (e.g. the caret gutter, or the
-   * test name that anchors every row).
+   * always shown and never appears in the picker (e.g. the caret gutter); every
+   * data column is optional so it can be toggled from the picker.
    */
   optional?: boolean;
   /** Whether an optional column starts visible. Defaults to true. */

@@ -55,7 +55,8 @@ export interface RunRenderContext {
  * One column of the run log: its header, its grid track, how it renders a
  * finished and an in-progress row, and — when sortable — the key a sort orders
  * by. Columns without a `sortKey` have no sort affordance; `optional` columns can
- * be hidden from the picker and, when `defaultVisible` is false, start hidden.
+ * be shown or hidden from the picker (every data column is optional) and, when
+ * `defaultVisible` is false, start hidden.
  */
 export interface RunColumn {
   id: string;
@@ -100,9 +101,11 @@ function activeDash(label: string, numeric: boolean): ReactNode {
 }
 
 // The full column set, left→right. The caret gutter leads; the test name anchors
-// each row; the metric group and rating trail. Timestamp, category, and duration
-// are optional and start hidden, so the resting table matches its prior layout
-// until a user opts them in via the column picker.
+// each row; the metric group and rating trail. Every data column is `optional`
+// so the picker can show or hide any of them; only the caret gutter is fixed.
+// Category, timestamp, and duration additionally start hidden (`defaultVisible:
+// false`), so the resting table matches its prior layout until a user opts them
+// in via the column picker.
 export const RUN_COLUMNS: readonly RunColumn[] = [
   {
     id: "caret",
@@ -118,6 +121,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     label: "TEST",
     default: "1fr",
     min: 96,
+    optional: true,
     sortKey: (row) => row.displayName.toLowerCase(),
     render: (row) => (
       <span className={styles.test}>
@@ -153,6 +157,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     label: "HARNESS",
     default: "7rem",
     min: 64,
+    optional: true,
     sortKey: (row) => row.record.subject.harnessSlug.toLowerCase(),
     render: (row, ctx) => (
       <span className={styles.harness} data-label="Harness">
@@ -174,6 +179,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     label: "VARIANT",
     default: "6rem",
     min: 56,
+    optional: true,
     sortKey: (row) => row.record.subject.variant.toLowerCase(),
     render: (row) => (
       <span className={styles.variant} data-label="Variant">
@@ -191,6 +197,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     label: "MODEL",
     default: "1.6fr",
     min: 96,
+    optional: true,
     sortKey: (row) => canonicalModelId(row.record.subject.modelId).toLowerCase(),
     render: (row) => (
       <span className={styles.model} data-label="Model">
@@ -240,6 +247,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     default: "5rem",
     min: 56,
     numeric: true,
+    optional: true,
     sortKey: (row) => totalTokens(row.record.metrics),
     render: (row) => (
       <span className={styles.num} data-label="Tokens">
@@ -254,6 +262,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     default: "5rem",
     min: 56,
     numeric: true,
+    optional: true,
     sortKey: (row) => row.record.metrics.cost.comparable,
     render: (row) => (
       <span className={styles.num} data-label="Cost">
@@ -267,6 +276,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     label: "RATING",
     default: "6rem",
     min: 56,
+    optional: true,
     // Ordered best→worst by RATINGS rank, so ascending lists the best runs first.
     sortKey: (row) => (row.rating == null ? null : RATINGS.indexOf(row.rating)),
     render: (row) => {

@@ -15,8 +15,8 @@ import { routes } from "../../routes";
 import styles from "./ModelsPage.module.scss";
 
 // One column of the model catalog: its header and grid track, how it renders a
-// row, and — when sortable — the key it orders by. Provider/price/context columns
-// are optional (hideable via the picker) but start visible.
+// row, and — when sortable — the key it orders by. Every data column is optional
+// (hideable via the picker) and starts visible; only the caret gutter is fixed.
 interface ModelColumn {
   id: string;
   label: string;
@@ -43,6 +43,7 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
     label: "MODEL",
     default: "1.6fr",
     min: 96,
+    optional: true,
     sortKey: (model) => model.name.toLowerCase(),
     render: (model) => {
       const logo = providerLogo(model.provider);
