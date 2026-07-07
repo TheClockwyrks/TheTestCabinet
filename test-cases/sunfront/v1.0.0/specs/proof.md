@@ -15,7 +15,7 @@ Playwright that `package.json` pins and `init` installs; do not hand-edit images
 | Path | What it must show |
 | --- | --- |
 | `proof/title.png` | The title screen and main menu on load, with every menu item visible. |
-| `proof/gameplay.png` | A live mid-match frame: both armies (rendered from the provided models) fighting along the diagonal, the player's staging yard with several **placed spawners**, the HUD (sol, income, wave timer, both base health bars), and the **fog** blacking out the enemy staging yard. |
+| `proof/gameplay.png` | A live mid-match frame: both armies (rendered from the provided models) fighting along the diagonal, the player's staging yard with several **placed build-grid structures** (spawners and/or Solar Extractors), the HUD (sol, income, wave timer, both base health bars), and the **fog** blacking out the enemy staging yard. |
 | `proof/game-over.png` | The match-over screen after a finished match, showing `VICTORY` or `DEFEAT` and the wave count. |
 | `proof/wave.mp4` | A short (a few seconds) screen recording spanning a **wave firing**: fresh units mustering at your base and marching down the diagonal, engaging the enemy line, and the front line shifting — enough to show the provided models move (locomotion clips), fight, and die. |
 

@@ -5,10 +5,10 @@
 **Sunfront** is a real-time **tug-of-war** for the browser, rendered in **3D**. Two
 rival legions of solar-powered war automatons — the **Duneforged** — face each other
 across a diagonal stretch of desert, their bases in opposite corners. You never
-command a single unit. Instead you spend a
-steadily ticking income on **spawner structures** in your walled staging yard;
-every **wave**, each spawner you own stamps out its unit, and those units march
-across the sand toward the enemy base, fighting whatever they meet on the way.
+command a single unit. Instead you spend a steadily ticking income on **spawner
+structures** and **Solar Extractors** in your walled staging yard; every **wave**,
+each spawner you own stamps out its unit, and those units march across the sand
+toward the enemy base, fighting whatever they meet on the way.
 Win by grinding a hole through the enemy line and levelling their base; lose if
 they level yours.
 
@@ -39,7 +39,7 @@ start; they cross-reference each other **by name** and form a single spec.
 - `specs/assets.md` — the **provided models**: every unit and structure is given to
   you as a 3D model file to load, scale, tint, and animate (the only art you get).
 - `specs/economy.md` — income, the resource economy, and placing and upgrading
-  spawner structures.
+  spawner structures and Solar Extractors.
 - `specs/units.md` — the **unit roster**: every unit's stats, the armor/attack
   **counter system** that makes composition matter, and how combat resolves.
 - `specs/waves.md` — the wave clock, how spawners emit units each wave, unit
@@ -189,8 +189,8 @@ The `reference/` folder holds screenshots showing how key screens should look:
 
 - `reference/title.png` — the title screen and main menu.
 - `reference/gameplay.png` — a representative in-match frame: the diagonal arena
-  mid-battle, the player's staging yard with placed spawners, the HUD, and the fog
-  over the enemy yard.
+  mid-battle, the player's staging yard with placed build-grid structures, the HUD,
+  and the fog over the enemy yard.
 - `reference/game-over.png` — the match-over screen.
 
 Treat them as visual targets: match their layout, palette, and type. They are

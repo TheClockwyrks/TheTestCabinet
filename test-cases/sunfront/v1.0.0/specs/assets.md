@@ -16,9 +16,9 @@ The units these models represent are in `specs/units.md`; the structures are in
   menu element — in the palette of `specs/overview.md`.
 - **Provided as model files** (the **only** art you are given): every **buildable
   unit** (`specs/units.md`), the **Aegis**, both **bases**, both **Reliquaries**,
-  and every **spawner structure** (one per buildable unit). You must **load and
-  use** these; you must **not** replace them with primitives of your own, and you
-  must **not** fetch any other art at runtime.
+  every **spawner structure** (one per buildable unit), and the **Solar Extractor**
+  economy structure. You must **load and use** these; you must **not** replace them
+  with primitives of your own, and you must **not** fetch any other art at runtime.
 
 ## The models, their manifest, and their scale
 
@@ -72,8 +72,10 @@ read the exact names from the manifest rather than hard-coding them.
 - **Orient** each model to its facing on the field: a unit faces along its travel or
   toward its target; the Aegis **rotates its hull** to bring its main-gun target into
   its forward cone, while its side turrets traverse independently (`specs/waves.md`).
-- **Carry unit level** onto the model it emits (`specs/economy.md`): a brighter accent
-  or rank marker over the provided geometry, so a veteran army reads on the field.
+- **Carry structure level** onto each build-grid structure (`specs/economy.md`) as
+  small pips or similar markers. For spawners, also carry unit level onto the model
+  it emits: a brighter accent or rank marker over the provided geometry, so a veteran
+  army reads on the field.
 
 ## Loading rule — page-relative paths only
 

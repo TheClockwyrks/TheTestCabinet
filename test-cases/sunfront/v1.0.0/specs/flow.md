@@ -21,10 +21,10 @@ The build is a small state machine. Each state has a clear screen and controls.
    THE DUNE FRONT`, and a vertical menu with the playable mode's entry (defined by
    the `standard` spec), then `HOW TO PLAY`. The selected item is highlighted. A dimmed slice
    of the battlefield may show behind the menu.
-2. **How to play.** A screen explaining the loop (build spawners → waves march →
-   counter what you see through the fog → raze the enemy base), the resource and
-   wave clocks, the counter triangle in brief, and the controls. Returns to the
-   menu.
+2. **How to play.** A screen explaining the loop (build spawners and Solar
+   Extractors -> waves march -> counter what you see through the fog -> raze the
+   enemy base), the resource and wave clocks, the counter triangle in brief, and
+   the controls. Returns to the menu.
 3. **In match.** The live game: the lane with both armies, the two bases and
    Reliquaries, the player's staging yard with its build grid, the fogged enemy
    yard, the build palette, and the HUD. This is where the whole of
@@ -44,18 +44,19 @@ both.
 
 - **Menus / pause / match-over:** `Up`/`Down` (or `W`/`S`) move the selection,
   `Enter` or `Space` confirms, `Esc` goes back; menu items are also clickable.
-- **Selecting what to build:** the **build palette** (below) lists the buildable
-  units with their costs. Click a palette entry — or press its number key (`1`–`9`,
-  and `0` for the tenth) — to arm that spawner type. The cursor then shows a ghost of
-  the spawner.
+- **Selecting what to build:** the **build palette** (below) lists the ten unit
+  spawners and the Solar Extractor with their costs. Click a palette entry — or press
+  its shortcut key (`1`-`9`, `0` for the tenth unit, and `E` for Solar Extractor) —
+  to arm that structure type. The cursor then shows a ghost of the structure.
 - **Placing:** click an **empty** build-grid cell in your staging yard to place
-  the armed spawner (if you can afford it — `specs/economy.md`). An invalid or
+  the armed structure (if you can afford it — `specs/economy.md`). An invalid or
   unaffordable cell shows the invalid-placement color and does not place. `Esc`
   or right-click disarms the cursor.
-- **Managing a spawner:** click a **placed** spawner to select it; a small panel
-  shows its type, level, and **Upgrade** (with cost) and **Sell** (with refund)
-  buttons. Click a button, or press `U` to upgrade / `X` to sell the selected
-  spawner.
+- **Managing a structure:** click a **placed** build-grid structure to select it; a
+  small panel shows its type, level, current effect (spawned unit stats for a spawner,
+  income bonus for a Solar Extractor), and **Upgrade** (with cost) and **Sell** (with
+  refund) buttons. Click a button, or press `U` to upgrade / `X` to sell the selected
+  structure.
 - **In match:** `Esc` or `P` pauses.
 
 Keyboard-only players can still play: number keys arm types, and placement may
@@ -75,11 +76,13 @@ player's staging yard (`specs/playfield.md`) — in the palette and monospace ty
 - **Top strip, flanking center:** the two **base health bars** — the player's
   base HP on the left, the enemy's on the right — each labelled, filling from the
   healthy to the critical color as HP drops.
-- **Build palette:** a row or column of the ten buildable units near the player's
-  staging yard, each showing its icon (in team color), name, cost, and number
-  key (`1`–`9`, `0`). An unaffordable entry is dimmed. The armed entry is highlighted.
-- **Selected-spawner panel:** when a placed spawner is selected, its type, level
-  pips, and the Upgrade/Sell actions with their sol figures.
+- **Build palette:** a row or column of the ten buildable unit spawners plus the Solar
+  Extractor near the player's staging yard, each showing its icon (in team color),
+  name, cost, and shortcut key (`1`-`9`, `0`, `E`). An unaffordable entry is dimmed.
+  The armed entry is highlighted.
+- **Selected-structure panel:** when a placed build-grid structure is selected, its
+  type, level pips, current effect, and the Upgrade/Sell actions with their sol
+  figures.
 - Units and structures show a **health bar** above them only while damaged
   (`specs/overview.md`).
 
@@ -92,13 +95,13 @@ The match is one human (left) against one AI (right). The AI must be a real
 opponent, not a scripted script:
 
 - It runs the **same economy** with **no cheating** (`specs/economy.md`): same
-  starting sol, same fixed income rate, same costs. It spends only sol it has
-  earned.
-- It **builds and upgrades spawners on its own hidden grid**, growing its army
-  over the match, and **adapts its composition** to what it has seen of your
-  army — answering a swarm with splash, heavies with piercing, air with flak — so
-  a one-note strategy from the player loses to the counter. It need not have
-  perfect information; like you, it reacts to what crosses the sand.
+  starting sol, same fixed base income rate, same Solar Extractor rules, same costs.
+  It spends only sol it has earned.
+- It **builds and upgrades spawners and Solar Extractors on its own hidden grid**,
+  growing its army and income over the match, and **adapts its composition** to what
+  it has seen of your army — answering a swarm with splash, heavies with piercing,
+  air with flak — so a one-note strategy from the player loses to the counter. It
+  need not have perfect information; like you, it reacts to what crosses the sand.
 - It defends and presses: it values taking your Reliquary and defends its own,
   and it commits its Aegis when it gets one.
 - It must be **clearly beatable** by a thinking player — a well-read composition,

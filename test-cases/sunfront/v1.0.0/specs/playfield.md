@@ -33,7 +33,7 @@ panel color (`#241a10`).
 
 The HUD is a **2D overlay** drawn over the 3D view (not on the ground plane): a top
 strip for the sol/income readout, the wave clock, and the two base health bars, plus
-the build palette and selected-spawner panel around the player's staging yard. Its
+the build palette and selected-structure panel around the player's staging yard. Its
 layout and contents are in `specs/flow.md`. Keep every HUD element inside the fitted
 16:9 view at all window sizes (`specs/overview.md`).
 
@@ -73,7 +73,7 @@ committed push, not a stray shot.
 Each staging yard sits **behind its own base**, in the corner, off the diagonal
 corridor — the player's around the origin corner, the enemy's around `(1200, 1200)`
 (under fog). Structures are placed here, safely off the lane, and rendered from their
-provided spawner models (`specs/assets.md`).
+provided structure models (`specs/assets.md`).
 
 - Each yard holds a grid of square cells, cell size **`72 × 72`** units.
 - The **player grid** is **8 × 3** (24 cells) laid in the player's corner behind the
@@ -81,8 +81,8 @@ provided spawner models (`specs/assets.md`).
   centre. (The exact corner offset is yours, as long as the grid sits behind the base,
   clear of the diagonal corridor, and reads as the player's yard.)
 - A cell holds at most one structure. The base and Reliquary are **not** on this grid;
-  they are pre-placed and permanent. Placement, cost, and upgrades are in
-  `specs/economy.md`.
+  they are pre-placed and permanent. Spawners and Solar Extractors are build-grid
+  structures. Placement, cost, and upgrades are in `specs/economy.md`.
 
 ## Where units enter and travel
 

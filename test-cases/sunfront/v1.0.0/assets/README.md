@@ -16,5 +16,6 @@ parts, joints, animation clips, `rigid`/`skinned` kind, and authored
 **The model files are not yet in place.** `models.json` records the entity roster and
 authored dimensions; per-model part/joint lists are added with each model. Until the
 files are populated the case is **not run** and the `assets` key in `../test-case.toml`
-stays commented out. The **Garrison** (the Trooper's spawner) is not yet modelled
-either — its `assets/garrison` directory needs to be added to complete the roster.
+stays commented out. The **Garrison** (the Trooper's spawner) and **Solar Extractor**
+are not yet modelled either — their `assets/garrison` and `assets/solar-extractor`
+directories need to be added to complete the roster.

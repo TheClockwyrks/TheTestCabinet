@@ -24,7 +24,7 @@ tags = ["strategy", "3d", "tug-of-war", "real-time"]
 summary = """
 A 3D tug-of-war between two legions of solar automatons, fought corner-to-corner \
 across a diagonal front with provided, articulated models: spend a ticking income on \
-spawner structures that stamp out waves, read the enemy's build through the fog, \
+spawners and Solar Extractors, read the enemy's build through the fog, \
 counter it, and grind a hole to their base — while a mid-field Reliquary funds whoever \
 razes it but summons a guardian to punish the push."""
 
@@ -75,8 +75,8 @@ variants = ["variants/base.toml"]
 # The `assets` key is COMMENTED OUT until the model files exist: the harness rejects a
 # manifest whose `assets` paths do not exist, so listing the entity directories before
 # they are populated would fail resolution. This case is NOT run until then. When every
-# model directory (including `assets/garrison`) exists under `assets/`, UNCOMMENT the
-# block below to seed them:
+# model directory (including `assets/garrison` and `assets/solar-extractor`) exists
+# under `assets/`, UNCOMMENT the block below to seed them:
 #
 # assets = [
 #   "assets/models.json",
@@ -87,7 +87,7 @@ variants = ["variants/base.toml"]
 #   # Super-unit
 #   "assets/aegis",
 #   # Structures
-#   "assets/bastion", "assets/reliquary",
+#   "assets/bastion", "assets/reliquary", "assets/solar-extractor",
 #   # Spawner structures (one per buildable unit; `garrison` pending its asset case)
 #   "assets/scarab-hatchery", "assets/sentinel-foundry", "assets/garrison",
 #   "assets/bulwark-foundry", "assets/lancer-foundry", "assets/bombard-foundry",
@@ -193,7 +193,7 @@ actions = []
 [[domain]]
 id = "economy"
 name = "Economy & building"
-description = "The resource clock, spawner placement, upgrades and selling, and the wave loop."
+description = "The resource clock, build-grid structure placement, upgrades and selling, and the wave loop."
 
 [[domain]]
 id = "combat"
@@ -223,21 +223,21 @@ proof = "wave"
 [[review_item]]
 id = "income"
 title = "Fixed income"
-text = "Both sides start with 200 sol. Sol accrues continuously at the shown fixed rate of 10/s, and that passive rate does not rise automatically when waves fire. Destroying enemy units pays no bounty; destroying the enemy Reliquary still pays its Reliquary bounty."
+text = "Both sides start with 200 sol. Sol accrues continuously at the shown base rate of 10/s, and that base passive rate does not rise automatically when waves fire. Destroying enemy units pays no bounty; destroying the enemy Reliquary still pays its Reliquary bounty."
 weight = 1
 domain = "economy"
 
 [[review_item]]
 id = "building"
-title = "Placing spawners"
-text = "A buildable unit can be armed from the palette (click or number key) and placed on an empty build-grid cell, deducting its cost; an unaffordable or occupied cell is refused. A placed spawner emits its unit from the next wave on."
+title = "Placing structures"
+text = "A unit spawner or Solar Extractor can be armed from the palette (click or shortcut key) and placed immediately on an empty build-grid cell, deducting its cost; an unaffordable or occupied cell is refused. A placed spawner emits its unit from the next wave on, while a placed Solar Extractor raises income immediately."
 weight = 1
 domain = "economy"
 
 [[review_item]]
 id = "upgrade-sell"
 title = "Upgrade and sell"
-text = "A placed spawner can be upgraded (up to level 3, raising the HP and damage of the units it emits, at 75% of build cost per level) and sold (refunding 50% of sol invested and freeing the cell); its level shows on the structure and its units."
+text = "A placed build-grid structure can be upgraded to level 3 and sold for 50% of sol invested. Spawner upgrades raise the HP and damage of emitted units; Solar Extractor upgrades raise its income bonus from +4/s to +7/s to +10/s. The structure level is visible, and spawner levels also show on emitted units."
 weight = 1
 domain = "economy"
 
@@ -292,7 +292,7 @@ proof = "game-over"
 [[review_item]]
 id = "ai-opponent"
 title = "Adaptive, beatable AI"
-text = "The AI builds and upgrades on its own hidden grid from the same economy with no resource cheating, adapts its composition to what it has seen of the player's army (splash vs swarm, piercing vs heavy, flak vs air), presses and defends the Reliquaries — and is clearly beatable by a player who reads the counters."
+text = "The AI builds and upgrades spawners and Solar Extractors on its own hidden grid from the same economy with no resource cheating, adapts its composition to what it has seen of the player's army (splash vs swarm, piercing vs heavy, flak vs air), presses and defends the Reliquaries — and is clearly beatable by a player who reads the counters."
 weight = 3
 domain = "opponent"
 
@@ -307,7 +307,7 @@ proof = "title"
 [[review_item]]
 id = "hud-complete"
 title = "HUD"
-text = "The HUD shows the sol balance and income rate, the wave number and countdown, both base health bars, the build palette (all ten buildable units) with costs and affordability, and a selected-spawner panel — all inside the fitted 16:9 view."
+text = "The HUD shows the sol balance and total income rate, the wave number and countdown, both base health bars, the build palette (ten unit spawners plus Solar Extractor) with costs and affordability, and a selected-structure panel — all inside the fitted 16:9 view."
 weight = 1
 
 [[review_item]]
@@ -319,5 +319,5 @@ weight = 1
 [[review_item]]
 id = "provided-models"
 title = "Provided models rendered"
-text = "The game renders every unit and structure using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, death clips before destroyed units are removed, and the Aegis radar sweeping on its own. The world (arena, fog, effects, HUD) is generated in code."
+text = "The game renders every unit and structure, including Solar Extractors, using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, death clips before destroyed units are removed, and the Aegis radar sweeping on its own. The world (arena, fog, effects, HUD) is generated in code."
 weight = 2
