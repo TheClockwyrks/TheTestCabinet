@@ -1,6 +1,6 @@
 # Sunfront — test case (v1.0.0)
 
-An end-to-end test case: the model builds **Sunfront**, a top-down real-time
+An end-to-end test case: the model builds **Sunfront**, a real-time **3D**
 tug-of-war strategy game that runs entirely in the browser.
 
 - **In-game title:** Sunfront
@@ -46,7 +46,7 @@ The Duneforged faction's 3D hero models are produced by sibling **voxel** asset
 `-sunhawk`, `-lumen`, `-monolith`, `-aegis`) and the structures (the spawner
 foundries, `sunfront-bastion`, and `sunfront-reliquary`). Those are a separate
 test type (`voxel-animation`) and are **not** consumed by this game build, which
-renders its own top-down graphics in code; they share only the faction and theme.
+renders its own 3D graphics in code; they share only the faction and theme.
 
 ## Validation
 

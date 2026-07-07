@@ -16,13 +16,20 @@ each view, seeded as a visual target alongside the seeded specs under
 the intended UI instead of building it from the spec; a screenshot shows the
 target without giving away the implementation.
 
+The `gameplay` mockup does **not** fake the 3D battlefield — flat CSS cannot depict
+it usefully. The real build renders the world in **WebGL/WebGPU**
+(`../specs/overview.md`) through a tilted overhead camera; the mockup exists to pin
+the **palette, HUD layout, and type**, so it is **HUD-only**: the HUD overlay over
+a neutral viewport, with the 3D world left to the build. The `title` and
+`game-over` mockups keep a dim, stylized slice of the field behind their menus.
+
 ## Views
 
-| View slug   | Mockup source         | Description                                     |
-| ----------- | --------------------- | ----------------------------------------------- |
-| `title`     | `menu-<variant>.html` | Title screen and menu, per variant.             |
-| `gameplay`  | `gameplay.html`       | In-match frame at the front line (common).      |
-| `game-over` | `game-over.html`      | Match-over end card (common).                   |
+| View slug   | Mockup source         | Description                                        |
+| ----------- | --------------------- | -------------------------------------------------- |
+| `title`     | `menu-<variant>.html` | Title screen and menu, per variant.                |
+| `gameplay`  | `gameplay.html`       | In-match **HUD** over a neutral viewport (common). |
+| `game-over` | `game-over.html`      | Match-over end card (common).                      |
 
 The `gameplay` and `game-over` views are **common** — the same mockup is rendered
 and seeded for every variant. The `title` view is **variant-specific**: the main
@@ -31,14 +38,13 @@ menu mockup (see the `[[variant]]` `reference` entries in `../test-case.toml`).
 This version declares the single `base` variant, whose menu (`menu-base.html`)
 lists `SKIRMISH` then `HOW TO PLAY`.
 
-The `gameplay.html` frame shows the intended look of a live match: the front-line
-battle mid-lane with both legions' units (Ember advancing right, Azure left, a
-Sunhawk crossing overhead), the player's damaged Reliquary, the HUD (sol and
-income, the wave countdown, both base health bars), the player's staging yard
-with placed, levelled spawners, the build palette and a selected-spawner panel,
-and — critically — the **fog** blacking out both the enemy staging yard and the
-far right of the lane, so the enemy base and Reliquary are not drawn. The units,
-placements, and values shown are just one example moment.
+The `gameplay.html` mockup is **HUD-only**: the in-match HUD overlay over a neutral
+viewport — the sol and income readout, the wave countdown, both base health bars,
+the build palette, a selected-spawner panel, and the performance overlay. The 3D
+world it sits over — the front-line battle, both legions' units, air units above
+the line, the player's staging yard with placed, levelled spawners, and the **fog**
+blacking out the enemy staging yard and far lane — is rendered by the build from
+the specification, not faked here. The values shown are just one example moment.
 
 `theme.css` holds the shared palette, type, and field/HUD furniture referenced by
 every view and by the specification (the seeded specs under

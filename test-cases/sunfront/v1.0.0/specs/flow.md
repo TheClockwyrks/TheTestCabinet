@@ -25,9 +25,10 @@ The build is a small state machine. Each state has a clear screen and controls.
    counter what you see through the fog → raze the enemy base), the resource and
    wave clocks, the counter triangle in brief, and the controls. Returns to the
    menu.
-3. **In match.** The live game: the lane with both armies, the two bases and
+3. **In match.** The live game, seen through the tilted overhead camera
+   (`specs/overview.md`): the 3D battlefield with both armies, the two bases and
    Reliquaries, the player's staging yard with its build grid, the fogged enemy
-   yard, the build palette, and the HUD. This is where the whole of
+   yard, the build palette, and the HUD overlay. This is where the whole of
    `specs/economy.md`, `specs/units.md`, and `specs/waves.md` plays out.
 4. **Paused.** Reachable from a match. Offers **Resume**, **Restart**, and **Quit
    to menu**. The field is visible but the simulation and both clocks are frozen
@@ -56,6 +57,12 @@ both.
   buttons. Click a button, or press `U` to upgrade / `X` to sell the selected
   spawner.
 - **In match:** `Esc` or `P` pauses.
+- **Camera:** the tilted overhead camera (`specs/overview.md`) keeps the whole
+  front framed by default. You may optionally let the player rotate it around the
+  vertical axis and zoom, but the complete battlefield must stay readable.
+- **Toggles:** a **performance overlay** (live FPS) and **wireframe mode** each
+  have a key — state them on the how-to-play screen or a controls hint (e.g. `F3`
+  performance, `F4` wireframe); both work during a live match (see **HUD**).
 
 Keyboard-only players can still play: number keys arm types, and placement may
 fall back to a keyboard-movable cursor over the grid if you choose to implement
@@ -63,26 +70,34 @@ one, but mouse placement is the primary path and must work.
 
 ## HUD
 
-Drawn in the top strip (`y = 0` to `64`, `specs/playfield.md`) and around the
-staging yard, in the palette and monospace type from `specs/overview.md`:
+Drawn as a **screen-space overlay** over the 3D world, in the palette and
+monospace type from `specs/overview.md`:
 
 - **Top-left:** your **sol** balance (large) and your current **income rate**
   (`+N/s`), in the Ember color.
 - **Top-center:** the **wave number** and the **countdown** to the next wave
   (`specs/waves.md`).
-- **Top strip, flanking center:** the two **base health bars** — the player's
-  base HP on the left, the enemy's on the right — each labelled, filling from the
-  healthy to the critical color as HP drops.
+- **Top, flanking center:** the two **base health bars** — the player's base HP on
+  the left, the enemy's on the right — each labelled, filling from the healthy to
+  the critical color as HP drops.
 - **Build palette:** a row or column of the nine buildable units near the player's
   staging yard, each showing its icon (in team color), name, cost, and number
   key. An unaffordable entry is dimmed. The armed entry is highlighted.
 - **Selected-spawner panel:** when a placed spawner is selected, its type, level
   pips, and the Upgrade/Sell actions with their sol figures.
-- Units and structures show a **health bar** above them only while damaged
-  (`specs/overview.md`).
+- **Performance overlay** — a toggle (default off, bound to a key — e.g. `F3`)
+  showing at least the live **FPS**, so the required frame rate
+  (`specs/overview.md`) is observable during a heavy late-match battle. Keep it
+  small, in a corner, in the faint/secondary text colors.
+- **Wireframe mode** — a toggle (default off, bound to a key — e.g. `F4`) that
+  switches the units, structures, and terrain to **wireframe** so the generated
+  geometry is inspectable (`specs/overview.md`). Toggling it must not disturb the
+  simulation.
+- Units and structures show a **health bar** above them in the world only while
+  damaged (`specs/overview.md`).
 
-Keep every HUD element inside the `1280 x 720` field at all window sizes
-(`specs/overview.md`).
+Keep every HUD element on screen and legible at all window sizes, and keep the
+whole battlefield framed (`specs/overview.md`).
 
 ## The AI opponent
 

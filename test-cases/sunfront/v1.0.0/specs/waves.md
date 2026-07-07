@@ -30,9 +30,9 @@ When a wave fires, for each side:
   spawner's current **level** (its units carry the level's HP/damage bonus and
   level marker, per `specs/economy.md`).
 - Units appear at that side's **muster line** (`specs/playfield.md`: player at
-  `x = 96`, enemy at `x = 1184`), distributed across the lane's vertical extent
-  so a wave enters as a spread rank, not a single stack. Stagger their entry
-  over a fraction of a second if it helps them separate.
+  `x = 96`, enemy at `x = 1184`), distributed across the lane's width (`Z`) so a
+  wave enters as a spread rank, not a single stack. Stagger their entry over a
+  fraction of a second if it helps them separate.
 - A side with **no spawners** emits nothing that wave (and is surely losing).
 
 Emitted units immediately begin advancing and fighting per `specs/units.md`: they
@@ -66,7 +66,7 @@ match, and usually only one) that it can afford this special behavior:
 - **It defends its own half only — it never crosses midfield.** Unlike every
   other unit, the Aegis does **not** march toward the enemy base. It patrols and
   repositions **only on its owner's half of the field** (the owner's side of the
-  vertical centerline `x = 640`) and **must never cross the middle of the map**:
+  centerline `x = 640`) and **must never cross the middle of the map**:
   it hunts the enemy units that have pushed across onto its side, holding the
   line while its owner recovers. With no enemy in reach on its half, it holds
   position near the front of its own half rather than advancing over the

@@ -44,8 +44,9 @@ body {
   background: #000;
 }
 
-/* The fixed logical play area. All coordinates in the mockups and the
- * specification are expressed in these 1280x720 logical pixels. */
+/* The fixed logical stage the mockups are authored on. These mockups pin the HUD
+ * layout, palette, and type at a 1280x720 viewport; the game's world is a 3D
+ * ground plane in world units (see ../specs/overview.md). */
 .stage {
   position: relative;
   width: 1280px;
@@ -55,6 +56,20 @@ body {
   font-family: var(--mono);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Neutral dark viewport for the HUD-only gameplay mockup: the 3D battlefield is
+ * rendered by the build (WebGL/WebGPU), so the mockup shows only the HUD overlay
+ * over this neutral backdrop rather than faking the world in flat CSS. */
+.viewport {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+      ellipse at 50% 44%,
+      #241a10 0%,
+      #17110a 68%,
+      #0e0a05 100%
+    );
 }
 
 /* ---- Zones ------------------------------------------------------------- */
@@ -222,6 +237,20 @@ body {
 }
 
 /* ---- HUD --------------------------------------------------------------- */
+
+/* performance overlay (live FPS), small in a corner under the HUD strip */
+.perf {
+  position: absolute;
+  left: 20px;
+  top: 76px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.perf b {
+  color: var(--text-dim);
+  font-weight: 700;
+}
 
 .hud-sol {
   position: absolute;

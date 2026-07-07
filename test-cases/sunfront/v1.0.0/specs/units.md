@@ -3,12 +3,12 @@
 This file defines every unit, the armor/attack **counter system** that makes
 composition the game, and how combat resolves. Costs and upgrades are in
 `specs/economy.md`; spawning, movement, and the front line are in
-`specs/waves.md`; distances and speeds are logical pixels and `px/s` on the
-`1280 x 720` stage.
+`specs/waves.md`; distances and speeds are **world units** and `u/s` on the
+battlefield ground plane defined in `specs/overview.md`.
 
-Both sides field the **same roster** (a mirror match). A unit is drawn in its
-owner's team color with a dark outline, at roughly the pixel size in its entry,
-reading as the silhouette described.
+Both sides field the **same roster** (a mirror match). A unit is modelled in its
+owner's team color with dark edges, at roughly the size in its entry, reading as
+the silhouette described.
 
 ## Armor classes and attack types — the counter system
 
@@ -62,9 +62,10 @@ Notes on specific units:
   its arc and it cannot fire on it, so Bombards must be screened.
 - **Flakhound** always targets an **Air** unit in range if one exists (its natural
   prey); only if none is in range does it fire on ground, at the `0.5` multiplier.
-- **Sunhawk** is an **Air** unit: it ignores ground collision (it flies over
-  friendly and enemy units alike) and travels straight down the lane. It attacks
-  ground targets. Only **Flak** can damage it.
+- **Sunhawk** is an **Air** unit: it flies at **altitude** (`+Y`) above the line,
+  ignoring ground collision (it passes over friendly and enemy units alike) and
+  travels straight down the lane. It attacks ground targets. Only **Flak** can
+  reach up and damage it.
 - **Lumen** deals no damage. Each `0.5 s` it heals the **most-wounded friendly
   unit within `130`** for **`14` HP** (never above that unit's max). It never
   heals bases or Reliquaries. Multiple Lumens stack.
@@ -75,10 +76,10 @@ Notes on specific units:
 
 ## Combat resolution
 
-The simulation advances every frame in logical-pixel space:
+The simulation advances in real time in world space:
 
 - **Target acquisition.** A unit continuously seeks the **nearest enemy it can
-  damage** (per the matrix) within its **range plus a `40 px` acquisition
+  damage** (per the matrix) within its **range plus a `40`-unit acquisition
   buffer**. Melee units (`range ≤ 30`) acquire almost adjacent; ranged units
   acquire at a distance. A unit with a target in range stops and attacks; a unit
   whose nearest valid target is within the acquisition buffer but not yet in range

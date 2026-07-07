@@ -1,6 +1,7 @@
-**Sunfront** is a top-down, real-time **tug-of-war** for the browser. Two legions
-of solar-powered war automatons — the Duneforged — face off across a stretch of
-desert, and you never move a single unit. Instead you spend a steadily ticking
+**Sunfront** is a real-time **tug-of-war** for the browser, fought across a **3D**
+desert battlefield seen through a tilted overhead camera. Two legions of
+solar-powered war automatons — the Duneforged — face off across the sand, and you
+never move a single unit. Instead you spend a steadily ticking
 income on **spawner structures** in your walled staging yard; every 45 seconds a
 **wave** fires and each spawner stamps out its unit, and those units march across
 the sand toward the enemy base, fighting whatever they meet.
@@ -16,7 +17,7 @@ losing side's half and punish the very push that felled it — the built-in come
 valve. Win by grinding
 a hole through the enemy line and levelling their base.
 
-Sunfront is a hard build: a real-time simulation of dozens of units, a resource
+Sunfront is a hard build: a real-time 3D simulation of dozens of units, a resource
 economy with placement and upgrades, a nine-unit roster on a rock-paper-scissors
 combat matrix, fog of war, an adaptive AI opponent, and a mid-map objective. It
 is inspired by lane-pushing tug-of-war strategy games but is its own game,
