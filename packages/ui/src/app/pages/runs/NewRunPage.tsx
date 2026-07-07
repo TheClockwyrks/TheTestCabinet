@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
@@ -64,6 +64,17 @@ export function NewRunPage() {
         // The model catalog is optional; leave the field free-text.
       });
   }, [backend]);
+
+  // The catalog arrives in slug order, but the dropdown labels each option with
+  // the display name — so sort by resolved display name to keep the list
+  // alphabetical as shown (otherwise e.g. "Carom" slots in where "pong" sits).
+  const sortedCases = useMemo(
+    () =>
+      [...sel.cases].sort((a, b) =>
+        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+      ),
+    [sel.cases, testCaseName],
+  );
 
   const versions = sel.cases.find((c) => c.slug === sel.slug)?.versions ?? [];
   // Orchestrator selection is limited to the end-to-end test type; other types
@@ -164,7 +175,7 @@ export function NewRunPage() {
             value={sel.slug}
             onChange={(e) => sel.setSlug(e.target.value)}
           >
-            {sel.cases.map((c) => (
+            {sortedCases.map((c) => (
               <option key={c.slug} value={c.slug}>
                 {testCaseName(c.slug)}
               </option>
