@@ -825,8 +825,10 @@ pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 /// `scripts/stage-tcab-packages.mjs`, which bakes exactly these into the image:
 /// a name here but not there resolves to a missing dependency at run time, and a
 /// name there but not here can never be requested.
-pub const SHIPPABLE_PACKAGES: &[&str] =
-    &["@test-cabinet/particle-runtime", "@test-cabinet/voxel-runtime"];
+pub const SHIPPABLE_PACKAGES: &[&str] = &[
+    "@test-cabinet/particle-runtime",
+    "@test-cabinet/voxel-runtime",
+];
 
 /// The `package.json` dependency spec that resolves a shippable package to its
 /// baked-in copy — a `file:` path under [`TCAB_PACKAGES_DIR`]. Used by the seeder

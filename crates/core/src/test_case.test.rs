@@ -1443,8 +1443,7 @@ fn packages_reject_an_unknown_name() {
         "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/not-a-real-package\"]\n",
         "",
     );
-    let (_dir, catalog) =
-        catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
+    let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
     let err = catalog
         .resolve("demo", "v1.0.0")
         .expect_err("an unknown package name is rejected");
@@ -1468,7 +1467,8 @@ fn packages_require_a_workspace_package_json() {
 #[test]
 fn packages_are_end_to_end_only() {
     // `packages` is a root key, so it must precede the first table; prepend it.
-    let manifest = format!("packages = [\"@test-cabinet/particle-runtime\"]\n{VALID_ASSET_MANIFEST}");
+    let manifest =
+        format!("packages = [\"@test-cabinet/particle-runtime\"]\n{VALID_ASSET_MANIFEST}");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")

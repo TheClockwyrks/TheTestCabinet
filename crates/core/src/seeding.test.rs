@@ -44,8 +44,11 @@ fn inject_packages_adds_file_dependencies() {
     )
     .expect("write package.json");
 
-    super::inject_packages(&package_json, &["@test-cabinet/particle-runtime".to_string()])
-        .expect("inject packages");
+    super::inject_packages(
+        &package_json,
+        &["@test-cabinet/particle-runtime".to_string()],
+    )
+    .expect("inject packages");
 
     let value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&package_json).expect("read package.json"))
