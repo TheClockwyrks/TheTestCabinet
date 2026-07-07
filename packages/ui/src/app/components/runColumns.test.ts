@@ -56,7 +56,7 @@ describe("columnsForScope", () => {
   it("offers every column for the global scope, including the optional ones", () => {
     const ids = columnsForScope("global").map((c) => c.id);
     expect(ids).toEqual(
-      expect.arrayContaining(["timestamp", "category", "duration"]),
+      expect.arrayContaining(["timestamp", "category", "duration", "version"]),
     );
   });
 });

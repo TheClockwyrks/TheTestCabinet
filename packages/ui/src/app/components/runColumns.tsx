@@ -138,6 +138,22 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     ),
   },
   {
+    id: "version",
+    label: "VERSION",
+    default: "5rem",
+    min: 56,
+    optional: true,
+    defaultVisible: false,
+    sortKey: (row) => row.record.subject.testCaseVersion.toLowerCase(),
+    render: (row) => (
+      <span className={styles.version} data-label="Version">
+        {row.record.subject.testCaseVersion}
+      </span>
+    ),
+    // An in-progress run doesn't carry its case version, so stand in with a dash.
+    renderActive: () => activeDash("Version", false),
+  },
+  {
     id: "category",
     label: "CATEGORY",
     default: "7rem",
@@ -198,7 +214,8 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     default: "1.6fr",
     min: 96,
     optional: true,
-    sortKey: (row) => canonicalModelId(row.record.subject.modelId).toLowerCase(),
+    sortKey: (row) =>
+      canonicalModelId(row.record.subject.modelId).toLowerCase(),
     render: (row) => (
       <span className={styles.model} data-label="Model">
         {canonicalModelId(row.record.subject.modelId)}
@@ -367,8 +384,9 @@ export function useEnrichedRuns(
         displayName: testCaseName(record.subject.testCaseSlug),
         rating:
           worstRating(
-            findReview(record.id, localWriteups)?.ratings.map((r) => r.rating) ??
-              [],
+            findReview(record.id, localWriteups)?.ratings.map(
+              (r) => r.rating,
+            ) ?? [],
           ) ?? null,
       })),
     [runs, localIds, localWriteups, testCaseName, findReview],
