@@ -56,6 +56,12 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   `"dc-skinned"`) executes in — the base image plus the baked-in `mc-skin` /
   `sn-skin` / `dc-skin` binary (a single continuous, skeleton-bound skin, one
   image per algorithm);
+- the **blender** image, which every Blender character run
+  (`asset_kind = "blender-character"`) executes in — the base image plus **headless
+  Blender** and the baked-in **`tcab-blend`** runner (which runs a model's `build.py`
+  under Blender to export a skinned, animated glTF). Unlike the voxel-family binaries,
+  Blender is a third-party package baked in at build time rather than compiled from
+  `crates/`;
 - the **particle-2d** and **particle-3d** images, which every particle-effect run
   (`asset_kind = "particle-2d"` / `"particle-3d"`) executes in — the base image
   plus the baked-in `particle-2d` / `particle-3d` binary;
@@ -110,6 +116,10 @@ containers/
 ├── mc-skinned/Dockerfile       # the base image plus the baked-in `mc-skin` binary (skinned character)
 ├── sn-skinned/Dockerfile       # the base image plus the baked-in `sn-skin` binary
 ├── dc-skinned/Dockerfile       # the base image plus the baked-in `dc-skin` binary
+├── blender/                    # the base image plus headless Blender + the `tcab-blend` runner
+│   ├── Dockerfile              #   (a `blender-character` run authors via a build.py bpy script)
+│   ├── tcab-blend              #   the runner: execs `blender --background --python build.py`
+│   └── tcab_blend_export.py    #   the bundled glTF export + preview helper build.py calls
 ├── particle-2d/Dockerfile      # the base image plus the baked-in `particle-2d` binary
 ├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary
 ├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary

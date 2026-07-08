@@ -32,6 +32,8 @@ asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-shee
                              # "dc-model"/"dc-animation" (meshed) — see "Voxel cases" below
                              # | a skinned character: "mc-skinned"/"sn-skinned"/"dc-skinned"
                              # — see "Skinned cases"
+                             # | a Blender-authored skinned character: "blender-character"
+                             # — see "Blender character cases"
                              # | a particle effect: "particle-2d"/"particle-3d" — see "Particle cases"
                              # | audio: "sfx-synth"/"sfx-sample"/"music" — see "Audio cases"
 
@@ -652,6 +654,95 @@ auto_play = false
   weights and inverse-bind matrices) and **`rig.json`** (the skeleton, the joint
   interface, and the F-curve animations) automatically; neither is manifest-declared.
   See [The skinned binaries](/testing/asset-generation/skinned-binaries/).
+
+## Blender character cases
+
+A **`blender-character`** case produces a rigged, animated [skinned
+character](/testing/asset-generation/blender-binaries/) — like the CSG
+[skinned kinds](#skinned-cases), but authored by driving **headless Blender** through its
+Python API instead of a constrained op-log tool. The model writes a **`build.py`** (a
+`bpy` script) that builds the character mesh, an armature it invents, the skin weights,
+an empty `weapon_socket` bone, and one Action per required animation, then runs the
+**`tcab-blend`** runner to export a single **`character.glb`** (a standard skinned +
+animated glTF 2.0) and a `model.png` preview. The emitted glTF is the authoritative,
+judged output; there is **no operation log** — `build.py` **is** the recorded authoring
+trace, re-run for provenance. It reuses `[voxel]` as a **bounding box** and `[model]` for
+its required animations.
+
+```toml
+asset_kind = "blender-character"
+
+# The character's BOUNDING BOX — the volume the whole character must fit within, in world
+# units (width x, height y-up, depth z; forward is +z). This is the [voxel] table reused
+# as a bounds box (a Blender character is a real mesh, not a voxel field); `background` is
+# the preview clear color only. A blender-character case must NOT declare [canvas].
+[voxel]
+width  = 24
+height = 48
+depth  = 20
+background = "transparent"
+
+# The authoring tool. `tcab-blend` runs the model's `build.py` under headless Blender
+# (`blender --background --python build.py -- blender.config.json`), exports the glTF, and
+# renders the preview. `preview` is a SINGLE file (one mesh — no `{part}` token).
+[tool]
+binary  = "tcab-blend"
+preview = "model.png"
+
+# The authored `build.py` IS the recorded output/trace — NOT an op log. The validator
+# re-runs it for provenance. The emitted skinned `character.glb` is produced by the runner
+# and is NOT manifest-declared (core provides its path).
+[output]
+actions = "build.py"
+
+# The required animations, declared EXACTLY as for the skinned/voxel-animation kinds — by
+# identity alone. The skeleton, weapon socket, and weights are the model's to invent.
+[model]
+
+[[model.animation]]
+name      = "idle"
+loop      = true
+auto_play = true
+
+[[model.animation]]
+name      = "run"
+loop      = true
+auto_play = false
+
+# The self-contained brief, plus the `build.py` STARTER STUB seeded to the workspace root
+# (the path `[output].actions` names) so the model edits it in place.
+[[spec]]
+source = "specs/brief.md"
+
+[[spec]]
+source = "specs/build.py"
+dest   = "build.py"
+```
+
+- The **`[voxel]`** table is the character's **bounding box** (not a voxel field): its
+  `width`/`height`/`depth` in world units and a `background` used only as the preview
+  clear color. It replaces `[canvas]`. Like a voxel case it is a **variant axis** — a
+  variant may declare its own `[voxel]` to author the same character at another size.
+- **`[tool].binary` is `tcab-blend`** and **`[output].actions` is the authored `build.py`**
+  — the recorded trace, re-run for provenance, **not** an operation log. Both are single
+  files and must **not** carry a `{part}` token. Because `build.py` is authored by the
+  model from a **seeded starter stub**, the stub is seeded as the case's own **`[[spec]]`**
+  with `dest = "build.py"` (landing at the run root), and it is the **one case** where a
+  spec `dest` deliberately coincides with `[output].actions`.
+- **`[model]` fixes only the required animations** (each a unique `name`, a `loop` flag,
+  and an `auto_play` flag), exactly as for the [skinned cases](#skinned-cases). The
+  skeleton, the `weapon_socket` bone, the per-vertex weights, and the keyframes are all
+  **model-invented** in `build.py`.
+- **`character.glb` and `model.png` are runner-emitted, not declared.** The skinned,
+  animated glTF (`character.glb`) and the preview (`model.png`) are produced by
+  `tcab-blend`, never named in the manifest.
+- **No `[[reference]]`, no `[build]`, no `[[check]]`.** Judged on the emitted glTF plus a
+  reviewer's judgment. There is **no cheat-divergence check** (that is only for the
+  `draw`/`draw-sheet` sprite kinds); instead the validator **re-runs `build.py`** and
+  records any divergence from the emitted glTF — the Blender analogue, recorded not gated
+  (see [Blender validation](/testing/asset-generation/evaluation/#blender-validation)).
+- The orchestrator seeds a **`blender.config.json`** (the bounding box, the axes, the
+  output paths, and the required animation names) the runner and `build.py` read.
 
 ## Particle cases
 

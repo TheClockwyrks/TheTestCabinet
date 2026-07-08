@@ -163,6 +163,13 @@ impl RepoSeeder for FsRepoSeeder {
                 // is resolved for the selected variant, so a half/double run seeds
                 // its own dimensions.
                 seed_voxel_tool(test_case, request.variant, &repo, request.live_preview)?;
+            } else if kind.is_blender() {
+                // The Blender character kind authors through a `build.py` script run by
+                // `tcab-blend`, not an op-log tool. Seed only the config it reads (bounds
+                // + output paths + the required animation names); the `build.py` starter
+                // and the brief are seeded as the case's own spec files, and there is no
+                // blank preview to render (the model builds from an empty scene).
+                seed_blender_tool(test_case, &repo, request.live_preview)?;
             } else if kind.is_paint() {
                 seed_paint_tool(test_case, &repo, request.live_preview)?;
             } else if kind.is_particle() {
@@ -290,6 +297,87 @@ fn seed_asset_tool(
             .encode_png(&preview_path)
             .map_err(seed_err)?;
     }
+    Ok(())
+}
+
+/// Seed a `blender-character` run's authoring scaffold into `repo`: the
+/// `blender.config.json` the `tcab-blend` runner and the model's `build.py` read. It
+/// carries the character's bounding box (the resolved variant's `[voxel]` extents), the
+/// world axes, the paths the run emits its glTF and preview to, the authored-script
+/// path, and the **required animation names** the model must author. Unlike the op-log
+/// kinds there is no empty action log or blank preview to seed — the model builds the
+/// character from an empty Blender scene through its `build.py`, which is seeded as the
+/// case's own spec file.
+fn seed_blender_tool(
+    test_case: &crate::TestCaseVersion,
+    repo: &Path,
+    live_preview: Option<&crate::preview::LivePreviewEndpoint>,
+) -> Result<()> {
+    let bounds = test_case
+        .voxel
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("blender-character case has no [voxel] bounds".to_string()))?;
+    let tool = test_case
+        .tool
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("blender-character case has no [tool]".to_string()))?;
+    let output = test_case
+        .output
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("blender-character case has no [output]".to_string()))?;
+    let model = test_case
+        .model
+        .as_ref()
+        .ok_or_else(|| Error::Seeding("blender-character case has no [model]".to_string()))?;
+
+    let preview = tool.preview.to_string_lossy().replace('\\', "/");
+    let build_script = output.actions.to_string_lossy().replace('\\', "/");
+
+    // The required animations, by identity — the contract the `build.py` must satisfy.
+    let animations: Vec<serde_json::Value> = model
+        .animations
+        .iter()
+        .map(|animation| {
+            serde_json::json!({
+                "name": animation.name,
+                "loop": animation.looping,
+                "auto_play": animation.auto_play,
+            })
+        })
+        .collect();
+
+    // The config the `tcab-blend` runner and the model's `build.py` read. Axes match the
+    // rest of the 3D family (y up, forward +z); the character must fit the bounding box.
+    let mut config = serde_json::json!({
+        "bounds": {
+            "width": bounds.width,
+            "height": bounds.height,
+            "depth": bounds.depth,
+        },
+        "up_axis": "y",
+        "forward_axis": "z",
+        "background": bounds.background,
+        "mesh": crate::test_case::BLENDER_MESH_DEST,
+        "preview": preview,
+        "build_script": build_script,
+        "animations": animations,
+    });
+    // When a viewer is observing the run, seed the live-preview endpoint so the runner
+    // streams the exported glTF back to the host as the model iterates.
+    if let Some(live) = live_preview {
+        config["live"] = serde_json::json!({
+            "endpoint": live.endpoint,
+            "token": live.token,
+        });
+    }
+    write_file(
+        &repo.join(crate::test_case::BLENDER_CONFIG_DEST),
+        &format!(
+            "{}\n",
+            serde_json::to_string_pretty(&config)
+                .map_err(|err| Error::Seeding(format!("serializing blender config: {err}")))?
+        ),
+    )?;
     Ok(())
 }
 

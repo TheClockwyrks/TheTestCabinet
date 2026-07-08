@@ -84,6 +84,10 @@ const SFX_SAMPLE_IMAGE_NAME: &str = "test-cabinet-sfx-sample";
 /// The name of the `music` run-container image (base plus `music` and its baked
 /// instrument bank).
 const MUSIC_IMAGE_NAME: &str = "test-cabinet-music";
+
+/// The image every `blender-character` asset-generation run executes in — the base
+/// image plus headless Blender and the `tcab-blend` runner.
+const BLENDER_IMAGE_NAME: &str = "test-cabinet-blender";
 /// The name of the adversarial run-container image, used by every adversarial
 /// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
 /// (so a model's controller builds to wasm in-container) and the baked-in Foray
@@ -147,6 +151,7 @@ const SFX_SYNTH_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SFX_SYNTH";
 const SFX_SAMPLE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SFX_SAMPLE";
 /// The environment variable that pins a verbatim override for the `music` image.
 const MUSIC_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_MUSIC";
+const BLENDER_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BLENDER";
 /// The environment variable that pins a verbatim override for the adversarial
 /// image.
 const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
@@ -264,6 +269,10 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
             AssetKind::Music => ImageSpec {
                 name: MUSIC_IMAGE_NAME,
                 override_env: MUSIC_IMAGE_OVERRIDE_ENV,
+            },
+            AssetKind::BlenderCharacter => ImageSpec {
+                name: BLENDER_IMAGE_NAME,
+                override_env: BLENDER_IMAGE_OVERRIDE_ENV,
             },
         },
         TestType::Adversarial => ImageSpec {

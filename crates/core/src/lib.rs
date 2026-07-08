@@ -139,7 +139,7 @@ pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
     CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
 };
-pub use validator::{AssetGenValidator, BuildValidator, DispatchValidator};
+pub use validator::{AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator};
 
 /// What to run, with what, against which model.
 ///

@@ -151,7 +151,8 @@ export type AssetKind =
   | "particle-3d"
   | "sfx-synth"
   | "sfx-sample"
-  | "music";
+  | "music"
+  | "blender-character";
 
 /**
  * The subject of a run: what was run, with what, against which model.

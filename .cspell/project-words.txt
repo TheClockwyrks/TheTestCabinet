@@ -255,3 +255,6 @@ bezelled
 voicings
 reharmonize
 loopable
+bmesh
+gltf
+bpy

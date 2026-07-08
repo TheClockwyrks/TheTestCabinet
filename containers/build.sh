@@ -294,6 +294,9 @@ build_asset_image material
 build_asset_image mc-skinned
 build_asset_image sn-skinned
 build_asset_image dc-skinned
+# The Blender character image bakes in headless Blender + the `tcab-blend` runner rather
+# than a compiled binary (Blender is a third-party package, not built from `crates/`).
+build_asset_image blender
 build_asset_image particle-2d
 build_asset_image particle-3d
 build_asset_image sfx-synth

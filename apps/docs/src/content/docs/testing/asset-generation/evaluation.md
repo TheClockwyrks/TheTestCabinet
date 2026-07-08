@@ -136,6 +136,30 @@ contract gap. The reviewer scores how well the skin **deforms** — an elbow tha
 without tearing, a stride that reads as a walking creature — with the 3D viewer posing
 the rig by linear-blend skinning.
 
+## Blender validation
+
+A [`blender-character`](/testing/asset-generation/blender-binaries/) run is validated like
+a skinned run — the emitted file is authoritative and nothing is regenerated for scoring —
+but its file is a **standard glTF** the model's `build.py` exported through headless
+Blender, not a tool-emitted `mesh.glb` + `rig.json`. The validator **decodes the emitted
+`character.glb`**: it confirms the glTF is well-formed, carries a **skin** (a
+skeleton-bound mesh — bones, per-vertex weights, inverse-bind matrices) and at least one
+mesh, and it reconciles the glTF's **named animations** against the case's
+[required set](/testing/asset-generation/manifests/#blender-character-cases) — each
+required animation must be present and actually animate (carry channels), a missing one
+recorded as a zero-scored contract gap rather than a crash. Because a Blender character's
+rig lives **in the glTF itself** (its own skin and animations), there is no separate
+`rig.json` to parse; the browser viewer plays the glTF-native animations and skins the one
+mesh.
+
+In place of the sprite kinds' cheat-divergence check, a Blender run has a **provenance
+re-run**: the validator re-runs the authored `build.py` through `tcab-blend` in a clean
+scratch copy and compares the re-exported glTF's summary (mesh/skin counts and animation
+names) to the run's `character.glb`. A divergence — a script that does not reproduce the
+character it exported — is **recorded, not gated** (exactly as cheat-divergence is), and a
+host without Blender simply skips it. This is what makes `build.py` a genuine, reproducible
+authoring trace rather than an unverifiable wrapper around a pre-made asset.
+
 ## Particle validation
 
 A [particle](/testing/asset-generation/particle-binaries/) run
@@ -181,9 +205,11 @@ the log. Every other kind is judged on its **emitted data** and is not policed t
 way: a [`ui`](#ui-validation) or [`material`](#material-validation) run (whose
 authoritative output is the emitted image/maps, not a replay of its operations), and
 a [voxel](#voxel-validation), [skinned](#skinned-characters),
-[particle](#particle-validation), or [audio](#audio-validation) run, are each scored
+[Blender character](#blender-validation), [particle](#particle-validation), or
+[audio](#audio-validation) run, are each scored
 on the image, geometry, maps, effect, clip, and preview they emit — whatever produced
-them.
+them. (A Blender run's [provenance re-run](#blender-validation) is a separate, recorded
+signal, analogous to this one but on the authored `build.py`.)
 
 ## Review
 

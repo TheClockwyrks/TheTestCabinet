@@ -888,6 +888,16 @@ pub const SFX_SAMPLE_CONFIG_DEST: &str = "sfx-sample.config.json";
 /// The config path the `music` binary reads.
 pub const MUSIC_CONFIG_DEST: &str = "music.config.json";
 
+/// The run-workspace-relative path the orchestrator seeds a `blender-character` case's
+/// tool configuration to (bounds, output paths, and the required animation names the
+/// `build.py` reads). Read by the `tcab-blend` runner.
+pub const BLENDER_CONFIG_DEST: &str = "blender.config.json";
+
+/// The run-workspace-relative path a `blender-character` run emits its skinned, animated
+/// glTF to. The `tcab-blend` runner writes it (the authoritative, judged output); the
+/// validator decodes it. Not manifest-declared — core provides the path.
+pub const BLENDER_MESH_DEST: &str = "character.glb";
+
 /// The run-workspace-relative path core claims for a `ui` case's emitted `ui.json`
 /// (element sizes, nine-slice insets, atlas rectangles). Auto-emitted by the binary,
 /// not manifest-declared.
@@ -1146,6 +1156,18 @@ pub enum AssetKind {
     /// `[audio]` table (naming its `instrument_bank`). Judged on the emitted
     /// `clip.wav` (and portable `clip.mid`).
     Music,
+    /// A rigged, animated **skinned character** authored by driving **headless Blender**
+    /// through its Python API — the first Blender-based asset kind. The model writes a
+    /// `build.py` (a `bpy` script) that builds the character mesh, an armature, skin
+    /// weights, and one Action per required animation, then runs the `tcab-blend` runner
+    /// to export a single **`character.glb`** (a standard skinned + animated glTF 2.0)
+    /// plus a `model.png` preview. Unlike the CSG skinned kinds (`mc-skinned` …), there
+    /// is **no operation log**: `build.py` is the recorded authoring trace, re-run for
+    /// provenance. Declares a `[voxel]` table (reused as the character's bounding box)
+    /// and a `[model]` table (the required animations); judged on the emitted glTF, never
+    /// an op-log replay.
+    #[serde(rename = "blender-character")]
+    BlenderCharacter,
 }
 
 impl AssetKind {
@@ -1205,6 +1227,17 @@ impl AssetKind {
     /// and animated, but single-file.
     pub fn is_skinned(self) -> bool {
         matches!(self, Self::McSkinned | Self::SnSkinned | Self::DcSkinned)
+    }
+
+    /// Whether this kind is the **Blender** character kind (`blender-character`): a
+    /// rigged, animated skinned character authored by driving headless Blender through a
+    /// `build.py` script rather than a constrained op-log tool. It is its own category —
+    /// **not** voxel/skinned/meshed/paint/particle/audio — reusing the `[voxel]` table
+    /// as a bounding box and the `[model]` table for its required animations, but
+    /// emitting a standard skinned glTF (`character.glb`) that the validator decodes and
+    /// whose animations it reconciles. Selects the Blender resolve/seed/validate path.
+    pub fn is_blender(self) -> bool {
+        matches!(self, Self::BlenderCharacter)
     }
 
     /// Whether this kind is one of the surface-**meshed** kinds that composite a
@@ -1312,6 +1345,7 @@ impl AssetKind {
             Self::SfxSynth => SFX_SYNTH_CONFIG_DEST,
             Self::SfxSample => SFX_SAMPLE_CONFIG_DEST,
             Self::Music => MUSIC_CONFIG_DEST,
+            Self::BlenderCharacter => BLENDER_CONFIG_DEST,
         }
     }
 }
@@ -3142,6 +3176,124 @@ impl TestCaseCatalog {
                     None,
                 )
             }
+            TestType::AssetGeneration if manifest.asset_kind.is_blender() => {
+                // The Blender character kind. It reuses the `[voxel]` table as a
+                // bounding box (the volume the character must fit within) and the
+                // `[model]` table for its required animations, but it is authored by
+                // driving headless Blender through a `build.py` script rather than a
+                // constrained op-log tool: `[tool].binary` is the `tcab-blend` runner
+                // and `[output].actions` names the authored script (re-run for
+                // provenance), not an operation log. Both are single files — a Blender
+                // character is one mesh — so neither may carry a `{part}` token.
+                if manifest.canvas.is_some() || manifest.sheet.is_some() {
+                    return Err(invalid(
+                        "a blender-character case declares a [voxel] bounding box, not \
+                         [canvas] or [sheet]"
+                            .to_string(),
+                    ));
+                }
+                if manifest.ui.is_some()
+                    || manifest.material.is_some()
+                    || manifest.particle.is_some()
+                    || manifest.audio.is_some()
+                {
+                    return Err(invalid(
+                        "a blender-character case declares none of [ui], [material], \
+                         [particle], or [audio]"
+                            .to_string(),
+                    ));
+                }
+
+                let voxel = manifest.voxel.as_ref().ok_or_else(|| {
+                    invalid(
+                        "the [voxel] table (the character's bounding box) is required".to_string(),
+                    )
+                })?;
+                if voxel.width == 0 || voxel.height == 0 || voxel.depth == 0 {
+                    return Err(invalid(
+                        "bounding-box width, height, and depth must be greater than zero"
+                            .to_string(),
+                    ));
+                }
+                test_cabinet_model_core::PreviewBackground::parse(&voxel.background).map_err(
+                    |err| invalid(format!("bounding-box background `{}`: {err}", voxel.background)),
+                )?;
+
+                let tool = manifest
+                    .tool
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [tool] table is required".to_string()))?;
+                if tool.binary.trim().is_empty() {
+                    return Err(invalid("tool.binary must not be empty".to_string()));
+                }
+                if escapes_folder(&tool.preview) {
+                    return Err(invalid(format!(
+                        "tool preview `{}` escapes the run workspace",
+                        tool.preview.display()
+                    )));
+                }
+
+                let output = manifest
+                    .output
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [output] table is required".to_string()))?;
+                if escapes_folder(&output.actions) {
+                    return Err(invalid(format!(
+                        "output actions `{}` escapes the run workspace",
+                        output.actions.display()
+                    )));
+                }
+
+                // A Blender character is a single mesh: neither the preview nor the
+                // authored-script path may be a `{part}` template.
+                for (label, path) in [
+                    ("tool.preview", &tool.preview),
+                    ("output.actions", &output.actions),
+                ] {
+                    if path.to_string_lossy().contains(PART_TOKEN) {
+                        return Err(invalid(format!(
+                            "{label} `{}` must not contain `{PART_TOKEN}` — a blender-character \
+                             case is a single mesh",
+                            path.display()
+                        )));
+                    }
+                }
+
+                // The `[model]` rig contract is required: a Blender character is
+                // inherently animated. As with the voxel-family animated kinds it fixes
+                // only the required animations by name; the skeleton and weights are the
+                // model's to invent.
+                let model = manifest.model.as_ref().ok_or_else(|| {
+                    invalid(
+                        "a blender-character case requires a [model] table of required animations"
+                            .to_string(),
+                    )
+                })?;
+                let model = resolve_model(model, &invalid)?;
+
+                (
+                    None,
+                    Some(ToolSpec {
+                        binary: tool.binary.clone(),
+                        preview: tool.preview.clone(),
+                    }),
+                    Some(OutputSpec {
+                        actions: output.actions.clone(),
+                    }),
+                    None,
+                    Some(VoxelSpec {
+                        width: voxel.width,
+                        height: voxel.height,
+                        depth: voxel.depth,
+                        background: voxel.background.clone(),
+                    }),
+                    Some(model),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
             TestType::AssetGeneration if manifest.asset_kind.is_paint() => {
                 // A painted kind (`ui`/`material`). `ui` reuses `[canvas]` for the
                 // base element size and adds an optional `[ui]` kit; `material`
@@ -4375,6 +4527,15 @@ impl TestCaseCatalog {
                         claim(map_path(&tool.preview, map), "map preview")?;
                     }
                     claim(PathBuf::from(MATERIAL_JSON_DEST), "material manifest")?;
+                } else if manifest.asset_kind.is_blender() {
+                    // A blender-character run has no seeded action log: `[output].actions`
+                    // names the `build.py` the model AUTHORS, seeded as the case's own
+                    // spec (its starter stub), so it is already claimed by the spec loop
+                    // above and must NOT be claimed again here. The runner produces the
+                    // preview and the emitted glTF, so claim those to keep a spec off
+                    // them.
+                    claim(tool.preview.clone(), "tool preview")?;
+                    claim(PathBuf::from(BLENDER_MESH_DEST), "mesh")?;
                 } else {
                     // The single-file kinds: sprite (single), static voxel/mesh, the
                     // three skinned kinds, particle, and audio.
