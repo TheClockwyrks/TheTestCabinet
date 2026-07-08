@@ -3,8 +3,9 @@
 ## Overview
 
 **Sunfront** is a real-time **tug-of-war** for the browser, rendered in **3D** through
-a low oblique command camera you scroll across the field. Two rival legions of solar-powered war automatons —
-the **Duneforged** — face each other across a diagonal stretch of desert, their bases
+a low oblique command camera you scroll across the field. Two rival legions of
+solar-powered war automatons — the **Duneforged** — face each other across a
+diagonal stretch of desert, their bases
 in opposite corners. You never command a single unit. Instead you spend a steadily
 ticking income on **spawner structures** and **Solar Extractors** in your walled
 staging yard; every **wave**, each spawner you own stamps out its unit, and those

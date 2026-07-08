@@ -18,7 +18,8 @@ target without giving away the implementation.
 
 The `gameplay` mockup does **not** fake the 3D battlefield — flat CSS cannot depict
 it usefully. The real build renders the world in **WebGL/WebGPU**
-(`../specs/overview.md`) through a low oblique, scrolling command camera; the mockup exists to pin
+(`../specs/overview.md`) through a low oblique, scrolling command camera; the mockup
+exists to pin
 the **palette, HUD layout, and type**, so it is **HUD-only**: the HUD overlay over
 a neutral viewport, with the 3D world left to the build. The `title` and
 `game-over` mockups likewise show only their menu/card chrome over a neutral

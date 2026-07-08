@@ -1,0 +1,140 @@
+slug = "sunfront-muzzle-small-arms"
+name = "Sunfront Small-Arms Muzzle Flash"
+difficulty = "easy"
+tags = ["asset-generation", "particle", "3d", "vfx", "muzzle-flash"]
+summary = """
+Author the Sunfront small-arms muzzle flash: a compact, forward-directed gun \
+flash — a stuttering white-hot bloom at the muzzle, a short forward spit of hot \
+sparks, and a faint smoke wisp — as a LOOPING particle-3d emitter system that \
+plays continuously while a unit fires, built one recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 3D particle effect: a forward-directed small-arms muzzle flash the model authors
+# as an emitter SYSTEM, simulated live by the review UI and the game. Unlike a
+# one-shot explosion, this effect LOOPS — it plays continuously while a unit fires.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]); the flash fires forward along +z from a muzzle point near the rear.
+# duration_ms is the loop window; loop = true, so the effect sustains a steady
+# firing stutter rather than decaying to empty.
+[particle]
+width       = 24             # extent along x
+height      = 24             # extent along y — up
+depth       = 32             # extent along z — forward; the flash projects toward +z
+duration_ms = 600            # the loop window; a sustained firing stutter, not a one-shot
+fps         = 60             # preview/playback frame rate
+loop        = true           # LOOPING — a continuous muzzle flash while the unit fires
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "read"
+name = "Effect read"
+description = """
+How clearly the simulated effect reads as a small-arms muzzle flash — a hot \
+white-to-yellow flash at the muzzle, a short forward spit of hot-orange sparks, \
+and a faint grey smoke wisp — in the declared gunfire palette, from multiple orbit \
+angles and across replays."""
+
+[[domain]]
+id = "motion"
+name = "Motion & timing"
+description = """
+How well the effect plays as a continuous, looping muzzle flash — a rapid stutter \
+of flashes that sustains across the loop with no decay to empty, sparks spitting \
+forward along the barrel and settling under drag, and a seamless loop that reads \
+the same at its start and end."""
+
+[[review_item]]
+id = "reads-as-muzzle-flash"
+title = "Reads as a small-arms muzzle flash"
+text = """
+The effect reads at a glance as a gun firing: a bright, hot flash blooming at the \
+muzzle with a short forward spit of small hot sparks and a faint smoke haze — not a \
+big explosion, a ground fireball, or an omnidirectional burst. It is legible as a \
+forward-directed muzzle flash from multiple orbit angles."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id = "distinct-layers"
+title = "Flash, forward sparks, and smoke wisp"
+text = """
+All three authored layers are present and distinct: a bright, very short-lived \
+flash core at the muzzle; a tight forward spit of small hot sparks; and a faint, \
+slow smoke wisp. Each is a distinct emitter, not one undifferentiated blob."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "continuous-loop"
+title = "Continuous, looping firing stutter"
+text = """
+Plays as a continuous, looping muzzle flash: a rapid stutter of short flashes that \
+sustains across the whole duration with no decay to empty and no single one-shot \
+burst. The loop is seamless — it reads the same at its start and end — and holds up \
+across replays despite the live simulation varying slightly."""
+weight = 3
+domain = "motion"
+
+[[review_item]]
+id = "forward-directional-motion"
+title = "Forward-directed motion"
+text = """
+The flash and sparks project forward out the muzzle in a tight forward cone (along \
++z), not as a spherical explosion. Sparks slow under drag and droop slightly as \
+they die; nothing shoots off in a straight line forever or floats unnaturally."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "curves"
+title = "Color, opacity & size over life"
+text = """
+Each particle's look changes over its life as the brief describes: the flash runs \
+white-hot to hot yellow and fades fast; sparks are hot orange, fading and shrinking \
+as they die; the smoke wisp is a faint grey that thins to nothing rather than \
+popping off. Sizes and opacities ease rather than snap."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "palette"
+title = "Gunfire palette"
+text = """
+Uses only the declared neutral gunfire colors — white-hot flash, hot-yellow edge, \
+hot-orange sparks fading to deep ember, and a faint grey smoke wisp — with no \
+out-of-palette hues (no blues, greens, or purples) and no team tint bleeding into \
+the flash."""
+weight = 1
+domain = "read"
