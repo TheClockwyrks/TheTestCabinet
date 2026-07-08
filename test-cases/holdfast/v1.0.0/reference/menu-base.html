@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!--
+  Holdfast — title / main menu reference mockup for the `base` variant.
+  Canonical view slug: title
+  Lists only the standard NEW COLONY start; the base variant seeds no extra mode.
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title).
+  Objects in .colony use field-local coordinates (top = field row * 24).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Holdfast — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim top-down slice of a colony behind the menu, for atmosphere. -->
+      <div class="colony">
+        <div class="region rock dim" style="--c: 0; --r: 0; --w: 7; --h: 6"></div>
+        <div class="region grass dim" style="--c: 40; --r: 4; --w: 12; --h: 8"></div>
+        <div class="region dim" style="--c: 6; --r: 6; --w: 9; --h: 6; background: var(--floor)"></div>
+        <div class="region dim" style="--c: 5; --r: 5; --w: 11; --h: 1;
+             background: linear-gradient(180deg, var(--built), var(--built-2)); border: 1px solid #9c7a4f"></div>
+        <div class="node tree dim" style="--c: 44; --r: 6"></div>
+        <div class="node tree dim" style="--c: 45; --r: 7"></div>
+        <div class="turret dim" style="--c: 16; --r: 5"></div>
+        <div class="person settler dim" style="left: 168px; top: 168px"></div>
+        <div class="person settler dim" style="left: 216px; top: 168px"></div>
+        <div class="night dim"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">HOLDFAST</h1>
+        <div class="tagline">GATHER. BUILD. HOLD.</div>
+        <nav class="menu">
+          <div class="menu-item selected">NEW COLONY</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT</div>
+    </div>
+  </body>
+</html>

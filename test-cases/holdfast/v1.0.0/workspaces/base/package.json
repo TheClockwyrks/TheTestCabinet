@@ -1,0 +1,12 @@
+{
+  "name": "holdfast",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Holdfast — a top-down colony survival-management game that runs entirely in the browser, whose art, effects, and audio the build produces itself.",
+  "dependencies": {
+    "@test-cabinet/particle-runtime": "file:/opt/tcab-packages/@test-cabinet/particle-runtime"
+  },
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}
