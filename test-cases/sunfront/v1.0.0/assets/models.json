@@ -19,7 +19,7 @@
   "structures": {
     "base":      { "model": "bastion/mesh.glb",   "kind": "rigid", "dimensions": [90, 120, 90], "clips": { "idle": "idle" } },
     "reliquary": { "model": "reliquary/mesh.glb", "kind": "rigid", "dimensions": [60, 100, 60], "clips": { "idle": "idle" } },
-    "solar-extractor": { "model": "solar-extractor/mesh.glb", "kind": "rigid", "dimensions": null, "clips": { "idle": "idle" } }
+    "solar-extractor": { "model": "solar-extractor/mesh.glb", "kind": "rigid", "dimensions": [84, 72, 72], "clips": { "idle": "idle" } }
   },
   "spawners": {
     "scarab":    { "model": "scarab-hatchery/mesh.glb",  "kind": "rigid", "dimensions": [60, 40, 60], "clips": { "idle": "idle", "emit": "emit" } },
