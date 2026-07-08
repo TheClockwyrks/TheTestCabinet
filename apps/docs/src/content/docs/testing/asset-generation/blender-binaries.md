@@ -30,10 +30,13 @@ different tool and emits a standard glTF.
 
 ## The authoring channel: headless Blender + `tcab-blend`
 
-The run container (`test-cabinet-blender`) ships a **portable, headless Blender**
-(on `PATH`), a thin runner **`tcab-blend`**, and a bundled glTF export helper. The
-model authors **one Blender Python script, `build.py`**, and runs it through the
-runner:
+The run container (`test-cabinet-blender`) ships **headless Blender** (on `PATH`), a
+thin runner **`tcab-blend`**, and a bundled glTF export helper. Unlike every other run
+image it is built on **`ubuntu:26.04`** rather than the shared base, because Blender
+publishes no upstream Linux build for aarch64 and Ubuntu is the distro that packages a
+modern Blender (5.0.x) for both amd64 and arm64 — so the same Blender version ships on
+both architectures. The model authors **one Blender Python script, `build.py`**, and runs
+it through the runner:
 
 ```
 tcab-blend        # execs: blender --background --python build.py -- <config.json>

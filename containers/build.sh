@@ -259,6 +259,26 @@ build_adversarial() {
 	fi
 }
 
+# Build the Blender character image. UNLIKE every other run image, this one is NOT built
+# `FROM` the shared base: it is a self-contained `ubuntu:26.04` image (see
+# `containers/blender/Dockerfile` for why — Ubuntu is the only distro shipping a modern,
+# arch-parity Blender via `apt` on the aarch64 hosts this project runs on). So it takes no
+# `BASE_IMAGE` build arg and does not depend on the base being built first. The build
+# context is still the repository root so its `COPY` lines can see `containers/blender/`.
+build_blender() {
+	local image="${IMAGE_NAME_PREFIX}blender:${IMAGE_TAG}"
+	echo "==> building ${image} (self-contained; FROM ubuntu:26.04, NOT the base)"
+	"$DOCKER" build \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/blender/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" blender)"
+		echo "==> blender reference: ${reference}"
+	fi
+}
+
 build_performance() {
 	echo "==> building ${PERFORMANCE_IMAGE} (FROM ${BASE_IMAGE})"
 	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
@@ -298,10 +318,10 @@ build_one() {
 		# be published + pinned in packs.lock.json first.
 		sfx-sample)   build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256 ;;
 		music)        build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256 ;;
-		# Every other name is a plain asset-generation image `FROM` the base. The
-		# Blender character image (`blender`) is one of these: it bakes in headless
-		# Blender + the `tcab-blend` runner rather than a binary compiled from `crates/`
-		# (Blender is a third-party package), but the build shape is the same.
+		# The Blender character image is self-contained (FROM ubuntu:26.04, NOT the base),
+		# so it has its own builder and takes no BASE_IMAGE arg — see build_blender.
+		blender)      build_blender ;;
+		# Every other name is a plain asset-generation image `FROM` the base.
 		*)            build_asset_image "$1" ;;
 	esac
 }
@@ -347,15 +367,26 @@ for name in "${selected[@]}"; do
 done
 
 # Uphold the FROM-base invariant. Rebuild base first if it was selected; otherwise,
-# if any non-base image was selected but no base image exists yet, build it so the
+# if any base-dependent image was selected but no base image exists yet, build it so the
 # `FROM ${BASE_IMAGE}` in those Dockerfiles resolves. An existing base is reused
 # untouched — select `base` explicitly to rebuild it after a base-level change.
 select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
 
+# Whether the selection includes any image built `FROM` the base. Every image is, EXCEPT
+# `blender`, which is a self-contained `ubuntu:26.04` image (see build_blender) — so a
+# selection of only `blender` must NOT drag in a base build.
+select_needs_base() {
+	local x
+	for x in "${selected[@]}"; do
+		[[ "$x" != base && "$x" != blender ]] && return 0
+	done
+	return 1
+}
+
 if select_has base; then
 	build_base
-elif ! image_present "${BASE_IMAGE}"; then
-	echo "==> base image ${BASE_IMAGE} not present; building it first (every image is FROM it)"
+elif select_needs_base && ! image_present "${BASE_IMAGE}"; then
+	echo "==> base image ${BASE_IMAGE} not present; building it first (every image but blender is FROM it)"
 	build_base
 fi
 

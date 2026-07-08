@@ -57,11 +57,14 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   `sn-skin` / `dc-skin` binary (a single continuous, skeleton-bound skin, one
   image per algorithm);
 - the **blender** image, which every Blender character run
-  (`asset_kind = "blender-character"`) executes in — the base image plus **headless
-  Blender** and the baked-in **`tcab-blend`** runner (which runs a model's `build.py`
-  under Blender to export a skinned, animated glTF). Unlike the voxel-family binaries,
-  Blender is a third-party package baked in at build time rather than compiled from
-  `crates/`;
+  (`asset_kind = "blender-character"`) executes in — a **self-contained `ubuntu:26.04`
+  image** carrying **headless Blender** (installed from `apt`) and the baked-in
+  **`tcab-blend`** runner (which runs a model's `build.py` under Blender to export a
+  skinned, animated glTF). It is the **one run image not built `FROM` the shared base**:
+  Blender ships no upstream Linux build for aarch64, so getting a modern, arch-parity
+  Blender means taking it from a distro that packages it for both arches, and only Ubuntu
+  (26.04 → Blender 5.0.x) does — the Debian base is stuck at Blender 3.4.x. See
+  [`blender/Dockerfile`](blender/Dockerfile) for the full rationale;
 - the **particle-2d** and **particle-3d** images, which every particle-effect run
   (`asset_kind = "particle-2d"` / `"particle-3d"`) executes in — the base image
   plus the baked-in `particle-2d` / `particle-3d` binary;
@@ -116,7 +119,7 @@ containers/
 ├── mc-skinned/Dockerfile       # the base image plus the baked-in `mc-skin` binary (skinned character)
 ├── sn-skinned/Dockerfile       # the base image plus the baked-in `sn-skin` binary
 ├── dc-skinned/Dockerfile       # the base image plus the baked-in `dc-skin` binary
-├── blender/                    # the base image plus headless Blender + the `tcab-blend` runner
+├── blender/                    # self-contained ubuntu:26.04 + headless Blender + `tcab-blend` (NOT FROM base)
 │   ├── Dockerfile              #   (a `blender-character` run authors via a build.py bpy script)
 │   ├── tcab-blend              #   the runner: execs `blender --background --python build.py`
 │   └── tcab_blend_export.py    #   the bundled glTF export + preview helper build.py calls
@@ -314,10 +317,12 @@ deterministic isometric rasterizer, and their output is judged from the emitted
 data plus the rendered previews — there is no cheat-divergence check on these
 binaries.
 
-Every asset-generation Dockerfile is `FROM` the base, so each inherits the
-toolchain, the `node` run user, the `/work` working directory, and the keep-alive
-`CMD`, and adds only its binary — or, for the `ui` and `material` images, its two
-binaries. Unlike a harness CLI, these binaries are part
+Every asset-generation Dockerfile is `FROM` the base — **except the `blender`
+image**, which is a self-contained `ubuntu:26.04` image that re-creates the run
+contract itself (see its bullet above and [`blender/Dockerfile`](blender/Dockerfile)) —
+so each inherits the toolchain, the `node` run user, the `/work` working directory, and
+the keep-alive `CMD`, and adds only its binary — or, for the `ui` and `material` images,
+its two binaries. Unlike a harness CLI, these binaries are part
 of The Test Cabinet itself and must match the orchestrator's own logic — the
 orchestrator regenerates a `draw`/`draw-sheet` run's scored image from its action
 log through the *same* library those tools use, and core's validator decodes the

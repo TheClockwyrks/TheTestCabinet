@@ -48,7 +48,7 @@ REQUIRED_ANIMATIONS = config["animations"]      # e.g. ["idle", "run", "fire", .
 # build below.
 def clear_scene():
     bpy.ops.object.select_all(action="SELECT")
-    bpy.ops.object.delete(use_confirm=False)
+    bpy.ops.object.delete()
     for block in (bpy.data.meshes, bpy.data.armatures, bpy.data.actions):
         for datablock in list(block):
             block.remove(datablock)

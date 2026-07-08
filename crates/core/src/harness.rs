@@ -85,8 +85,10 @@ const SFX_SAMPLE_IMAGE_NAME: &str = "test-cabinet-sfx-sample";
 /// instrument bank).
 const MUSIC_IMAGE_NAME: &str = "test-cabinet-music";
 
-/// The image every `blender-character` asset-generation run executes in — the base
-/// image plus headless Blender and the `tcab-blend` runner.
+/// The image every `blender-character` asset-generation run executes in — a
+/// self-contained `ubuntu:26.04` image (the ONLY run image not built `FROM` the shared
+/// base) carrying headless Blender and the `tcab-blend` runner. See
+/// `containers/blender/Dockerfile` for why it is Ubuntu-based rather than base-derived.
 const BLENDER_IMAGE_NAME: &str = "test-cabinet-blender";
 /// The name of the adversarial run-container image, used by every adversarial
 /// run. It is the base image plus the Rust + `wasm32-unknown-unknown` toolchain
