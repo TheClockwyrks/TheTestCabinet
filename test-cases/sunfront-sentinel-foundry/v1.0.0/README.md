@@ -2,13 +2,16 @@
 
 This is version `v1.0.0` of the **Sunfront Sentinel Foundry** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a tall Duneforged assembly tower as a 56×76×56 opaque-voxel model
+sculpt *and rig* a wide Duneforged casting works as a 72×56×72 opaque-voxel model
 using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-sentinel-foundry` is the catalog slug for this case. It is one of the
 `sunfront-*` Duneforged voxel roster and shares the faction's brass-and-sandstone
-palette and solar-amber team accent. There is no target model — the model builds
-toward the seeded brief and is reviewed subjectively against it.
+palette and solar-amber team accent (here the accent is the molten metal the
+foundry casts). Its casting identity — a tipping, pouring crucible and breathing
+bellows on a wide, open hall — deliberately sets it apart from the roster's stamping
+and spinning towers. There is no target model — the model builds toward the seeded
+brief and is reviewed subjectively against it.
 
 ## The contract
 
@@ -21,16 +24,17 @@ declarations:
 
 | Animation | Self-playing? | What it must show |
 | --- | --- | --- |
-| `piston_stamp` | Yes (idle) | The stamping press hammers straight down to the bottom of its stroke and eases back up in the tower's throat. |
-| `gear_spin` | Yes (idle) | The drive gear turns a full revolution continuously and loops seamlessly. |
+| `crucible_pour` | Yes (idle) | The gantry crucible tips forward on its trunnions, pours a stream of molten metal into the casting bed, holds, and rights back level. |
+| `bellows_breathe` | Yes (idle) | The great flank bellows squeeze shut and draw back open in a slow, weighted breath that loops seamlessly. |
 
 Each animation is a **declaration only** — no keyframes, no period, no bound joints;
 the model authors the motion as F-curves at run time with the `voxel-anim`
 `define-animation`/`add-keyframe` subcommands, and defines its own parts and joints
 with `define-part`/`define-joint`. The foundry cycles on its own with no caller, and
-the tower itself stays put — only the press and the gear move. The model may add its
-own extra parts, joints, and self-playing animations on top, but must produce both
-required animations, by those names, and must not contradict them.
+the hall itself stays put — only the crucible and the bellows move (nothing hammers or
+stamps). The model may add its own extra parts, joints, and self-playing animations on
+top, but must produce both required animations, by those names, and must not contradict
+them.
 
 ## Contents
 
@@ -50,9 +54,12 @@ model and no operations schema — the binary's `--help` is the contract.
 
 ## Variants
 
-The Foundry ships a single default variant — `base`, declared in
-`variants/base.toml`. It seeds the common brief and is rated on the case's single
-`fidelity` scoring domain; it adds no specs, review items, or domains of its own.
+The Foundry ships three variants that sculpt the **same** casting hall at three
+sizes, each overriding the case's `[voxel]` volume: `base` (72×56×72, the default,
+declared in `variants/base.toml`), `half` (each extent ~halved), and `double` (each
+extent doubled). All three seed the common brief — rendered at the selected variant's
+dimensions — and are rated on the case's single `fidelity` scoring domain; they add no
+specs, review items, or domains of their own.
 
 ## Versioning
 

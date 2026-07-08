@@ -3,13 +3,14 @@ name = "Sunfront Sentinel Foundry"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]
 summary = """
-Sculpt and rig the Sunfront Sentinel Foundry: an opaque-voxel assembly \
-tower whose stamping press hammers down and drive gear spins on their own \
-self-playing animations while the structure stays put — painted cell by cell with \
-the `voxel-anim` tool, one recorded operation at a time. The model invents whatever \
-parts and joints it needs; the fixed contract is two self-playing animations it must \
-author — a hammering `piston_stamp` and a turning `gear_spin` — the reviewer can play \
-back."""
+Sculpt and rig the Sunfront Sentinel Foundry: an opaque-voxel casting works — a wide, \
+open-fronted hall where a gantry-slung crucible tips and pours glowing molten metal \
+into a casting bed while great bellows breathe beside it, each a self-playing animation \
+while the hall stays put — painted cell by cell with the `voxel-anim` tool, one recorded \
+operation at a time. It melts and pours metal; it does not hammer or stamp. The model \
+invents whatever parts and joints it needs; the fixed contract is two self-playing \
+animations it must author — a `crucible_pour` and a `bellows_breathe` — the reviewer can \
+play back."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -34,9 +35,9 @@ variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 56
-height = 76
-depth = 56
+width = 72
+height = 56
+depth = 72
 background = "transparent"
 
 # The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
@@ -64,18 +65,19 @@ actions = "parts/{part}.actions.json"
 # so the contract exists from the first operation.
 [model]
 
-# `piston_stamp` — the STAMPING PRESS. A self-playing idle that hammers the press
-# straight down to the bottom of its stroke and back up, on its own, so the foundry
-# runs without any caller.
+# `crucible_pour` — the CASTING POUR. A self-playing idle that tips the crucible forward
+# on its trunnions, pours molten metal into the casting bed, holds, and rights back
+# level, on its own, so the foundry runs without any caller.
 [[model.animation]]
-name = "piston_stamp"
+name = "crucible_pour"
 loop = true
 auto_play = true
 
-# `gear_spin` — the DRIVE GEAR. A self-playing idle that turns the drive gear a full
-# revolution continuously, on its own, so the foundry runs without any caller.
+# `bellows_breathe` — the BELLOWS. A self-playing idle that squeezes the great bellows
+# shut and draws them back open in a slow breath, on its own, so the foundry runs without
+# any caller.
 [[model.animation]]
-name = "gear_spin"
+name = "bellows_breathe"
 loop = true
 auto_play = true
 
@@ -91,56 +93,58 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Sentinel \
-Foundry and runs correctly — a tall assembly tower whose stamping press hammers \
-down and back up while the drive gear spins on their own self-playing animations and \
-the tower stays put, with a clear solar-amber energy accent and the disciplined \
-Duneforged palette."""
+Foundry and runs correctly — a wide, open-fronted casting hall whose gantry crucible \
+tips and pours molten metal into a casting bed while its flank bellows breathe on \
+their own self-playing animations and the hall stays put, with a clear molten-amber \
+energy accent and the disciplined Duneforged palette."""
 
 [[review_item]]
-id = "reads-as-foundry"
-title = "Reads as a foundry tower"
+id = "reads-as-casting-hall"
+title = "Reads as a casting foundry"
 text = """
-From more than one angle the model reads unmistakably as a Duneforged assembly \
-tower: a tall, blocky masonry structure with a stamping press riding in its throat \
-and a toothed drive gear mounted on its flank. It is a working foundry building, \
-not an abstract stack of boxes."""
+From more than one angle the model reads unmistakably as a Duneforged casting works: \
+a wide, low, open-fronted masonry hall with a gantry-slung crucible brimming with \
+molten metal over a casting bed, and great bellows on its flank. It reads as a \
+foundry that melts and pours metal — not a tall stamping tower, and not an abstract \
+stack of boxes."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "elements-cycle"
-title = "Press stamps and gear spins on their own"
+title = "Crucible pours and bellows breathe on their own"
 text = """
-The two moving elements cycle on their own, continuously, while the tower stands \
-still: playing `piston_stamp` drives the press straight down to the bottom of its \
-stroke and back up in the throat, and playing `gear_spin` turns the drive gear a \
-full revolution. The motion carries weight — the press eases into the bottom of \
-each stamp with a thump rather than sliding linearly, and the gear turns at a steady \
-rate that loops seamlessly. Across each cycle no part of the press or the gear tears \
-away or clips into the tower; each moves as one solid piece about a single clean \
-axis."""
+The two moving elements cycle on their own, continuously, while the hall stands \
+still: playing `crucible_pour` tips the crucible forward on its trunnions, pours a \
+stream of molten metal down into the casting bed, holds, and rights it back level, \
+and playing `bellows_breathe` squeezes the great bellows shut and draws them back \
+open. The motion carries weight — the full crucible eases through its tip rather than \
+snapping, and the bellows breathe at a steady rate that loops seamlessly. Across each \
+cycle no part of the crucible or the bellows tears away or clips into the hall; each \
+moves as one solid piece about a single clean axis."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "base-fixed"
-title = "Tower stays put; only the moving parts move"
+title = "Hall stays put; only the moving parts move"
 text = """
-The masonry tower and its foundation are the fixed base of the machine: they stay \
-put, never carried along by the press or the gear. When `piston_stamp` plays, the \
-press hammers while the tower holds; when `gear_spin` plays, the gear turns while the \
-tower holds. Nothing but the two moving elements moves."""
+The masonry casting hall and its foundation are the fixed base of the works: they \
+stay put, never carried along by the crucible or the bellows. When `crucible_pour` \
+plays, the crucible tips and pours while the hall holds; when `bellows_breathe` \
+plays, the bellows work while the hall holds. Nothing but the two moving elements \
+moves."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "parts-attached"
-title = "Press and gear stay attached"
+title = "Crucible and bellows stay attached"
 text = """
-Each moving element stays attached to the tower across its full range of motion: the \
-press meets the tower's throat where it seats as it hammers up and down, and the gear \
-meets the tower's flank at its hub as it turns, with no gap and never floating free \
-or detaching."""
+Each moving element stays attached to the hall across its full range of motion: the \
+crucible stays hung on its gantry trunnions as it tips and rights, and the bellows \
+stay seated on the flank at their mouth as they squeeze and draw, with no gap and \
+never floating free or detaching."""
 weight = 2
 domain = "fidelity"
 
@@ -148,9 +152,9 @@ domain = "fidelity"
 id = "palette"
 title = "Duneforged palette discipline"
 text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, \
-sandstone panels, iron mechanisms, and the solar-amber energy accent) with a clear \
-amber accent, no out-of-palette colors, and no stray voxels drifting off the \
-parts."""
+Uses only the Duneforged colors from the brief (brass and bronze masonry, sandstone \
+panels, iron mechanisms, and the solar-amber and solar-hot molten accents) with a \
+clear, glowing molten amber at the crucible, pour stream, and casting bed, no \
+out-of-palette colors, and no stray voxels drifting off the parts."""
 weight = 1
 domain = "fidelity"
