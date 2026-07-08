@@ -236,6 +236,65 @@ build_audio_image() {
 	fi
 }
 
+# Build the 2D full-stack image: the base plus the six 2D asset-generation binaries
+# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the two audio packs
+# those tools need (the combat-core sample pack for `sfx-sample`, the gm-lite instrument
+# bank for `music`). It is the union of a plain asset image and BOTH audio images, so it
+# presigns two content-addressed packs from the private R2 bucket at build time (see
+# build_audio_image for the mechanism and credentials) and passes both — plus the base —
+# to the one Dockerfile. Like the audio images, a missing pin or a failed presign for
+# EITHER pack is a HARD error: a full-stack image is never shipped with an empty audio
+# palette. Publish a pack with `node scripts/build-sample-pack.mjs <pack> --publish` and
+# commit the pin before building this image.
+build_full_stack_2d() {
+	local image="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
+	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
+	local sample_ref="combat-core@0.1.0" bank_ref="gm-lite@0.1.0"
+
+	# Both packs must be pinned (not a skip): the image bakes both.
+	local ref
+	for ref in "${sample_ref}" "${bank_ref}"; do
+		if [[ ! -f "${lock}" ]] || ! grep -q "\"${ref}\"" "${lock}"; then
+			echo "ERROR: cannot build ${image}: pack ${ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
+			echo "       Publish it with: node scripts/build-sample-pack.mjs <pack> --publish" >&2
+			exit 1
+		fi
+	done
+
+	# Presign a download URL + digest for each pack (two lines each: URL, then digest).
+	local presign lines
+	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${sample_ref}")"; then
+		echo "ERROR: ${sample_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
+		exit 1
+	fi
+	mapfile -t lines <<<"${presign}"
+	local sample_url="${lines[0]}" sample_sha="${lines[1]}"
+	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${bank_ref}")"; then
+		echo "ERROR: ${bank_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
+		exit 1
+	fi
+	mapfile -t lines <<<"${presign}"
+	local bank_url="${lines[0]}" bank_sha="${lines[1]}"
+
+	echo "==> building ${image} (FROM ${BASE_IMAGE}) with ${sample_ref} + ${bank_ref}"
+	"$DOCKER" build \
+		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "SAMPLE_PACK=${sample_ref}" \
+		--build-arg "SAMPLE_PACK_URL=${sample_url}" \
+		--build-arg "SAMPLE_PACK_SHA256=${sample_sha}" \
+		--build-arg "INSTRUMENT_BANK=${bank_ref}" \
+		--build-arg "INSTRUMENT_BANK_URL=${bank_url}" \
+		--build-arg "INSTRUMENT_BANK_SHA256=${bank_sha}" \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/full-stack-2d/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" full-stack-2d)"
+		echo "==> full-stack-2d reference: ${reference}"
+	fi
+}
+
 build_adversarial() {
 	echo "==> building ${ADVERSARIAL_IMAGE} (FROM ${BASE_IMAGE})"
 	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
@@ -312,6 +371,10 @@ build_one() {
 		base)         build_base ;;
 		adversarial)  build_adversarial ;;
 		performance)  build_performance ;;
+		# The full-stack-2d image bakes six binaries AND two content-addressed audio
+		# packs pulled from the private R2 bucket at build time (see
+		# build_full_stack_2d). Both packs must be published + pinned first.
+		full-stack-2d) build_full_stack_2d ;;
 		# The sfx-sample and music images bake a content-addressed audio pack pulled
 		# from the private R2 bucket at build time (see build_audio_image). Each pack
 		# ref must match the SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and
@@ -331,6 +394,7 @@ build_one() {
 # builds only the named subset.
 ALL_NAMES=(
 	base
+	full-stack-2d
 	sprite sprite-sheet
 	voxel voxel-animation
 	mc mc-animation sn sn-animation dc dc-animation
