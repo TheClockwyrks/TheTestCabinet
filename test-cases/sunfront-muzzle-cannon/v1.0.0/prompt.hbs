@@ -1,0 +1,70 @@
+Author the **Sunfront heavy-cannon muzzle flash**, a big forward-directed gun
+blast, as a 3D particle **system** using only the particle tool.
+
+It is the muzzle flash for *Sunfront*'s heavy cannon and mortar units — the smoky
+blast that belches from the barrel as a unit fires: a big white-hot bloom at the
+muzzle, a forward gout of orange flame and heavy embers, and a thick rolling smoke
+plume. It is a **looping** effect: the gun works in a heavy, sustained rhythm, so
+the blast **plays continuously** while the unit is firing rather than as one
+isolated shot. You are authoring the *effect*, not a single frame of it.
+
+## How the particle tool works
+
+The only way to shape the effect is the `particle-3d` binary already on your
+`PATH`. It is the sole channel, and — this is the key idea — you do **not** place
+individual particles. You **author a system**: emitters that spawn particles,
+forces that push them around, and per-particle curves for size, opacity, and color
+over each particle's life. The review UI and the game **simulate that system live**,
+exactly the way a real particle editor (Unreal's Niagara, Unity's VFX Graph) plays
+a system. Because it is a live stochastic simulation, the effect **varies slightly
+from one play to the next** — so build something that reads as a heavy-cannon blast
+across replays and from any orbit angle, not a frozen arrangement.
+
+You build the system by calling `particle-3d` **one operation at a time**, and the
+ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**. A system produced any other way is
+discarded and flagged; only the recorded operations count.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+particle-3d add-emitter --name blast --shape point --rate 60 --lifetime 140 --speed 9 --dir-z 1 --cone-angle 28
+```
+
+This effect **loops**: set the timeline so it sustains a continuous heavy firing
+rhythm rather than decaying to empty, and emit continuously (a rate), not as
+one-shot bursts. Rendering is a separate, on-request step: run `particle-3d render`
+to **simulate the system over its duration, write the preview animation, and emit
+the `system.json` your result is built from**. An unrendered effect leaves an empty
+system, so you **must** run `render` before you finish. The field dimensions,
+duration, and playback fps are already seeded in a config next to your workspace,
+so no operation needs those flags.
+
+Run `particle-3d --help` to list every operation and `particle-3d <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read the rendered `effect.gif` after your calls** to judge the
+effect's read, motion, and loop, and decide what to do next.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the effect, its steady-state loop, the emitters and
+forces, the color/opacity/size curves, the exact palette, and how to work the tool.
+Run `particle-3d --help` for the exact operation contract.
+
+## What to deliver
+
+Author the muzzle-blast system operation by operation — the big blast core, the
+forward gout of flame and heavy embers, and the thick rolling smoke plume, with the
+forces and per-particle curves that make them project forward, arc, and roll as the
+brief describes, and the timeline set to **loop** — running `particle-3d render` to
+simulate and check the effect as you go. When the simulated `effect.gif` reads as a
+continuous heavy-cannon muzzle blast, run `render` one last time and stop: the
+recorded `actions.json` (and the `system.json` it emits) is your finished
+submission.

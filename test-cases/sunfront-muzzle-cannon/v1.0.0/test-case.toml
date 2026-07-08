@@ -1,0 +1,143 @@
+slug = "sunfront-muzzle-cannon"
+name = "Sunfront Heavy-Cannon Muzzle Flash"
+difficulty = "medium"
+tags = ["asset-generation", "particle", "3d", "vfx", "muzzle-flash"]
+summary = """
+Author the Sunfront heavy-cannon muzzle flash: a big, forward-directed gun blast \
+— a white-hot bloom at the muzzle, a forward gout of orange flame and heavy \
+embers, and a thick rolling smoke plume — as a LOOPING particle-3d emitter system \
+that plays continuously while a unit fires, built one recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 3D particle effect: a forward-directed heavy-cannon muzzle flash the model
+# authors as an emitter SYSTEM, simulated live by the review UI and the game. Unlike
+# a one-shot explosion, this effect LOOPS — it plays continuously while a unit fires.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]); the blast fires forward along +z from a muzzle point near the rear.
+# The volume is larger than the small-arms flash: a heavy cannon throws flame,
+# embers, and a thick smoke plume further. loop = true, so it sustains a heavy
+# firing rhythm rather than decaying to empty.
+[particle]
+width       = 36             # extent along x
+height      = 36             # extent along y — up
+depth       = 48             # extent along z — forward; the blast projects toward +z
+duration_ms = 800            # the loop window; a sustained heavy firing rhythm, not a one-shot
+fps         = 60             # preview/playback frame rate
+loop        = true           # LOOPING — a continuous heavy-cannon flash while the unit fires
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "read"
+name = "Effect read"
+description = """
+How clearly the simulated effect reads as a heavy-cannon muzzle blast — a big \
+white-hot bloom at the muzzle, a forward gout of orange flame and heavy embers, and \
+a thick rolling grey-black smoke plume — in the declared gunfire palette, from \
+multiple orbit angles and across replays."""
+
+[[domain]]
+id = "motion"
+name = "Motion & timing"
+description = """
+How well the effect plays as a continuous, looping heavy-cannon flash — a heavy \
+firing rhythm that sustains across the loop with no decay to empty, flame and \
+embers thrown forward and arcing down under gravity while the smoke plume rolls up \
+and spreads, and a seamless loop that reads the same at its start and end."""
+
+[[review_item]]
+id = "reads-as-cannon-blast"
+title = "Reads as a heavy-cannon muzzle blast"
+text = """
+The effect reads at a glance as a heavy gun firing: a big, bright bloom at the \
+muzzle with a forward gout of flame and heavy embers and a thick rolling smoke \
+plume — bigger and smokier than a small-arms flash, but still a forward-directed \
+muzzle blast, not a ground fireball or an omnidirectional explosion. It is legible \
+from multiple orbit angles."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id = "distinct-layers"
+title = "Blast core, flame/ember gout, and smoke plume"
+text = """
+All three authored layers are present and distinct: a bright white-hot blast core \
+at the muzzle; a forward gout of orange flame and heavy hot embers; and a thick, \
+rolling grey-black smoke plume that lingers. Each is a distinct emitter, not one \
+undifferentiated cloud, and the smoke reads as a real plume, not a faint wisp."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "continuous-loop"
+title = "Continuous, looping firing rhythm"
+text = """
+Plays as a continuous, looping cannon flash: a heavy firing rhythm that sustains \
+across the whole duration with no decay to empty and no single one-shot burst. The \
+loop is seamless — it reads the same at its start and end — and holds up across \
+replays despite the live simulation varying slightly."""
+weight = 3
+domain = "motion"
+
+[[review_item]]
+id = "forward-directional-motion"
+title = "Forward-directed motion with weight"
+text = """
+The blast, flame, and embers project forward out the muzzle (along +z), not as a \
+spherical explosion; the heavy embers arc down under gravity while air drag bleeds \
+their speed, and the smoke plume rises and rolls on buoyancy. Nothing shoots off in \
+a straight line forever or floats unnaturally."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "curves"
+title = "Color, opacity & size over life"
+text = """
+Each particle's look changes over its life as the brief describes: the blast core \
+runs white-hot to orange and fades; the flame and embers are hot orange fading to \
+deep ember, shrinking as they die; the smoke grows, greys toward black, and fades \
+out to nothing rather than popping off. Sizes and opacities ease rather than snap."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "palette"
+title = "Gunfire palette"
+text = """
+Uses only the declared neutral gunfire colors — white-hot blast, hot-orange flame \
+and embers fading to deep ember, and grey-black smoke — with no out-of-palette hues \
+(no blues, greens, or purples) and no team tint bleeding into the blast."""
+weight = 1
+domain = "read"
