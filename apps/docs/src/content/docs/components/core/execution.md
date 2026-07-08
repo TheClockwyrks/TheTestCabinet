@@ -57,12 +57,12 @@ example by deleting files.
   image named for the run (`test-cabinet-base`, `test-cabinet-sprite`,
   `test-cabinet-sprite-sheet`, `test-cabinet-voxel`, or
   `test-cabinet-voxel-animation`), and a **per-image** override pins a verbatim
-  reference for one image without touching the others (`TCAB_CONTAINER_IMAGE_BASE`
-  for end-to-end, `TCAB_CONTAINER_IMAGE_SPRITE` for single-sprite,
-  `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for sprite-sheet,
-  `TCAB_CONTAINER_IMAGE_VOXEL` for static-voxel, and
-  `TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION` for animated-voxel; there is no override
-  that spans every image, since they differ) — and pulls it at run start
+  reference for one image without touching the others — one
+  `TCAB_CONTAINER_IMAGE_*` per run image (`_BASE` for end-to-end, `_SPRITE` for
+  single-sprite, `_SPRITE_SHEET` for sprite-sheet, and so on through every
+  asset-generation kind — including `_BLENDER` for blender-character — plus
+  `_ADVERSARIAL` and `_PERFORMANCE`; there is no override that spans every image,
+  since they differ) — and pulls it at run start
   (`--pull missing`). No backend is consulted, so a runner
   resolves the image the same way against any backend or none. Whatever image
   actually runs is resolved to its registry digest where it has one and recorded

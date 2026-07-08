@@ -159,6 +159,45 @@ const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
 /// image.
 const PERFORMANCE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PERFORMANCE";
 
+/// Every per-image override environment variable [`resolve_run_image`] consults,
+/// one per run image, in image build order. This is the **canonical set** a
+/// deployment must forward from the dispatcher into each driver `Job` so a full-ref
+/// `TCAB_CONTAINER_IMAGE_*` override actually reaches the run-image resolution that
+/// runs in the driver (see the dispatcher's `PASSTHROUGH_K8S_VARS`) — the
+/// `TCAB_CONTAINER_REGISTRY`/`_TAG` composition is forwarded separately.
+///
+/// It lives here, beside the override constants and `image_spec_for`, so a new
+/// asset kind is wired in ONE place; the `run_image_override_envs_is_exhaustive`
+/// test fails the build if any kind's `override_env` is missing from this list (or
+/// vice versa), so the dispatcher's forwarded set can never again silently drift
+/// behind the images that exist.
+pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
+    BASE_IMAGE_OVERRIDE_ENV,
+    SPRITE_IMAGE_OVERRIDE_ENV,
+    SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
+    VOXEL_IMAGE_OVERRIDE_ENV,
+    VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV,
+    MC_IMAGE_OVERRIDE_ENV,
+    MC_ANIMATION_IMAGE_OVERRIDE_ENV,
+    SN_IMAGE_OVERRIDE_ENV,
+    SN_ANIMATION_IMAGE_OVERRIDE_ENV,
+    DC_IMAGE_OVERRIDE_ENV,
+    DC_ANIMATION_IMAGE_OVERRIDE_ENV,
+    UI_IMAGE_OVERRIDE_ENV,
+    MATERIAL_IMAGE_OVERRIDE_ENV,
+    MC_SKINNED_IMAGE_OVERRIDE_ENV,
+    SN_SKINNED_IMAGE_OVERRIDE_ENV,
+    DC_SKINNED_IMAGE_OVERRIDE_ENV,
+    PARTICLE_2D_IMAGE_OVERRIDE_ENV,
+    PARTICLE_3D_IMAGE_OVERRIDE_ENV,
+    SFX_SYNTH_IMAGE_OVERRIDE_ENV,
+    SFX_SAMPLE_IMAGE_OVERRIDE_ENV,
+    MUSIC_IMAGE_OVERRIDE_ENV,
+    BLENDER_IMAGE_OVERRIDE_ENV,
+    ADVERSARIAL_IMAGE_OVERRIDE_ENV,
+    PERFORMANCE_IMAGE_OVERRIDE_ENV,
+];
+
 /// How to resolve the run-container image for one kind of run: the composed
 /// image name, and the environment variable that pins a verbatim override for
 /// *that image* specifically. There is deliberately no override that spans every
