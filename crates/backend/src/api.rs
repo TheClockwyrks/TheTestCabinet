@@ -11,7 +11,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
 use axum::routing::{get, post};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
@@ -224,7 +224,11 @@ pub fn router(state: AppState) -> Router {
         // private-network, no-auth model in this module's docs); a permissive CORS
         // policy keeps the browser from blocking those callers without narrowing
         // that model. No credentials are sent, so a wildcard origin is valid.
-        .layer(CorsLayer::permissive())
+        // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
+        // spec `*` does not cover `Authorization`, so a browser rejects a preflight
+        // for a request carrying our bearer token. Mirror the request's headers
+        // instead, which echoes `Authorization` back explicitly.
+        .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
         .with_state(state)
 }
 
