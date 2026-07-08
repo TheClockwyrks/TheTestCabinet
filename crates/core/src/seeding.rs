@@ -309,10 +309,9 @@ fn seed_blender_tool(
     repo: &Path,
     live_preview: Option<&crate::preview::LivePreviewEndpoint>,
 ) -> Result<()> {
-    let bounds = test_case
-        .voxel
-        .as_ref()
-        .ok_or_else(|| Error::Seeding("blender-character case has no [voxel] bounds".to_string()))?;
+    let bounds = test_case.voxel.as_ref().ok_or_else(|| {
+        Error::Seeding("blender-character case has no [voxel] bounds".to_string())
+    })?;
     let tool = test_case
         .tool
         .as_ref()

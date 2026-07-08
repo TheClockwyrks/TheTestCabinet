@@ -3,8 +3,8 @@
 use std::fs;
 
 use super::{
-    is_shippable_package, shippable_package_description, AssetKind, BuildCommands, SpecKind,
-    TestCaseCatalog, TestType,
+    AssetKind, BuildCommands, SpecKind, TestCaseCatalog, TestType, is_shippable_package,
+    shippable_package_description,
 };
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a

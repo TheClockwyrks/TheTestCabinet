@@ -1970,18 +1970,14 @@ impl Validator for BlenderGenValidator {
             run_notes.push("the emitted glTF carries no mesh".to_string());
         }
         if !summary.skins_present {
-            run_notes
-                .push("the emitted glTF carries no skin (no skeleton-bound mesh)".to_string());
+            run_notes.push("the emitted glTF carries no skin (no skeleton-bound mesh)".to_string());
         }
 
         // Reconcile the produced animations against the required set: each required
         // animation must be present in the emitted glTF and actually animate (carry
         // channels). A gap is recorded in the run-level detail — not gated.
-        let produced: std::collections::HashSet<&str> = summary
-            .animation_names
-            .iter()
-            .map(String::as_str)
-            .collect();
+        let produced: std::collections::HashSet<&str> =
+            summary.animation_names.iter().map(String::as_str).collect();
         for animation in &model.animations {
             if !produced.contains(animation.name.as_str()) {
                 run_notes.push(format!(
@@ -2000,7 +1996,9 @@ impl Validator for BlenderGenValidator {
             Ok(Some(note)) => run_notes.push(note),
             Ok(None) => {}
             Err(detail) => {
-                run_notes.push(format!("provenance re-run could not be performed: {detail}"));
+                run_notes.push(format!(
+                    "provenance re-run could not be performed: {detail}"
+                ));
             }
         }
 
@@ -2083,7 +2081,8 @@ struct GltfAnimationHeader {
 /// Read and summarize the glTF at `path`. Returns a human-readable error string when the
 /// file is missing, is not a glTF container, or its JSON header does not parse.
 fn read_glb_summary(path: &Path) -> std::result::Result<GlbSummary, String> {
-    let bytes = std::fs::read(path).map_err(|err| format!("cannot read `{}`: {err}", path.display()))?;
+    let bytes =
+        std::fs::read(path).map_err(|err| format!("cannot read `{}`: {err}", path.display()))?;
 
     // A binary glTF begins with the magic `glTF` (0x46546C67) + version 2, then a JSON
     // chunk (type 0x4E4F534A). A text `.gltf` is raw JSON. Support both.
@@ -2099,8 +2098,7 @@ fn read_glb_summary(path: &Path) -> std::result::Result<GlbSummary, String> {
         if bytes.len() < 20 {
             return Err("truncated glb: no JSON chunk header".to_string());
         }
-        let chunk_len =
-            u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+        let chunk_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
         let chunk_type = u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
         if chunk_type != JSON_CHUNK {
             return Err("first glb chunk is not JSON".to_string());
@@ -2142,7 +2140,8 @@ fn rerun_provenance(
 ) -> std::result::Result<Option<String>, String> {
     use std::process::Command;
 
-    let scratch = std::env::temp_dir().join(format!("tcab-blend-provenance-{}", std::process::id()));
+    let scratch =
+        std::env::temp_dir().join(format!("tcab-blend-provenance-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).map_err(|err| err.to_string())?;
 
@@ -2184,9 +2183,9 @@ fn rerun_provenance(
         )
     } else {
         match read_glb_summary(&scratch.join(crate::test_case::BLENDER_MESH_DEST)) {
-            Err(_) => Some(
-                "provenance re-run of build.py did not reproduce character.glb".to_string(),
-            ),
+            Err(_) => {
+                Some("provenance re-run of build.py did not reproduce character.glb".to_string())
+            }
             Ok(rebuilt) => {
                 let mut original_anims = original.animation_names.clone();
                 let mut rebuilt_anims = rebuilt.animation_names.clone();

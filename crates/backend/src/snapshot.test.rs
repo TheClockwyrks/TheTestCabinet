@@ -458,7 +458,10 @@ async fn case_metadata_inlines_specs_and_description() {
     assert_eq!(parsed["variants"][0]["seededInputs"][0]["kind"], "script");
     // The declared package is carried with its UI-only description, looked up from
     // core's registry at snapshot time.
-    assert_eq!(parsed["packages"][0]["name"], "@test-cabinet/particle-runtime");
+    assert_eq!(
+        parsed["packages"][0]["name"],
+        "@test-cabinet/particle-runtime"
+    );
     assert!(
         parsed["packages"][0]["description"]
             .as_str()

@@ -3342,7 +3342,12 @@ impl TestCaseCatalog {
                     ));
                 }
                 test_cabinet_model_core::PreviewBackground::parse(&voxel.background).map_err(
-                    |err| invalid(format!("bounding-box background `{}`: {err}", voxel.background)),
+                    |err| {
+                        invalid(format!(
+                            "bounding-box background `{}`: {err}",
+                            voxel.background
+                        ))
+                    },
                 )?;
 
                 let tool = manifest
