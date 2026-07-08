@@ -31,9 +31,10 @@ asset_kind = "blender-character"
 variants = ["variants/base.toml"]
 
 # The character's BOUNDING BOX — the volume the whole character must fit within, in world
-# units (`width` across x, `height` up y, `depth` front-to-back z; forward is +z). This is
-# the `[voxel]` table reused as a bounds box (a Blender character is a real mesh, not a
-# voxel field). `background` is only the clear color behind the rendered preview PNG. A
+# units (`width` across, `height` the standing height, `depth` front-to-back). The character
+# is authored in Blender-native space (+Z up, facing -Y) and the bundled export converts it to
+# the family's +Y-up/+Z-forward glTF. This is the `[voxel]` table reused as a bounds box (a
+# Blender character is a real mesh, not a voxel field). `background` is only the clear color behind the rendered preview PNG. A
 # blender-character case must NOT declare [canvas].
 [voxel]
 width = 24

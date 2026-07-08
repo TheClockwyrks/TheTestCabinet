@@ -83,12 +83,17 @@ seeded config alone.
 `tcab seed` writes **`blender.config.json`** next to the workspace so neither the
 script nor the runner needs any flags. It carries:
 
-- **`bounds`** — the bounding box (`width` along x, `height` along y-up, `depth`
-  along z, in world units), taken from the case's [`[voxel]`](#manifest-shape) table,
-  that the character must fit within.
-- **axes** — **+Y up, forward +Z**, matching the [skinned
-  kinds](/testing/asset-generation/skinned-binaries/) and the rest of the
-  voxel/mesh family.
+- **`bounds`** — the bounding box (`width` across x, `height` the standing height,
+  `depth` front-to-back, in world units), taken from the case's
+  [`[voxel]`](#manifest-shape) table, that the character must fit within.
+- **axes** — Blender's **native authoring space**: **+Z up**, the character **facing
+  -Y** (Blender's front view). `build.py` runs inside Blender, so the config names the
+  space you build in, not the finished orientation. The bundled export runs the glTF
+  exporter with `export_yup=True`, which converts your scene to the emitted glTF's
+  **+Y up, forward +Z** — matching the [skinned
+  kinds](/testing/asset-generation/skinned-binaries/) and the rest of the voxel/mesh
+  family. Build Blender-native and let the export convert; **do not** pre-rotate to
+  +Y-up, or the export double-applies the rotation and lays the character on its back.
 - **output paths** — `character.glb` and `model.png`, and the build-script path
   (`build.py`).
 - **`animations`** — the **required animation names**, taken from the case's

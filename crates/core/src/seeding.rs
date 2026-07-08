@@ -342,16 +342,19 @@ fn seed_blender_tool(
         })
         .collect();
 
-    // The config the `tcab-blend` runner and the model's `build.py` read. Axes match the
-    // rest of the 3D family (y up, forward +z); the character must fit the bounding box.
+    // The config the `tcab-blend` runner and the model's `build.py` read. The axes are
+    // Blender's own authoring space — +Z up, the character facing -Y (Blender's front
+    // view) — because `build.py` runs inside Blender; the bundled export then converts to
+    // the family's +Y-up / +Z-forward glTF (`export_yup=True`). The character must fit the
+    // bounding box.
     let mut config = serde_json::json!({
         "bounds": {
             "width": bounds.width,
             "height": bounds.height,
             "depth": bounds.depth,
         },
-        "up_axis": "y",
-        "forward_axis": "z",
+        "up_axis": "z",
+        "forward_axis": "-y",
         "background": bounds.background,
         "mesh": crate::test_case::BLENDER_MESH_DEST,
         "preview": preview,

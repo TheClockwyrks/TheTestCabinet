@@ -97,9 +97,10 @@ pale-cobalt visor glow `#bfe0ff`. These are the only colors allowed.
 
 A run receives the seeded brief and the seeded starter `build.py`, plus headless
 Blender and `tcab-blend` on its `PATH` and a pre-seeded `blender.config.json`
-(the bounding box, the +Y-up / +Z-forward axes, the output paths, and the required
-animation names). The skeleton and its binding are the model's to invent; there is
-no target model.
+(the bounding box, the Blender-native authoring axes — +Z up, facing -Y, which the
+export converts to the family's +Y-up/+Z-forward glTF — the output paths, and the
+required animation names). The skeleton and its binding are the model's to invent;
+there is no target model.
 
 ## How it's validated
 

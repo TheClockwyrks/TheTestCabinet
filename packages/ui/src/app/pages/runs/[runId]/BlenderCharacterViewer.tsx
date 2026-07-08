@@ -1,24 +1,19 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Canvas } from "@react-three/fiber";
-import { Bounds, OrbitControls, useAnimations, useGLTF } from "@react-three/drei";
-import { LoopOnce, LoopRepeat, type Group } from "three";
+import { Canvas, useThree } from "@react-three/fiber";
+import { OrbitControls, useAnimations, useGLTF } from "@react-three/drei";
+import { Box3, LoopOnce, LoopRepeat, Vector3, type Group } from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import {
   AMBIENT_INTENSITY,
   CAMERA_FOV,
   FILL_LIGHT,
   KEY_LIGHT,
+  cameraPosition,
+  framingFromBounds,
+  type Vec3,
 } from "./voxelScene";
 import { useViewportWheelLock } from "./useViewportWheelLock";
 import type { VoxelViewMode } from "./VoxelViewer";
-
-/**
- * The margin the auto-framing leaves around the character's rest-pose bounds. Held
- * above 1 so an animation's limb-swing — a raised knee, a recoiling shoulder, a
- * collapsing death — stays inside the frame rather than clipping the viewport edge,
- * mirroring the sub-1 fill the voxel framing reserves.
- */
-const FRAME_MARGIN = 1.25;
 
 /**
  * The loaded glTF, cloned for this viewer instance and playing the selected clip. A
@@ -47,6 +42,42 @@ function Character({
   rootRef.current = cloned;
   const { actions } = useAnimations(animations, rootRef);
 
+  // Frame the character from its rest-pose bounds: the fit distance plus the center
+  // to translate to the origin. The glTF is exported in the character's own units
+  // and orientation, and its boots sit at y=0, so left un-centered a default
+  // origin-height camera looks steeply *up* the body from under the feet — the same
+  // recenter-then-place the voxel/skinned viewers do (a `Box3` here rather than a
+  // flat positions array). The rest pose is representative, so a played clip's
+  // limb-swing doesn't reframe; the sub-1 fill inside `framingFromBounds` reserves
+  // the margin that swing needs.
+  const { center, distance, far } = useMemo(() => {
+    const box = new Box3().setFromObject(cloned);
+    const min: Vec3 = [box.min.x, box.min.y, box.min.z];
+    const max: Vec3 = [box.max.x, box.max.y, box.max.z];
+    return framingFromBounds(min, max);
+  }, [cloned]);
+
+  // Place the camera at the raised 3/4 view the rest of the 3D family uses and aim the
+  // orbit target at the character (now recentered to the origin), so the first frame
+  // looks at the soldier's front rather than up from under its boots.
+  const camera = useThree((state) => state.camera);
+  const controls = useThree((state) => state.controls) as {
+    target: Vector3;
+    update: () => void;
+  } | null;
+  useEffect(() => {
+    const [cx, cy, cz] = cameraPosition(distance);
+    camera.position.set(cx, cy, cz);
+    camera.near = 0.1;
+    camera.far = far;
+    camera.updateProjectionMatrix();
+    camera.lookAt(0, 0, 0);
+    if (controls) {
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+  }, [camera, controls, distance, far]);
+
   // Play the selected clip (fading the previous one out), configured to loop or to
   // play once and hold its final pose — the `loop` flag the case declares for each
   // required animation. A name with no matching clip in the glTF plays nothing (the
@@ -64,14 +95,20 @@ function Character({
     };
   }, [actions, animationName, loop]);
 
-  return <primitive object={cloned} />;
+  return (
+    <group position={[-center[0], -center[1], -center[2]]}>
+      <primitive object={cloned} />
+    </group>
+  );
 }
 
 /**
  * Interactive 3D view of a produced **Blender character** (`blender-character`): the
  * emitted skinned + animated glTF, loaded whole and played through a native glTF
- * animation player. Auto-frames the character with drei's `<Bounds>` and orbits it;
- * the selected animation (or the idle it auto-plays) drives the baked clips.
+ * animation player. Recenters the character to the origin and frames it from a raised
+ * 3/4 view (the shared {@link framingFromBounds}/{@link cameraPosition}, so it matches
+ * the voxel/skinned viewers) then orbits it; the selected animation (or the idle it
+ * auto-plays) drives the baked clips.
  *
  * Default export so it can be `React.lazy`-loaded behind a WebGL/reduced-motion gate
  * (see {@link BlenderResultSection}). Mirrors {@link SkinnedVoxelViewer} for the
@@ -102,7 +139,9 @@ export default function BlenderCharacterViewer({
   label: string;
 }) {
   // When zoom is on, keep the wheel from scrolling the page while it zooms the camera.
-  const containerRef = useViewportWheelLock<HTMLDivElement>(enableZoom ?? false);
+  const containerRef = useViewportWheelLock<HTMLDivElement>(
+    enableZoom ?? false,
+  );
 
   return (
     <div
@@ -124,11 +163,7 @@ export default function BlenderCharacterViewer({
           position={FILL_LIGHT.position}
           intensity={FILL_LIGHT.intensity}
         />
-        {/* Fit the character to the frame from its bounds (the glTF is exported in the
-            character's own units and orientation), refitting if the viewport resizes. */}
-        <Bounds fit clip observe margin={FRAME_MARGIN}>
-          <Character url={url} animationName={animationName} loop={loop} />
-        </Bounds>
+        <Character url={url} animationName={animationName} loop={loop} />
         <OrbitControls
           makeDefault
           enablePan={false}

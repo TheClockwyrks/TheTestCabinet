@@ -40,17 +40,27 @@ convention.)
 ## The bounding box and coordinate system
 
 The character must fit within the **bounding box given to you** in
-`blender.config.json` (its `width` along x, `height` along y, `depth` along z, in
+`blender.config.json` (its `width` along x, `height` along z, `depth` along y, in
 world units) — a standing humanoid filling most of that height, torso and helmeted
 head stacked above the hips. Do not overflow it.
 
-- **+Y is up.** The soldier stands on the ground plane (`y = 0` at the boots) and
-  rises to the top of the helmet.
-- **Forward is +Z.** The Rifleman faces toward higher `z`; the shouldered weapon
-  points that way, and the run cycle strides toward +Z (authored in place — see
-  below).
-- Build the soldier roughly symmetric left-to-right about its vertical
-  centerplane at rest (the animations break that symmetry).
+You author in **Blender's native orientation** and let the bundled export helper
+convert your scene to the glTF the game consumes — so build the way Blender itself
+works, not the way the finished model ends up oriented:
+
+- **+Z is up** (Blender's own up axis). The soldier stands on the ground plane
+  (`z = 0` at the boots) and rises along +Z to the top of the helmet.
+- **The Rifleman faces -Y**, toward Blender's **front view** (`Numpad 1`): its chest,
+  its visor, and the shouldered weapon point down -Y, and the run cycle strides that
+  way (authored in place — see below).
+- Build the soldier roughly symmetric left-to-right about its vertical centerplane
+  (the `x = 0` plane) at rest (the animations break that symmetry).
+
+Author in this Blender-native space and let the export finish the job: it emits the
+character standing **+Y-up and facing +Z** — the convention the rest of the 3D family
+and the game runtime consume. **Do not pre-rotate the character to +Y-up yourself.**
+The export applies that conversion for you; rotating first double-applies it and
+lands the soldier flat on its back.
 
 ## What the Warden Rifleman is (and what is yours to invent)
 
@@ -158,7 +168,12 @@ Inside `build.py`, using Blender's `bpy` module, you:
 5. **Export** — call the bundled export helper, which runs
    `bpy.ops.export_scene.gltf(...)` with skins and animations enabled to emit
    **`character.glb`** (the skinned, animated glTF 2.0) and renders the preview
-   **`model.png`**.
+   **`model.png`**. The helper converts your Blender-native scene to the glTF's
+   +Y-up/+Z-forward orientation and **frames and renders `model.png` for you** from a
+   fixed front view, lighting your materials — you do **not** need to add a camera or
+   lights or fight the preview framing. Spend your effort on the mesh, rig, and
+   animations; the preview is a convenience for the reviewer, and the `character.glb`
+   is what is judged.
 
 A starter `build.py` is seeded for you with the pipeline stubbed out and the config
 loading wired up; fill in the geometry, the rig, the weights, and the animations.

@@ -26,8 +26,9 @@ import bpy
 # --- Load the seeded config -------------------------------------------------
 # `tcab-blend` passes the config path after a literal `--`; if it is absent we
 # fall back to `blender.config.json` in the current working directory. The config
-# carries the bounding box (`bounds`), the axes (+Y up, +Z forward), the output
-# paths (`character.glb`, `model.png`), and the list of REQUIRED animation names.
+# carries the bounding box (`bounds`), the Blender-native authoring axes (+Z up, the
+# character facing -Y — the export converts to the family's +Y-up/+Z-forward glTF),
+# the output paths (`character.glb`, `model.png`), and the REQUIRED animation names.
 def load_config():
     argv = sys.argv
     if "--" in argv:
@@ -60,8 +61,9 @@ def build_body_mesh():
 
     TODO: model the upright soldier — head, torso, two arms, two legs — with the
     permanently-worn kit (combat helmet, light vest/body armor, ammo pouches)
-    baked into the SAME mesh. Fit within BOUNDS, +Y up, forward +Z, roughly
-    symmetric at rest. Color it from the brief's palette using vertex colors or
+    baked into the SAME mesh. Fit within BOUNDS, built in Blender-native space (+Z
+    up, facing -Y — the export converts to the family's +Y-up/+Z-forward glTF),
+    roughly symmetric at rest. Color it from the brief's palette using vertex colors or
     materials. Do NOT model the rifle — that is a separate asset hung on the
     socket (see build_armature). Return the mesh Object.
     """

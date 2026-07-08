@@ -69,6 +69,14 @@ def _render_preview(preview_path):
     scene.render.resolution_y = 512
     scene.render.film_transparent = True
 
+    # Draw the character in its own material colors, lit like a turntable. Workbench
+    # defaults to a flat single "object" color, which renders every palette as one grey
+    # mass; keying the shading to MATERIAL means a model's palette shows in the preview
+    # without the model having to configure the viewport shading itself.
+    shading = scene.display.shading
+    shading.color_type = "MATERIAL"
+    shading.light = "STUDIO"
+
     # A light so the surface reads, if the scene has none.
     if not any(obj.type == "LIGHT" for obj in scene.objects):
         light_data = bpy.data.lights.new(name="tcab_key", type="SUN")
@@ -76,32 +84,52 @@ def _render_preview(preview_path):
         light.rotation_euler = (0.9, 0.0, 0.6)
         scene.collection.objects.link(light)
 
-    # A camera framing the whole scene, added only if the case did not author one.
+    # A camera framing the whole scene, added only if the case did not author one — so a
+    # model can rely on the export to render a sensible preview and never has to place a
+    # camera itself (a common time sink otherwise).
     camera = next((obj for obj in scene.objects if obj.type == "CAMERA"), None)
     if camera is None:
         cam_data = bpy.data.cameras.new(name="tcab_cam")
         camera = bpy.data.objects.new(name="tcab_cam", object_data=cam_data)
         scene.collection.objects.link(camera)
-        scene.camera = camera
-        # Frame everything: point the camera at the scene from a 3/4 front angle.
-        camera.location = (0.0, -8.0, 3.0)
-        camera.rotation_euler = (1.2, 0.0, 0.0)
-        _frame_all(camera)
+        _aim_camera_front(camera)
     scene.camera = camera
 
     bpy.ops.render.render(write_still=True)
 
 
-def _frame_all(camera):
-    """Best-effort: aim the camera so all mesh objects are in view."""
+def _aim_camera_front(camera):
+    """Place ``camera`` at a fixed front-3/4 view of the mesh, in Blender-native axes.
+
+    A Blender character is authored **+Z up** and **facing -Y** (Blender's front view),
+    so the front-3/4 camera sits on the -Y (front) side, offset to +X and lifted along
+    +Z, and aims at the mesh's bounding-box center with +Z up — Blender's own
+    ``to_track_quat`` convention, which is why building in the native space (rather than
+    a pre-rotated +Y-up scene) keeps this framing upright with no per-case camera work.
+    """
+    from mathutils import Vector
+
     meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
     if not meshes:
+        camera.location = (0.0, -10.0, 5.0)
+        camera.rotation_euler = (1.2, 0.0, 0.0)
         return
-    # Select the meshes and use Blender's own "camera to fit selection" operator.
-    for obj in bpy.context.scene.objects:
-        obj.select_set(obj.type == "MESH")
-    bpy.context.view_layer.objects.active = camera
-    try:
-        bpy.ops.view3d.camera_to_view_selected()
-    except Exception:  # pragma: no cover - needs a 3D view context in some builds
-        pass
+
+    # World-space AABB over every mesh's corners.
+    lo = Vector((float("inf"),) * 3)
+    hi = Vector((float("-inf"),) * 3)
+    for obj in meshes:
+        for corner in obj.bound_box:
+            world = obj.matrix_world @ Vector(corner)
+            lo = Vector((min(lo[i], world[i]) for i in range(3)))
+            hi = Vector((max(hi[i], world[i]) for i in range(3)))
+    center = (lo + hi) / 2
+    size = max((hi - lo)[i] for i in range(3)) or 1.0
+
+    # Front (-Y), right (+X), raised (+Z); distance scaled to the largest extent.
+    offset = Vector((0.6, -1.0, 0.5))
+    offset.normalize()
+    camera.location = center + offset * size * 1.6
+    direction = center - camera.location
+    # Look down the camera's -Z at the center, keeping local Y toward world up (+Z).
+    camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()

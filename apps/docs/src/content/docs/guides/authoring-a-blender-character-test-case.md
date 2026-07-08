@@ -74,8 +74,9 @@ test-cases/<slug>/<version>/
 
 A run receives the seeded files — the selected variant's **brief** and the **starter
 `build.py`** — plus **headless Blender** and **`tcab-blend`** on its `PATH` and a
-pre-seeded **`blender.config.json`** (the bounding box, the +Y-up / +Z-forward axes,
-the output paths `character.glb` / `model.png`, the build-script path, and the
+pre-seeded **`blender.config.json`** (the bounding box, the Blender-native authoring
+axes — **+Z up, facing -Y**, which the export converts to the family's +Y-up/+Z-forward
+glTF — the output paths `character.glb` / `model.png`, the build-script path, and the
 required animation names). There is **no target model**. The skeleton and its
 binding are the model's to invent.
 
@@ -104,7 +105,9 @@ instead. Pick a `version` (`vX.Y.Z`).
 Write `specs/brief.md` — a single self-contained file describing:
 
 - **the character** — what it is, its silhouette and proportions, its orientation
-  (forward is +Z, `y` is up), the gear that is **baked into the body mesh** (helmet,
+  (built in Blender-native space: **+Z up, facing -Y**; the export converts to the
+  emitted glTF's +Y-up/+Z-forward — and warn against pre-rotating to +Y-up), the gear
+  that is **baked into the body mesh** (helmet,
   armor, pouches — permanently worn), and how it should read at rest. It fits within
   the **bounding box given in `blender.config.json`** — write this as prose; do not
   hardcode coordinates, since the volume is templated;
