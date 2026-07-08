@@ -268,7 +268,7 @@ proof = "gameplay"
 [[review_item]]
 id = "fog-of-war"
 title = "Fog of war"
-text = "The enemy staging yard is fully hidden under fog — its structures and placements are never visible. In the lane, enemy units, Reliquary, and base are drawn only while within the vision of a player unit, base, or Reliquary, never as stale ghosts in the fog."
+text = "The enemy staging yard is fully hidden under fog — its structures and placements are never visible. In the lane, enemy units, Reliquary, and base are drawn only while within the vision of a player unit, base, or Reliquary, never as stale ghosts in the fog. Because the camera pans across the arena and shows only part of it, scrolling to a stretch of the field where the player has no unit or structure shows only fog there — no units or structures are drawn outside the player's vision."
 weight = 3
 domain = "combat"
 reference = "gameplay"
@@ -315,21 +315,29 @@ proof = "title"
 [[review_item]]
 id = "renderer-3d"
 title = "3D rendering, camera & wireframe"
-text = "The battlefield renders as a real 3D world in WebGL/WebGPU — provided unit and structure models with real height on generated terrain — seen through a tilted overhead camera that keeps the whole diagonal front framed; a flat top-down or purely-2D rendering does not satisfy this case. The game sustains a playable frame rate in a heavy late-match battle, the performance overlay shows the live FPS, and wireframe mode reveals the geometry of the models, terrain, structures, and effects."
+text = "The battlefield renders as a real 3D world in WebGL/WebGPU — provided unit and structure models with real height on generated terrain — seen through a low oblique command camera (a real perspective view at a fixed angle, not a flat top-down map); a flat top-down or purely-2D rendering does not satisfy this case. The game sustains a playable frame rate in a heavy late-match battle, the performance overlay shows the live FPS, and wireframe mode reveals the geometry of the models, terrain, structures, and effects."
 weight = 2
 proof = "wireframe"
 
 [[review_item]]
 id = "hud-complete"
 title = "HUD"
-text = "The HUD overlay shows the sol balance and total income rate, the wave number and countdown, both base health bars, the build palette (ten unit spawners plus Solar Extractor) with costs and affordability, and a selected-structure panel: clicking any friendly structure (a build-grid spawner or Solar Extractor, the base, or the Reliquary) selects it and shows its name, health, and level, with the Upgrade/Sell actions present only for build-grid structures and the base and Reliquary read-only. Plus the toggleable performance overlay (FPS) and wireframe mode — all on screen over the 3D world."
+text = "The HUD overlay shows the sol balance and total income rate, the wave number and countdown, both base health bars, the build palette (ten unit spawners plus Solar Extractor) with costs and affordability, and a selected-structure panel: clicking any friendly structure (a build-grid spawner or Solar Extractor, the base, or the Reliquary) selects it and opens a panel showing its name plus the fields that apply — the base and Reliquary show their health read-only, while a build-grid structure shows its level, effect, and Upgrade/Sell actions. Plus the toggleable performance overlay (FPS) and wireframe mode — all on screen over the 3D world."
 weight = 1
 
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
-text = "The tilted overhead camera keeps the whole diagonal battlefield — both bases, the full lane, the player's staging yard, the fog-covered enemy staging-yard region, and all four edges — framed, and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on load before any input."
+text = "The rendered 16:9 viewport fills and is letterboxed to the browser window, and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on load before any input. The camera shows only a scrollable portion of the arena — the whole map is deliberately not framed at once — while always framing the full width of the combat lane."
 weight = 1
+
+[[review_item]]
+id = "camera-navigation"
+title = "Scrolling command camera"
+text = "The battlefield is shown through a low oblique command camera at a fixed pitch and zoom that frames only a portion of the arena — the whole map is never visible at once — while always showing the full width of the combat lane, so the player never zooms out or pans sideways to see the lane's full width. The player pans the camera along the lane (edge-scroll and arrow/WASD keys) to view from their own corner up toward the enemy, and the default view on load is centered on the player's corner."
+weight = 1
+reference = "gameplay"
+proof = "gameplay"
 
 [[review_item]]
 id = "provided-models"

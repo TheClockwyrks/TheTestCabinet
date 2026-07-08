@@ -25,11 +25,13 @@ The build is a small state machine. Each state has a clear screen and controls.
    Extractors -> waves march -> counter what you see through the fog -> raze the
    enemy base), the resource and wave clocks, the counter triangle in brief, and
    the controls. Returns to the menu.
-3. **In match.** The live game, seen through the tilted overhead camera
-   (`specs/overview.md`): the 3D battlefield with both armies, the two bases and
-   Reliquaries, the player's staging yard with its build grid, the fogged enemy
-   yard, the build palette, and the HUD overlay. This is where the whole of
-   `specs/economy.md`, `specs/units.md`, and `specs/waves.md` plays out.
+3. **In match.** The live game, seen through the low oblique command camera
+   (`specs/overview.md`), which frames a **scrollable portion** of the 3D battlefield —
+   the full width of the lane and the stretch of it you are looking at: the armies and
+   the front, the player's staging yard with its build grid (when scrolled to your
+   corner), the build palette, and the HUD overlay, with the rest of the arena and the
+   fogged enemy yard reached by panning. This is where the whole of `specs/economy.md`,
+   `specs/units.md`, and `specs/waves.md` plays out.
 4. **Paused.** Reachable from a match. Offers **Resume**, **Restart**, and **Quit
    to menu**. The field is visible but the simulation and both clocks are frozen
    behind the pause menu.
@@ -62,12 +64,16 @@ both.
   panel also carries its current effect (spawned unit stats for a spawner, income
   bonus for a Solar Extractor) and **Upgrade** (with cost) and **Sell** (with refund)
   buttons. Click a button, or press `U` to upgrade / `X` to sell the selected
-  structure. The **base** and **Reliquary** are read-only: their panel shows
-  information only, with no upgrade or sell action.
+  structure. The **base** and **Reliquary** are read-only: their panel shows their name
+  and health only, with no upgrade or sell action.
 - **In match:** `Esc` or `P` pauses.
-- **Camera:** the tilted overhead camera (`specs/overview.md`) keeps the whole
-  front framed by default. You may optionally let the player rotate it around the
-  vertical axis and zoom, but the complete battlefield must stay readable.
+- **Camera & scrolling:** the low oblique command camera (`specs/overview.md`) frames
+  the full width of the combat corridor but only a stretch of its length, and starts
+  centered on the player's own corner. **Pan** it along the lane to view from your
+  staging yard up toward the enemy and back: **edge-scroll** (cursor at a screen edge)
+  and the **arrow keys** (or `W`/`A`/`S`/`D`). A quick **re-center on your base**
+  (bound to a key) is recommended. No zoom is required. An optional **minimap** you can
+  click to jump the camera is allowed but not required.
 - **Toggles:** a **performance overlay** (live FPS) and **wireframe mode** each
   have a key — state them on the how-to-play screen or a controls hint (e.g. `F3`
   performance, `F4` wireframe); both work during a live match (see **HUD**).
@@ -92,11 +98,13 @@ type from `specs/overview.md`:
   Extractor near the player's staging yard, each showing its icon (in team color),
   name, cost, and shortcut key (`1`-`9`, `0`, `E`). An unaffordable entry is dimmed.
   The armed entry is highlighted.
-- **Selected-structure panel:** when a friendly structure is selected, its **name**,
-  **health** (current/max HP), and **level** — plus, for a build-grid structure, its
-  level pips, current effect, and the Upgrade/Sell actions with their sol figures. The
-  base and Reliquary show name and health only (they have no level and no actions; the
-  Reliquary's panel may also note its `4 HP/s` regen, `specs/waves.md`).
+- **Selected-structure panel:** when a friendly structure is selected, its **name**
+  plus the fields that apply to it. The **base** and **Reliquary** show their **health**
+  (current/max HP), read-only — the Reliquary's panel may also note its `4 HP/s` regen
+  (`specs/waves.md`) — with no level or actions. A **build-grid structure** (spawner or
+  Solar Extractor) shows its **level** pips, current effect, and the Upgrade/Sell
+  actions with their sol figures; these sit safely off the lane and are not damageable,
+  so they carry no health readout.
 - **Performance overlay** — a toggle (default off, bound to a key — e.g. `F3`)
   showing at least the live **FPS**, so the required frame rate
   (`specs/overview.md`) is observable during a heavy late-match battle. Keep it
@@ -108,8 +116,9 @@ type from `specs/overview.md`:
 - Units and structures show a **health bar** above them in the world only while damaged
   (`specs/overview.md`).
 
-Keep every HUD element on screen and legible at all window sizes, and keep the whole
-battlefield framed (`specs/overview.md`).
+Keep every HUD element on screen and legible at all window sizes; the camera shows a
+scrollable portion of the battlefield — the full lane width but never the whole arena
+at once (`specs/overview.md`).
 
 ## The AI opponent
 

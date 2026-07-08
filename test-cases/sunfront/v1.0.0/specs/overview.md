@@ -3,7 +3,7 @@
 ## Overview
 
 **Sunfront** is a real-time **tug-of-war** for the browser, rendered in **3D** through
-a tilted overhead command camera. Two rival legions of solar-powered war automatons —
+a low oblique command camera you scroll across the field. Two rival legions of solar-powered war automatons —
 the **Duneforged** — face each other across a diagonal stretch of desert, their bases
 in opposite corners. You never command a single unit. Instead you spend a steadily
 ticking income on **spawner structures** and **Solar Extractors** in your walled
@@ -114,8 +114,8 @@ The **simulation runs on a logical horizontal ground plane** — a flat arena th
 units move and fight across. All positions, sizes, speeds, and ranges in this
 document are **logical units** on that plane (`specs/playfield.md` fixes its extent
 and the two corner bases); speeds are logical units per second, times in seconds. The
-plane is **rendered in 3D**: the provided models stand up off it, and a fixed camera
-views the whole arena at an angle. Keeping the gameplay on a 2D ground plane while
+plane is **rendered in 3D**: the provided models stand up off it, and a camera
+views it at a low angle. Keeping the gameplay on a 2D ground plane while
 rendering it in 3D is deliberate — the combat numbers are planar; the third dimension
 is presentation (model height, the camera, the Sunhawk's flight altitude).
 
@@ -129,11 +129,12 @@ is presentation (model height, the camera, the Sunhawk's flight altitude).
   combat cadence, income, and the wave clock advance in real time (scaled by elapsed
   time between frames), never per rendered frame, so behavior is the same whether a
   machine draws fast or slow.
-- **The whole field must be on screen.** At every window size the complete arena is
-  in frame at once — **both bases in their opposite corners**, the full diagonal
-  lane, the player's staging yard, the fog-covered enemy staging-yard region, every
-  HUD element, and all four edges — fitted and centered, with nothing clipped or
-  pushed past the edges. The build must fit correctly on load, before any input.
+- **The viewport fits the window; the world does not.** At every window size and pixel
+  density the rendered **16:9** view fills the browser window (letterboxed on the
+  remainder) and every HUD element stays on screen — fitted, centered, and correct on
+  load before any input. But the camera frames only a **portion** of the arena at a
+  time (see the camera section): the complete arena is deliberately **not** on screen
+  at once — the player pans to see the rest.
 - **The two sides mirror.** The player holds **one corner**; the AI holds the
   **opposite** corner. The layout has **180° rotational symmetry about the arena
   center**: every position and distance given for the player's side has a mirror-image
@@ -144,15 +145,19 @@ is presentation (model height, the camera, the Sunhawk's flight altitude).
 This is a 3D battlefield, and it must run at an **interactive frame rate**, not
 just render a still. These are hard requirements:
 
-- **Tilted overhead camera.** Show the battlefield through a fixed tilted overhead
-  command camera, not a flat top-down map. The camera should make model height,
-  formation depth, and the diagonal front readable while keeping the full arena in
-  frame. Optional rotate/zoom controls are fine only if the default view remains clear.
-- **The whole front stays framed.** At every window size the camera keeps the complete
-  battlefield in view — both bases, the full diagonal lane, the player's staging yard,
-  the fog-covered enemy staging-yard region, and every HUD element — fitted and
-  legible, with nothing important pushed off screen, on load before any input and at
-  any pixel density.
+- **Low oblique command camera.** Show the battlefield through a **perspective** camera
+  at a fixed steep-but-angled pitch and a fixed yaw and zoom — a low overhead command
+  view, not a flat top-down map — so model height, formation depth, and the front read,
+  with the ground receding into the distance.
+- **A limited, scrolling view.** The camera frames only a **portion** of the arena; the
+  player **pans** it across the ground plane to reach other areas (`specs/flow.md`), and
+  the whole arena is never in frame at once. Panning is the only required navigation —
+  **no zoom control is required**, and none is needed to see the play described below.
+- **The full lane width is always framed.** By default, and at every window size, the
+  view spans the **entire width of the ~480-unit combat corridor** (`specs/playfield.md`)
+  — the player never zooms out or pans sideways to see the whole width of the lane.
+  Panning runs **along the corridor's length** (the diagonal, toward or away from the
+  enemy), and the default view on load is centered on the **player's own corner**.
 - **Frame rate.** On a mid-range laptop the game must sustain a **playable frame rate
   (target 30 FPS or better)** during a heavy late-match battle — dozens of units, both
   Reliquaries and an Aegis, and effects on screen at once. The **performance overlay**

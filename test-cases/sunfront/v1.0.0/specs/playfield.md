@@ -116,6 +116,10 @@ the player has units. Fog is strict:
   fog is invisible until a player unit (or the base/Reliquary) sees it. Terrain already
   seen may stay dimly lit ("explored"), but **enemy units are shown only while
   currently in vision**, never as stale ghosts.
+- Because the camera shows only part of the arena and **pans** across it
+  (`specs/flow.md`), scrolling to a stretch of the field where the player has no unit or
+  structure nearby shows **only fog** there — no units or structures are drawn outside
+  the player's vision, wherever the camera is pointed.
 - The AI is subject to the same rule conceptually (it does not get to read the player's
   exact yard), but its fog need not be rendered — only the player's view is drawn.
 
