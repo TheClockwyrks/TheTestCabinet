@@ -740,6 +740,8 @@ impl Validator for VoxelGenValidator {
                 // A skinned run deforms one mesh; the marker tells the viewer to skin
                 // rather than pose per-part.
                 skinned: test_case.asset_kind.is_skinned(),
+                // The voxel-family kinds pose from `rig.json`, not a baked glTF.
+                blender: false,
                 detail: (!run_notes.is_empty()).then(|| run_notes.join("; ")),
             }),
             ui: None,
@@ -2033,6 +2035,9 @@ impl Validator for BlenderGenValidator {
                 // One mesh deformed by a skeleton: the viewer skins rather than posing
                 // rigid parts.
                 skinned: true,
+                // The emitted glTF carries its own baked animations: the viewer loads it
+                // with a native glTF player rather than posing from a `rig.json`.
+                blender: true,
                 detail: (!run_notes.is_empty()).then(|| run_notes.join("; ")),
             }),
             ui: None,

@@ -84,6 +84,7 @@ describe("TestCasesPage", () => {
       "E2E",
       "2D",
       "3D",
+      "Blender",
       "Particle",
       "Audio",
       "Adversarial",
@@ -112,7 +113,7 @@ describe("TestCasesPage", () => {
     expect(screen.queryByText("Sunfront")).not.toBeInTheDocument();
   });
 
-  it("partitions asset-generation into 2D, 3D, Particle, and Audio tabs by asset kind", () => {
+  it("partitions asset-generation into 2D, 3D, Blender, Particle, and Audio tabs by asset kind", () => {
     const cases = [
       // 2D family: the sprite kinds and the paint kinds.
       testCase("Skyshard", "asset-generation", { assetKind: "sprite" }),
@@ -123,13 +124,15 @@ describe("TestCasesPage", () => {
       testCase("Aegis", "asset-generation", { assetKind: "voxel-animation" }),
       testCase("Lanternjaw", "asset-generation", { assetKind: "mc-model" }),
       testCase("Trooper", "asset-generation", { assetKind: "sn-skinned" }),
+      // Blender family: the glTF-character kind (its own tab, not 2D or 3D).
+      testCase("Rifleman", "asset-generation", { assetKind: "blender-character" }),
       // Particle and audio families.
       testCase("Spectra", "asset-generation", { assetKind: "particle-3d" }),
       testCase("Broadside", "asset-generation", { assetKind: "sfx-sample" }),
       testCase("Theme", "asset-generation", { assetKind: "music" }),
     ];
 
-    // The 2D tab keeps the sprite and paint kinds.
+    // The 2D tab keeps the sprite and paint kinds (not the Blender character).
     ready(cases);
     const twoD = renderPage("2d");
     expect(cardTitles()).toEqual([
@@ -140,11 +143,17 @@ describe("TestCasesPage", () => {
     ]);
     twoD.unmount();
 
-    // The 3D tab keeps the voxel/mesh and skinned kinds.
+    // The 3D tab keeps the voxel/mesh and skinned kinds (not the Blender character).
     ready(cases);
     const threeD = renderPage("3d");
     expect(cardTitles()).toEqual(["Aegis", "Lanternjaw", "Trooper"]);
     threeD.unmount();
+
+    // The Blender tab keeps only the glTF-character kind.
+    ready(cases);
+    const blender = renderPage("blender");
+    expect(cardTitles()).toEqual(["Rifleman"]);
+    blender.unmount();
 
     // Particle and audio each get their own tab.
     ready(cases);

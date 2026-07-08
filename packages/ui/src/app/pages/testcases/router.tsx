@@ -39,6 +39,10 @@ export function testCasesRoutes() {
         element={<TestCasesPage tab="3d" />}
       />
       <Route
+        path={routePatterns.testCasesBlender}
+        element={<TestCasesPage tab="blender" />}
+      />
+      <Route
         path={routePatterns.testCasesParticle}
         element={<TestCasesPage tab="particle" />}
       />

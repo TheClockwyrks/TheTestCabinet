@@ -401,10 +401,19 @@ export interface VoxelResultView {
    */
   skinned: boolean;
   /**
+   * Whether this is a **Blender character** run (`blender-character`): the emitted
+   * mesh is a self-contained skinned + animated glTF whose animations are baked into
+   * the file. A Blender run is also `skinned`, but the viewer loads its glTF with a
+   * native glTF player (skeleton + baked clips) rather than posing the mesh from an
+   * inline `rig.json`. `false` for every non-Blender run.
+   */
+  blender: boolean;
+  /**
    * The single skinned `mesh.glb` a skinned run emits (the first — and only —
    * part's mesh), or null for a non-skinned run (or when the host cannot serve it).
    * Decoded with `parseSkinnedGlb` into the {@link SkinnedMesh} the skinned viewer
-   * poses.
+   * poses. For a Blender run this is the emitted `character.glb`, loaded whole by the
+   * native glTF player instead.
    */
   skinnedMeshUrl: string | null;
   /**
@@ -734,11 +743,15 @@ export function GalleryDataProvider({
         // single part's `.glb` — the viewer decodes and drives by linear-blend
         // skinning rather than posing per-part meshes.
         const skinned = voxel.skinned ?? false;
+        // A Blender character is skinned but carries its animations baked into the
+        // emitted glTF, so the viewer loads it whole with a native glTF player.
+        const blender = voxel.blender ?? false;
         return {
           // A static model declares neither the required nor the produced rig; an
           // animated one carries both. The produced rig drives the viewer.
           animated,
           skinned,
+          blender,
           skinnedMeshUrl: skinned ? (parts[0]?.meshUrl ?? null) : null,
           rig: voxel.rig ?? null,
           model: voxel.model ?? null,

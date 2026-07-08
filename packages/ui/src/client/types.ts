@@ -140,6 +140,15 @@ export function isAudioAssetKind(kind: AssetKind | null | undefined): boolean {
   return kind != null && AUDIO_ASSET_KINDS.has(kind);
 }
 
+/** Whether an asset kind is a **Blender character** (`blender-character`) — a
+ * rigged, animated skinned character authored by driving headless Blender, emitted
+ * as a self-contained skinned + animated glTF. Its own catalog family: not a
+ * voxel-family kind (it is a real mesh, not a voxel field) even though it, too,
+ * renders in 3D. An absent kind reads as false. */
+export function isBlenderAssetKind(kind: AssetKind | null | undefined): boolean {
+  return kind === "blender-character";
+}
+
 export interface VersionInfo {
   slug: string;
   version: string;

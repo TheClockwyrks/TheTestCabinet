@@ -2,9 +2,10 @@
 // functions so every route is defined in exactly one place.
 
 // The catalog's type tabs, each its own route so the selected tab survives a
-// reload and is linkable. Asset-generation is split into four tabs by asset
-// family — 2D (sprite + paint), 3D (voxel/mesh/skinned), particle, and audio;
-// the rest map one-to-one to a `TestType`. Each tab slug is a literal path
+// reload and is linkable. Asset-generation is split into five tabs by asset
+// family — 2D (sprite + paint), 3D (voxel/mesh/skinned), Blender (glTF
+// characters), particle, and audio; the rest map one-to-one to a `TestType`.
+// Each tab slug is a literal path
 // segment under `/test-cases`, a sibling of the `:slug` detail route (the same
 // literal-beside-param shape as `/runs/failures` beside `/runs/:runId`) — none
 // collides with a real case slug.
@@ -12,6 +13,7 @@ export type CatalogTab =
   | "end-to-end"
   | "2d"
   | "3d"
+  | "blender"
   | "particle"
   | "audio"
   | "adversarial"
@@ -123,6 +125,7 @@ export const routePatterns = {
   testCasesE2E: "/test-cases/end-to-end",
   testCases2D: "/test-cases/2d",
   testCases3D: "/test-cases/3d",
+  testCasesBlender: "/test-cases/blender",
   testCasesParticle: "/test-cases/particle",
   testCasesAudio: "/test-cases/audio",
   testCasesAdversarial: "/test-cases/adversarial",

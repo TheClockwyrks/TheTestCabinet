@@ -4,6 +4,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import {
   isAudioAssetKind,
+  isBlenderAssetKind,
   isParticleAssetKind,
   isVoxelAssetKind,
 } from "../../../client";
@@ -15,13 +16,15 @@ import styles from "./TestCasesPage.module.scss";
 
 // The catalog's type tabs, always shown in this order so the bar's shape is
 // stable regardless of which types the catalog currently holds. The catalog
-// shows exactly one tab at a time. Asset-generation is split into four
+// shows exactly one tab at a time. Asset-generation is split into five
 // asset-family tabs — "2D" (sprite + paint), "3D" (voxel/mesh/skinned),
-// "Particle", and "Audio"; the other three map one-to-one to a test type.
+// "Blender" (glTF characters), "Particle", and "Audio"; the other three map
+// one-to-one to a test type.
 const CATALOG_TABS: ReadonlyArray<{ tab: CatalogTab; label: string }> = [
   { tab: "end-to-end", label: "E2E" },
   { tab: "2d", label: "2D" },
   { tab: "3d", label: "3D" },
+  { tab: "blender", label: "Blender" },
   { tab: "particle", label: "Particle" },
   { tab: "audio", label: "Audio" },
   { tab: "adversarial", label: "Adversarial" },
@@ -155,17 +158,19 @@ function matches(
   return haystack.includes(needle);
 }
 
-// Whether a case belongs under a given tab. The four asset-family tabs all scope
+// Whether a case belongs under a given tab. The five asset-family tabs all scope
 // to asset-generation cases, partitioned by the case's asset kind: 3D is the
-// voxel/mesh/skinned family, Particle and Audio are their own families, and 2D
-// is the remainder (the sprite and paint kinds, plus a case with no asset kind,
-// which defaults to `sprite`). The other tabs map straight to a test type.
+// voxel/mesh/skinned family, Blender is the glTF-character family, Particle and
+// Audio are their own families, and 2D is the remainder (the sprite and paint
+// kinds, plus a case with no asset kind, which defaults to `sprite`). The other
+// tabs map straight to a test type.
 function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
   switch (tab) {
     case "2d":
       return (
         testCase.testType === "asset-generation" &&
         !isVoxelAssetKind(testCase.assetKind) &&
+        !isBlenderAssetKind(testCase.assetKind) &&
         !isParticleAssetKind(testCase.assetKind) &&
         !isAudioAssetKind(testCase.assetKind)
       );
@@ -173,6 +178,11 @@ function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
       return (
         testCase.testType === "asset-generation" &&
         isVoxelAssetKind(testCase.assetKind)
+      );
+    case "blender":
+      return (
+        testCase.testType === "asset-generation" &&
+        isBlenderAssetKind(testCase.assetKind)
       );
     case "particle":
       return (

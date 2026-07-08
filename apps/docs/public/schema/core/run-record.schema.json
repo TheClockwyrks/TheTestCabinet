@@ -1448,6 +1448,11 @@
     "VoxelGenResult": {
       "description": "The regenerate result of a voxel asset-generation run — the 3D analog of\n[`AssetGenResult`].\n\nA static model ([`crate::test_case::AssetKind::VoxelModel`]) produces one\n[part](VoxelPartResult) (the whole model); an animated model\n([`crate::test_case::AssetKind::VoxelAnimation`]) produces one per declared\npart. There is no target model and no automated fidelity score; the regenerated\nmodel is reviewed against the brief. Present only on a voxel run's\n[`ValidationSummary`].",
       "properties": {
+        "blender": {
+          "default": false,
+          "description": "Whether this is a **Blender character** run (`blender-character`): the emitted\nmesh is a self-contained skinned + animated glTF whose animations are baked\ninto the file itself (glTF animation channels), not authored as `rig.json`\nF-curves. A Blender run is also `skinned`, but the marker tells the 3D viewer\nto load the glTF with a native glTF player (skeleton + baked clips) rather than\nposing the mesh from an inline rig. `false` for every non-Blender run.",
+          "type": "boolean"
+        },
         "detail": {
           "default": null,
           "description": "Detail about anything that could not be evaluated at the run level, or\n`None`. Per-part detail lives on each [`VoxelPartResult`].",
