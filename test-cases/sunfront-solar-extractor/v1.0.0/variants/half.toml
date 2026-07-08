@@ -1,0 +1,11 @@
+# The half-size variant: the same extractor sculpted in a volume with each extent
+# ~halved (rounded) from the case's base 84x72x72. Its `[voxel]` OVERRIDES the case
+# volume for runs of this variant, and the brief is rendered at these dimensions.
+slug = "half"
+name = "Half Size"
+
+[voxel]
+width = 42
+height = 36
+depth = 36
+background = "transparent"

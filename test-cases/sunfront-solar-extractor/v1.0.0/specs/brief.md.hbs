@@ -1,0 +1,137 @@
+# Sunfront Solar Extractor — sculpting and rigging brief
+
+You are sculpting and rigging the Sunfront Solar Extractor, a sunlight harvester: a
+fanned rank of angled solar-collector panels splayed off a canted spine on a low faceted
+pedestal, drinking the sun into a glowing stored-sol core, as a 3D voxel model with a rig
+a game runs at runtime. There is no target model to copy: build something that reads
+unmistakably as this sunlight harvester and runs correctly from the description below.
+
+The Solar Extractor is an **economy structure** — it harvests sunlight to bank the
+legion's currency, produces **no units**, and has **no combat role**. It must read as a
+passive collector, not a factory. This is a broad, low-slung harvester crowned by a wide
+fan of panels — spend the volume on that fan of collectors, not on a tall tower.
+
+This brief fixes what the Extractor is and how it must move. It deliberately does not
+give you a parts list, joint placements, or pivots — working out how to split the
+harvester into a fixed body and its moving pieces, where they attach, and how they sweep,
+spread, and pulse is the test. Invent the rig.
+
+## How the tool works
+
+`voxel-anim` places discrete opaque cells. You paint solid material:
+
+- Lay down cells with `set-voxel`/`fill-box` and the other cell operations (single
+  voxels, filled and stroked boxes, 3D lines, spheres, and a mirror plane), each an
+  opaque `#rrggbb` color; there is no transparency and no smoothing.
+- Global `--part <name>` selects the part an op sculpts; each part is its own volume of
+  cells, previewed on its own. Create a part with `define-part` before you sculpt into it.
+
+Build one operation at a time. A call **records only** and renders nothing; run
+`voxel-anim render` to (re)draw `parts/<part>.png` and the assembled `scene/*.png`, then
+read them between calls. `voxel-anim --help` is the contract.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- **x** runs across the harvester, `0`–`{{voxel.maxX}}`. **y** runs up, `0` (bottom, the ground) to
+  `{{voxel.maxY}}` (top). **z** runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- **Forward is +z:** the open face of the collector fan tilts up and toward `z = {{voxel.maxZ}}`
+  (the front), so the panels face the sun. Up is +y.
+- Build the harvester symmetric about the lengthwise vertical centerplane
+  where the form allows, with the spine and fan centered on that axis.
+- The extractor is deliberately broad and low — a squat faceted pedestal rooted to the
+  ground, a canted spine leaning off it, and a wide fan of panels splayed across the top —
+  so the whole form reads as a collector reaching for the sky, not a tower.
+- Each part is composited in these shared coordinates, where it sits on the assembled
+  harvester (the core banked in the pedestal, the spine rising from it, the fan splayed
+  across its top).
+
+## What the Solar Extractor is (and what is yours to invent)
+
+Fixed — the harvester must read unmistakably as all of these:
+
+- A low, faceted **pedestal** — the fixed body of the machine — rooted to the ground, its
+  footprint clearly **not a plain square** (canted, chamfered, or many-sided), built in
+  the brass and bronze plating (bronze on its underside and in the shadowed seams,
+  sandstone panels for lighter structure).
+- A **canted spine** rising off the pedestal at a lean (not a vertical square mast) that
+  carries the collector fan up and tilts it toward the sun, built in iron with brass
+  bracing.
+- A **fanned rank of angled collector panels** splayed across the top — several flat
+  panels spread in a fan or sawtooth, each tilted to face the sky, their broad faces
+  glowing solar-amber like photovoltaic cells in iron frames. This wide fan of collectors
+  is the signature of the machine and must read as the largest feature.
+- A **stored-sol core** — a glowing rounded reservoir of banked sunlight in the
+  solar-amber and solar-hot accents, seated in or at the heart of the pedestal where the
+  panels' harvest collects, sized to brighten and swell without touching its housing.
+- A clear solar-amber energy accent and the palette below.
+
+This is a harvester, not a factory: it must **not** carry a forge hammer, a blast door or
+hatch, an assembly bay, a chimney, or any ejection port — it produces no units, and
+nothing about it should look like it stamps out or releases anything.
+
+Everything else is yours to invent — the exact silhouette, proportions, how many panels
+the fan holds and how they are shaped and splayed, how the spine is canted and braced,
+how the core is shaped and housed, and how you break the harvester into rig parts and
+place its joints. Nothing here prescribes a shape or a skeleton; the test rewards a bold,
+characterful design that is unmistakably the Solar Extractor and animates convincingly.
+Leave the moving pieces something to seat against — a spine the fan pivots on, clear
+hinges between the splayed panels, and a housing around the core — so they meet the
+machine with no gap.
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Masonry — primary plating (brass) | `#c69a4b` |
+| Masonry — dark plating, underside, shadow (bronze) | `#7a5527` |
+| Secondary panels / lighter structure (sandstone) | `#d9c48c` |
+| Frames, spine, joints, mechanisms (iron) | `#565c64` |
+| Deep recesses, shadow (dark iron) | `#31353b` |
+| Energy accent (solar amber) | `#ff9d2e` |
+| Collector / core glow highlight (solar hot) | `#ffd76b` |
+
+The **solar-amber** accent is the team-tint region: give the collector panel faces a
+heavy, clear amber glow with a solar-hot highlight, and a brilliant solar-hot glow at the
+stored-sol core — so the harvest reads as glowing, banked sunlight from multiple angles.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with three required animation declarations by name (you author
+the motion). All three are self-playing idles — they loop continuously on their own, with
+no caller — and the pedestal itself stays fixed throughout. Author each with `voxel-anim
+define-animation` then `add-keyframe`, giving the motion an eased, weighted cadence rather
+than a mechanical linear slide. None of these produces or releases a unit; they read only
+as harvesting and banking sunlight.
+
+- **`panel_track`** — the whole fan of collector panels slowly sweeps across the sky to
+  follow the sun and eases back to where it started each loop, tilting as one to keep its
+  faces to the light. The fan moves; the pedestal holds.
+- **`collector_bloom`** — the splayed panels spread wider apart and draw back together
+  each loop, the fan opening and closing in a slow breath like a flower turning to the
+  light. The panels move; the pedestal and spine hold.
+- **`sol_charge`** — the stored-sol core brightens and swells as harvested light gathers,
+  then settles back each loop, breathing with weight. The core moves; the pedestal, spine,
+  and fan hold.
+
+You may add extra parts, joints, and self-playing animations of your own (a slow heat
+shimmer, glinting facets, a secondary reflector); you must produce these three
+animations, by these names, all self-playing, and must not contradict them (the pedestal
+stays fixed — never carried along by the fan or the core; nothing about the motion reads
+as manufacturing or emitting a unit).
+
+## Working the tool
+
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the three animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the fan splays across the
+spine with room to sweep and spread, the core sits housed with room to swell, and the
+animations read with weight. Run `voxel-anim render` before you finish so it emits the
+per-part `.glb` geometry your result is built from — an unrendered part scores as empty
+(`voxel-anim render --component <part>` renders one part; `voxel-anim render --time <ms>
+--animation <name>` renders the model posed at that instant to check the motion). The
+recorded per-part logs and `rig.json` are your submission.

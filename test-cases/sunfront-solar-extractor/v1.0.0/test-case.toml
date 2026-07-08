@@ -1,0 +1,194 @@
+slug = "sunfront-solar-extractor"
+name = "Sunfront Solar Extractor"
+difficulty = "medium"
+tags = ["3d", "voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Solar Extractor: an opaque-voxel sunlight harvester — a \
+fanned rank of angled collector panels splayed off a canted spine on a low faceted \
+pedestal, drinking the sun into a glowing stored-sol core — built by painting discrete \
+cells one recorded operation at a time. It produces no units and has no combat role: \
+it just harvests light. Its panels track the sun, its collector fan blooms open and \
+shut, and its core pulses as it charges, while the pedestal holds still. The model \
+invents whatever parts and joints it needs; the fixed contract is three self-playing \
+animations it must author — a `panel_track`, a `collector_bloom`, and a `sol_charge` — \
+the reviewer can watch cycle. Its fanned, non-boxy silhouette is meant to contrast with \
+the square, fabrication-styled spawner foundries."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME extractor at three sizes — `base` (this case's
+# volume), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. The extractor is a broad, low-slung collector — wider than it is tall — so
+# the volume is squat rather than tall. Each part is sculpted separately in this
+# shared volume's coordinates. The volume always starts EMPTY; `background` is only
+# the clear color behind the rasterized isometric preview PNG. A voxel case must NOT
+# declare [canvas].
+[voxel]
+width = 84
+height = 72
+depth = 72
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. All three here are self-playing
+# idles, so the harvester runs on its own with no caller. The model authors each
+# animation's F-curves at run time with the `voxel-anim`
+# `define-animation`/`add-keyframe` subcommands; `rig.json` is pre-seeded with these
+# declarations so the contract exists from the first operation. None of them is an
+# "emit" — this structure never produces a unit.
+[model]
+
+# `panel_track` — the fanned collector array's sun-tracking sweep. A self-playing idle
+# that slowly tilts the whole fan of panels across the sky to follow the sun and eases
+# it back, on its own and with no caller.
+[[model.animation]]
+name = "panel_track"
+loop = true
+auto_play = true
+
+# `collector_bloom` — the collector fan's opening and closing. A self-playing idle that
+# spreads the splayed panels wider apart and draws them back together in a slow breath,
+# like a flower opening to the light, on its own.
+[[model.animation]]
+name = "collector_bloom"
+loop = true
+auto_play = true
+
+# `sol_charge` — the stored-sol core's charging pulse. A self-playing idle that brightens
+# and swells the harvested-light core and settles it back as it fills, on its own.
+[[model.animation]]
+name = "sol_charge"
+loop = true
+auto_play = true
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected
+# size (`{{voxel.width}}`×`{{voxel.height}}`×`{{voxel.depth}}`). The seeded dest
+# drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Solar \
+Extractor and runs correctly — a fanned rank of angled solar-collector panels on a \
+canted spine and low faceted pedestal, unmistakably a sunlight harvester rather than \
+a unit-producing factory, whose panels track the sun, whose collector fan blooms open \
+and shut, and whose stored-sol core pulses as it charges on their own self-playing \
+animations while the pedestal stays put, with glowing solar-amber collector faces and \
+the disciplined Duneforged palette, and a deliberately non-boxy silhouette that \
+contrasts with the square spawner foundries."""
+
+[[review_item]]
+id = "reads-as-solar-harvester"
+title = "Reads as a solar-sunlight harvester"
+text = """
+From more than one angle the model reads unmistakably as a sunlight harvester: a \
+fanned rank of angled, sky-facing collector panels raised on a canted spine over a low \
+faceted pedestal, feeding a glowing stored-sol core — a machine built to drink sunlight \
+and bank it, not an abstract stack of boxes. The glowing amber collector faces read as \
+photovoltaic panels turned to the sky."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Panels track, collector blooms, and core charges on their own"
+text = """
+The three animated behaviors cycle on their own, each on its self-playing animation, \
+while the pedestal stays fixed: playing `panel_track` slowly sweeps the whole fan of \
+collector panels across the sky to follow the sun and eases it back; `collector_bloom` \
+spreads the splayed panels wider apart and draws them back together in a breathing \
+bloom; and `sol_charge` brightens and swells the stored-sol core and settles it back as \
+it fills. Across each cycle no voxel of the panels or core tears away from its mount or \
+clips the structure — each moves as one solid piece about a clean, sensible axis. The \
+model had to work out where to split the harvester into a fixed body and these \
+independently moving pieces for this to read at all."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "harvester-not-fabricator"
+title = "Reads as a harvester, not a factory"
+text = """
+Nothing about the model reads as a unit-producing factory. It has no forge hammer, no \
+blast door or hatch, no assembly bay, no chimney, and no ejection port, and none of its \
+motion looks like stamping out, opening to release, or manufacturing anything — the \
+Solar Extractor produces no units. Every moving element reads purely as gathering and \
+storing sunlight (panels turning to the sun, the fan breathing open, the core charging), \
+so it is never confused with the fabrication-styled spawner structures."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "non-rectangular-silhouette"
+title = "Non-rectangular silhouette contrasts with the foundries"
+text = """
+The silhouette is deliberately non-boxy and contrasts with the square, blocky spawner \
+foundries: a fanned, splayed rank of angled panels (a sawtooth of tilted collector \
+faces), a canted spine rather than a vertical square tower, and a low faceted \
+pedestal rather than a plain cube. Read from the front, side, and top it does not read \
+as a rectangular building — its fanned, angled form is legible at a glance as something \
+other than a fabrication tower."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Pedestal stays fixed; panels and core stay attached"
+text = """
+Only the moving elements move: the fan of panels as it tracks and blooms, and the core \
+as it charges. The faceted pedestal and its spine are the fixed root of the machine — \
+they stay put throughout, never carried along or dragged by the panels or the core. \
+Each moving element stays attached across its whole cycle: the panels stay seated on \
+their spine as they sweep and spread, and the core stays cradled as it pulses, with no \
+gap opening up and nothing floating free or detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze plating, sandstone \
+panels, iron frames and mechanisms, and the solar-amber and solar-hot energy accents) \
+with a clear, glowing amber on the collector panel faces and a solar-hot glow at the \
+stored-sol core, no out-of-palette colors, and no stray voxels drifting off the \
+parts."""
+weight = 1
+domain = "fidelity"
