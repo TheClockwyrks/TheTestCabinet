@@ -325,6 +325,19 @@ fn every_stored_manifest_preserves_its_asset_shape() {
                         "{id}: skinned meshed kind lost its [model] rig"
                     );
                 }
+                // The Blender character kind reuses both tables verbatim: `[voxel]`
+                // as the bounding box and `[model]` as the required animations (see
+                // `AssetKind::is_blender`). Both must survive ingest.
+                AssetKind::BlenderCharacter => {
+                    assert!(
+                        manifest.voxel.is_some(),
+                        "{id}: blender-character kind lost its [voxel] bounding box"
+                    );
+                    assert!(
+                        manifest.model.is_some(),
+                        "{id}: blender-character kind lost its [model] rig"
+                    );
+                }
                 // The painted (`ui`/`material`), particle, and audio kinds each carry
                 // their own `[ui]`/`[material]`/`[particle]`/`[audio]` table, which the
                 // backend `StoredManifest` now mirrors verbatim (as with the voxel
