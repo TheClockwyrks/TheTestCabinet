@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, useAnimations, useGLTF } from "@react-three/drei";
-import { Box3, LoopOnce, LoopRepeat, Vector3, type Group } from "three";
+import {
+  Box3,
+  LoopOnce,
+  LoopRepeat,
+  Vector3,
+  type AnimationClip,
+  type Group,
+} from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import {
   AMBIENT_INTENSITY,
@@ -16,50 +23,41 @@ import { useViewportWheelLock } from "./useViewportWheelLock";
 import type { VoxelViewMode } from "./VoxelViewer";
 
 /**
- * The loaded glTF, cloned for this viewer instance and playing the selected clip. A
- * Blender character's animations are baked into the glTF itself (glTF animation
+ * The scene contents inside the {@link Canvas}: the cloned character (recentered to the
+ * origin) plus its native glTF animation player. Kept as a child component so it can
+ * call the R3F hooks (`useAnimations`/`useThree`), which only work inside the canvas.
+ *
+ * A Blender character's animations are baked into the glTF itself (glTF animation
  * channels), so they are driven by a native {@link https://threejs.org | three}
  * `AnimationMixer` (via drei's `useAnimations`) rather than posed from an inline
- * `rig.json` the way the CSG-skinned kinds are.
- *
- * The scene is deep-cloned with `SkeletonUtils.clone` (which rebinds the skeleton) so
- * this instance owns its own graph: a three object can live in only one scene at a
- * time, and the inline and expanded canvases mount simultaneously against the same
- * `useGLTF`-cached scene.
+ * `rig.json` the way the CSG-skinned kinds are. The clone (rebinding the skeleton) is
+ * built by the parent, before the canvas mounts.
  */
 function Character({
-  url,
+  cloned,
+  animations,
+  center,
+  distance,
+  far,
   animationName,
   loop,
 }: {
-  url: string;
+  cloned: Group;
+  animations: AnimationClip[];
+  center: Vec3;
+  distance: number;
+  far: number;
   animationName: string | null;
   loop: boolean;
 }) {
-  const { scene, animations } = useGLTF(url);
-  const cloned = useMemo(() => cloneSkinned(scene) as Group, [scene]);
   const rootRef = useRef<Group>(cloned);
   rootRef.current = cloned;
   const { actions } = useAnimations(animations, rootRef);
 
-  // Frame the character from its rest-pose bounds: the fit distance plus the center
-  // to translate to the origin. The glTF is exported in the character's own units
-  // and orientation, and its boots sit at y=0, so left un-centered a default
-  // origin-height camera looks steeply *up* the body from under the feet — the same
-  // recenter-then-place the voxel/skinned viewers do (a `Box3` here rather than a
-  // flat positions array). The rest pose is representative, so a played clip's
-  // limb-swing doesn't reframe; the sub-1 fill inside `framingFromBounds` reserves
-  // the margin that swing needs.
-  const { center, distance, far } = useMemo(() => {
-    const box = new Box3().setFromObject(cloned);
-    const min: Vec3 = [box.min.x, box.min.y, box.min.z];
-    const max: Vec3 = [box.max.x, box.max.y, box.max.z];
-    return framingFromBounds(min, max);
-  }, [cloned]);
-
   // Place the camera at the raised 3/4 view the rest of the 3D family uses and aim the
   // orbit target at the character (now recentered to the origin), so the first frame
-  // looks at the soldier's front rather than up from under its boots.
+  // looks at the soldier's front rather than up from under its boots. The `Canvas`
+  // already framed the same distance/far on mount; this re-aims the controls' target.
   const camera = useThree((state) => state.camera);
   const controls = useThree((state) => state.controls) as {
     target: Vector3;
@@ -143,6 +141,38 @@ export default function BlenderCharacterViewer({
     enableZoom ?? false,
   );
 
+  // Load and decode the glTF *before* the Canvas mounts: `useGLTF` suspends here, at the
+  // top of the component, so on a cache miss the whole viewer unwinds to the outer
+  // <Suspense> (the PNG fallback in BlenderResultSection) with no <Canvas> — and so no
+  // WebGL context — ever created. Loading inside the Canvas (a suspending Canvas child)
+  // instead mounts the renderer, unwinds past it to that same outer boundary, then
+  // remounts a *fresh* renderer when the model resolves; that create→lose→recreate
+  // churn is what blanks the view a beat after it appears and spams "WebGL context
+  // lost" in the console. The voxel/skinned siblings likewise resolve their geometry
+  // before their Canvas mounts (they receive it as a prop).
+  const { scene, animations } = useGLTF(url);
+
+  // Deep-clone with `SkeletonUtils.clone` (which rebinds the skeleton) so this instance
+  // owns its own graph: a three object can live in only one scene at a time, and the
+  // inline and expanded canvases mount simultaneously against the same `useGLTF`-cached
+  // scene. Not disposed on unmount — the cache owns the source graph; this clone is
+  // plain GC.
+  const cloned = useMemo(() => cloneSkinned(scene) as Group, [scene]);
+
+  // Frame the character from its rest-pose bounds: the fit distance plus the center to
+  // translate to the origin. The glTF is exported in the character's own units and
+  // orientation, and its boots sit at y=0, so left un-centered a default origin-height
+  // camera looks steeply *up* the body from under the feet — the same recenter-then-
+  // place the voxel/skinned viewers do (a `Box3` here rather than a flat positions
+  // array). The rest pose is representative, so a played clip's limb-swing doesn't
+  // reframe; the sub-1 fill inside `framingFromBounds` reserves the margin swing needs.
+  const { center, distance, far } = useMemo(() => {
+    const box = new Box3().setFromObject(cloned);
+    const min: Vec3 = [box.min.x, box.min.y, box.min.z];
+    const max: Vec3 = [box.max.x, box.max.y, box.max.z];
+    return framingFromBounds(min, max);
+  }, [cloned]);
+
   return (
     <div
       ref={containerRef}
@@ -152,7 +182,12 @@ export default function BlenderCharacterViewer({
         aria-label={label}
         dpr={[1, 1.5]}
         gl={{ antialias: true, alpha: true }}
-        camera={{ fov: CAMERA_FOV, near: 0.1, far: 2000 }}
+        camera={{
+          position: cameraPosition(distance),
+          fov: CAMERA_FOV,
+          near: 0.1,
+          far,
+        }}
       >
         <ambientLight intensity={AMBIENT_INTENSITY} />
         <directionalLight
@@ -163,7 +198,15 @@ export default function BlenderCharacterViewer({
           position={FILL_LIGHT.position}
           intensity={FILL_LIGHT.intensity}
         />
-        <Character url={url} animationName={animationName} loop={loop} />
+        <Character
+          cloned={cloned}
+          animations={animations}
+          center={center}
+          distance={distance}
+          far={far}
+          animationName={animationName}
+          loop={loop}
+        />
         <OrbitControls
           makeDefault
           enablePan={false}
