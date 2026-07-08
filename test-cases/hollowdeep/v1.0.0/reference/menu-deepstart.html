@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!--
+  Hollowdeep — title / main menu reference mockup for the `deepstart` variant.
+  Canonical view slug: title
+  Inserts the DEEPSTART start between NEW COLONY and HOW TO PLAY.
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title).
+  Objects in .colony use field-local coordinates (top = field row * 24).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hollowdeep — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim cross-section slice behind the menu, for atmosphere. -->
+      <div class="colony">
+        <div class="region stone dim" style="--c: 0; --r: 20; --w: 54; --h: 5"></div>
+        <div class="region open dim" style="--c: 3; --r: 12; --w: 12; --h: 6"></div>
+        <div class="region ore dim" style="--c: 44; --r: 10; --w: 4; --h: 6"></div>
+        <div class="region open dim" style="--c: 40; --r: 14; --w: 12; --h: 4"></div>
+        <div class="region dim" style="--c: 3; --r: 17; --w: 12; --h: 1;
+             background: var(--steel-2); border-top: 3px solid var(--steel)"></div>
+        <div class="gas oxygen dim" style="--c: 3; --r: 12; --w: 12; --h: 3"></div>
+        <div class="gas co2 dim" style="--c: 40; --r: 16; --w: 12; --h: 2"></div>
+        <div class="delver dim" style="left: 120px; top: 464px"></div>
+        <div class="delver dim" style="left: 168px; top: 464px"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">HOLLOWDEEP</h1>
+        <div class="tagline">DIG. BREATHE. ENDURE.</div>
+        <nav class="menu">
+          <div class="menu-item selected">NEW COLONY</div>
+          <div class="menu-item">DEEPSTART</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT</div>
+    </div>
+  </body>
+</html>
