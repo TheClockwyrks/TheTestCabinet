@@ -32,7 +32,8 @@ function fixExpressiveCodeStylesheet() {
           if (!EC_CSS.test(url)) return next();
           try {
             const resolved = await server.pluginContainer.resolveId(url);
-            const loaded = resolved && (await server.pluginContainer.load(resolved.id));
+            const loaded =
+              resolved && (await server.pluginContainer.load(resolved.id));
             const css = typeof loaded === "string" ? loaded : loaded?.code;
             if (css) {
               res.setHeader("Content-Type", "text/css");
@@ -59,7 +60,7 @@ function fixExpressiveCodeStylesheet() {
         const ecCss = assets.filter((f) => /^ec\..+\.css$/.test(f));
         if (ecCss.length !== 1) {
           logger.warn(
-            `expected exactly one Expressive Code stylesheet, found ${ecCss.length}; skipping link repair`
+            `expected exactly one Expressive Code stylesheet, found ${ecCss.length}; skipping link repair`,
           );
           return;
         }
@@ -83,7 +84,7 @@ function fixExpressiveCodeStylesheet() {
         };
         await walk(outDir);
         logger.info(
-          `repaired Expressive Code stylesheet link on ${patched} page(s) -> ${realHref}`
+          `repaired Expressive Code stylesheet link on ${patched} page(s) -> ${realHref}`,
         );
       },
     },
@@ -436,6 +437,15 @@ export default defineConfig({
                 "testing/end-to-end/overview",
                 "testing/end-to-end/manifests",
                 "testing/end-to-end/evaluation",
+              ],
+            },
+            {
+              label: "Full Stack",
+              collapsed: true,
+              items: [
+                "testing/full-stack/overview",
+                "testing/full-stack/manifests",
+                "testing/full-stack/evaluation",
               ],
             },
             {
