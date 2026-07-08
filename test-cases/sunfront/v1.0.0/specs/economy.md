@@ -27,7 +27,9 @@ resource type.
 Build-grid structures are the player-built economy objects in the staging-yard build
 grid (`specs/playfield.md`). There are two kinds: **spawners**, which emit combat
 units on waves, and **Solar Extractors**, which increase passive income. Both occupy
-one grid cell and share the same select, upgrade, and sell flow.
+one grid cell and share the same select, upgrade, and sell flow. (The **base** and
+**Reliquary** are not build-grid structures; they are selectable for read-only info
+only — see `specs/flow.md`.)
 
 ### Building
 

@@ -322,7 +322,7 @@ proof = "wireframe"
 [[review_item]]
 id = "hud-complete"
 title = "HUD"
-text = "The HUD overlay shows the sol balance and total income rate, the wave number and countdown, both base health bars, the build palette (ten unit spawners plus Solar Extractor) with costs and affordability, and a selected-structure panel — plus the toggleable performance overlay (FPS) and wireframe mode — all on screen over the 3D world."
+text = "The HUD overlay shows the sol balance and total income rate, the wave number and countdown, both base health bars, the build palette (ten unit spawners plus Solar Extractor) with costs and affordability, and a selected-structure panel: clicking any friendly structure (a build-grid spawner or Solar Extractor, the base, or the Reliquary) selects it and shows its name, health, and level, with the Upgrade/Sell actions present only for build-grid structures and the base and Reliquary read-only. Plus the toggleable performance overlay (FPS) and wireframe mode — all on screen over the 3D world."
 weight = 1
 
 [[review_item]]

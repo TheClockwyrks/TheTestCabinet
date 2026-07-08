@@ -81,8 +81,9 @@ provided structure models (`specs/assets.md`).
   centre. (The exact corner offset is yours, as long as the grid sits behind the base,
   clear of the diagonal corridor, and reads as the player's yard.)
 - A cell holds at most one structure. The base and Reliquary are **not** on this grid;
-  they are pre-placed and permanent. Spawners and Solar Extractors are build-grid
-  structures. Placement, cost, and upgrades are in `specs/economy.md`.
+  they are pre-placed and permanent — never built or sold, but still **selectable for
+  info** (`specs/flow.md`). Spawners and Solar Extractors are build-grid structures.
+  Placement, cost, and upgrades are in `specs/economy.md`.
 
 ## Where units enter and travel
 

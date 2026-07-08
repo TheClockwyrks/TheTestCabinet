@@ -53,11 +53,17 @@ both.
   the armed structure (if you can afford it — `specs/economy.md`). An invalid or
   unaffordable cell shows the invalid-placement color and does not place. `Esc`
   or right-click disarms the cursor.
-- **Managing a structure:** click a **placed** build-grid structure to select it; a
-  small panel shows its type, level, current effect (spawned unit stats for a spawner,
-  income bonus for a Solar Extractor), and **Upgrade** (with cost) and **Sell** (with
-  refund) buttons. Click a button, or press `U` to upgrade / `X` to sell the selected
-  structure.
+- **Selecting a structure:** click any **friendly** structure — a placed build-grid
+  structure (spawner or Solar Extractor), your **base**, or your **Reliquary** — to
+  select it and open its panel (below). Clicking empty ground or pressing `Esc`
+  deselects. Enemy structures (hidden or transient under fog, `specs/waves.md`) are
+  not selectable.
+- **Managing a build-grid structure:** for a selected **build-grid** structure the
+  panel also carries its current effect (spawned unit stats for a spawner, income
+  bonus for a Solar Extractor) and **Upgrade** (with cost) and **Sell** (with refund)
+  buttons. Click a button, or press `U` to upgrade / `X` to sell the selected
+  structure. The **base** and **Reliquary** are read-only: their panel shows
+  information only, with no upgrade or sell action.
 - **In match:** `Esc` or `P` pauses.
 - **Camera:** the tilted overhead camera (`specs/overview.md`) keeps the whole
   front framed by default. You may optionally let the player rotate it around the
@@ -86,9 +92,11 @@ type from `specs/overview.md`:
   Extractor near the player's staging yard, each showing its icon (in team color),
   name, cost, and shortcut key (`1`-`9`, `0`, `E`). An unaffordable entry is dimmed.
   The armed entry is highlighted.
-- **Selected-structure panel:** when a placed build-grid structure is selected, its
-  type, level pips, current effect, and the Upgrade/Sell actions with their sol
-  figures.
+- **Selected-structure panel:** when a friendly structure is selected, its **name**,
+  **health** (current/max HP), and **level** — plus, for a build-grid structure, its
+  level pips, current effect, and the Upgrade/Sell actions with their sol figures. The
+  base and Reliquary show name and health only (they have no level and no actions; the
+  Reliquary's panel may also note its `4 HP/s` regen, `specs/waves.md`).
 - **Performance overlay** — a toggle (default off, bound to a key — e.g. `F3`)
   showing at least the live **FPS**, so the required frame rate
   (`specs/overview.md`) is observable during a heavy late-match battle. Keep it
