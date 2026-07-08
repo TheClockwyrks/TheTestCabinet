@@ -1,0 +1,563 @@
+/*
+ * Junction — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Junction test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/.
+ *
+ * Stage geometry (matches ../specs/overview.md):
+ *   - 1280x720 stage; top HUD y[0,64] (city vitals), city view y[64,656]
+ *     (a top-down camera onto the tile map), bottom HUD y[656,720] (RCI demand
+ *     meters + build palette).
+ *   - Tiles are 24x24 logical px (--t). Objects inside .city use FIELD-LOCAL
+ *     coordinates: the city view starts at stage y=64, so a tile at map row r
+ *     the camera shows at stage y=Y has top = Y - 64.
+ *
+ * These mockups depict the city with simple CSS stand-ins for the zones,
+ * buildings, roads, rail, utilities, vehicles, and the pollution overlay. In the
+ * real build those are PRODUCED assets (sprites, animated sheets, and live
+ * particle systems) — see ../specs/assets.md; here they are only visual targets
+ * for layout, palette, and type.
+ */
+
+:root {
+  --ground: #12161c;    /* ground / undeveloped land (background) */
+  --dirt: #2a2f26;      /* terrain — bare earth */
+  --grass: #33502f;     /* terrain — grass / park */
+  --water: #245a73;     /* terrain — water */
+  --hill: #3a3630;      /* terrain — hill / rock */
+  --res: #4caf6d;       /* residential zone */
+  --com: #4a90d9;       /* commercial zone */
+  --ind: #e0a63c;       /* industrial zone */
+  --road: #3c434d;      /* road */
+  --road-line: #565f6b; /* road markings */
+  --rail: #b061e6;      /* rail / metro line */
+  --station: #ece6db;   /* station / stop */
+  --power: #ffcb52;     /* power / energy */
+  --water-pipe: #47c8e0;/* water supply (pipe) */
+  --jam: #ff7a3c;       /* congestion / gridlock */
+  --pollution: #8a7d5a; /* pollution */
+  --money: #7cd45a;     /* money / positive balance */
+  --alert: #ff5a52;     /* alert / deficit / danger */
+  --panel: #161b22;     /* panels / overlays */
+  --text: #e6ebf0;      /* primary text */
+  --text-dim: #9aa4af;  /* secondary text */
+  --text-faint: #5b6570;/* tertiary / hints */
+
+  --t: 24px;            /* tile size */
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--ground);
+}
+
+/* The fixed logical stage. All coordinates are in 1280x720 logical pixels. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  font-family: var(--mono);
+  color: var(--text);
+  background-color: var(--ground);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Top HUD strip: city vitals dashboard (y[0,64]) -------------------- */
+.topbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 22px;
+  background: linear-gradient(180deg, #1b222c, var(--panel));
+  border-bottom: 1px solid #232b36;
+  z-index: 5;
+}
+
+.vital {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 78px;
+}
+.vital .k {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+}
+.vital .v {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+.vital .v.money { color: var(--money); }
+.vital .v.warn { color: var(--power); }
+.vital .v.bad { color: var(--alert); }
+.vital .v.power { color: var(--power); }
+.vital .v.water { color: var(--water-pipe); }
+
+/* A small labeled meter used in the top bar (power, water). */
+.meter {
+  width: 92px;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(154, 164, 175, 0.16);
+  overflow: hidden;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+.meter > span.pw { background: var(--power); box-shadow: 0 0 8px rgba(255, 203, 82, 0.6); }
+.meter > span.wt { background: var(--water-pipe); box-shadow: 0 0 8px rgba(71, 200, 224, 0.6); }
+
+.spacer { flex: 1; }
+
+.clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.clock .date { font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+.clock .speed { font-size: 11px; letter-spacing: 3px; color: var(--text-dim); }
+
+/* A prominent alert chip in the top bar. */
+.alert-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(255, 90, 82, 0.14);
+  border: 1px solid rgba(255, 90, 82, 0.5);
+  color: var(--alert);
+  font-size: 12px;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+/* ---- City view: the top-down tile map under the camera (y[64,656]) ----- */
+.city {
+  position: absolute;
+  left: 0;
+  top: 64px;
+  width: 1280px;
+  height: 592px;
+  overflow: hidden;
+  /* bare-earth ground with a faint 24px tile grid over it */
+  background-color: var(--dirt);
+  background-image:
+    linear-gradient(0deg, rgba(0, 0, 0, 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.22) 1px, transparent 1px),
+    linear-gradient(180deg, #2c322a, var(--dirt));
+  background-size: var(--t) var(--t), var(--t) var(--t), 100% 100%;
+}
+
+/* A rectangular region of a given terrain/zone kind, sized in tiles via --w/--h
+ * and placed at a tile origin via --c/--r (column/row from the field's top-left). */
+.region {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(var(--w) * var(--t));
+  height: calc(var(--h) * var(--t));
+}
+.region.water {
+  background: var(--water);
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.35);
+}
+.region.grass { background: var(--grass); }
+.region.hill {
+  background: var(--hill);
+  background-image: radial-gradient(6px 6px at 12px 12px, rgba(0,0,0,0.25) 60%, transparent 62%);
+  background-size: var(--t) var(--t);
+}
+
+/* An empty zoned lot — a colored, marked tile before it develops. */
+.zone {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(var(--w) * var(--t));
+  height: calc(var(--h) * var(--t));
+  opacity: 0.28;
+}
+.zone.res { background: repeating-linear-gradient(45deg, var(--res) 0 3px, transparent 3px 8px); }
+.zone.com { background: repeating-linear-gradient(45deg, var(--com) 0 3px, transparent 3px 8px); }
+.zone.ind { background: repeating-linear-gradient(45deg, var(--ind) 0 3px, transparent 3px 8px); }
+
+/* A developed building on a tile, at column --c, row --r. Tier shown by inset:
+ * a bigger inner block reads as a denser/taller building. */
+.bldg {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+  border-radius: 2px;
+}
+.bldg.res { background: var(--res); }
+.bldg.com { background: var(--com); }
+.bldg.ind { background: var(--ind); }
+/* Tier 1 low, tier 2 medium, tier 3 high — a brighter, inset core = taller. */
+.bldg.t1 { box-shadow: inset 0 0 0 6px rgba(0,0,0,0.28); }
+.bldg.t2 { box-shadow: inset 0 0 0 4px rgba(0,0,0,0.22), inset 0 0 0 9px rgba(255,255,255,0.10); }
+.bldg.t3 {
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.18), inset 0 0 8px 2px rgba(255,255,255,0.22);
+  filter: brightness(1.15);
+}
+
+/* A single tile-sized element placed at column --c, row --r. */
+.cell {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+}
+.cell.road {
+  background: var(--road);
+  border: 1px solid #2c333c;
+}
+.cell.rail {
+  background: transparent;
+}
+.cell.rail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 3px solid var(--rail);
+  border-bottom: 3px solid var(--rail);
+  box-shadow: 0 0 8px rgba(176, 97, 230, 0.55);
+  top: 8px;
+  bottom: 8px;
+}
+.cell.wire::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 100%;
+  height: 4px;
+  background: var(--power);
+  box-shadow: 0 0 6px rgba(255, 203, 82, 0.7);
+}
+.cell.pipe::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--water-pipe);
+  box-shadow: 0 0 6px rgba(71, 200, 224, 0.7);
+}
+
+/* A center dashed lane line laid over a horizontal road run. */
+.roadline {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t) + 10px);
+  width: calc(var(--w) * var(--t));
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--road-line) 0 10px, transparent 10px 18px);
+}
+
+/* Station — a 1x1 stop marker on the rail line. */
+.station {
+  position: absolute;
+  left: calc(var(--c) * var(--t) + 3px);
+  top: calc(var(--r) * var(--t) + 3px);
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--station);
+  border: 2px solid var(--rail);
+  box-shadow: 0 0 8px rgba(176, 97, 230, 0.6);
+}
+
+/* Utility buildings — 2x2-tile stand-ins with a glow. */
+.plant {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(2 * var(--t));
+  height: calc(2 * var(--t));
+  border-radius: 5px;
+  background: linear-gradient(180deg, #33383f, #22262c);
+  border: 1px solid #4a525c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text);
+}
+.plant.power { box-shadow: 0 0 16px rgba(255, 203, 82, 0.5); border-color: var(--power); color: var(--power); }
+.plant.water { box-shadow: 0 0 16px rgba(71, 200, 224, 0.5); border-color: var(--water-pipe); color: var(--water-pipe); }
+
+/* Vehicles — small produced sprites moved along roads in code. */
+.veh {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--text);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+.veh.b { background: #d8dee6; }
+.veh.c { background: #c7cfd9; }
+
+/* Pollution haze overlay (a produced particle system in the real build). */
+.haze {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(var(--w) * var(--t));
+  height: calc(var(--h) * var(--t));
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 60%, rgba(138, 125, 90, 0.5), rgba(138, 125, 90, 0.14) 65%, transparent);
+  mix-blend-mode: screen;
+}
+
+/* Traffic overlay — a congested link colored toward gridlock. */
+.jam {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(var(--w) * var(--t));
+  height: calc(var(--h) * var(--t));
+  background: var(--jam);
+  opacity: 0.6;
+  box-shadow: 0 0 10px rgba(255, 122, 60, 0.7);
+}
+.jam.bad { background: var(--alert); box-shadow: 0 0 10px rgba(255, 90, 82, 0.8); }
+
+/* ---- Bottom HUD strip: RCI meters + build palette (y[656,720]) --------- */
+.bottombar {
+  position: absolute;
+  left: 0;
+  top: 656px;
+  width: 1280px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 18px;
+  background: linear-gradient(0deg, #1b222c, var(--panel));
+  border-top: 1px solid #232b36;
+  z-index: 5;
+}
+
+/* RCI demand meters — three vertical bars (up = demand, down = surplus). */
+.rci {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 44px;
+}
+.rci .col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 26px;
+}
+.rci .bar {
+  width: 12px;
+  height: 34px;
+  background: rgba(154, 164, 175, 0.16);
+  border-radius: 2px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+.rci .bar > span { display: block; width: 100%; border-radius: 2px; }
+.rci .bar > span.r { background: var(--res); }
+.rci .bar > span.c { background: var(--com); }
+.rci .bar > span.i { background: var(--ind); }
+.rci .lbl { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); }
+
+.divider { width: 1px; height: 40px; background: #232b36; }
+
+.palette {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.tool {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #232b36;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 16px;
+  color: var(--text-dim);
+}
+.tool .tl { font-size: 8px; letter-spacing: 1px; }
+.tool.res { color: var(--res); }
+.tool.com { color: var(--com); }
+.tool.ind { color: var(--ind); }
+.tool.selected {
+  border-color: var(--power);
+  color: var(--text);
+  box-shadow: 0 0 12px rgba(255, 203, 82, 0.4);
+}
+
+/* The active-tool cost readout to the right of the palette. */
+.cost {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 92px;
+}
+.cost .tl { font-size: 10px; letter-spacing: 2px; color: var(--text-faint); }
+.cost .amt { font-size: 15px; font-weight: 700; letter-spacing: 1px; color: var(--money); }
+
+/* ---- Menus / overlays -------------------------------------------------- */
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* JUNCTION title: a road-to-transit gradient across the letters. */
+.title {
+  font-size: 108px;
+  font-weight: 700;
+  letter-spacing: 18px;
+  margin: 0 0 0 18px;
+  background: linear-gradient(90deg, var(--com), var(--rail));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 20px rgba(74, 144, 217, 0.25))
+    drop-shadow(0 0 20px rgba(176, 97, 230, 0.2));
+}
+
+.tagline {
+  font-size: 20px;
+  letter-spacing: 12px;
+  margin: 14px 0 54px 12px;
+  color: var(--text-dim);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.menu-item {
+  font-size: 28px;
+  letter-spacing: 9px;
+  color: var(--text-dim);
+}
+.menu-item.selected {
+  color: var(--text);
+}
+.menu-item.selected::before {
+  content: "\25B8  ";
+  color: var(--power);
+}
+.menu-item.selected::after {
+  content: "  \25C2";
+  color: var(--rail);
+}
+
+.hint {
+  position: absolute;
+  bottom: 30px;
+  width: 100%;
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 7px;
+  color: var(--text-faint);
+  z-index: 10;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 9, 13, 0.8);
+  z-index: 8;
+}
+
+.panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 52px 48px 44px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid #232b36;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+}
+.panel-eyebrow {
+  font-size: 17px;
+  letter-spacing: 9px;
+  color: var(--alert);
+  margin: 0 0 12px;
+}
+.panel-title {
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: 7px;
+  margin: 0 0 22px;
+  background: linear-gradient(90deg, var(--ind), var(--alert));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.panel-stat {
+  font-size: 30px;
+  letter-spacing: 6px;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.panel-sub {
+  font-size: 17px;
+  letter-spacing: 4px;
+  margin: 0 0 34px;
+  color: var(--text-dim);
+}
+
+/* Dimmed field furniture shown behind a menu or panel. */
+.dim {
+  opacity: 0.4;
+  filter: saturate(0.85);
+}

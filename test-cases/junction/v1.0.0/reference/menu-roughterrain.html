@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!--
+  Junction — title / main menu reference mockup for the `roughterrain` variant.
+  Canonical view slug: title
+  Inserts the ROUGH TERRAIN start between NEW CITY and HOW TO PLAY.
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title).
+  Objects in .city use field-local coordinates (top = map row * 24).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Junction — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim top-down city slice behind the menu, for atmosphere. -->
+      <div class="city">
+        <div class="region water dim" style="--c: 40; --r: 16; --w: 14; --h: 9"></div>
+        <div class="cell rail dim" style="--c: 4; --r: 5"></div>
+        <div class="cell rail dim" style="--c: 5; --r: 5"></div>
+        <div class="cell rail dim" style="--c: 6; --r: 5"></div>
+        <div class="cell rail dim" style="--c: 7; --r: 5"></div>
+        <div class="cell rail dim" style="--c: 8; --r: 5"></div>
+        <div class="cell road dim" style="--c: 5; --r: 20"></div>
+        <div class="cell road dim" style="--c: 6; --r: 20"></div>
+        <div class="cell road dim" style="--c: 7; --r: 20"></div>
+        <div class="cell road dim" style="--c: 8; --r: 20"></div>
+        <div class="bldg res t2 dim" style="--c: 5; --r: 18"></div>
+        <div class="bldg res t3 dim" style="--c: 6; --r: 18"></div>
+        <div class="bldg com t3 dim" style="--c: 44; --r: 5"></div>
+        <div class="bldg ind t2 dim" style="--c: 45; --r: 18"></div>
+        <div class="haze dim" style="--c: 43; --r: 17; --w: 6; --h: 4"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">JUNCTION</h1>
+        <div class="tagline">ZONE. CONNECT. GROW.</div>
+        <nav class="menu">
+          <div class="menu-item selected">NEW CITY</div>
+          <div class="menu-item">ROUGH TERRAIN</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT</div>
+    </div>
+  </body>
+</html>
