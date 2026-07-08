@@ -99,10 +99,12 @@ The simulation advances every frame in logical-pixel space:
   each side turret sweeping its own flank for Light — per `specs/waves.md`.
 - **Attacking.** A unit fires once per its **cadence** while a valid target is in
   range, dealing `base damage × upgrade bonus × counter multiplier` (splash as
-  above). Attacks are hitscan/instant for simulation purposes; you may draw a
-  brief projectile or muzzle effect. A unit at `0 HP` is destroyed: it flashes white
-  a few times to signal it is no longer functional and is then removed; it pays no
-  bounty (`specs/economy.md`).
+  above). Attacks are hitscan/instant for simulation purposes; a unit that fires a
+  weapon **plays its provided muzzle-flash effect** at its muzzle while firing
+  (`specs/assets.md`), while melee units (Scarab, Bulwark) and the support Lumen play
+  none. Any projectile or impact touch beyond that is optional and drawn in code. A
+  unit at `0 HP` is destroyed: it flashes white a few times to signal it is no longer
+  functional and is then removed; it pays no bounty (`specs/economy.md`).
 - **Attacking structures.** With no enemy units in range, a unit that reaches an
   enemy **Reliquary** or **base** within its range attacks it with the same damage
   rules (structures count as **Heavy** armor for the multiplier). Reaching and

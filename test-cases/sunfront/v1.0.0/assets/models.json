@@ -1,20 +1,26 @@
 {
   "version": 1,
-  "_note": "Provided-model manifest for the Sunfront build (specs/assets.md). 'dimensions' are the model extents [width, height, depth] and are the on-field relative-scale contract. 'kind' is 'rigid' (parts on named joints) or 'skinned' (linear-blend skinning). 'clips' maps a game role to the animation clip name to play. A destroyed unit is not animated — it flashes white a few times and is removed (specs/units.md), so there is no death clip. Per-model 'parts'/'joints' lists are added with each model.",
+  "_note": "Provided-model manifest for the Sunfront build (specs/assets.md). 'dimensions' are the model extents [width, height, depth] and are the on-field relative-scale contract. 'kind' is 'rigid' (parts on named joints) or 'skinned' (linear-blend skinning). 'clips' maps a game role to the animation clip name to play. A destroyed unit is not animated — it flashes white a few times and is removed (specs/units.md), so there is no death clip. A unit's 'muzzle' names which provided muzzle-flash effect (see 'effects') the build plays while it fires, or null for melee and support units that fire no weapon. Per-model 'parts'/'joints' lists (including each firing unit's muzzle joint) are added with each model.",
+  "effects": {
+    "_note": "Provided muzzle-flash particle systems, authored by the sunfront-muzzle-* particle cases and played via @test-cabinet/particle-runtime (its 'three' binding) while a unit fires (specs/assets.md). Each is a looping system.json the build simulates live, anchored to the firing unit's muzzle joint and oriented along the barrel. A unit's 'muzzle' key selects one of these; melee and support units have muzzle: null.",
+    "small-arms": "effects/muzzle-small-arms.json",
+    "cannon": "effects/muzzle-cannon.json",
+    "lance": "effects/muzzle-lance.json"
+  },
   "units": {
-    "scarab":    { "model": "scarab/mesh.glb",    "kind": "rigid",   "dimensions": [26, 12, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
-    "sentinel":  { "model": "sentinel/mesh.glb",  "kind": "rigid",   "dimensions": [20, 40, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
-    "trooper":   { "model": "trooper/mesh.glb",   "kind": "skinned", "dimensions": [24, 48, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire", "brace": "brace" } },
-    "bulwark":   { "model": "bulwark/mesh.glb",   "kind": "rigid",   "dimensions": [40, 60, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
-    "lancer":    { "model": "lancer/mesh.glb",    "kind": "rigid",   "dimensions": [24, 50, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
-    "bombard":   { "model": "bombard/mesh.glb",   "kind": "rigid",   "dimensions": [40, 40, 60], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
-    "flakhound": { "model": "flakhound/mesh.glb", "kind": "rigid",   "dimensions": [36, 32, 46], "clips": { "idle": "idle", "move": "march", "attack": "fire" } },
-    "sunhawk":   { "model": "sunhawk/mesh.glb",   "kind": "rigid",   "dimensions": [74, 28, 76], "clips": { "idle": "idle", "move": "fly", "attack": "fire" } },
-    "lumen":     { "model": "lumen/mesh.glb",     "kind": "rigid",   "dimensions": [20, 26, 20], "clips": { "idle": "idle", "move": "march", "attack": "heal" } },
-    "monolith":  { "model": "monolith/mesh.glb",  "kind": "rigid",   "dimensions": [50, 80, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" } }
+    "scarab":    { "model": "scarab/mesh.glb",    "kind": "rigid",   "dimensions": [26, 12, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": null },
+    "sentinel":  { "model": "sentinel/mesh.glb",  "kind": "rigid",   "dimensions": [20, 40, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "small-arms" },
+    "trooper":   { "model": "trooper/mesh.glb",   "kind": "skinned", "dimensions": [24, 48, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire", "brace": "brace" }, "muzzle": "small-arms" },
+    "bulwark":   { "model": "bulwark/mesh.glb",   "kind": "rigid",   "dimensions": [40, 60, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": null },
+    "lancer":    { "model": "lancer/mesh.glb",    "kind": "rigid",   "dimensions": [24, 50, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "lance" },
+    "bombard":   { "model": "bombard/mesh.glb",   "kind": "rigid",   "dimensions": [40, 40, 60], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "cannon" },
+    "flakhound": { "model": "flakhound/mesh.glb", "kind": "rigid",   "dimensions": [36, 32, 46], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "small-arms" },
+    "sunhawk":   { "model": "sunhawk/mesh.glb",   "kind": "rigid",   "dimensions": [74, 28, 76], "clips": { "idle": "idle", "move": "fly", "attack": "fire" }, "muzzle": "small-arms" },
+    "lumen":     { "model": "lumen/mesh.glb",     "kind": "rigid",   "dimensions": [20, 26, 20], "clips": { "idle": "idle", "move": "march", "attack": "heal" }, "muzzle": null },
+    "monolith":  { "model": "monolith/mesh.glb",  "kind": "rigid",   "dimensions": [50, 80, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "cannon" }
   },
   "special": {
-    "aegis": { "model": "aegis/mesh.glb", "kind": "rigid", "dimensions": [120, 110, 150], "clips": { "move": "march", "attack": "bombardment", "idle_auto": "radar_spin" } }
+    "aegis": { "model": "aegis/mesh.glb", "kind": "rigid", "dimensions": [120, 110, 150], "clips": { "move": "march", "attack": "bombardment", "idle_auto": "radar_spin" }, "muzzle": "cannon" }
   },
   "structures": {
     "base":      { "model": "bastion/mesh.glb",   "kind": "rigid", "dimensions": [90, 120, 90], "clips": { "idle": "idle" } },

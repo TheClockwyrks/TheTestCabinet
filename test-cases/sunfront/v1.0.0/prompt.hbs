@@ -27,7 +27,9 @@ they describe as a single, cohesive build:
 
 Start with `overview` for the goals, hard requirements, coordinate system, and
 palette; then `playfield` for the diagonal arena and its fog of war; then `assets`
-for the **provided models** you must load and render; then `economy`, `units`, and
+for the **provided models** you must load and render and the **provided muzzle-flash
+particle effects** you must play (via the seeded `@test-cabinet/particle-runtime`);
+then `economy`, `units`, and
 `waves` for the resource loop, the unit roster and its counter system, and the wave
 clock and Reliquary objective; then `flow` for states, controls, the HUD, and the AI;
 then `standard` for the playable mode. The specs
@@ -75,7 +77,7 @@ assume it works. Before you consider the task complete:
   the screenshots and the short wave clip, each written to the precise `proof/`
   path that spec names. These are required deliverables of the finished build, not
   a private check. Do not invent a different folder or filename, and do not skip
-  the `.mp4`.
+  the `.webm`.
 
 Use the project's own Playwright: import it from your project (for example
 `import { chromium } from "playwright"`) or run the project-local CLI with

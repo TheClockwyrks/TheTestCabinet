@@ -2,7 +2,7 @@
   "name": "sunfront",
   "version": "0.1.0",
   "private": true,
-  "description": "Sunfront — a top-down real-time tug-of-war where you build spawner structures that stamp out waves of solar automatons, counter the enemy through the fog, and raze their base. Runs entirely in the browser.",
+  "description": "Sunfront — a 3D real-time tug-of-war where you build spawner structures that stamp out waves of solar automatons, counter the enemy through the fog, and raze their base. Runs entirely in the browser.",
   "devDependencies": {
     "playwright": "1.61.0"
   }

@@ -100,7 +100,7 @@ type from `specs/overview.md`:
   The armed entry is highlighted.
 - **Selected-structure panel:** when a friendly structure is selected, its **name**
   plus the fields that apply to it. The **base** and **Reliquary** show their **health**
-  (current/max HP), read-only — the Reliquary's panel may also note its `4 HP/s` regen
+  (current/max HP), read-only — the Reliquary's panel may also note its `4 HP/s` regeneration
   (`specs/waves.md`) — with no level or actions. A **build-grid structure** (spawner or
   Solar Extractor) shows its **level** pips, current effect, and the Upgrade/Sell
   actions with their sol figures; these sit safely off the lane and are not damageable,

@@ -70,16 +70,19 @@ variants = ["variants/base.toml"]
 # Provided models, seeded into the run root. Each listed directory is seeded
 # verbatim (so `assets/scarab/` lands at `assets/scarab/` in the run), alongside
 # the `assets/models.json` manifest. These are the ONLY art the case supplies —
-# the finished 3D models the build loads and renders for every unit and structure;
-# everything else (arena, fog, effects, HUD) is generated in code. `specs/assets.md`
-# tells the build what they are, how to scale/pose/animate them, and to load them by
-# page-relative URL. This is a root key, so it must precede the first table header.
+# the finished 3D models the build loads and renders for every unit and structure,
+# plus the provided muzzle-flash particle systems the build plays for firing units;
+# everything else (arena, fog, other effects, HUD) is generated in code.
+# `specs/assets.md` tells the build what they are, how to scale/pose/animate/play
+# them, and to load them by page-relative URL. This is a root key, so it must precede
+# the first table header.
 #
 # The `assets` key is COMMENTED OUT until the model files exist: the harness rejects a
 # manifest whose `assets` paths do not exist, so listing the entity directories before
 # they are populated would fail resolution. This case is NOT run until then. When every
-# model directory (including `assets/garrison` and `assets/solar-extractor`) exists
-# under `assets/`, UNCOMMENT the block below to seed them:
+# model directory (including `assets/garrison` and `assets/solar-extractor`) and the
+# three muzzle-flash effect systems exist under `assets/`, UNCOMMENT the block below to
+# seed them:
 #
 # assets = [
 #   "assets/models.json",
@@ -96,7 +99,20 @@ variants = ["variants/base.toml"]
 #   "assets/bulwark-foundry", "assets/lancer-foundry", "assets/bombard-foundry",
 #   "assets/flak-foundry", "assets/skyworks", "assets/lumen-spire",
 #   "assets/monolith-forge",
+#   # Provided muzzle-flash particle systems (from the sunfront-muzzle-* particle
+#   # cases); the build plays these for firing units (`specs/assets.md`)
+#   "assets/effects/muzzle-small-arms.json", "assets/effects/muzzle-cannon.json",
+#   "assets/effects/muzzle-lance.json",
 # ]
+
+# Provided library packages, injected into the seeded workspace's `package.json` as
+# `file:` dependencies at seed time (baked into the run image; see the end-to-end
+# `packages` manifest key). `@test-cabinet/particle-runtime` is the runtime the build
+# imports (its `three` binding) to PLAY the provided muzzle-flash particle systems by
+# simulating them live — the same library the effects were authored against. The build
+# imports it by bare name; do NOT hand-add it to `workspaces/base/package.json`. See
+# `specs/assets.md`. This is a root key, so it must precede the first table header.
+packages = ["@test-cabinet/particle-runtime"]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
@@ -342,5 +358,13 @@ proof = "gameplay"
 [[review_item]]
 id = "provided-models"
 title = "Provided models rendered"
-text = "The game renders every unit and structure, including Solar Extractors, using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, destroyed units flashing white a few times before they are removed, and the Aegis radar sweeping on its own. The world (arena, fog, effects, HUD) is generated in code."
+text = "The game renders every unit and structure, including Solar Extractors, using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, destroyed units flashing white a few times before they are removed, and the Aegis radar sweeping on its own. The world (arena, fog, other effects, HUD) is generated in code — the muzzle-flash effects are the provided exception (see the muzzle-flash review item)."
 weight = 2
+
+[[review_item]]
+id = "plays-muzzle-flashes"
+title = "Plays the provided muzzle flashes"
+text = "When a unit fires a weapon, the build plays that unit's provided muzzle-flash particle system (seeded under `assets/effects/`, selected per unit by the `muzzle` key in `assets/models.json`) at its muzzle, oriented along the barrel — simulated live via the seeded `@test-cabinet/particle-runtime`, not a hand-coded or substituted effect — and looping for as long as the unit fires: the small-arms flash for the Sentinel/Trooper/Flakhound/Sunhawk, the heavy-cannon blast for the Bombard/Monolith/Aegis (at each firing turret), and the rail-lance discharge for the Lancer. Melee units (Scarab, Bulwark) and the support Lumen play none. Because the systems are simulated, each flash varies slightly while its character stays the same."
+weight = 2
+reference = "gameplay"
+proof = "wave"
