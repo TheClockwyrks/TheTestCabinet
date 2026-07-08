@@ -39,6 +39,14 @@
 #
 # Usage:
 #   ./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
+#   ./build.sh <name>...      # build ONLY the named images (e.g. `./build.sh voxel-animation`,
+#                             #   `./build.sh adversarial performance`). Names are the short
+#                             #   image names (the IMAGE_NAME_PREFIX suffix / the containers/<name>
+#                             #   directory). The FROM-base invariant is upheld either way: `base`
+#                             #   is (re)built when it is named, and auto-built when a non-base
+#                             #   image is named but no base image is present locally yet. This is
+#                             #   how deployments/local/Makefile rebuilds one test type — or one
+#                             #   asset-generation kind — without paying for the whole set.
 #
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type and asset kind from its own registry
@@ -275,37 +283,85 @@ build_performance() {
 	fi
 }
 
-# The base must be built before the sprite, sprite-sheet, voxel, voxel-animation,
-# mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, and
-# performance images, which are all `FROM` it.
-build_base
-build_asset_image sprite
-build_asset_image sprite-sheet
-build_asset_image voxel
-build_asset_image voxel-animation
-build_asset_image mc
-build_asset_image mc-animation
-build_asset_image sn
-build_asset_image sn-animation
-build_asset_image dc
-build_asset_image dc-animation
-build_asset_image ui
-build_asset_image material
-build_asset_image mc-skinned
-build_asset_image sn-skinned
-build_asset_image dc-skinned
-# The Blender character image bakes in headless Blender + the `tcab-blend` runner rather
-# than a compiled binary (Blender is a third-party package, not built from `crates/`).
-build_asset_image blender
-build_asset_image particle-2d
-build_asset_image particle-3d
-build_asset_image sfx-synth
-# The sfx-sample and music images bake a content-addressed audio pack pulled from the
-# private R2 bucket at build time (see build_audio_image). Each pack ref must match the
-# SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and be published + pinned in
-# packs.lock.json first.
-build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256
-build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256
-build_adversarial
-build_performance
+# Build one image by its short name, dispatching to the right builder: the audio
+# images (sfx-sample/music) carry their pack ref + build-arg names; base,
+# adversarial, and performance have dedicated builders; everything else is a plain
+# asset-generation image built `FROM` the base.
+build_one() {
+	case "$1" in
+		base)         build_base ;;
+		adversarial)  build_adversarial ;;
+		performance)  build_performance ;;
+		# The sfx-sample and music images bake a content-addressed audio pack pulled
+		# from the private R2 bucket at build time (see build_audio_image). Each pack
+		# ref must match the SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and
+		# be published + pinned in packs.lock.json first.
+		sfx-sample)   build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256 ;;
+		music)        build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256 ;;
+		# Every other name is a plain asset-generation image `FROM` the base. The
+		# Blender character image (`blender`) is one of these: it bakes in headless
+		# Blender + the `tcab-blend` runner rather than a binary compiled from `crates/`
+		# (Blender is a third-party package), but the build shape is the same.
+		*)            build_asset_image "$1" ;;
+	esac
+}
+
+# The full set of images, in dependency order (base first — every other image is
+# `FROM` it). With no arguments the script builds all of them; with arguments it
+# builds only the named subset.
+ALL_NAMES=(
+	base
+	sprite sprite-sheet
+	voxel voxel-animation
+	mc mc-animation sn sn-animation dc dc-animation
+	ui material
+	mc-skinned sn-skinned dc-skinned
+	blender
+	particle-2d particle-3d
+	sfx-synth sfx-sample music
+	adversarial performance
+)
+
+# Whether an image tag is present in the local image store (used to decide whether
+# the FROM base has to be built before a selected non-base image).
+image_present() { "$DOCKER" image inspect "$1" >/dev/null 2>&1; }
+
+# Resolve the selection: no args → everything; otherwise exactly the named images.
+if [[ $# -eq 0 ]]; then
+	selected=("${ALL_NAMES[@]}")
+else
+	selected=("$@")
+fi
+
+# Reject an unknown name up front with a clear message, so a mistyped selection
+# (e.g. `voxel-anim` for `voxel-animation`) fails fast instead of building nothing.
+for name in "${selected[@]}"; do
+	found=""
+	for known in "${ALL_NAMES[@]}"; do
+		[[ "$name" == "$known" ]] && { found=1; break; }
+	done
+	if [[ -z "${found}" ]]; then
+		echo "unknown image '${name}'. Known images: ${ALL_NAMES[*]}" >&2
+		exit 1
+	fi
+done
+
+# Uphold the FROM-base invariant. Rebuild base first if it was selected; otherwise,
+# if any non-base image was selected but no base image exists yet, build it so the
+# `FROM ${BASE_IMAGE}` in those Dockerfiles resolves. An existing base is reused
+# untouched — select `base` explicitly to rebuild it after a base-level change.
+select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
+
+if select_has base; then
+	build_base
+elif ! image_present "${BASE_IMAGE}"; then
+	echo "==> base image ${BASE_IMAGE} not present; building it first (every image is FROM it)"
+	build_base
+fi
+
+# Build each selected image (base is already handled above).
+for name in "${selected[@]}"; do
+	[[ "$name" == base ]] && continue
+	build_one "$name"
+done
 echo "==> done"

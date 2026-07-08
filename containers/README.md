@@ -246,9 +246,10 @@ To add one:
 3. **Add its name to the `SHIPPABLE_PACKAGES` allowlist** in
    [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) so a case may
    declare it. Keep this in lockstep with step 2.
-4. **Rebuild the base image** (`./build.sh`; for the local cluster,
-   `make -C deployments/local run-images` to rebuild and re-import). The
-   asset-generation images inherit it via `FROM` the base.
+4. **Rebuild the base image** (`./build.sh base`; for the local cluster,
+   `make -C deployments/local run-images-e2e` to rebuild and re-import just the
+   base, or `run-images` for the whole set). The asset-generation images inherit it
+   via `FROM` the base.
 
 ## Asset-generation images
 
@@ -445,8 +446,10 @@ drifted from the repository's workspace dependencies fails the image build.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
-DOCKER=podman ./build.sh  # build with Podman instead
+./build.sh                     # build all images (the base, every asset-generation kind, adversarial, and performance)
+./build.sh voxel-animation     # build ONLY the named image(s) — base is (re)built as needed for the FROM
+./build.sh adversarial performance
+DOCKER=podman ./build.sh       # build with Podman instead
 ```
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
