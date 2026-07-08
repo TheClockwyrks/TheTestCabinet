@@ -1093,8 +1093,10 @@ pub struct TestCase {
 /// The type of a test case: which class of capability it measures and which
 /// manifest tables it declares.
 ///
-/// Today four types exist in code: the original [`Self::EndToEnd`] (build a
-/// working program), [`Self::AssetGeneration`] (drive a drawing tool toward a
+/// Today five types exist in code: the original [`Self::EndToEnd`] (build a
+/// working program), [`Self::FullStack`] (build a working program *and* produce
+/// its own assets with the asset-generation binaries, which are on `PATH` in the
+/// full-stack run image), [`Self::AssetGeneration`] (drive a drawing tool toward a
 /// target image), [`Self::Adversarial`] (write a wasm controller pitted
 /// head-to-head against a baseline), and [`Self::Performance`] (write a wasm
 /// engine scored on correctness plus the fuel it burns). The type is the explicit
@@ -1109,6 +1111,14 @@ pub enum TestType {
     /// Build a working program judged by running it (the only type until now).
     #[default]
     EndToEnd,
+    /// Build a working program that must also **produce its own assets** during the
+    /// run, using the asset-generation binaries (`draw`, `draw-sheet`, `particle-2d`,
+    /// `sfx-synth`, `sfx-sample`, `music`, …) baked onto `PATH` in the full-stack run
+    /// image. Behaves like [`Self::EndToEnd`] in every other respect — it releases a
+    /// source repo, has a `[build]` table, may declare `packages`, and is judged by
+    /// running the built program — but selects the full-stack image instead of the
+    /// bare base image. See `docs/testing/full-stack/`.
+    FullStack,
     /// Produce a graphical asset by driving a drawing tool one operation at a
     /// time; the recorded operations are the authoritative output.
     AssetGeneration,
@@ -1131,6 +1141,7 @@ impl TestType {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::EndToEnd => "end-to-end",
+            Self::FullStack => "full-stack",
             Self::AssetGeneration => "asset-generation",
             Self::Adversarial => "adversarial",
             Self::Performance => "performance",
@@ -2888,7 +2899,7 @@ impl TestCaseCatalog {
         // `[build]` table on one is a mistake worth rejecting rather than ignoring.
         let test_type = manifest.test_type;
         let build = match test_type {
-            TestType::EndToEnd => {
+            TestType::EndToEnd | TestType::FullStack => {
                 let build = manifest
                     .build
                     .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
@@ -3124,7 +3135,10 @@ impl TestCaseCatalog {
             Option<ParticleSpec>,
             Option<AudioSpec>,
         ) = match test_type {
-            TestType::EndToEnd | TestType::Adversarial | TestType::Performance => {
+            TestType::EndToEnd
+            | TestType::FullStack
+            | TestType::Adversarial
+            | TestType::Performance => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
                     return Err(invalid(
@@ -3782,7 +3796,7 @@ impl TestCaseCatalog {
         // it. `build.module` (validated above) is the wasm artifact the validator
         // loads for either type.
         let (contract, sandbox, simulation, r#match, replay, cases) = match test_type {
-            TestType::EndToEnd | TestType::AssetGeneration => {
+            TestType::EndToEnd | TestType::FullStack | TestType::AssetGeneration => {
                 if manifest.contract.is_some()
                     || manifest.sandbox.is_some()
                     || manifest.simulation.is_some()
@@ -4182,18 +4196,18 @@ impl TestCaseCatalog {
             .collect();
 
         // Packages: the Test Cabinet runtime libraries this case's build consumes.
-        // They are consumed by a built game, so only an end-to-end case may declare
-        // them, and each name must be one this repo actually ships into the run
-        // image (see [`SHIPPABLE_PACKAGES`]). The harness does not modify the shipped
-        // `package.json`; the case's own workspace `package.json` must already depend
-        // on each declared package via its baked-in `file:` spec (see
-        // [`tcab_package_file_dep`]). Validate that here so a misconfigured manifest
-        // fails at resolution rather than leaving the model to discover the missing
-        // dependency at run time.
+        // They are consumed by a built game, so only a case that builds a program —
+        // an end-to-end or full-stack case — may declare them, and each name must be
+        // one this repo actually ships into the run image (see [`SHIPPABLE_PACKAGES`]).
+        // The harness does not modify the shipped `package.json`; the case's own
+        // workspace `package.json` must already depend on each declared package via
+        // its baked-in `file:` spec (see [`tcab_package_file_dep`]). Validate that
+        // here so a misconfigured manifest fails at resolution rather than leaving the
+        // model to discover the missing dependency at run time.
         if !manifest.packages.is_empty() {
-            if test_type != TestType::EndToEnd {
+            if !matches!(test_type, TestType::EndToEnd | TestType::FullStack) {
                 return Err(invalid(
-                    "`packages` is only valid for an end-to-end case".to_string(),
+                    "`packages` is only valid for an end-to-end or full-stack case".to_string(),
                 ));
             }
             let package_json = common_workspace

@@ -2256,7 +2256,10 @@ impl Validator for DispatchValidator {
         proofs: &[ProofFile],
     ) -> Result<ValidationSummary> {
         match test_case.test_type {
-            TestType::EndToEnd => self
+            // A full-stack run builds a program just like an end-to-end run — it
+            // additionally produces its own assets, but those are build inputs, not a
+            // separately-scored output — so it routes to the same build validator.
+            TestType::EndToEnd | TestType::FullStack => self
                 .build
                 .validate(test_case, variant, artifacts, references, proofs),
             // Each asset kind routes to the validator for the data it emits: the

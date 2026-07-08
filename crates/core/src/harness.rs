@@ -26,6 +26,12 @@ const DEFAULT_CONTAINER_TAG: &str = "latest";
 /// harness installs its CLI into this image at run time (see
 /// [`AgentHarness::install_command`]); there is no per-harness image.
 const BASE_IMAGE_NAME: &str = "test-cabinet-base";
+/// The name of the full-stack (2D) run-container image, used by every full-stack
+/// run. It is the base image plus the baked-in 2D asset-generation binaries
+/// (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`) on
+/// `PATH`, so a model can both build a program and produce its own assets in one
+/// run (see `containers/full-stack-2d/Dockerfile`).
+const FULL_STACK_2D_IMAGE_NAME: &str = "test-cabinet-full-stack-2d";
 /// The name of the sprite run-container image, used by every single-sprite
 /// asset-generation run (`asset_kind = "sprite"`). It is the base image plus the
 /// baked-in `draw` binary (see `containers/sprite/Dockerfile`).
@@ -106,6 +112,9 @@ const PERFORMANCE_IMAGE_NAME: &str = "test-cabinet-performance";
 /// The environment variable that pins a verbatim override for the base (end-to-
 /// end) image, the per-image counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
 const BASE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE";
+/// The environment variable that pins a verbatim override for the full-stack (2D)
+/// image.
+const FULL_STACK_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D";
 /// The environment variable that pins a verbatim override for the sprite image.
 const SPRITE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_SPRITE";
 /// The environment variable that pins a verbatim override for the sprite-sheet
@@ -175,6 +184,7 @@ const PERFORMANCE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PERFORMANCE";
 /// behind the images that exist.
 pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
     BASE_IMAGE_OVERRIDE_ENV,
+    FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
     SPRITE_IMAGE_OVERRIDE_ENV,
     SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
     VOXEL_IMAGE_OVERRIDE_ENV,
@@ -229,6 +239,10 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
         TestType::EndToEnd => ImageSpec {
             name: BASE_IMAGE_NAME,
             override_env: BASE_IMAGE_OVERRIDE_ENV,
+        },
+        TestType::FullStack => ImageSpec {
+            name: FULL_STACK_2D_IMAGE_NAME,
+            override_env: FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
         },
         TestType::AssetGeneration => match asset_kind {
             AssetKind::Sprite => ImageSpec {

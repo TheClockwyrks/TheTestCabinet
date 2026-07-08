@@ -101,8 +101,10 @@ export type RunTooling = {
  * The type of a test case: which class of capability it measures and which
  * manifest tables it declares.
  *
- * Today four types exist in code: the original [`Self::EndToEnd`] (build a
- * working program), [`Self::AssetGeneration`] (drive a drawing tool toward a
+ * Today five types exist in code: the original [`Self::EndToEnd`] (build a
+ * working program), [`Self::FullStack`] (build a working program *and* produce
+ * its own assets with the asset-generation binaries, which are on `PATH` in the
+ * full-stack run image), [`Self::AssetGeneration`] (drive a drawing tool toward a
  * target image), [`Self::Adversarial`] (write a wasm controller pitted
  * head-to-head against a baseline), and [`Self::Performance`] (write a wasm
  * engine scored on correctness plus the fuel it burns). The type is the explicit
@@ -113,6 +115,7 @@ export type RunTooling = {
  */
 export type TestType =
   | "end-to-end"
+  | "full-stack"
   | "asset-generation"
   | "adversarial"
   | "performance";

@@ -807,15 +807,21 @@ where
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
 
-        // Orchestrator selection is limited to the end-to-end test type for now:
-        // other test types build a single artifact in one pass and always run
-        // one-shot. Reject any non-default orchestrator (a non-one-shot built-in
-        // slug, or an external `--orchestrator-dir`, which is by definition not
-        // one-shot) for any other test type. This fails fast — before any
-        // container is started — so a misconfigured request never burns setup.
+        // Orchestrator selection is limited to the types that build a program over a
+        // working session — end-to-end and full-stack. The other types build a single
+        // artifact in one pass and always run one-shot. Reject any non-default
+        // orchestrator (a non-one-shot built-in slug, or an external
+        // `--orchestrator-dir`, which is by definition not one-shot) for those types.
+        // This fails fast — before any container is started — so a misconfigured
+        // request never burns setup.
         let orchestrator_requested =
             request.orchestrator.slug != ONE_SHOT_SLUG || request.orchestrator.dir.is_some();
-        if orchestrator_requested && test_case.test_type != TestType::EndToEnd {
+        if orchestrator_requested
+            && !matches!(
+                test_case.test_type,
+                TestType::EndToEnd | TestType::FullStack
+            )
+        {
             return Err(Error::OrchestratorUnsupportedForTestType {
                 slug: request.orchestrator.slug.clone(),
                 test_type: test_case.test_type,
@@ -1002,8 +1008,8 @@ where
 /// and its validation summary.
 ///
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
-/// (end-to-end, asset-generation) an output that never loaded leaves nothing to
-/// review — the model's output is broken — so the run is
+/// (end-to-end, full-stack, asset-generation) an output that never loaded leaves
+/// nothing to review — the model's output is broken — so the run is
 /// [`RunState::Catastrophic`] rather than [`RunState::Completed`]. The
 /// **auto-scored** types (adversarial, performance) carry their authoritative
 /// result in the validation summary even when `loaded` is false (a forfeit or an
@@ -1011,7 +1017,9 @@ where
 /// [`RunState::Completed`]; a per-type catastrophic tier for them is deferred.
 fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
     match test_type {
-        TestType::EndToEnd | TestType::AssetGeneration if !validation.loaded => {
+        TestType::EndToEnd | TestType::FullStack | TestType::AssetGeneration
+            if !validation.loaded =>
+        {
             RunState::Catastrophic
         }
         _ => RunState::Completed,
