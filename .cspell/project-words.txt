@@ -253,3 +253,5 @@ chiptune
 bitcrush
 bezelled
 voicings
+reharmonize
+loopable

@@ -1,0 +1,108 @@
+slug = "ironbound-theme"
+name = "Ironbound Theme"
+difficulty = "medium"
+tags = ["music", "naval", "ironbound"]
+summary = """
+Compose the Ironbound faction theme: a ~30-second heavy industrial war-march for \
+the fleet-command game's iron-and-coal-smoke power — ponderous, grinding, and \
+relentless — sequenced note by note as instrument tracks over the gm-lite bank."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "music"
+
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `gm-lite@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                 # output sample rate in Hz (required)
+channels = "stereo"                 # "mono" | "stereo" (required)
+max_duration_ms = 30000             # cap on the rendered clip's length in ms (required, positive) — about 30 seconds
+instrument_bank = "gm-lite@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the Ironbound faction theme the brief \
+describes — a heavy industrial war-march for a low, iron-and-coal-smoke power: \
+ponderous, grinding, dark and menacing, driven by a low pounding pulse, and \
+unmistakably built on weight and unstoppable momentum."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — a coherent tonality and pulse, sensible instrument \
+choices and voicings from the gm-lite bank that conjure iron and machinery, a \
+clean loopable ending, and a balanced stereo mix that keeps the low foundation \
+anchored and clear."""
+
+[[review_item]]
+id = "industrial-war-march"
+title = "Heavy industrial war-march"
+text = """
+The clip reads at once as a heavy, industrial war-march — ponderous, mechanical, \
+and relentless, evoking hammering iron and the crushing advance of something too \
+massive to stop — not light, fast, delicate, or heroic."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "dark-menacing"
+title = "Dark and menacing"
+text = """
+The tone is dark, gritty, and weighty — a low minor or modal color, brooding and \
+martial — that feels like iron and coal smoke rather than polished, bright, or \
+cheerful steel."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "pounding-pulse"
+title = "Low, pounding pulse"
+text = """
+A low, pounding, on-the-beat pulse underpins the whole cue and gives it a \
+crushing, inexorable marching drive — weight and momentum are audibly the point."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "loopable-ending"
+title = "Comes to rest for a clean loop"
+text = """
+The end returns cleanly toward the opening with no click, gap, or jarring seam, so \
+the cue can repeat while the player dwells on the Ironbound."""
+weight = 1
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Balanced stereo mix"
+text = """
+The clip is stereo with a deliberate image — the low pounding foundation anchored \
+center for weight, the fuller voices given width — and holds a clean balance with \
+no clipping and no one voice swamping the rest."""
+weight = 1
+domain = "craft"

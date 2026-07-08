@@ -1,0 +1,109 @@
+slug = "meridian-theme"
+name = "Meridian Theme"
+difficulty = "medium"
+tags = ["music", "naval", "meridian"]
+summary = """
+Compose the Meridian faction theme: a ~30-second sleek, luminous, precise cue for \
+the fleet-command game's pearl-and-cyan energy power — elegant, agile, and cool — \
+sequenced note by note as instrument tracks over the gm-lite bank."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "music"
+
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `gm-lite@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                 # output sample rate in Hz (required)
+channels = "stereo"                 # "mono" | "stereo" (required)
+max_duration_ms = 30000             # cap on the rendered clip's length in ms (required, positive) — about 30 seconds
+instrument_bank = "gm-lite@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the Meridian faction theme the brief \
+describes — a sleek, luminous, precise cue for a high, elegant power of \
+pearl-white hulls and cyan energy: refined and agile, bright and cool-toned, \
+carrying speed and poise rather than brute force."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — a coherent tonality and pulse, sensible instrument \
+choices and voicings from the gm-lite bank that conjure clean energy and \
+refinement, a clean loopable ending, and a balanced, precise stereo mix with air \
+and clarity."""
+
+[[review_item]]
+id = "sleek-luminous"
+title = "Sleek, luminous, and precise"
+text = """
+The clip reads at once as sleek, refined, and futuristic — elegant and agile, \
+bright and clean, evoking polished energy and effortless precision — not heavy, \
+brutish, dark, or muddy."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "high-shimmering"
+title = "High and shimmering"
+text = """
+The cue favors a brighter, airier register with a crystalline, glassy, cool-toned \
+clarity that gleams like pearl-white hulls and cyan light, rather than smoldering \
+low and dark."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "energized-controlled"
+title = "Energized but controlled"
+text = """
+A crisp, forward pulse and a graceful melodic poise carry the cue — quick and \
+lethal underneath, but composed and unhurried on the surface, reading as precision \
+and grace rather than aggression."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "loopable-ending"
+title = "Comes to rest for a clean loop"
+text = """
+The end returns cleanly toward the opening with no click, gap, or jarring seam, so \
+the cue can repeat while the player dwells on the Meridian."""
+weight = 1
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Balanced, precise stereo mix"
+text = """
+The clip is stereo with a clean, deliberate image — air and width that suit the \
+Meridian's poise — and holds a clear balance with no clipping, no mud, and no one \
+voice swamping the rest."""
+weight = 1
+domain = "craft"
