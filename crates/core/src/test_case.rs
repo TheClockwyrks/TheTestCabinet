@@ -181,15 +181,19 @@ struct Manifest {
     /// Asset files or directories, relative to the version folder (seeded).
     #[serde(default)]
     assets: Vec<PathBuf>,
-    /// The Test Cabinet runtime libraries this case's build should be able to
-    /// `import` — the repo's own `@test-cabinet/*` packages, named by npm name
-    /// (for example `@test-cabinet/particle-runtime`). Each is baked into the run
-    /// image and injected into the workspace `package.json` as a `file:`
-    /// dependency at seed time, so a game consumes a produced asset that needs a
-    /// runtime to play it (a particle `system.json`, a voxel rig) as an ordinary
-    /// installed dependency. End-to-end only; each name must be one of
-    /// [`SHIPPABLE_PACKAGES`], and the case must ship a `package.json` in its
-    /// workspace. `None`/empty requests no packages.
+    /// The Test Cabinet runtime libraries this case's build `import`s — the repo's
+    /// own `@test-cabinet/*` packages, named by npm name (for example
+    /// `@test-cabinet/particle-runtime`). Each is baked into the run image under
+    /// [`TCAB_PACKAGES_DIR`], and the case's own workspace `package.json` already
+    /// declares it as the matching `file:` dependency (see
+    /// [`tcab_package_file_dep`]) — the harness does not modify `package.json`, so
+    /// the shipped file must be correct for the run environment on its own. A game
+    /// then consumes a produced asset that needs a runtime to play it (a particle
+    /// `system.json`, a voxel rig) as an ordinary installed dependency. This key is
+    /// the declaration the harness validates that `package.json` against: end-to-end
+    /// only, each name one of [`SHIPPABLE_PACKAGES`], and each declared as its
+    /// `file:` dependency in the workspace `package.json`. `None`/empty requests no
+    /// packages.
     #[serde(default)]
     packages: Vec<String>,
     /// The variants this case offers, each as a path to a standalone variant
@@ -807,18 +811,18 @@ struct ManifestDomain {
 const MANIFEST_FILE: &str = "test-case.toml";
 
 /// The in-container directory the shippable Test Cabinet packages are baked into
-/// (see `containers/README.md`). A case that declares `packages` has each named
-/// package injected into its workspace `package.json` as a `file:` dependency
-/// pointing under this directory, so a game consumes it as an ordinary installed
-/// dependency without knowing the path.
+/// (see `containers/README.md`). A case that declares `packages` ships a workspace
+/// `package.json` that depends on each named package via a `file:` dependency
+/// pointing under this directory (see [`tcab_package_file_dep`]), so a game
+/// consumes it as an ordinary installed dependency without knowing the path.
 pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 
 /// The Test Cabinet's own `@test-cabinet/*` runtime libraries an end-to-end case
 /// may request via the manifest's `packages` key. Each is baked into the run
-/// image under [`TCAB_PACKAGES_DIR`] and injected into the seeded workspace
-/// `package.json` at seed time, so a built game can `import` it to play a produced
-/// asset (a particle `system.json`, a voxel rig) the same way the in-repo viewers
-/// do.
+/// image under [`TCAB_PACKAGES_DIR`], and the case's workspace `package.json`
+/// declares it as a `file:` dependency there, so a built game can `import` it to
+/// play a produced asset (a particle `system.json`, a voxel rig) the same way the
+/// in-repo viewers do.
 ///
 /// This list is the allowlist a case's `packages` names are validated against. It
 /// **must stay in lockstep** with the shippable list in
@@ -831,10 +835,43 @@ pub const SHIPPABLE_PACKAGES: &[&str] = &[
 ];
 
 /// The `package.json` dependency spec that resolves a shippable package to its
-/// baked-in copy — a `file:` path under [`TCAB_PACKAGES_DIR`]. Used by the seeder
-/// when injecting a declared package into the workspace `package.json`.
+/// baked-in copy — a `file:` path under [`TCAB_PACKAGES_DIR`]. A package-declaring
+/// case's workspace `package.json` must depend on the package via exactly this
+/// spec; resolution validates the shipped file against it.
 pub(crate) fn tcab_package_file_dep(name: &str) -> String {
     format!("file:{TCAB_PACKAGES_DIR}/{name}")
+}
+
+/// Read the union of a workspace `package.json`'s `dependencies` and
+/// `devDependencies` as name → version-spec pairs, for validating that a
+/// package-declaring case ships the `file:` dependency it says it does. A missing
+/// or non-object `dependencies`/`devDependencies` contributes nothing; a
+/// dependency present in both is read from `dependencies`. Returns the invalid
+/// detail string (for the caller to wrap into an [`Error::InvalidTestCase`]) if
+/// the file is unreadable, not valid JSON, or not a JSON object.
+fn read_package_dependencies(
+    package_json: &Path,
+) -> std::result::Result<std::collections::BTreeMap<String, String>, String> {
+    let raw = fs::read_to_string(package_json).map_err(|err| {
+        format!("could not read workspace `package.json` to validate `packages`: {err}")
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|err| format!("workspace `package.json` is not valid JSON: {err}"))?;
+    if !value.is_object() {
+        return Err("workspace `package.json` must be a JSON object".to_string());
+    }
+    let mut deps = std::collections::BTreeMap::new();
+    // devDependencies first so a name in both is overwritten by `dependencies`.
+    for field in ["devDependencies", "dependencies"] {
+        if let Some(map) = value.get(field).and_then(|v| v.as_object()) {
+            for (name, spec) in map {
+                if let Some(spec) = spec.as_str() {
+                    deps.insert(name.clone(), spec.to_string());
+                }
+            }
+        }
+    }
+    Ok(deps)
 }
 
 /// The run-workspace-relative path the orchestrator seeds an asset-generation
@@ -2404,10 +2441,11 @@ pub struct TestCaseVersion {
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,
     /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this
-    /// case's build consumes, from the manifest's `packages` key. Each is injected
-    /// into the seeded workspace `package.json` as a `file:` dependency resolving
-    /// under [`TCAB_PACKAGES_DIR`]. Empty when the case declares none. Validated
-    /// against [`SHIPPABLE_PACKAGES`] at resolution.
+    /// case's build consumes, from the manifest's `packages` key. The case's
+    /// workspace `package.json` declares each as a `file:` dependency resolving
+    /// under [`TCAB_PACKAGES_DIR`]; the harness does not modify that file. Empty
+    /// when the case declares none. Validated against [`SHIPPABLE_PACKAGES`], and
+    /// that the shipped `package.json` declares each, at resolution.
     pub packages: Vec<String>,
     /// The variants this case offers, in declared order. At least one is always
     /// present.
@@ -4047,16 +4085,34 @@ impl TestCaseCatalog {
             .collect();
 
         // Packages: the Test Cabinet runtime libraries this case's build consumes.
-        // They are consumed by a built game, so only an end-to-end case may request
-        // them; each name must be one this repo actually ships into the run image
-        // (see [`SHIPPABLE_PACKAGES`]); and because the dependency is injected into
-        // the workspace's root `package.json` at seed time, the case must ship one.
+        // They are consumed by a built game, so only an end-to-end case may declare
+        // them, and each name must be one this repo actually ships into the run
+        // image (see [`SHIPPABLE_PACKAGES`]). The harness does not modify the shipped
+        // `package.json`; the case's own workspace `package.json` must already depend
+        // on each declared package via its baked-in `file:` spec (see
+        // [`tcab_package_file_dep`]). Validate that here so a misconfigured manifest
+        // fails at resolution rather than leaving the model to discover the missing
+        // dependency at run time.
         if !manifest.packages.is_empty() {
             if test_type != TestType::EndToEnd {
                 return Err(invalid(
                     "`packages` is only valid for an end-to-end case".to_string(),
                 ));
             }
+            let package_json = common_workspace
+                .iter()
+                .find(|file| file.dest == Path::new("package.json"))
+                .ok_or_else(|| {
+                    invalid(
+                        "a case that declares `packages` must ship a workspace containing a \
+                         `package.json` at its root (the file that declares the dependency)"
+                            .to_string(),
+                    )
+                })?;
+            let declared = match read_package_dependencies(&package_json.source_path) {
+                Ok(declared) => declared,
+                Err(detail) => return Err(invalid(detail)),
+            };
             for package in &manifest.packages {
                 if !SHIPPABLE_PACKAGES.contains(&package.as_str()) {
                     return Err(invalid(format!(
@@ -4065,16 +4121,24 @@ impl TestCaseCatalog {
                         SHIPPABLE_PACKAGES.join(", ")
                     )));
                 }
-            }
-            let ships_package_json = common_workspace
-                .iter()
-                .any(|file| file.dest == Path::new("package.json"));
-            if !ships_package_json {
-                return Err(invalid(
-                    "a case that declares `packages` must ship a workspace containing a \
-                     package.json at its root (the file the dependency is injected into)"
-                        .to_string(),
-                ));
+                let expected = tcab_package_file_dep(package);
+                match declared.get(package) {
+                    Some(spec) if spec == &expected => {}
+                    Some(spec) => {
+                        return Err(invalid(format!(
+                            "package `{package}` is declared in the workspace `package.json` as \
+                             `{spec}`, but must be `{expected}` so it resolves to its baked-in \
+                             copy in the run image"
+                        )));
+                    }
+                    None => {
+                        return Err(invalid(format!(
+                            "package `{package}` is declared in `packages` but is not a \
+                             dependency of the workspace `package.json`; add \
+                             `\"{package}\": \"{expected}\"` to its dependencies"
+                        )));
+                    }
+                }
             }
         }
 

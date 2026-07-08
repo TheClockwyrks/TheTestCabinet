@@ -1421,14 +1421,19 @@ fn workspace_files_resolve_with_run_relative_dests_and_init() {
 }
 
 #[test]
-fn packages_resolve_when_shippable_and_workspace_ships_a_package_json() {
+fn packages_resolve_when_the_workspace_package_json_declares_the_file_dependency() {
     let manifest = manifest_with(
         "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
         "",
     );
+    // The case's own `package.json` already declares the package as its baked-in
+    // `file:` dependency; the harness validates that and does not modify the file.
     let (_dir, catalog) = catalog_with_files(
         &manifest,
-        &[("workspaces/base/package.json", "{\"name\":\"demo\"}")],
+        &[(
+            "workspaces/base/package.json",
+            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:/opt/tcab-packages/@test-cabinet/particle-runtime"}}"#,
+        )],
     );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(
@@ -1448,6 +1453,51 @@ fn packages_reject_an_unknown_name() {
         .resolve("demo", "v1.0.0")
         .expect_err("an unknown package name is rejected");
     assert!(format!("{err}").contains("not a shippable"), "got: {err}");
+}
+
+#[test]
+fn packages_reject_a_workspace_package_json_that_does_not_declare_the_dependency() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "",
+    );
+    // Shippable name, ships a package.json — but it does not depend on the package.
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("workspaces/base/package.json", "{\"name\":\"demo\"}")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a package.json missing the dependency is rejected");
+    assert!(
+        format!("{err}").contains("is not a dependency of the workspace"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn packages_reject_a_wrong_file_dependency_spec() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "",
+    );
+    // Declares the package, but points somewhere other than the baked-in copy.
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[(
+            "workspaces/base/package.json",
+            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"^1.0.0"}}"#,
+        )],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a wrong dependency spec is rejected");
+    let msg = format!("{err}");
+    assert!(msg.contains("must be"), "got: {err}");
+    assert!(
+        msg.contains("file:/opt/tcab-packages/@test-cabinet/particle-runtime"),
+        "got: {err}"
+    );
 }
 
 #[test]

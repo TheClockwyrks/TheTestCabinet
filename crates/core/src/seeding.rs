@@ -92,16 +92,12 @@ impl RepoSeeder for FsRepoSeeder {
             copy_file(&file.source_path, &repo.join(&file.dest))?;
         }
 
-        // If the case requested Test Cabinet packages, inject each into the seeded
-        // workspace's root `package.json` as a `file:` dependency resolving to its
-        // copy baked into the run image. This runs right after the workspace is
-        // seeded (so `package.json` is present) and before the rest, so the model's
-        // init `npm install` resolves the dependency and writes it into the
-        // lockfile it commits. Resolution guarantees a package-requesting case
-        // ships a `package.json` at the workspace root.
-        if !test_case.packages.is_empty() {
-            inject_packages(&repo.join("package.json"), &test_case.packages)?;
-        }
+        // A case that declares `packages` ships a workspace `package.json` that
+        // already depends on each one via its baked-in `file:` spec (validated at
+        // resolution — see `TestCaseCatalog::resolve`), so the copy above seeds a
+        // ready-to-install `package.json`; the seeder does not modify it. The
+        // model's init `npm install` then resolves the dependency from the run
+        // image and writes it into the lockfile it commits.
 
         // Each spec is seeded to its destination path within the fresh
         // repository. Destinations are validated during resolution to stay inside
@@ -917,66 +913,6 @@ fn write_file(to: &Path, contents: &str) -> Result<()> {
     }
     fs::write(to, contents).map_err(|err| seed_ctx(format!("writing `{}`", to.display()), err))?;
     Ok(())
-}
-
-/// Add each requested Test Cabinet package to a seeded `package.json` as a `file:`
-/// dependency pointing at its copy baked into the run image (see
-/// [`crate::test_case::tcab_package_file_dep`]).
-///
-/// The workspace's `package.json` is parsed, a `dependencies` object is ensured,
-/// and each package is inserted (an existing entry of the same name is
-/// overwritten, so the injected dependency always wins), then the file is rewritten
-/// as pretty JSON with a trailing newline. The model then resolves these `file:`
-/// dependencies with its own `npm install` (see the case's init command) and
-/// imports the libraries by name, unaware of the baked-in path.
-fn inject_packages(package_json: &Path, packages: &[String]) -> Result<()> {
-    let raw = fs::read_to_string(package_json).map_err(|err| {
-        Error::Seeding(format!(
-            "could not read `{}` to inject packages: {err}",
-            package_json.display()
-        ))
-    })?;
-    let mut manifest: serde_json::Value = serde_json::from_str(&raw).map_err(|err| {
-        Error::Seeding(format!(
-            "workspace `{}` is not valid JSON: {err}",
-            package_json.display()
-        ))
-    })?;
-    let object = manifest.as_object_mut().ok_or_else(|| {
-        Error::Seeding(format!(
-            "workspace `{}` must be a JSON object",
-            package_json.display()
-        ))
-    })?;
-    let dependencies = object
-        .entry("dependencies")
-        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
-        .as_object_mut()
-        .ok_or_else(|| {
-            Error::Seeding(format!(
-                "\"dependencies\" in `{}` must be a JSON object",
-                package_json.display()
-            ))
-        })?;
-    for name in packages {
-        dependencies.insert(
-            name.clone(),
-            serde_json::Value::String(crate::test_case::tcab_package_file_dep(name)),
-        );
-    }
-    let mut serialized = serde_json::to_string_pretty(&manifest).map_err(|err| {
-        Error::Seeding(format!(
-            "could not serialize `{}` after injecting packages: {err}",
-            package_json.display()
-        ))
-    })?;
-    serialized.push('\n');
-    fs::write(package_json, serialized).map_err(|err| {
-        Error::Seeding(format!(
-            "could not write `{}` after injecting packages: {err}",
-            package_json.display()
-        ))
-    })
 }
 
 /// Copy a file or directory (recursively) to `to`.

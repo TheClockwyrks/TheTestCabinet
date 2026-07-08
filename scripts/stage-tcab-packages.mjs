@@ -5,11 +5,12 @@
 //
 // The run-container base image invokes this in a builder stage (see
 // containers/base/Dockerfile) after `npm ci`, writing the staged tree to
-// /opt/tcab-packages. A test case that declares `packages` then has each named
-// package injected into its workspace `package.json` as a `file:` dependency
-// pointing under that directory, so a built game consumes a produced asset that
-// needs a runtime to play it — a particle `system.json`, a voxel rig — as an
-// ordinary installed dependency. See:
+// /opt/tcab-packages. A test case that declares `packages` ships a workspace
+// `package.json` that depends on each named package via a `file:` dependency
+// pointing under that directory (the harness validates this at resolution but
+// does not write it), so a built game consumes a produced asset that needs a
+// runtime to play it — a particle `system.json`, a voxel rig — as an ordinary
+// installed dependency. See:
 //   - containers/README.md#the-shippable-test-cabinet-packages
 //   - apps/docs/.../testing/end-to-end/overview.md (Packages)
 //

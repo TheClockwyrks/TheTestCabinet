@@ -209,14 +209,18 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   must be one of the **shippable packages** baked into the run image (listed in
   [`containers/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md#the-shippable-test-cabinet-packages));
   an unknown name is rejected at resolution. `packages` is **end-to-end only** —
-  an asset-generation case that declares it is rejected — and a case that
-  declares any package **must** ship a `workspace` containing a `package.json`
-  (the file the dependency is injected into). At seed time each named package is
-  added to that `package.json` as a dependency resolving to the copy baked into
-  the run image, so the model installs and imports it like any other dependency;
-  see [Packages](/testing/end-to-end/overview/#packages) for the model-facing
-  contract and why a `packages` case's `init` must run `npm install` (not
-  `npm ci`).
+  an asset-generation case that declares it is rejected. The harness does **not**
+  modify your `package.json`: you ship a `workspace` whose `package.json` already
+  depends on each declared package via its baked-in `file:` spec —
+  `"@test-cabinet/particle-runtime": "file:/opt/tcab-packages/@test-cabinet/particle-runtime"`
+  — and `packages` is the declaration resolution validates that file against. A
+  case that declares a package but ships no `package.json`, omits the dependency,
+  or points it anywhere other than the baked-in `file:` path is **rejected at
+  resolution**, so a misconfiguration surfaces at authoring time rather than
+  leaving the model to discover the missing dependency mid-run. The model then
+  installs and imports it like any other dependency; see
+  [Packages](/testing/end-to-end/overview/#packages) for the model-facing contract
+  and why a `packages` case's `init` must run `npm install` (not `npm ci`).
 - The `[build]` table is **required** and declares the commands validation runs
   to turn a produced implementation into a served static site: `install`
   (dependency install) and `build` (the static build). Both must be stated
