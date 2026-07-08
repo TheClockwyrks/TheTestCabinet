@@ -1,0 +1,370 @@
+slug = "midway"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Midway"
+
+# Test type. Midway is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. It is NOT the older two-run pattern where a
+# separate asset-gen run makes an asset a later game merely consumes; here one model
+# both produces the art/effects/audio and builds the game around it. The `full-stack`
+# type schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
+# exactly six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
+# with one of them (`specs/assets.md` is the production contract). A root identity
+# field, so it sits above the first table.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Midway is hard:
+# it asks for several interacting simulations — a path-and-placement park grid,
+# desire-driven guest AI with pathfinding and spending, a queue/ride simulation with
+# capacity, throughput, and breakdowns, a pricing/upkeep/wage economy that can go
+# bankrupt, staff who work the park, and a reputation feedback loop that couples the
+# crowd's happiness back to the arrival rate — AND, on top of that, for the model to
+# author every sprite, animation, particle effect, and sound the game plays. Systems
+# that want careful encapsulation plus a full asset-production pass put this well
+# above the catalog's bounded arcade cases.
+difficulty = "hard"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["simulation", "2d", "tycoon", "management"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A top-down theme-park tycoon sim: lay the paths, build and price the rides and \
+stalls, hire the staff, and keep a desire-driven crowd happy enough that the park's \
+rating — and its guests, and its money — keep climbing instead of spiralling into \
+bankruptcy, and the build must produce its own sprites, effects, and audio with the \
+on-PATH asset tools."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT seeded
+# into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder),
+# recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run (with
+# the seeded specs and the selected variant) and handed to the model as the build
+# instruction. Injects absolute in-container paths via template variables. The
+# harness auto-prepends the standing full-stack asset-quality preamble to the rendered
+# prompt, so this template does NOT restate a global quality directive.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Midway is a large build — several interacting simulations plus a full
+# asset-production pass through six tools — so it gets eight hours: comfortably more
+# than a healthy build needs while still bounding a runaway session.
+max_runtime_hours = 8
+
+# Starter workspace seeded into the root of every run before the specs. It gives the
+# model a baseline project to build on: a `package.json` that pins `playwright` as a
+# dev dependency and declares the produced-effect runtime (`packages`, below) as a
+# baked-in `file:` dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded and
+# before the harness starts. `npm install` — NOT `npm ci` — because `packages`
+# injects the `@test-cabinet/particle-runtime` `file:` dependency this build plays
+# its produced particle systems with, so the lockfile is completed at seed time; the
+# same command downloads the Playwright Chromium build (the base image ships the OS
+# libraries Chromium links against, but not the browser binary), so the model can
+# build and verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the whole
+# point of a full-stack case: the model PRODUCES the game's art, effects, and audio
+# itself, during the run, with the six binaries on the run image's `PATH` (see `type`
+# above and `specs/assets.md`). The `reference/` mockups below are harness-side visual
+# targets rendered via `[[reference]]`, not seeded game assets.
+
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# the review UI plays a produced effect with; core bakes it into the run image and the
+# seeded workspace `package.json` depends on it via its baked-in `file:` path, so the
+# build imports it (its `/canvas` binding) like any other dependency and plays each
+# produced `system.json` by simulating it live. The fireworks, stall steam, ride
+# sparkle, and litter puffs are all produced `particle-2d` systems played this way;
+# see `specs/assets.md` for the consumption contract. (A root key, so it must sit above
+# the first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record. Each
+# is declared in its own file under `variants/` and listed here in order — the first
+# is the default. Each seeds the common specs plus its own additive specs, supplies
+# its own `title` menu reference (the main menu lists a different set of starts per
+# variant; `gameplay` and `game-over` are common), and — for the downpour variant —
+# the review item for the weather system it introduces (rolling up to the common
+# `simulation` domain, since it presses the same park systems):
+#   - base     — the standard park start only.
+#   - downpour — adds changing weather: periodic rain that empties the park and raises
+#                upkeep and breakdowns.
+# This list is a root key, so it must sit above the first `[table]` header below.
+variants = [
+  "variants/base.toml",
+  "variants/downpour.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
+# The specification is decomposed by concern so mode-specific material can be seeded
+# per variant (see the variant files). These are always present, so the mode specs may
+# reference them freely; the common specs must never reference a mode spec a given
+# variant does not seed (only `modes/classic.md` is always present). All common specs
+# are plain Markdown, seeded verbatim. A spec's `dest` defaults to its `source` (with a
+# trailing `.hbs` stripped), so these need only name the source they seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/park.md"
+
+[[spec]]
+source = "specs/guests.md"
+
+[[spec]]
+source = "specs/rides.md"
+
+[[spec]]
+source = "specs/economy.md"
+
+[[spec]]
+source = "specs/staff.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+# The asset-production contract: every asset the game needs, which of the six on-PATH
+# binaries produces it, where it lands in the workspace, and how it is wired into the
+# build. Seeded for every variant so the produced-asset review items and this spec
+# stay in lockstep. This is the defining spec of a full-stack case.
+[[spec]]
+source = "specs/assets.md"
+
+[[spec]]
+source = "specs/modes/classic.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact paths
+# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
+# entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML mockup
+# the harness renders to a screenshot and seeds as a visual target. The `title` view is
+# variant-specific (declared per variant) because the menu differs by variant;
+# `gameplay` and `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest` path
+# (relative to the run workspace root) the build must write a screenshot or `.webm`
+# clip to; `specs/proof.md` instructs the build to produce them at exactly these paths.
+# Validation records whether each turned up (informational). The media kind is inferred
+# from the extension: `.png` is an image, `.webm` a video (the format Playwright records
+# natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-park dashboard"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Park closed"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "systems"
+name = "Park systems clip"
+dest = "proof/systems.webm"
+
+[[proof]]
+id = "downturn"
+name = "Reputation downturn clip"
+dest = "proof/downturn.webm"
+
+# Validation checks (opt-in). Only the checks declared here run. Each drives the built
+# implementation, screenshots it, and compares against the rendered screenshot of
+# `reference`. Only the title screen is deterministic enough to validate for Midway: it
+# is whatever the game shows on load, so it needs no actions. The live park depends on
+# the running simulation, so `gameplay` and `game-over` are seeded as references but
+# not validated.
+[[check]]
+view = "title"
+name = "Title Screen"
+reference = "title"
+actions = []
+
+# Scoring domains. The reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — flawless simulation cannot mask
+# crude, un-produced art, and gorgeous produced art cannot mask a park that does not
+# simulate. Domains are case-level; an individual review item rolls up to one through
+# its optional `domain`, while a general item (states, window fit) omits it.
+[[domain]]
+id = "simulation"
+name = "Park Systems"
+description = "The interacting simulations: the path-and-placement park grid, the desire-driven guest AI with pathfinding and spending, the queue/ride simulation with capacity, throughput, and breakdowns, the pricing/upkeep/wage economy and its bankruptcy loss, the staff who clean, fix, and cheer, and the reputation feedback loop that couples the crowd's happiness back to the arrival rate."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "The genuinely tool-produced assets and how the build presents them: the animated guest sheets (walk plus happy/angry/eating), the ride animations (carousel spin, coaster car, drop tower), the path/ride/stall/scenery/icon sprites, the live particle effects for fireworks and steam and sparkle and cleanup, the produced sound effects and carnival music bed, and the in-code HUD dashboard that reads it all at a glance."
+
+# Reviewer checklist items, common to every variant. The major, observable requirements
+# a reviewer must explicitly check by playing the build — the things validation cannot
+# judge and that are easy to miss. Reporter-side material: never seeded into a run, so
+# the model never sees the checklist; each restates a requirement the seeded
+# specification already states. A variant adds its own items (see its variant file).
+# Each item is worth `weight` points toward the run's score; the reviewer records a
+# pass/fail verdict for each before the run can be published. The per-domain ratings
+# stay the reviewer's call.
+
+# --- Park Systems ---------------------------------------------------------------
+[[review_item]]
+id = "park-grid"
+title = "Paths and placement"
+text = "The park is a top-down grid of grass the player shapes: laying path from the entrance gate, and placing rides and stalls on grass with their entrance touching a connected path. An attraction no path reaches gets no guests until a path connects it, and scenery placed nearby raises the appeal of the paths guests walk."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "guest-ai"
+title = "Desire-driven guest AI"
+text = "Guests enter at the gate paying admission, act on a desire model (thrill, hunger, thirst, bladder, energy, wallet, happiness), pathfind the paths to a target they want and can afford, queue for rides and buy from stalls, rest, and leave — content or angry. Their choices visibly differ, and their happiness responds to queues, prices, cleanliness, and appeal."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "ride-queues"
+title = "Queues, rides, and breakdowns"
+text = "Rides have a capacity, ride time, throughput, a per-ride price, and a queue: a ride loads to capacity, runs, and unloads riders more thrilled, and an overlong queue sours and sheds guests. Rides break down and stop, their queue draining, until a mechanic pathfinds over and repairs them."
+weight = 1
+domain = "simulation"
+proof = "systems"
+
+[[review_item]]
+id = "economy-pricing"
+title = "Pricing, upkeep, and bankruptcy"
+text = "The park runs on a cash balance: income from admission, ride tickets, and stall sales at prices the player sets, against build cost, per-day upkeep, staff wages, and repairs. Guests respond to price versus value, and a park whose costs outrun its income slides into the red and, sustained, goes bankrupt."
+weight = 1
+domain = "simulation"
+proof = "downturn"
+
+[[review_item]]
+id = "staff"
+title = "Staff and unstaffed decay"
+text = "The player hires and pays janitors (who clear the litter guests drop), mechanics (who inspect rides and repair breakdowns), and entertainers (who lift nearby mood), and can direct where they work. Under-staffing visibly degrades the park — litter piles up, rides sit broken, mood sinks — so wages trade against the happiness staff protect."
+weight = 1
+domain = "simulation"
+proof = "systems"
+
+[[review_item]]
+id = "reputation-loop"
+title = "Reputation feedback loop"
+text = "The park rating tracks the crowd's average happiness and the park's cleanliness and reliability, and the rating drives the guest arrival rate — a real feedback loop. A well-run park draws a growing crowd that funds a better park; a neglected or overpriced one loses happiness, rating, and arrivals and spirals down."
+weight = 1
+domain = "simulation"
+proof = "downturn"
+
+# --- Presentation & Assets ------------------------------------------------------
+[[review_item]]
+id = "produced-guest-animation"
+title = "Produced, animated guest sheets"
+text = "The guests are drawn from sprite sheets the build produced with `draw-sheet` — genuine per-frame pixel art — and animate through their states (at least a walk cycle plus visibly happy, angry, and eating variants), so a glance at the crowd reads its mood, not a static dot or an ad-hoc code-drawn figure."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-ride-animation"
+title = "Produced ride animations"
+text = "The rides move via animation sheets the build produced with `draw-sheet` — the carousel spinning, the coaster car moving, the drop tower rising and dropping — played while a ride runs and stilled when it is stopped or broken, so a running ride is visibly alive and a dead one visibly still."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-world-sprites"
+title = "Produced park sprites"
+text = "The ground and path tiles, the ride and stall bodies, the scenery, and the HUD icons are rendered from sprites the build produced with `draw` — grass/water/fence/gate, flush-tiling path, carousel/coaster/drop tower, food/drink/souvenir/restroom stalls, trees/flowerbeds/benches/lamps — not flat rectangles or ad-hoc canvas fills."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-particles"
+title = "Produced particle effects"
+text = "The celebration fireworks, the steam over running food/drink stalls, the sparkle at running rides, and the litter cleanup puffs are all particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated effects that vary play to play, not flat shapes or hand-coded effects."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "produced-audio"
+title = "Produced sound and music"
+text = "The park has real audio the build produced with the audio tools: purchase/coin, ride-ding, and alarm sound effects (`sfx-synth` and/or `sfx-sample`) and a cheerful carnival music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
+weight = 1
+domain = "presentation"
+proof = "downturn"
+
+[[review_item]]
+id = "hud-in-code"
+title = "In-code HUD dashboard"
+text = "The park dashboard — cash and its trend, guest count, park rating, average happiness, the day clock and speed, and alerts — plus the build palette, the context/inspector panel, and all menus, overlays, ghosts, and tool previews are drawn in code (canvas/DOM); only the small icons within it may be produced sprites."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+# --- General (states, window fit) — no domain -----------------------------------
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the live park with its HUD, pause (resume/restart/quit to menu), and park-closed (restart/menu) with the days operated shown."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the full park view, both HUD strips, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1
