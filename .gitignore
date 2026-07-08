@@ -290,3 +290,8 @@ tcab-backend.sqlite*
 
 # Claude memories — host-mounted for container-rebuild persistence, not committed
 .claude/memories/
+
+# Python bytecode caches (e.g. from the Blender container's helper modules being
+# imported during local development — see containers/blender/). Never source.
+__pycache__/
+*.pyc
