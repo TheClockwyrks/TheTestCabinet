@@ -115,6 +115,7 @@ async function fetchSeededInputs(
     return spec.specs.map((s) => ({
       path: s.dest,
       kind: "text" as const,
+      role: s.kind ?? "spec",
       text: s.body,
     }));
   } catch {
@@ -142,6 +143,9 @@ async function toTestCaseSummary(
         info.version,
         v.slug,
       ),
+      // Case-level runtime packages ride on the resolved version; every variant of
+      // the case ships the same set, so carry them onto each variant summary.
+      packages: info.packages ?? [],
       referenceScreenshots: v.references.map((r) => ({
         view: r.view,
         kind: r.kind,

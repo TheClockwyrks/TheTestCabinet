@@ -359,6 +359,11 @@ pub struct StoredSpec {
     pub dest: String,
     /// Whether the source is a Handlebars template the runner renders.
     pub template: bool,
+    /// The seeded file's role (`spec`/`script`), carried so the Inputs surfaces
+    /// can tag it. Presentation only; defaults to `spec` for stores ingested
+    /// before the field existed.
+    #[serde(default)]
+    pub kind: test_cabinet_core::SpecKind,
 }
 
 /// An asset mapping persisted in a [`StoredManifest`].

@@ -34,6 +34,7 @@ import type {
   RunPage,
   Specification,
   SpecDocument,
+  SpecRole,
   StoredReview,
   StoredRun,
   TestCase,
@@ -89,6 +90,16 @@ interface SpecDescriptor {
   source: string;
   dest: string;
   template?: boolean;
+  // The seeded file's role (`spec`/`script`), so the Inputs tab can tag it. Absent
+  // on a backend that predates the field; treated as "spec".
+  kind?: SpecRole;
+}
+
+// A runtime package the case ships into its runs, as the version endpoint reports
+// it: its npm name and the UI-only description of what it provides.
+interface PackageDescriptor {
+  name: string;
+  description: string;
 }
 
 // A reference in a resolved version: the view it depicts, how it is produced
@@ -117,6 +128,9 @@ interface ResolvedVersion {
   // carried through verbatim so the catalog can split Sprite vs Voxel tabs.
   assetKind?: AssetKind | null;
   commonSpecs?: SpecDescriptor[];
+  // The runtime packages this case ships into every run (case-level), each with a
+  // UI-only description. Absent on a backend that predates the field.
+  packages?: PackageDescriptor[];
   commonReviewItems?: ReviewItem[];
   // References every variant shares (rendered from the `_common` scope).
   commonReferences?: ReferenceDescriptor[];
@@ -240,6 +254,9 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
         assetKind: r.assetKind ?? null,
+        // Case-level runtime packages (shared by every variant), each with a
+        // UI-only description. Absent on a backend that predates the field.
+        packages: r.packages ?? [],
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
         model: r.model ?? null,
@@ -295,6 +312,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             baseUrl,
             `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/artifacts/${d.source}`,
           ),
+          kind: (d.kind ?? "spec") as SpecRole,
         })),
       );
       return {

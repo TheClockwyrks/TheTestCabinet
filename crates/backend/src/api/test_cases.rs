@@ -8,7 +8,9 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
-use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
+use test_cabinet_core::{
+    shippable_package_description, AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec,
+};
 
 use crate::error::ApiError;
 use crate::store::{
@@ -247,6 +249,11 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         audio: manifest.audio.clone(),
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
+        packages: manifest
+            .packages
+            .iter()
+            .map(|name| package_out(name))
+            .collect(),
         workspace: manifest.workspace.iter().map(workspace_out).collect(),
         init: manifest.init.clone(),
         assets: manifest
@@ -355,6 +362,20 @@ fn spec_out(spec: &crate::store::StoredSpec) -> SpecOut {
         source: spec.source.clone(),
         dest: spec.dest.clone(),
         template: spec.template,
+        kind: spec.kind,
+    }
+}
+
+/// Map a case's declared package name to the wire `{name, description}` shape,
+/// looking the UI-only description up from core's shippable registry. A name with
+/// no registry entry (a store ingested against a newer core) falls back to an
+/// empty description rather than dropping the package.
+fn package_out(name: &str) -> PackageOut {
+    PackageOut {
+        name: name.to_string(),
+        description: shippable_package_description(name)
+            .unwrap_or_default()
+            .to_string(),
     }
 }
 
@@ -485,6 +506,10 @@ pub struct VersionResponse {
     audio: Option<AudioSpec>,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
+    /// The Test Cabinet runtime packages this case ships into every run, each with
+    /// a UI-only description. Shown on the console's Inputs tab; empty for a case
+    /// that declares none.
+    packages: Vec<PackageOut>,
     workspace: Vec<WorkspaceOut>,
     init: Option<String>,
     assets: Vec<AssetOut>,
@@ -535,6 +560,20 @@ struct SpecOut {
     source: String,
     dest: String,
     template: bool,
+    /// The seeded file's role (`spec`/`script`), so the console's Inputs tab can
+    /// tag it. Presentation only.
+    kind: SpecKind,
+}
+
+/// A runtime package a case ships into its runs, exposed for the console's Inputs
+/// tab: its npm name and the UI-only description of what it provides (never seeded
+/// into a run).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct PackageOut {
+    name: String,
+    description: String,
 }
 
 #[derive(Serialize)]

@@ -2,7 +2,10 @@
 
 use std::fs;
 
-use super::{AssetKind, BuildCommands, TestCaseCatalog, TestType};
+use super::{
+    is_shippable_package, shippable_package_description, AssetKind, BuildCommands, SpecKind,
+    TestCaseCatalog, TestType,
+};
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
 /// fresh catalog and return both the temp dir (kept alive) and the catalog rooted
@@ -1334,6 +1337,47 @@ fn a_spec_dest_defaults_to_its_source() {
     assert!(dests.contains(&"specs/plain.md".to_string()), "{dests:?}");
     assert!(dests.contains(&"specs/tpl.md".to_string()), "{dests:?}");
     assert!(dests.contains(&"specs/final.md".to_string()), "{dests:?}");
+}
+
+#[test]
+fn a_spec_kind_defaults_to_spec_and_can_be_a_script() {
+    // A `[[spec]]` with no `kind` resolves to `SpecKind::Spec`; `kind = "script"`
+    // marks it a script (the Blender `build.py` starter). Presentation only — both
+    // are seeded identically, but the resolved `kind` drives the Inputs tag.
+    let (_dir, catalog) = catalog_with_files(
+        &manifest_with(
+            "",
+            "[[spec]]\nsource = \"specs/brief.md\"\n\
+             [[spec]]\nsource = \"specs/build.py\"\ndest = \"build.py\"\nkind = \"script\"\n",
+        ),
+        &[("specs/brief.md", "# brief"), ("specs/build.py", "# build")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let kind_of = |dest: &str| {
+        version
+            .common_specs
+            .iter()
+            .find(|s| s.dest.display().to_string() == dest)
+            .unwrap_or_else(|| panic!("no spec seeded to {dest}"))
+            .kind
+    };
+    assert_eq!(kind_of("specs/brief.md"), SpecKind::Spec);
+    assert_eq!(kind_of("build.py"), SpecKind::Script);
+}
+
+#[test]
+fn every_shippable_package_carries_a_ui_description() {
+    // Every shippable package a case may declare has a non-empty UI-only
+    // description (the single source of truth the Inputs surfaces read), and an
+    // unknown name resolves to `None`.
+    assert!(is_shippable_package("@test-cabinet/particle-runtime"));
+    assert!(
+        shippable_package_description("@test-cabinet/particle-runtime")
+            .is_some_and(|d| !d.is_empty()),
+        "particle-runtime should carry a non-empty description"
+    );
+    assert!(!is_shippable_package("@test-cabinet/not-a-real-package"));
+    assert!(shippable_package_description("@test-cabinet/not-a-real-package").is_none());
 }
 
 /// Write a `demo/v1.0.0` version with the given manifest and supporting files

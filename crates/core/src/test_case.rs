@@ -637,6 +637,12 @@ struct ManifestSpec {
     /// path so rarely differs from the source that stating both is just noise.
     #[serde(default)]
     dest: Option<PathBuf>,
+    /// The role this seeded file plays (`spec` — the default — or `script`).
+    /// Presentation only: it changes how the Inputs surfaces tag the file, not how
+    /// it is seeded. Set `kind = "script"` for an executable starter the model
+    /// edits and runs (for example the Blender case's `build.py`).
+    #[serde(default)]
+    kind: SpecKind,
 }
 
 /// A standalone variant manifest, parsed from its own file listed in the case
@@ -817,6 +823,21 @@ const MANIFEST_FILE: &str = "test-case.toml";
 /// consumes it as an ordinary installed dependency without knowing the path.
 pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 
+/// One of the Test Cabinet's own `@test-cabinet/*` runtime libraries a case may
+/// ship into a run via the manifest's `packages` key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShippablePackage {
+    /// The npm package name a case declares in `packages` (for example
+    /// `@test-cabinet/particle-runtime`).
+    pub name: &'static str,
+    /// A short, human-readable description of what the package does, surfaced in
+    /// the Inputs UI beside the case's declared packages. This is **UI-only**: it
+    /// is never seeded into a run, so it can name what a build uses the library
+    /// for. The single source of truth for the description of every shippable
+    /// package.
+    pub description: &'static str,
+}
+
 /// The Test Cabinet's own `@test-cabinet/*` runtime libraries an end-to-end case
 /// may request via the manifest's `packages` key. Each is baked into the run
 /// image under [`TCAB_PACKAGES_DIR`], and the case's workspace `package.json`
@@ -824,15 +845,53 @@ pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 /// play a produced asset (a particle `system.json`, a voxel rig) the same way the
 /// in-repo viewers do.
 ///
-/// This list is the allowlist a case's `packages` names are validated against. It
-/// **must stay in lockstep** with the shippable list in
-/// `scripts/stage-tcab-packages.mjs`, which bakes exactly these into the image:
-/// a name here but not there resolves to a missing dependency at run time, and a
-/// name there but not here can never be requested.
-pub const SHIPPABLE_PACKAGES: &[&str] = &[
-    "@test-cabinet/particle-runtime",
-    "@test-cabinet/voxel-runtime",
+/// This list is the allowlist a case's `packages` names are validated against
+/// (see [`is_shippable_package`]), and it also carries each package's UI-only
+/// description (see [`shippable_package_description`]). Its **names** **must stay
+/// in lockstep** with the shippable list in `scripts/stage-tcab-packages.mjs`,
+/// which bakes exactly these into the image: a name here but not there resolves to
+/// a missing dependency at run time, and a name there but not here can never be
+/// requested. (The descriptions are UI metadata and live only here.)
+pub const SHIPPABLE_PACKAGES: &[ShippablePackage] = &[
+    ShippablePackage {
+        name: "@test-cabinet/particle-runtime",
+        description: "The particle runtime the review UI plays produced effects with. A build \
+                      imports its `/canvas` binding to load a seeded particle `system.json` and \
+                      simulate it live on a canvas, so a produced burst plays the same way the \
+                      gallery plays it.",
+    },
+    ShippablePackage {
+        name: "@test-cabinet/voxel-runtime",
+        description: "The voxel runtime the review UI poses and renders a produced voxel rig \
+                      with. A build imports it to load a produced rig and play its authored \
+                      animations in-game the same way the gallery's viewer does.",
+    },
 ];
+
+/// Whether `name` is one of the [`SHIPPABLE_PACKAGES`] a case may declare.
+pub fn is_shippable_package(name: &str) -> bool {
+    SHIPPABLE_PACKAGES.iter().any(|pkg| pkg.name == name)
+}
+
+/// The UI-only description of a shippable package, or `None` if `name` is not a
+/// shippable package. Used to surface a declared package's purpose in the Inputs
+/// UI without seeding the text into the run.
+pub fn shippable_package_description(name: &str) -> Option<&'static str> {
+    SHIPPABLE_PACKAGES
+        .iter()
+        .find(|pkg| pkg.name == name)
+        .map(|pkg| pkg.description)
+}
+
+/// The names of every [`SHIPPABLE_PACKAGES`] entry, joined for an error message
+/// that lists the valid `packages` values.
+pub fn shippable_package_names() -> String {
+    SHIPPABLE_PACKAGES
+        .iter()
+        .map(|pkg| pkg.name)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 /// The `package.json` dependency spec that resolves a shippable package to its
 /// baked-in copy — a `file:` path under [`TCAB_PACKAGES_DIR`]. A package-declaring
@@ -1467,6 +1526,27 @@ pub struct ProofFile {
     pub dest: PathBuf,
 }
 
+/// What role a seeded spec file plays, so a reader can tell an instruction the
+/// model reads from an executable starter it edits and runs.
+///
+/// This is a **presentation** distinction only — every kind is seeded identically
+/// (copied to its `dest`) and the harness treats them the same. It exists so the
+/// Inputs surfaces can tag a starter script (for example the Blender case's
+/// `build.py`, whose `dest` deliberately coincides with `[output].actions`)
+/// distinctly from a prose spec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum SpecKind {
+    /// A specification the model reads — prose (a brief) or any other guidance.
+    /// The default when a `[[spec]]` entry declares no `kind`.
+    #[default]
+    Spec,
+    /// An executable starter file the model edits in place and runs, seeded as the
+    /// case's own trace (for example a `bpy` `build.py`). Surfaced as "Script".
+    Script,
+}
+
 /// A spec file seeded into a run.
 ///
 /// Each spec is copied from its [`Self::source_path`] on the host into the run's
@@ -1482,6 +1562,10 @@ pub struct SpecFile {
     /// Destination path relative to the run's workspace root, where the spec is
     /// seeded and where the rendered prompt points the model.
     pub dest: PathBuf,
+    /// The role this seeded file plays, driving how the Inputs surfaces tag it
+    /// (a prose "Spec" vs an executable "Script"). Presentation only.
+    #[serde(default)]
+    pub kind: SpecKind,
 }
 
 /// A single starter file copied into a run's workspace from a test case's
@@ -2966,7 +3050,11 @@ impl TestCaseCatalog {
                     dest.display()
                 )));
             }
-            Ok(SpecFile { source_path, dest })
+            Ok(SpecFile {
+                source_path,
+                dest,
+                kind: spec.kind,
+            })
         };
 
         let mut common_specs = Vec::with_capacity(manifest.specs.len());
@@ -3750,10 +3838,12 @@ impl TestCaseCatalog {
                 common_specs.push(SpecFile {
                     source_path: world_source,
                     dest: world.clone(),
+                    kind: SpecKind::Spec,
                 });
                 common_specs.push(SpecFile {
                     source_path: action_source,
                     dest: action.clone(),
+                    kind: SpecKind::Spec,
                 });
 
                 let sandbox = manifest
@@ -3913,10 +4003,12 @@ impl TestCaseCatalog {
                 common_specs.push(SpecFile {
                     source_path: input_source,
                     dest: input.clone(),
+                    kind: SpecKind::Spec,
                 });
                 common_specs.push(SpecFile {
                     source_path: output_source,
                     dest: output.clone(),
+                    kind: SpecKind::Spec,
                 });
 
                 let sandbox = manifest
@@ -4114,11 +4206,11 @@ impl TestCaseCatalog {
                 Err(detail) => return Err(invalid(detail)),
             };
             for package in &manifest.packages {
-                if !SHIPPABLE_PACKAGES.contains(&package.as_str()) {
+                if !is_shippable_package(package) {
                     return Err(invalid(format!(
                         "package `{package}` is not a shippable Test Cabinet package; \
                          valid names are: {}",
-                        SHIPPABLE_PACKAGES.join(", ")
+                        shippable_package_names()
                     )));
                 }
                 let expected = tcab_package_file_dep(package);

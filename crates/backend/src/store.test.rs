@@ -47,6 +47,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             source: "specs/overview.hbs".to_string(),
             dest: "specs/overview.md".to_string(),
             template: true,
+            kind: Default::default(),
         }],
         workspace: vec![StoredWorkspaceFile {
             source: "workspaces/base/package.json".to_string(),

@@ -50,6 +50,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),
+            kind: Default::default(),
         }],
         common_workspace: vec![],
         init: None,
@@ -73,6 +74,7 @@ fn frenzy() -> Variant {
         specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/modes/frenzy.md"),
             dest: PathBuf::from("specs/modes/frenzy.md"),
+            kind: Default::default(),
         }],
         workspace: None,
         references: vec![],

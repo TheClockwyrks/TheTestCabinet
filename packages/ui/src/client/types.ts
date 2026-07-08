@@ -186,11 +186,30 @@ export interface VersionInfo {
   // stable slot per declared part as the model sculpts, named from the parts.
   model?: ModelSpec | null;
   maxRuntimeSeconds: number;
+  // The Test Cabinet runtime packages this case ships into every run, each with a
+  // UI-only description. Empty for a case that declares none. Case-level (shared by
+  // every variant), surfaced on the Inputs tab.
+  packages: PackageInfo[];
 }
+
+// A runtime package a case ships into its runs: its npm name and the UI-only
+// description of what it provides (never seeded into a run — it exists only to
+// explain, in the Inputs UI, what the package is for).
+export interface PackageInfo {
+  name: string;
+  description: string;
+}
+
+// The role a seeded file plays, so the Inputs UI can tag an executable starter
+// ("script") distinctly from a prose spec ("spec"). Presentation only.
+export type SpecRole = "spec" | "script";
 
 export interface SpecDocument {
   dest: string;
   body: string;
+  // The seeded file's role, carried so the Inputs tab can tag it. Absent on a
+  // backend that predates the field; treated as "spec".
+  kind?: SpecRole;
 }
 
 export interface Specification {

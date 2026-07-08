@@ -172,9 +172,9 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
                 snap::RunsIndex, snap::RunProofOut, snap::RunAssetOut, snap::PerRun,
-                tc::ReferenceKind, snap::CaseCheckOut, snap::CaseDomainOut,
+                tc::ReferenceKind, tc::SpecKind, snap::CaseCheckOut, snap::CaseDomainOut,
                 snap::CaseReviewItemOut, snap::CaseReferenceOut, snap::CaseSeededInputOut,
-                snap::CaseVariantOut, snap::CaseMetadata,
+                snap::CasePackageOut, snap::CaseVariantOut, snap::CaseMetadata,
             ],
         },
         // The backend HTTP API response envelopes (error + catalog/versions).

@@ -220,7 +220,12 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   leaving the model to discover the missing dependency mid-run. The model then
   installs and imports it like any other dependency; see
   [Packages](/testing/end-to-end/overview/#packages) for the model-facing contract
-  and why a `packages` case's `init` must run `npm install` (not `npm ci`).
+  and why a `packages` case's `init` must run `npm install` (not `npm ci`). Each
+  declared package is surfaced on the case's **Inputs** tab (tagged `Package`) with
+  a short description of what it provides. That description is **UI-only** — it is
+  never seeded into a run — and is defined once, centrally, next to the shippable
+  package list in `core` (not per case), so every case that ships a package shows
+  the same description; you declare only the **name** in the manifest.
 - The `[build]` table is **required** and declares the commands validation runs
   to turn a produced implementation into a served static site: `install`
   (dependency install) and `build` (the static build). Both must be stated
@@ -240,7 +245,13 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   the seeded path. A `source` ending in `.hbs` is a Handlebars template rendered
   into its `dest` (see [Spec templates](/testing/end-to-end/overview/#spec-templates));
   any other `source` is
-  seeded verbatim. The rendered reference screenshots are seeded too. Asset
+  seeded verbatim. An optional `kind` marks the file's **role**: it defaults to
+  `spec` (a prose specification the model reads) and may be set to `script` for an
+  executable starter the model edits and runs — the case's `build.py` starter stub
+  the [Blender](/testing/asset-generation/blender-binaries/) asset kind seeds, whose
+  `dest` coincides with `[output].actions`. `kind` is **presentation only**: it does
+  not change how the file is seeded, only that the **Inputs** tab tags it `Script`
+  rather than `Spec`. The rendered reference screenshots are seeded too. Asset
   entries may be files or directories; a directory is seeded recursively.
 - The `variants` list names the builds the case offers, in order, as paths to
   standalone **variant files** (the first is the default). It is a root key, so it

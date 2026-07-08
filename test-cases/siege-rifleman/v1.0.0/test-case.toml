@@ -121,9 +121,12 @@ source = "specs/brief.md"
 
 # The `build.py` STARTER STUB, seeded to the run workspace ROOT as `build.py` (the path
 # `[output].actions` names) so the model edits it in place and `tcab-blend` runs it.
+# `kind = "script"` marks it an executable starter (not a prose spec), so the Inputs
+# surfaces tag it "Script" rather than "Spec".
 [[spec]]
 source = "specs/build.py"
 dest = "build.py"
+kind = "script"
 
 [[domain]]
 id = "fidelity"

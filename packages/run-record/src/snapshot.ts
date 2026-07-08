@@ -134,6 +134,18 @@ export type PerRun = {
 export type ReferenceKind = "rendered" | "image" | "video";
 
 /**
+ * What role a seeded spec file plays, so a reader can tell an instruction the
+ * model reads from an executable starter it edits and runs.
+ *
+ * This is a **presentation** distinction only — every kind is seeded identically
+ * (copied to its `dest`) and the harness treats them the same. It exists so the
+ * Inputs surfaces can tag a starter script (for example the Blender case's
+ * `build.py`, whose `dest` deliberately coincides with `[output].actions`)
+ * distinctly from a prose spec.
+ */
+export type SpecKind = "spec" | "script";
+
+/**
  * A declared validation check exposed in case metadata.
  */
 export type CaseCheckOut = {
@@ -192,6 +204,28 @@ export type CaseSeededInputOut = {
    * The spec's inlined text body.
    */
   text: string;
+  /**
+   * The seeded file's role (`spec`/`script`), so the static gallery's Inputs
+   * tab can tag it. Presentation only.
+   */
+  kind: SpecKind;
+};
+
+/**
+ * A runtime package a case ships into its runs, exposed in case metadata for the
+ * static gallery's Inputs tab: its npm name and the UI-only description of what it
+ * provides. The description is never seeded into a run — it exists only to
+ * explain, on the site, what a declared package is for.
+ */
+export type CasePackageOut = {
+  /**
+   * The npm package name the case declares in `packages`.
+   */
+  name: string;
+  /**
+   * The UI-only description of what the package provides.
+   */
+  description: string;
 };
 
 /**
@@ -268,6 +302,12 @@ export type CaseMetadata = {
    * site concatenates the two (common first) exactly as a run is seeded.
    */
   commonSeededInputs: Array<CaseSeededInputOut>;
+  /**
+   * The Test Cabinet runtime packages this case ships into every run, each with
+   * its UI-only description, so the static gallery's Inputs tab can show them.
+   * Empty for a case that declares none.
+   */
+  packages: Array<CasePackageOut>;
   checks: Array<CaseCheckOut>;
   /**
    * Rendered reference baselines, named by snapshot-relative key. The site

@@ -717,6 +717,7 @@ source = "specs/brief.md"
 [[spec]]
 source = "specs/build.py"
 dest   = "build.py"
+kind   = "script"          # tag it "Script" (not "Spec") on the Inputs tab
 ```
 
 - The **`[voxel]`** table is the character's **bounding box** (not a voxel field): its
@@ -728,7 +729,10 @@ dest   = "build.py"
   files and must **not** carry a `{part}` token. Because `build.py` is authored by the
   model from a **seeded starter stub**, the stub is seeded as the case's own **`[[spec]]`**
   with `dest = "build.py"` (landing at the run root), and it is the **one case** where a
-  spec `dest` deliberately coincides with `[output].actions`.
+  spec `dest` deliberately coincides with `[output].actions`. That spec sets
+  **`kind = "script"`** so the run's **Inputs** tab tags the starter `Script` rather than
+  `Spec` — a presentation-only marker that does not change how the file is seeded (see the
+  [end-to-end `[[spec]]` reference](/testing/end-to-end/manifests/)).
 - **`[model]` fixes only the required animations** (each a unique `name`, a `loop` flag,
   and an `auto_play` flag), exactly as for the [skinned cases](#skinned-cases). The
   skeleton, the `weapon_socket` bone, the per-vertex weights, and the keyframes are all

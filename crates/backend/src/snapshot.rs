@@ -939,6 +939,10 @@ pub struct CaseMetadata {
     /// variant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the
     /// site concatenates the two (common first) exactly as a run is seeded.
     pub common_seeded_inputs: Vec<CaseSeededInputOut>,
+    /// The Test Cabinet runtime packages this case ships into every run, each with
+    /// its UI-only description, so the static gallery's Inputs tab can show them.
+    /// Empty for a case that declares none.
+    pub packages: Vec<CasePackageOut>,
     pub checks: Vec<CaseCheckOut>,
     /// Rendered reference baselines, named by snapshot-relative key. The site
     /// resolves these to absolute URLs to show baselines on the References tab.
@@ -1003,6 +1007,23 @@ pub struct CaseSeededInputOut {
     pub path: String,
     /// The spec's inlined text body.
     pub text: String,
+    /// The seeded file's role (`spec`/`script`), so the static gallery's Inputs
+    /// tab can tag it. Presentation only.
+    pub kind: test_cabinet_core::SpecKind,
+}
+
+/// A runtime package a case ships into its runs, exposed in case metadata for the
+/// static gallery's Inputs tab: its npm name and the UI-only description of what it
+/// provides. The description is never seeded into a run — it exists only to
+/// explain, on the site, what a declared package is for.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CasePackageOut {
+    /// The npm package name the case declares in `packages`.
+    pub name: String,
+    /// The UI-only description of what the package provides.
+    pub description: String,
 }
 
 /// A reviewer checklist item exposed in case metadata, carrying its point weight
@@ -1061,6 +1082,7 @@ fn seeded_inputs(
             Some(CaseSeededInputOut {
                 path: spec.dest.clone(),
                 text,
+                kind: spec.kind,
             })
         })
         .collect()
@@ -1136,6 +1158,16 @@ fn case_metadata(
         changelog: manifest.changelog.clone(),
         variants,
         common_seeded_inputs,
+        packages: manifest
+            .packages
+            .iter()
+            .map(|name| CasePackageOut {
+                name: name.clone(),
+                description: test_cabinet_core::shippable_package_description(name)
+                    .unwrap_or_default()
+                    .to_string(),
+            })
+            .collect(),
         checks: manifest
             .checks
             .iter()

@@ -142,6 +142,21 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "CasePackageOut": {
+      "description": "A runtime package a case ships into its runs, exposed in case metadata for the\nstatic gallery's Inputs tab: its npm name and the UI-only description of what it\nprovides. The description is never seeded into a run — it exists only to\nexplain, on the site, what a declared package is for.",
+      "properties": {
+        "description": {
+          "description": "The UI-only description of what the package provides.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The npm package name the case declares in `packages`.",
+          "type": "string"
+        }
+      },
+      "required": ["name", "description"],
+      "type": "object"
+    },
     "CaseReferenceOut": {
       "description": "A reference baseline exposed in case metadata. `variant` is `null` for a\ncommon reference (shown on every variant) or the variant slug for one scoped\nto a single variant; `kind` is how it is produced (rendered/image/video); `key`\nis the snapshot-relative object key of the media.",
       "properties": {
@@ -208,6 +223,10 @@
     "CaseSeededInputOut": {
       "description": "A seeded spec file exposed in case metadata: the run-workspace path it lands at\nand its inlined text body. This is the same set the console's Specifications tab\nfetches per file — the common specs then the variant's own, in seed order — but\ninlined here so the fully static site needs no backend to show them. Only text\nspecs are carried; a spec whose bytes are missing or not valid UTF-8 is omitted.",
       "properties": {
+        "kind": {
+          "$ref": "#/$defs/SpecKind",
+          "description": "The seeded file's role (`spec`/`script`), so the static gallery's Inputs\ntab can tag it. Presentation only."
+        },
         "path": {
           "description": "The run-workspace-relative path the spec is seeded to (its `dest`).",
           "type": "string"
@@ -217,7 +236,7 @@
           "type": "string"
         }
       },
-      "required": ["path", "text"],
+      "required": ["path", "text", "kind"],
       "type": "object"
     },
     "CaseVariantOut": {
@@ -287,6 +306,21 @@
           "type": "string"
         }
       ]
+    },
+    "SpecKind": {
+      "description": "What role a seeded spec file plays, so a reader can tell an instruction the\nmodel reads from an executable starter it edits and runs.\n\nThis is a **presentation** distinction only — every kind is seeded identically\n(copied to its `dest`) and the harness treats them the same. It exists so the\nInputs surfaces can tag a starter script (for example the Blender case's\n`build.py`, whose `dest` deliberately coincides with `[output].actions`)\ndistinctly from a prose spec.",
+      "oneOf": [
+        {
+          "const": "spec",
+          "description": "A specification the model reads — prose (a brief) or any other guidance.\nThe default when a `[[spec]]` entry declares no `kind`.",
+          "type": "string"
+        },
+        {
+          "const": "script",
+          "description": "An executable starter file the model edits in place and runs, seeded as the\ncase's own trace (for example a `bpy` `build.py`). Surfaced as \"Script\".",
+          "type": "string"
+        }
+      ]
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/snapshot/case.schema.json",
@@ -336,6 +370,13 @@
     },
     "name": {
       "type": "string"
+    },
+    "packages": {
+      "description": "The Test Cabinet runtime packages this case ships into every run, each with\nits UI-only description, so the static gallery's Inputs tab can show them.\nEmpty for a case that declares none.",
+      "items": {
+        "$ref": "#/$defs/CasePackageOut"
+      },
+      "type": "array"
     },
     "references": {
       "description": "Rendered reference baselines, named by snapshot-relative key. The site\nresolves these to absolute URLs to show baselines on the References tab.",
@@ -387,6 +428,7 @@
     "changelog",
     "variants",
     "commonSeededInputs",
+    "packages",
     "checks",
     "references",
     "commonReviewItems",

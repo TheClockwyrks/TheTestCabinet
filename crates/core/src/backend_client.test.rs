@@ -63,6 +63,7 @@ impl BackendClient for StubBackend {
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
+                kind: Default::default(),
             }],
             common_workspace: vec![WorkspaceFile {
                 source_path: std::path::PathBuf::from("workspaces/base/package.json"),

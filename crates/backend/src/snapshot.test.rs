@@ -403,15 +403,21 @@ async fn case_metadata_inlines_specs_and_description() {
         source: "spec/rules.md".to_string(),
         dest: "spec/rules.md".to_string(),
         template: false,
+        kind: Default::default(),
     }];
     m.variants[0].specs = vec![crate::store::StoredSpec {
-        source: "spec/base.md".to_string(),
-        dest: "spec/base.md".to_string(),
+        source: "spec/build.py".to_string(),
+        dest: "build.py".to_string(),
         template: false,
+        kind: test_cabinet_core::SpecKind::Script,
     }];
+    // A declared runtime package: its UI-only description is looked up from core's
+    // registry at snapshot time (never stored), so the static gallery's Inputs tab
+    // can show it.
+    m.packages = vec!["@test-cabinet/particle-runtime".to_string()];
 
     let (_tmp, store) = empty_store();
-    for (key, body) in [("spec/rules.md", "# Rules"), ("spec/base.md", "# Base")] {
+    for (key, body) in [("spec/rules.md", "# Rules"), ("spec/build.py", "# build")] {
         let path = store.version_dir(&m.slug, &m.version).join(key);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, body).unwrap();
@@ -444,11 +450,21 @@ async fn case_metadata_inlines_specs_and_description() {
     // variant's own on the variant, each carrying its dest path and text.
     assert_eq!(parsed["commonSeededInputs"][0]["path"], "spec/rules.md");
     assert_eq!(parsed["commonSeededInputs"][0]["text"], "# Rules");
-    assert_eq!(
-        parsed["variants"][0]["seededInputs"][0]["path"],
-        "spec/base.md"
+    // A common spec with no explicit role defaults to "spec".
+    assert_eq!(parsed["commonSeededInputs"][0]["kind"], "spec");
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["path"], "build.py");
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["text"], "# build");
+    // The script role survives ingest → snapshot, so the Inputs tab tags it "Script".
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["kind"], "script");
+    // The declared package is carried with its UI-only description, looked up from
+    // core's registry at snapshot time.
+    assert_eq!(parsed["packages"][0]["name"], "@test-cabinet/particle-runtime");
+    assert!(
+        parsed["packages"][0]["description"]
+            .as_str()
+            .is_some_and(|d| !d.is_empty()),
+        "package description should be inlined from core's registry"
     );
-    assert_eq!(parsed["variants"][0]["seededInputs"][0]["text"], "# Base");
 }
 
 #[tokio::test]

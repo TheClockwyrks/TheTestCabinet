@@ -33,8 +33,8 @@ use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
     MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec, PerformanceCase,
     ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec, SheetSpec,
-    SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant,
-    VoxelSpec, WorkspaceFile,
+    SimulationSpec, SpecFile, SpecKind, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec,
+    Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1567,6 +1567,7 @@ fn spec_from(spec: &SpecBody) -> SpecFile {
     SpecFile {
         source_path: PathBuf::from(&spec.source),
         dest: PathBuf::from(&spec.dest),
+        kind: spec.kind,
     }
 }
 
@@ -1734,6 +1735,11 @@ struct SpecBody {
     #[allow(dead_code)]
     #[serde(default)]
     template: bool,
+    /// The seeded file's role (`spec`/`script`), carried through to the resolved
+    /// [`SpecFile`] so the Inputs surfaces can tag it. Presentation only; defaults
+    /// to `spec` when the backend omits it.
+    #[serde(default)]
+    kind: SpecKind,
 }
 
 #[derive(Deserialize)]

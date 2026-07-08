@@ -142,6 +142,9 @@ interface SnapshotCaseFile {
   // Seeded spec files shared by every variant, bodies inlined. Optional for
   // snapshots written before specs were inlined.
   commonSeededInputs?: SnapshotSeededInput[];
+  // The runtime packages this case ships into every run (case-level), each with a
+  // UI-only description. Optional for snapshots written before the field existed.
+  packages?: SnapshotPackage[];
   // Reviewer checklist items shared by every variant, with point weights.
   commonReviewItems?: SnapshotReviewItem[];
   // The case's common scoring domains (shared by every variant; a variant's own
@@ -166,6 +169,16 @@ interface SnapshotCaseFile {
 interface SnapshotSeededInput {
   path: string;
   text: string;
+  // The seeded file's role (`spec`/`script`), so the Inputs tab can tag it. Absent
+  // on snapshots written before the field existed; treated as "spec".
+  kind?: "spec" | "script";
+}
+
+// One runtime package a case ships into its runs, inlined in case metadata: its
+// npm name and the UI-only description of what it provides.
+interface SnapshotPackage {
+  name: string;
+  description: string;
 }
 
 interface SnapshotReviewItem {
@@ -257,7 +270,17 @@ interface AssembledChangelogEntry {
 interface AssembledSeededInput {
   path: string;
   kind: "text";
+  // The seeded file's role, so the Inputs tab can tag a "Script" distinctly from a
+  // "Spec". Defaults to "spec" for snapshots that predate the field.
+  role: "spec" | "script";
   text: string;
+}
+
+// A runtime package the app consumes (mirrors `PackageInput` in the UI's
+// testCases): the package name and its UI-only description.
+interface AssembledPackage {
+  name: string;
+  description: string;
 }
 
 interface AssembledVariant {
@@ -266,6 +289,9 @@ interface AssembledVariant {
   description: string | null;
   prompt: string;
   seededInputs: AssembledSeededInput[];
+  // The runtime packages a run of this variant ships (case-level, so the same on
+  // every variant), each with its UI-only description.
+  packages: AssembledPackage[];
   referenceScreenshots: AssembledReference[];
   reviewItems: AssembledReviewItem[];
   // The variant's effective scoring domains (common + its own) — the set a run of
@@ -412,6 +438,12 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   const commonItems = file.commonReviewItems ?? [];
   const commonSeeded = file.commonSeededInputs ?? [];
   const commonDomains = file.domains ?? [];
+  // Case-level packages apply to every variant; carry them onto each so the
+  // per-variant Inputs tab can show them alongside the seeded files.
+  const packages: AssembledPackage[] = (file.packages ?? []).map((p) => ({
+    name: p.name,
+    description: p.description,
+  }));
   const variants: AssembledVariant[] = file.variants.map((variant) => {
     const own = refs.filter((r) => r.variant === variant.slug);
     const referenceScreenshots = [...commonRefs, ...own].map((r) => ({
@@ -424,7 +456,12 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     const seededInputs: AssembledSeededInput[] = [
       ...commonSeeded,
       ...(variant.seededInputs ?? []),
-    ].map((s) => ({ path: s.path, kind: "text", text: s.text }));
+    ].map((s) => ({
+      path: s.path,
+      kind: "text",
+      role: s.kind ?? "spec",
+      text: s.text,
+    }));
     // The common checklist items apply to every variant; the variant's own
     // follow. Each carries the point weight used to score runs.
     const reviewItems: AssembledReviewItem[] = [
@@ -454,6 +491,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       description: variant.description,
       prompt: variant.prompt,
       seededInputs,
+      packages,
       referenceScreenshots,
       reviewItems,
       domains,
