@@ -22,6 +22,7 @@ import styles from "./TestCasesPage.module.scss";
 // one-to-one to a test type.
 const CATALOG_TABS: ReadonlyArray<{ tab: CatalogTab; label: string }> = [
   { tab: "end-to-end", label: "E2E" },
+  { tab: "full-stack", label: "Full-stack" },
   { tab: "2d", label: "2D" },
   { tab: "3d", label: "3D" },
   { tab: "blender", label: "Blender" },
@@ -196,6 +197,8 @@ function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
       );
     case "end-to-end":
       return testCase.testType === "end-to-end";
+    case "full-stack":
+      return testCase.testType === "full-stack";
     case "adversarial":
       return testCase.testType === "adversarial";
     case "performance":

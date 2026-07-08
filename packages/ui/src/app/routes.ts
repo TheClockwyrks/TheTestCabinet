@@ -11,6 +11,7 @@
 // collides with a real case slug.
 export type CatalogTab =
   | "end-to-end"
+  | "full-stack"
   | "2d"
   | "3d"
   | "blender"
@@ -123,6 +124,7 @@ export const routePatterns = {
   // The catalog's type tabs — literal siblings of `:slug` below (static segments
   // rank above the dynamic `:slug`, and no case slug matches these words).
   testCasesE2E: "/test-cases/end-to-end",
+  testCasesFullStack: "/test-cases/full-stack",
   testCases2D: "/test-cases/2d",
   testCases3D: "/test-cases/3d",
   testCasesBlender: "/test-cases/blender",

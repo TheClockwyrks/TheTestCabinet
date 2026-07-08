@@ -77,12 +77,17 @@ export function NewRunPage() {
   );
 
   const versions = sel.cases.find((c) => c.slug === sel.slug)?.versions ?? [];
-  // Orchestrator selection is limited to the end-to-end test type; other types
-  // always run one-shot, so the selector is hidden and one-shot is submitted.
-  const isEndToEnd = sel.versionInfo?.testType === "end-to-end";
-  // Whatever the picker holds, only an end-to-end case may carry a non-default
-  // orchestrator — otherwise the run is one-shot no matter what was last chosen.
-  const submittedOrchestrator = isEndToEnd
+  // Orchestrator selection is limited to the program-building test types — the
+  // end-to-end and full-stack game builds, whose multi-session harness runs can
+  // be conducted by a non-default orchestrator (e.g. ralph). Every other type
+  // always runs one-shot, so the selector is hidden and one-shot is submitted.
+  const buildsProgram =
+    sel.versionInfo?.testType === "end-to-end" ||
+    sel.versionInfo?.testType === "full-stack";
+  // Whatever the picker holds, only a program-building case may carry a
+  // non-default orchestrator — otherwise the run is one-shot no matter what was
+  // last chosen.
+  const submittedOrchestrator = buildsProgram
     ? orchestrator
     : DEFAULT_ORCHESTRATOR_SLUG;
   const mismatched = worker?.backendMatch === "mismatch";
@@ -94,14 +99,14 @@ export function NewRunPage() {
   const signedOut = needsAuth && !token;
   const canLaunch = Boolean(
     worker &&
-      !mismatched &&
-      !signedOut &&
-      sel.slug &&
-      sel.version &&
-      sel.variant &&
-      harness &&
-      modelId &&
-      !launching,
+    !mismatched &&
+    !signedOut &&
+    sel.slug &&
+    sel.version &&
+    sel.variant &&
+    harness &&
+    modelId &&
+    !launching,
   );
 
   async function onLaunch() {
@@ -139,7 +144,10 @@ export function NewRunPage() {
 
   return (
     <PageLayout>
-      <PromptHeader command="--new-run" comment={<>// configure &amp; launch</>} />
+      <PromptHeader
+        command="--new-run"
+        comment={<>// configure &amp; launch</>}
+      />
 
       {!worker && (
         <p className={`${styles.notice} ${styles.warn}`}>
@@ -162,8 +170,8 @@ export function NewRunPage() {
       {signedOut && (
         <p className={`${styles.notice} ${styles.warn}`}>
           Sign in to launch a run — the backend attributes each enqueued run to
-          your account. Use the account control in the top bar to register or log
-          in, then launch.
+          your account. Use the account control in the top bar to register or
+          log in, then launch.
         </p>
       )}
 
@@ -226,7 +234,7 @@ export function NewRunPage() {
             ))}
           </select>
         </label>
-        {isEndToEnd && (
+        {buildsProgram && (
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Orchestrator</span>
             <select

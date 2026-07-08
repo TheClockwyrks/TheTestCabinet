@@ -80,6 +80,7 @@ export interface RunColumn {
 
 const CATEGORY_LABELS: Readonly<Record<string, string>> = {
   "end-to-end": "End-to-end",
+  "full-stack": "Full-stack",
   "asset-generation": "Asset gen",
   adversarial: "Adversarial",
   performance: "Performance",

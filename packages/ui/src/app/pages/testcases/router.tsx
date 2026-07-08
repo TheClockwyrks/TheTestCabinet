@@ -31,6 +31,10 @@ export function testCasesRoutes() {
         element={<TestCasesPage tab="end-to-end" />}
       />
       <Route
+        path={routePatterns.testCasesFullStack}
+        element={<TestCasesPage tab="full-stack" />}
+      />
+      <Route
         path={routePatterns.testCases2D}
         element={<TestCasesPage tab="2d" />}
       />
