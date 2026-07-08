@@ -334,5 +334,5 @@ weight = 1
 [[review_item]]
 id = "provided-models"
 title = "Provided models rendered"
-text = "The game renders every unit and structure, including Solar Extractors, using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, death clips before destroyed units are removed, and the Aegis radar sweeping on its own. The world (arena, fog, effects, HUD) is generated in code."
+text = "The game renders every unit and structure, including Solar Extractors, using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, destroyed units flashing white a few times before they are removed, and the Aegis radar sweeping on its own. The world (arena, fog, effects, HUD) is generated in code."
 weight = 2

@@ -98,8 +98,8 @@ own (the self-playing **`radar_spin`**):
     and neither waits for nor steers the hull's facing, so the Aegis can grind its
     main gun onto a Heavy while both flanks mow down the swarm around it.
 - It **fights on until it is destroyed** — it does not decay or time out. It
-  holds its half until the enemy kills it outright; when it reaches `0 HP` it is
-  removed with no bounty.
+  holds its half until the enemy kills it outright; when it reaches `0 HP` it flashes
+  white a few times and is removed with no bounty.
 - **At most one Aegis per side, at most two in a match.** A side whose Reliquary
   is already destroyed cannot gain another Aegis (there is no second Reliquary to
   lose), so the comeback valve fires exactly once per side per match — at most
