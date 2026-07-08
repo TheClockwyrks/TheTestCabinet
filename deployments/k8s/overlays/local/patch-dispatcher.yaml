@@ -1,8 +1,9 @@
 # Local dispatcher overrides: tag the environment, point the namespaces at the
-# local namespace, and set TCAB_DRIVER_IMAGE to the locally-imported driver image
-# (an env value, so the kustomize images transformer cannot reach it). Everything
-# else (the service token from the generated secret, the resource passthroughs)
-# carries over from the base manifest unchanged.
+# local namespace, set TCAB_DRIVER_IMAGE to the locally-imported driver image (an
+# env value, so the kustomize images transformer cannot reach it), and raise the
+# sandbox pod's memory limit above the base 4Gi so the heaviest cases fit. Everything
+# else (the service token from the generated secret, the remaining resource
+# passthroughs) carries over from the base manifest unchanged.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,6 +27,18 @@ spec:
               value: "tcab-local"
             - name: TCAB_K8S_NAMESPACE
               value: "tcab-local"
+            # Raise the per-sandbox memory limit above the base 4Gi (the request stays
+            # at the base 1Gi, so scheduling is unaffected — this only lifts the OOM
+            # ceiling). The heaviest cases blow past 4Gi: a dual-contouring field
+            # samples at a 0.5 cell, so the `double`-size variant of a DC case (e.g.
+            # aegis-dc-anim at 240x220x300) is a ~129M-node field — ~1.5GB per part for
+            # the field arrays plus the DC vertex grid, before the extracted mesh, the
+            # Mesa/llvmpipe preview renderer, and the agent process share the same pod.
+            # At 4Gi those runs get OOM-killed, which surfaces as an Infrastructure
+            # failure. Forwarded verbatim into each driver Job like the base passthrough.
+            # The k3d node is the host Docker daemon, so the host must have the RAM.
+            - name: TCAB_K8S_RUN_MEMORY_LIMIT
+              value: "8Gi"
             # The driver image the Makefile builds + imports (tag `local` ⇒ the
             # kubelet's IfNotPresent default uses the imported image, no pull).
             - name: TCAB_DRIVER_IMAGE

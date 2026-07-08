@@ -177,6 +177,9 @@ impl JobState {
 pub struct JobSummary {
     /// The test-case slug being run (e.g. `carom`).
     pub test_case_slug: String,
+    /// The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+    /// enqueue — so the active-run list can show it before the run produces a record.
+    pub test_case_version: String,
     /// The variant being run (e.g. `base`).
     pub variant: String,
     /// The harness driving the run, as its slug string.

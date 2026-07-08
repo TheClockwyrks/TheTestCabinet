@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import type { InProgressRun } from "../../client/types";
 import { describeRunState } from "../data/runState";
 import { useTestCaseName } from "../data/useTestCaseName";
+import { useTestCaseType } from "../data/useTestCaseType";
 import { ColumnMenu, type ColumnMenuHandle } from "./ColumnMenu";
 import { SortableHeaderCell } from "./SortableHeaderCell";
 import {
@@ -102,14 +103,15 @@ interface RunLogProps {
 
 // The dense, column-aligned run log shared by the home gallery and the per-case
 // Runs tab. Columns are user-resizable (drag the header boundaries) and sortable
-// (click a header to cycle ascending → descending → default), and the optional
-// timestamp/category/duration columns can be shown via the picker (the ▦ button
-// or a header right-click). Rendering lives here so every page stays
+// (click a header to cycle ascending → descending → default), and any column can
+// be shown or hidden via the picker (the ▦ button or a header right-click) —
+// category/timestamp/duration merely start hidden. Rendering lives here so every page stays
 // pixel-identical; the caller owns enrichment, sorting, slicing, and paging via
 // useRunTable.
 export function RunLog({ rows, active = [], controls }: RunLogProps) {
   const { scope, columns, sort, cycleSort, isVisible, toggle } = controls;
   const testCaseName = useTestCaseName();
+  const testCaseType = useTestCaseType();
   const menuRef = useRef<ColumnMenuHandle>(null);
 
   // The columns actually rendered this pass: the scope's set minus any the user
@@ -129,7 +131,11 @@ export function RunLog({ rows, active = [], controls }: RunLogProps) {
     columns: visible,
   });
 
-  const ctx: RunRenderContext = { visible: visibleIds, testCaseName };
+  const ctx: RunRenderContext = {
+    visible: visibleIds,
+    testCaseName,
+    testCaseType,
+  };
 
   return (
     <div className={styles.wrap}>

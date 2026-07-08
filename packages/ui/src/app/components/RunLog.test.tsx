@@ -146,4 +146,33 @@ describe("RunLog", () => {
       container.querySelectorAll('[data-label="Started"]').length,
     ).toBeGreaterThan(0);
   });
+
+  it("hides a column that was shown by default", () => {
+    const { container } = renderLog();
+    expect(
+      container.querySelectorAll('[data-label="Tokens"]').length,
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    // A base column that starts visible is now listed and can be hidden.
+    fireEvent.click(screen.getByRole("checkbox", { name: "TOKENS" }));
+
+    expect(container.querySelector('[data-label="Tokens"]')).toBeNull();
+  });
+
+  it("locks the last visible column so the table can't be emptied", () => {
+    renderLog();
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+
+    // Hide every default-visible column but one; the survivor's box then locks.
+    for (const label of ["TEST", "HARNESS", "VARIANT", "MODEL", "TOKENS", "COST"]) {
+      fireEvent.click(screen.getByRole("checkbox", { name: label }));
+    }
+    const survivor = screen.getByRole("checkbox", { name: "RATING" });
+    expect(survivor).toBeDisabled();
+
+    // A hidden column can still be re-shown, which unlocks the survivor again.
+    fireEvent.click(screen.getByRole("checkbox", { name: "COST" }));
+    expect(screen.getByRole("checkbox", { name: "RATING" })).not.toBeDisabled();
+  });
 });

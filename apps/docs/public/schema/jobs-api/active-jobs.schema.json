@@ -23,6 +23,10 @@
           "description": "The test-case slug being run (e.g. `carom`).",
           "type": "string"
         },
+        "testCaseVersion": {
+          "description": "The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at\nenqueue — so the active-run list can show it before the run produces a record.",
+          "type": "string"
+        },
         "variant": {
           "description": "The variant being run (e.g. `base`).",
           "type": "string"
@@ -31,6 +35,7 @@
       "required": [
         "runId",
         "testCaseSlug",
+        "testCaseVersion",
         "variant",
         "harnessSlug",
         "modelId",

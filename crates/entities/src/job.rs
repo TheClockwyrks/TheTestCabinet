@@ -22,6 +22,8 @@ pub struct Model {
     pub request_json: String,
     /// The test-case slug, lifted from the request for the active-run list.
     pub test_case_slug: String,
+    /// The test-case version, lifted from the request for the active-run list.
+    pub test_case_version: String,
     /// The variant, lifted for the active-run list.
     pub variant: String,
     /// The harness slug, lifted for the active-run list.

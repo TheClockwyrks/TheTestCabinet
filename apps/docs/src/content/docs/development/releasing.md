@@ -120,7 +120,14 @@ In the Cloudflare dashboard, create a Pages project named `test-cabinet-site`
 connected to the GitHub mirror:
 
 - Set the **production branch** to `master`.
-- **Build command:** `npm ci && npm run build -w @test-cabinet/run-record && npm run build -w @test-cabinet/site`.
+- **Build command:** `npm ci && npm run build:site`. The `build:site` root
+  script builds the site's transitive workspace runtime packages in dependency
+  order before the site itself — `run-record`, then `voxel-runtime` and
+  `particle-runtime` (whose types the `ui` package imports and which publish
+  types only from their built `dist/`), then `apps/site`. Building the site alone
+  fails to resolve those runtime modules on a clean checkout, so keep this list in
+  the root script (not inlined here) as the single source of truth when `ui` gains
+  another workspace runtime dependency.
 - **Build output directory:** `apps/site/dist`.
 - The build is **pure Node** — Cloudflare's build image has no Rust, and none is
   needed: the bundled model dataset (`packages/ui/src/app/data/models.json`) is

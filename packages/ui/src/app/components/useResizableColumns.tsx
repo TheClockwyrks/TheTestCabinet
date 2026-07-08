@@ -63,9 +63,11 @@ interface Resizable {
   handle: (index: number) => ReactNode;
 }
 
-// A pinned pixel width per column id. Columns the user hasn't dragged are absent
-// and keep flexing on their `default` track, so the table still fills its
-// container the way its static template did.
+// A pinned pixel width per column id. While the map is empty the table renders
+// on its `default` template — flexible columns absorb slack so it fills its
+// container exactly the way its static SCSS did. The first drag freezes every
+// column at its current rendered width (see `onPointerDown`), so from then on
+// each column is pinned and only the boundary being dragged moves.
 type Widths = Record<string, number>;
 
 // Extra room, in px, added over the header label's measured width when clamping
@@ -111,11 +113,13 @@ function saveWidths(storageKey: string, widths: Widths): void {
  *
  * The mechanism is a single custom property, `--ttc-cols`, set on the
  * container and read by the row template (`grid-template-columns: var(--ttc-cols,
- * <default>)`). Each track resolves to its pinned pixel width if the user has
- * dragged it, else its `default` (so flexible columns keep absorbing slack).
- * Widths persist under `storageKey`, keyed by column id. During a drag the
- * property is written imperatively so only the container restyles — the rows
- * never re-render.
+ * <default>)`). Each track resolves to its pinned pixel width, else its `default`
+ * — so an untouched table renders on its flexible template and fills its
+ * container. The first drag freezes every column at its rendered width, so once
+ * the user has resized anything the table is fully pinned and each later drag
+ * moves only the boundary grabbed. Widths persist under `storageKey`, keyed by
+ * column id. During a drag the property is written imperatively so only the
+ * container restyles — the rows never re-render.
  */
 export function useResizableColumns({
   storageKey,
@@ -175,7 +179,8 @@ export function useResizableColumns({
       const col = columns[index];
       if (!el || !col) return;
       const head = el.querySelector<HTMLElement>("[data-ttc-head]");
-      const cell = head?.children[index] as HTMLElement | undefined;
+      if (!head) return;
+      const cell = head.children[index] as HTMLElement | undefined;
       if (!cell) return;
 
       // Freeze from the column's current rendered width so the first pixel of
@@ -191,8 +196,29 @@ export function useResizableColumns({
         ? Math.ceil(label.getBoundingClientRect().width) + LABEL_CLEARANCE
         : 0;
       const floor = Math.max(col.min, labelFloor);
-      const base: Widths = { ...widthsRef.current };
-      let latest: Widths = base;
+
+      // Freeze every column at its current rendered width as the drag begins, so
+      // the flexible (`fr`) columns become fixed pixels and only the boundary
+      // being dragged moves from here on. Otherwise the undragged columns keep
+      // flexing on their `fr` default and absorb the drag, shifting the columns
+      // on both sides of the one grabbed. Columns already pinned keep their
+      // committed width; the rest are measured from their header cell, whose
+      // rendered width is the track width. This snapshot only becomes `latest`
+      // (and so only commits) once the pointer actually moves, so merely clicking
+      // a handle leaves the committed widths untouched.
+      const base: Widths = {};
+      columns.forEach((c, i) => {
+        const committed = widthsRef.current[c.id];
+        if (committed != null) {
+          base[c.id] = committed;
+          return;
+        }
+        const width = (
+          head.children[i] as HTMLElement | undefined
+        )?.getBoundingClientRect().width;
+        if (width != null && width > 0) base[c.id] = Math.round(width);
+      });
+      let latest: Widths = { ...widthsRef.current };
 
       const onMove = (e: PointerEvent) => {
         const next = { ...base };

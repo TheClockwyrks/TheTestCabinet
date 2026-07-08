@@ -91,6 +91,7 @@ pub async fn launch(
             id: id.clone(),
             request_json,
             test_case_slug: body.test_case.clone(),
+            test_case_version: body.version.clone(),
             variant: body.variant.clone(),
             harness_slug: body.harness.as_str().to_string(),
             model_id: body.model.clone(),
@@ -511,6 +512,7 @@ fn job_status_out(job: &job::Model) -> JobStatusOut {
 fn job_summary(job: &job::Model) -> JobSummary {
     JobSummary {
         test_case_slug: job.test_case_slug.clone(),
+        test_case_version: job.test_case_version.clone(),
         variant: job.variant.clone(),
         harness_slug: job.harness_slug.clone(),
         model_id: job.model_id.clone(),

@@ -5,6 +5,14 @@
 // to match the figures below (whose `.num` cells carry the same right padding).
 .cell {
   position: relative;
+  // Match the body cells' `min-width: 0` so a flexible (`fr`) column's track has
+  // the same automatic minimum in the header as in the rows below it. Without
+  // this the header label gives the track a larger minimum than the body's
+  // truncatable content; once the columns' total intrinsic width exceeds the
+  // panel, the header row's `fit-content` width resolves wider than the data
+  // rows' and their column boundaries drift out of alignment (until a drag pins
+  // the flexible tracks to fixed widths and the asymmetry disappears).
+  min-width: 0;
 
   &[data-numeric] {
     text-align: right;

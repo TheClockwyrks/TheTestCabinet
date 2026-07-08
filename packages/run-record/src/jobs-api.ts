@@ -121,6 +121,11 @@ export type JobSummary = {
    */
   testCaseSlug: string;
   /**
+   * The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+   * enqueue — so the active-run list can show it before the run produces a record.
+   */
+  testCaseVersion: string;
+  /**
    * The variant being run (e.g. `base`).
    */
   variant: string;
@@ -151,6 +156,11 @@ export type ActiveJobOut = {
    * The test-case slug being run (e.g. `carom`).
    */
   testCaseSlug: string;
+  /**
+   * The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+   * enqueue — so the active-run list can show it before the run produces a record.
+   */
+  testCaseVersion: string;
   /**
    * The variant being run (e.g. `base`).
    */
@@ -252,6 +262,11 @@ export type Notification = {
    * The test-case slug being run (e.g. `carom`).
    */
   testCaseSlug: string;
+  /**
+   * The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+   * enqueue — so the active-run list can show it before the run produces a record.
+   */
+  testCaseVersion: string;
   /**
    * The variant being run (e.g. `base`).
    */

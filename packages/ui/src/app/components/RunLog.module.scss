@@ -38,6 +38,24 @@
   padding: t.$space-sm t.$space-md;
   color: t.$color-text;
   white-space: nowrap;
+  // Reserve room on the right for the floating column-picker trigger (it hangs
+  // over the panel's top-right corner). Every row carries this gutter — not just
+  // the header — so all rows share one width. Otherwise the header, which alone
+  // reserved it, ends up ~1rem wider than the data rows: it then sets the scroll
+  // width and the narrower data rows' background/border stop short of it. Because
+  // the row grows by the same amount its right padding does, the grid content box
+  // is unchanged, so the columns stay put and only the background extends.
+  padding-right: 2rem;
+  // Grow the row box to the full width its columns occupy so its background, top
+  // border and hover wash span the entire scrolled width — not just the panel's
+  // visible edge. Without this the grid tracks overflow the box (which stays at
+  // the panel width) once resized columns exceed it, leaving the styling to stop
+  // mid-row while the cells scroll on past. `fit-content` still collapses to the
+  // panel at rest, so flexible tracks keep absorbing slack and cells truncate;
+  // the per-scope `min-width` below (raised to at least `100%`) keeps every row
+  // filling the visible width.
+  width: fit-content;
+  min-width: 100%;
 }
 
 .log[data-scope="global"] .row {
@@ -45,20 +63,23 @@
   // Resizable: `--ttc-cols` (set by useResizableColumns as the user drags header
   // boundaries) overrides the resting template; the fallback keeps the layout
   // identical when unset or for a non-resizable instance.
-  grid-template-columns: var(--ttc-cols, 1.2rem 1fr 7rem 6rem 1.6fr 5rem 5rem 6rem);
-  min-width: 46rem;
+  grid-template-columns: var(
+    --ttc-cols,
+    1.2rem 1fr 7rem 6rem 1.6fr 5rem 5rem 6rem
+  );
+  min-width: max(100%, 46rem);
 }
 
 .log[data-scope="variant"] .row {
   // caret · harness · model · tokens · cost · rating
   grid-template-columns: 1.2rem 7rem 1.6fr 5rem 5rem 6rem;
-  min-width: 30rem;
+  min-width: max(100%, 30rem);
 }
 
 .log[data-scope="model"] .row {
   // caret · test · harness · variant · tokens · cost · rating
   grid-template-columns: 1.2rem 1fr 7rem 6rem 5rem 5rem 6rem;
-  min-width: 40rem;
+  min-width: max(100%, 40rem);
 }
 
 a.row {
@@ -68,7 +89,8 @@ a.row {
   &:hover {
     text-decoration: none;
     background: color-mix(in srgb, t.$color-accent 16%, transparent);
-    box-shadow: inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 18%, transparent);
+    box-shadow: inset 0 0 1.5rem
+      color-mix(in srgb, t.$color-accent 18%, transparent);
   }
 }
 
@@ -76,8 +98,8 @@ a.row {
   font-size: t.$font-sm;
   letter-spacing: 0.1em;
   color: t.$color-text-muted;
-  // Keep the picker trigger clear of the last header label.
-  padding-right: 2rem;
+  // The picker-trigger clearance (`padding-right`) now lives on the base `.row`
+  // so the header and data rows stay the same width — see the note there.
 
   // Positioning context so each column's resize handle can pin to the cell's
   // right edge. (The shared SortableHeaderCell also sets this on itself.)
@@ -182,6 +204,15 @@ a.row {
   text-overflow: ellipsis;
 }
 
+// The optional test-case-version cell: a muted, tabular-figure tag that
+// truncates rather than widening its track (mirrors `.variant`).
+.version {
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  color: t.$color-text-muted;
+}
+
 // The optional test-category cell: a muted, uppercase tag matching the variant
 // treatment.
 .category {
@@ -256,6 +287,9 @@ a.row {
     gap: t.$space-xs;
     padding: t.$space-md;
     white-space: normal;
+    // The desktop rows grow to their columns' width; a card is a plain block that
+    // should just fill the panel, so drop the content-sized width here.
+    width: auto;
   }
 
   // Neutralize the per-scope fixed templates / min-widths so nothing forces an
