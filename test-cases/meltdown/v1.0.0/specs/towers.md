@@ -3,7 +3,7 @@
 ## Overview
 
 This file defines the eight towers — six **emitters** that fire and the two
-**movers** (Forge and Vent) that only shift heat — their stats and thermal
+**movers** (Forge and Sink) that only shift heat — their stats and thermal
 personalities, and how you build, upgrade, and sell them. It builds on the
 floor in `specs/playfield.md`, the heat system in `specs/heat.md`, the controls
 in `specs/controls.md`, and the economy in `specs/flow.md`. Ranges are
@@ -31,23 +31,26 @@ stance.
   heatMultiplier(H)` per shot (`specs/heat.md`). With no target it only cools.
 - The **Arc**, **Stutter**, **Lance**, **Bloom**, and **Rime** can target both
   ground units and flyers. The **Flak** is the exception: it is **air-only** and
-  can target flyers but never ground units. The Forge and Vent never target
+  can target flyers but never ground units. The Forge and Sink never target
   anything.
 
 ## Emitters
 
 | Tower | Role / stance | Cost | Range | Fire rate | Base dmg | heatPerShot | coolRate |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Arc** | Basic, balanced — heat-hungry, wide sweet spot | 80 | 6.0 | 2.0 /s | 6 | 8 | 14 /s |
-| **Stutter** | Rapid fire, low per-shot — heat-hungry, trips easily | 110 | 5.0 | 7.0 /s | 2.0 | 3.0 | 13 /s |
-| **Lance** | Long-range sniper, slow heavy shot — heat-hungry, runs cold | 160 | 12.0 | 0.8 /s | 43 | 15 | 19 /s |
-| **Bloom** | Area splash — heat-hungry, heavy heat per shot | 180 | 6.0 | 1.2 /s | 10 | 14 | 14 /s |
-| **Rime** | Cryo slow — heat-averse | 110 | 5.5 | 2.4 /s | 4 | 6.5 | 15 /s |
-| **Flak** | Anti-air only — heat-hungry, dedicated flyer counter | 130 | 8.0 | 2.6 /s | 6 | 5.5 | 13 /s |
+| **Arc** | Basic, balanced — heat-hungry, wide sweet spot; the cheap maze/chip tower | 15 | 6.0 | 2.0 /s | 6 | 8 | 14 /s |
+| **Stutter** | Rapid fire, low per-shot — heat-hungry, trips easily | 40 | 5.0 | 7.0 /s | 2.0 | 3.0 | 13 /s |
+| **Lance** | Long-range sniper, slow heavy shot — heat-hungry, runs cold | 150 | 12.0 | 0.8 /s | 43 | 15 | 19 /s |
+| **Bloom** | Area splash — heat-hungry, heavy heat per shot | 150 | 6.0 | 1.2 /s | 10 | 14 | 14 /s |
+| **Rime** | Cryo slow — heat-averse | 45 | 5.5 | 2.4 /s | 4 | 6.5 | 15 /s |
+| **Flak** | Anti-air only — heat-hungry, dedicated flyer counter | 60 | 8.0 | 2.6 /s | 6 | 5.5 | 13 /s |
 
 Notes on the ones with special behavior:
 
-- **Arc** is the workhorse. Its firing heat (`2.0 * 8 = 16`/s) against its
+- **Arc** is the workhorse and the **cheapest tower** — at `15` it is the one you
+  lay down in numbers to shape the maze and chip the surge (you can afford about
+  **16** on the opening build), the way the maze is meant to be built. Its firing
+  heat (`2.0 * 8 = 16`/s) against its
   cooling coefficient (`14`/s at the redline) gives it a ceiling of `H* ≈ 114`,
   so a lone Arc jammed into a saturated lane and firing flat-out climbs past the
   redline and trips; give it breathing room between targets and it settles hot
@@ -55,15 +58,15 @@ Notes on the ones with special behavior:
 - **Stutter** pours on heat fast (`7 * 3.0 = 21`/s against a `13`/s cooling
   coefficient) for a very high ceiling (`H* ≈ 162`) — it trips the quickest of
   any emitter, redlining even on a moderately busy lane. On its own it is a
-  stuttering gun that keeps cutting out; beside a Vent it holds a continuous
-  stream of fire. It is the clearest "wants a Vent" tower.
+  stuttering gun that keeps cutting out; beside a Sink it holds a continuous
+  stream of fire. It is the clearest "wants a Sink" tower.
 - **Lance** fires about every `1.25 s` (`0.8`/s) for a huge hit, but its firing
   heat is low (`0.8 * 15 = 12`/s against a `19`/s cooling coefficient) for a
   ceiling of only `H* ≈ 63` — so, alone among the emitters, a lone Lance **cannot
   reach the redline on its own**. Its targets are sparse at its long range too,
   so it tends to run cold and hit near its `0.5x` floor — barely half its base
   damage. Beside a Forge it warms up and lands far harder, and a Forge plus
-  steady firing is the only thing that can push it past the redline (add a Vent
+  steady firing is the only thing that can push it past the redline (add a Sink
   to keep it there). It is the clearest "wants a Forge" tower.
 - **Bloom** damages **all** surge units within `2.4` tiles of its shot's
   impact (it targets the in-range unit furthest along, and splashes around it).
@@ -92,7 +95,7 @@ unit's speed by up to `55%`; a Rime run hot does almost nothing — at `H =
 `15`/s cooling coefficient → a continuous-fire ceiling `H* ≈ 104`), so a Rime
 worked flat-out in a packed lane cooks itself: its slow fades to almost nothing
 and it can even climb to the redline and trip. Keep a Rime cold: give it
-breathing room, isolate it, or place a Vent beside it, and keep Forges and hot
+breathing room, isolate it, or place a Sink beside it, and keep Forges and hot
 cores away — a Rime sitting next to a Forge is a Rime that has stopped slowing.
 Some surge units are immune to slowing entirely (`specs/creeps.md`); a Rime
 does nothing to those regardless of its heat.
@@ -100,32 +103,32 @@ does nothing to those regardless of its heat.
 A Rime still trips at the redline like any emitter (`specs/heat.md`), but a
 Rime hot enough to be near the redline already has negligible slowing.
 
-## Forge and Vent
+## Forge and Sink
 
-The **Forge** and **Vent** never fire and have no heat of their own; they shift
+The **Forge** and **Sink** never fire and have no heat of their own; they shift
 heat to and from orthogonally neighboring emitter footprints every second (see
 Thermal coupling in `specs/heat.md`).
 
 | Tower | Effect on each fully aligned orthogonal emitter | Cost |
 | --- | --- | --- |
-| **Forge** | `+12` heat/second (fixed source, continuous) | 60 |
-| **Vent** | `+14` to that emitter's `coolRate` (extra cooling, proportional to heat) | 60 |
+| **Forge** | `+12` heat/second (fixed source, continuous) | 20 |
+| **Sink** | `+14` to that emitter's `coolRate` (extra cooling, proportional to heat) | 20 |
 
 - A **Forge** adds up to `12`/s of heat to each adjacent emitter — a fixed
   source that raises the emitter's ceiling. Enough to keep a Lance warm in a
   lull, or enough to push a Stutter that is already firing into the redline. Use
   it to wake cold guns; keep it away from anything you need to stay cool.
-- A **Vent** adds up to `14` to each adjacent emitter's `coolRate`, so that
+- A **Sink** adds up to `14` to each adjacent emitter's `coolRate`, so that
   emitter cools by `(coolRate + 14) * (H / 100)` per second — proportional to
   heat, so it bites hardest near the redline and barely touches a cool gun. It
   **lowers the ceiling** (never chills to dead-cold): enough to keep a Stutter
   firing continuously without tripping, or to hold a packed core just under the
   redline at maximum damage. Use it to brake your hot guns and to shield a Rime
-  from stray heat. A single Vent is a lever, not immunity — stack a second, or
+  from stray heat. A single Sink is a lever, not immunity — stack a second, or
   upgrade it, to hold a gun that runs hotter (upgraded, or Forge-fed).
 
 Both are still walls like any tower (`specs/playfield.md`), so they also
-shape the maze. Multiple Forges/Vents adjacent to one emitter stack their
+shape the maze. Multiple Forges/Sinks adjacent to one emitter stack their
 effect. Apply the alignment scaling from `specs/heat.md`: full edge alignment
 uses the table value, and one-tile staggered edge contact uses half the value.
 
@@ -144,11 +147,11 @@ uses the table value, and one-tile staggered edge contact uses half the value.
     **Rime** instead raises its cold-slow ceiling — `0.55 → 0.68 → 0.80` at
     levels I/II/III — and its range and `heatPerShot` like the others; its
     heat-averse curve is otherwise unchanged.
-  - **Movers:** the **Forge**'s output and the **Vent**'s draw grow by `×1.5`
-    per level, on top of the previous level (Forge `12 → 18 → 27`/s; Vent `14 →
+  - **Movers:** the **Forge**'s output and the **Sink**'s draw grow by `×1.5`
+    per level, on top of the previous level (Forge `12 → 18 → 27`/s; Sink `14 →
     21 → 31.5`/s); range/footprint are unchanged.
   - **Cost.** Upgrading to II costs `1.0x` the tower's build cost; to
-    III, `1.8x` the build cost. (For an Arc: `80` to reach II, `144` to
+    III, `1.8x` the build cost. (For an Arc: `15` to reach II, `27` to
     reach III.)
 - **Sell.** A selected tower can be sold for a `70%` refund of everything
   spent on it (build plus upgrades), rounded down. Selling reopens all four

@@ -291,7 +291,7 @@ domain = "defense"
 [[review_item]]
 id = "surge-and-waves"
 title = "Surge, waves, and the economy"
-text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on waves 10 and 20), each with its trait; a leak costs lives, 0 lives ends the game, and clearing wave 20 wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus."
+text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on waves 10 and 20), each with its trait, in large, dense waves; a leak costs lives, 0 lives ends the game, and clearing wave 20 wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus — and starting money (250) affords an opening maze of about 16 basic Arc towers, so building and re-shaping a large maze is central to the game."
 weight = 1
 domain = "defense"
 

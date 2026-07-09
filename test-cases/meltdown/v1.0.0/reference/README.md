@@ -35,7 +35,7 @@ The `title` view has one mockup per variant: this version declares the single
 
 The `gameplay.html` frame shows the intended look of a live match: a maze of
 player-built towers at a range of heats (a cold Lance warmed by a Forge, a
-white-hot core braked by a Vent, a tripped/offline Stutter, a cold cryo Rime),
+white-hot core braked by a Sink, a tripped/offline Stutter, a cold cryo Rime),
 the surge walking the maze and flyers crossing straight over it, and the build
 panel with money, lives, the wave indicator, the shop, and a selected tower's
 heat read. The maze, heats, and surge shown are just one example moment.

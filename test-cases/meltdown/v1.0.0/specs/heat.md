@@ -141,20 +141,20 @@ Thermal coupling scales by how much of the two-tile edge is shared:
   neighbor's own firing heat and can inadvertently push it over the redline,
   tripping it.
 - **The Sink** *strengthens the cooling* of each adjacent emitter — its
-  `ventCool`, multiplied by the coupling percentage above, is **added to that
-  emitter's `coolRate`**, so the emitter now cools by `(coolRate + ventCool) *
+  `sinkCool`, multiplied by the coupling percentage above, is **added to that
+  emitter's `coolRate`**, so the emitter now cools by `(coolRate + sinkCool) *
   (H / 100)` per second. Because it is proportional to heat, a Sink draws
   hardest when the tower is near the redline and gently when it is cool — it
   **lowers the ceiling** rather than chilling the tower to dead-cold. A Sink lets
   an emitter be run near **flat out** without tipping over: park one that would
   otherwise trip — a base gun on a saturated tile, one upgraded to run hot, or one
   fed by a Forge — beside a Sink and its ceiling drops back below `100`, so it
-  settles hot and stays online. Sinks **stack** (their `ventCool`
+  settles hot and stays online. Sinks **stack** (their `sinkCool`
   adds), and a single Sink is a lever, not immunity — a hot enough emitter (for
   instance one upgraded to run hotter, or fed by a Forge) can still climb past
   the redline through one Sink and needs a second, or an upgraded Sink, to hold.
 
-The exact `forgeHeat` and `ventCool` values, and how upgrading these structures
+The exact `forgeHeat` and `sinkCool` values, and how upgrading these structures
 changes them, are in `specs/towers.md`. Coupling is **local** — only orthogonal
 neighboring footprints with shared edge contact are affected — so where you
 place a Forge or a Sink on the floor is as much a part of the puzzle as where

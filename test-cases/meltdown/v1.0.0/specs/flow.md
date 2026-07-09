@@ -16,7 +16,9 @@ implement them as written but keep them easy to adjust.
 Money is what gates how fast your maze can grow, so the surge always presses
 against a defense that is still being built up.
 
-- You start a game with `250` money.
+- You start a game with `250` money — enough to lay an opening maze of about
+  **16** basic Arc towers (`specs/towers.md`), so the first build is already a
+  real maze, not a couple of towers.
 - **Bounties.** Killing a surge unit pays its **bounty** (`specs/creeps.md`)
   immediately.
 - **Wave-clear bonus.** Clearing a wave (the last unit of it dies or leaks) pays
@@ -59,10 +61,11 @@ against a defense that is still being built up.
 - **Milestone waves.** Wave 10 and Wave 20 each include a **Core** boss
   (`specs/creeps.md`) amid the surge.
 - **Difficulty scaling.** Surge HP scales with the wave number `w`: a unit's
-  HP is its base HP (`specs/creeps.md`) times `1 + 0.15 * (w - 1)`. Counts
-  grow toward the late game as you design the waves. Speeds, bounties, and leak
-  values do not scale. All other systems (heat, coupling, the towers) are
-  unchanged across waves.
+  HP is its base HP (`specs/creeps.md`) times `1 + 0.20 * (w - 1)` (so a Wave 20
+  unit has about `4.8x` its base HP). Counts grow substantially across the run —
+  waves are large and dense so the player's many-tower maze is always pressed
+  (`specs/creeps.md`). Speeds, bounties, and leak values do not scale. All other
+  systems (heat, coupling, the towers) are unchanged across waves.
 - **Victory.** Surviving Wave 20 — clearing it with at least one life left —
   **wins** the game (the Victory state, below).
 
