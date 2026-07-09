@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
-import type { PublishProgress } from "../../../client/types";
+import type { PublishProgress, StoredRun } from "../../../client/types";
 import { Link } from "react-router";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useGalleryData } from "../../data/galleryContext";
 import { describeRunState } from "../../data/runState";
-import { useRuns } from "../../data/useRuns";
 import { useWorkers } from "../../../client/context";
 import { useAuth } from "../../../client/auth";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
@@ -27,52 +26,48 @@ import exec from "./RunExec.module.scss";
 // Publish button that clears the publish gate. Infrastructure failures are the
 // Test Cabinet's own fault and are never publishable, so they are excluded.
 export function RunFailuresPage() {
-  const { runs, localIds } = useRuns();
   const { canExecute } = useGalleryData();
   const { active: worker } = useWorkers();
   const { refreshToken, requestRefresh } = useRunsRuntime();
   const { token } = useAuth();
   const client = worker?.client ?? null;
 
-  // The already-published failure ids, fetched from the worker's failures
-  // worklist (which carries pending and published alike). Used only to mark a
-  // row as already published and disable its button; the list itself is driven
-  // off the gallery runs below. A transport with no failures worklist simply
-  // leaves this empty.
-  const [publishedIds, setPublishedIds] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
+  // The worker's publishable-failures worklist (`listFailures`), which carries
+  // pending and already-published failures alike as full stored runs. It is the
+  // dedicated source for this page rather than the summary-first gallery list —
+  // a failure row shows the run's recorded `status.detail`, which the bounded run
+  // summary does not carry — and each run's `published` flag drives its "Published"
+  // mark. A transport with no failures worklist simply contributes none.
+  const [failures, setFailures] = useState<StoredRun[]>([]);
   useEffect(() => {
-    if (!client?.listFailures) return;
+    if (!client?.listFailures) {
+      setFailures([]);
+      return;
+    }
     let active = true;
     client
       .listFailures()
-      .then((failures) => {
-        if (!active) return;
-        setPublishedIds(
-          new Set(failures.filter((f) => f.published).map((f) => f.id)),
-        );
+      .then((list) => {
+        if (active) setFailures(list);
       })
       .catch(() => {
-        // A transport that can't enumerate failures contributes no published
-        // marks; the rows still render and publish.
+        // A transport that can't enumerate failures contributes none; the page
+        // then shows the empty state.
+        if (active) setFailures([]);
       });
     return () => {
       active = false;
     };
   }, [client, refreshToken]);
 
-  // The local publishable-failure runs: produced (local) catastrophic /
-  // timed-out runs, newest first.
-  const failures = useMemo(() => {
-    return runs
-      .filter(
-        (run) =>
-          localIds.has(run.id) &&
-          describeRunState(run.status.state).isPublishableFailure,
-      )
-      .sort(byRecencyDesc);
-  }, [runs, localIds]);
+  // The publishable-failure runs, newest first. `listFailures` already scopes to
+  // publishable (catastrophic / timed-out) failures, but the state guard keeps an
+  // infrastructure failure out defensively.
+  const publishable = useMemo(() => {
+    return failures
+      .filter((f) => describeRunState(f.record.status.state).isPublishableFailure)
+      .sort((a, b) => timestamp(b.record) - timestamp(a.record));
+  }, [failures]);
 
   return (
     <PageLayout>
@@ -90,18 +85,18 @@ export function RunFailuresPage() {
       {/* The static gallery never reaches this page (the route is console-only),
           but guard anyway so it degrades to an empty state rather than offering
           a publish it cannot perform. */}
-      {!canExecute || failures.length === 0 ? (
+      {!canExecute || publishable.length === 0 ? (
         <p className={styles.empty}>
           No publishable failures awaiting publish.
         </p>
       ) : (
         <Panel>
           <ul className={styles.list}>
-            {failures.map((run) => (
+            {publishable.map(({ record: run, published }) => (
               <FailureRow
                 key={run.id}
                 run={run}
-                published={publishedIds.has(run.id)}
+                published={published}
                 token={token}
                 onPublish={
                   client
@@ -219,10 +214,6 @@ function FailureRow({
 
 // Newest first, by finish time, falling back to start time when a run never
 // recorded a finish. Matches the all-runs index.
-function byRecencyDesc(a: RunRecord, b: RunRecord): number {
-  return timestamp(b) - timestamp(a);
-}
-
 function timestamp(run: RunRecord): number {
   const value = Date.parse(run.finishedAt || run.startedAt);
   return Number.isNaN(value) ? 0 : value;

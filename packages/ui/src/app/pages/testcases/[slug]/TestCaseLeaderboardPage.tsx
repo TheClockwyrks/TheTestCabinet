@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
-import { useRuns } from "../../../data/useRuns";
+import { useRunSummaries } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
 import { useFindModel } from "../../../data/useModels";
 import {
@@ -46,7 +46,7 @@ function LeaderboardContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { runs, localWriteups } = useRuns();
+  const { runSummaries, localWriteups } = useRunSummaries();
   const findReview = useFindReview();
   const findModel = useFindModel();
 
@@ -54,7 +54,7 @@ function LeaderboardContent({
   const entries = useMemo<Entry[]>(() => {
     // Score every reviewed run of this case + variant, then keep each model's best.
     const best = new Map<string, Entry>();
-    for (const run of runs) {
+    for (const run of runSummaries) {
       if (
         run.subject.testCaseSlug !== testCase.slug ||
         run.subject.variant !== variant.slug
@@ -64,7 +64,7 @@ function LeaderboardContent({
       // Only a completed run can be ranked: a failed run produced no result and
       // is never reviewable, so it carries no score. (It has no review either, so
       // this also guards the scoring below.)
-      if (run.status.state !== "completed") continue;
+      if (run.state !== "completed") continue;
       const review = findReview(run.id, localWriteups);
       if (!review || review.ratings.length === 0) continue;
       const { earned, total } = scoreChecklist(
@@ -90,7 +90,7 @@ function LeaderboardContent({
     }
     return [...best.values()].sort(byScoreThenRatingThenRecency);
   }, [
-    runs,
+    runSummaries,
     localWriteups,
     findReview,
     findModel,

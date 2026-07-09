@@ -12,7 +12,7 @@ import type {
   StoredReview,
   VerdictStatus,
 } from "../../../../client/types";
-import type { RunSubject } from "@test-cabinet/run-record";
+import type { RunRecord } from "@test-cabinet/run-record";
 import { useGalleryData } from "../../../data/galleryContext";
 import { MediaView } from "../../../components/MediaView";
 import { ReviewItemAssets } from "./AssetResultSection";
@@ -72,14 +72,14 @@ function pts(weight: number): string {
 // evidence before judging. The run's existing reviews and the aggregate
 // rating/score are shown above the form.
 export function RunReviewEditor({
-  runId,
-  subject,
+  run,
   onChanged,
 }: {
-  runId: string;
-  subject: RunSubject;
+  run: RunRecord;
   onChanged: () => void;
 }) {
+  const runId = run.id;
+  const subject = run.subject;
   const { active: worker } = useWorkers();
   const client = worker?.client ?? null;
   // The desktop's local worker collapses review/publish into one solo command, so
@@ -137,22 +137,16 @@ export function RunReviewEditor({
   }, [gallery.testCases, subject.testCaseSlug, subject.variant]);
 
   const proofsById = useMemo(() => {
-    const run = gallery.runs.find((r) => r.id === runId);
     const map = new Map<string, ProofMedia>();
-    if (run) {
-      for (const proof of gallery.proofMediaFor(run)) map.set(proof.id, proof);
-    }
+    for (const proof of gallery.proofMediaFor(run)) map.set(proof.id, proof);
     return map;
-  }, [gallery, runId]);
+  }, [gallery, run]);
 
   // For an asset-generation run, its resolved result (frames + sprite sheet) so a
   // checklist item that names sequences/frames can show exactly those assets
   // beside the question — no scrolling up to the generated-asset section. Null for
   // a non-asset run.
-  const asset = useMemo(() => {
-    const run = gallery.runs.find((r) => r.id === runId);
-    return run ? gallery.assetResultFor(run) : null;
-  }, [gallery, runId]);
+  const asset = useMemo(() => gallery.assetResultFor(run), [gallery, run]);
 
   // Load the case's declared checklist items from the backend (common + this
   // variant's own), seeding verdicts from the account's own prior review so
@@ -264,7 +258,7 @@ export function RunReviewEditor({
 
   // Run a mutating lifecycle action, wrapping it in the busy/error/message
   // plumbing so each button shares one path.
-  async function run(label: string, action: () => Promise<void>) {
+  async function runAction(label: string, action: () => Promise<void>) {
     if (!client || !token) return;
     setBusy(true);
     setError(null);
@@ -285,7 +279,7 @@ export function RunReviewEditor({
   // Submit review: attribute this account's review to the run (web flow). On the
   // solo desktop path this saves the local draft.
   const onSubmitReview = () =>
-    run("Review submitted.", async () => {
+    runAction("Review submitted.", async () => {
       await client!.submitReview(runId, buildReview(), token!);
       setSubmittedThisSession(true);
       // Collapse back to the summary; the just-submitted review now shows there.
@@ -295,7 +289,7 @@ export function RunReviewEditor({
   // Publish: clear the gate (web flow). On the solo desktop path this saves the
   // review and runs review + publish in one step.
   const onPublish = () =>
-    run("Published.", async () => {
+    runAction("Published.", async () => {
       if (solo) {
         await client!.submitReview(runId, buildReview(), token!);
       }

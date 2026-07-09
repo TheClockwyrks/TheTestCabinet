@@ -3,7 +3,6 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import { Panel } from "@test-cabinet/ui";
 import { useAuth } from "../../../../client/auth";
 import { useGalleryData } from "../../../data/galleryContext";
-import { useRuns } from "../../../data/useRuns";
 import { scoreChecklist, worstRating } from "../../../data/ratings";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { routes } from "../../../routes";
@@ -28,7 +27,7 @@ function SingleReview({ run }: { run: RunRecord }) {
   const { reviewerId } = useParams<{ reviewerId: string }>();
   const gallery = useGalleryData();
   const { account } = useAuth();
-  const { localIds } = useRuns();
+  const { localIds } = gallery;
   const review = gallery
     .reviewsFor(run.id)
     .find((r) => r.reviewerId === reviewerId);

@@ -8,7 +8,6 @@ import {
 } from "../../../data/ratings";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
 import { describeRunState } from "../../../data/runState";
-import { useRuns } from "../../../data/useRuns";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
@@ -36,10 +35,9 @@ function pts(weight: number): string {
 // visitor reads the verdict before launching the (possibly broken) build on the
 // Play tab.
 export function RunVerdictPage() {
-  const { canExecute } = useGalleryData();
-  const { localIds } = useRuns();
-  const runtime = useRunsRuntime();
   const gallery = useGalleryData();
+  const { canExecute, localIds } = gallery;
+  const runtime = useRunsRuntime();
   return (
     <RunDetailLayout tab="verdict">
       {({ run, review }) => {
@@ -73,8 +71,7 @@ export function RunVerdictPage() {
               // read-only.
               canExecute && localIds.has(run.id) ? (
                 <RunReviewEditor
-                  runId={run.id}
-                  subject={run.subject}
+                  run={run}
                   onChanged={() => runtime.requestRefresh()}
                 />
               ) : (

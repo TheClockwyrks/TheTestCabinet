@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { MetricChartWidget, Panel } from "@test-cabinet/ui";
-import { useRuns } from "../../../data/useRuns";
+import { useRunSummaries } from "../../../data/useRuns";
 import { useFindModel } from "../../../data/useModels";
 import {
   providerColor,
@@ -24,11 +24,11 @@ const TOKEN_TICKS = "~s";
 // stable across renders (the widgets memoize their chart data on them).
 // Null for a harness that doesn't report every token class; such runs are then
 // excluded from the token chart rather than charted with an incomplete total.
-const tokensValue = (run: RunRecord): number | null => totalTokens(run.metrics);
+const tokensValue = (run: RunSummary): number | null => totalTokens(run.metrics);
 // Null when the run's comparable cost is unknown (the model's prices could not
 // be resolved); such runs are excluded from the cost chart rather than charted
 // as zero.
-const costValue = (run: RunRecord): number | null => run.metrics.cost.comparable;
+const costValue = (run: RunSummary): number | null => run.metrics.cost.comparable;
 
 // The Metrics tab (`/test-cases/:slug/metrics`): token and cost distributions
 // for the selected variant, grouped by model so the spread across runs is
@@ -51,7 +51,7 @@ function MetricsContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { runs } = useRuns();
+  const { runSummaries } = useRunSummaries();
   const findModel = useFindModel();
 
   // Colors each model's bar by its provider's brand color, so a glance groups the
@@ -71,15 +71,15 @@ function MetricsContent({
   // cost and tokens are zero), so charting them would skew the distribution.
   const variantRuns = useMemo(
     () =>
-      runs
+      runSummaries
         .filter(
           (run) =>
             run.subject.testCaseSlug === testCase.slug &&
             run.subject.variant === variant.slug &&
-            run.status.state === "completed",
+            run.state === "completed",
         )
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
-    [runs, testCase.slug, variant.slug],
+    [runSummaries, testCase.slug, variant.slug],
   );
 
   if (variantRuns.length < MIN_RUNS) {
