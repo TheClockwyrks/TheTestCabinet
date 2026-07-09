@@ -35,6 +35,7 @@ import type {
   RunJob,
   RunNotification,
   RunPage,
+  RunSummaryPage,
   Specification,
   SpecDocument,
   SpecRole,
@@ -50,6 +51,7 @@ import type {
   ModelSpec,
   RunRecord,
 } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   delJson,
   delVoid,
@@ -192,6 +194,15 @@ interface StoredRunResponse {
 // it maps to the transport-neutral `nextCursor` on `RunPage`.
 interface RunPageResponse {
   runs: StoredRunResponse[];
+  nextBefore?: string | null;
+}
+
+// `GET /runs?fields=summary`: a page of bounded run summary cards plus the same
+// `nextBefore` cursor as `RunPageResponse`. The cards are the backend's
+// `RunSummary` contract shape verbatim (camelCase), so they pass through
+// unmapped; only the cursor is renamed to the transport-neutral `nextCursor`.
+interface RunSummaryPageResponse {
+  runs: RunSummary[];
   nextBefore?: string | null;
 }
 
@@ -394,6 +405,21 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
       return {
         runs: body.runs.map(toStoredRun),
+        nextCursor: body.nextBefore ?? null,
+      };
+    },
+
+    async listRunSummaries(opts): Promise<RunSummaryPage> {
+      const params = new URLSearchParams({ fields: "summary" });
+      if (opts?.before) params.set("before", opts.before);
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.state) params.set("state", opts.state);
+      const body = await getJson<RunSummaryPageResponse>(
+        baseUrl,
+        `/runs?${params.toString()}`,
+      );
+      return {
+        summaries: body.runs,
         nextCursor: body.nextBefore ?? null,
       };
     },

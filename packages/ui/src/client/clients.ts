@@ -32,6 +32,16 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "./types";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+
+// One page of bounded run summary cards from the backend
+// (`GET /runs?fields=summary`), newest first — the lightweight projection of
+// {@link RunPage} the run log and list pages consume. `nextCursor` is the
+// `before` value for the following page, or null when there are none more.
+export interface RunSummaryPage {
+  summaries: RunSummary[];
+  nextCursor: string | null;
+}
 
 // Thrown by a transport for an operation its service doesn't (yet) expose, so
 // the console can render a clear "not available here" state rather than a raw
@@ -87,6 +97,20 @@ export interface BackendClient {
    * page (`null` when there are no more).
    */
   listRuns(opts?: { before?: string; limit?: number }): Promise<RunPage>;
+
+  /**
+   * List bounded run summary cards, newest first (`GET /runs?fields=summary`),
+   * paginated by a `before` cursor and a `limit` and optionally narrowed by
+   * `state` (the same selector `listRuns` accepts). Resolves the page's summaries
+   * and the cursor for the next page (`null` when there are no more). The
+   * lightweight projection the run log and list pages consume instead of full
+   * records.
+   */
+  listRunSummaries(opts?: {
+    before?: string;
+    limit?: number;
+    state?: string;
+  }): Promise<RunSummaryPage>;
 
   /** One published run by id (`GET /runs/{id}`): record + review + links. */
   readRun(id: string): Promise<StoredRun>;

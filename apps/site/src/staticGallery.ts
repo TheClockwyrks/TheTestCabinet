@@ -126,6 +126,10 @@ export function useStaticGallery(): GalleryDataInput {
 
   return {
     runs,
+    // TODO(U3b): populate from the published summary index (runs.json) inlined by
+    // vite-plugin-snapshot. Empty placeholder for now to keep this compiling while
+    // the run summary contract is additive.
+    runSummaries: [],
     localIds,
     writeups,
     reviews,

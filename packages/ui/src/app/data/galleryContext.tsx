@@ -17,6 +17,7 @@ import type {
   RunSubject,
   TournamentRecord,
 } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   parseGlb,
   parseSkinnedGlb,
@@ -228,6 +229,14 @@ export interface HarnessAuthApi {
 export interface GalleryDataInput {
   /** Completed runs to display: local (unpublished) first, then published. */
   runs: RunRecord[];
+  /**
+   * The bounded summary cards for the runs to display, in the same order as
+   * {@link runs} — the lightweight shape the run log and list pages consume. Each
+   * host supplies these its own way: the consoles derive them from the loaded
+   * records (see `toRunSummary`), the static site from its published summary
+   * index. Read through {@link useRunSummaries}.
+   */
+  runSummaries: RunSummary[];
   /** Ids of runs sourced locally (produced but not yet published). */
   localIds: ReadonlySet<string>;
   /**
@@ -581,6 +590,15 @@ export interface GalleryData extends GalleryDataInput {
     override?: Readonly<Record<string, string>>,
   ): ParsedWriteup | undefined;
   /**
+   * Resolve one run's full record by id — a summary-first page fetches the whole
+   * record lazily only when a detail view needs it. Delegates to the host's
+   * {@link GalleryDataInput.readRun} when supplied (the consoles), and otherwise
+   * resolves from the in-memory {@link GalleryDataInput.runs} array (the static
+   * site, which holds its records in memory). Resolves `null` when no run with
+   * that id is available.
+   */
+  fetchRun(runId: string): Promise<RunRecord | null>;
+  /**
    * The individual reviews submitted against a run, in submission order. Empty
    * when the run has none (or the host carries only framed writeups). The
    * run-detail page renders each reviewer's verdict and computes the aggregate
@@ -677,6 +695,14 @@ export function GalleryDataProvider({
       findReview(runId, override) {
         const raw = override?.[runId] ?? writeups[runId];
         return raw === undefined ? undefined : parseWriteup(raw);
+      },
+      fetchRun(runId) {
+        // Prefer the host's lazy single-run fetcher (the consoles read the run
+        // store's `GET /runs/{id}`); otherwise resolve from the records already in
+        // memory (the static site inlines them), so a summary-first page can still
+        // reach a full record without a host fetcher.
+        if (value.readRun) return value.readRun(runId);
+        return Promise.resolve(value.runs.find((r) => r.id === runId) ?? null);
       },
       modelForId(modelId, harnessSlug) {
         return findModelByModelId(models, modelId, harnessSlug);

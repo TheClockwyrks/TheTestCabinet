@@ -40,7 +40,13 @@ export { frameReview, frameReviews } from "./data/frameReview";
 export { useLiveGallery } from "./runtime/useLiveGallery";
 
 // Data hooks (read the provider) and their state shapes.
-export { useRuns, type RunsState } from "./data/useRuns";
+export {
+  useRuns,
+  type RunsState,
+  useRunSummaries,
+  type RunSummariesState,
+} from "./data/useRuns";
+export { toRunSummary } from "./data/runSummary";
 export { useTestCases, type TestCasesState } from "./data/useTestCases";
 export { useModels, useFindModel, type ModelsState } from "./data/useModels";
 export { useFindReview } from "./data/writeups";

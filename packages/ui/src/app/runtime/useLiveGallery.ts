@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import {
   NotSupportedError,
@@ -14,6 +14,7 @@ import type {
   VersionInfo,
 } from "../../client/types";
 import { frameReviews } from "../data/frameReview";
+import { toRunSummary } from "../data/runSummary";
 import { toModelSummary, type ModelSummary } from "../data/models";
 import type {
   ArenaApi,
@@ -411,6 +412,16 @@ export function useLiveGallery(
     [backend, workerClient, localIds],
   );
 
+  // The bounded summary cards for the loaded runs, derived from the full records
+  // this hook already assembles (an additive step: the network path still drains
+  // full records above; U7 switches it to fetching summaries over the wire and
+  // drops the full drain). Each summary's rating aggregates the run's reviews, so
+  // it recomputes when either the runs or their reviews change.
+  const runSummaries = useMemo(
+    () => runs.map((run) => toRunSummary(run, reviews[run.id] ?? [])),
+    [runs, reviews],
+  );
+
   // Resolve a single run's record by id for a run the loaded list doesn't carry
   // (an infrastructure failure, in no worklist; or a run off the current page).
   // A produced (local) run is read from its worker, any other from the backend;
@@ -436,6 +447,7 @@ export function useLiveGallery(
 
   return {
     runs,
+    runSummaries,
     localIds,
     writeups,
     reviews,
