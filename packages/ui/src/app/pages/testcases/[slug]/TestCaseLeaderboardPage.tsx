@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Fragment, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { useCaseRunSummaries } from "../../../data/useRuns";
@@ -12,23 +12,174 @@ import {
 } from "../../../data/ratings";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
+import { ColumnMenu, type ColumnMenuHandle } from "../../../components/ColumnMenu";
+import { useColumnVisibility } from "../../../components/useColumnVisibility";
+import { formatCompact, formatUsd, totalTokens } from "../../../format";
 import styles from "./TestCaseLeaderboardPage.module.scss";
 
-// One model's best result on this case + variant.
+// One model's aggregate result on this case + variant, folded across ALL of its
+// scored runs (not just its single best). The score/rating extremes and the
+// cost/token means are what the configurable columns render.
 interface Entry {
   modelId: string;
   modelName: string;
-  earned: number;
+  /** The points available — the same across every run of this variant. */
   total: number;
-  overall: Rating | null;
-  startedAt: string;
+  /** Max points earned across the model's runs. */
+  highestScore: number;
+  /** Mean points earned across the model's runs. */
+  averageScore: number;
+  /** Min points earned across the model's runs. */
+  lowestScore: number;
+  /** Best overall rating across the model's runs (null when unrated). */
+  bestRating: Rating | null;
+  /** Worst overall rating across the model's runs (null when unrated). */
+  worstRating: Rating | null;
+  /** Mean comparable cost across the model's runs, excluding runs with none. */
+  averageCost: number | null;
+  /** Mean token total across the model's runs, excluding runs with none. */
+  averageTokens: number | null;
+  /** The most recent run's start time, for the recency tie-break. */
+  latestStartedAt: string;
 }
 
+// A metric column of the board. The rank (#) and model columns are fixed and
+// rendered outside this set; these seven are toggleable via the picker, three of
+// them visible by default. Each carries its own grid track width so the template
+// can be built from the visible subset.
+interface LeaderboardColumn {
+  id: string;
+  label: string;
+  optional: boolean;
+  defaultVisible: boolean;
+  /** The grid track width this column occupies when shown. */
+  width: string;
+  /** Whether the cell is a right-aligned numeric figure (tabular). */
+  numeric: boolean;
+  render: (entry: Entry) => ReactNode;
+}
+
+// A points figure ("14 / 20" or, when averaged, "14.3 / 20") with its unit,
+// mirroring the run pages' `pts` treatment.
+function scoreCell(value: number, total: number): ReactNode {
+  return (
+    <span className={styles.num}>
+      <span className={styles.scoreValue}>
+        {formatPoints(value)} / {total}
+      </span>{" "}
+      <span className={styles.scoreUnit}>pts</span>
+    </span>
+  );
+}
+
+function ratingCell(rating: Rating | null): ReactNode {
+  return (
+    <span>
+      {rating ? (
+        <RatingBadge rating={rating} />
+      ) : (
+        <span className={styles.none}>—</span>
+      )}
+    </span>
+  );
+}
+
+function costCell(cost: number | null): ReactNode {
+  // formatUsd already renders an em dash for an unknown (null) cost.
+  return <span className={styles.num}>{formatUsd(cost)}</span>;
+}
+
+function tokensCell(tokens: number | null): ReactNode {
+  return (
+    <span className={styles.num}>
+      {tokens === null ? (
+        <span className={styles.none}>—</span>
+      ) : (
+        formatCompact(tokens)
+      )}
+    </span>
+  );
+}
+
+// The seven toggleable metric columns, in display order. Only Average Score,
+// Best Rating, and Average Cost start visible; the other four are available from
+// the column picker. Module-level so the array identity is stable across renders
+// (the visibility hook and picker memoize on it).
+const METRIC_COLUMNS: readonly LeaderboardColumn[] = [
+  {
+    id: "highestScore",
+    label: "Highest Score",
+    optional: true,
+    defaultVisible: false,
+    width: "9rem",
+    numeric: true,
+    render: (e) => scoreCell(e.highestScore, e.total),
+  },
+  {
+    id: "averageScore",
+    label: "Average Score",
+    optional: true,
+    defaultVisible: true,
+    width: "9rem",
+    numeric: true,
+    render: (e) => scoreCell(e.averageScore, e.total),
+  },
+  {
+    id: "lowestScore",
+    label: "Lowest Score",
+    optional: true,
+    defaultVisible: false,
+    width: "9rem",
+    numeric: true,
+    render: (e) => scoreCell(e.lowestScore, e.total),
+  },
+  {
+    id: "bestRating",
+    label: "Best Rating",
+    optional: true,
+    defaultVisible: true,
+    width: "7rem",
+    numeric: false,
+    render: (e) => ratingCell(e.bestRating),
+  },
+  {
+    id: "worstRating",
+    label: "Worst Rating",
+    optional: true,
+    defaultVisible: false,
+    width: "7rem",
+    numeric: false,
+    render: (e) => ratingCell(e.worstRating),
+  },
+  {
+    id: "averageCost",
+    label: "Average Cost",
+    optional: true,
+    defaultVisible: true,
+    width: "7rem",
+    numeric: true,
+    render: (e) => costCell(e.averageCost),
+  },
+  {
+    id: "averageTokens",
+    label: "Average Tokens",
+    optional: true,
+    defaultVisible: false,
+    width: "8rem",
+    numeric: true,
+    render: (e) => tokensCell(e.averageTokens),
+  },
+];
+
+// The two fixed leading grid tracks: the rank gutter and the model name.
+const FIXED_TRACKS = ["2.5rem", "1fr"];
+
 // The Leaderboard tab (`/test-cases/:slug/leaderboard`): each model that has a
-// scored run of the selected variant, ranked by points. A model appears once,
-// represented by its best-scoring run (ties broken by the better overall rating,
-// then recency). Unlike the rest of the gallery, this IS a ranking — the score is
-// what it ranks on.
+// scored run of the selected variant, ranked by average points. A model appears
+// once, its runs folded into score extremes/mean, rating extremes, and cost/token
+// means. Unlike the rest of the gallery, this IS a ranking — the score is what it
+// ranks on. Which metric columns show is user-configurable (the ▦ picker or a
+// header right-click); Average Score / Best Rating / Average Cost start visible.
 export function TestCaseLeaderboardPage() {
   return (
     <TestCaseDetailLayout tab="leaderboard">
@@ -50,10 +201,38 @@ function LeaderboardContent({
   const findReview = useFindReview();
   const findModel = useFindModel();
 
-  // Best scored run per model for this case + variant, ranked by points.
+  const { isVisible, toggle } = useColumnVisibility(
+    "ttc:leaderboard:visible",
+    METRIC_COLUMNS,
+  );
+  const menuRef = useRef<ColumnMenuHandle>(null);
+
+  const visibleColumns = useMemo(
+    () => METRIC_COLUMNS.filter((column) => isVisible(column.id)),
+    [isVisible],
+  );
+  // The grid template driving both the header and every row, built from the
+  // fixed rank/model tracks plus each visible metric column's width so the two
+  // stay in lockstep as columns are shown or hidden.
+  const gridTemplate = useMemo(
+    () => [...FIXED_TRACKS, ...visibleColumns.map((c) => c.width)].join(" "),
+    [visibleColumns],
+  );
+
+  // Aggregate every reviewed run of this case + variant per model, then rank the
+  // models by average points.
   const entries = useMemo<Entry[]>(() => {
-    // Score every reviewed run of this case + variant, then keep each model's best.
-    const best = new Map<string, Entry>();
+    // A model's scored runs, collected before they are folded into one Entry.
+    interface Acc {
+      modelName: string;
+      total: number;
+      earned: number[];
+      ratings: Rating[];
+      costs: number[];
+      tokens: number[];
+      latestStartedAt: string;
+    }
+    const accs = new Map<string, Acc>();
     for (const run of summaries) {
       if (
         run.subject.testCaseSlug !== testCase.slug ||
@@ -71,24 +250,60 @@ function LeaderboardContent({
         variant.reviewItems,
         review.checklist,
       );
-      const candidate: Entry = {
-        // Canonicalized (harness-aware) so an `openrouter/`-prefixed or
-        // `:free`-tagged run and its base form rank as one model, not two rows.
-        modelId: canonicalModelId(run.subject.modelId, run.subject.harnessSlug),
-        modelName:
-          findModel(run.subject.modelId, run.subject.harnessSlug)?.name ??
-          canonicalModelId(run.subject.modelId, run.subject.harnessSlug),
-        earned,
-        total,
-        overall: worstRating(review.ratings.map((r) => r.rating)),
-        startedAt: run.startedAt,
-      };
-      const current = best.get(candidate.modelId);
-      if (!current || beats(candidate, current)) {
-        best.set(candidate.modelId, candidate);
+      // Canonicalized (harness-aware) so an `openrouter/`-prefixed or `:free`-tagged
+      // run and its base form fold into one model, not two rows.
+      const modelId = canonicalModelId(
+        run.subject.modelId,
+        run.subject.harnessSlug,
+      );
+      const overall = worstRating(review.ratings.map((r) => r.rating));
+      // Null when the run's comparable cost / token total is unknown; such runs
+      // are excluded from the respective mean rather than folded in as zero.
+      const cost = run.metrics.cost.comparable;
+      const tokens = totalTokens(run.metrics);
+
+      let acc = accs.get(modelId);
+      if (!acc) {
+        acc = {
+          modelName:
+            findModel(run.subject.modelId, run.subject.harnessSlug)?.name ??
+            modelId,
+          total,
+          earned: [],
+          ratings: [],
+          costs: [],
+          tokens: [],
+          latestStartedAt: run.startedAt,
+        };
+        accs.set(modelId, acc);
+      }
+      acc.total = total;
+      acc.earned.push(earned);
+      if (overall) acc.ratings.push(overall);
+      if (cost !== null) acc.costs.push(cost);
+      if (tokens !== null) acc.tokens.push(tokens);
+      if (run.startedAt > acc.latestStartedAt) {
+        acc.latestStartedAt = run.startedAt;
       }
     }
-    return [...best.values()].sort(byScoreThenRatingThenRecency);
+
+    const result: Entry[] = [];
+    for (const [modelId, acc] of accs) {
+      result.push({
+        modelId,
+        modelName: acc.modelName,
+        total: acc.total,
+        highestScore: Math.max(...acc.earned),
+        averageScore: mean(acc.earned) ?? 0,
+        lowestScore: Math.min(...acc.earned),
+        bestRating: bestRating(acc.ratings),
+        worstRating: worstRating(acc.ratings),
+        averageCost: mean(acc.costs),
+        averageTokens: mean(acc.tokens),
+        latestStartedAt: acc.latestStartedAt,
+      });
+    }
+    return result.sort(byAverageScoreThenRatingThenRecency);
   }, [
     summaries,
     localWriteups,
@@ -115,58 +330,91 @@ function LeaderboardContent({
   return (
     <section className={styles.section}>
       <Panel>
-        <div
-          className={styles.board}
-          role="table"
-          aria-label="Model leaderboard"
-        >
-          <div
-            className={`${styles.row} ${styles.head}`}
-            role="row"
-            aria-hidden="true"
-          >
-            <span className={styles.rank}>#</span>
-            <span>MODEL</span>
-            <span className={styles.num}>SCORE</span>
-            <span>RATING</span>
+        <div className={styles.wrap}>
+          <div className={styles.menuAnchor}>
+            <ColumnMenu
+              ref={menuRef}
+              columns={METRIC_COLUMNS}
+              isVisible={isVisible}
+              onToggle={toggle}
+            />
           </div>
-          {entries.map((entry, index) => (
-            <div className={styles.row} role="row" key={entry.modelId}>
-              <span className={styles.rank}>{index + 1}</span>
-              <span className={styles.model}>{entry.modelName}</span>
-              <span className={styles.num}>
-                <span className={styles.scoreValue}>
-                  {entry.earned} / {entry.total}
-                </span>{" "}
-                <span className={styles.scoreUnit}>pts</span>
-              </span>
-              <span>
-                {entry.overall ? (
-                  <RatingBadge rating={entry.overall} />
-                ) : (
-                  <span className={styles.none}>—</span>
-                )}
-              </span>
+          <div
+            className={styles.board}
+            role="table"
+            aria-label="Model leaderboard"
+            style={{ "--ttc-lb-cols": gridTemplate } as CSSProperties}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              menuRef.current?.openAt(event.clientX, event.clientY);
+            }}
+          >
+            <div
+              className={`${styles.row} ${styles.head}`}
+              role="row"
+              aria-hidden="true"
+            >
+              <span className={styles.rank}>#</span>
+              <span>MODEL</span>
+              {visibleColumns.map((column) => (
+                <span
+                  key={column.id}
+                  className={column.numeric ? styles.num : undefined}
+                >
+                  {column.label.toUpperCase()}
+                </span>
+              ))}
             </div>
-          ))}
+            {entries.map((entry, index) => (
+              <div className={styles.row} role="row" key={entry.modelId}>
+                <span className={styles.rank}>{index + 1}</span>
+                <span className={styles.model}>{entry.modelName}</span>
+                {visibleColumns.map((column) => (
+                  <Fragment key={column.id}>{column.render(entry)}</Fragment>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </Panel>
     </section>
   );
 }
 
-// Whether `a` is a better result than `b`: more points first, then a better
-// overall rating, then the more recent run.
-function beats(a: Entry, b: Entry): boolean {
-  return byScoreThenRatingThenRecency(a, b) < 0;
+// The mean of `values`, or null when there are none — so a metric with no
+// contributing run reads as "—" rather than a misleading 0.
+function mean(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
-// Sort comparator: points descending, then better (lower-ranked) overall rating,
-// then more recent run. A null rating sorts worst.
-function byScoreThenRatingThenRecency(a: Entry, b: Entry): number {
-  if (a.earned !== b.earned) return b.earned - a.earned;
-  const ra = a.overall ? RATINGS.indexOf(a.overall) : RATINGS.length;
-  const rb = b.overall ? RATINGS.indexOf(b.overall) : RATINGS.length;
+// A points figure for display: an integer stays whole; a fractional mean shows a
+// single decimal so "14 / 20" and "14.3 / 20" both read cleanly.
+function formatPoints(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+// The best (highest) rating among `ratings`, or null when empty — the mirror of
+// `worstRating`, used for the Best Rating column.
+function bestRating(ratings: readonly Rating[]): Rating | null {
+  let best: Rating | null = null;
+  let bestRank = RATINGS.length;
+  for (const rating of ratings) {
+    const rank = RATINGS.indexOf(rating);
+    if (rank < bestRank) {
+      bestRank = rank;
+      best = rating;
+    }
+  }
+  return best;
+}
+
+// Sort comparator: average points descending, then better (lower-ranked) best
+// overall rating, then the more recent run. A null rating sorts worst.
+function byAverageScoreThenRatingThenRecency(a: Entry, b: Entry): number {
+  if (a.averageScore !== b.averageScore) return b.averageScore - a.averageScore;
+  const ra = a.bestRating ? RATINGS.indexOf(a.bestRating) : RATINGS.length;
+  const rb = b.bestRating ? RATINGS.indexOf(b.bestRating) : RATINGS.length;
   if (ra !== rb) return ra - rb;
-  return b.startedAt.localeCompare(a.startedAt);
+  return b.latestStartedAt.localeCompare(a.latestStartedAt);
 }
