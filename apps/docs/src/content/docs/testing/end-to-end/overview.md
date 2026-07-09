@@ -253,8 +253,8 @@ name:
 packages = ["@test-cabinet/particle-runtime"]
 ```
 
-Only the repo's **shippable packages** may be named — the curated set baked into
-the run image (see
+Only the repo's **shippable packages** may be named — the curated set staged into
+the host package store (see
 [`containers/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md#the-shippable-test-cabinet-packages));
 an unknown name is rejected when the case resolves, before any run is spent.
 
@@ -262,12 +262,12 @@ an unknown name is rejected when the case resolves, before any run is spent.
 
 The harness does **not** edit your `package.json`. You ship a
 [workspace](#workspace) whose `package.json` already declares each named package
-as a `file:` dependency pointing at its baked-in copy under `/opt/tcab-packages`:
+as an **in-repo relative** `file:` dependency under `.tcab/packages/`:
 
 ```json
 {
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:/opt/tcab-packages/@test-cabinet/particle-runtime"
+    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
   }
 }
 ```
@@ -283,14 +283,26 @@ what a seed-time injection step, when it silently failed to run, used to allow).
 Keeping the truth in the shipped `package.json` means the file that runs is the
 file you can see.
 
+### The library is vendored into the repo at seed time
+
+When a `packages`-declaring case is seeded, the requested libraries (and their
+`@test-cabinet` closure) are copied out of the host package store into
+`.tcab/packages/` inside the run repository and committed as part of the initial
+seed commit. Because the `package.json` above points at that in-repo path, the
+dependency resolves **wherever the produced tree lives** — the run container, the
+validation host, and any clone of the [published source
+repo](/quickstarts/publish-a-run/) — with no absolute `/opt`-style path to break
+when the tree moves. This is what makes a produced game both validate and stay
+playable/buildable after release; it also means the model's `.tcab/packages/`
+folder is Test-Cabinet-provided scaffolding, not something for it to touch.
+
 ### What the model sees
 
 From the build's point of view a declared package is **just an installed
-dependency**. It is baked into the run image and already listed in the seeded
-`package.json`, so the model does **not** fetch anything, learn an install
-command, or know any in-container path: it installs its project as usual (its
-`init` runs `npm install`) and imports the library by its bare name, exactly as it
-would any dependency —
+dependency**. It is vendored into the seeded repo and already listed in the seeded
+`package.json`, so the model does **not** fetch anything or learn an install
+command: it installs its project as usual (its `init` runs `npm install`) and
+imports the library by its bare name, exactly as it would any dependency —
 
 ```js
 import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
@@ -305,10 +317,11 @@ describe the seeded art as sprites to render, never as bytes to parse.
 The `file:` dependency is declared in the shipped `package.json`, but the seeded
 repository ships **no lockfile entry for it** (a case ships no lockfile). So a
 `packages` case's [init](#init) command must run **`npm install`** (or the
-equivalent), which resolves the `file:` dependency and writes it into the lockfile
-the model then commits — after which the `[build]` step's `npm ci` reinstalls it
-reproducibly from that committed lockfile against the copy still present in the
-image. An `init` that runs `npm ci` against a frozen, pre-committed lockfile would
+equivalent), which resolves the `file:` dependency against the vendored
+`.tcab/packages/` copy and writes it into the lockfile the model then commits —
+after which the `[build]` step's `npm ci` reinstalls it reproducibly from that
+committed lockfile against the same in-repo copy. An `init` that runs `npm ci`
+against a frozen, pre-committed lockfile would
 instead fail, because the dependency is absent from that lockfile. The convention
 `npm install && npx playwright install chromium` already satisfies this; a case
 that pins a different toolchain must likewise install (resolving fresh) at init

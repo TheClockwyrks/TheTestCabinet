@@ -172,11 +172,14 @@ case prepares its workspace with an init command. End-to-end runs never touch a
 drawing tool, so neither lives in the base — they live in the asset-generation
 images below.
 
-It does, however, bake in one thing every end-to-end run may opt into: the
-**shippable Test Cabinet packages** (below), staged under `/opt/tcab-packages` so
-a case that declares
-[`packages`](../apps/docs/src/content/docs/testing/end-to-end/manifests.md) can
-consume a produced asset that needs a runtime to play it.
+A produced game no longer consumes anything the run image bakes for the
+**shippable Test Cabinet packages** (below): a case that declares
+[`packages`](../apps/docs/src/content/docs/testing/end-to-end/manifests.md) has
+them **vendored into its run repository at seed time**, so the produced tree is
+self-contained. The packages that get vendored come from a host **package store**
+baked into the images that *seed* runs (the driver and publisher); the base run
+image still stages a copy today, but nothing at run time reads it, so it can be
+dropped in a follow-up.
 
 ## The shippable Test Cabinet packages
 
@@ -192,36 +195,38 @@ names the ones it needs with the manifest's
 [`packages`](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)
 key, and the run consumes them as ordinary installed dependencies.
 
-Because a run container must work **offline-first and in lockstep with this
-repo** — and because these packages are private (never npm-published) and must
-match the format the validator and review UI play — the packages are **baked into
-the base image**, exactly like the drawing binaries and the Foray/Lattice
-buildkits, rather than fetched from a registry at run time. They live under
-`/opt/tcab-packages/@test-cabinet/<name>/` (world-readable), each a publish-shaped
+Because these packages are private (never npm-published) and must match the format
+the validator and review UI play, they are **staged from this repo into a host
+package store** rather than fetched from a registry. The store lives at
+`/opt/tcab-packages/@test-cabinet/<name>/` (world-readable) on the images that seed
+runs — the [driver](../deployments/images/driver.Dockerfile) and
+[publisher](../deployments/images/publisher.Dockerfile) — each a publish-shaped
 copy: its `package.json` plus its built `dist/`. Any dependency **between** two
 shippable packages (for example `particle-runtime`'s type-only dependency on
-`run-record`) is rewritten to a `file:` path within `/opt/tcab-packages`, so the
-staged set resolves entirely offline with no npm-published `@test-cabinet/*`
-package required.
+`run-record`) is rewritten to a relative `file:` path within the store, so the
+staged set resolves with no npm-published `@test-cabinet/*` package required.
 
 Staging is done by [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs),
-run in a builder stage of [`base/Dockerfile`](base/Dockerfile) (the build context
+run in a builder stage of the driver and publisher Dockerfiles (the build context
 is the repository root, so the stage can see `packages/`). The script builds the
 npm workspace, then for each package in its **shippable list** copies the package's
 `package.json` and the files its `files` field publishes into
 `/opt/tcab-packages/@test-cabinet/<name>/`, pulling in and rewriting transitive
-`@test-cabinet/*` dependencies. The final base stage `COPY --from`s that tree in.
+`@test-cabinet/*` dependencies. The runtime stage `COPY --from`s that tree in.
 
 **How a case uses them, end to end.** A case declares
 `packages = ["@test-cabinet/particle-runtime"]` **and** ships a workspace whose
-`package.json` already depends on it via the baked-in copy:
-`"@test-cabinet/particle-runtime": "file:/opt/tcab-packages/@test-cabinet/particle-runtime"`.
+`package.json` depends on it via an in-repo relative path:
+`"@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"`.
 The harness does not modify that `package.json` — it only validates at resolution
-that the shipped file declares each declared package via exactly this `file:` spec
-— so the seeded workspace is ready to `npm install` and the model imports the
-library like any other dependency (see
+that the shipped file declares each declared package via exactly this `file:` spec.
+At seed time the core copies the declared packages (and their `@test-cabinet`
+closure) out of the store into `.tcab/packages/` inside the run repo and commits
+them, so the seeded workspace is ready to `npm install` and the relative `file:`
+dependency resolves wherever the produced tree later lives — the run container, the
+validation host, or a clone of the published repo — with no absolute path to break.
+The model imports the library like any other dependency (see
 [Packages](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)).
-The `/opt` path lives in the case's `package.json`, not in anything the model types.
 
 **The lockstep rule** is the same one the baked binaries carry: the staged
 package format must match what `crates/core` and the review UI expect, so **build

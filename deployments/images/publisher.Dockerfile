@@ -66,6 +66,20 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release -p tcab-publisher \
     && cp /src/target/release/tcab-publisher /tcab-publisher
 
+# ── Package store stage ───────────────────────────────────────────────────────
+# The host package store a `packages`-declaring case's runtime libraries are
+# vendored from at seed time (crates/core `TCAB_PACKAGES_DIR`). A produced tree the
+# publisher pushes already carries the vendored `.tcab/packages/` from seeding, so
+# the publisher does not itself vendor; the store is baked for parity with the
+# driver image and to keep the vendoring source available should a re-publish ever
+# need it. Staged exactly as the base and driver images do.
+FROM docker.io/library/node:24-bookworm-slim AS tcab-packages
+WORKDIR /repo
+COPY . .
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci \
+    && node scripts/stage-tcab-packages.mjs /opt/tcab-packages
+
 # ── Runtime stage ────────────────────────────────────────────────────────────
 # Node base so `wrangler` (installed globally below) can run; the publisher itself
 # is a static-ish Rust binary, but the release path shells out to the Node-based
@@ -99,6 +113,11 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/* /root/.npm
 
 COPY --from=build /tcab-publisher /usr/local/bin/tcab-publisher
+
+# The host package store (see the package-store stage above). World-readable so the
+# unprivileged `node` user below can read it.
+COPY --from=tcab-packages /opt/tcab-packages /opt/tcab-packages
+RUN chmod -R a+rX /opt/tcab-packages
 
 # Run as an unprivileged user: the Kubernetes runtime needs only API access (its
 # ServiceAccount token + the per-publish-job token), never host privileges. The Node

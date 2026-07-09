@@ -24,13 +24,33 @@ use crate::execution::{RepoSeeder, SeedRequest, SeededRepo};
 pub struct FsRepoSeeder {
     /// The directory new run repositories are created under.
     base_dir: PathBuf,
+    /// The host package store a `packages`-declaring case's runtime libraries are
+    /// vendored out of (see [`crate::test_case::TCAB_PACKAGES_DIR`]). Baked into
+    /// the images that seed runs; overridable via `TCAB_PACKAGE_STORE` for a local
+    /// checkout that has staged the packages elsewhere.
+    package_store: PathBuf,
 }
 
 impl FsRepoSeeder {
-    /// Create a seeder that places run repositories under `base_dir`.
+    /// Create a seeder that places run repositories under `base_dir`, vendoring
+    /// runtime packages from the default host store ([`package_store_dir`]).
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),
+            package_store: package_store_dir(),
+        }
+    }
+
+    /// Create a seeder that vendors runtime packages from an explicit store path,
+    /// rather than the [default][`package_store_dir`]. For tests and callers that
+    /// stage the packages somewhere other than the baked image path.
+    pub fn with_package_store(
+        base_dir: impl Into<PathBuf>,
+        package_store: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            base_dir: base_dir.into(),
+            package_store: package_store.into(),
         }
     }
 
@@ -47,6 +67,45 @@ impl FsRepoSeeder {
         fs::create_dir_all(&self.base_dir).map_err(seed_err)?;
         let stem = format!("{slug}-{version}-{}", run_timestamp());
         reserve_unique_dir(&self.base_dir, &stem)
+    }
+
+    /// Vendor the case's declared runtime packages — and their transitive
+    /// `@test-cabinet` closure — out of the host package store into
+    /// [`TCAB_VENDOR_DIR`](crate::test_case::TCAB_VENDOR_DIR) inside `repo`.
+    ///
+    /// The staged packages already reference their `@test-cabinet` siblings by a
+    /// relative `file:` path (for example particle-runtime → `file:../run-record`),
+    /// so copying the whole closure into the same directory layout preserves those
+    /// links; the case's `package.json` then resolves the top-level package by the
+    /// in-repo relative path the seeder wrote it to. Nothing outside the repo is
+    /// referenced, so the dependency resolves wherever the tree lives.
+    fn vendor_packages(&self, repo: &Path, packages: &[String]) -> Result<()> {
+        let dest_root = repo.join(crate::test_case::TCAB_VENDOR_DIR);
+        let mut seen = std::collections::HashSet::new();
+        let mut queue: Vec<String> = packages.to_vec();
+        while let Some(name) = queue.pop() {
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            let src = self.package_store.join(&name);
+            if !src.is_dir() {
+                return Err(Error::Seeding(format!(
+                    "runtime package `{name}` not found in the package store at `{}` — \
+                     the driver and publisher images bake it under `{}`; for a local \
+                     checkout, stage the packages there (`node scripts/stage-tcab-packages.mjs`) \
+                     or point `TCAB_PACKAGE_STORE` at a staged copy",
+                    self.package_store.display(),
+                    crate::test_case::TCAB_PACKAGES_DIR,
+                )));
+            }
+            copy_into(&src, &dest_root.join(&name))?;
+            // Follow the package's own `@test-cabinet` dependencies so the whole
+            // closure lands and every relative `file:` link inside it resolves.
+            for dep in tcab_dependencies(&src)? {
+                queue.push(dep);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -93,11 +152,16 @@ impl RepoSeeder for FsRepoSeeder {
         }
 
         // A case that declares `packages` ships a workspace `package.json` that
-        // already depends on each one via its baked-in `file:` spec (validated at
-        // resolution — see `TestCaseCatalog::resolve`), so the copy above seeds a
-        // ready-to-install `package.json`; the seeder does not modify it. The
-        // model's init `npm install` then resolves the dependency from the run
-        // image and writes it into the lockfile it commits.
+        // already depends on each one via an in-repo relative `file:` spec
+        // (validated at resolution — see `TestCaseCatalog::resolve`). Vendor the
+        // requested libraries out of the host package store into the run repo at
+        // that path, so the tree is self-contained: the model's init `npm install`
+        // resolves the dependency locally and writes a lockfile that resolves the
+        // same wherever the produced tree later lives (validation host, a clone of
+        // the published repo). The `package.json` itself is never modified.
+        if !test_case.packages.is_empty() {
+            self.vendor_packages(&repo, &test_case.packages)?;
+        }
 
         // Each spec is seeded to its destination path within the fresh
         // repository. Destinations are validated during resolution to stay inside
@@ -848,6 +912,14 @@ fn init_repo(repo: &Path) -> Result<String> {
     git(repo, &["config", "user.name", "The Test Cabinet"])?;
     git(repo, &["config", "user.email", "runs@test-cabinet.invalid"])?;
     git(repo, &["add", "--all"])?;
+    // Vendored runtime packages live under `.tcab/packages/` and carry `dist/`
+    // subtrees; a case's own `.gitignore` (which ignores `dist/` for its build
+    // output) would otherwise exclude them from `add --all`. Force them in so the
+    // produced repository is self-contained and installable. `--force` on a path
+    // that is not present would error, so guard on the directory existing.
+    if repo.join(crate::test_case::TCAB_VENDOR_DIR).is_dir() {
+        git(repo, &["add", "--force", crate::test_case::TCAB_VENDOR_DIR])?;
+    }
     git(repo, &["commit", "--quiet", "--message", "Seed test case"])?;
     let output = git(repo, &["rev-parse", "HEAD"])?;
     Ok(output.trim().to_string())
@@ -979,6 +1051,45 @@ fn run_timestamp() -> String {
 /// Wrap an I/O error as a seeding error.
 fn seed_err(err: std::io::Error) -> Error {
     Error::Seeding(err.to_string())
+}
+
+/// The host package store to vendor runtime packages from: the `TCAB_PACKAGE_STORE`
+/// override when set, otherwise the baked-image default
+/// ([`TCAB_PACKAGES_DIR`](crate::test_case::TCAB_PACKAGES_DIR)).
+fn package_store_dir() -> PathBuf {
+    std::env::var_os("TCAB_PACKAGE_STORE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(crate::test_case::TCAB_PACKAGES_DIR))
+}
+
+/// The `@test-cabinet/*` dependency names declared in a staged package's
+/// `package.json` — the edges the vendoring closure walk follows. A package with
+/// no such dependencies (or an unreadable/oddly-shaped manifest) contributes no
+/// edges; only names under the `@test-cabinet/` scope are followed, since those
+/// are the siblings that also live in the store.
+fn tcab_dependencies(package_dir: &Path) -> Result<Vec<String>> {
+    let manifest = package_dir.join("package.json");
+    let raw = fs::read_to_string(&manifest).map_err(|err| {
+        seed_ctx(
+            format!("reading vendored package manifest `{}`", manifest.display()),
+            err,
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|err| {
+        Error::Seeding(format!(
+            "vendored package manifest `{}` is not valid JSON: {err}",
+            manifest.display()
+        ))
+    })?;
+    let deps = value
+        .get("dependencies")
+        .and_then(|v| v.as_object())
+        .into_iter()
+        .flat_map(|map| map.keys())
+        .filter(|name| name.starts_with("@test-cabinet/"))
+        .cloned()
+        .collect();
+    Ok(deps)
 }
 
 /// The edge length of a seeded blank voxel preview, matching the mesh renderer's

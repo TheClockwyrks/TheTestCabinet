@@ -216,18 +216,22 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   plays by simulating it live, a voxel rig a game poses — hands the model the
   library that plays it, rather than asking the model to reimplement the runtime
   from a schema. Each entry is a package **name** (not a path), and every name
-  must be one of the **shippable packages** baked into the run image (listed in
+  must be one of the **shippable packages** in the host package store (listed in
   [`containers/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md#the-shippable-test-cabinet-packages));
   an unknown name is rejected at resolution. `packages` is **end-to-end only** —
   an asset-generation case that declares it is rejected. The harness does **not**
   modify your `package.json`: you ship a `workspace` whose `package.json` already
-  depends on each declared package via its baked-in `file:` spec —
-  `"@test-cabinet/particle-runtime": "file:/opt/tcab-packages/@test-cabinet/particle-runtime"`
-  — and `packages` is the declaration resolution validates that file against. A
-  case that declares a package but ships no `package.json`, omits the dependency,
-  or points it anywhere other than the baked-in `file:` path is **rejected at
-  resolution**, so a misconfiguration surfaces at authoring time rather than
-  leaving the model to discover the missing dependency mid-run. The model then
+  depends on each declared package via an **in-repo relative** `file:` spec —
+  `"@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"`
+  — and `packages` is the declaration resolution validates that file against. At
+  seed time the named libraries are **vendored into the run repo** at
+  `.tcab/packages/` (and committed), so that relative path resolves wherever the
+  produced tree later lives — the run container, the validation host, or a clone
+  of the published repo. A case that declares a package but ships no
+  `package.json`, omits the dependency, or points it anywhere other than that
+  in-repo `file:` path is **rejected at resolution**, so a misconfiguration
+  surfaces at authoring time rather than leaving the model to discover the missing
+  dependency mid-run. The model then
   installs and imports it like any other dependency; see
   [Packages](/testing/end-to-end/overview/#packages) for the model-facing contract
   and why a `packages` case's `init` must run `npm install` (not `npm ci`). Each

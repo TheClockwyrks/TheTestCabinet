@@ -4,7 +4,7 @@
   "private": true,
   "description": "Midway — a top-down theme-park management simulation that runs entirely in the browser, whose art, effects, and audio the build produces itself.",
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:/opt/tcab-packages/@test-cabinet/particle-runtime"
+    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
   },
   "devDependencies": {
     "playwright": "1.61.0"

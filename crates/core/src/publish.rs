@@ -369,6 +369,20 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         )
         .await?;
         self.require("git", &["add", "--all"], Some(dir)).await?;
+        // A `packages`-declaring case vendors its runtime libraries under
+        // `.tcab/packages/`, whose `dist/` subtrees the case's own `.gitignore`
+        // excludes; force them in (as seeding's initial commit does) so a published
+        // repo that the publisher re-inits, or whose vendored tree is otherwise
+        // untracked, is still self-contained and installable. Already-tracked files
+        // make this a no-op.
+        if dir.join(crate::test_case::TCAB_VENDOR_DIR).is_dir() {
+            self.require(
+                "git",
+                &["add", "--force", crate::test_case::TCAB_VENDOR_DIR],
+                Some(dir),
+            )
+            .await?;
+        }
         // Redact any leaked API key from the staged tree before it is committed
         // and pushed to the run's public repository: a model that dumped its
         // environment can have written its provider key into a source file.

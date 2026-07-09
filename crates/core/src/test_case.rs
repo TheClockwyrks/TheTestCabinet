@@ -826,12 +826,21 @@ struct ManifestDomain {
 /// The manifest file name expected in every version folder.
 const MANIFEST_FILE: &str = "test-case.toml";
 
-/// The in-container directory the shippable Test Cabinet packages are baked into
-/// (see `containers/README.md`). A case that declares `packages` ships a workspace
-/// `package.json` that depends on each named package via a `file:` dependency
-/// pointing under this directory (see [`tcab_package_file_dep`]), so a game
-/// consumes it as an ordinary installed dependency without knowing the path.
+/// The host **package store** the shippable Test Cabinet packages are baked into
+/// on any image that seeds runs (the driver and publisher images — see
+/// `containers/README.md`). At seed time a `packages`-declaring case's requested
+/// libraries are copied out of this store and **vendored into the run repository**
+/// under [`TCAB_VENDOR_DIR`], so the produced tree is self-contained. This is a
+/// build-host path, never referenced by the produced game.
 pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
+
+/// The in-repository directory a `packages`-declaring case's runtime libraries are
+/// vendored into at seed time (relative to the run root). The case's workspace
+/// `package.json` depends on each via an in-repo relative `file:` path pointing
+/// here (see [`tcab_package_file_dep`]), so the dependency resolves identically
+/// wherever the tree lives — the run container, the validation host, and any clone
+/// of the published repository — with no absolute path to break when it moves.
+pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
 
 /// One of the Test Cabinet's own `@test-cabinet/*` runtime libraries a case may
 /// ship into a run via the manifest's `packages` key.
@@ -849,11 +858,12 @@ pub struct ShippablePackage {
 }
 
 /// The Test Cabinet's own `@test-cabinet/*` runtime libraries an end-to-end case
-/// may request via the manifest's `packages` key. Each is baked into the run
-/// image under [`TCAB_PACKAGES_DIR`], and the case's workspace `package.json`
-/// declares it as a `file:` dependency there, so a built game can `import` it to
-/// play a produced asset (a particle `system.json`, a voxel rig) the same way the
-/// in-repo viewers do.
+/// may request via the manifest's `packages` key. Each is baked into the host
+/// package store ([`TCAB_PACKAGES_DIR`]) and, at seed time, vendored into the run
+/// repository under [`TCAB_VENDOR_DIR`], which the case's workspace `package.json`
+/// declares as an in-repo relative `file:` dependency, so a built game can
+/// `import` it to play a produced asset (a particle `system.json`, a voxel rig)
+/// the same way the in-repo viewers do.
 ///
 /// This list is the allowlist a case's `packages` names are validated against
 /// (see [`is_shippable_package`]), and it also carries each package's UI-only
@@ -904,11 +914,13 @@ pub fn shippable_package_names() -> String {
 }
 
 /// The `package.json` dependency spec that resolves a shippable package to its
-/// baked-in copy — a `file:` path under [`TCAB_PACKAGES_DIR`]. A package-declaring
-/// case's workspace `package.json` must depend on the package via exactly this
-/// spec; resolution validates the shipped file against it.
+/// vendored copy — an in-repo relative `file:` path under [`TCAB_VENDOR_DIR`]. A
+/// package-declaring case's workspace `package.json` must depend on the package
+/// via exactly this spec; resolution validates the shipped file against it, and
+/// the seeder vendors the package to the matching path so `npm install`/`npm ci`
+/// resolve it wherever the produced tree ends up.
 pub(crate) fn tcab_package_file_dep(name: &str) -> String {
-    format!("file:{TCAB_PACKAGES_DIR}/{name}")
+    format!("file:./{TCAB_VENDOR_DIR}/{name}")
 }
 
 /// Read the union of a workspace `package.json`'s `dependencies` and

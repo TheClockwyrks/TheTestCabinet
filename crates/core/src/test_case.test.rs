@@ -1497,7 +1497,7 @@ fn packages_resolve_when_the_workspace_package_json_declares_the_file_dependency
         &manifest,
         &[(
             "workspaces/base/package.json",
-            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:/opt/tcab-packages/@test-cabinet/particle-runtime"}}"#,
+            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:./.tcab/packages/@test-cabinet/particle-runtime"}}"#,
         )],
     );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
@@ -1560,7 +1560,7 @@ fn packages_reject_a_wrong_file_dependency_spec() {
     let msg = format!("{err}");
     assert!(msg.contains("must be"), "got: {err}");
     assert!(
-        msg.contains("file:/opt/tcab-packages/@test-cabinet/particle-runtime"),
+        msg.contains("file:./.tcab/packages/@test-cabinet/particle-runtime"),
         "got: {err}"
     );
 }
