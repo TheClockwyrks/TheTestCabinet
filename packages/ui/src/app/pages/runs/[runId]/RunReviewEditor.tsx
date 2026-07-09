@@ -483,22 +483,58 @@ export function RunReviewEditor({
                 )}
 
                 <div className={styles.checklistControls}>
-                  <select
-                    className={styles.select}
-                    value={draft.status}
-                    onChange={(e) =>
-                      setVerdict(item.id, {
-                        status: e.target.value as VerdictStatus | "",
-                      })
-                    }
+                  {/* Pass/Fail as two radio-like buttons so recording a verdict
+                  is one click. A roving tabindex + arrow keys make the pair a
+                  proper radiogroup; clicking the selected option clears it back
+                  to unset. */}
+                  <div
+                    className={styles.verdictChoice}
+                    role="radiogroup"
+                    aria-label="Verdict"
                   >
-                    <option value="">— pick —</option>
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {VERDICT_META[s].label}
-                      </option>
-                    ))}
-                  </select>
+                    {STATUSES.map((s, i) => {
+                      const selected = draft.status === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          tabIndex={
+                            selected || (!draft.status && i === 0) ? 0 : -1
+                          }
+                          className={`${styles.verdictOption} ${
+                            s === "pass"
+                              ? styles.verdictOptionPass
+                              : styles.verdictOptionFail
+                          }${selected ? ` ${styles.verdictOptionActive}` : ""}`}
+                          onClick={() =>
+                            setVerdict(item.id, { status: selected ? "" : s })
+                          }
+                          onKeyDown={(e) => {
+                            const forward =
+                              e.key === "ArrowRight" || e.key === "ArrowDown";
+                            const back =
+                              e.key === "ArrowLeft" || e.key === "ArrowUp";
+                            if (!forward && !back) return;
+                            e.preventDefault();
+                            const nextIndex =
+                              (i + (forward ? 1 : STATUSES.length - 1)) %
+                              STATUSES.length;
+                            setVerdict(item.id, { status: STATUSES[nextIndex] });
+                            const group = e.currentTarget.parentElement;
+                            (
+                              group?.children[nextIndex] as
+                                | HTMLElement
+                                | undefined
+                            )?.focus();
+                          }}
+                        >
+                          {VERDICT_META[s].label}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <input
                     className={styles.input}
                     value={draft.note}

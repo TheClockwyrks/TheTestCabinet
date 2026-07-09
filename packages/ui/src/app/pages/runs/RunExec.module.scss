@@ -335,9 +335,58 @@
 .checklistControls {
   display: flex;
   gap: t.$space-sm;
+}
 
-  .select {
-    flex: 0 0 10rem;
+// The verdict picker: two radio-like buttons (Pass / Fail) so recording a
+// verdict is a single click. Reuses the shared positive/negative cues — the
+// selected option fills with its cue color, the rest read as outlined choices.
+.verdictChoice {
+  display: flex;
+  flex: 0 0 auto;
+  gap: t.$space-xs;
+}
+
+.verdictOption {
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-text;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+.verdictOptionPass {
+  &:hover,
+  &.verdictOptionActive {
+    border-color: t.$color-positive;
+  }
+
+  &.verdictOptionActive {
+    background: t.$color-positive;
+    color: t.$color-bg;
+  }
+}
+
+.verdictOptionFail {
+  &:hover,
+  &.verdictOptionActive {
+    border-color: t.$color-negative;
+  }
+
+  &.verdictOptionActive {
+    background: t.$color-negative;
+    color: t.$color-bg;
   }
 }
 
