@@ -1,4 +1,5 @@
 slug = "thunderhead-theme"
+experimental = true
 name = "Thunderhead Theme"
 difficulty = "hard"
 tags = ["music", "naval"]

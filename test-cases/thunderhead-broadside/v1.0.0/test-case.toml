@@ -1,4 +1,5 @@
 slug = "thunderhead-broadside"
+experimental = true
 name = "Thunderhead Broadside"
 difficulty = "medium"
 tags = ["sfx", "sample", "naval"]

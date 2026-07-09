@@ -1,4 +1,5 @@
 slug = "aegis-mc"
+experimental = true
 name = "Aegis (Marching Cubes)"
 difficulty = "medium"
 tags = ["mesh", "marching-cubes", "walker"]

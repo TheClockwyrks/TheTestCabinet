@@ -1,4 +1,5 @@
 slug = "caldera-basalt"
+experimental = true
 name = "Caldera Basalt"
 difficulty = "medium"
 tags = ["material", "pbr"]

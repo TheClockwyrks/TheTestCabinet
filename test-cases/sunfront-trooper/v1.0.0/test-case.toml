@@ -1,4 +1,5 @@
 slug = "sunfront-trooper"
+experimental = true
 name = "Sunfront Trooper"
 difficulty = "medium"
 tags = ["skinned", "character"]

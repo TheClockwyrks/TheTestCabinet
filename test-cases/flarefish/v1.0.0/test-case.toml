@@ -1,4 +1,5 @@
 slug = "flarefish"
+experimental = true
 name = "Flarefish"
 difficulty = "medium"
 tags = ["sprite-sheet", "enemy"]

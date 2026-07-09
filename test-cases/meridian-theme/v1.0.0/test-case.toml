@@ -1,4 +1,5 @@
 slug = "meridian-theme"
+experimental = true
 name = "Meridian Theme"
 difficulty = "medium"
 tags = ["music", "naval", "meridian"]

@@ -76,6 +76,14 @@ pub struct Config {
     pub deploy_hook_url: Option<String>,
     /// The coalescing window for bursts of publishes (`TCAB_SNAPSHOT_COALESCE_MS`).
     pub coalesce: Duration,
+    /// Whether **experimental** test-case versions are offered to the UI
+    /// (`TCAB_BACKEND_ALLOW_EXPERIMENTAL`, truthy to enable). Defaults to `false`:
+    /// an experimental version (a case still being iterated on) is hidden from the
+    /// catalog and cannot be resolved, so it is treated as if it does not exist. A
+    /// deployment that wants to run experimental cases — the local k3d cluster —
+    /// sets this truthy; production leaves it unset so experimental cases are never
+    /// offered and thus never run or published.
+    pub allow_experimental: bool,
     /// Optional override for the headless browser used to render references at
     /// ingest (`TCAB_REFERENCE_BROWSER`). Forwarded to the bundled driver as
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
@@ -138,6 +146,8 @@ impl Config {
             .ok()
             .filter(|v| !v.is_empty());
 
+        let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
+
         let artifacts_url =
             nonempty("TCAB_ARTIFACTS_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
 
@@ -157,6 +167,7 @@ impl Config {
             reference_browser,
             artifacts_url,
             arena_url,
+            allow_experimental,
         })
     }
 
@@ -221,4 +232,25 @@ fn require(key: &'static str) -> Result<String, ConfigError> {
 /// Read a non-empty environment variable, returning `None` when unset or empty.
 fn nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
+}
+
+#[cfg(test)]
+#[path = "config.test.rs"]
+mod tests;
+
+/// Read a boolean flag environment variable, treating a **truthy** value as
+/// `true` and anything else — including unset, empty, or an unrecognized value —
+/// as `false`. The accepted truthy spellings (case-insensitive) are `1`, `true`,
+/// `yes`, and `on`, so an operator can enable a flag with whichever idiom their
+/// tooling favors without the flag silently flipping on for an unrelated value.
+fn truthy(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }

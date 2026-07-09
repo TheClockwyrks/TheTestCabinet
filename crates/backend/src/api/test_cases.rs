@@ -20,10 +20,14 @@ use crate::store::{
 use super::AppState;
 
 /// `GET /test-cases` — the catalog of ingested cases and their versions.
+///
+/// Experimental versions are omitted unless the deployment has opted in via
+/// `TCAB_BACKEND_ALLOW_EXPERIMENTAL` (see [`crate::config::Config::allow_experimental`]),
+/// so an experimental case a deployment has not enabled is not offered to the UI.
 pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogResponse>, ApiError> {
     let cases = state
         .store
-        .list_cases()
+        .list_visible_cases(state.config.allow_experimental)
         .map_err(ApiError::from)?
         .into_iter()
         .map(|(slug, versions)| CatalogCase { slug, versions })
@@ -36,7 +40,13 @@ pub async fn versions(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> Result<Json<VersionsResponse>, ApiError> {
-    let versions = state.store.list_versions(&slug).map_err(ApiError::from)?;
+    // Hide experimental versions unless the deployment opted in; a case whose only
+    // versions are experimental then reports none and 404s, exactly as if it were
+    // never ingested.
+    let versions = state
+        .store
+        .list_visible_versions(&slug, state.config.allow_experimental)
+        .map_err(ApiError::from)?;
     if versions.is_empty() {
         return Err(ApiError::not_found(format!("test case `{slug}` not found")));
     }
@@ -54,6 +64,14 @@ pub async fn resolve_version(
         .store
         .read_manifest(&slug, &version)
         .map_err(ApiError::from)?;
+    // An experimental version is treated as if it does not exist unless the
+    // deployment opted in, so it cannot be resolved (and therefore cannot be run)
+    // even by a client that guessed its slug and version.
+    if manifest.experimental && !state.config.allow_experimental {
+        return Err(ApiError::not_found(format!(
+            "test-case version `{slug}@{version}` is not ingested"
+        )));
+    }
     Ok(Json(version_response(&manifest)?))
 }
 

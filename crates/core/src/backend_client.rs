@@ -1450,6 +1450,11 @@ impl VersionBody {
             prompt_path: PathBuf::from("prompt.hbs"),
             max_runtime_seconds: self.max_runtime_seconds,
             test_type: self.test_type,
+            // The wire response omits `experimental` — it is purely a
+            // backend-side visibility filter, and a version the backend served
+            // for a run is one it already decided is visible — so a remotely
+            // resolved version is always treated as non-experimental here.
+            experimental: false,
             build: self.build.map(|build| BuildCommands {
                 install: build.install,
                 build: build.build,

@@ -1,4 +1,5 @@
 slug = "spectra-prism"
+experimental = true
 name = "Spectra Prism"
 difficulty = "medium"
 tags = ["sprite", "enemy", "boss"]

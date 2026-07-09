@@ -101,6 +101,27 @@ fn build_table_sets_the_commands() {
 }
 
 #[test]
+fn experimental_defaults_to_false_when_omitted() {
+    // A manifest that declares no `experimental` key resolves as non-experimental,
+    // so every existing case stays offered by default.
+    let (_dir, catalog) =
+        catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(!version.experimental);
+}
+
+#[test]
+fn experimental_flag_is_carried_onto_the_resolved_version() {
+    // `experimental` is a root key, so it precedes the `[build]` table header. When
+    // declared `true` it is carried verbatim onto the resolved version.
+    let (_dir, catalog) = catalog_with_manifest(
+        "experimental = true\n[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"",
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.experimental);
+}
+
+#[test]
 fn only_asset_generation_releases_no_source_repo() {
     // Code-writing types release a per-run public source repo on publish;
     // asset-generation (whose output is the recorded drawing operations, uploaded
@@ -1568,7 +1589,7 @@ fn packages_are_end_to_end_only() {
         .resolve("sprite", "v1.0.0")
         .expect_err("`packages` on an asset-generation case is rejected");
     assert!(
-        format!("{err}").contains("only valid for an end-to-end case"),
+        format!("{err}").contains("only valid for an end-to-end or full-stack case"),
         "got: {err}"
     );
 }

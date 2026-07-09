@@ -1,4 +1,5 @@
 slug = "skyshard"
+experimental = true
 name = "Skyshard Interceptor"
 difficulty = "easy"
 tags = ["voxel", "ship"]

@@ -172,7 +172,9 @@ through environment variables — its bind address (`TCAB_BACKEND_BIND`), databa
 connection URL (`TCAB_BACKEND_DATABASE_URL`), definition store
 (`TCAB_BACKEND_STORE`), the repository checkout it ingests from
 (`TCAB_BACKEND_CHECKOUT`), the snapshot coalescing window
-(`TCAB_SNAPSHOT_COALESCE_MS`), and its R2 (`TCAB_R2_*`) and deploy-hook
+(`TCAB_SNAPSHOT_COALESCE_MS`), whether experimental (still-being-iterated-on) test
+cases are offered to the UI (`TCAB_BACKEND_ALLOW_EXPERIMENTAL`, truthy to enable;
+default hidden), and its R2 (`TCAB_R2_*`) and deploy-hook
 (`TCAB_SITE_DEPLOY_HOOK_URL`) credentials, and the
 [auth service](/components/auth/overview/) it verifies bearer tokens against
 (`TCAB_BACKEND_AUTH_URL`, default `http://127.0.0.1:8789`). The backend binds to

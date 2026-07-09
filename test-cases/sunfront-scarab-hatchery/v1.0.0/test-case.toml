@@ -1,4 +1,5 @@
 slug = "sunfront-scarab-hatchery"
+experimental = true
 name = "Sunfront Scarab Hatchery"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]

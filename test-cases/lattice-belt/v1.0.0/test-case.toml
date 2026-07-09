@@ -1,4 +1,5 @@
 slug = "lattice-belt"
+experimental = true
 name = "Lattice Transport Belt"
 difficulty = "medium"
 tags = ["sprite-sheet", "belt"]

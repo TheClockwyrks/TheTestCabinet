@@ -1,4 +1,5 @@
 slug = "sunfront-sunhawk"
+experimental = true
 name = "Sunfront Sunhawk"
 difficulty = "hard"
 tags = ["voxel", "rig", "aircraft"]

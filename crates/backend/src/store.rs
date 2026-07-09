@@ -83,6 +83,14 @@ pub struct StoredManifest {
     /// discriminator existed.
     #[serde(default)]
     pub test_type: TestType,
+    /// Whether this version is **experimental** — still being iterated on and not
+    /// yet ready to have runs published for it. Defaulted to `false` for manifests
+    /// stored before the field existed. A deployment that has not opted in via
+    /// `TCAB_BACKEND_ALLOW_EXPERIMENTAL` hides experimental versions from the
+    /// catalog and refuses to resolve them, so they are treated as if they do not
+    /// exist (see [`DefinitionStore::list_visible_cases`]).
+    #[serde(default)]
+    pub experimental: bool,
     /// Build commands. `Some` for an end-to-end case, `None` for any other type
     /// (an asset-generation case has no build). Defaulted for manifests stored
     /// before it became optional; skipped when absent so an asset-generation
@@ -711,6 +719,62 @@ impl DefinitionStore {
         }
         versioned.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
         Ok(versioned.into_iter().map(|(_, name)| name).collect())
+    }
+
+    /// Whether a stored version is flagged **experimental** (its manifest's
+    /// `experimental = true`). A version whose manifest is missing or unreadable is
+    /// reported as non-experimental so a half-written or pre-field version stays
+    /// visible by default rather than vanishing on a transient read error.
+    pub fn is_experimental(&self, slug: &str, version: &str) -> bool {
+        self.read_manifest(slug, version)
+            .map(|manifest| manifest.experimental)
+            .unwrap_or(false)
+    }
+
+    /// Like [`Self::list_cases`], but the **outward-facing** view: when
+    /// `allow_experimental` is false, every experimental version is hidden and a
+    /// case left with no visible versions is dropped entirely, so an experimental
+    /// case is invisible to the UI until it graduates. When `allow_experimental`
+    /// is true this is exactly [`Self::list_cases`] (no per-version manifest read).
+    ///
+    /// This is deliberately separate from [`Self::list_cases`], which ingest's
+    /// reconciliation relies on seeing *every* stored version (experimental
+    /// included) so it can prune what the checkout no longer declares.
+    pub fn list_visible_cases(
+        &self,
+        allow_experimental: bool,
+    ) -> Result<Vec<(String, Vec<String>)>> {
+        if allow_experimental {
+            return self.list_cases();
+        }
+        let cases_root = self.root.join("test-cases");
+        let mut out = Vec::new();
+        for slug in sorted_dir_names(&cases_root)? {
+            let versions = self.list_visible_versions(&slug, allow_experimental)?;
+            if !versions.is_empty() {
+                out.push((slug, versions));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Like [`Self::list_versions`], but hides experimental versions unless
+    /// `allow_experimental` is true. The outward-facing analogue used by the
+    /// per-case versions endpoint so an experimental version is not offered to the
+    /// UI (and a case with only experimental versions reports none, i.e. 404s).
+    pub fn list_visible_versions(
+        &self,
+        slug: &str,
+        allow_experimental: bool,
+    ) -> Result<Vec<String>> {
+        let versions = self.list_versions(slug)?;
+        if allow_experimental {
+            return Ok(versions);
+        }
+        Ok(versions
+            .into_iter()
+            .filter(|version| !self.is_experimental(slug, version))
+            .collect())
     }
 
     /// Path to a version's resolved manifest sidecar.

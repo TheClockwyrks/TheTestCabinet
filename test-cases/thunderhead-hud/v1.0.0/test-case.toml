@@ -1,4 +1,5 @@
 slug = "thunderhead-hud"
+experimental = true
 name = "Thunderhead HUD"
 difficulty = "medium"
 tags = ["ui", "naval"]

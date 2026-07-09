@@ -1,4 +1,5 @@
 slug = "sunfront-reliquary"
+experimental = true
 name = "Sunfront Reliquary"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]

@@ -1,4 +1,5 @@
 slug = "wireworm"
+experimental = true
 # The Test Cabinet test case manifest.
 #
 # Declares, for this exact version, which files are seeded into a run, which

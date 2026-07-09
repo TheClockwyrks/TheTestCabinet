@@ -1,4 +1,5 @@
 slug = "wireworm-corruptor"
+experimental = true
 name = "Wireworm Corruptor"
 difficulty = "medium"
 tags = ["sprite-sheet", "enemy"]

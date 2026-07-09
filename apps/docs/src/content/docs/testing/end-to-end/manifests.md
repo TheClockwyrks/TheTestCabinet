@@ -34,6 +34,7 @@ description = "description.md" # optional site-facing prose (relative path; NOT 
 changelog = "changelog.md"   # REQUIRED per-version changelog entry (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
+experimental = false         # optional; true hides the case from the UI unless the deployment enables experimental cases (default false)
 workspace = "workspaces/base" # optional starter directory; its files seed the run root before the specs
 init = "npm install"         # optional command run in the container after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
@@ -188,6 +189,15 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   never run unbounded. It defaults to `1` (one hour) when omitted and must be a
   positive number. This is the per-case default; a run can override it for a
   single invocation (for example `tcab run --max-runtime <hours>`).
+- `experimental` is an optional boolean, defaulting to `false`, that marks a case
+  as **still being iterated on** — not yet ready to publish runs for. It applies
+  to every test type. A deployment only offers experimental cases to the UI when
+  it opts in with the `TCAB_BACKEND_ALLOW_EXPERIMENTAL` environment variable
+  (truthy); otherwise an experimental case is **hidden from the catalog and
+  refuses to resolve**, so it is treated as if it does not exist — and therefore
+  is never run or published. The local k3d cluster (`make -C deployments/local
+  local-up`) enables experimental cases; production leaves the variable unset.
+  The flag is purely a visibility filter and has no effect on how a run executes.
 - `workspace` is an optional path to a **starter directory** whose contents are
   seeded into the root of the run before the specs (see
   [Workspace](/testing/end-to-end/overview/#workspace)). A variant may override

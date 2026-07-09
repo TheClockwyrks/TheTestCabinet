@@ -1,4 +1,5 @@
 slug = "thunderhead-flak"
+experimental = true
 name = "Thunderhead Flak Burst"
 difficulty = "medium"
 tags = ["vfx", "3d"]

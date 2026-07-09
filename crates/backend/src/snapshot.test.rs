@@ -120,6 +120,7 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
+        experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),

@@ -27,6 +27,14 @@ spec:
           env:
             - name: TCAB_ENV
               value: "local"
+            # Offer experimental (still-being-iterated-on) test cases to the UI.
+            # This is the local development cluster brought up by the Makefile, so
+            # a case flagged `experimental = true` is visible and runnable here. No
+            # other overlay sets this — production and the bundled Tauri (`app`)
+            # overlay leave it unset, so experimental cases stay hidden there and
+            # are never run or published.
+            - name: TCAB_BACKEND_ALLOW_EXPERIMENTAL
+              value: "true"
             # Export to the in-cluster Grafana LGTM stack (the observability
             # component). In-namespace Service DNS; the same value in every overlay.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

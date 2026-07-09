@@ -12,7 +12,8 @@ field and documents **only the differences**.
 
 **Read [End to End → Manifests](/testing/end-to-end/manifests/) first.** Every
 field it describes — `slug`, `name`, `difficulty`, `tags`, `summary`,
-`description`, `changelog`, `prompt`, `max_runtime_hours`, `workspace`, `init`,
+`description`, `changelog`, `prompt`, `max_runtime_hours`, `experimental`,
+`workspace`, `init`,
 the **required** `[build]` table, `variants`, and the `[[spec]]`,
 `[[reference]]`, `[[proof]]`, `[[check]]`, `[[review_item]]`, and `[[domain]]`
 tables — works the same on a full-stack case and is not restated here.

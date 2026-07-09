@@ -1,4 +1,5 @@
 slug = "ironward"
+experimental = true
 name = "Ironward Siege Tank"
 difficulty = "medium"
 tags = ["voxel", "rig", "vehicle"]

@@ -1,4 +1,5 @@
 slug = "glimmerfin"
+experimental = true
 name = "Glimmerfin"
 difficulty = "medium"
 tags = ["sprite-sheet", "player"]

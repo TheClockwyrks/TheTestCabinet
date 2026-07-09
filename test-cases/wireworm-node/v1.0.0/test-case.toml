@@ -1,4 +1,5 @@
 slug = "wireworm-node"
+experimental = true
 name = "Wireworm Node"
 difficulty = "medium"
 tags = ["sprite-sheet", "prop"]

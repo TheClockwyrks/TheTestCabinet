@@ -75,6 +75,16 @@ struct Manifest {
     /// required and which are forbidden.
     #[serde(default, rename = "type")]
     test_type: TestType,
+    /// Whether this version is **experimental** — still being iterated on and not
+    /// yet ready to have runs published for it. Applies to every test type.
+    /// Defaults to `false` so a case is treated as ready unless it opts in.
+    /// The backend hides experimental versions from every outward-facing surface
+    /// (the console catalog and version resolution) unless the deployment opts in
+    /// via `TCAB_BACKEND_ALLOW_EXPERIMENTAL`, so on a deployment that has not
+    /// enabled them an experimental case is invisible — and thus never run or
+    /// published. Carried onto the resolved [`TestCaseVersion::experimental`].
+    #[serde(default)]
+    experimental: bool,
     /// Within an asset-generation case, whether the model draws a single sprite or
     /// a sprite sheet (a grid of animation frames). Defaults to
     /// [`AssetKind::Sprite`] so existing single-sprite manifests — none of which
@@ -2447,6 +2457,14 @@ pub struct TestCaseVersion {
     /// run record branch on.
     #[serde(default)]
     pub test_type: TestType,
+    /// Whether this version is **experimental** — still being iterated on and not
+    /// yet ready to have runs published for it. Carried verbatim from the
+    /// manifest's `experimental` flag; defaults to `false`. Outward-facing backend
+    /// surfaces hide experimental versions unless the deployment opts in (see
+    /// [`Manifest`]'s `experimental` documentation), so the flag acts purely as a
+    /// visibility filter and has no effect on how a run executes.
+    #[serde(default)]
+    pub experimental: bool,
     /// The commands the validator runs to build the produced implementation into
     /// a served static site (from the manifest's `[build]` table). `Some` for an
     /// end-to-end case, `None` for any other type. Kept as a top-level optional
@@ -4859,6 +4877,7 @@ impl TestCaseCatalog {
             prompt_path,
             max_runtime_seconds: crate::runtime_hours_to_seconds(manifest.max_runtime_hours),
             test_type,
+            experimental: manifest.experimental,
             build,
             canvas,
             tool,

@@ -1,4 +1,5 @@
 slug = "aegis-sn-anim"
+experimental = true
 name = "Aegis (Surface Nets, Animated)"
 difficulty = "hard"
 tags = ["mesh", "surface-nets", "rig", "walker"]

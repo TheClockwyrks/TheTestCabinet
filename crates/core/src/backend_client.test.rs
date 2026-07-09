@@ -29,6 +29,7 @@ impl BackendClient for StubBackend {
         Ok(TestCaseVersion {
             slug: slug.to_string(),
             version: version.to_string(),
+            experimental: false,
             name: "Pong".to_string(),
             difficulty: "easy".to_string(),
             tags: vec![],

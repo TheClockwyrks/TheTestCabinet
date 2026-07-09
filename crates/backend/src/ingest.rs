@@ -437,6 +437,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         changelog,
         max_runtime_seconds: resolved.max_runtime_seconds,
         test_type: resolved.test_type,
+        experimental: resolved.experimental,
         build: resolved.build.as_ref().map(|build| StoredBuild {
             install: build.install.clone(),
             build: build.build.clone(),

@@ -1,4 +1,5 @@
 slug = "siege-rifleman"
+experimental = true
 name = "Siege Rifleman"
 difficulty = "hard"
 tags = ["asset-generation", "3d", "blender", "skinned", "character"]

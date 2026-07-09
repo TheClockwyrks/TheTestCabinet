@@ -17,6 +17,7 @@ asset-generation case is human-reviewed against its brief, so it declares **no
 slug = "imp-sprite"          # stable identity (required); the store key + recorded in every run
 name = "Imp Sprite"          # human-readable display name (site-facing)
 difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
+experimental = false         # optional; true hides the case from the UI unless the deployment enables experimental cases (default false)
 tags = ["asset-generation", "2d", "sprite"] # classification tags (site-facing, required)
 summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)

@@ -1,4 +1,5 @@
 slug = "geode-theme"
+experimental = true
 name = "Geode Theme"
 difficulty = "medium"
 tags = ["music", "naval", "geode"]

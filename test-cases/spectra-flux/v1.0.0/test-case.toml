@@ -1,4 +1,5 @@
 slug = "spectra-flux"
+experimental = true
 name = "Spectra Flux"
 difficulty = "medium"
 tags = ["sprite", "enemy"]

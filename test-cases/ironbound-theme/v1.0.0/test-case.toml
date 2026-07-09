@@ -1,4 +1,5 @@
 slug = "ironbound-theme"
+experimental = true
 name = "Ironbound Theme"
 difficulty = "medium"
 tags = ["music", "naval", "ironbound"]

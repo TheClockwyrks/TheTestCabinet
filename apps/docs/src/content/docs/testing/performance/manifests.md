@@ -15,6 +15,7 @@ rather than pairing implementations against each other.
 slug = "route-finder"        # stable identity (required); the store key + recorded in every run
 name = "Route Finder"        # human-readable display name (site-facing)
 difficulty = "hard"          # relative difficulty: easy | medium | hard (required)
+experimental = false         # optional; true hides the case from the UI unless the deployment enables experimental cases (default false)
 tags = ["performance", "algorithms"] # classification tags (site-facing, required)
 summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
