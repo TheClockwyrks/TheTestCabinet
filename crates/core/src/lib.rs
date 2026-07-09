@@ -138,7 +138,7 @@ pub use test_case::{
 };
 pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
-    CheckResult, ContainerBuild, ProofResult, StepResult, ValidationSummary, Validator,
+    CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
 };
 pub use validator::{AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator};
 
@@ -735,79 +735,9 @@ where
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
-        container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
-        self.validator.validate(
-            test_case,
-            variant,
-            artifacts,
-            references,
-            proofs,
-            container_build,
-        )
-    }
-
-    /// Run a build-based case's `[build]` commands inside the still-running run
-    /// container and capture their outcome for the validator.
-    ///
-    /// Only an end-to-end or full-stack case builds a program the validator
-    /// load-checks; every other type produces a single artifact scored directly,
-    /// so this returns `None` for them (and, defensively, for a build-based case
-    /// that declares no `[build]` table). Install runs first; a failure there
-    /// leaves `build` unreached (`None`), matching the host validator's ordering.
-    /// The commands run through `sh -c` in the container's `/work` working
-    /// directory — the same shell form the host validator used, but where the run
-    /// image's baked packages and the produced lockfile resolve. See
-    /// [`ContainerBuild`].
-    async fn build_in_container(
-        &self,
-        test_case: &TestCaseVersion,
-        handle: &ContainerHandle,
-    ) -> Option<ContainerBuild> {
-        if !matches!(
-            test_case.test_type,
-            TestType::EndToEnd | TestType::FullStack
-        ) {
-            return None;
-        }
-        let commands = test_case.build.as_ref()?;
-        let install = self.run_build_step(handle, &commands.install).await;
-        if !install.succeeded {
-            return Some(ContainerBuild {
-                install,
-                build: None,
-            });
-        }
-        let build = self.run_build_step(handle, &commands.build).await;
-        Some(ContainerBuild {
-            install,
-            build: Some(build),
-        })
-    }
-
-    /// Run one build command in the container's `/work` via `sh -c`, mapping the
-    /// exec result to a [`StepResult`]. A non-zero exit or a transport failure
-    /// both record a failed step whose detail carries a tail of the output, so
-    /// the validator reports the same failed-load signal the host path did.
-    async fn run_build_step(&self, handle: &ContainerHandle, command: &str) -> StepResult {
-        let argv = ["sh".to_string(), "-c".to_string(), command.to_string()];
-        match self.runtime.exec(handle, &argv).await {
-            Ok(output) if output.exit_code == 0 => StepResult {
-                command: command.to_string(),
-                succeeded: true,
-                detail: None,
-            },
-            Ok(output) => StepResult {
-                command: command.to_string(),
-                succeeded: false,
-                detail: Some(format!("`{command}` failed: {}", output_tail(&output))),
-            },
-            Err(err) => StepResult {
-                command: command.to_string(),
-                succeeded: false,
-                detail: Some(format!("failed to run `{command}` in the container: {err}")),
-            },
-        }
+        self.validator
+            .validate(test_case, variant, artifacts, references, proofs)
     }
 
     /// Serialize the run record as camelCase JSON and store it, alongside a copy
@@ -977,19 +907,6 @@ where
             )
             .await?;
 
-        // Build the produced program inside the still-running container, before
-        // teardown, for a case whose validator load-checks a build (end-to-end or
-        // full-stack). This is where the run image's baked runtime packages
-        // (`/opt/tcab-packages`, referenced by a `packages`-declaring case's
-        // `file:` dependency) and the `/work` project root the produced
-        // `package-lock.json` was resolved against both exist; the host, after
-        // teardown, has neither, so building there would fail such a case's
-        // `npm ci` even though the game is sound. Its wall-clock is validation,
-        // not the model's run, so it is excluded from the measured duration below.
-        let build_started = Instant::now();
-        let container_build = self.build_in_container(test_case, &handle).await;
-        let build_elapsed = build_started.elapsed();
-
         // Collect the working tree, then always tear the container down. The
         // teardown is bracketed by system events so the feed shows the run
         // wrapping up rather than going quiet once the harness session ends.
@@ -1013,7 +930,6 @@ where
         let run_time_seconds = timer
             .elapsed()
             .saturating_sub(scheduling_wait)
-            .saturating_sub(build_elapsed)
             .as_secs_f64();
         // A harness that reports its own exact cost needs no OpenRouter lookup;
         // its native model ID may not even appear in OpenRouter's catalog.
@@ -1042,14 +958,7 @@ where
         // The proof-of-implementation artifacts requested for this variant; the
         // validator records whether each turned up in the produced tree.
         let proofs = test_case.proofs_for(&variant);
-        let validation = self.validate(
-            test_case,
-            &variant,
-            &artifacts,
-            &references,
-            &proofs,
-            container_build.as_ref(),
-        )?;
+        let validation = self.validate(test_case, &variant, &artifacts, &references, &proofs)?;
         let finished_at = OffsetDateTime::now_utc();
 
         // A clean harness exit that produced nothing evaluable is a model
@@ -1098,20 +1007,6 @@ where
 /// The terminal state for a run whose harness exited cleanly, given the test type
 /// and its validation summary.
 ///
-/// The last few lines of a container build command's output, for a failed
-/// [`StepResult`]'s detail. Prefers stderr — where `npm` and other build tools
-/// write errors — and falls back to stdout when stderr is empty. Mirrors the
-/// host validator's `run_command` tail (last five lines, most-recent first,
-/// joined by `; `).
-fn output_tail(output: &ExecOutput) -> String {
-    let source = if output.stderr.trim().is_empty() {
-        &output.stdout
-    } else {
-        &output.stderr
-    };
-    source.lines().rev().take(5).collect::<Vec<_>>().join("; ")
-}
-
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
 /// (end-to-end, full-stack, asset-generation) an output that never loaded leaves
 /// nothing to review — the model's output is broken — so the run is

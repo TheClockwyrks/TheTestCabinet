@@ -50,13 +50,8 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
     // directory (nothing is bind-mounted into a runtime VM), so the screenshot
     // scratch can live in the system temp directory.
     let validator = DispatchValidator::new(std::env::temp_dir().join("tcab").join("screenshots"));
-    // `tcab validate` re-checks an already-produced tree on the host, with no run
-    // container in play, so it runs no in-container build — the build validator
-    // falls back to building on the host (which resolves for a case without the
-    // `packages` mechanism; a `packages`-declaring case must be validated through
-    // a full `tcab run`, where the build runs in the container).
     let summary = validator
-        .validate(&test_case, variant, &artifacts, &references, &proofs, None)
+        .validate(&test_case, variant, &artifacts, &references, &proofs)
         .context("validation failed")?;
 
     println!("  loaded: {}", summary.loaded);

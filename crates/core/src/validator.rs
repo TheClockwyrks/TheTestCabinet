@@ -25,9 +25,9 @@ use crate::test_case::{
     TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
-    AssetFrameResult, AssetGenResult, AudioGenResult, CheckResult, ContainerBuild,
-    MaterialGenResult, MaterialMapResult, ParticleGenResult, ProofResult, StepResult,
-    UiElementResult, UiGenResult, ValidationSummary, Validator, VoxelGenResult, VoxelPartResult,
+    AssetFrameResult, AssetGenResult, AudioGenResult, CheckResult, MaterialGenResult,
+    MaterialMapResult, ParticleGenResult, ProofResult, StepResult, UiElementResult, UiGenResult,
+    ValidationSummary, Validator, VoxelGenResult, VoxelPartResult,
 };
 
 /// Candidate output directories a static build may produce.
@@ -61,7 +61,6 @@ impl Validator for BuildValidator {
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
-        container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
 
@@ -95,43 +94,12 @@ impl Validator for BuildValidator {
         // The two required build steps run in order and are each reported in the
         // summary. Install runs first; if it fails the build step is never
         // reached, so it stays `None`.
-        //
-        // The build itself runs *inside the run container* (see
-        // [`ContainerBuild`]) — where the run image's baked runtime packages
-        // (`/opt/tcab-packages`, referenced by a `packages`-declaring case's
-        // `file:` dependency) and the `/work` project root the produced lockfile
-        // was resolved against both exist. The host, after teardown, has neither,
-        // so re-running `npm ci` here would fail for any such case even though the
-        // produced game builds cleanly. This validator therefore uses the outcome
-        // the engine already captured in the container. A direct invocation that
-        // supplies none (a unit test) falls back to building on the host, which
-        // still works for a case without the packages mechanism.
-        let (install, build) = match container_build {
-            Some(built) => (built.install.clone(), built.build.clone()),
-            None => {
-                let install = run_step(repo, &build_commands.install);
-                if install.succeeded {
-                    let build = run_step(repo, &build_commands.build);
-                    (install, Some(build))
-                } else {
-                    (install, None)
-                }
-            }
-        };
+        let install = run_step(repo, &build_commands.install);
         if !install.succeeded {
             let detail = install.detail.clone().unwrap_or_default();
             return Ok(failed_load(&detail, Some(install), None, proof_results));
         }
-        // Install succeeded, so the build step was reached and its outcome is
-        // present; guard the invariant rather than unwrapping.
-        let Some(build) = build else {
-            return Ok(failed_load(
-                "install succeeded but the build step did not run",
-                Some(install),
-                None,
-                proof_results,
-            ));
-        };
+        let build = run_step(repo, &build_commands.build);
         if !build.succeeded {
             let detail = build.detail.clone().unwrap_or_default();
             return Ok(failed_load(
@@ -360,7 +328,6 @@ impl Validator for AssetGenValidator {
         // browser-rendered baselines other types score against — are unused here.
         _references: &[RenderedReference],
         proofs: &[ProofFile],
-        _container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
         // A case may still declare proofs; record their presence as for any type.
@@ -590,7 +557,6 @@ impl Validator for VoxelGenValidator {
         // baselines other types score against — are unused here.
         _references: &[RenderedReference],
         proofs: &[ProofFile],
-        _container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
         let proof_results = proof_results(proofs, repo);
@@ -1230,7 +1196,6 @@ impl Validator for PaintGenValidator {
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],
-        _container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
         let proof_results = proof_results(proofs, repo);
@@ -1319,7 +1284,6 @@ impl Validator for ParticleGenValidator {
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],
-        _container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
         let proof_results = proof_results(proofs, repo);
@@ -1372,7 +1336,6 @@ impl Validator for AudioGenValidator {
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],
-        _container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
         let proof_results = proof_results(proofs, repo);
@@ -1959,7 +1922,6 @@ impl Validator for BlenderGenValidator {
         // A Blender character run has no target model, so references are unused here.
         _references: &[RenderedReference],
         proofs: &[ProofFile],
-        _container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
         let proof_results = proof_results(proofs, repo);
@@ -2292,23 +2254,14 @@ impl Validator for DispatchValidator {
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
-        container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
-        // The container build outcome is forwarded to every arm; only the build
-        // validator consumes it (the others ignore it), so a misroute never
-        // silently drops it.
         match test_case.test_type {
             // A full-stack run builds a program just like an end-to-end run — it
             // additionally produces its own assets, but those are build inputs, not a
             // separately-scored output — so it routes to the same build validator.
-            TestType::EndToEnd | TestType::FullStack => self.build.validate(
-                test_case,
-                variant,
-                artifacts,
-                references,
-                proofs,
-                container_build,
-            ),
+            TestType::EndToEnd | TestType::FullStack => self
+                .build
+                .validate(test_case, variant, artifacts, references, proofs),
             // Each asset kind routes to the validator for the data it emits: the
             // voxel/mesh/skinned kinds decode `.glb` + `rig.json`; the painted
             // (`ui`/`material`) kinds decode PNG(s) + `ui.json`/`material.json`; the
@@ -2317,77 +2270,31 @@ impl Validator for DispatchValidator {
             TestType::AssetGeneration => {
                 let kind = test_case.asset_kind;
                 if kind.is_voxel() {
-                    self.voxel.validate(
-                        test_case,
-                        variant,
-                        artifacts,
-                        references,
-                        proofs,
-                        container_build,
-                    )
+                    self.voxel
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else if kind.is_paint() {
-                    self.paint.validate(
-                        test_case,
-                        variant,
-                        artifacts,
-                        references,
-                        proofs,
-                        container_build,
-                    )
+                    self.paint
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else if kind.is_particle() {
-                    self.particle.validate(
-                        test_case,
-                        variant,
-                        artifacts,
-                        references,
-                        proofs,
-                        container_build,
-                    )
+                    self.particle
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else if kind.is_audio() {
-                    self.audio.validate(
-                        test_case,
-                        variant,
-                        artifacts,
-                        references,
-                        proofs,
-                        container_build,
-                    )
+                    self.audio
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else if kind.is_blender() {
-                    self.blender.validate(
-                        test_case,
-                        variant,
-                        artifacts,
-                        references,
-                        proofs,
-                        container_build,
-                    )
+                    self.blender
+                        .validate(test_case, variant, artifacts, references, proofs)
                 } else {
-                    self.asset.validate(
-                        test_case,
-                        variant,
-                        artifacts,
-                        references,
-                        proofs,
-                        container_build,
-                    )
+                    self.asset
+                        .validate(test_case, variant, artifacts, references, proofs)
                 }
             }
-            TestType::Adversarial => self.adversarial.validate(
-                test_case,
-                variant,
-                artifacts,
-                references,
-                proofs,
-                container_build,
-            ),
-            TestType::Performance => self.performance.validate(
-                test_case,
-                variant,
-                artifacts,
-                references,
-                proofs,
-                container_build,
-            ),
+            TestType::Adversarial => self
+                .adversarial
+                .validate(test_case, variant, artifacts, references, proofs),
+            TestType::Performance => self
+                .performance
+                .validate(test_case, variant, artifacts, references, proofs),
         }
     }
 }

@@ -205,7 +205,6 @@ fn a_correct_engine_scores_correct_with_a_fuel_number() {
             },
             &[],
             &[],
-            None,
         )
         .expect("validate");
 
@@ -254,7 +253,6 @@ fn a_wrong_answer_engine_fails_the_correctness_gate() {
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
-            None,
         )
         .expect("validate");
 
@@ -305,7 +303,6 @@ fn a_missing_engine_module_scores_incorrect() {
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
-            None,
         )
         .expect("validate");
 
