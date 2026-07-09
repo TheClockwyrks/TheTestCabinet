@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pagination, Panel } from "@test-cabinet/ui";
 import { RunLog, sortStateToQuery, useRunTable } from "../../../components/RunLog";
+import {
+  usePagedSearchParams,
+  useResetPageOnChange,
+} from "../../../components/usePagedSearchParams";
 import type { ModelSummary } from "../../../data/models";
 import { useGalleryData } from "../../../data/galleryContext";
 import type { RunQueryResult } from "../../../data/runQuery";
@@ -26,7 +30,7 @@ export function ModelRunsPage() {
 function RunsContent({ model }: { model: ModelSummary }) {
   const { producedSummaries, localIds, writeups, queryRunSummaries } =
     useGalleryData();
-  const [page, setPage] = useState(0);
+  const { page, setPage } = usePagedSearchParams();
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -92,9 +96,7 @@ function RunsContent({ model }: { model: ModelSummary }) {
 
   // Navigating to a different model swaps the whole run set, and re-sorting
   // reshapes it, so jump back to the first page in either case.
-  useEffect(() => {
-    setPage(0);
-  }, [modelId, sort, dir]);
+  useResetPageOnChange(setPage, `${modelId}:${sort}:${dir}`);
 
   const pageCount = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
@@ -102,8 +104,8 @@ function RunsContent({ model }: { model: ModelSummary }) {
   // If the result set shrank under the current page, fall back onto the last real
   // page so the list can't strand on an out-of-range, empty window.
   useEffect(() => {
-    if (!loading && page > pageCount - 1) setPage(pageCount - 1);
-  }, [loading, page, pageCount]);
+    if (!loading && page > pageCount - 1) setPage(pageCount - 1, { replace: true });
+  }, [loading, page, pageCount, setPage]);
 
   const hasContent = displayed.length > 0;
 

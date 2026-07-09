@@ -5,7 +5,10 @@ import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
-import { useDebouncedValue } from "../../components/useDebouncedValue";
+import {
+  usePagedSearchParams,
+  useResetPageOnChange,
+} from "../../components/usePagedSearchParams";
 import { useFindModel } from "../../data/useModels";
 import type { ModelSummary } from "../../data/models";
 import { useGalleryData, type InProgressRun } from "../../data/galleryContext";
@@ -32,16 +35,15 @@ export function RunsPage() {
     useGalleryData();
   const { inProgress } = useRunsRuntime();
   const findModel = useFindModel();
-  const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query, 250);
-  const [page, setPage] = useState(0);
+  const { page, setPage, query, setQuery, committedQuery } =
+    usePagedSearchParams();
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
   });
   const [loading, setLoading] = useState(true);
 
-  const needle = debouncedQuery.trim().toLowerCase();
+  const needle = committedQuery.trim().toLowerCase();
 
   // Produced (local) runs matching the search, pinned to the first page ahead of
   // the queried published window (the backend's numbered listing never returns
@@ -108,11 +110,10 @@ export function RunsPage() {
     };
   }, [queryRunSummaries, page, needle, sort, dir]);
 
-  // A new search — or a re-sort of the whole history — reshapes the result set, so
-  // jump back to the first page.
-  useEffect(() => {
-    setPage(0);
-  }, [needle, sort, dir]);
+  // A new search resets to the first page inside the paged-params hook (it drops
+  // the page param as it commits the filter); a re-sort of the whole history
+  // reshapes the result set the same way, so jump back to the first page here.
+  useResetPageOnChange(setPage, `${sort}:${dir}`);
 
   const pageCount = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
@@ -121,8 +122,8 @@ export function RunsPage() {
   // requested offset), fall back onto the last real page so the list can't strand
   // on an out-of-range, empty window.
   useEffect(() => {
-    if (!loading && page > pageCount - 1) setPage(pageCount - 1);
-  }, [loading, page, pageCount]);
+    if (!loading && page > pageCount - 1) setPage(pageCount - 1, { replace: true });
+  }, [loading, page, pageCount, setPage]);
 
   // In-progress runs lead the list, pinned to the first page so they don't repeat.
   const showActive = activeRuns.length > 0 && current === 0;

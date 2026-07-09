@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Pagination, Panel } from "@test-cabinet/ui";
 import { RunLog, useRunTable } from "../../../components/RunLog";
+import {
+  usePagedSearchParams,
+  useResetPageOnChange,
+} from "../../../components/usePagedSearchParams";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
@@ -35,7 +39,7 @@ function RunsContent({
   const { summaries, localIds, localWriteups, loading } = useCaseRunSummaries(
     testCase.slug,
   );
-  const [page, setPage] = useState(0);
+  const { page, setPage } = usePagedSearchParams();
 
   // Runs of this case and variant, newest first.
   const variantRuns = useMemo(
@@ -61,9 +65,10 @@ function RunsContent({
 
   // Switching variants swaps the whole run set, and re-sorting reshapes it, so
   // jump back to the first page in either case.
-  useEffect(() => {
-    setPage(0);
-  }, [variant.slug, table.controls.sort]);
+  useResetPageOnChange(
+    setPage,
+    `${variant.slug}:${JSON.stringify(table.controls.sort)}`,
+  );
 
   if (variantRuns.length === 0) {
     return (
