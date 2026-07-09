@@ -26,6 +26,7 @@ fn claim() -> ClaimedJob {
             orchestrator: Some("one-shot".to_string()),
             max_runtime_seconds: Some(600),
             auth_mode: None,
+            retry_count: None,
         },
     }
 }

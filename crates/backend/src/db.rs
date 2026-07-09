@@ -1263,6 +1263,9 @@ pub struct NewJob {
     pub model_id: String,
     /// The per-job bearer token the driver authenticates its streaming with.
     pub job_token: String,
+    /// Which attempt this job is: `0` for a console launch, `n > 0` for the backend's
+    /// `n`th automatic retry after a terminal infrastructure/catastrophic failure.
+    pub attempt: i32,
     /// RFC 3339 of enqueue (the claim-ordering key, also the initial update time).
     pub created_at: String,
 }
@@ -1299,6 +1302,7 @@ impl Db {
             job_token: Set(new.job_token),
             record_id: Set(None),
             detail: Set(None),
+            attempt: Set(new.attempt),
             created_at: Set(new.created_at.clone()),
             updated_at: Set(new.created_at),
         })

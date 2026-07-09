@@ -21,6 +21,7 @@ mod m20260628_000004_create_publish_job;
 mod m20260707_000005_add_job_test_case_version;
 mod m20260709_000006_create_model_catalog;
 mod m20260709_000007_add_run_sort_columns;
+mod m20260709_000008_add_job_attempt;
 
 pub struct Migrator;
 
@@ -35,6 +36,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260707_000005_add_job_test_case_version::Migration),
             Box::new(m20260709_000006_create_model_catalog::Migration),
             Box::new(m20260709_000007_add_run_sort_columns::Migration),
+            Box::new(m20260709_000008_add_job_attempt::Migration),
         ]
     }
 }

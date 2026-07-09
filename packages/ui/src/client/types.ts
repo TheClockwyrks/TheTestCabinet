@@ -393,6 +393,10 @@ export interface LaunchConfig {
   // only for the end-to-end test type.
   orchestrator: string;
   maxRuntimeOverride: number | null;
+  // How many times the backend automatically retries this run after a terminal
+  // infrastructure error or catastrophic (won't-load) build. Omit (undefined) to
+  // accept the backend default of 1; a timeout or completed run is never retried.
+  retryCount?: number;
 }
 
 // The terminal outcome of a publish. Publishing is **asynchronous**: the backend

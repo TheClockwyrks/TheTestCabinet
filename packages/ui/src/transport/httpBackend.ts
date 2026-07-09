@@ -667,6 +667,9 @@ export function createBackendExec(
         ...(config.maxRuntimeOverride != null
           ? { maxRuntimeSeconds: config.maxRuntimeOverride }
           : {}),
+        ...(config.retryCount != null
+          ? { retryCount: config.retryCount }
+          : {}),
       };
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,

@@ -66,6 +66,21 @@ pub struct LaunchBody {
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub auth_mode: Option<String>,
+    /// How many times to automatically retry this run after a terminal failure the
+    /// Test Cabinet (or a catastrophic build) is responsible for — an
+    /// [`Infrastructure`](crate::run_record::RunState::Infrastructure) error or a
+    /// [`Catastrophic`](crate::run_record::RunState::Catastrophic) build. A
+    /// [`TimedOut`](crate::run_record::RunState::TimedOut) or
+    /// [`Completed`](crate::run_record::RunState::Completed) outcome is the model's,
+    /// not a fault to retry, and a user cancel is never retried.
+    ///
+    /// The default is `1` (one retry) when omitted, so the total attempts allowed is
+    /// `1 + retry_count`: the initial attempt plus up to `retry_count` retries.
+    /// `0` disables retries; the backend clamps the value to a sane maximum. This is
+    /// the field the run form sends; absent → treated as `1` by the backend.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub retry_count: Option<u32>,
 }
 
 /// The claimed job the dispatcher receives from `POST /jobs/next`: the id, the

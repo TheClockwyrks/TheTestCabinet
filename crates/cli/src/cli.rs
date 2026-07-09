@@ -152,6 +152,13 @@ pub struct RunArgs {
     #[arg(long, value_name = "MODE")]
     pub auth_mode: Option<String>,
 
+    /// How many times the backend automatically retries this run after a terminal
+    /// infrastructure error or catastrophic (won't-load) build. Omit to accept the
+    /// backend default of `1` (one retry); `0` disables retries. A timeout or a
+    /// completed run is never retried.
+    #[arg(long, value_name = "N")]
+    pub retry_count: Option<u32>,
+
     /// Directory to also write the produced run record's JSON into. The backend
     /// holds the run's artifacts, so this only mirrors the record locally; omit it
     /// to write nothing to disk.

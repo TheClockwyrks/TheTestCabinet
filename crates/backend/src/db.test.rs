@@ -486,6 +486,7 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         harness_slug: "claude".to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
         job_token: format!("token-{id}"),
+        attempt: 0,
         created_at: created_at.to_string(),
     }
 }

@@ -53,6 +53,13 @@ interface LaunchOutcome {
 // from enqueueing an absurd batch.
 const RUN_COUNT_MAX = 20;
 
+// Default number of automatic retries applied to every launched run, and the upper
+// bound the field clamps to — mirroring the backend's `DEFAULT_RETRY_COUNT` /
+// `MAX_RETRY_COUNT`. A retry fires only on an infra error or a catastrophic build,
+// never on a timeout or a completed run.
+const DEFAULT_RETRY_COUNT = 1;
+const RETRY_COUNT_MAX = 10;
+
 function makeCombination(id: string): Combination {
   return {
     id,
@@ -101,6 +108,10 @@ export function NewRunPage() {
   // = combinations × runCount). Defaults to 1 so behavior is unchanged when
   // untouched.
   const [runCount, setRunCount] = useState(1);
+  // Automatic retries applied to every launched run (a run-level setting, threaded
+  // into each fan-out launch). Defaults to 1 so a run auto-retries once on an infra
+  // error or catastrophic build; 0 disables retries.
+  const [retryCount, setRetryCount] = useState(DEFAULT_RETRY_COUNT);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [results, setResults] = useState<LaunchOutcome[] | null>(null);
@@ -224,6 +235,7 @@ export function NewRunPage() {
               ),
               orchestrator: submittedOrchestrator,
               maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
+              retryCount,
             },
             token,
           );
@@ -474,6 +486,30 @@ export function NewRunPage() {
               const n = Math.floor(Number(e.target.value));
               setRunCount(
                 Number.isFinite(n) && n >= 1 ? Math.min(n, RUN_COUNT_MAX) : 1,
+              );
+            }}
+          />
+        </label>
+        <label
+          className={styles.runCountField}
+          title="Auto-retries on infra error or catastrophic failure (not on timeout or a completed run)."
+        >
+          <span className={styles.fieldLabel}>Retry count</span>
+          <input
+            className={styles.input}
+            type="number"
+            min={0}
+            max={RETRY_COUNT_MAX}
+            step={1}
+            value={retryCount}
+            onChange={(e) => {
+              // Clamp to [0, RETRY_COUNT_MAX] (matching the backend); a blank/invalid
+              // entry falls back to the default of one retry.
+              const n = Math.floor(Number(e.target.value));
+              setRetryCount(
+                Number.isFinite(n) && n >= 0
+                  ? Math.min(n, RETRY_COUNT_MAX)
+                  : DEFAULT_RETRY_COUNT,
               );
             }}
           />
