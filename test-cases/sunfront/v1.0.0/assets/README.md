@@ -4,18 +4,27 @@ This folder holds the **provided models** the build loads and renders — the on
 the case supplies. Everything else (the sand arena, staging yards, fog, effects, HUD)
 is generated in code; see [`../specs/assets.md`](../specs/assets.md).
 
-Each entity is a directory (e.g. `scarab/`, `aegis/`, `reliquary/`) holding its model
-file. Most are **rigid, articulated assemblies** (a hierarchy of rigid parts on named
-joints, plus authored animation clips); the infantry class (`trooper/`) is a
-**skinned** mesh (linear-blend skinning). The manifest of every entity — its file path,
-parts, joints, animation clips, `rigid`/`skinned` kind, and authored
-`width x height x depth` dimensions — is [`models.json`](models.json).
+Each entity is a directory (e.g. `scarab/`, `aegis/`, `reliquary/`) holding its
+produced model. Most are **rigid, articulated assemblies** delivered as a voxel/mesh
+**rig** — a `rig.json` (parts, joints, animation clips) plus its `meshes/*.glb` parts,
+one per joint; the infantry class (`trooper/`) is a **skinned** mesh delivered as a
+single `mesh.glb` (linear-blend skinning) alongside its `rig.json`. The manifest of
+every entity — its entry file, `rigid`/`skinned` kind, animation clips, and authored
+`width x height x depth` dimensions — is [`models.json`](models.json), whose `model`
+field points at each entity's entry file (`rig.json`, or `mesh.glb` for the skinned
+Trooper).
 
 ## Status
 
-**The model files are not yet in place.** `models.json` records the entity roster and
-authored dimensions; per-model part/joint lists are added with each model. Until the
-files are populated the case is **not run** and the `assets` key in `../test-case.toml`
-stays commented out. The **Garrison** (the Trooper's spawner) and **Solar Extractor**
-are not yet modelled either — their `assets/garrison` and `assets/solar-extractor`
-directories need to be added to complete the roster.
+**The models are in place and the `assets` key in `../test-case.toml` is active.**
+22 of the 24 entities have been seeded from their asset-generation runs. Two remain
+**pending** and are held commented in the `assets` list:
+
+- **`lancer`** (the unit) — its asset case is being **re-run** (the latest run failed
+  at the infrastructure stage).
+- **`garrison`** (the Trooper's spawner) — it has **no asset case yet**. Its
+  `models.json` entry is kept so re-adding it later is just uncommenting one line.
+
+The build loads each provided model through the **model runtime package** (the voxel
+rigs are posed/animated from their `rig.json`; the skinned Trooper loads its
+`mesh.glb`). Loading is page-relative, per [`../specs/assets.md`](../specs/assets.md).

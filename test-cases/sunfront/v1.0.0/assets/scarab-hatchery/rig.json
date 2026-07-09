@@ -1,0 +1,117 @@
+{
+  "parts": [
+    {
+      "name": "mound",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "hatch",
+      "parent": "mound",
+      "pivot": [
+        30,
+        24,
+        30
+      ]
+    },
+    {
+      "name": "vent",
+      "parent": "mound",
+      "pivot": [
+        42,
+        6,
+        52
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "hatch_spin",
+      "part": "hatch",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        30,
+        24,
+        30
+      ],
+      "min": 0.0,
+      "max": 6.2832,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "vent_lift",
+      "part": "vent",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        42,
+        6,
+        52
+      ],
+      "min": 0.0,
+      "max": 5.0,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "hatch_turn",
+      "periodMs": 6000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "hatch_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 6000,
+              "value": 6.2832,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "vent_bob",
+      "periodMs": 2600,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "vent_lift",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 750,
+              "value": 4.6,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1700,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

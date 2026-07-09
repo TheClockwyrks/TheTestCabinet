@@ -1,0 +1,132 @@
+{
+  "parts": [
+    {
+      "name": "works",
+      "pivot": [
+        30,
+        0,
+        30
+      ]
+    },
+    {
+      "name": "crane",
+      "parent": "works",
+      "pivot": [
+        30,
+        55,
+        15
+      ]
+    },
+    {
+      "name": "piston",
+      "parent": "works",
+      "pivot": [
+        30,
+        20,
+        47
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "crane_pitch",
+      "part": "crane",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        30,
+        55,
+        15
+      ],
+      "min": -0.45,
+      "max": 0.35,
+      "rest": -0.05,
+      "drive": "auto"
+    },
+    {
+      "name": "piston_lift",
+      "part": "piston",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        30,
+        20,
+        47
+      ],
+      "min": -12.0,
+      "max": 0.0,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "crane_swing",
+      "periodMs": 3200,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "crane_pitch",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1600,
+              "value": -0.4,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3200,
+              "value": 0.3,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "piston_bob",
+      "periodMs": 1500,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "piston_lift",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 520,
+              "value": -12.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 680,
+              "value": -12.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1350,
+              "value": 0.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 1500,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

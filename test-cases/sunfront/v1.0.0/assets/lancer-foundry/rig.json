@@ -1,0 +1,117 @@
+{
+  "parts": [
+    {
+      "name": "base",
+      "pivot": [
+        23,
+        40,
+        23
+      ]
+    },
+    {
+      "name": "rail_arm",
+      "parent": "base",
+      "pivot": [
+        23,
+        29,
+        23
+      ]
+    },
+    {
+      "name": "focus_ring",
+      "parent": "base",
+      "pivot": [
+        23,
+        76,
+        23
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "rail_lift",
+      "part": "rail_arm",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        23,
+        29,
+        23
+      ],
+      "min": 0.0,
+      "max": 26.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "ring_yaw",
+      "part": "focus_ring",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        23,
+        76,
+        23
+      ],
+      "min": 0.0,
+      "max": 6.2832,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "rail_arm_slide",
+      "periodMs": 4000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "rail_lift",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2000,
+              "value": 26.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 4000,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "focus_ring_spin",
+      "periodMs": 6000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "ring_yaw",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 6000,
+              "value": 6.2832,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

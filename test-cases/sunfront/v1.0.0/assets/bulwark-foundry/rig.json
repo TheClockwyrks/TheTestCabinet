@@ -1,0 +1,142 @@
+{
+  "parts": [
+    {
+      "name": "body",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "door",
+      "parent": "body",
+      "pivot": [
+        32,
+        17,
+        57
+      ]
+    },
+    {
+      "name": "flywheel",
+      "parent": "body",
+      "pivot": [
+        63,
+        22,
+        33
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "blast_door_lift",
+      "part": "door",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        32,
+        17,
+        57
+      ],
+      "min": 0.0,
+      "max": 24.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "flywheel_rotate",
+      "part": "flywheel",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        63,
+        22,
+        33
+      ],
+      "min": 0.0,
+      "max": 6.4,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "blast_door_raise",
+      "periodMs": 5000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "blast_door_lift",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 500,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1900,
+              "value": 22.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 3300,
+              "value": 22.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 4600,
+              "value": 0.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 5000,
+              "value": 0.0,
+              "interp": "constant"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "flywheel_spin",
+      "periodMs": 3600,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "flywheel_rotate",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1200,
+              "value": 2.0944,
+              "interp": "linear"
+            },
+            {
+              "tMs": 2400,
+              "value": 4.1888,
+              "interp": "linear"
+            },
+            {
+              "tMs": 3600,
+              "value": 6.2832,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

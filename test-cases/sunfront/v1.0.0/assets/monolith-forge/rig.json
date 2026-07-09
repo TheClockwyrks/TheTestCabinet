@@ -1,0 +1,132 @@
+{
+  "parts": [
+    {
+      "name": "tower",
+      "pivot": [
+        45,
+        0,
+        45
+      ]
+    },
+    {
+      "name": "hammer",
+      "parent": "tower",
+      "pivot": [
+        45,
+        70,
+        65
+      ]
+    },
+    {
+      "name": "crown",
+      "parent": "tower",
+      "pivot": [
+        45,
+        98,
+        45
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "crown_gear",
+      "part": "crown",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        45,
+        98,
+        45
+      ],
+      "min": 0.0,
+      "max": 6.2832,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "hammer_ram",
+      "part": "hammer",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        45,
+        70,
+        65
+      ],
+      "min": -24.0,
+      "max": 6.0,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "hammer_stamp",
+      "periodMs": 1500,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "hammer_ram",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 420,
+              "value": -24.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 560,
+              "value": -24.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1150,
+              "value": 0.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 1500,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "crown_spin",
+      "periodMs": 4200,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "crown_gear",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 2100,
+              "value": 3.1416,
+              "interp": "linear"
+            },
+            {
+              "tMs": 4200,
+              "value": 6.2832,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "parts": [
+    {
+      "name": "works",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "dish",
+      "parent": "works",
+      "pivot": [
+        27,
+        71,
+        27
+      ]
+    },
+    {
+      "name": "piston",
+      "parent": "works",
+      "pivot": [
+        27,
+        40,
+        49
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "dish_yaw",
+      "part": "dish",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        27,
+        71,
+        27
+      ],
+      "min": 0.0,
+      "max": 6.2832,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "piston_drop",
+      "part": "piston",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        27,
+        40,
+        49
+      ],
+      "min": -12.0,
+      "max": 0.0,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "dish_sweep",
+      "periodMs": 8000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "dish_yaw",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 2000,
+              "value": 1.5708,
+              "interp": "linear"
+            },
+            {
+              "tMs": 4000,
+              "value": 3.1416,
+              "interp": "linear"
+            },
+            {
+              "tMs": 6000,
+              "value": 4.7124,
+              "interp": "linear"
+            },
+            {
+              "tMs": 8000,
+              "value": 6.2832,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "piston_bob",
+      "periodMs": 2000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "piston_drop",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 650,
+              "value": -12.0,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 850,
+              "value": -12.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2000,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
