@@ -43,6 +43,11 @@ export type SnapshotIndex = {
 export type SubjectOut = {
   testCaseSlug: string;
   testCaseVersion: string;
+  /**
+   * The test type this run's case belongs to. The UI run-log branches on this
+   * to render the category column.
+   */
+  testType: TestType;
   variant: string;
   harnessSlug: HarnessSlug;
   harnessVersion: string | null;
@@ -72,8 +77,10 @@ export type RunSummary = {
   state: RunState;
   /**
    * The run's overall rating: the worst rating any reviewer gave any domain.
+   * `None` when the run carries no reviews yet (an unrated console run); the
+   * snapshot only contains reviewed runs, so it is always `Some` there.
    */
-  rating: Rating;
+  rating: Rating | null;
   /**
    * How many reviews the run carries. The site averages their scores; the
    * aggregate sits between the harshest and most generous review.

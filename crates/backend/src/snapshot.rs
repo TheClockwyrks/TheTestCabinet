@@ -291,7 +291,7 @@ impl SnapshotBuilder {
             metrics: record.metrics,
             validation_loaded: record.validation.loaded,
             state: record.status.state,
-            rating: aggregate_rating(&run.reviews),
+            rating: Some(aggregate_rating(&run.reviews)),
             review_count: run.reviews.len(),
             links: links_out(&run.links),
         }
@@ -807,7 +807,9 @@ pub struct RunSummary {
     pub validation_loaded: bool,
     pub state: test_cabinet_core::run_record::RunState,
     /// The run's overall rating: the worst rating any reviewer gave any domain.
-    pub rating: test_cabinet_core::review::Rating,
+    /// `None` when the run carries no reviews yet (an unrated console run); the
+    /// snapshot only contains reviewed runs, so it is always `Some` there.
+    pub rating: Option<test_cabinet_core::review::Rating>,
     /// How many reviews the run carries. The site averages their scores; the
     /// aggregate sits between the harshest and most generous review.
     pub review_count: usize,
@@ -821,6 +823,9 @@ pub struct RunSummary {
 pub struct SubjectOut {
     pub test_case_slug: String,
     pub test_case_version: String,
+    /// The test type this run's case belongs to. The UI run-log branches on this
+    /// to render the category column.
+    pub test_type: test_cabinet_core::test_case::TestType,
     pub variant: String,
     pub harness_slug: test_cabinet_core::run_record::HarnessSlug,
     pub harness_version: Option<String>,
@@ -832,6 +837,7 @@ impl SubjectOut {
         Self {
             test_case_slug: record.subject.test_case_slug.clone(),
             test_case_version: record.subject.test_case_version.clone(),
+            test_type: record.subject.test_type,
             variant: record.subject.variant.clone(),
             harness_slug: record.subject.harness_slug,
             harness_version: record.subject.harness_version.clone(),

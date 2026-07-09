@@ -34,8 +34,15 @@
           "type": "string"
         },
         "rating": {
-          "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/Rating",
-          "description": "The run's overall rating: the worst rating any reviewer gave any domain."
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/Rating"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run's overall rating: the worst rating any reviewer gave any domain.\n`None` when the run carries no reviews yet (an unrated console run); the\nsnapshot only contains reviewed runs, so it is always `Some` there."
         },
         "reviewCount": {
           "description": "How many reviews the run carries. The site averages their scores; the\naggregate sits between the harshest and most generous review.",
@@ -66,7 +73,6 @@
         "metrics",
         "validationLoaded",
         "state",
-        "rating",
         "reviewCount",
         "links"
       ],
@@ -90,6 +96,10 @@
         "testCaseVersion": {
           "type": "string"
         },
+        "testType": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TestType",
+          "description": "The test type this run's case belongs to. The UI run-log branches on this\nto render the category column."
+        },
         "variant": {
           "type": "string"
         }
@@ -97,6 +107,7 @@
       "required": [
         "testCaseSlug",
         "testCaseVersion",
+        "testType",
         "variant",
         "harnessSlug",
         "modelId"
