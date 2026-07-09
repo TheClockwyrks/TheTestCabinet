@@ -3,10 +3,12 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
 import {
+  runSummaryPage,
   toModelSummary,
   toRunSummary,
   type GalleryDataInput,
   type RunDetail,
+  type RunQuery,
 } from "@test-cabinet/ui/app";
 import {
   runSummaries as publishedRunSummaries,
@@ -78,8 +80,13 @@ export function useStaticGallery(): GalleryDataInput {
   // no published summary, so derive theirs from the full record (they are
   // unreviewed previews, so no reviews / null rating is correct); the published
   // runs supply their cards verbatim from the snapshot's summary index.
+  // The produced (dev-only local) runs as their own summary cards, pinned ahead of
+  // the queried published window by a paged page — mirroring the console's
+  // `producedSummaries`. They are unreviewed previews (no reviews / null rating).
+  const producedSummaries = local.map((run) => toRunSummary(run, []));
+
   const runSummaries = [
-    ...local.map((run) => toRunSummary(run, [])),
+    ...producedSummaries,
     ...publishedRunSummaries.filter((summary) => !localIds.has(summary.id)),
   ];
 
@@ -151,6 +158,23 @@ export function useStaticGallery(): GalleryDataInput {
     [localRuns],
   );
 
+  // Answer a paged summary query purely in memory — the static analog of the
+  // console's backend offset endpoint. The queryable set is the published summary
+  // index (minus any dev local overrides, which a page pins via
+  // `producedSummaries`); `runSummaryPage` filters/sorts/windows it with the same
+  // semantics the backend uses, so a numbered page behaves identically on both
+  // hosts. Stable identity keyed on the loaded local runs (the only varying input).
+  const queryRunSummaries = useCallback(
+    async (query: RunQuery) =>
+      runSummaryPage(
+        publishedRunSummaries.filter((summary) => !localIds.has(summary.id)),
+        query,
+      ),
+    // `localIds` is rebuilt each render from the loaded local runs; key on those.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [localRuns],
+  );
+
   // A published run's proof media, resolved at build time to absolute snapshot
   // URLs keyed by run id then served file name (`<proof-id>.<ext>`). Produced
   // (local, dev-only) runs are not published, so they have no snapshot media.
@@ -172,10 +196,12 @@ export function useStaticGallery(): GalleryDataInput {
 
   return {
     runSummaries,
+    producedSummaries,
     localIds,
     writeups,
     reviews,
     runsLoading: loading,
+    queryRunSummaries,
     testCases,
     testCasesStatus: "ready",
     // The model catalog is baked into the snapshot at build time, so it is always

@@ -39,6 +39,7 @@ import type {
   ReviewItemSummary,
   TestCaseSummary,
 } from "./testCases";
+import type { RunQuery, RunQueryResult } from "./runQuery";
 
 /**
  * The load state of the test-case catalog. `"loading"` while the host is still
@@ -250,6 +251,15 @@ export interface GalleryDataInput {
    * {@link readRun}/{@link GalleryData.fetchRun} only when a detail view needs one.
    */
   runSummaries: RunSummary[];
+  /**
+   * The summary cards for runs sourced locally (produced but not yet published),
+   * on their own — the subset of {@link runSummaries} the console derives from its
+   * worker's produced worklist. Exposed separately so a paged page can PIN these
+   * (they never appear in the backend's numbered `queryRunSummaries` window) to the
+   * first page ahead of the queried published rows. Empty on the static site (which
+   * has no produced runs) and whenever the host holds none.
+   */
+  producedSummaries: RunSummary[];
   /** Ids of runs sourced locally (produced but not yet published). */
   localIds: ReadonlySet<string>;
   /**
@@ -289,6 +299,18 @@ export interface GalleryDataInput {
    * connections drawer).
    */
   canExecute: boolean;
+  /**
+   * Answer one page of a filtered/sorted summary query — the host-agnostic paged
+   * listing the run-log pages drive. The console forwards it to the backend's
+   * offset endpoint (`GET /runs?fields=summary&offset=…`), which filters, sorts,
+   * and windows server-side and returns the matching `total`; the static site has
+   * no backend, so it answers from its in-memory summary index with the same
+   * semantics (see `runSummaryPage`). Both resolve the sorted window plus the count
+   * of all matching rows, so a numbered pager sizes identically on either host.
+   * Only published runs are queryable this way — a console pins its
+   * {@link producedSummaries} separately.
+   */
+  queryRunSummaries: (query: RunQuery) => Promise<RunQueryResult>;
   /**
    * Fetch a finished run's recorded event streams for the run-detail Events tab.
    * Each host sources these its own way (the static site from a published asset,

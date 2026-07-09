@@ -201,9 +201,12 @@ interface RunPageResponse {
 // `nextBefore` cursor as `RunPageResponse`. The cards are the backend's
 // `RunSummary` contract shape verbatim (camelCase), so they pass through
 // unmapped; only the cursor is renamed to the transport-neutral `nextCursor`.
+// `total` is present only on the numbered-pager (offset) path — the count of all
+// matching rows ignoring the page window; the cursor path omits it.
 interface RunSummaryPageResponse {
   runs: RunSummary[];
   nextBefore?: string | null;
+  total?: number | null;
 }
 
 // The backend serves the record with its links already populated, so the run's
@@ -410,10 +413,20 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async listRunSummaries(opts): Promise<RunSummaryPage> {
+      // Always the summary projection. Every provided param is forwarded (omitting
+      // the undefined ones); an `offset` (even 0) selects the backend's
+      // numbered-pager path, which is the only one that returns `total`.
       const params = new URLSearchParams({ fields: "summary" });
       if (opts?.before) params.set("before", opts.before);
       if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
       if (opts?.state) params.set("state", opts.state);
+      if (opts?.testCase) params.set("testCase", opts.testCase);
+      if (opts?.model) params.set("model", opts.model);
+      if (opts?.harness) params.set("harness", opts.harness);
+      if (opts?.q) params.set("q", opts.q);
+      if (opts?.sort) params.set("sort", opts.sort);
+      if (opts?.dir) params.set("dir", opts.dir);
       const body = await getJson<RunSummaryPageResponse>(
         baseUrl,
         `/runs?${params.toString()}`,
@@ -421,6 +434,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return {
         summaries: body.runs,
         nextCursor: body.nextBefore ?? null,
+        total: body.total ?? null,
       };
     },
 

@@ -61,10 +61,12 @@ const RUNS = [
 function galleryValue(): GalleryDataInput {
   return {
     runSummaries: RUNS,
+    producedSummaries: [],
     localIds: new Set(),
     writeups: {},
     reviews: {},
     runsLoading: false,
+    queryRunSummaries: async () => ({ summaries: [], total: 0 }),
     testCases: TEST_CASES,
     testCasesStatus: "ready",
     models: [],

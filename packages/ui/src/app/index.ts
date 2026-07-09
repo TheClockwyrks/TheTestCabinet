@@ -46,6 +46,13 @@ export {
   type RunSummariesState,
 } from "./data/useRuns";
 export { toRunSummary } from "./data/runSummary";
+export {
+  runSummaryPage,
+  type RunQuery,
+  type RunQueryResult,
+  type RunSort,
+  type SortDir,
+} from "./data/runQuery";
 export { useTestCases, type TestCasesState } from "./data/useTestCases";
 export { useModels, useFindModel, type ModelsState } from "./data/useModels";
 export { useFindReview } from "./data/writeups";

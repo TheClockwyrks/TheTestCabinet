@@ -38,10 +38,36 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of
 // {@link RunPage} the run log and list pages consume. `nextCursor` is the
 // `before` value for the following page, or null when there are none more.
+// `total` is the count of all matching rows ignoring the page window — present
+// (non-null) only on the numbered-pager (offset) path, so the console can size
+// its pager; null on the `before`-cursor drain path (which walks rather than
+// jumps).
 export interface RunSummaryPage {
   summaries: RunSummary[];
   nextCursor: string | null;
+  total: number | null;
 }
+
+// The sort column for a summary listing, matching the backend's accepted `sort`
+// query tokens exactly (`GET /runs?fields=summary&sort=…`; see the backend's
+// `parse_sort`). `date` orders by the run's start time, `runtime`/`tokens`/`cost`
+// by the recorded metrics, `rating` by the aggregate quality tier, and the rest
+// by the lifted identity columns. Unknown/absent defaults to `date` server-side.
+export type RunSort =
+  | "date"
+  | "runtime"
+  | "tokens"
+  | "cost"
+  | "rating"
+  | "testType"
+  | "testCase"
+  | "harness"
+  | "model"
+  | "variant";
+
+// The sort direction for a summary listing, matching the backend's accepted `dir`
+// query tokens exactly (`asc`/`desc`; unknown/absent defaults to `desc`).
+export type SortDir = "asc" | "desc";
 
 // Thrown by a transport for an operation its service doesn't (yet) expose, so
 // the console can render a clear "not available here" state rather than a raw
@@ -99,17 +125,31 @@ export interface BackendClient {
   listRuns(opts?: { before?: string; limit?: number }): Promise<RunPage>;
 
   /**
-   * List bounded run summary cards, newest first (`GET /runs?fields=summary`),
-   * paginated by a `before` cursor and a `limit` and optionally narrowed by
-   * `state` (the same selector `listRuns` accepts). Resolves the page's summaries
-   * and the cursor for the next page (`null` when there are no more). The
-   * lightweight projection the run log and list pages consume instead of full
-   * records.
+   * List bounded run summary cards, newest first (`GET /runs?fields=summary`) —
+   * the lightweight projection the run log and list pages consume instead of full
+   * records. Two paging modes share the endpoint:
+   *
+   * - The **cursor** drain (public snapshot / worklists): pass a `before` cursor
+   *   and a `limit`, optionally narrowed by `state`. Resolves the page's summaries
+   *   and `nextCursor` (the `before` value for the following page, `null` when no
+   *   more); `total` is `null`.
+   * - The **numbered-pager** window (console listings): pass an `offset` (0-based;
+   *   its presence selects this mode) with an optional `limit`, `state`, the
+   *   equality filters (`testCase`/`model`/`harness`), a free-text `q`, and
+   *   `sort`/`dir`. Resolves the windowed summaries plus the `total` count of all
+   *   matching rows (`nextCursor` is `null`).
    */
   listRunSummaries(opts?: {
     before?: string;
     limit?: number;
+    offset?: number;
     state?: string;
+    testCase?: string;
+    model?: string;
+    harness?: string;
+    q?: string;
+    sort?: RunSort;
+    dir?: SortDir;
   }): Promise<RunSummaryPage>;
 
   /** One published run by id (`GET /runs/{id}`): record + review + links. */

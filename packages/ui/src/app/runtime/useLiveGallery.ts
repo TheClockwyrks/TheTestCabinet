@@ -23,6 +23,7 @@ import type {
   HarnessAuthApi,
   RunDetail,
 } from "../data/galleryContext";
+import type { RunQuery, RunQueryResult } from "../data/runQuery";
 import type {
   ChangelogEntry,
   SeededInput,
@@ -262,6 +263,7 @@ export function useLiveGallery(
   const { refreshToken } = useRunsRuntime();
 
   const [runSummaries, setRunSummaries] = useState<RunSummary[]>([]);
+  const [producedSummaries, setProducedSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
   const [writeups, setWriteups] = useState<Record<string, string>>({});
   const [reviews, setReviews] = useState<Record<string, StoredReview[]>>({});
@@ -338,6 +340,10 @@ export function useLiveGallery(
         ...published.filter((s) => !produced.localIds.has(s.id)),
       ];
       setRunSummaries(merged);
+      // The produced (local) cards on their own, so a paged page can pin them ahead
+      // of the queried published window (the backend's numbered listing never
+      // returns them — they are unpublished).
+      setProducedSummaries(produced.summaries);
       setLocalIds(produced.localIds);
       setWriteups(produced.writeups);
       setReviews(produced.reviews);
@@ -402,6 +408,24 @@ export function useLiveGallery(
     };
   }, [backend, refreshToken]);
 
+  // Answer one page of a filtered/sorted/windowed summary query from the backend's
+  // numbered-pager endpoint. Forcing an `offset` (defaulting to 0) selects the
+  // backend's offset path, so it returns the matching `total` used to size the
+  // console's pager. Only published runs are listed here; a page pins the console's
+  // produced summaries separately. With no backend configured the query resolves
+  // empty.
+  const queryRunSummaries = useCallback(
+    async (query: RunQuery): Promise<RunQueryResult> => {
+      if (!backend) return { summaries: [], total: 0 };
+      const { summaries, total } = await backend.listRunSummaries({
+        ...query,
+        offset: query.offset ?? 0,
+      });
+      return { summaries, total: total ?? summaries.length };
+    },
+    [backend],
+  );
+
   // Resolve a run's recorded events by origin: a produced (local) run's streams
   // come from the worker (events + raw, off its output directory); any other run
   // is a published one read from the backend (TTC events only). A transport that
@@ -458,6 +482,7 @@ export function useLiveGallery(
 
   return {
     runSummaries,
+    producedSummaries,
     localIds,
     writeups,
     reviews,
@@ -467,6 +492,7 @@ export function useLiveGallery(
     models,
     modelsStatus,
     canExecute: true,
+    queryRunSummaries,
     fetchRunEvents,
     readRun,
     proofMediaUrl,
