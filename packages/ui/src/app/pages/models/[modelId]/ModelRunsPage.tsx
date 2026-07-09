@@ -30,9 +30,16 @@ function RunsContent({ model }: { model: ModelSummary }) {
   // of them against the run's subject — canonicalized on both sides so an
   // `openrouter/`-prefixed run lands on the same model as its bare form.
   const modelRuns = useMemo(() => {
-    const ids = new Set(model.modelIds.map(canonicalModelId));
+    const covered = new Set(model.modelIds);
+    const canonical = new Set(model.aliases.map((id) => canonicalModelId(id)));
     return runs
-      .filter((run) => ids.has(canonicalModelId(run.subject.modelId)))
+      .filter(
+        (run) =>
+          covered.has(run.subject.modelId) ||
+          canonical.has(
+            canonicalModelId(run.subject.modelId, run.subject.harnessSlug),
+          ),
+      )
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   }, [model, runs]);
 

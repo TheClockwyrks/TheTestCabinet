@@ -49,6 +49,17 @@ impl OpenRouterPrices {
         Self::default()
     }
 
+    /// Use a specific models endpoint instead of the default OpenRouter URL.
+    ///
+    /// A test seam: it lets a unit test point the price source at a local stub
+    /// serving a canned `/models` catalog, so the price-lookup and cost logic can
+    /// be exercised without reaching the real OpenRouter API.
+    pub fn with_endpoint(endpoint: impl Into<String>) -> Self {
+        Self {
+            endpoint: endpoint.into(),
+        }
+    }
+
     /// Look up the per-token prices OpenRouter lists for `model_id`.
     ///
     /// The model ID is matched exactly against OpenRouter's catalog. Prices are
@@ -72,9 +83,29 @@ impl OpenRouterPrices {
         })
     }
 
-    /// Fetch OpenRouter's catalog and return the entry whose ID matches
-    /// `model_id` exactly, erroring when the model is absent.
-    async fn fetch_model(&self, model_id: &str) -> Result<Model> {
+    /// Look up the comparable prices plus catalog facts for **every** model
+    /// OpenRouter lists, keyed by OpenRouter id, in one fetch.
+    ///
+    /// The periodic price refresher uses this to re-price all known models from a
+    /// single catalog download rather than a fetch per model.
+    pub async fn all_model_details(&self) -> Result<std::collections::HashMap<String, ModelDetails>> {
+        Ok(self
+            .fetch_catalog()
+            .await?
+            .into_iter()
+            .map(|model| {
+                let details = ModelDetails {
+                    prices: prices_of(&model),
+                    context_length: model.context_length,
+                    released_at: model.created.and_then(release_date),
+                };
+                (model.id, details)
+            })
+            .collect())
+    }
+
+    /// Fetch OpenRouter's full model catalog.
+    async fn fetch_catalog(&self) -> Result<Vec<Model>> {
         let response = reqwest::get(&self.endpoint)
             .await
             .map_err(|err| Error::Validation(format!("fetching OpenRouter prices: {err}")))?;
@@ -82,9 +113,14 @@ impl OpenRouterPrices {
             .json()
             .await
             .map_err(|err| Error::Validation(format!("parsing OpenRouter prices: {err}")))?;
+        Ok(catalog.data)
+    }
 
-        catalog
-            .data
+    /// Fetch OpenRouter's catalog and return the entry whose ID matches
+    /// `model_id` exactly, erroring when the model is absent.
+    async fn fetch_model(&self, model_id: &str) -> Result<Model> {
+        self.fetch_catalog()
+            .await?
             .into_iter()
             .find(|model| model.id == model_id)
             .ok_or_else(|| {

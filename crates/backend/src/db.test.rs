@@ -1086,3 +1086,163 @@ async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
         ])
     );
 }
+
+// --- Model catalog store ---
+
+use std::collections::HashMap;
+use test_cabinet_core::metrics::{Cost, TokenCounts, TokenPrices};
+
+/// A model-config write with the common fields defaulted.
+fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
+    ModelConfigWrite {
+        slug: slug.to_string(),
+        display_name: name.to_string(),
+        provider: "Anthropic".to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: aliases.first().map(|a| a.to_string()),
+        aliases: aliases.iter().map(|a| a.to_string()).collect(),
+        now: "2026-07-09T00:00:00Z".to_string(),
+    }
+}
+
+/// A run record with an explicit model id + harness (and, optionally, token
+/// counts), for the derive/normalize tests.
+fn run_with_model(id: &str, model_id: &str, harness: HarnessSlug, tokens: TokenCounts) -> RunRecord {
+    let mut r = record(id);
+    r.subject.model_id = model_id.to_string();
+    r.subject.harness_slug = harness;
+    r.metrics.tokens = tokens;
+    r
+}
+
+#[tokio::test]
+async fn model_config_crud_and_alias_conflict() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(model_write(
+        "opus",
+        "Claude Opus 4.8",
+        &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+    ))
+    .await
+    .unwrap();
+
+    let got = db.get_model_config("opus").await.unwrap().unwrap();
+    assert_eq!(got.config.display_name, "Claude Opus 4.8");
+    assert_eq!(
+        got.aliases,
+        vec!["anthropic/claude-opus-4.8", "claude-opus-4-8"]
+    );
+
+    // A second model claiming an alias the first owns is a conflict.
+    let err = db
+        .upsert_model_config(model_write("sonnet", "Claude Sonnet 5", &["anthropic/claude-opus-4.8"]))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::Conflict(_)), "{err:?}");
+
+    // Updating the same model replaces its alias set and keeps created_at.
+    db.upsert_model_config(ModelConfigWrite {
+        display_name: "Opus (renamed)".to_string(),
+        aliases: vec!["claude-opus-4-8".to_string()],
+        now: "2026-08-01T00:00:00Z".to_string(),
+        ..model_write("opus", "ignored", &[])
+    })
+    .await
+    .unwrap();
+    let updated = db.get_model_config("opus").await.unwrap().unwrap();
+    assert_eq!(updated.config.display_name, "Opus (renamed)");
+    assert_eq!(updated.config.created_at, "2026-07-09T00:00:00Z");
+    assert_eq!(updated.aliases, vec!["claude-opus-4-8"]);
+
+    assert!(db.delete_model_config("opus").await.unwrap());
+    assert!(db.get_model_config("opus").await.unwrap().is_none());
+    assert!(!db.delete_model_config("opus").await.unwrap());
+}
+
+#[tokio::test]
+async fn price_observations_dedup_and_latest() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let obs = |input: f64, at: &str| PriceWrite {
+        model_id: "x/y".to_string(),
+        observed_at: at.to_string(),
+        uncached_input: Some(input),
+        cached_input: None,
+        output: Some(2.0),
+        context_length: Some(200_000),
+        released_at: None,
+    };
+    db.insert_price_observation(obs(1.0, "2026-01-01T00:00:00Z")).await.unwrap();
+    db.insert_price_observation(obs(1.5, "2026-01-02T00:00:00Z")).await.unwrap();
+
+    let latest = db.latest_price("x/y").await.unwrap().unwrap();
+    assert_eq!(latest.uncached_input, Some(1.5));
+    assert_eq!(db.all_model_prices().await.unwrap().len(), 2);
+    assert!(db.latest_price("nope").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn distinct_run_models_returns_pairs() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let z = TokenCounts::default();
+    db.push(&run_with_model("r1", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z), &links(), None)
+        .await
+        .unwrap();
+    db.push(&run_with_model("r2", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z), &links(), None)
+        .await
+        .unwrap();
+    db.push(&run_with_model("r3", "gpt-5.5", HarnessSlug::Codex, z), &links(), None)
+        .await
+        .unwrap();
+    let mut pairs = db.distinct_run_models().await.unwrap();
+    pairs.sort();
+    assert_eq!(
+        pairs,
+        vec![
+            ("anthropic/claude-opus-4.8".to_string(), "kilo".to_string()),
+            ("gpt-5.5".to_string(), "codex".to_string()),
+        ]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let tokens = TokenCounts {
+        uncached_input: Some(1_000_000),
+        cached_input: None,
+        output: Some(1_000_000),
+        reasoning: None,
+    };
+    // An OpenRouter-accessed run tagged `:free` with a $0 recorded cost.
+    let mut kilo = run_with_model("free-run", "deepseek/deepseek-v4:free", HarnessSlug::Kilo, tokens);
+    kilo.metrics.cost = Cost { comparable: Some(0.0), actual: Some(0.0) };
+    db.push(&kilo, &links(), None).await.unwrap();
+    // A provider-native Codex run whose id happens to contain a colon is left alone.
+    let codex = run_with_model("codex-run", "gpt-5.5:preview", HarnessSlug::Codex, tokens);
+    db.push(&codex, &links(), None).await.unwrap();
+
+    let mut base_prices = HashMap::new();
+    base_prices.insert(
+        "deepseek/deepseek-v4".to_string(),
+        TokenPrices { uncached_input: Some(0.000_002), cached_input: None, output: Some(0.000_006) },
+    );
+    let rewritten = db.normalize_free_model_ids(&base_prices).await.unwrap();
+    assert_eq!(rewritten, 1);
+
+    let run = db.get_run("free-run").await.unwrap().unwrap();
+    assert_eq!(run.record.subject.model_id, "deepseek/deepseek-v4");
+    // Re-priced at the base rate: 1e6 * 2e-6 + 1e6 * 6e-6 = 8.0, not $0.
+    assert_eq!(run.record.metrics.cost.comparable, Some(8.0));
+
+    let codex_run = db.get_run("codex-run").await.unwrap().unwrap();
+    assert_eq!(codex_run.record.subject.model_id, "gpt-5.5:preview");
+
+    // Idempotent: a second pass rewrites nothing.
+    assert_eq!(db.normalize_free_model_ids(&base_prices).await.unwrap(), 0);
+}

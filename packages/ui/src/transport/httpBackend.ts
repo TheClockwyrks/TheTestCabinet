@@ -22,7 +22,10 @@ import type {
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
+  LogoFetchResult,
   Model,
+  ModelInput,
+  ModelSeed,
   ProgressCallback,
   PublishProgress,
   PublishResult,
@@ -49,11 +52,13 @@ import type {
 } from "@test-cabinet/run-record";
 import {
   delJson,
+  delVoid,
   getJson,
   getJsonStreamed,
   getText,
   joinUrl,
   postJson,
+  putJson,
 } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
@@ -340,10 +345,42 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async listModels(): Promise<Model[]> {
-      // The backend HTTP contract defines no model catalog endpoint; the run
-      // screen treats the model id as free text, so report none. The gallery's
-      // rich model metadata comes from the bundled curated catalog instead.
-      return [];
+      // The merged model catalog: curated configs ⋃ models derived from recorded
+      // runs, each with its observed price history.
+      const body = await getJson<{ models: Model[] }>(baseUrl, "/models");
+      return body.models;
+    },
+
+    async createModel(input: ModelInput, token: string): Promise<Model> {
+      return postJson<Model>(baseUrl, "/models", input, token);
+    },
+
+    async updateModel(
+      slug: string,
+      input: ModelInput,
+      token: string,
+    ): Promise<Model> {
+      return putJson<Model>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteModel(slug: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/models/${encodeURIComponent(slug)}`, token);
+    },
+
+    async fetchModelLogo(url: string, token: string): Promise<LogoFetchResult> {
+      return postJson<LogoFetchResult>(baseUrl, "/models/logo", { url }, token);
+    },
+
+    async seedModelFromRun(runId: string): Promise<ModelSeed> {
+      return getJson<ModelSeed>(
+        baseUrl,
+        `/models/seed?runId=${encodeURIComponent(runId)}`,
+      );
     },
 
     async listRuns(opts): Promise<RunPage> {

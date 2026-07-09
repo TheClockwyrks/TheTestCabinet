@@ -32,6 +32,7 @@ import type {
 } from "../../client/types";
 import { type ParsedWriteup, parseWriteup } from "./ratings";
 import { extensionFor } from "./proofMedia";
+import { findModelByModelId, type ModelSummary } from "./models";
 import type {
   DomainSummary,
   ReviewItemSummary,
@@ -253,6 +254,12 @@ export interface GalleryDataInput {
   /** The catalog's load state, so the UI can tell loading and an unreachable
    * backend apart from a genuinely empty catalog. See {@link CatalogStatus}. */
   testCasesStatus: CatalogStatus;
+  /** The model catalog: curated configs merged with the models recorded runs
+   * reference, each with its price history. The console fetches it from the
+   * backend; the static site reads it from the snapshot. */
+  models: ModelSummary[];
+  /** The model catalog's load state (see {@link CatalogStatus}). */
+  modelsStatus: CatalogStatus;
   /**
    * Whether this UI can launch, monitor, review, and publish runs. False on the
    * static gallery site; true in the web and desktop consoles. Gates the
@@ -640,6 +647,17 @@ export interface GalleryData extends GalleryDataInput {
    * leaderboard score a run from its review verdicts and per-domain ratings.
    */
   reviewModelFor(subject: RunSubject): ReviewModel;
+  /**
+   * Resolve a run's `modelId` (optionally with its harness slug, for harness-aware
+   * canonicalization) to its catalog entry, over the loaded model catalog. Returns
+   * undefined for an id the catalog does not cover.
+   */
+  modelForId(modelId: string, harnessSlug?: string): ModelSummary | undefined;
+  /**
+   * Resolve a Models-section URL parameter — a curated slug or any covered/alias
+   * id — to its catalog entry. Returns undefined when nothing matches.
+   */
+  modelForSlug(slug: string): ModelSummary | undefined;
 }
 
 const GalleryDataContext = createContext<GalleryData | null>(null);
@@ -652,13 +670,21 @@ export function GalleryDataProvider({
   children: ReactNode;
 }) {
   const full = useMemo<GalleryData>(() => {
-    const { writeups, reviews, proofMediaUrl, assetMediaUrl, testCases } =
+    const { writeups, reviews, proofMediaUrl, assetMediaUrl, testCases, models } =
       value;
     return {
       ...value,
       findReview(runId, override) {
         const raw = override?.[runId] ?? writeups[runId];
         return raw === undefined ? undefined : parseWriteup(raw);
+      },
+      modelForId(modelId, harnessSlug) {
+        return findModelByModelId(models, modelId, harnessSlug);
+      },
+      modelForSlug(slug) {
+        return models.find(
+          (model) => model.slug === slug || model.modelIds.includes(slug) || model.aliases.includes(slug),
+        );
       },
       reviewsFor(runId) {
         return reviews[runId] ?? [];

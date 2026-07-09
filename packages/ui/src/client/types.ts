@@ -31,15 +31,73 @@ export type { MediaKind, TestType };
 // from the shared client types.
 export type { HarnessEvent };
 
-// --- Catalog (served by the backend) ---
+// --- Model catalog (served by the backend `GET /models`) ---
 
+/** A comparable per-token price triple, USD; each member null when unknown. */
+export interface ModelPrices {
+  uncachedInput: number | null;
+  cachedInput: number | null;
+  output: number | null;
+}
+
+/** One observation in a model's price history. */
+export interface PriceObservation {
+  observedAt: string;
+  prices: ModelPrices;
+}
+
+/** One catalog entry: a curated model merged with its runs + price history, or a
+ * model derived from runs alone (`curated: false`). Mirrors the backend `ModelOut`. */
 export interface Model {
   slug: string;
   name: string;
   provider: string;
+  /** Whether this entry has curated config, versus being derived from runs. */
+  curated: boolean;
+  /** `https://openrouter.ai/<slug>` when on OpenRouter, else null. */
+  openrouterUrl: string | null;
+  /** Curated description markdown, or null. */
+  description: string | null;
+  /** The curated, sanitized provider-logo SVG, or null. */
+  logoSvg: string | null;
+  /** The raw run-record `modelId`s this entry absorbs (what a run matches on). */
+  coveredModelIds: string[];
+  /** The canonical model ids this entry claims. */
+  aliases: string[];
+  /** The latest observed comparable price, or null. */
+  price: ModelPrices | null;
+  /** The observed price history, ascending, consecutive-equal deduped. */
+  priceHistory: PriceObservation[];
+  /** The latest observed context window in tokens, or null. */
+  contextLength: number | null;
+  /** The latest observed release date (RFC 3339), or null. */
+  releasedAt: string | null;
+}
+
+/** The `POST /models` / `PUT /models/{slug}` request body. */
+export interface ModelInput {
+  slug: string;
+  name: string;
+  provider: string;
+  aliases: string[];
   openrouterSlug: string | null;
-  descriptionPath: string | null;
-  modelIds: string[];
+  description: string | null;
+  logoSvg: string | null;
+  providerLogoUrl: string | null;
+}
+
+/** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
+export interface ModelSeed {
+  slug: string;
+  name: string;
+  provider: string;
+  aliases: string[];
+  openrouterSlug: string | null;
+}
+
+/** The `POST /models/logo` result: the fetched, sanitized SVG. */
+export interface LogoFetchResult {
+  logoSvg: string;
 }
 
 export interface TestCase {

@@ -5,7 +5,8 @@ import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, useRunTable } from "../../components/RunLog";
-import { findModelByModelId } from "../../data/models";
+import { useFindModel } from "../../data/useModels";
+import type { ModelSummary } from "../../data/models";
 import { useGalleryData, type InProgressRun } from "../../data/galleryContext";
 import { useRuns } from "../../data/useRuns";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
@@ -28,6 +29,7 @@ export function RunsPage() {
   const { runs, localIds, localWriteups } = useRuns();
   const { canExecute } = useGalleryData();
   const { inProgress } = useRunsRuntime();
+  const findModel = useFindModel();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
 
@@ -36,8 +38,8 @@ export function RunsPage() {
     const recent = [...runs].sort(byRecencyDesc);
     const needle = query.trim().toLowerCase();
     if (!needle) return recent;
-    return recent.filter((run) => searchText(run).includes(needle));
-  }, [runs, query]);
+    return recent.filter((run) => searchText(run, findModel).includes(needle));
+  }, [runs, query, findModel]);
 
   // Runs still executing, narrowed by the same query so search behaves uniformly.
   // Only the consoles have these (the static site's runtime is always empty).
@@ -46,9 +48,9 @@ export function RunsPage() {
     const needle = query.trim().toLowerCase();
     if (!needle) return inProgress;
     return inProgress.filter((run) =>
-      activeSearchText(run).includes(needle),
+      activeSearchText(run, findModel).includes(needle),
     );
-  }, [canExecute, inProgress, query]);
+  }, [canExecute, inProgress, query, findModel]);
 
   // Enrich and sort the full matched set before paging: sorting only the current
   // page would order each page independently.
@@ -129,9 +131,12 @@ export function RunsPage() {
 // Case-insensitive haystack for a single run: its test case (display name and
 // slug), harness, and model (catalog name and raw id). Only these three subjects
 // are searchable — difficulty and tags are deliberately absent here.
-function searchText(run: RunRecord): string {
+function searchText(
+  run: RunRecord,
+  findModel: (id: string, harness?: string) => ModelSummary | undefined,
+): string {
   const { subject } = run;
-  const model = findModelByModelId(subject.modelId);
+  const model = findModel(subject.modelId, subject.harnessSlug);
   return [
     formatSlug(subject.testCaseSlug),
     subject.testCaseSlug,
@@ -146,8 +151,11 @@ function searchText(run: RunRecord): string {
 // Case-insensitive haystack for an in-progress run: the same three subjects as a
 // finished row (test case, harness, model) plus its variant, so the search
 // narrows live and finished runs alike.
-function activeSearchText(run: InProgressRun): string {
-  const model = findModelByModelId(run.modelId);
+function activeSearchText(
+  run: InProgressRun,
+  findModel: (id: string, harness?: string) => ModelSummary | undefined,
+): string {
+  const model = findModel(run.modelId, run.harnessSlug);
   return [
     formatSlug(run.testCaseSlug),
     run.testCaseSlug,

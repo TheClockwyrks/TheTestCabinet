@@ -395,13 +395,45 @@ async fn persist_record(
                 .map_err(|e| ApiError::internal(format!("serializing relayed events: {e}")))?,
         )
     };
+
+    // Store the model id with any trailing OpenRouter `:free`-style variant tag
+    // stripped, so a free-tagged run groups under its base model rather than
+    // splitting off a phantom entry. The run's cost is already computed against
+    // the base price by the driver, so only the identity needs normalizing here.
+    let mut record = record.clone();
+    normalize_record_model_id(&mut record);
+
     let links = record.links.clone();
     state
         .db
-        .push(record, &links, events_json.as_deref())
+        .push(&record, &links, events_json.as_deref())
         .await
         .map_err(ApiError::from)?;
+
+    // Record the model's current price on completion, off the request path: a
+    // detached best-effort task so an OpenRouter fetch never delays or fails the
+    // driver's status report.
+    let db = std::sync::Arc::clone(&state.db);
+    let prices = state.prices.clone();
+    let model_id = record.subject.model_id.clone();
+    let harness = record.subject.harness_slug;
+    tokio::spawn(async move {
+        crate::bootstrap::observe_completion(&db, &prices, &model_id, harness).await;
+    });
+
     Ok(record.id.clone())
+}
+
+/// Strip a trailing OpenRouter variant tag (for example `:free`) from a run's
+/// model id when the harness routes through OpenRouter, so the stored identity
+/// matches the base model. A no-op for provider-native harnesses and untagged ids.
+fn normalize_record_model_id(record: &mut RunRecord) {
+    let harness = record.subject.harness_slug;
+    if harness.routes_through_openrouter()
+        && let Some((base, _tag)) = record.subject.model_id.rsplit_once(':')
+    {
+        record.subject.model_id = base.to_string();
+    }
 }
 
 /// Persist the record the driver produced if it managed to produce one, returning

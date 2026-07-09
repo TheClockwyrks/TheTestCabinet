@@ -538,18 +538,6 @@ pub trait AgentHarness: Send + Sync {
         None
     }
 
-    /// Map a run's model ID to the ID OpenRouter lists it under, for the
-    /// comparable-cost lookup.
-    ///
-    /// Harnesses that route through OpenRouter already receive an OpenRouter
-    /// model ID and pass it through unchanged (the default). Harnesses that take
-    /// a provider-native ID map it to the equivalent OpenRouter catalog ID — for
-    /// example Codex's `gpt-5.5` becomes `openai/gpt-5.5`. This mapping is only
-    /// consulted when the harness does not report its own cost.
-    fn pricing_model_id(&self, model_id: &str) -> String {
-        model_id.to_string()
-    }
-
     /// The full command line — the CLI binary followed by the harness's exact
     /// non-interactive session arguments — that drives a single session for
     /// `model_id` against `prompt`.

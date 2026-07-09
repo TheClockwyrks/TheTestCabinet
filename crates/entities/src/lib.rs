@@ -11,6 +11,9 @@
 //! `snapshot_state` holding the snapshot coalescing flags.
 
 pub mod job;
+pub mod model;
+pub mod model_alias;
+pub mod model_price;
 pub mod publish_job;
 pub mod review;
 pub mod run;

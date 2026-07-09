@@ -1,0 +1,88 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+@use "../styles/halo" as h;
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// URL input, fetch button, and preview mark on one line, wrapping when cramped.
+.row {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+// An outlined secondary action, brightening on hover; dimmed while disabled (no
+// svgl.app URL yet) or busy.
+.fetch {
+  flex: 0 0 auto;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  cursor: pointer;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// The preview mark, masked so it renders in the accent color with a neon glow —
+// the same treatment as the model cards and detail header, matching the site's
+// other glyphs. The mask image itself is set inline by ModelProviderMark.
+.preview {
+  display: block;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  background-color: t.$color-accent;
+  mask: center / contain no-repeat;
+  -webkit-mask: center / contain no-repeat;
+  filter: drop-shadow(
+    0 0 0.4rem color-mix(in srgb, t.$color-accent 60%, transparent)
+  );
+}
+
+.error {
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+  @include h.halo;
+}

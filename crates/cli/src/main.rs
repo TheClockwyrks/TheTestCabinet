@@ -61,7 +61,6 @@ async fn dispatch(command: Command) -> anyhow::Result<()> {
         Command::Orchestrators(args) => commands::orchestrators::execute(args).await,
         Command::Seed(args) => commands::seed::execute(args).await,
         Command::Prompt(args) => commands::prompt::execute(args).await,
-        Command::Catalog(args) => commands::catalog::execute(args).await,
     }
 }
 
@@ -79,7 +78,6 @@ fn command_name(command: &Command) -> &'static str {
         Command::Orchestrators(_) => "orchestrators",
         Command::Seed(_) => "seed",
         Command::Prompt(_) => "prompt",
-        Command::Catalog(_) => "catalog",
     }
 }
 

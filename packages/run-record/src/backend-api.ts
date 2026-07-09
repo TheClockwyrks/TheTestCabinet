@@ -23,3 +23,145 @@ export type CatalogCase = { slug: string; versions: Array<string> };
 export type CatalogResponse = { testCases: Array<CatalogCase> };
 
 export type VersionsResponse = { slug: string; versions: Array<string> };
+
+/**
+ * `GET /models` — the merged model catalog.
+ */
+export type ModelCatalogResponse = { models: Array<ModelOut> };
+
+/**
+ * One catalog entry: a curated model merged with its runs and price history, or
+ * a model derived from runs with no curated config.
+ */
+export type ModelOut = {
+  /**
+   * The curated slug, or the canonical model id for a derived model.
+   */
+  slug: string;
+  /**
+   * The display name (a derived model uses its canonical id).
+   */
+  name: string;
+  /**
+   * The provider (guessed from the id for a derived model).
+   */
+  provider: string;
+  /**
+   * Whether this entry has curated config, as opposed to being derived from
+   * runs alone.
+   */
+  curated: boolean;
+  /**
+   * `https://openrouter.ai/<slug>` when the model is on OpenRouter, else null.
+   */
+  openrouterUrl: string | null;
+  /**
+   * Curated description markdown, or null.
+   */
+  description: string | null;
+  /**
+   * The curated, sanitized provider-logo SVG, or null.
+   */
+  logoSvg: string | null;
+  /**
+   * The raw `subject.modelId` strings from runs this entry absorbs — what the
+   * console matches a run against.
+   */
+  coveredModelIds: Array<string>;
+  /**
+   * The canonical model ids this entry claims.
+   */
+  aliases: Array<string>;
+  /**
+   * The latest observed comparable price, or null when none is recorded.
+   */
+  price: ModelPricesOut | null;
+  /**
+   * The observed price history, ascending, consecutive-equal deduped.
+   */
+  priceHistory: Array<PriceObservationOut>;
+  /**
+   * The latest observed context window in tokens, or null.
+   */
+  contextLength: number | null;
+  /**
+   * The latest observed release date (RFC 3339), or null.
+   */
+  releasedAt: string | null;
+};
+
+/**
+ * A comparable per-token price triple.
+ */
+export type ModelPricesOut = {
+  uncachedInput: number | null;
+  cachedInput: number | null;
+  output: number | null;
+};
+
+/**
+ * One price observation in a model's history.
+ */
+export type PriceObservationOut = {
+  observedAt: string;
+  prices: ModelPricesOut;
+};
+
+/**
+ * The `POST /models` / `PUT /models/{slug}` request body.
+ */
+export type ModelConfigInput = {
+  /**
+   * The curated slug (used on create; the path wins on update).
+   */
+  slug: string;
+  name: string;
+  provider: string;
+  /**
+   * The canonical model ids this model covers (at least one).
+   */
+  aliases: Array<string>;
+  openrouterSlug: string | null;
+  description: string | null;
+  /**
+   * The stored provider-logo SVG (already fetched via `POST /models/logo`).
+   */
+  logoSvg: string | null;
+  /**
+   * The svgl.app URL the logo was fetched from, kept for reference.
+   */
+  providerLogoUrl: string | null;
+};
+
+/**
+ * The `GET /models/seed` response: a blank-form seed derived from a run.
+ */
+export type ModelSeedOut = {
+  /**
+   * Suggested slug (the canonical id), which the operator may change.
+   */
+  slug: string;
+  /**
+   * Empty — the operator must set a display name explicitly.
+   */
+  name: string;
+  /**
+   * Provider guessed from the model id, possibly empty.
+   */
+  provider: string;
+  /**
+   * Suggested aliases (the canonical and raw forms), deduped.
+   */
+  aliases: Array<string>;
+  /**
+   * The canonical id as an OpenRouter slug, when it looks like one.
+   */
+  openrouterSlug: string | null;
+};
+
+/**
+ * The `POST /models/logo` request/response.
+ */
+export type LogoFetchInput = { url: string };
+
+export type LogoFetchOut = { logoSvg: string };

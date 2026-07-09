@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
-import type { GalleryDataInput } from "@test-cabinet/ui/app";
+import { toModelSummary, type GalleryDataInput } from "@test-cabinet/ui/app";
 import {
   runs as publishedRuns,
   writeups as publishedWriteups,
   reviews as publishedReviews,
   testCases as catalogTestCases,
+  models as catalogModels,
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
 } from "virtual:tcab-snapshot";
@@ -131,6 +132,11 @@ export function useStaticGallery(): GalleryDataInput {
     runsLoading: loading,
     testCases,
     testCasesStatus: "ready",
+    // The model catalog is baked into the snapshot at build time, so it is always
+    // resolved; the site has no backend to mutate it, so the config affordances
+    // hide (no `createModel` on any client here).
+    models: catalogModels.map(toModelSummary),
+    modelsStatus: "ready",
     canExecute: false,
     fetchRunEvents,
     proofMediaUrl,

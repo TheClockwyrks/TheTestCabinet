@@ -385,43 +385,13 @@ fn prompt_parses_required_arguments() {
 }
 
 #[test]
-fn catalog_parses_with_defaults() {
-    let cli = Cli::try_parse_from(["tcab", "catalog"])
-        .expect("the catalog subcommand should parse with no arguments");
-
-    match cli.command {
-        Command::Catalog(args) => {
-            // The catalog reads the model catalog from `models` and writes
-            // `models.json` into the shared UI package unless told otherwise.
-            assert_eq!(args.models_dir, std::path::PathBuf::from("models"));
-            assert_eq!(
-                args.data_dir,
-                std::path::PathBuf::from("packages/ui/src/app/data")
-            );
-        }
-        other => panic!("expected a catalog command, got {other:?}"),
-    }
-}
-
-#[test]
-fn catalog_accepts_directory_overrides() {
-    let cli = Cli::try_parse_from([
-        "tcab",
-        "catalog",
-        "--models-dir",
-        "/tmp/models",
-        "--data-dir",
-        "/tmp/data",
-    ])
-    .expect("explicit catalog directories should parse");
-
-    match cli.command {
-        Command::Catalog(args) => {
-            assert_eq!(args.models_dir.to_str(), Some("/tmp/models"));
-            assert_eq!(args.data_dir.to_str(), Some("/tmp/data"));
-        }
-        other => panic!("expected a catalog command, got {other:?}"),
-    }
+fn removed_catalog_subcommand_no_longer_parses() {
+    // `tcab catalog` was retired when the model catalog moved into the backend
+    // store (curated in the app, no longer a bundled `models.json`).
+    assert!(
+        Cli::try_parse_from(["tcab", "catalog"]).is_err(),
+        "the catalog subcommand should no longer exist"
+    );
 }
 
 #[test]

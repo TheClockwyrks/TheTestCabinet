@@ -7,6 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { ModelOut } from "./backend-api";
 import type {
   AssetKind,
   HarnessSlug,
@@ -30,6 +31,10 @@ export type SnapshotIndex = {
   runsKey: string;
   runsPrefix: string;
   casesPrefix: string;
+  /**
+   * Where this snapshot's model catalog lives (`<prefix>/models.json`).
+   */
+  modelsKey: string;
 };
 
 /**
@@ -325,4 +330,13 @@ export type CaseMetadata = {
    * worst across them.
    */
   domains: Array<CaseDomainOut>;
+};
+
+/**
+ * The model catalog file (`models.json`): the composed catalog the public site
+ * renders the Models section from.
+ */
+export type ModelCatalogFile = {
+  schemaVersion: number;
+  models: Array<ModelOut>;
 };

@@ -12,7 +12,10 @@ import type {
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
+  LogoFetchResult,
   Model,
+  ModelInput,
+  ModelSeed,
   ProgressCallback,
   PublishProgress,
   PublishResult,
@@ -51,7 +54,23 @@ export interface BackendClient {
 
   // Catalog. (Harnesses are a fixed, code-defined catalog in the UI — see
   // `app/data/harnesses.ts` — not served by the backend.)
+  //
+  // The model catalog is served by `GET /models`: curated configs merged with the
+  // models derived from recorded runs, each with its observed price history. The
+  // config mutations below are optional so a transport that can't reach them (the
+  // static site) omits them and the console hides the affordance — the same
+  // pattern `deleteRun?`/`killRun?` use.
   listModels(): Promise<Model[]>;
+  /** Create a curated model config (`POST /models`, Bearer). */
+  createModel?(input: ModelInput, token: string): Promise<Model>;
+  /** Update a curated model config (`PUT /models/{slug}`, Bearer). */
+  updateModel?(slug: string, input: ModelInput, token: string): Promise<Model>;
+  /** Delete a curated model config (`DELETE /models/{slug}`, Bearer). */
+  deleteModel?(slug: string, token: string): Promise<void>;
+  /** Fetch + sanitize a provider logo from an svgl.app URL (`POST /models/logo`, Bearer). */
+  fetchModelLogo?(url: string, token: string): Promise<LogoFetchResult>;
+  /** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
+  seedModelFromRun?(runId: string): Promise<ModelSeed>;
   listTestCases(): Promise<TestCase[]>;
   listVersions(slug: string): Promise<string[]>;
   resolveVersion(slug: string, version: string): Promise<VersionInfo>;

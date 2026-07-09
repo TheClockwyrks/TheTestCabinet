@@ -48,9 +48,9 @@ guide when you are doing the task for the first time, or when you need to know
 - [Creating a Sprite-Sheet Variant](/guides/creating-a-sprite-sheet-variant/)
   — add a brief variation against the shared target sheet of a sprite-sheet
   asset-generation version (`asset_kind = "sprite-sheet"`).
-- [Adding or Updating a Model](/guides/adding-or-updating-a-model/) — add a model
-  to the catalog (its `.toml`, description, and `model_ids`) or refresh the
-  bundled prices, context windows, and release dates.
+- [Adding or Updating a Model](/guides/adding-or-updating-a-model/) — curate a
+  model in the app (display name, aliases, provider logo, description), how
+  derived models appear from runs, and how price history is recorded.
 - [Publishing an Audio Sample Pack](/guides/publishing-an-audio-sample-pack/) —
   build an `sfx-sample`/`music` pack from its manifest, publish it to the private
   R2 bucket, and pin it into the run-container image.

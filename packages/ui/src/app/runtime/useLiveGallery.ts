@@ -14,6 +14,7 @@ import type {
   VersionInfo,
 } from "../../client/types";
 import { frameReviews } from "../data/frameReview";
+import { toModelSummary, type ModelSummary } from "../data/models";
 import type {
   ArenaApi,
   CatalogStatus,
@@ -260,6 +261,8 @@ export function useLiveGallery(
   // reached, distinct from a reachable-but-empty catalog.
   const [testCasesStatus, setTestCasesStatus] =
     useState<CatalogStatus>("loading");
+  const [models, setModels] = useState<ModelSummary[]>([]);
+  const [modelsStatus, setModelsStatus] = useState<CatalogStatus>("loading");
 
   const workerClient = worker?.client ?? null;
   const workerUrl = worker?.url ?? null;
@@ -356,6 +359,34 @@ export function useLiveGallery(
     };
   }, [backend]);
 
+  // The model catalog, from the backend `GET /models`. Re-fetched when the runs
+  // runtime bumps its refresh token, so a model created/edited/deleted in the
+  // config UI (which requests a refresh) reappears without a reload.
+  useEffect(() => {
+    if (!backend) {
+      setModels([]);
+      setModelsStatus("error");
+      return;
+    }
+    let active = true;
+    setModelsStatus("loading");
+    backend
+      .listModels()
+      .then((ms) => {
+        if (!active) return;
+        setModels(ms.map(toModelSummary));
+        setModelsStatus("ready");
+      })
+      .catch(() => {
+        if (!active) return;
+        setModels([]);
+        setModelsStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [backend, refreshToken]);
+
   // Resolve a run's recorded events by origin: a produced (local) run's streams
   // come from the worker (events + raw, off its output directory); any other run
   // is a published one read from the backend (TTC events only). A transport that
@@ -411,6 +442,8 @@ export function useLiveGallery(
     runsLoading,
     testCases,
     testCasesStatus,
+    models,
+    modelsStatus,
     canExecute: true,
     fetchRunEvents,
     readRun,

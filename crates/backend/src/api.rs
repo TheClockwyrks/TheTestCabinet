@@ -23,6 +23,7 @@ use crate::store::DefinitionStore;
 
 mod ingest_api;
 mod jobs;
+mod models;
 mod publish_jobs;
 mod runs;
 mod test_cases;
@@ -33,6 +34,10 @@ mod tournaments;
 pub use jobs::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
     StatusUpdate,
+};
+pub use models::{
+    LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput, ModelOut, ModelPricesOut,
+    ModelSeedOut, PriceObservationOut, compose_catalog,
 };
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
@@ -59,8 +64,11 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// The HTTP client for the backend's own outbound calls — today the best-effort
     /// prune of a deleted run's tree in the artifact service (see
-    /// [`crate::artifacts`]).
+    /// [`crate::artifacts`]) and the svgl.app model-logo fetch.
     pub http: reqwest::Client,
+    /// The OpenRouter price source used to record a model's price history when a
+    /// run completes and on the periodic refresh.
+    pub prices: test_cabinet_core::OpenRouterPrices,
 }
 
 /// The maximum body size, in bytes, accepted on the run-media and tournament-replay
@@ -88,6 +96,19 @@ pub fn router(state: AppState) -> Router {
         // bytes). A single read, no auth.
         .route("/config", get(client_config))
         .route("/ingest", post(ingest_api::ingest))
+        // The model catalog: a merged read (curated config ⋃ models derived from
+        // runs, with price history) plus operator-driven config CRUD, a
+        // seed-from-run authoring helper, and the svgl.app logo fetch. Reads are
+        // open; the mutations, the seed, and the logo fetch require a token.
+        // `/models/seed` and `/models/logo` are static, so they outrank the
+        // `/models/{slug}` dynamic route regardless of registration order.
+        .route("/models", get(models::list).post(models::create))
+        .route("/models/seed", get(models::seed))
+        .route("/models/logo", post(models::logo))
+        .route(
+            "/models/{slug}",
+            axum::routing::put(models::update).delete(models::delete),
+        )
         .route("/test-cases", get(test_cases::catalog))
         .route("/test-cases/{slug}/versions", get(test_cases::versions))
         .route(

@@ -62,10 +62,6 @@ including:
   Publishing a run requires it to have at least one review; the self-review
   satisfies that. For the flow where different people review, use `review` then
   have an operator publish. Requires a logged-in account.
-- **`catalog`** — regenerate the bundled model dataset (`models.json`) every host
-  ships, refreshing each model's OpenRouter prices, context window, and release
-  date. (Test-case data is served from the backend's public snapshot, not emitted
-  here.)
 - **`harnesses`** — inspect the supported agent harnesses.
 
 ## Authentication

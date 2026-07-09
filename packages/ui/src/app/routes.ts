@@ -47,8 +47,24 @@ export const routes = {
     `/models/${encodeURIComponent(modelId)}`,
   modelStats: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/stats`,
+  modelPricing: (modelId: string): string =>
+    `/models/${encodeURIComponent(modelId)}/pricing`,
   modelRuns: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/runs`,
+  // The add/edit model config form (consoles only; the static site is read-only
+  // and never links here). `modelNew` opens a blank draft, optionally seeded from
+  // a run of an unknown model (`?fromRun=<runId>`) or pre-claiming a known id
+  // (`?alias=<modelId>`); `modelEdit` opens an existing config for revision. The
+  // `/models/new` static path outranks the `/models/:modelId` dynamic route.
+  modelNew: (opts?: { fromRun?: string; alias?: string }): string => {
+    const params = new URLSearchParams();
+    if (opts?.fromRun) params.set("fromRun", opts.fromRun);
+    if (opts?.alias) params.set("alias", opts.alias);
+    const query = params.toString();
+    return query ? `/models/new?${query}` : "/models/new";
+  },
+  modelEdit: (slug: string): string =>
+    `/models/${encodeURIComponent(slug)}/edit`,
   about: (): string => "/about",
   aboutTesting: (): string => "/about/testing",
   aboutMetrics: (): string => "/about/metrics",
@@ -140,8 +156,14 @@ export const routePatterns = {
   testCaseChangelog: "/test-cases/:slug/changelog",
   testCaseArena: "/test-cases/:slug/arena",
   models: "/models",
+  // The `/models/new` static path outranks the `/models/:modelId` dynamic route,
+  // so a blank/seeded config form is reachable at a literal segment beside the
+  // model detail (the same literal-beside-param shape `/runs/new` uses).
+  modelNew: "/models/new",
   modelDetail: "/models/:modelId",
   modelStats: "/models/:modelId/stats",
+  modelPricing: "/models/:modelId/pricing",
+  modelEdit: "/models/:modelId/edit",
   modelRuns: "/models/:modelId/runs",
   about: "/about",
   aboutTesting: "/about/testing",

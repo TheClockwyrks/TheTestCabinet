@@ -113,7 +113,7 @@ The [validator](/components/core/validation/) and the reference renderer use a
 Playwright browser driver. This runs **inside the driver/run container** in the
 cluster, not on your host — so a backend-driven run needs nothing installed
 locally for it. You only need a host Chromium if you run the **local-only**
-commands that render references directly (`tcab validate` / `catalog`); install
+commands that render references directly (`tcab validate`); install
 the pinned revision **through the pinning workspace** (a bare `npx playwright`
 fetches a different version):
 

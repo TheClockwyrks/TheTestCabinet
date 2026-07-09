@@ -43,6 +43,27 @@ export async function postJson<T>(
   return (await res.json()) as T;
 }
 
+// PUT a JSON body, sending `token` as `Authorization: Bearer <token>` — the
+// mutating model-config update supplies it. Mirrors {@link postJson}.
+export async function putJson<T>(
+  base: string,
+  path: string,
+  body: unknown,
+  token?: string | null,
+): Promise<T> {
+  const res = await fetch(joinUrl(base, path), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      ...bearer(token),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await httpError(res);
+  return (await res.json()) as T;
+}
+
 // DELETE a resource. `token` is sent as `Authorization: Bearer <token>` — the
 // run-delete call (the only DELETE the console issues) is mutating and supplies
 // it. Parses and returns the JSON acknowledgement.
@@ -60,6 +81,20 @@ export async function delJson<T>(
   });
   if (!res.ok) throw await httpError(res);
   return (await res.json()) as T;
+}
+
+// DELETE a resource that returns no body (`204 No Content`), sending `token` as a
+// bearer. Used by the model-config delete, which acknowledges with an empty body.
+export async function delVoid(
+  base: string,
+  path: string,
+  token?: string | null,
+): Promise<void> {
+  const res = await fetch(joinUrl(base, path), {
+    method: "DELETE",
+    headers: { ...bearer(token) },
+  });
+  if (!res.ok) throw await httpError(res);
 }
 
 export async function getText(base: string, path: string): Promise<string> {

@@ -175,6 +175,7 @@ fn main() -> Result<()> {
                 tc::ReferenceKind, tc::SpecKind, snap::CaseCheckOut, snap::CaseDomainOut,
                 snap::CaseReviewItemOut, snap::CaseReferenceOut, snap::CaseSeededInputOut,
                 snap::CasePackageOut, snap::CaseVariantOut, snap::CaseMetadata,
+                snap::ModelCatalogFile,
             ],
         },
         // The backend HTTP API response envelopes (error + catalog/versions).
@@ -183,6 +184,9 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 berr::ErrorBody, berr::ErrorEnvelope, bapi::CatalogCase, bapi::CatalogResponse,
                 bapi::VersionsResponse,
+                bapi::ModelCatalogResponse, bapi::ModelOut, bapi::ModelPricesOut,
+                bapi::PriceObservationOut, bapi::ModelConfigInput, bapi::ModelSeedOut,
+                bapi::LogoFetchInput, bapi::LogoFetchOut,
             ],
         },
         // The backend's run-queue control plane (the `/jobs` namespace) — what

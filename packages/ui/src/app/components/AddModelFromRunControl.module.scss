@@ -1,0 +1,27 @@
+@use "../styles/tokens" as t;
+@use "../styles/halo" as h;
+
+// An outlined accent action, brightening on hover — the same neon affordance the
+// other model/run controls use. Kept compact so it can sit inline beside a model
+// name or a run's model line.
+.add {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  @include h.halo;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: none;
+    background: color-mix(in srgb, t.$color-accent 14%, transparent);
+    box-shadow: var(--ttc-glow);
+  }
+}

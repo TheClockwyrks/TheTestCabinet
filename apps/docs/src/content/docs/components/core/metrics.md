@@ -71,6 +71,16 @@ Comparable cost is derived from the recorded token classes and the listed prices
 for uncached input, cached input, and output tokens, with reasoning tokens
 priced at the output rate.
 
+The OpenRouter per-token prices are fetched by the **backend**, not the CLI. The
+backend records a model's price **when a run completes** — capturing the rate in
+effect at that moment, so a promotional price such as a launch-week discount is
+reflected in the runs that ran under it — and again on a **24-hour periodic
+refresh**, appending a new observation to the model's price history only when the
+price changed. The history is retained per model and shown on the model's detail
+page. A run whose model id carries a `:free`-style OpenRouter variant tag is
+priced at the model's **base rate**, never `$0`: the free tag is a routing hint,
+not a genuinely free run.
+
 ### Harness-reported cost
 
 Some harnesses drive a single provider directly through an API key and report

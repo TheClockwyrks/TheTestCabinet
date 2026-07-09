@@ -1,0 +1,201 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+// The add/edit model form. Shares the run-execution surfaces' field/control
+// tokens so it reads as part of the same console.
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-bottom: t.$space-lg;
+}
+
+// A field that follows another stacked field, kept flush with the grid rhythm.
+.fieldStacked {
+  margin-top: 0;
+}
+
+.fieldLabel {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 9rem;
+}
+
+// --- Aliases: a repeatable id list --------------------------------------------
+
+.aliasBlock {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}
+
+.aliasList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.aliasRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The per-row remove control: a muted destructive glyph, brightening on hover;
+// dimmed when it is the last remaining row (which can't be removed).
+.aliasRemove {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: t.$font-lg;
+  line-height: 1;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  cursor: pointer;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+// The add-row action: an outlined accent affordance, self-sized to its label.
+.aliasAdd {
+  align-self: flex-start;
+  padding: t.$space-xs t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, t.$color-accent 14%, transparent);
+  }
+}
+
+// --- Actions ------------------------------------------------------------------
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  margin: t.$space-md 0;
+  flex-wrap: wrap;
+}
+
+.primary {
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  background: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-bg;
+  box-shadow: var(--ttc-glow);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// A muted destructive button that only brightens to the negative color on
+// hover/focus, matching the run-delete control.
+.deleteButton {
+  margin-left: auto;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  cursor: pointer;
+  @include h.halo;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+    background: color-mix(in srgb, t.$color-negative 8%, transparent);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+}
+
+.notice {
+  margin: t.$space-md 0;
+  padding: t.$space-sm t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text;
+}
+
+.warn {
+  border-color: t.$color-accent-2;
+}
+
+.error {
+  border-color: t.$color-negative;
+  color: t.$color-negative;
+}

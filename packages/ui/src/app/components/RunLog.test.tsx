@@ -68,6 +68,8 @@ function galleryValue(): GalleryDataInput {
     runsLoading: false,
     testCases: TEST_CASES,
     testCasesStatus: "ready",
+    models: [],
+    modelsStatus: "ready",
     canExecute: false,
   } as unknown as GalleryDataInput;
 }

@@ -52,6 +52,24 @@ impl HarnessSlug {
         HarnessSlug::Pi,
     ];
 
+    /// Whether this harness reaches its model **through OpenRouter** (it
+    /// authenticates with `OPENROUTER_API_KEY`), as opposed to a provider-native
+    /// endpoint. True for Cline, Goose, Kilo, OpenCode, and Pi; false for Codex
+    /// (OpenAI), Claude (Anthropic), and Antigravity (Google). This governs
+    /// whether a trailing `:free`-style OpenRouter variant tag is stripped when
+    /// canonicalizing the model id (see [`crate::model_id`]). A drift test keeps
+    /// this in step with each harness's `api_key_env`.
+    pub fn routes_through_openrouter(self) -> bool {
+        matches!(
+            self,
+            HarnessSlug::Cline
+                | HarnessSlug::Goose
+                | HarnessSlug::Kilo
+                | HarnessSlug::Opencode
+                | HarnessSlug::Pi
+        )
+    }
+
     /// The wire slug for this harness, matching the serde representation.
     pub fn as_str(&self) -> &'static str {
         match self {

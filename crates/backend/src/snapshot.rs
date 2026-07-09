@@ -27,6 +27,7 @@ use time::macros::format_description;
 use test_cabinet_core::redact::SecretScrubber;
 use test_cabinet_core::run_record::RunRecord;
 
+use crate::api::ModelOut;
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
 use crate::r2::R2Client;
@@ -71,6 +72,9 @@ pub struct SnapshotBuilder {
     artifacts_url: Option<String>,
     /// The HTTP client for that fallback. Unused when `artifacts_url` is `None`.
     http: reqwest::Client,
+    /// The composed model catalog exported alongside the runs, so the public site
+    /// renders the Models section from the snapshot. Empty by default.
+    models: Vec<ModelOut>,
 }
 
 impl SnapshotBuilder {
@@ -88,7 +92,14 @@ impl SnapshotBuilder {
             store,
             artifacts_url: None,
             http: reqwest::Client::new(),
+            models: Vec::new(),
         }
+    }
+
+    /// Set the composed model catalog to export in this snapshot's `models.json`.
+    pub fn with_models(mut self, models: Vec<ModelOut>) -> Self {
+        self.models = models;
+        self
     }
 
     /// Enable the artifact-service fallback: when a run's proof/asset media is not in
@@ -220,6 +231,17 @@ impl SnapshotBuilder {
             objects.extend(reference_objects);
         }
 
+        // models.json — the composed model catalog (curated ⋃ derived-from-runs,
+        // with price history), so the public site renders the Models section from
+        // the snapshot rather than a bundled dataset.
+        objects.push(json_object(
+            format!("{prefix}/models.json"),
+            &ModelCatalogFile {
+                schema_version: SCHEMA_VERSION,
+                models: self.models.clone(),
+            },
+        )?);
+
         let index = json_object(
             "index.json".to_string(),
             &SnapshotIndex {
@@ -232,6 +254,7 @@ impl SnapshotBuilder {
                 runs_key: format!("{prefix}/runs.json"),
                 runs_prefix: format!("{prefix}/runs/"),
                 cases_prefix: format!("{prefix}/cases/"),
+                models_key: format!("{prefix}/models.json"),
             },
         )?;
 
@@ -746,6 +769,18 @@ pub struct SnapshotIndex {
     pub runs_key: String,
     pub runs_prefix: String,
     pub cases_prefix: String,
+    /// Where this snapshot's model catalog lives (`<prefix>/models.json`).
+    pub models_key: String,
+}
+
+/// The model catalog file (`models.json`): the composed catalog the public site
+/// renders the Models section from.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ModelCatalogFile {
+    pub schema_version: u32,
+    pub models: Vec<ModelOut>,
 }
 
 /// The flat index of run summary cards (`runs.json`), newest first.

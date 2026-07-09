@@ -61,10 +61,6 @@ pub enum Command {
     /// Print the prompt a run would hand to the harness for a test case variant,
     /// without seeding or launching anything.
     Prompt(PromptArgs),
-
-    /// Regenerate the live `models.json` catalog the frontend reads. Test-case
-    /// data is served from the backend's published snapshot, not emitted here.
-    Catalog(CatalogArgs),
 }
 
 /// The agent harness to drive, selectable on the command line.
@@ -305,25 +301,6 @@ pub struct PromptArgs {
     /// Variant of the test case to render the prompt for (for example, `base`).
     #[arg(long, value_name = "VARIANT")]
     pub variant: String,
-}
-
-/// Arguments for `tcab catalog`.
-///
-/// The catalog command needs no API keys: it reads the model catalog from disk
-/// and regenerates the bundled model dataset (`models.json`) the consoles and
-/// site ship, refreshing each model's OpenRouter prices. `--models-dir` and
-/// `--data-dir` exist so the source catalog and the output location can be
-/// relocated in tests or alternative layouts.
-#[derive(Debug, Args)]
-pub struct CatalogArgs {
-    /// Directory holding the model catalog (`<slug>.toml` declarations).
-    #[arg(long, value_name = "DIR", default_value = "models")]
-    pub models_dir: std::path::PathBuf,
-
-    /// Directory the regenerated model dataset (`models.json`) is written into.
-    /// Defaults to the shared UI package every host bundles it from.
-    #[arg(long, value_name = "DIR", default_value = "packages/ui/src/app/data")]
-    pub data_dir: std::path::PathBuf,
 }
 
 #[cfg(test)]

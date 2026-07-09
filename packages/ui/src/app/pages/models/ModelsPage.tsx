@@ -9,7 +9,8 @@ import { useResizableColumns } from "../../components/useResizableColumns";
 import { sortRows, useTableSort } from "../../components/useTableSort";
 import type { ModelSummary } from "../../data/models";
 import { useModels } from "../../data/useModels";
-import { providerLogo } from "../../data/providerLogo";
+import { useModelConfig } from "../../data/useModelConfig";
+import { ModelProviderMark } from "../../components/ModelProviderMark";
 import { formatCompact, formatUsd, perMillion } from "../../format";
 import { routes } from "../../routes";
 import styles from "./ModelsPage.module.scss";
@@ -45,24 +46,16 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
     min: 96,
     optional: true,
     sortKey: (model) => model.name.toLowerCase(),
-    render: (model) => {
-      const logo = providerLogo(model.provider);
-      return (
-        <span className={styles.identity}>
-          {logo && (
-            <span
-              className={styles.logo}
-              style={{
-                maskImage: `url(${logo})`,
-                WebkitMaskImage: `url(${logo})`,
-              }}
-              aria-hidden="true"
-            />
-          )}
-          <span className={styles.name}>{model.name}</span>
-        </span>
-      );
-    },
+    render: (model) => (
+      <span className={styles.identity}>
+        <ModelProviderMark
+          logoSvg={model.logoSvg}
+          provider={model.provider}
+          className={styles.logo}
+        />
+        <span className={styles.name}>{model.name}</span>
+      </span>
+    ),
   },
   {
     id: "provider",
@@ -129,6 +122,9 @@ const MODEL_COLUMN_BY_ID = new Map(MODEL_COLUMNS.map((column) => [column.id, col
 // user-resizable, and the optional columns can be shown/hidden via the picker.
 export function ModelsPage() {
   const { models } = useModels();
+  // The add affordance shows only where curating a model is possible (a signed-in
+  // console with a config-capable backend); it is null (hidden) otherwise.
+  const config = useModelConfig();
   const { sort, cycle } = useTableSort("ttc:sort:models");
   const { isVisible, toggle } = useColumnVisibility(
     "ttc:visible:models",
@@ -152,11 +148,18 @@ export function ModelsPage() {
   return (
     <PageLayout>
       <section className={styles.section}>
-        <PromptHeader
-          command="--models"
-          blink
-          comment={<>// the models we put through the cabinet</>}
-        />
+        <div className={styles.header}>
+          <PromptHeader
+            command="--models"
+            blink
+            comment={<>// the models we put through the cabinet</>}
+          />
+          {config && (
+            <Link className={styles.addButton} to={routes.modelNew()}>
+              + Add model
+            </Link>
+          )}
+        </div>
 
         {models.length === 0 ? (
           <p className={styles.empty}>No models are in the catalog yet.</p>

@@ -35,8 +35,8 @@ API key.
 - [Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/)
   — add a brief variation against the shared target sheet of a sprite-sheet
   asset-generation version (`asset_kind = "sprite-sheet"`).
-- [Add or Update a Model](/quickstarts/add-or-update-a-model/) — add a model to
-  the catalog, or refresh the committed prices with `tcab catalog`.
+- [Add or Update a Model](/quickstarts/add-or-update-a-model/) — curate a model
+  in the app (display name, aliases, logo, description).
 - [Publish an Audio Sample Pack](/quickstarts/publish-an-audio-sample-pack/) —
   build an `sfx-sample`/`music` pack from its manifest, upload it to R2, and pin
   it so the run image bakes it in.

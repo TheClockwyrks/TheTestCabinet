@@ -24,9 +24,13 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
+use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
-use test_cabinet_core::run_record::{RunLinks, RunRecord};
-use test_cabinet_entities::{job, publish_job, review, run, run_link, snapshot_state, tournament};
+use test_cabinet_core::run_record::{HarnessSlug, RunLinks, RunRecord};
+use test_cabinet_entities::{
+    job, model, model_alias, model_price, publish_job, review, run, run_link, snapshot_state,
+    tournament,
+};
 
 use crate::error::Result;
 
@@ -1330,6 +1334,331 @@ impl Db {
         txn.commit().await?;
         Ok(PublishRunOutcome { newly_published })
     }
+}
+
+/// A curated model configuration and the canonical run-record ids it covers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredModel {
+    /// The curated `model` row.
+    pub config: model::Model,
+    /// The canonical model ids this config claims, sorted.
+    pub aliases: Vec<String>,
+}
+
+/// The write payload for [`Db::upsert_model_config`].
+#[derive(Debug, Clone)]
+pub struct ModelConfigWrite {
+    pub slug: String,
+    pub display_name: String,
+    pub provider: String,
+    pub provider_logo_url: Option<String>,
+    pub provider_logo_svg: Option<String>,
+    pub description_md: Option<String>,
+    pub openrouter_slug: Option<String>,
+    /// The canonical model ids this config claims (at least one).
+    pub aliases: Vec<String>,
+    /// RFC 3339 timestamp for the created/updated stamp.
+    pub now: String,
+}
+
+/// One price observation to append to a model's history.
+#[derive(Debug, Clone)]
+pub struct PriceWrite {
+    pub model_id: String,
+    pub observed_at: String,
+    pub uncached_input: Option<f64>,
+    pub cached_input: Option<f64>,
+    pub output: Option<f64>,
+    pub context_length: Option<i64>,
+    pub released_at: Option<String>,
+}
+
+/// The model catalog store: curated config, its aliases, and observed prices.
+impl Db {
+    /// Every curated model config with its aliases, ordered by slug.
+    pub async fn list_model_configs(&self) -> Result<Vec<StoredModel>> {
+        let configs = model::Entity::find()
+            .order_by_asc(model::Column::Slug)
+            .all(&self.conn)
+            .await?;
+        let mut alias_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for alias in model_alias::Entity::find().all(&self.conn).await? {
+            alias_map
+                .entry(alias.model_slug)
+                .or_default()
+                .push(alias.alias);
+        }
+        Ok(configs
+            .into_iter()
+            .map(|config| {
+                let mut aliases = alias_map.remove(&config.slug).unwrap_or_default();
+                aliases.sort();
+                StoredModel { config, aliases }
+            })
+            .collect())
+    }
+
+    /// A single curated model config with its aliases, or `None`.
+    pub async fn get_model_config(&self, slug: &str) -> Result<Option<StoredModel>> {
+        let Some(config) = model::Entity::find_by_id(slug).one(&self.conn).await? else {
+            return Ok(None);
+        };
+        let mut aliases: Vec<String> = model_alias::Entity::find()
+            .filter(model_alias::Column::ModelSlug.eq(slug))
+            .all(&self.conn)
+            .await?
+            .into_iter()
+            .map(|alias| alias.alias)
+            .collect();
+        aliases.sort();
+        Ok(Some(StoredModel { config, aliases }))
+    }
+
+    /// Create or update a curated model config and replace its alias set, in one
+    /// transaction. On update the original `created_at` is preserved. Returns a
+    /// [`BackendError::Conflict`](crate::error::BackendError::Conflict) when any
+    /// alias is already claimed by a *different* curated model.
+    pub async fn upsert_model_config(&self, write: ModelConfigWrite) -> Result<()> {
+        let txn = self.conn.begin().await?;
+
+        // Reject an alias that another curated model already owns (the alias
+        // column is globally unique; catch it before the constraint fires so the
+        // caller gets a clean 409 naming the offending id).
+        for alias in &write.aliases {
+            if let Some(existing) = model_alias::Entity::find()
+                .filter(model_alias::Column::Alias.eq(alias.clone()))
+                .one(&txn)
+                .await?
+                && existing.model_slug != write.slug
+            {
+                return Err(crate::error::BackendError::Conflict(format!(
+                    "model id `{alias}` is already claimed by model `{}`",
+                    existing.model_slug
+                )));
+            }
+        }
+
+        let existing = model::Entity::find_by_id(&write.slug).one(&txn).await?;
+        let created_at = existing
+            .as_ref()
+            .map(|m| m.created_at.clone())
+            .unwrap_or_else(|| write.now.clone());
+        let active = model::ActiveModel {
+            slug: Set(write.slug.clone()),
+            display_name: Set(write.display_name),
+            provider: Set(write.provider),
+            provider_logo_url: Set(write.provider_logo_url),
+            provider_logo_svg: Set(write.provider_logo_svg),
+            description_md: Set(write.description_md),
+            openrouter_slug: Set(write.openrouter_slug),
+            created_at: Set(created_at),
+            updated_at: Set(write.now),
+        };
+        model::Entity::insert(active)
+            .on_conflict(
+                OnConflict::column(model::Column::Slug)
+                    .update_columns([
+                        model::Column::DisplayName,
+                        model::Column::Provider,
+                        model::Column::ProviderLogoUrl,
+                        model::Column::ProviderLogoSvg,
+                        model::Column::DescriptionMd,
+                        model::Column::OpenrouterSlug,
+                        model::Column::UpdatedAt,
+                    ])
+                    .to_owned(),
+            )
+            .exec(&txn)
+            .await?;
+
+        // Replace the alias set wholesale.
+        model_alias::Entity::delete_many()
+            .filter(model_alias::Column::ModelSlug.eq(write.slug.clone()))
+            .exec(&txn)
+            .await?;
+        for alias in write.aliases {
+            model_alias::Entity::insert(model_alias::ActiveModel {
+                id: Set(uuid::Uuid::new_v4().to_string()),
+                model_slug: Set(write.slug.clone()),
+                alias: Set(alias),
+            })
+            .exec(&txn)
+            .await?;
+        }
+
+        txn.commit().await?;
+        Ok(())
+    }
+
+    /// Delete a curated model config (its aliases cascade). Returns whether a row
+    /// was removed. The model's runs and price history are untouched, so it may
+    /// reappear as a derived (uncurated) catalog entry.
+    pub async fn delete_model_config(&self, slug: &str) -> Result<bool> {
+        let deleted = model::Entity::delete_by_id(slug).exec(&self.conn).await?;
+        Ok(deleted.rows_affected > 0)
+    }
+
+    /// The distinct `(model_id, harness_slug)` pairs across **all** stored runs.
+    /// The catalog derives a model per canonical id from these.
+    pub async fn distinct_run_models(&self) -> Result<Vec<(String, String)>> {
+        Ok(run::Entity::find()
+            .select_only()
+            .column(run::Column::ModelId)
+            .column(run::Column::HarnessSlug)
+            .distinct()
+            .into_tuple()
+            .all(&self.conn)
+            .await?)
+    }
+
+    /// The distinct `(model_id, harness_slug)` pairs across **published** runs
+    /// only — the derived set the public snapshot may show.
+    pub async fn distinct_published_run_models(&self) -> Result<Vec<(String, String)>> {
+        Ok(run::Entity::find()
+            .select_only()
+            .column(run::Column::ModelId)
+            .column(run::Column::HarnessSlug)
+            .filter(run::Column::Published.eq(true))
+            .distinct()
+            .into_tuple()
+            .all(&self.conn)
+            .await?)
+    }
+
+    /// The most recent price observation for a canonical model id, or `None`.
+    pub async fn latest_price(&self, model_id: &str) -> Result<Option<model_price::Model>> {
+        Ok(model_price::Entity::find()
+            .filter(model_price::Column::ModelId.eq(model_id))
+            .order_by_desc(model_price::Column::ObservedAt)
+            .order_by_desc(model_price::Column::Id)
+            .one(&self.conn)
+            .await?)
+    }
+
+    /// Append a price observation to a model's history.
+    pub async fn insert_price_observation(&self, write: PriceWrite) -> Result<()> {
+        model_price::Entity::insert(model_price::ActiveModel {
+            id: NotSet,
+            model_id: Set(write.model_id),
+            observed_at: Set(write.observed_at),
+            uncached_input: Set(write.uncached_input),
+            cached_input: Set(write.cached_input),
+            output: Set(write.output),
+            context_length: Set(write.context_length),
+            released_at: Set(write.released_at),
+        })
+        .exec(&self.conn)
+        .await?;
+        Ok(())
+    }
+
+    /// Every price observation, ascending by `(model_id, observed_at)`. The
+    /// catalog groups these into per-model histories.
+    pub async fn all_model_prices(&self) -> Result<Vec<model_price::Model>> {
+        Ok(model_price::Entity::find()
+            .order_by_asc(model_price::Column::ModelId)
+            .order_by_asc(model_price::Column::ObservedAt)
+            .order_by_asc(model_price::Column::Id)
+            .all(&self.conn)
+            .await?)
+    }
+
+    /// The curated `openrouter_slug` of the model that claims `alias`, if any. Used
+    /// to price a run's model against its configured OpenRouter slug rather than a
+    /// slug guessed from the run's model id.
+    pub async fn openrouter_slug_for_alias(&self, alias: &str) -> Result<Option<String>> {
+        let Some(row) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(alias))
+            .one(&self.conn)
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(model::Entity::find_by_id(row.model_slug)
+            .one(&self.conn)
+            .await?
+            .and_then(|m| m.openrouter_slug))
+    }
+
+    /// Whether any stored run is a candidate for `:free` normalization — an
+    /// OpenRouter-accessed harness whose model id carries a trailing `:tag`. Used
+    /// to skip the OpenRouter price fetch entirely at startup when there is nothing
+    /// to re-price (the common case), so a boot with no such runs costs no network.
+    pub async fn has_free_tag_candidates(&self) -> Result<bool> {
+        let rows: Vec<(String, String)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::ModelId)
+            .column(run::Column::HarnessSlug)
+            .filter(run::Column::ModelId.contains(":"))
+            .into_tuple()
+            .all(&self.conn)
+            .await?;
+        Ok(rows.iter().any(|(model_id, harness_slug)| {
+            parse_harness_slug(harness_slug).routes_through_openrouter()
+                && model_id.contains(':')
+        }))
+    }
+
+    /// Re-associate `:free`-style runs to their base model: for every run driven by
+    /// an OpenRouter-accessed harness whose model id carries a trailing `:tag`,
+    /// strip the tag from the lifted `model_id` column and the record's
+    /// `subject.modelId`, and recompute the run's comparable cost at the base
+    /// model's price (from `base_prices`, keyed by OpenRouter id). A run whose base
+    /// price is unavailable has its cost set to unknown rather than left at the
+    /// misleading `$0.00` a free tag produces. Idempotent (an already-stripped run
+    /// is unchanged) and best-effort per row. Returns how many runs were rewritten.
+    pub async fn normalize_free_model_ids(
+        &self,
+        base_prices: &std::collections::HashMap<String, TokenPrices>,
+    ) -> Result<usize> {
+        let rows = run::Entity::find().all(&self.conn).await?;
+        let mut rewritten = 0usize;
+        for row in rows {
+            let harness = parse_harness_slug(&row.harness_slug);
+            if !harness.routes_through_openrouter() {
+                continue;
+            }
+            let Some((base, _tag)) = row.model_id.rsplit_once(':') else {
+                continue;
+            };
+            let base = base.to_string();
+            // Deserialize the record; a legacy record that no longer matches the
+            // schema is skipped rather than corrupted.
+            let Ok(mut record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                continue;
+            };
+            record.subject.model_id = base.clone();
+            let lookup =
+                test_cabinet_core::model_id::openrouter_price_id(&base, harness);
+            let comparable = base_prices
+                .get(&lookup)
+                .and_then(|prices| Cost::comparable_from(&record.metrics.tokens, prices));
+            record.metrics.cost = Cost {
+                comparable,
+                actual: comparable,
+            };
+            let record_json = serde_json::to_string(&record)?;
+
+            let mut active = row.into_active_model();
+            active.model_id = Set(base);
+            active.record_json = Set(record_json);
+            active.update(&self.conn).await?;
+            rewritten += 1;
+        }
+        Ok(rewritten)
+    }
+}
+
+/// Parse a stored harness slug string into a [`HarnessSlug`], defaulting to Claude
+/// for an unrecognized value (a slug the current build does not know). The default
+/// only affects the `:free` normalization guard, which a non-OpenRouter default
+/// simply skips.
+fn parse_harness_slug(slug: &str) -> HarnessSlug {
+    HarnessSlug::ALL
+        .into_iter()
+        .find(|h| h.as_str() == slug)
+        .unwrap_or(HarnessSlug::Claude)
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { MetricChartWidget, Panel } from "@test-cabinet/ui";
 import { useRuns } from "../../../data/useRuns";
-import { findModelByModelId } from "../../../data/models";
+import { useFindModel } from "../../../data/useModels";
 import {
   providerColor,
   UNKNOWN_PROVIDER_COLOR,
@@ -30,14 +30,6 @@ const tokensValue = (run: RunRecord): number | null => totalTokens(run.metrics);
 // as zero.
 const costValue = (run: RunRecord): number | null => run.metrics.cost.comparable;
 
-// Colors each model's bar by its provider's brand color, so a glance groups the
-// roster by provider. Module-level for a stable identity across renders (the
-// widget memoizes its bar data on it). A provider we have no color for (or a
-// model missing from the catalog) falls back to a neutral grey.
-const colorForModel = (modelId: string): string =>
-  providerColor(findModelByModelId(modelId)?.provider ?? "") ??
-  UNKNOWN_PROVIDER_COLOR;
-
 // The Metrics tab (`/test-cases/:slug/metrics`): token and cost distributions
 // for the selected variant, grouped by model so the spread across runs is
 // visible without implying a winner. The charts show spread, never a ranking
@@ -60,6 +52,19 @@ function MetricsContent({
   variant: VariantSummary;
 }) {
   const { runs } = useRuns();
+  const findModel = useFindModel();
+
+  // Colors each model's bar by its provider's brand color, so a glance groups the
+  // roster by provider. A provider we have no color for (or a model missing from
+  // the catalog) falls back to a neutral grey. Memoized on the catalog resolver so
+  // the widget's bar data stays stable across re-renders.
+  const colorForModel = useMemo(
+    () =>
+      (modelId: string): string =>
+        providerColor(findModel(modelId)?.provider ?? "") ??
+        UNKNOWN_PROVIDER_COLOR,
+    [findModel],
+  );
 
   // Completed runs of this case and variant, newest first. Memoized so the chart
   // specs are stable across re-renders. Failed runs produced no metrics (their

@@ -11,7 +11,7 @@ import { useRuns } from "../../data/useRuns";
 import { useWorkers } from "../../../client/context";
 import { useAuth } from "../../../client/auth";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
-import { findModelByModelId } from "../../data/models";
+import { useFindModel } from "../../data/useModels";
 import { formatSlug } from "../../format";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
@@ -143,7 +143,7 @@ function FailureRow({
   const [error, setError] = useState<string | null>(null);
   const { subject } = run;
   const presentation = describeRunState(run.status.state);
-  const model = findModelByModelId(subject.modelId);
+  const model = useFindModel()(subject.modelId, subject.harnessSlug);
   const testCaseName = useTestCaseName();
 
   // Publishing is asynchronous: enqueue and observe the release over its live

@@ -57,7 +57,7 @@ export function NewRunPage() {
       .listModels()
       .then((ms) => {
         setModels(ms);
-        const firstId = ms[0]?.modelIds[0] ?? ms[0]?.slug ?? "";
+        const firstId = ms[0]?.aliases[0] ?? ms[0]?.slug ?? "";
         if (firstId) setModelId(firstId);
       })
       .catch(() => {
@@ -265,7 +265,7 @@ export function NewRunPage() {
           />
           <datalist id="tcab-model-ids">
             {models.flatMap((m) =>
-              m.modelIds.map((id) => <option key={id} value={id} />),
+              m.aliases.map((id: string) => <option key={id} value={id} />),
             )}
           </datalist>
         </label>

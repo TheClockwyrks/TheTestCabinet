@@ -3,7 +3,7 @@ import { RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { useRuns } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
-import { findModelByModelId } from "../../../data/models";
+import { useFindModel } from "../../../data/useModels";
 import {
   RATINGS,
   scoreChecklist,
@@ -48,6 +48,7 @@ function LeaderboardContent({
 }) {
   const { runs, localWriteups } = useRuns();
   const findReview = useFindReview();
+  const findModel = useFindModel();
 
   // Best scored run per model for this case + variant, ranked by points.
   const entries = useMemo<Entry[]>(() => {
@@ -71,12 +72,12 @@ function LeaderboardContent({
         review.checklist,
       );
       const candidate: Entry = {
-        // Canonicalized so an `openrouter/`-prefixed run and its bare form rank
-        // as one model rather than two rows.
-        modelId: canonicalModelId(run.subject.modelId),
+        // Canonicalized (harness-aware) so an `openrouter/`-prefixed or
+        // `:free`-tagged run and its base form rank as one model, not two rows.
+        modelId: canonicalModelId(run.subject.modelId, run.subject.harnessSlug),
         modelName:
-          findModelByModelId(run.subject.modelId)?.name ??
-          canonicalModelId(run.subject.modelId),
+          findModel(run.subject.modelId, run.subject.harnessSlug)?.name ??
+          canonicalModelId(run.subject.modelId, run.subject.harnessSlug),
         earned,
         total,
         overall: worstRating(review.ratings.map((r) => r.rating)),
@@ -92,6 +93,7 @@ function LeaderboardContent({
     runs,
     localWriteups,
     findReview,
+    findModel,
     testCase.slug,
     variant.slug,
     variant.reviewItems,

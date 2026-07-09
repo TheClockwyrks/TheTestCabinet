@@ -203,6 +203,48 @@ async fn snapshot_has_index_runs_per_run_and_case_objects() {
     assert!(keys.contains(&format!("{prefix}/runs.json").as_str()));
     assert!(keys.contains(&format!("{prefix}/runs/r1.json").as_str()));
     assert!(keys.contains(&format!("{prefix}/cases/pong/v1.0.0.json").as_str()));
+    // An empty catalog still emits a well-formed models.json.
+    assert!(keys.contains(&format!("{prefix}/models.json").as_str()));
+}
+
+#[tokio::test]
+async fn snapshot_emits_the_composed_model_catalog() {
+    use crate::api::ModelOut;
+
+    let (_tmp, store) = empty_store();
+    let model = ModelOut {
+        slug: "opus".to_string(),
+        name: "Claude Opus 4.8".to_string(),
+        provider: "Anthropic".to_string(),
+        curated: true,
+        openrouter_url: Some("https://openrouter.ai/anthropic/claude-opus-4.8".to_string()),
+        description: None,
+        logo_svg: None,
+        covered_model_ids: vec![],
+        aliases: vec!["anthropic/claude-opus-4.8".to_string()],
+        price: None,
+        price_history: vec![],
+        context_length: None,
+        released_at: None,
+    };
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_models(vec![model])
+        .build(now())
+        .await
+        .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let models = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/models.json"))
+        .expect("models.json present");
+    let body: serde_json::Value = serde_json::from_slice(&models.bytes).unwrap();
+    assert_eq!(body["models"][0]["name"], "Claude Opus 4.8");
+    assert_eq!(body["models"][0]["curated"], true);
+    // The index points at the catalog file.
+    let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
+    assert_eq!(index["modelsKey"], format!("{prefix}/models.json"));
 }
 
 #[tokio::test]

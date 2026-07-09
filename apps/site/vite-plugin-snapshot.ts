@@ -37,6 +37,15 @@ interface SnapshotIndex {
   runsKey: string;
   runsPrefix: string;
   casesPrefix: string;
+  // Optional so a snapshot published before the model catalog existed still loads
+  // (the site then renders an empty Models section).
+  modelsKey?: string;
+}
+
+interface SnapshotModelsFile {
+  schemaVersion: number;
+  // Wire `ModelOut` shape; the app maps it via `toModelSummary`.
+  models: unknown[];
 }
 
 interface SnapshotRunsFile {
@@ -225,6 +234,9 @@ interface AssembledSnapshot {
   reviews: Record<string, AssembledReview[]>;
   // Test-case metadata, mapped to the app's TestCaseSummary shape.
   testCases: AssembledTestCase[];
+  // The composed model catalog (wire `ModelOut[]`); the app maps it via
+  // `toModelSummary`. Empty when the snapshot predates the model catalog.
+  models: unknown[];
   // Resolved proof media URLs, keyed by run id then by served file name
   // (`<proof-id>.<ext>`). The app's `proofMediaUrl(runId, file)` reads this.
   proofMediaUrls: Record<string, Record<string, string>>;
@@ -325,6 +337,7 @@ const EMPTY: AssembledSnapshot = {
   writeups: {},
   reviews: {},
   testCases: [],
+  models: [],
   proofMediaUrls: {},
   assetMediaUrls: {},
 };
@@ -648,11 +661,27 @@ async function loadSnapshot(
     }
   }
 
+  // The model catalog. Absent from a snapshot published before it existed, in
+  // which case the Models section renders empty.
+  let models: unknown[] = [];
+  if (index.modelsKey) {
+    try {
+      const modelsFile = await fetchJson<SnapshotModelsFile>(
+        joinUrl(base, index.modelsKey),
+      );
+      models = modelsFile.models;
+    } catch {
+      // Missing/unreadable catalog file: render an empty Models section rather
+      // than failing the whole build.
+    }
+  }
+
   return {
     runs,
     writeups,
     reviews,
     testCases: collapseCases(base, caseFiles),
+    models,
     proofMediaUrls,
     assetMediaUrls,
   };
@@ -665,6 +694,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const writeups = ${JSON.stringify(data.writeups)};`,
     `export const reviews = ${JSON.stringify(data.reviews)};`,
     `export const testCases = ${JSON.stringify(data.testCases)};`,
+    `export const models = ${JSON.stringify(data.models)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
   ].join("\n");

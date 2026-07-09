@@ -6,7 +6,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
-import { findModelByModelId } from "../../data/models";
+import { useFindModel } from "../../data/useModels";
 import { type Rating, worstRating } from "../../data/ratings";
 import { useRuns } from "../../data/useRuns";
 import { useFindReview } from "../../data/writeups";
@@ -94,7 +94,7 @@ function FeaturedRun({
   rating: Rating | null;
 }) {
   const { subject, metrics } = run;
-  const model = findModelByModelId(subject.modelId);
+  const model = useFindModel()(subject.modelId, subject.harnessSlug);
   const testCaseName = useTestCaseName();
   return (
     <article className={styles.feature}>
