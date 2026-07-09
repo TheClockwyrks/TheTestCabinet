@@ -93,6 +93,15 @@ CONTAINER_TOOL ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || ec
 # overlay's `tcab-<svc>:local` image names resolve to, so the manifests match.
 REGISTRY_PREFIX ?= docker.io/library
 
+# The provenance commit stamped into the service binaries (crates/core/build.rs →
+# the run record's testCabinetCommit). The build context omits `.git` — the
+# repo-root .dockerignore is an allowlist that never re-includes it — so the
+# Dockerfiles can't resolve the commit from git themselves; we resolve it here on
+# the host and pass it in as the TCAB_BUILD_COMMIT build arg. Mirrors build.rs: the
+# HEAD hash, suffixed `-dirty` when the working tree has uncommitted changes. Empty
+# when git can't resolve one (no repo), which simply stamps a null commit.
+TCAB_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(REPO)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(REPO)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
+
 BACKEND_IMG    := $(REGISTRY_PREFIX)/tcab-backend:local
 AUTH_IMG       := $(REGISTRY_PREFIX)/tcab-auth-service:local
 DISPATCHER_IMG := $(REGISTRY_PREFIX)/tcab-dispatcher:local
@@ -274,12 +283,12 @@ kubeconfig:
 images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images:
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
-	$(CONTAINER_TOOL) build -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
 	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
 	  i=0; tars=""; \
 	  for img in $(ALL_IMGS); do \

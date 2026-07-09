@@ -55,11 +55,15 @@ COPY . .
 # rebuilding every dependency from scratch. target/ is a cache mount (not a layer),
 # so the freshly built binary is copied to a stable path inside the same RUN, before
 # the mount is detached — the runtime stage COPYs it from there.
+# TCAB_BUILD_COMMIT stamps the build's provenance commit into the binary
+# (crates/core/build.rs); this `.git`-less context can't resolve it from git, so
+# CI passes the commit (github.sha) in as a build arg. Unset, it stamps null.
+ARG TCAB_BUILD_COMMIT
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/local/rustup \
     --mount=type=cache,target=/src/target \
-    cargo build --release -p tcab-publisher \
+    TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release -p tcab-publisher \
     && cp /src/target/release/tcab-publisher /tcab-publisher
 
 # ── Runtime stage ────────────────────────────────────────────────────────────

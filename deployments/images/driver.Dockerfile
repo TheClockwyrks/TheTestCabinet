@@ -47,11 +47,18 @@ COPY . .
 # rebuilding every dependency from scratch. target/ is a cache mount (not a layer),
 # so the freshly built binary is copied to a stable path inside the same RUN,
 # before the mount is detached — the runtime stage COPYs it from there.
+#
+# TCAB_BUILD_COMMIT stamps the build's provenance commit into the binary
+# (crates/core/build.rs → the run record's testCabinetCommit): this context has no
+# `.git` for build.rs to query — the repo-root .dockerignore never re-includes it —
+# so without this every driver run would record an "unknown" commit. CI passes the
+# commit (github.sha) as a build arg; unset, it falls through and stamps null.
+ARG TCAB_BUILD_COMMIT
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/local/rustup \
     --mount=type=cache,target=/src/target \
-    cargo build --release -p test-cabinet-driver \
+    TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release -p test-cabinet-driver \
     && cp /src/target/release/tcab-driver /tcab-driver
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
