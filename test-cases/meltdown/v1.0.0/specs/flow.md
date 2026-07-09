@@ -51,9 +51,14 @@ against a defense that is still being built up.
   shown in the build panel), during which the surge is not spawning and you
   build, upgrade, sell, and re-shape the maze. Interest is paid at its start.
   You may choose to send the next wave early (`specs/controls.md`) for the
-  early-send bonus, or let the timer expire to start it automatically. There is
-  a build phase before Wave 1 as well, so the player can lay an opening
-  maze.
+  early-send bonus, or let the timer expire to start it automatically.
+- **The opening build phase — before Wave 1 — is untimed.** It shows **no
+  countdown** and never starts on its own: the player lays their opening maze at
+  leisure and presses **Start** (the same wave control, `specs/controls.md`) to
+  begin Wave 1 when they are ready. Because there is no timer, the opening phase
+  pays no early-send bonus, and interest (paid only at the start of the
+  between-wave build phases) does not apply to it. Only the phases *between* waves
+  carry the `15 s` countdown and auto-start.
 - During a wave, the surge spawns from the vents over time (you design the
   exact timing and vent split, `specs/creeps.md`). A wave is **cleared** when
   every unit it released has either died or leaked. Clearing a wave pays its

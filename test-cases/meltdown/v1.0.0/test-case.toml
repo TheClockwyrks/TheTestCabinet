@@ -296,9 +296,16 @@ weight = 1
 domain = "defense"
 
 [[review_item]]
+id = "opening-build"
+title = "Untimed opening build phase"
+text = "Before Wave 1 the opening build phase is untimed: it shows no countdown and never auto-starts, so the player can lay a full opening maze at leisure and presses Start (the wave control) to begin Wave 1 when ready. The between-wave build phases keep the up-to-15-second countdown, auto-start, and early-send bonus; the opening phase pays no early-send bonus."
+weight = 1
+domain = "defense"
+
+[[review_item]]
 id = "states-complete"
 title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu, how-to-play, in-match (the build phase between waves and the live wave), pause (resume/restart/quit), Victory, and Game over (reactor breached), each with the right screen and actions."
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, in-match (the untimed opening build phase, the timed build phases between waves, and the live wave), pause (resume/restart/quit), Victory, and Game over (reactor breached), each with the right screen and actions."
 weight = 1
 reference = "title"
 proof = "title"

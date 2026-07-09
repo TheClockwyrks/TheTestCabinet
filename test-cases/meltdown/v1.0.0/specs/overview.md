@@ -140,7 +140,8 @@ canonical palette and type are below; match them.
 | Grid lines | `#23272e` |
 | Build panel background | `#1b1f26` |
 | Panel edges / dividers | `#2c323c` |
-| Casing wall | `#0e1116` |
+| Casing wall (solid steel) | `#3b434f` |
+| Casing wall — lit inner rim | `#565f6d` |
 | Emitter — cold (idle, weakest) | `#3a7bd5` |
 | Emitter — warm | `#f2a43a` |
 | Emitter — hot | `#ff5e2e` |

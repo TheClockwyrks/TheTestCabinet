@@ -25,9 +25,11 @@ no tower is ever built on it. The floor is therefore a **fully enclosed arena** 
 the surge can enter or leave *only* through the four **openings** cut into the
 casing (the vents and exhausts, below).
 
-Draw the casing as the reactor's heavy containment shell (`#0e1116`) with a lit
-inner rim, framing the floor; it reads as the wall of the reactor, unbroken except
-at its four openings.
+Draw the casing as the reactor's **heavy steel containment shell** (`#3b434f`) —
+clearly a solid, raised wall, distinctly lighter than the dark floor so it never
+reads as empty space or a gap — with a **lit inner rim** (`#565f6d`) along the edge
+where it meets the floor. It frames the floor and reads unmistakably as the wall of
+the reactor, unbroken except at its four openings.
 
 ## Tile Grid
 
@@ -148,7 +150,8 @@ by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
   cost) and **Sell** (with its refund) actions. When nothing is selected it
   shows a brief hint or the next-wave preview.
 - **Wave controls** — a **Send next wave** action (with its early-send bonus;
-  see `specs/flow.md`), a game-speed toggle (`1x` / `2x`), and **Pause**.
+  see `specs/flow.md`) that reads **Start** in the untimed opening build phase
+  before Wave 1, a game-speed toggle (`1x` / `2x`), and **Pause**.
 
 The floor itself never shows persistent UI chrome over the play area beyond the
 grid, the towers, the surge, transient range/placement indicators, and small
