@@ -74,6 +74,35 @@ init = "npm install && npx playwright install chromium"
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = ["variants/base.toml"]
 
+# Provided models, seeded into the run root. Each listed directory is seeded verbatim
+# (so `assets/runner/` lands at `assets/runner/` in the run), alongside the
+# `assets/models.json` manifest. These are the ONLY art the case supplies — the
+# finished 3D models the build loads and renders for every Slag unit, tower, the Core,
+# the three fluid structures, and the two-piece pipe kit. Everything else (the terrain
+# mesh and its procedural surface color, the animated water, the vents, the pipe
+# routing and flow, effects, HUD) is generated in code. `specs/assets.md` tells the
+# build what they are, how to found/pose/animate/RECOLOR them, and to load them by
+# page-relative URL.
+#
+# The `assets` key is COMMENTED OUT until the model files exist: the harness rejects a
+# manifest whose `assets` paths do not exist (`core`'s test-case resolution), so
+# listing the entity directories before they are populated would fail resolution. This
+# case is NOT run until then. `assets/models.json` already carries every entry — it is
+# the record of what is owed — so landing an asset case is just uncommenting its line
+# once its directory exists. When every directory below exists, UNCOMMENT the block:
+#
+# assets = [
+#   "assets/models.json",
+#   # The Slag (one model per archetype; tiers are a recolor, not new geometry)
+#   "assets/runner", "assets/breaker", "assets/sapper", "assets/colossus",
+#   # The Holdfast towers (upgrade levels are a recolor)
+#   "assets/repeater", "assets/mortar", "assets/lance", "assets/scald",
+#   # The Core and the fluid structures
+#   "assets/core", "assets/boiler", "assets/pump", "assets/river-tap",
+#   # The static pipe kit, recolored per network (water / steam)
+#   "assets/pipe-span", "assets/pipe-hub",
+# ]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a
@@ -90,6 +119,13 @@ source = "specs/overview.md"
 
 [[spec]]
 source = "specs/world.md"
+
+# The provided models: the manifest, the clips, and the accent-recolor rules that turn
+# one model per archetype into three Slag tiers and one per tower into three upgrade
+# levels. Seeded now so the contract is authored alongside the specs that cite it,
+# even though the `assets` key above stays commented until the models exist.
+[[spec]]
+source = "specs/assets.md"
 
 [[spec]]
 source = "specs/build.md"
@@ -267,7 +303,7 @@ proof = "gameplay"
 [[review_item]]
 id = "tower-upgrade-repair"
 title = "Tower upgrades, repair & demolish"
-text = "A placed tower can be upgraded in place through two levels (stronger, but drawing more steam). Damaged structures and pipes can be repaired for funds and any built structure demolished for a partial refund; a destroyed structure must be rebuilt, not repaired."
+text = "A placed tower can be upgraded in place through two levels (stronger, but drawing more steam), and READS as upgraded: its provided model's accent fitting is recolored by level (brass → steel → gold), leaving the rest of the tower unchanged. Damaged structures and pipes can be repaired for funds and any built structure demolished for a partial refund; a destroyed structure must be rebuilt, not repaired."
 weight = 1
 domain = "economy"
 
@@ -314,7 +350,7 @@ proof = "assault"
 [[review_item]]
 id = "slag-tiers"
 title = "Slag tiers & armor"
-text = "Each archetype climbs three visually distinct recolored tiers (plain obsidian, steel-plated, violet elite trim) as the wave schedule dictates — tougher, better-armored, hitting harder, the same silhouette re-skinned, not new models. Armor reduces incoming tower damage EXCEPT from the anti-armor Lance, which ignores it; the Colossus aura stacks further armor on nearby Slag. Tier is driven by wave number, not the Core's health."
+text = "Each archetype climbs three visually distinct tiers as the wave schedule dictates — tougher, better-armored, hitting harder. The tier is produced by RECOLORING THE PROVIDED MODEL'S ACCENT REGION (plain obsidian → steel plating → violet elite trim), so a Tier III unit shows violet plates while its obsidian body and acid-green glow are UNCHANGED — not a whole-model tint that drags the glow with it, and not a substituted model. Armor reduces incoming tower damage EXCEPT from the anti-armor Lance, which ignores it; the Colossus aura stacks further armor on nearby Slag. Tier is driven by wave number, not the Core's health."
 weight = 2
 domain = "combat"
 proof = "assault"

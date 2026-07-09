@@ -32,6 +32,9 @@ start; they cross-reference each other **by name** and form a single spec.
 - `specs/world.md` — the caldera: the hex grid, elevation and terraces/cliffs,
   the procedurally generated terrain, the rivers, lakes, and geothermal vents, the
   two rim breaches, and the Core.
+- `specs/assets.md` — the **provided models**: the Slag, the towers, the Core and
+  the fluid structures, and the pipe kit, with the manifest that describes them, the
+  clips to play, and the **accent recolor** rules for Slag tiers and tower upgrades.
 - `specs/build.md` — the **economy**: funds and the Core upgrade, every buildable
   structure and its placement rules on the terrain, and repair/demolish.
 - `specs/fluids.md` — the **fluid network**: how water is drawn and pumped, how
@@ -65,10 +68,13 @@ person would actually want to play, not a tech demo.
 
 - **Renders real 3D graphics.** Draw the world with **WebGL or WebGPU** (a helper
   library such as a scene-graph or math library is fine). A text-only, ASCII, or
-  purely-2D rendering does not satisfy this test case. Every hex tile, structure,
-  pipe, tower, and Slag unit is **geometry you generate in code** — you are given
-  **no** model, mesh, or texture files and must not fetch any at runtime. The
-  terrain is a generated **triangle mesh**, not a flat image. Flat or
+  purely-2D rendering does not satisfy this test case. The **terrain**, the water,
+  the geothermal vents, the pipe **layout**, the effects, and the HUD are
+  **geometry you generate in code**; the **Slag units, the towers, the Core, the
+  fluid structures, and the pipe kit** are **provided as finished models** you load
+  and render (`specs/assets.md`). The terrain is a generated **triangle mesh**, not
+  a flat image. You are given **no texture files** and must **not fetch anything at
+  runtime** — every provided model is seeded into your workspace. Flat or
   simply-shaded faces in the palette below are expected and acceptable; a blocky,
   low-poly look is the intended style.
 - **Runs in the browser with no backend.** No server, accounts, database, or
@@ -88,11 +94,12 @@ person would actually want to play, not a tech demo.
   bundler, set a relative base such as `base: './'`). You choose the language,
   framework, bundler, and rendering approach behind this interface; only the
   `npm ci` and `npm run build` commands and where the build output lands are fixed.
-- **Self-contained rendering.** The game builds every mesh — terrain, water,
-  structures, pipes, towers, units, effects — itself, in code, in the palette
-  below, using **procedural noise generated in code** for terrain surface
-  variation. It is **not** given art or texture files and must not fetch any at
-  runtime.
+- **Self-contained rendering.** The game builds the **terrain, water, vents, pipe
+  routing, effects, and HUD** itself, in code, in the palette below, using
+  **procedural noise generated in code** for terrain surface variation. The units,
+  towers, structures, and pipe kit are **provided models** (`specs/assets.md`),
+  seeded into the workspace and loaded by **page-relative** URL. It is **not** given
+  texture files and must not fetch anything at runtime.
 - **Documentation.** Include a `README.md` in the produced repository explaining
   what the game is, how to install dependencies, how to run it in development, how
   to produce the static production build, and the controls.
@@ -103,10 +110,10 @@ You choose the language, framework, bundler, and rendering approach, subject to
 the requirements above. TypeScript with a thin WebGL layer or a lightweight 3D
 library is entirely sufficient; a heavy engine is not required. Favor a clean,
 well-structured codebase and a renderer that holds the required frame rate (below)
-over any particular technology. Exact structure and unit designs are yours as long
-as each reads as the silhouette its entry in the specs describes, in its faction
-color and tier accent, and the terrain reads as the coherent natural caldera the
-world spec requires.
+over any particular technology. The structure and unit designs are **not** yours —
+they arrive as provided models (`specs/assets.md`), and your job is to load, found,
+pose, animate, and **recolor** them correctly. What is yours is the terrain: it must
+read as the coherent natural caldera the world spec requires.
 
 ## Coordinate system and units
 
@@ -183,10 +190,13 @@ palette and type are below; match them.
 | Steam (vapor / powered) | `#dfeaea` |
 | Pipe — water | `#3d9bd6` |
 | Pipe — steam | `#7fcabc` |
+| Pipe — base (provided kit, recolored) | `#808890` |
 | Slag — obsidian (Tier I body) | `#241f2b` |
 | Slag — acid glow (energy / eye) | `#9ede3a` |
+| Slag — accent plate (recolored per tier) | `#2b2433` |
 | Slag — Tier II plating (steel) | `#c9ced6` |
 | Slag — Tier III trim (elite) | `#b56bff` |
+| Holdfast — accent fitting (recolored per upgrade) | `#9a7a34` |
 | Health — healthy | `#5ec96b` |
 | Health — critical | `#ff5c5a` |
 | Funds / gold accent | `#ffce54` |

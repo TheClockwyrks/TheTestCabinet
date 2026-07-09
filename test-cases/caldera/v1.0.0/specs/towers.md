@@ -105,6 +105,9 @@ above base. Each upgrade level applies (tunable):
 
 So an upgraded tower is markedly stronger but draws more steam and must be fed
 (`specs/fluids.md`) — upgrading concentrates firepower where the terrain gives you a
-commanding spot, at the price of a heavier steam load. An upgraded tower reads as
-upgraded (a visible tier accent or added geometry) and shows its level when selected
-(`specs/flow.md`). Only towers upgrade; sources, boilers, and pipes do not.
+commanding spot, at the price of a heavier steam load. An upgraded tower **reads as
+upgraded**: each provided tower model ships with an **accent fitting** authored in
+the reserved accent color, and you **recolor** it by level — level `0` brass (as
+authored), level `1` **steel** `#b8bcc2`, level `2` **gold** `#ffce54` — by the same
+procedure the Slag tiers use (`specs/assets.md`). The tower also shows its level when
+selected (`specs/flow.md`). Only towers upgrade; sources, boilers, and pipes do not.
