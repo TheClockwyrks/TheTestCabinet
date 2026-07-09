@@ -42,9 +42,16 @@ interface LaunchOutcome {
   key: string;
   harness: string;
   modelId: string;
+  // 1-based repeat index within the combination (shown only when runCount > 1).
+  runIndex: number;
   runId?: string;
   error?: string;
 }
+
+// Upper bound on the run-count multiplier — one form submission fans out to at most
+// (combinations × RUN_COUNT_MAX) runs, so cap it to keep an accidental keystroke
+// from enqueueing an absurd batch.
+const RUN_COUNT_MAX = 20;
 
 function makeCombination(id: string): Combination {
   return {
@@ -90,6 +97,10 @@ export function NewRunPage() {
     makeCombination("c0"),
   ]);
   const nextComboId = useRef(1);
+  // How many runs to launch per combination. Multiplies the fan-out (total launches
+  // = combinations × runCount). Defaults to 1 so behavior is unchanged when
+  // untouched.
+  const [runCount, setRunCount] = useState(1);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [results, setResults] = useState<LaunchOutcome[] | null>(null);
@@ -175,6 +186,7 @@ export function NewRunPage() {
   const combosValid =
     combinations.length > 0 &&
     combinations.every((c) => c.harness && c.modelId);
+  const totalLaunches = combinations.length * runCount;
   const canLaunch = Boolean(
     worker &&
     !mismatched &&
@@ -191,50 +203,55 @@ export function NewRunPage() {
     setLaunchError(null);
     setResults(null);
     setLaunching(true);
-    // Fan out client-side: one launch per combination. Launches run sequentially
-    // and each is isolated in its own try/catch so a single failure never aborts
-    // the rest — every combination reports its own success or error.
+    // Fan out client-side: `runCount` launches per combination (total =
+    // combinations × runCount). Launches run sequentially and each is isolated in
+    // its own try/catch so a single failure never aborts the rest — every launch
+    // reports its own success or error.
     const outcomes: LaunchOutcome[] = [];
     for (const combo of combinations) {
-      try {
-        const runId = await worker.client.launchRun(
-          {
-            testCase: sel.slug,
-            version: sel.version,
+      for (let i = 0; i < runCount; i++) {
+        try {
+          const runId = await worker.client.launchRun(
+            {
+              testCase: sel.slug,
+              version: sel.version,
+              variant: sel.variant,
+              harness: combo.harness,
+              modelId: resolveLaunchModel(
+                combo.harness,
+                combo.provider,
+                combo.modelId,
+              ),
+              orchestrator: submittedOrchestrator,
+              maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
+            },
+            token,
+          );
+          runtime.track({
+            runId,
+            testCaseSlug: sel.slug,
+            testCaseVersion: sel.version,
             variant: sel.variant,
+            harnessSlug: combo.harness,
+            modelId: combo.modelId,
+            state: "running",
+          });
+          outcomes.push({
+            key: `${combo.id}#${i}`,
             harness: combo.harness,
-            modelId: resolveLaunchModel(
-              combo.harness,
-              combo.provider,
-              combo.modelId,
-            ),
-            orchestrator: submittedOrchestrator,
-            maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
-          },
-          token,
-        );
-        runtime.track({
-          runId,
-          testCaseSlug: sel.slug,
-          testCaseVersion: sel.version,
-          variant: sel.variant,
-          harnessSlug: combo.harness,
-          modelId: combo.modelId,
-          state: "running",
-        });
-        outcomes.push({
-          key: combo.id,
-          harness: combo.harness,
-          modelId: combo.modelId,
-          runId,
-        });
-      } catch (e) {
-        outcomes.push({
-          key: combo.id,
-          harness: combo.harness,
-          modelId: combo.modelId,
-          error: String(e),
-        });
+            modelId: combo.modelId,
+            runIndex: i + 1,
+            runId,
+          });
+        } catch (e) {
+          outcomes.push({
+            key: `${combo.id}#${i}`,
+            harness: combo.harness,
+            modelId: combo.modelId,
+            runIndex: i + 1,
+            error: String(e),
+          });
+        }
       }
     }
     setLaunching(false);
@@ -442,6 +459,25 @@ export function NewRunPage() {
       </div>
 
       <div className={styles.actions}>
+        <label className={styles.runCountField}>
+          <span className={styles.fieldLabel}>Runs each</span>
+          <input
+            className={styles.input}
+            type="number"
+            min={1}
+            max={RUN_COUNT_MAX}
+            step={1}
+            value={runCount}
+            onChange={(e) => {
+              // Clamp to a sane integer range so an accidental keystroke can't
+              // enqueue an absurd batch; a blank/invalid entry falls back to 1.
+              const n = Math.floor(Number(e.target.value));
+              setRunCount(
+                Number.isFinite(n) && n >= 1 ? Math.min(n, RUN_COUNT_MAX) : 1,
+              );
+            }}
+          />
+        </label>
         <button
           className={styles.primary}
           onClick={onLaunch}
@@ -449,8 +485,8 @@ export function NewRunPage() {
         >
           {launching
             ? "Launching…"
-            : combinations.length > 1
-              ? `Launch ${combinations.length} runs`
+            : totalLaunches > 1
+              ? `Launch ${totalLaunches} runs`
               : "Launch run"}
         </button>
         {sel.loading && (
@@ -473,6 +509,7 @@ export function NewRunPage() {
               >
                 <span className={styles.resultLabel}>
                   {harnessName(o.harness)} · {o.modelId}
+                  {runCount > 1 ? ` · #${o.runIndex}` : ""}
                 </span>
                 {o.runId ? (
                   <Link

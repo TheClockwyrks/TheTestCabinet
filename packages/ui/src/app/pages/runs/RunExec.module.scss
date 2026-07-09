@@ -181,6 +181,15 @@
   }
 }
 
+// The run-count multiplier beside the launch button: a compact numeric field so it
+// reads as a modifier of the launch action rather than a full-width form field.
+.runCountField {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  width: 7rem;
+}
+
 // --- Batch launch: the per-combination result summary ------------------------
 
 .launchResults {
