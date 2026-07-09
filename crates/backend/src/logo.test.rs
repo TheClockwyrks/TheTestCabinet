@@ -18,7 +18,10 @@ fn strips_scripts_and_handlers() {
     let dirty = r#"<svg xmlns="http://www.w3.org/2000/svg" onload="steal()"><script>evil()</script><path d="M0 0" onclick='x()'/></svg>"#;
     let clean = sanitize_svg(dirty).expect("sanitizes");
     let lower = clean.to_ascii_lowercase();
-    assert!(!lower.contains("<script"), "script element removed: {clean}");
+    assert!(
+        !lower.contains("<script"),
+        "script element removed: {clean}"
+    );
     assert!(!lower.contains("onload"), "onload removed: {clean}");
     assert!(!lower.contains("onclick"), "onclick removed: {clean}");
     assert!(lower.contains("<svg"));

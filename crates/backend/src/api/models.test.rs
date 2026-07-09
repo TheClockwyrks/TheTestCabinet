@@ -45,7 +45,13 @@ fn curated_model_absorbs_its_runs_and_derived_models_appear() {
         "Anthropic",
         &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
     )];
-    let prices = vec![price(1, "anthropic/claude-opus-4.8", "2026-01-02T00:00:00Z", 5.0, 15.0)];
+    let prices = vec![price(
+        1,
+        "anthropic/claude-opus-4.8",
+        "2026-01-02T00:00:00Z",
+        5.0,
+        15.0,
+    )];
     // A Kilo run of the curated model (openrouter/ + :free), and an uncurated model.
     let run_models = vec![
         (

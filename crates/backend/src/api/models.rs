@@ -150,9 +150,17 @@ pub struct LogoFetchOut {
 /// `GET /models` — the merged catalog across all runs. Open read.
 #[tracing::instrument(name = "models.list", skip(state), err(Debug))]
 pub async fn list(State(state): State<AppState>) -> Result<Json<ModelCatalogResponse>, ApiError> {
-    let configs = state.db.list_model_configs().await.map_err(ApiError::from)?;
+    let configs = state
+        .db
+        .list_model_configs()
+        .await
+        .map_err(ApiError::from)?;
     let prices = state.db.all_model_prices().await.map_err(ApiError::from)?;
-    let run_models = state.db.distinct_run_models().await.map_err(ApiError::from)?;
+    let run_models = state
+        .db
+        .distinct_run_models()
+        .await
+        .map_err(ApiError::from)?;
     let models = compose_catalog(&configs, &prices, &run_models);
     Ok(Json(ModelCatalogResponse { models }))
 }
@@ -229,9 +237,7 @@ async fn write_config(
             slug: slug.clone(),
             display_name: name,
             provider: input.provider.trim().to_string(),
-            provider_logo_url: input
-                .provider_logo_url
-                .filter(|u| !u.trim().is_empty()),
+            provider_logo_url: input.provider_logo_url.filter(|u| !u.trim().is_empty()),
             provider_logo_svg: logo_svg,
             description_md: input.description.filter(|d| !d.trim().is_empty()),
             openrouter_slug: input
@@ -257,7 +263,11 @@ async fn write_config(
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::internal("model vanished after write"))?;
     let prices = state.db.all_model_prices().await.map_err(ApiError::from)?;
-    let run_models = state.db.distinct_run_models().await.map_err(ApiError::from)?;
+    let run_models = state
+        .db
+        .distinct_run_models()
+        .await
+        .map_err(ApiError::from)?;
     let composed = compose_catalog(std::slice::from_ref(&config), &prices, &run_models);
     let out = composed
         .into_iter()
@@ -420,10 +430,8 @@ pub fn compose_catalog(
         if claimed.contains(canonical) {
             continue;
         }
-        let rows: Vec<&model_price::Model> = history
-            .get(canonical.as_str())
-            .cloned()
-            .unwrap_or_default();
+        let rows: Vec<&model_price::Model> =
+            history.get(canonical.as_str()).cloned().unwrap_or_default();
         let series = observations(&rows);
         let (price, context_length, released_at) = latest_facts(&rows);
         out.push(ModelOut {
@@ -469,7 +477,9 @@ fn observations(rows: &[&model_price::Model]) -> Vec<PriceObservationOut> {
 }
 
 /// The latest price, context window, and release date from time-ordered rows.
-fn latest_facts(rows: &[&model_price::Model]) -> (Option<ModelPricesOut>, Option<u64>, Option<String>) {
+fn latest_facts(
+    rows: &[&model_price::Model],
+) -> (Option<ModelPricesOut>, Option<u64>, Option<String>) {
     match rows.last() {
         Some(row) => (
             Some(ModelPricesOut {

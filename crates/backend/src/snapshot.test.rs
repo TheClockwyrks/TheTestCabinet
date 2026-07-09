@@ -200,7 +200,10 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
     let summary = RunSummary::from_stored(&run);
     assert_eq!(summary.id, "r1");
     assert_eq!(summary.case_name, "pong"); // slug fallback, not a catalog name
-    assert_eq!(summary.subject.test_type, test_cabinet_core::TestType::EndToEnd);
+    assert_eq!(
+        summary.subject.test_type,
+        test_cabinet_core::TestType::EndToEnd
+    );
     assert_eq!(summary.subject.test_case_slug, "pong");
     assert_eq!(summary.review_count, 1);
     assert!(summary.validation_loaded);

@@ -1048,7 +1048,9 @@ fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
 pub(crate) fn aggregate_review_rating(
     reviews: &[StoredReview],
 ) -> Option<test_cabinet_core::review::Rating> {
-    test_cabinet_core::review::aggregate_rating(reviews.iter().map(|review| review.ratings.as_slice()))
+    test_cabinet_core::review::aggregate_rating(
+        reviews.iter().map(|review| review.ratings.as_slice()),
+    )
 }
 
 /// The lifted `run.rating` column value: the aggregate rating as its lowercase
@@ -1186,7 +1188,10 @@ fn apply_summary_sort(
         // Unknown-cost NULLs sort last in either direction: order first by a
         // null-group key (non-null `false`/0 before null `true`/1), then the value.
         SummarySort::Cost => query
-            .order_by(run::Column::CostComparable.into_expr().is_null(), Order::Asc)
+            .order_by(
+                run::Column::CostComparable.into_expr().is_null(),
+                Order::Asc,
+            )
             .order_by(run::Column::CostComparable, order),
         // Rating is a TIER, not a lexical token: rank it via a CASE, with unrated
         // NULLs pinned last (again via a leading null-group key).
@@ -1205,7 +1210,10 @@ fn rating_rank_expr() -> SimpleExpr {
     use test_cabinet_core::review::Rating;
     let mut case = CaseStatement::new();
     for rating in Rating::ALL {
-        case = case.case(run::Column::Rating.eq(rating.as_str()), rating.rank() as i32);
+        case = case.case(
+            run::Column::Rating.eq(rating.as_str()),
+            rating.rank() as i32,
+        );
     }
     case.finally(Rating::ALL.len() as i32).into()
 }
@@ -1877,8 +1885,7 @@ impl Db {
             .all(&self.conn)
             .await?;
         Ok(rows.iter().any(|(model_id, harness_slug)| {
-            parse_harness_slug(harness_slug).routes_through_openrouter()
-                && model_id.contains(':')
+            parse_harness_slug(harness_slug).routes_through_openrouter() && model_id.contains(':')
         }))
     }
 
@@ -1911,8 +1918,7 @@ impl Db {
                 continue;
             };
             record.subject.model_id = base.clone();
-            let lookup =
-                test_cabinet_core::model_id::openrouter_price_id(&base, harness);
+            let lookup = test_cabinet_core::model_id::openrouter_price_id(&base, harness);
             let comparable = base_prices
                 .get(&lookup)
                 .and_then(|prices| Cost::comparable_from(&record.metrics.tokens, prices));

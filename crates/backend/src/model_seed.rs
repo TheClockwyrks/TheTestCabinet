@@ -35,10 +35,7 @@ than a record of completed benchmark cases. The pricing shown is the comparable
 per-token figure OpenRouter reports, which is the canonical, provider-stable
 cost The Test Cabinet will use for a run once the model can actually be
 exercised."#,
-        aliases: &[
-            r#"claude-fable-5"#,
-            r#"anthropic/claude-fable-5"#,
-        ],
+        aliases: &[r#"claude-fable-5"#, r#"anthropic/claude-fable-5"#],
     },
     SeedModel {
         slug: r#"claude-haiku-4-5"#,
@@ -57,10 +54,7 @@ out of a lightweight, inexpensive model, and how its results compare against
 heavier models on the same case. The prices on its page are the comparable
 per-token figures OpenRouter reports, which The Test Cabinet uses for the
 canonical cost of a run rather than the exact provider charge."#,
-        aliases: &[
-            r#"claude-haiku-4-5"#,
-            r#"anthropic/claude-haiku-4.5"#,
-        ],
+        aliases: &[r#"claude-haiku-4-5"#, r#"anthropic/claude-haiku-4.5"#],
     },
     SeedModel {
         slug: r#"claude-opus-4-8"#,
@@ -80,10 +74,7 @@ bar that lighter models are measured against on the same case. The prices on
 its page are the comparable per-token figures OpenRouter reports, which The Test
 Cabinet uses as the canonical cost of a run rather than the exact provider
 charge."#,
-        aliases: &[
-            r#"claude-opus-4-8"#,
-            r#"anthropic/claude-opus-4.8"#,
-        ],
+        aliases: &[r#"claude-opus-4-8"#, r#"anthropic/claude-opus-4.8"#],
     },
     SeedModel {
         slug: r#"claude-sonnet-4-6"#,
@@ -102,10 +93,7 @@ the flagship without the flagship's cost. Its runs are a natural midpoint to
 compare the lighter and heavier models against on the same case. Pricing shown
 on its page is the comparable per-token cost reported by OpenRouter, which is
 what The Test Cabinet uses for the canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"claude-sonnet-4-6"#,
-            r#"anthropic/claude-sonnet-4.6"#,
-        ],
+        aliases: &[r#"claude-sonnet-4-6"#, r#"anthropic/claude-sonnet-4.6"#],
     },
     SeedModel {
         slug: r#"claude-sonnet-5"#,
@@ -124,10 +112,7 @@ flagship without the flagship's cost. Its runs are a natural midpoint to compare
 the lighter and heavier models against on the same case. Pricing shown on its
 page is the comparable per-token cost reported by OpenRouter, which is what The
 Test Cabinet uses for the canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"claude-sonnet-5"#,
-            r#"anthropic/claude-sonnet-5"#,
-        ],
+        aliases: &[r#"claude-sonnet-5"#, r#"anthropic/claude-sonnet-5"#],
     },
     SeedModel {
         slug: r#"deepseek-v4-flash"#,
@@ -147,9 +132,7 @@ model on a substantial task, and where the budget tier's ceiling starts to bite
 against the heavier subjects on the same case. The prices on its page are the
 comparable per-token figures OpenRouter reports, which The Test Cabinet uses as
 the canonical cost of a run rather than the exact provider charge."#,
-        aliases: &[
-            r#"deepseek/deepseek-v4-flash"#,
-        ],
+        aliases: &[r#"deepseek/deepseek-v4-flash"#],
     },
     SeedModel {
         slug: r#"deepseek-v4-pro"#,
@@ -170,9 +153,7 @@ rather than price, and how it lands against the other frontier subjects on the
 same case. Pricing shown on its page is the comparable per-token cost reported
 by OpenRouter, which is what The Test Cabinet uses for the canonical,
 provider-stable cost of a run."#,
-        aliases: &[
-            r#"deepseek/deepseek-v4-pro"#,
-        ],
+        aliases: &[r#"deepseek/deepseek-v4-pro"#],
     },
     SeedModel {
         slug: r#"devstral-2512"#,
@@ -193,9 +174,7 @@ the same front-end build, and where that specialization helps or falls short
 against the frontier subjects. Pricing shown on its page is the comparable
 per-token cost reported by OpenRouter, which is what The Test Cabinet uses for
 the canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"mistralai/devstral-2512"#,
-        ],
+        aliases: &[r#"mistralai/devstral-2512"#],
     },
     SeedModel {
         slug: r#"gemini-3.1-flash-lite"#,
@@ -214,9 +193,7 @@ the most economical option, and how far that lands behind the heavier Flash and
 Pro tiers on the same case. The prices on its page are the comparable per-token
 figures OpenRouter reports, which The Test Cabinet uses as the canonical,
 provider-stable cost of a run."#,
-        aliases: &[
-            r#"google/gemini-3.1-flash-lite"#,
-        ],
+        aliases: &[r#"google/gemini-3.1-flash-lite"#],
     },
     SeedModel {
         slug: r#"gemini-3.1-pro-preview"#,
@@ -237,9 +214,7 @@ gets out of its way. Because it is still a preview, its results are best read as
 a snapshot of where the line currently sits. The prices on its page are the
 comparable per-token figures OpenRouter reports, which The Test Cabinet treats
 as the canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"google/gemini-3.1-pro-preview"#,
-        ],
+        aliases: &[r#"google/gemini-3.1-pro-preview"#],
     },
     SeedModel {
         slug: r#"gemini-3.5-flash"#,
@@ -259,9 +234,7 @@ down for a quicker, lighter model, and how a strong harness closes that gap on
 a substantial task. Pricing shown on its page is the comparable per-token cost
 reported by OpenRouter, which is what The Test Cabinet uses for the canonical
 cost of a run rather than any single provider's exact charge."#,
-        aliases: &[
-            r#"google/gemini-3.5-flash"#,
-        ],
+        aliases: &[r#"google/gemini-3.5-flash"#],
     },
     SeedModel {
         slug: r#"glm-5.1"#,
@@ -280,9 +253,7 @@ substantial front-end build, and how its results line up against flagship
 models from other providers on the same case. The prices on its page are the
 comparable per-token figures OpenRouter reports, which The Test Cabinet uses as
 the canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"z-ai/glm-5.1"#,
-        ],
+        aliases: &[r#"z-ai/glm-5.1"#],
     },
     SeedModel {
         slug: r#"gpt-5.4-mini"#,
@@ -300,10 +271,7 @@ budget model on a substantial front-end task, and where the model's ceiling
 starts to bite. Pricing shown on its page is the comparable per-token cost
 reported by OpenRouter, which is what The Test Cabinet uses for the canonical,
 provider-stable cost of a run."#,
-        aliases: &[
-            r#"gpt-5.4-mini"#,
-            r#"openai/gpt-5.4-mini"#,
-        ],
+        aliases: &[r#"gpt-5.4-mini"#, r#"openai/gpt-5.4-mini"#],
     },
     SeedModel {
         slug: r#"gpt-5.4-nano"#,
@@ -322,10 +290,7 @@ the heavier subjects are weighed against on the same case. The prices on its
 page are the comparable per-token figures OpenRouter reports, which The Test
 Cabinet adopts as the canonical, provider-stable cost of a run instead of the
 exact provider charge."#,
-        aliases: &[
-            r#"gpt-5.4-nano"#,
-            r#"openai/gpt-5.4-nano"#,
-        ],
+        aliases: &[r#"gpt-5.4-nano"#, r#"openai/gpt-5.4-nano"#],
     },
     SeedModel {
         slug: r#"gpt-5.4"#,
@@ -343,10 +308,7 @@ spend on the newer flagship buys on the same case, and how much of that gap a
 strong harness can close. Pricing shown on its page is the comparable per-token
 cost reported by OpenRouter, which is the figure The Test Cabinet uses as the
 canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"gpt-5.4"#,
-            r#"openai/gpt-5.4"#,
-        ],
+        aliases: &[r#"gpt-5.4"#, r#"openai/gpt-5.4"#],
     },
     SeedModel {
         slug: r#"gpt-5.5"#,
@@ -366,10 +328,7 @@ extra spend actually translates into a better game. The figures on its page are
 the comparable per-token rates OpenRouter publishes, which The Test Cabinet
 treats as the canonical, provider-stable cost of a run rather than the exact
 charge billed."#,
-        aliases: &[
-            r#"gpt-5.5"#,
-            r#"openai/gpt-5.5"#,
-        ],
+        aliases: &[r#"gpt-5.5"#, r#"openai/gpt-5.5"#],
     },
     SeedModel {
         slug: r#"grok-4.3"#,
@@ -388,9 +347,7 @@ models on the same case, under the same harness conditions. The figures on its
 page are the comparable per-token prices OpenRouter reports, which The Test
 Cabinet treats as the canonical cost of a run rather than the exact charge billed
 by whichever provider served it."#,
-        aliases: &[
-            r#"x-ai/grok-4.3"#,
-        ],
+        aliases: &[r#"x-ai/grok-4.3"#],
     },
     SeedModel {
         slug: r#"kimi-k2.7-code"#,
@@ -409,9 +366,7 @@ build: how a code-focused model compares against general-purpose frontier
 models on the same case, and where its tuning helps or stops mattering. The
 pricing on its page is the comparable per-token figure OpenRouter reports,
 which The Test Cabinet treats as the canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"moonshotai/kimi-k2.7-code"#,
-        ],
+        aliases: &[r#"moonshotai/kimi-k2.7-code"#],
     },
     SeedModel {
         slug: r#"mimo-v2.5-pro"#,
@@ -431,9 +386,7 @@ the more familiar frontier models on the same case. Pricing shown on its page
 is the comparable per-token cost reported by OpenRouter, which is what The Test
 Cabinet uses for the canonical cost of a run rather than the exact provider
 charge."#,
-        aliases: &[
-            r#"xiaomi/mimo-v2.5-pro"#,
-        ],
+        aliases: &[r#"xiaomi/mimo-v2.5-pro"#],
     },
     SeedModel {
         slug: r#"mimo-v2.5"#,
@@ -452,9 +405,7 @@ lineage holds up on a large coding task, and how far a strong harness can carry
 it next to more familiar models on the same case. The pricing on its page is
 the comparable per-token figure OpenRouter reports, which The Test Cabinet uses
 as the canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"xiaomi/mimo-v2.5"#,
-        ],
+        aliases: &[r#"xiaomi/mimo-v2.5"#],
     },
     SeedModel {
         slug: r#"minimax-m3"#,
@@ -474,9 +425,7 @@ to weigh smaller or more specialized models against on the same case. Pricing
 shown on its page is the comparable per-token cost reported by OpenRouter,
 which is what The Test Cabinet uses for the canonical cost of a run rather than
 the exact provider charge."#,
-        aliases: &[
-            r#"minimax/minimax-m3"#,
-        ],
+        aliases: &[r#"minimax/minimax-m3"#],
     },
     SeedModel {
         slug: r#"mistral-medium-3-5"#,
@@ -497,9 +446,7 @@ and flagship subjects on the same case, without the pricing of the top tier.
 Pricing shown on its page is the comparable per-token cost reported by
 OpenRouter, which is what The Test Cabinet uses for the canonical,
 provider-stable cost of a run."#,
-        aliases: &[
-            r#"mistralai/mistral-medium-3-5"#,
-        ],
+        aliases: &[r#"mistralai/mistral-medium-3-5"#],
     },
     SeedModel {
         slug: r#"pareto-code"#,
@@ -522,10 +469,7 @@ case after case, without a human in the loop? Because the router dispatches to
 different models per request, its effective cost varies from run to run; The
 Test Cabinet still uses the comparable per-token prices OpenRouter reports as
 the canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"pareto-code"#,
-            r#"openrouter/pareto-code"#,
-        ],
+        aliases: &[r#"pareto-code"#, r#"openrouter/pareto-code"#],
     },
     SeedModel {
         slug: r#"qwen3.7-max"#,
@@ -544,9 +488,7 @@ substantial build, and how it stacks up against flagship models from other
 providers on the same case. The prices on its page are the comparable
 per-token figures OpenRouter reports, which The Test Cabinet treats as the
 canonical, provider-stable cost of a run."#,
-        aliases: &[
-            r#"qwen/qwen3.7-max"#,
-        ],
+        aliases: &[r#"qwen/qwen3.7-max"#],
     },
     SeedModel {
         slug: r#"qwen3.7-plus"#,
@@ -565,8 +507,6 @@ can coax out of a balanced model, and where the gap to the heavier Max tier
 begins to show on the same case. Pricing shown on its page is the comparable
 per-token cost reported by OpenRouter, which is what The Test Cabinet uses for
 the canonical cost of a run rather than the exact provider charge."#,
-        aliases: &[
-            r#"qwen/qwen3.7-plus"#,
-        ],
+        aliases: &[r#"qwen/qwen3.7-plus"#],
     },
 ];

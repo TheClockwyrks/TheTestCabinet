@@ -63,10 +63,7 @@ fn is_allowed_url(url: &str) -> bool {
     let Some(rest) = url.strip_prefix("https://") else {
         return false;
     };
-    let authority = rest
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("");
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
     // Drop any userinfo and port.
     let host = authority
         .rsplit('@')

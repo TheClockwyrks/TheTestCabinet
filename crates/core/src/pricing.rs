@@ -88,7 +88,9 @@ impl OpenRouterPrices {
     ///
     /// The periodic price refresher uses this to re-price all known models from a
     /// single catalog download rather than a fetch per model.
-    pub async fn all_model_details(&self) -> Result<std::collections::HashMap<String, ModelDetails>> {
+    pub async fn all_model_details(
+        &self,
+    ) -> Result<std::collections::HashMap<String, ModelDetails>> {
         Ok(self
             .fetch_catalog()
             .await?

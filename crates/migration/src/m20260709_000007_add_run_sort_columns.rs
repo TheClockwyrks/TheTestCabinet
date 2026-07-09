@@ -52,7 +52,11 @@ impl MigrationTrait for Migration {
         .await?;
         // Nullable: the cost is unknown when the model's per-token prices could not
         // be resolved (distinct from a free `0.0`).
-        add_column(manager, ColumnDef::new(Run::CostComparable).double().to_owned()).await?;
+        add_column(
+            manager,
+            ColumnDef::new(Run::CostComparable).double().to_owned(),
+        )
+        .await?;
         // Nullable: a pushed-but-unreviewed run has no rating yet.
         add_column(manager, ColumnDef::new(Run::Rating).string().to_owned()).await?;
         add_column(

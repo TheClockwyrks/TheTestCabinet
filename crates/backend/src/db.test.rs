@@ -1109,7 +1109,12 @@ fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
 
 /// A run record with an explicit model id + harness (and, optionally, token
 /// counts), for the derive/normalize tests.
-fn run_with_model(id: &str, model_id: &str, harness: HarnessSlug, tokens: TokenCounts) -> RunRecord {
+fn run_with_model(
+    id: &str,
+    model_id: &str,
+    harness: HarnessSlug,
+    tokens: TokenCounts,
+) -> RunRecord {
     let mut r = record(id);
     r.subject.model_id = model_id.to_string();
     r.subject.harness_slug = harness;
@@ -1137,10 +1142,17 @@ async fn model_config_crud_and_alias_conflict() {
 
     // A second model claiming an alias the first owns is a conflict.
     let err = db
-        .upsert_model_config(model_write("sonnet", "Claude Sonnet 5", &["anthropic/claude-opus-4.8"]))
+        .upsert_model_config(model_write(
+            "sonnet",
+            "Claude Sonnet 5",
+            &["anthropic/claude-opus-4.8"],
+        ))
         .await
         .unwrap_err();
-    assert!(matches!(err, crate::error::BackendError::Conflict(_)), "{err:?}");
+    assert!(
+        matches!(err, crate::error::BackendError::Conflict(_)),
+        "{err:?}"
+    );
 
     // Updating the same model replaces its alias set and keeps created_at.
     db.upsert_model_config(ModelConfigWrite {
@@ -1173,8 +1185,12 @@ async fn price_observations_dedup_and_latest() {
         context_length: Some(200_000),
         released_at: None,
     };
-    db.insert_price_observation(obs(1.0, "2026-01-01T00:00:00Z")).await.unwrap();
-    db.insert_price_observation(obs(1.5, "2026-01-02T00:00:00Z")).await.unwrap();
+    db.insert_price_observation(obs(1.0, "2026-01-01T00:00:00Z"))
+        .await
+        .unwrap();
+    db.insert_price_observation(obs(1.5, "2026-01-02T00:00:00Z"))
+        .await
+        .unwrap();
 
     let latest = db.latest_price("x/y").await.unwrap().unwrap();
     assert_eq!(latest.uncached_input, Some(1.5));
@@ -1186,15 +1202,27 @@ async fn price_observations_dedup_and_latest() {
 async fn distinct_run_models_returns_pairs() {
     let db = Db::connect_in_memory().await.unwrap();
     let z = TokenCounts::default();
-    db.push(&run_with_model("r1", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z), &links(), None)
-        .await
-        .unwrap();
-    db.push(&run_with_model("r2", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z), &links(), None)
-        .await
-        .unwrap();
-    db.push(&run_with_model("r3", "gpt-5.5", HarnessSlug::Codex, z), &links(), None)
-        .await
-        .unwrap();
+    db.push(
+        &run_with_model("r1", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &run_with_model("r2", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &run_with_model("r3", "gpt-5.5", HarnessSlug::Codex, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
     let mut pairs = db.distinct_run_models().await.unwrap();
     pairs.sort();
     assert_eq!(
@@ -1220,8 +1248,16 @@ async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
         reasoning: None,
     };
     // An OpenRouter-accessed run tagged `:free` with a $0 recorded cost.
-    let mut kilo = run_with_model("free-run", "deepseek/deepseek-v4:free", HarnessSlug::Kilo, tokens);
-    kilo.metrics.cost = Cost { comparable: Some(0.0), actual: Some(0.0) };
+    let mut kilo = run_with_model(
+        "free-run",
+        "deepseek/deepseek-v4:free",
+        HarnessSlug::Kilo,
+        tokens,
+    );
+    kilo.metrics.cost = Cost {
+        comparable: Some(0.0),
+        actual: Some(0.0),
+    };
     db.push(&kilo, &links(), None).await.unwrap();
     // A provider-native Codex run whose id happens to contain a colon is left alone.
     let codex = run_with_model("codex-run", "gpt-5.5:preview", HarnessSlug::Codex, tokens);
@@ -1230,7 +1266,11 @@ async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
     let mut base_prices = HashMap::new();
     base_prices.insert(
         "deepseek/deepseek-v4".to_string(),
-        TokenPrices { uncached_input: Some(0.000_002), cached_input: None, output: Some(0.000_006) },
+        TokenPrices {
+            uncached_input: Some(0.000_002),
+            cached_input: None,
+            output: Some(0.000_006),
+        },
     );
     let rewritten = db.normalize_free_model_ids(&base_prices).await.unwrap();
     assert_eq!(rewritten, 1);
@@ -1377,7 +1417,6 @@ async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
     // Idempotent: a second pass finds nothing un-backfilled.
     assert_eq!(db.backfill_sort_columns().await.unwrap(), 0);
 }
-
 
 // --- list_summaries: filter / free-text / sort / offset + total ---------------
 
@@ -1620,7 +1659,13 @@ async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
     // Page 2 (offset 2, limit 2) of the ascending-by-tokens order is [c, d]; the
     // total reflects every matching row, not the page size.
     let (page, total) = db
-        .list_summaries(&unpublished_filter(), SummarySort::Tokens, SortDir::Asc, 2, 2)
+        .list_summaries(
+            &unpublished_filter(),
+            SummarySort::Tokens,
+            SortDir::Asc,
+            2,
+            2,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&page), ["c", "d"]);
@@ -1628,7 +1673,13 @@ async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
 
     // The tail page is short but the total is unchanged.
     let (tail, total) = db
-        .list_summaries(&unpublished_filter(), SummarySort::Tokens, SortDir::Asc, 2, 4)
+        .list_summaries(
+            &unpublished_filter(),
+            SummarySort::Tokens,
+            SortDir::Asc,
+            2,
+            4,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&tail), ["e"]);
@@ -1641,10 +1692,28 @@ async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
     // Six pong runs and two snake runs; a filtered-and-paged pong query reports
     // total 6 (the filtered count) even though the page holds only 2.
     for i in 0..6 {
-        seed_ident(&db, &format!("p{i}"), "pong", "m", HarnessSlug::Claude, "base", i).await;
+        seed_ident(
+            &db,
+            &format!("p{i}"),
+            "pong",
+            "m",
+            HarnessSlug::Claude,
+            "base",
+            i,
+        )
+        .await;
     }
     for i in 0..2 {
-        seed_ident(&db, &format!("s{i}"), "snake", "m", HarnessSlug::Claude, "base", i).await;
+        seed_ident(
+            &db,
+            &format!("s{i}"),
+            "snake",
+            "m",
+            HarnessSlug::Claude,
+            "base",
+            i,
+        )
+        .await;
     }
 
     let filter = SummaryFilter {

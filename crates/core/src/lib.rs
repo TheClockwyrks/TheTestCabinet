@@ -939,7 +939,8 @@ where
             // example Codex's `gpt-5.5` becomes `openai/gpt-5.5`), collapsing an
             // `openrouter/` routing prefix and a `:free`-style variant tag so a
             // free-tagged run is priced at the model's base rate, not $0.
-            let lookup_id = crate::model_id::openrouter_price_id(&request.model_id, request.harness);
+            let lookup_id =
+                crate::model_id::openrouter_price_id(&request.model_id, request.harness);
             match self.prices.token_prices(&lookup_id).await {
                 Ok(prices) => prices,
                 Err(err) => {
