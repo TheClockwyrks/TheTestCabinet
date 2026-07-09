@@ -4,17 +4,15 @@
 // backend's public R2 snapshot. Inlined into the bundle at build time; empty in
 // dev and when no snapshot URL is configured.
 declare module "virtual:tcab-snapshot" {
-  import type { RunRecord } from "@test-cabinet/run-record";
   import type { RunSummary } from "@test-cabinet/run-record/snapshot";
   import type { StoredReview } from "@test-cabinet/ui/client";
   import type { TestCaseSummary } from "@test-cabinet/ui/app";
   import type { Model } from "@test-cabinet/ui/client";
 
-  /** Published run records, newest first (verbatim snapshot blobs). */
-  export const runs: RunRecord[];
   /**
    * The flat summary index (`runs.json`), newest first — the bounded run-summary
-   * cards the run log and list pages consume.
+   * cards the run log and list pages consume. Full records are NOT inlined; they
+   * are fetched lazily by id from the emitted `runs/<id>.json` asset.
    */
   export const runSummaries: RunSummary[];
   /**

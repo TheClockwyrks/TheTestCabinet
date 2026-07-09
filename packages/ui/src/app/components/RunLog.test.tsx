@@ -60,7 +60,6 @@ const RUNS = [
 
 function galleryValue(): GalleryDataInput {
   return {
-    runs: [],
     runSummaries: RUNS,
     localIds: new Set(),
     writeups: {},

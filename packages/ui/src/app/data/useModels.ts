@@ -12,7 +12,7 @@ export interface ModelsState {
 
 // The Models section's data, resolved from the gallery context the host injects:
 // the console fetches it from the backend (`GET /models`), the static site reads
-// it from the build-time snapshot. A thin selector, mirroring `useRuns` /
+// it from the build-time snapshot. A thin selector, mirroring `useRunSummaries` /
 // `useTestCases`.
 export function useModels(): ModelsState {
   const { models, modelsStatus } = useGalleryData();

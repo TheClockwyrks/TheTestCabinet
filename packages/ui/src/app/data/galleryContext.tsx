@@ -75,9 +75,9 @@ export interface ReviewModel {
 // in `@test-cabinet/ui`, but its data differs per app: the static site builds
 // this from the build-time public snapshot; the web/desktop consoles build it
 // live from a backend (catalog + published runs) and a worker (in-progress and
-// produced runs). Pages read it through the existing data hooks (`useRuns`,
-// `useTestCases`, `findReview`), which now resolve to this context — so page
-// logic is unchanged regardless of where the data comes from.
+// produced runs). Pages read it through the existing data hooks
+// (`useRunSummaries`, `useTestCases`, `findReview`), which now resolve to this
+// context — so page logic is unchanged regardless of where the data comes from.
 
 // A run currently executing on a worker. A run only gains a `RunRecord` at
 // completion, so an in-progress run is represented by its launch identity and
@@ -240,14 +240,14 @@ export interface HarnessAuthApi {
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.
 export interface GalleryDataInput {
-  /** Completed runs to display: local (unpublished) first, then published. */
-  runs: RunRecord[];
   /**
-   * The bounded summary cards for the runs to display, in the same order as
-   * {@link runs} — the lightweight shape the run log and list pages consume. Each
-   * host supplies these its own way: the consoles derive them from the loaded
-   * records (see `toRunSummary`), the static site from its published summary
-   * index. Read through {@link useRunSummaries}.
+   * The bounded summary cards for the runs to display, local (unpublished) first,
+   * then published — the lightweight shape the run log and list pages consume.
+   * Each host supplies these its own way: the console drains the backend's summary
+   * index over the wire and derives its local runs' cards (see `toRunSummary`), the
+   * static site reads its published summary index from the snapshot. Read through
+   * {@link useRunSummaries}. Full records are fetched lazily by id via
+   * {@link readRun}/{@link GalleryData.fetchRun} only when a detail view needs one.
    */
   runSummaries: RunSummary[];
   /** Ids of runs sourced locally (produced but not yet published). */
@@ -304,18 +304,17 @@ export interface GalleryDataInput {
     onProgress?: ProgressCallback,
   ) => Promise<RunEventStreams | null>;
   /**
-   * Resolve one run's record by id, directly from the host's store, for a run
-   * reached by a direct link that the loaded list does not carry. The run-detail
-   * page resolves a run from the in-memory list first and falls back to this when
-   * it misses — so a run that appears in no worklist (an infrastructure failure,
-   * retained for inspection but never publishable) or simply isn't on the current
-   * page stays openable by its id. Resolves `null` when no run with that id is
-   * stored. Omitted by a host that can only serve the runs it already listed (the
-   * static gallery site).
+   * Resolve one run's full record by id, directly from the host's store. The
+   * gallery no longer holds full records in memory — only the {@link runSummaries}
+   * cards — so a detail view fetches the whole record lazily through this: the
+   * console reads the run store's `GET /runs/{id}` (worker for a local run, backend
+   * otherwise); the static site fetches the per-run record asset the snapshot
+   * emitted. Resolves `null` when no run with that id is available. Omitted by a
+   * host that cannot serve a run by id.
    *
    * Resolves the run's {@link RunDetail} — the record *and* every review submitted
-   * against it — so the detail layer no longer reads reviews from the console's
-   * global {@link reviews} map (the summary-first drain will stop populating it).
+   * against it — so the detail layer reads reviews from here rather than the
+   * console's global {@link reviews} map (which now carries only local runs).
    */
   readRun?: (runId: string) => Promise<RunDetail | null>;
   /**
@@ -609,12 +608,10 @@ export interface GalleryData extends GalleryDataInput {
   /**
    * Resolve one run's full record by id — a summary-first page fetches the whole
    * record lazily only when a detail view needs it. Delegates to the host's
-   * {@link GalleryDataInput.readRun} when supplied (the consoles), and otherwise
-   * resolves from the in-memory {@link GalleryDataInput.runs} array (the static
-   * site, which holds its records in memory) paired with the reviews from the
-   * {@link reviews} map. Resolves the run's {@link RunDetail} — record + reviews —
-   * so the detail layer frames the review from these rather than the global map.
-   * Resolves `null` when no run with that id is available.
+   * {@link GalleryDataInput.readRun}, resolving the run's {@link RunDetail} —
+   * record + reviews — so the detail layer frames the review from these rather than
+   * the global map. Resolves `null` when the host supplies no `readRun` or no run
+   * with that id is available.
    */
   fetchRun(runId: string): Promise<RunDetail | null>;
   /**
@@ -716,16 +713,12 @@ export function GalleryDataProvider({
         return raw === undefined ? undefined : parseWriteup(raw);
       },
       fetchRun(runId) {
-        // Prefer the host's lazy single-run fetcher (the consoles read the run
-        // store's `GET /runs/{id}`); otherwise resolve from the records already in
-        // memory (the static site inlines them), pairing the record with the
-        // reviews from the in-memory map so a summary-first page can still reach a
-        // full detail without a host fetcher.
-        if (value.readRun) return value.readRun(runId);
-        const record = value.runs.find((r) => r.id === runId);
-        return Promise.resolve(
-          record ? { record, reviews: reviews[record.id] ?? [] } : null,
-        );
+        // The gallery holds no full records in memory anymore — only summary
+        // cards — so a detail view resolves the whole record lazily through the
+        // host's single-run fetcher (the console reads `GET /runs/{id}`, the static
+        // site fetches the emitted per-run record asset). A host that supplies none
+        // resolves to null.
+        return value.readRun ? value.readRun(runId) : Promise.resolve(null);
       },
       modelForId(modelId, harnessSlug) {
         return findModelByModelId(models, modelId, harnessSlug);

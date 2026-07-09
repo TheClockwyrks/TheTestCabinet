@@ -215,9 +215,6 @@ interface AssembledReview {
 }
 
 interface AssembledSnapshot {
-  // Verbatim RunRecord blobs, newest first (the snapshot's `runs/<id>.json`
-  // `record`). The app types these as RunRecord[].
-  runs: unknown[];
   // The flat summary index (`runs.json`), newest first — the bounded `RunSummary`
   // cards the run log and list pages consume, taken verbatim from the backend's
   // published index (no extra fetches). The app types these as RunSummary[].
@@ -330,7 +327,6 @@ interface AssembledTestCase {
 }
 
 const EMPTY: AssembledSnapshot = {
-  runs: [],
   runSummaries: [],
   writeups: {},
   reviews: {},
@@ -602,7 +598,6 @@ async function loadSnapshot(
     joinUrl(base, index.runsKey),
   );
 
-  const runs: unknown[] = [];
   const writeups: Record<string, string> = {};
   const reviews: Record<string, AssembledReview[]> = {};
   const proofMediaUrls: Record<string, Record<string, string>> = {};
@@ -615,11 +610,10 @@ async function loadSnapshot(
     const runFile = await fetchJson<SnapshotRunFile>(
       joinUrl(base, `${index.runsPrefix}${summary.id}.json`),
     );
-    runs.push(runFile.record);
     // Emit the full run record as a runtime-fetchable static asset
-    // (`runs/<id>.json`), so a summary-first page can lazily fetch one run's
-    // whole record without the bundle inlining every record (the U7 cleanup drops
-    // the inlined `runs` array in favor of this).
+    // (`runs/<id>.json`), so a summary-first page lazily fetches one run's whole
+    // record on demand — the bundle ships the summary index but NOT the array of
+    // full records.
     emitRecord(summary.id, JSON.stringify(runFile.record));
     const runReviews = runFile.reviews ?? [];
     if (runReviews.length > 0) {
@@ -684,7 +678,6 @@ async function loadSnapshot(
   }
 
   return {
-    runs,
     // The already-fetched summary index — the bounded cards, verbatim. No extra
     // network calls.
     runSummaries: runsFile.runs,
@@ -700,7 +693,6 @@ async function loadSnapshot(
 function serialize(data: AssembledSnapshot): string {
   return [
     "// Generated at build time by vite-plugin-snapshot. Do not edit.",
-    `export const runs = ${JSON.stringify(data.runs)};`,
     `export const runSummaries = ${JSON.stringify(data.runSummaries)};`,
     `export const writeups = ${JSON.stringify(data.writeups)};`,
     `export const reviews = ${JSON.stringify(data.reviews)};`,
@@ -769,7 +761,7 @@ export function snapshot(): Plugin {
           return;
         }
         this.info(
-          `fetched snapshot from ${base}: ${data.runs.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s), ${recordAssets} run record(s).`,
+          `fetched snapshot from ${base}: ${data.runSummaries.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s), ${recordAssets} run record(s).`,
         );
         module = serialize(data);
       } catch (error) {

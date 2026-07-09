@@ -42,8 +42,6 @@ export { useLiveGallery } from "./runtime/useLiveGallery";
 
 // Data hooks (read the provider) and their state shapes.
 export {
-  useRuns,
-  type RunsState,
   useRunSummaries,
   type RunSummariesState,
 } from "./data/useRuns";

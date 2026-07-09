@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import { useCallback, useEffect, useState } from "react";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   NotSupportedError,
   type BackendClient,
@@ -43,47 +43,56 @@ import { useRunsRuntime } from "./runsRuntime";
 // Cap the published-run pagination so a misbehaving backend can't loop forever.
 const MAX_PAGES = 100;
 
-interface AssembledRuns {
-  runs: RunRecord[];
+// The produced (local) runs the worker holds, assembled for the gallery. Unlike
+// the published set — which now arrives as lightweight summary cards over the wire
+// — the worker's produced worklist is small and local, so its full records are
+// read whole: their summaries are derived here and their reviews/writeups kept for
+// the local run-detail pages (published runs get reviews from the lazy `readRun`).
+interface ProducedRuns {
+  summaries: RunSummary[];
   localIds: Set<string>;
   writeups: Record<string, string>;
   reviews: Record<string, StoredReview[]>;
 }
 
-function emptyRuns(): AssembledRuns {
-  return { runs: [], localIds: new Set(), writeups: {}, reviews: {} };
+function emptyProduced(): ProducedRuns {
+  return { summaries: [], localIds: new Set(), writeups: {}, reviews: {} };
 }
 
-// Map a backend StoredRun (published or produced) into the gallery's run +
-// review shapes. The record already carries populated links. A run can carry more
-// than one review now; the individual reviews are kept for the detail page, and
-// an aggregate writeup (worst rating per domain, strictest checklist) is framed
-// for the cards/leaderboard/badges that read one writeup per run.
-function ingest(stored: StoredRun, into: AssembledRuns, local: boolean): void {
-  into.runs.push(stored.record);
-  if (local) into.localIds.add(stored.id);
+// Map a produced (local) StoredRun into the gallery's summary + review shapes. The
+// record already carries populated links. A run can carry more than one review
+// now; the individual reviews are kept for the detail page, and an aggregate
+// writeup (worst rating per domain, strictest checklist) is framed for the
+// cards/leaderboard/badges that read one writeup per run. The bounded summary card
+// is derived from the record + reviews (mirroring the published summary index).
+function ingest(stored: StoredRun, into: ProducedRuns): void {
+  into.localIds.add(stored.id);
   const reviews = stored.reviews ?? [];
   if (reviews.length > 0) into.reviews[stored.id] = reviews;
   const framed = frameReviews(reviews);
   if (framed !== null) into.writeups[stored.id] = framed;
+  into.summaries.push(toRunSummary(stored.record, reviews));
 }
 
-async function fetchPublishedRuns(
+// Drain the backend's published run summaries, newest first, over the wire — the
+// bounded `RunSummary` cards the run log and list pages consume, not the full
+// records. The pagination is capped so a misbehaving backend can't loop forever.
+async function fetchPublishedSummaries(
   backend: BackendClient,
-): Promise<AssembledRuns> {
-  const acc = emptyRuns();
+): Promise<RunSummary[]> {
+  const acc: RunSummary[] = [];
   let before: string | undefined;
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const { runs, nextCursor } = await backend.listRuns({ before });
-    for (const run of runs) ingest(run, acc, false);
-    if (!nextCursor || runs.length === 0) break;
+    const { summaries, nextCursor } = await backend.listRunSummaries({ before });
+    acc.push(...summaries);
+    if (!nextCursor || summaries.length === 0) break;
     before = nextCursor;
   }
   return acc;
 }
 
-async function fetchProducedRuns(worker: WorkerClient): Promise<AssembledRuns> {
-  const acc = emptyRuns();
+async function fetchProducedRuns(worker: WorkerClient): Promise<ProducedRuns> {
+  const acc = emptyProduced();
   try {
     // `listRuns` is the worker's full produced worklist: every pushed-but-
     // unpublished run, whatever its terminal state — completed (awaiting review),
@@ -94,7 +103,7 @@ async function fetchProducedRuns(worker: WorkerClient): Promise<AssembledRuns> {
     // (`listFailures`) is read by the Publish-failures page directly, so it is not
     // merged here (it would duplicate the unpublished failures and pull in the
     // published ones).
-    for (const run of await worker.listRuns()) ingest(run, acc, true);
+    for (const run of await worker.listRuns()) ingest(run, acc);
   } catch (e) {
     // A worker that can't enumerate produced runs simply contributes none.
     if (!(e instanceof NotSupportedError)) throw e;
@@ -252,7 +261,7 @@ export function useLiveGallery(
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
 
-  const [runs, setRuns] = useState<RunRecord[]>([]);
+  const [runSummaries, setRunSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
   const [writeups, setWriteups] = useState<Record<string, string>>({});
   const [reviews, setReviews] = useState<Record<string, StoredReview[]>>({});
@@ -312,22 +321,26 @@ export function useLiveGallery(
     setRunsLoading(true);
     (async () => {
       const published = backend
-        ? await fetchPublishedRuns(backend).catch(() => emptyRuns())
-        : emptyRuns();
+        ? await fetchPublishedSummaries(backend).catch(
+            () => [] as RunSummary[],
+          )
+        : [];
       const produced = workerClient
-        ? await fetchProducedRuns(workerClient).catch(() => emptyRuns())
-        : emptyRuns();
+        ? await fetchProducedRuns(workerClient).catch(() => emptyProduced())
+        : emptyProduced();
       if (!active) return;
       // Produced (local) runs lead; published runs follow, minus any the worker
-      // also holds locally (the local copy wins on id collision).
+      // also holds locally (the local copy wins on id collision). Only the local
+      // runs contribute reviews/writeups here — published runs now get their
+      // reviews from the lazy `readRun` per-detail fetch.
       const merged = [
-        ...produced.runs,
-        ...published.runs.filter((r) => !produced.localIds.has(r.id)),
+        ...produced.summaries,
+        ...published.filter((s) => !produced.localIds.has(s.id)),
       ];
-      setRuns(merged);
+      setRunSummaries(merged);
       setLocalIds(produced.localIds);
-      setWriteups({ ...published.writeups, ...produced.writeups });
-      setReviews({ ...published.reviews, ...produced.reviews });
+      setWriteups(produced.writeups);
+      setReviews(produced.reviews);
       setRunsLoading(false);
     })();
     return () => {
@@ -413,16 +426,6 @@ export function useLiveGallery(
     [backend, workerClient, localIds],
   );
 
-  // The bounded summary cards for the loaded runs, derived from the full records
-  // this hook already assembles (an additive step: the network path still drains
-  // full records above; U7 switches it to fetching summaries over the wire and
-  // drops the full drain). Each summary's rating aggregates the run's reviews, so
-  // it recomputes when either the runs or their reviews change.
-  const runSummaries = useMemo(
-    () => runs.map((run) => toRunSummary(run, reviews[run.id] ?? [])),
-    [runs, reviews],
-  );
-
   // Resolve a single run's detail by id for a run the loaded list doesn't carry
   // (an infrastructure failure, in no worklist; or a run off the current page).
   // A produced (local) run is read from its worker, any other from the backend;
@@ -454,7 +457,6 @@ export function useLiveGallery(
   );
 
   return {
-    runs,
     runSummaries,
     localIds,
     writeups,
