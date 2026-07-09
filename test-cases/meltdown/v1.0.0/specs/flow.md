@@ -52,8 +52,8 @@ against a defense that is still being built up.
   early-send bonus, or let the timer expire to start it automatically. There is
   a build phase before Wave 1 as well, so the player can lay an opening
   maze.
-- During a wave, the surge spawns from the intakes over time (you design the
-  exact timing and intake split, `specs/creeps.md`). A wave is **cleared** when
+- During a wave, the surge spawns from the vents over time (you design the
+  exact timing and vent split, `specs/creeps.md`). A wave is **cleared** when
   every unit it released has either died or leaked. Clearing a wave pays its
   bonus and begins the next build phase.
 - **Milestone waves.** Wave 10 and Wave 20 each include a **Core** boss
@@ -90,7 +90,7 @@ The game is a small state machine. Each state has a clear screen and controls
    towers may show behind the menu for atmosphere.
 2. **How to play.** Describes the goal (stop the surge from reaching the
    exhausts), the controls, heat as power and the redline trip, the Forge
-   and Vent, the heat-averse Rime, flyers, air-capable emitters, air-only Flak,
+   and Sink, the heat-averse Rime, flyers, air-capable emitters, air-only Flak,
    and the economy. Returns
    to the menu.
 3. **In match.** The live game: the floor and its maze, the surge walking and
@@ -127,14 +127,14 @@ The game must exhibit these behaviors. They are observable and make good test
 targets:
 
 - **Towers are walls and you build the maze:** the surge pathfinds the shortest
-  open route from each intake to its **opposite exhaust** (left to right, top to
+  open route from each vent to its **opposite exhaust** (left to right, top to
   bottom), re-paths live when a tower is built or sold, and a placement that
   would seal either required route is **refused** (`specs/playfield.md`).
 - **Heat is power:** an emitter's damage climbs with its heat on the
   accelerating curve, and a tower that reaches the redline trips offline for `3
   s` (`specs/heat.md`).
 - The **Forge** pours heat into adjacent emitters (asset in a lull, liability in
-  a push) and the **Vent** draws it out, both only across orthogonal footprint
+  a push) and the **Sink** draws it out, both only across orthogonal footprint
   edge contact, scaled by tower alignment (`specs/heat.md`).
 - The **Rime** is **heat-averse** — it slows hardest when cold and degrades as
   it heats (`specs/towers.md`).

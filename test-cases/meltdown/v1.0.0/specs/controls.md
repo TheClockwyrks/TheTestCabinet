@@ -28,7 +28,7 @@ of the simulation, only how fast it plays.
    footprint**. The preview shows the tower's **range** ring from that center
    and a **valid/invalid** footprint highlight (`#46d07a` valid, `#ff4d4d`
    invalid). A footprint is invalid if any tile in it is outside the floor, an
-   intake/exhaust, already occupied, under a surge unit, unaffordable, or would
+   vent/exhaust, already occupied, under a surge unit, unaffordable, or would
    seal the floor (`specs/playfield.md`).
 3. **Place** — left-click a valid footprint while in placement mode to build
    there, deducting the tower cost from the current money. With a modifier or a

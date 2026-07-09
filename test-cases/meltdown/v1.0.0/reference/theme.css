@@ -7,18 +7,21 @@
  * positions, and type below are the source of truth referenced by the seeded
  * specs under ../specs/.
  *
- * Stage geometry (matches ../specs/overview.md and ../specs/playfield.md):
- *   - 1280x720 stage. Reactor floor x[0,1000], y[0,720]; build panel
- *     x[1000,1280] (280px).
- *   - Floor is a 50-col x 36-row grid of 20x20 tiles. Tile (c,r) has
- *     left=20c, top=20r. Towers occupy a snapped 2x2 tile footprint (40x40px)
- *     centered on a grid intersection. Intakes: left edge rows 16-19, top edge
- *     cols 24-27. Exhausts: right edge rows 16-19, bottom edge cols 24-27.
+ * Stage geometry (see ../specs/overview.md and ../specs/playfield.md). This mockup
+ * is drawn on a 20px lattice for legibility and frames the floor with an inset
+ * casing wall; the real spec insets the floor inside an 18px casing on a 19px tile
+ * grid (floor 950x684, build panel x[986,1280]).
+ *   - 1280x720 stage. In this mockup the reactor fills x[0,1000], y[0,720] with an
+ *     18px casing drawn inset; the build panel is x[1000,1280].
+ *   - Floor is a 50-col x 36-row grid. Towers occupy a snapped 2x2 tile footprint
+ *     centered on a grid intersection. Vents (entrances): left edge rows 16-19, top
+ *     edge cols 24-27. Exhausts: right edge rows 16-19, bottom edge cols 24-27 —
+ *     each a four-tile opening cut into the casing.
  *
  * Heat visual language (../specs/heat.md, ../specs/overview.md): an emitter's
  * glow tracks its heat along a ramp cold-blue -> warm-amber -> hot-orange ->
  * white-hot, and a tripped emitter is strobing red. Cryo Rime reads cold cyan;
- * the Forge reads ember; the Vent reads cool steel. Each tower also carries a
+ * the Forge reads ember; the Sink reads cool steel. Each tower also carries a
  * small heat bar so heat is legible beyond color alone.
  */
 
@@ -36,15 +39,16 @@
 
   --rime: #79e0ff;       /* cryo emitter */
   --forge: #ff7a1f;      /* heat source */
-  --vent: #aebfce;       /* heat sink */
+  --sink: #aebfce;       /* heat sink */
 
   --ground: #a4e22a;     /* surge ground intruder */
   --flyer: #b66bff;      /* surge flyer */
   --boss: #8a2be2;       /* surge boss */
   --hp: #2ec27e;         /* surge health bar */
 
-  --intake: #5f9bd6;     /* entrance portal */
-  --exhaust: #ff5a3c;    /* exit portal (hazard) */
+  --vent: #5f9bd6;       /* entrance opening (vent) */
+  --exhaust: #ff5a3c;    /* exit opening (exhaust) */
+  --casing: #0e1116;     /* reactor casing wall */
   --money: #ffcf4d;      /* money / readouts */
   --hazard: #ffd400;     /* hazard stripe */
   --ok: #46d07a;         /* valid placement */
@@ -83,7 +87,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* The reactor floor (x[0,1000]) with its faint 20px structural grid. */
+/* The reactor floor, ringed by the casing wall (drawn as an inset 18px frame),
+ * with its faint structural grid. */
 .floor {
   position: absolute;
   left: 0;
@@ -95,6 +100,7 @@ body {
   background-image: linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 20px 20px;
+  box-shadow: inset 0 0 0 18px var(--casing);
 }
 
 /* ---- Portals ----------------------------------------------------------- */
@@ -102,6 +108,7 @@ body {
  * Positioned by tile (left=20c, top=20r), 20px per tile. */
 .portal {
   position: absolute;
+  z-index: 2;
   font-size: 9px;
   letter-spacing: 1px;
   display: flex;
@@ -110,10 +117,10 @@ body {
   text-align: center;
   font-weight: 700;
 }
-.intake {
+.vent {
   background: rgba(95, 155, 214, 0.16);
-  border: 2px solid var(--intake);
-  color: var(--intake);
+  border: 2px solid var(--vent);
+  color: var(--vent);
   box-shadow: inset 0 0 18px rgba(95, 155, 214, 0.4);
 }
 .exhaust {
@@ -232,14 +239,14 @@ body {
 }
 .forge .glyph { color: #1a0a02; }
 
-/* Vent — heat sink, cool steel with fins. */
-.vent {
+/* Sink — heat sink, cool steel with fins. */
+.sink {
   background: linear-gradient(180deg, #3a444f, #232a32);
   box-shadow: 0 0 14px rgba(174, 191, 206, 0.5);
   border-color: rgba(174, 191, 206, 0.5);
   border-radius: 9px;
 }
-.vent .glyph { color: var(--vent); }
+.sink .glyph { color: var(--sink); }
 
 /* Range ring for a selected/previewed tower. */
 .range {

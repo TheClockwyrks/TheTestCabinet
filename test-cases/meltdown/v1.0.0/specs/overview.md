@@ -3,7 +3,7 @@
 ## Overview
 
 **Meltdown** is an open-field **tower-defense** game for the browser. Waves of
-'surge' intruders pour in through the intakes of a reactor floor and try to
+'surge' intruders pour in through the vents of a reactor floor and try to
 reach the exhaust vents; you stop them by building **emitter towers** on the
 open floor. Your towers are also **walls**, so you do not defend a fixed path —
 you *build the maze* the surge must walk, winding it the long way around so your
@@ -14,7 +14,7 @@ hotter it runs — its damage climbs the more it shoots — but push it past the
 redline and it trips offline to cool, leaving a hole in your defense. So laying
 out the floor is a thermal problem as much as a spatial one: you want your guns
 hot, but not so hot they cut out. Two support structures let you sculpt that
-heat — a **Forge** that pours heat into its neighbors and a **Vent** that draws
+heat — a **Forge** that pours heat into its neighbors and a **Sink** that draws
 it away — and one emitter, the cryo **Rime**, runs the rule *backward*: it
 slows the surge best when it stays cold. Skilled play is about pacing heat
 across the floor — running a tight core white-hot, keeping a sniper fed,
@@ -32,14 +32,14 @@ you start; they cross-reference each other by name and form one specification.
 
 - `specs/overview.md` — this file: goals, hard requirements, free choices, the
   coordinate system, the palette and type, and the visual design.
-- `specs/playfield.md` — the geometry of the reactor floor: the tile grid, the
-  intakes and exhausts, how towers wall the floor, how the surge paths through
-  the maze, and the build-panel/HUD layout.
+- `specs/playfield.md` — the geometry of the reactor: the casing wall, the tile
+  grid, the vents and exhausts, how towers wall the floor, how the surge paths
+  through the maze, and the build-panel/HUD layout.
 - `specs/heat.md` — the signature systems: heat as power, the heat-to-damage
   curve, the redline trip, thermal coupling between neighbors, and the three
   thermal stances. **Read this carefully.**
 - `specs/towers.md` — the eight tower types (six emitters plus the Forge and
-  Vent), their stats and thermal personalities, and how you build, upgrade, and
+  Sink), their stats and thermal personalities, and how you build, upgrade, and
   sell them.
 - `specs/creeps.md` — the surge: the intruder types, the flyers that ignore the
   maze, and how a wave is composed.
@@ -113,15 +113,18 @@ top-left; `x` increases to the right and `y` increases downward.
   clipped or pushed past the edges. The build must fit correctly on load, before
   any input, and at any pixel density.
 
-The stage is divided into the **reactor floor** on the left — `x` in `[0,
-1000]`, `y` in `[0, 720]` — and the **build panel** on the right — `x` in
-`[1000, 1280]` (280 px wide), full height. The floor is laid out on a **tile
-grid**: tiles are **20 x 20** logical pixels, and the grid is **50 columns x 36
-rows** (`1000 x 720`). Column `c` (`0..49`) spans `x` in `[20c, 20c + 20]`; row
-`r` (`0..35`) spans `y` in `[20r, 20r + 20]`. Towers occupy snapped **2 x 2**
-tile footprints, so tower placement and range use the center of that footprint;
-surge movement still uses individual tile centers. The grid geometry, the
-intakes and exhausts, and the build panel are defined in full in
+The stage is divided into the **reactor** on the left — `x` in `[0, 986]`, `y`
+in `[0, 720]` — and the **build panel** on the right — `x` in `[986, 1280]` (294
+px wide), full height. The reactor is a `950 x 684` **reactor floor** ringed by an
+**18-px casing wall**; the surge can enter or leave only through four **openings**
+(two vents and two exhausts) cut into that casing. The floor is laid out on a
+**tile grid**: tiles are **19 x 19** logical pixels, and the grid is **50 columns
+x 36 rows** (`950 x 684`), its top-left corner at `(18, 18)` just inside the
+casing. Column `c` (`0..49`) spans `x` in `[18 + 19c, 18 + 19(c + 1)]`; row `r`
+(`0..35`) spans `y` in `[18 + 19r, 18 + 19(r + 1)]`. Towers occupy snapped **2 x
+2** tile footprints, so tower placement and range use the center of that
+footprint; surge movement still uses individual tile centers. The casing wall, the
+grid geometry, the vents and exhausts, and the build panel are defined in full in
 `specs/playfield.md`.
 
 ## Visual design
@@ -137,6 +140,7 @@ canonical palette and type are below; match them.
 | Grid lines | `#23272e` |
 | Build panel background | `#1b1f26` |
 | Panel edges / dividers | `#2c323c` |
+| Casing wall | `#0e1116` |
 | Emitter — cold (idle, weakest) | `#3a7bd5` |
 | Emitter — warm | `#f2a43a` |
 | Emitter — hot | `#ff5e2e` |
@@ -144,12 +148,12 @@ canonical palette and type are below; match them.
 | Emitter — tripped / redline | `#ff3030` |
 | Rime (cryo emitter) | `#79e0ff` |
 | Forge (heat source) | `#ff7a1f` |
-| Vent (heat sink) | `#aebfce` |
+| Sink (heat sink) | `#aebfce` |
 | Surge — ground intruder | `#a4e22a` |
 | Surge — flyer | `#b66bff` |
 | Surge — boss | `#8a2be2` |
 | Surge health bar | `#2ec27e` |
-| Intake (entrance) | `#5f9bd6` |
+| Vent (entrance) | `#5f9bd6` |
 | Exhaust (exit) — hazard | `#ff5a3c` |
 | Money / readouts | `#ffcf4d` |
 | Hazard stripe | `#ffd400` |
@@ -163,9 +167,9 @@ canonical palette and type are below; match them.
   labels). Do not depend on a web font that must be downloaded; a system
   monospace stack is required so the game renders identically offline.
 - The structural grid is faint but always visible on the floor, so the player
-  can read tiles and plan a maze. Intakes glow a cool blue; exhausts are
-  hazard-striped and read as dangerous (the surge escaping there is what costs
-  you).
+  can read tiles and plan a maze. The casing wall encloses the floor; its vents
+  glow a cool blue and its exhausts are hazard-striped and read as dangerous (the
+  surge escaping there is what costs you).
 - **Heat must be readable at a glance, and by more than color alone.** An
   emitter's glow color tracks its heat along the ramp above — cold blue →
   warm amber → hot orange → white-hot just under the redline — and a tripped

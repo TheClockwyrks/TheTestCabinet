@@ -7,10 +7,12 @@
   ../specs/heat.md (heat-as-power, the redline trip, coupling),
   ../specs/towers.md (the roster), and ../specs/creeps.md (the surge).
 
-  Floor objects use stage coordinates (the floor sits at stage 0,0). Towers fill
-  a snapped 2x2 tile footprint (40x40px on the 20px grid), centered on a grid
-  intersection. The maze, heats, and surge positions are one example moment, used
-  for a soft palette/layout comparison, not a strict pixel match.
+  Floor objects use stage coordinates (the floor sits at stage 0,0). This mockup is
+  drawn on a 20px lattice for legibility and frames the floor with an inset casing
+  wall; the real spec insets the floor inside an 18px casing on a 19px tile grid,
+  with the vents/exhausts as openings in that casing (see ../specs/playfield.md).
+  The maze, heats, and surge positions are one example moment, used for a soft
+  palette/layout comparison, not a strict pixel match.
 -->
 <html lang="en">
   <head>
@@ -21,9 +23,9 @@
   <body>
     <div class="stage">
       <div class="floor">
-        <!-- ===== Portals (four-tile openings at the edge midpoints, one tile deep) ===== -->
-        <div class="portal intake" style="left: 0; top: 320px; width: 20px; height: 80px">IN</div>
-        <div class="portal intake" style="left: 480px; top: 0; width: 80px; height: 20px">IN</div>
+        <!-- ===== Vents and exhausts: four-tile openings cut into the casing wall at the edge midpoints ===== -->
+        <div class="portal vent" style="left: 0; top: 320px; width: 20px; height: 80px">IN</div>
+        <div class="portal vent" style="left: 480px; top: 0; width: 80px; height: 20px">IN</div>
         <div class="portal exhaust" style="left: 980px; top: 320px; width: 20px; height: 80px">OUT</div>
         <div class="portal exhaust" style="left: 480px; top: 700px; width: 80px; height: 20px">OUT</div>
 
@@ -38,14 +40,14 @@
         </div>
         <div class="tower forge" style="left: 160px; top: 120px"><span class="glyph">&#9608;</span></div>
 
-        <!-- A white-hot core held under the redline by an adjacent Vent. -->
+        <!-- A white-hot core held under the redline by an adjacent Sink. -->
         <div class="tower emitter h-warm" style="left: 240px; top: 240px">
           <span class="glyph">&#9670;</span><div class="heatbar"><span></span></div>
         </div>
         <div class="tower emitter h-white" style="left: 280px; top: 240px">
           <span class="glyph">&#9642;</span><div class="heatbar"><span></span></div>
         </div>
-        <div class="tower vent" style="left: 320px; top: 240px"><span class="glyph">&#9661;</span></div>
+        <div class="tower sink" style="left: 320px; top: 240px"><span class="glyph">&#9661;</span></div>
         <div class="tower emitter h-hot" style="left: 240px; top: 280px">
           <span class="glyph">&#9670;</span><div class="heatbar"><span></span></div>
         </div>
@@ -72,11 +74,11 @@
           <span class="glyph">&#9651;</span><div class="heatbar"><span></span></div>
         </div>
 
-        <!-- A cryo Rime kept cold beside a Vent, away from the hot core. -->
+        <!-- A cryo Rime kept cold beside a Sink, away from the hot core. -->
         <div class="tower rime" style="left: 640px; top: 200px">
           <span class="glyph">&#10052;</span><div class="heatbar"><span></span></div>
         </div>
-        <div class="tower vent" style="left: 640px; top: 240px"><span class="glyph">&#9661;</span></div>
+        <div class="tower sink" style="left: 640px; top: 240px"><span class="glyph">&#9661;</span></div>
 
         <!-- The selected Bloom (hot) and other downstream guns. -->
         <div class="tower emitter h-hot" style="left: 400px; top: 480px">
@@ -136,7 +138,7 @@
           <div class="shop-item"><div class="ico rime"></div><div class="nm">RIME</div><div class="ct">110</div></div>
           <div class="shop-item"><div class="ico h-warm"></div><div class="nm">FLAK</div><div class="ct">130</div></div>
           <div class="shop-item"><div class="ico forge"></div><div class="nm">FORGE</div><div class="ct">60</div></div>
-          <div class="shop-item"><div class="ico vent"></div><div class="nm">VENT</div><div class="ct">60</div></div>
+          <div class="shop-item"><div class="ico sink"></div><div class="nm">SINK</div><div class="ct">60</div></div>
         </div>
 
         <div class="inspector">

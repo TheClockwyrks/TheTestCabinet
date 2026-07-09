@@ -2,25 +2,47 @@
 
 ## Overview
 
-This file defines the geometry of the reactor floor and the rules that govern
-it: the tile grid, where the surge enters and leaves, how towers wall the floor,
-how the surge finds its path through the maze you build, and the build-panel/HUD
-layout. All positions and sizes are in the logical-pixel coordinate system from
-`specs/overview.md` (a fixed `1280 x 720` stage; the floor is `x` in `[0,
-1000]`, `y` in `[0, 720]`; the build panel is `x` in `[1000, 1280]`).
+This file defines the geometry of the reactor: the **casing wall** that encloses
+the floor, the tile grid inside it, where the surge enters and leaves through
+openings in that wall, how towers wall the floor, how the surge finds its path
+through the maze you build, and the build-panel/HUD layout. All positions and
+sizes are in the logical-pixel coordinate system from `specs/overview.md` (a fixed
+`1280 x 720` stage). The stage splits into two regions:
+
+- **The reactor** — the left region, `x` in `[0, 986]`, `y` in `[0, 720]`: a
+  `950 x 684` **reactor floor** ringed by an **18-px casing wall** (below). The
+  floor itself is `x` in `[18, 968]`, `y` in `[18, 702]`.
+- **The build panel** — the right strip, `x` in `[986, 1280]` (`294` px wide),
+  full height.
+
+## The Casing Wall
+
+The reactor floor is enclosed by a solid **casing wall** — an `18`-px band ringing
+the `950 x 684` floor on all four sides (its outer edge at `x` in `[0, 986]` and
+`y` in `[0, 720]`; its inner edge at the floor boundary). The casing is
+**impassable and is not part of the tile grid**: the surge can never cross it, and
+no tower is ever built on it. The floor is therefore a **fully enclosed arena** —
+the surge can enter or leave *only* through the four **openings** cut into the
+casing (the vents and exhausts, below).
+
+Draw the casing as the reactor's heavy containment shell (`#0e1116`) with a lit
+inner rim, framing the floor; it reads as the wall of the reactor, unbroken except
+at its four openings.
 
 ## Tile Grid
 
-The reactor floor is a grid of 20 x 20 logical-pixel tiles, **50 columns**
-(`c = 0..49`) by **36 rows** (`r = 0..35`). Tile `(c, r)` spans `x` in `[20c,
-20c + 20]` and `y` in `[20r, 20r + 20]`; its **center** is at `(20c + 10, 20r +
-10)`. Every tower occupies a snapped **2 x 2 tile footprint** centered on a
-grid intersection, so the player's cursor feels like it is placing the center
-of the tower. A tower centered on intersection `(i, j)` occupies the four tiles
-that meet there: `(i - 1, j - 1)`, `(i, j - 1)`, `(i - 1, j)`, and `(i, j)`,
-with `i = 1..49` and `j = 1..35`; its tower center is at `(20i, 20j)`. The
-surge walks between tile centers. The faint grid (`#23272e`) is drawn over the
-floor (`#15181d`) at all times so the player can read tiles.
+The reactor floor is a grid of **19 x 19** logical-pixel tiles, **50 columns**
+(`c = 0..49`) by **36 rows** (`r = 0..35`), forming the `950 x 684` play area
+whose top-left corner sits at the floor origin `(18, 18)`, just inside the casing.
+Tile `(c, r)` spans `x` in `[18 + 19c, 18 + 19(c + 1)]` and `y` in `[18 + 19r,
+18 + 19(r + 1)]`; its **center** is at `(18 + 19c + 9.5, 18 + 19r + 9.5)`. Every
+tower occupies a snapped **2 x 2 tile footprint** centered on a grid intersection,
+so the player's cursor feels like it is placing the center of the tower. A tower
+centered on intersection `(i, j)` occupies the four tiles that meet there:
+`(i - 1, j - 1)`, `(i, j - 1)`, `(i - 1, j)`, and `(i, j)`, with `i = 1..49` and
+`j = 1..35`; its tower center is at `(18 + 19i, 18 + 19j)`. The surge walks between
+tile centers. The faint grid (`#23272e`) is drawn over the floor (`#15181d`) at all
+times so the player can read tiles.
 
 Each tile is in one of these states:
 
@@ -28,32 +50,36 @@ Each tile is in one of these states:
   all four tiles in its 2 x 2 footprint are open.
 - **Blocked** — occupied by part of a tower footprint (it is now a wall; see
   Mazing below).
-- **Intake** or **exhaust** — a fixed edge portal (below). The surge walks
-  *through* these; no tower may be built on them.
 
-## Intakes and Exhausts
+The **vents and exhausts are openings in the casing wall, not tiles** (below); the
+floor's edge tiles are ordinary Open floor that the surge walks onto and that
+towers may occupy (subject to the never-seal rule).
 
-The surge enters at two intakes and leaves at two exhausts, each a
-**four-tile** opening at the middle of an edge:
+## Vents and Exhausts
 
-- **Left intake** — the left edge, rows `r = 16..19` (tiles `(0, 16)` through
-  `(0, 19)`). The surge appears here moving right onto the floor.
-- **Top intake** — the top edge, columns `c = 24..27` (tiles `(24, 0)` through
-  `(27, 0)`). The surge appears here moving down onto the floor.
-- **Right exhaust** — the right edge, rows `r = 16..19` (tiles `(49, 16)`
-  through `(49, 19)`). Reaching here leaks the surge (see `specs/flow.md`).
-- **Bottom exhaust** — the bottom edge, columns `c = 24..27` (tiles `(24, 35)`
-  through `(27, 35)`).
+The surge enters through two **vents** and leaves through two **exhausts** — each a
+**four-tile-wide opening cut into the casing wall** at the middle of an edge (each
+opening spans `4 x 19 = 76` px, aligned to four tile rows or columns). A unit
+appears at its vent opening and steps onto the adjacent edge tile; a unit that
+reaches the edge tile at its exhaust opening passes out through the casing.
 
-Each intake has a fixed opposite exhaust target: surge entering from the left
-must leave through the right exhaust, and surge entering from the top must leave
-through the bottom exhaust. The surge never chooses the nearer exhaust. This
+- **Left vent** — the left casing, aligned to rows `r = 16..19`. The surge appears
+  here moving right, onto tiles `(0, 16)` through `(0, 19)`.
+- **Top vent** — the top casing, aligned to columns `c = 24..27`. The surge appears
+  moving down, onto tiles `(24, 0)` through `(27, 0)`.
+- **Right exhaust** — the right casing, aligned to rows `r = 16..19`. A unit
+  leaving through here leaks the surge (see `specs/flow.md`).
+- **Bottom exhaust** — the bottom casing, aligned to columns `c = 24..27`.
+
+Each vent has a fixed opposite exhaust target: surge entering from the left vent
+must leave through the right exhaust, and surge entering from the top vent must
+leave through the bottom exhaust. The surge never chooses the nearer exhaust. This
 forces each stream to cross the floor and gives the player room to build a maze
-that matters. These four portals are fixed for the whole game; only their visual
+that matters. These four openings are fixed for the whole game; only their visual
 state (idle vs. surge passing through) changes.
 
-Intakes glow cool blue (`#5f9bd6`); exhausts are hazard-striped and read as
-dangerous (`#ff5a3c`).
+Vents glow cool blue (`#5f9bd6`); exhausts are hazard-striped and read as dangerous
+(`#ff5a3c`). The casing is unbroken metal except at these four openings.
 
 ## Tower Construction and Mazing
 
@@ -63,32 +89,32 @@ lengthen the surge's route by building structures it must walk around. This is
 the core of the game — you build the maze.
 
 - A tower may be built only where its full **2 x 2 footprint** is open. No tile
-  in that footprint may be an intake, an exhaust, already occupied by another
-  tower, or currently occupied by a surge unit. The placement preview snaps the
-  cursor to the nearest valid interior grid intersection and shows the four
-  tiles surrounding that intersection.
+  in that footprint may be already occupied by another tower or currently occupied
+  by a surge unit; the casing wall is off-grid and can never be built on. The
+  placement preview snaps the cursor to the nearest valid interior grid
+  intersection and shows the four tiles surrounding that intersection.
 - **You can never seal the floor.** A placement is rejected if, after it would
-  be placed, either intake would have no path to its **opposite exhaust**, or if
+  be placed, either vent would have no path to its **opposite exhaust**, or if
   it would trap a surge unit already on the floor with no remaining route to
   that unit's assigned exhaust. The build UI must show a blocked placement as
   invalid (`#ff4d4d`) and refuse it, rather than letting the player wall the
-  surge in. There must always be at least one open route from the left intake to
-  the right exhaust and from the top intake to the bottom exhaust.
+  surge in. There must always be at least one open route from the left vent to
+  the right exhaust and from the top vent to the bottom exhaust.
 - Selling a tower (see `specs/towers.md`) reopens all four tiles in its
   footprint immediately and the surge re-paths.
 
 ## Surge Movement
 
-The surge walks the **shortest available route** from its intake to that
-intake's fixed opposite exhaust:
+The surge walks the **shortest available route** from its vent to that
+vent's fixed opposite exhaust:
 
 - Movement is on the tile grid between tile centers. A unit may step to an
   orthogonally or diagonally adjacent open tile, but a diagonal step is
   allowed only when **both** orthogonally-adjacent tiles it cuts past are also
   open — the surge never squeezes through the corner gap between two
   diagonally-touching towers.
-- A unit spawned from the **left intake** always pathfinds to the **right
-  exhaust**. A unit spawned from the **top intake** always pathfinds to the
+- A unit spawned from the **left vent** always pathfinds to the **right
+  exhaust**. A unit spawned from the **top vent** always pathfinds to the
   **bottom exhaust**. Path distance still determines the route it takes, but not
   which exhaust it is trying to reach.
 - The path is **recomputed live** whenever the floor changes — a tower built or
@@ -96,22 +122,23 @@ intake's fixed opposite exhaust:
   where it stands (no teleporting or snapping backwards). Units already past a
   junction follow the new shortest route from their current tile.
 - **Flyers are the exception.** Flying surge units (see `specs/creeps.md`)
-  ignore the maze entirely: they travel in a straight line from their intake to
-  that intake's opposite exhaust, passing over towers and walls. Any emitter can
-  hit them if they are in range, but the Flak is air-only and exists for
-  dedicated flyer coverage.
+  ignore the maze entirely: they travel in a straight line from their vent to
+  that vent's opposite exhaust, passing over towers and walls (they still enter
+  and leave through the vent and exhaust openings). Any emitter can hit them if
+  they are in range, but the Flak is air-only and exists for dedicated flyer
+  coverage.
 
 ## Build Panel and HUD
 
-The build panel occupies the right strip (`x` in `[1000, 1280]`, full
-height), drawn on the panel background (`#1b1f26`) and separated from the floor
+The build panel occupies the right strip (`x` in `[986, 1280]`, full
+height), drawn on the panel background (`#1b1f26`) and separated from the reactor
 by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
 
 - **Status readouts** — the current money (in `#ffcf4d`), the lives
   remaining, and the wave indicator (`WAVE n / N`, plus a small progress
   read of the current wave). See `specs/flow.md` for what each means.
 - **The shop** — a grid of buyable towers, one button per type (the six emitters
-  plus the Forge and Vent of `specs/towers.md`), each showing the tower's icon,
+  plus the Forge and Sink of `specs/towers.md`), each showing the tower's icon,
   name, and cost. A type the player cannot currently afford is shown disabled.
   Selecting a shop entry arms placement (see `specs/controls.md`).
 - **The selected-tower inspector** — when a placed tower is selected, this area

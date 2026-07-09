@@ -15,8 +15,8 @@ flight, and slow-immunity.
 
 ## Shared Rules
 
-- Every unit spawns at an **intake**, follows the rules in `specs/playfield.md`
-  (ground units walk the maze to that intake's opposite exhaust; flyers fly
+- Every unit spawns at a **vent**, follows the rules in `specs/playfield.md`
+  (ground units walk the maze to that vent's opposite exhaust; flyers fly
   straight to that same assigned exhaust), and is removed when it dies or
   reaches an exhaust.
 - A unit that reaches an exhaust **leaks**: it costs the player its leak value
@@ -54,7 +54,7 @@ flight, and slow-immunity.
   is the natural answer, and a packed Swarm is exactly what heats a kill-box
   toward the redline.
 - **Drift** — the **flyer**. It does **not** walk the maze: it flies in a
-  straight line from its intake to that intake's opposite exhaust, over every
+  straight line from its vent to that vent's opposite exhaust, over every
   tower and wall (`specs/playfield.md`). The maze cannot slow or redirect it,
   but any emitter can shoot it if it is in range. **Flak** (`specs/towers.md`)
   is the dedicated answer because it targets only flyers, so Drifts still force
@@ -68,8 +68,8 @@ flight, and slow-immunity.
 
 ## Wave Composition
 
-A wave is a timed sequence of units released from the intakes (the exact spawn
-timing and intake split per wave is yours to design, within
+A wave is a timed sequence of units released from the vents (the exact spawn
+timing and vent split per wave is yours to design, within
 `specs/flow.md`'s progression):
 
 - Early waves are mostly Motes and Sprints, light enough to teach the

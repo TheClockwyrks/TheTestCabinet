@@ -4,7 +4,7 @@
 
 This file defines the signature Heat system of Meltdown: how an emitter's heat
 drives its power, how pushing past the redline trips it offline, how the Forge
-and Vent move heat between neighbors, and the three thermal stances the towers
+and Sink move heat between neighbors, and the three thermal stances the towers
 fall into. **Read this file carefully.** It builds on the tile grid in
 `specs/playfield.md` and is the rule that the towers in `specs/towers.md` are
 all built on.
@@ -12,7 +12,7 @@ all built on.
 ## Emitter Heating and Cooling Rates
 
 Each emitter (every tower that fires — the six in `specs/towers.md`; the Forge
-and Vent do not fire and have no heat of their own) carries a heat value `H`, a
+and Sink do not fire and have no heat of their own) carries a heat value `H`, a
 number from `0` (stone cold) to `100` (the redline). Heat is shown on its
 footprint and in the inspector (see `specs/playfield.md`), and it changes
 continuously as the tower runs:
@@ -44,11 +44,11 @@ un-upgraded ceilings sit above `100`**: a gun that has a target essentially all
 the time — jammed into a saturated lane — climbs past the redline and **trips**,
 while the same gun with breathing room between targets settles below `100`, hot
 but online. Placement is therefore the lever: keep a gun off the busiest tiles,
-or give it a Vent, to run it hot without tripping. Two emitters are deliberate
+or give it a Sink, to run it hot without tripping. Two emitters are deliberate
 exceptions: the **Stutter** trips the easiest (its ceiling is far above `100`),
 and the **Lance** runs cold (its ceiling is *below* `100`, so it cannot trip on
 its own and instead wants a Forge — `specs/towers.md`). Upgrades and a Forge
-raise a ceiling further; a Vent lowers it. The Forge and Vent shift this ceiling
+raise a ceiling further; a Sink lowers it. The Forge and Sink shift this ceiling
 (below).
 
 A tower's per-type `heatPerShot` and `coolRate` are in `specs/towers.md`.
@@ -106,13 +106,13 @@ continuously and drives it up past its ceiling to the redline, where it **trips*
 — while a tower with breathing room between targets settles below its ceiling,
 hot but online. That is the core trade-off: the busiest tiles give the most
 damage but risk the trip, and shaping the maze is choosing, tower by tower, where
-on that line to sit. A **Vent** lets you hold a gun on a hot tile without
+on that line to sit. A **Sink** lets you hold a gun on a hot tile without
 tripping; a **Forge** (or an upgrade) pushes a gun further up and can tip a busy
 one over. The **Lance** is the exception — it runs too cool to trip unaided, and
-instead wants a Forge to reach its damage. The Forge and Vent let you cheat the
+instead wants a Forge to reach its damage. The Forge and Sink let you cheat the
 maze's heat locally.
 
-## Thermal Modulation - Forge and Vent
+## Thermal Modulation - Forge and Sink
 
 Two structures do not fire at all; their entire job is to **move heat** to and
 from the emitters next to them. Because every tower occupies a **2 x 2 tile
@@ -140,26 +140,26 @@ Thermal coupling scales by how much of the two-tile edge is shared:
   feeble; in a heavy push, that same constant heat stacks on top of the
   neighbor's own firing heat and can inadvertently push it over the redline,
   tripping it.
-- **The Vent** *strengthens the cooling* of each adjacent emitter — its
+- **The Sink** *strengthens the cooling* of each adjacent emitter — its
   `ventCool`, multiplied by the coupling percentage above, is **added to that
   emitter's `coolRate`**, so the emitter now cools by `(coolRate + ventCool) *
-  (H / 100)` per second. Because it is proportional to heat, a Vent draws
+  (H / 100)` per second. Because it is proportional to heat, a Sink draws
   hardest when the tower is near the redline and gently when it is cool — it
-  **lowers the ceiling** rather than chilling the tower to dead-cold. A Vent lets
+  **lowers the ceiling** rather than chilling the tower to dead-cold. A Sink lets
   an emitter be run near **flat out** without tipping over: park one that would
   otherwise trip — a base gun on a saturated tile, one upgraded to run hot, or one
-  fed by a Forge — beside a Vent and its ceiling drops back below `100`, so it
-  settles hot and stays online. Vents **stack** (their `ventCool`
-  adds), and a single Vent is a lever, not immunity — a hot enough emitter (for
+  fed by a Forge — beside a Sink and its ceiling drops back below `100`, so it
+  settles hot and stays online. Sinks **stack** (their `ventCool`
+  adds), and a single Sink is a lever, not immunity — a hot enough emitter (for
   instance one upgraded to run hotter, or fed by a Forge) can still climb past
-  the redline through one Vent and needs a second, or an upgraded Vent, to hold.
+  the redline through one Sink and needs a second, or an upgraded Sink, to hold.
 
 The exact `forgeHeat` and `ventCool` values, and how upgrading these structures
 changes them, are in `specs/towers.md`. Coupling is **local** — only orthogonal
 neighboring footprints with shared edge contact are affected — so where you
-place a Forge or a Vent on the floor is as much a part of the puzzle as where
+place a Forge or a Sink on the floor is as much a part of the puzzle as where
 you place the guns. Heat does not otherwise spread between emitters: an ordinary
-emitter does not heat or cool its neighbors, only the Forge and Vent do.
+emitter does not heat or cool its neighbors, only the Forge and Sink do.
 
 ## Tower Heat Relationships
 
@@ -171,15 +171,15 @@ understand what each tower wants:
   the redline, where they trip. A gun on a saturated tile climbs there on its own
   (the **Lance** is the exception — it runs too cool to trip unaided). They *want*
   heat, but fear that cliff — so they want a steady stream of targets without
-  quite drowning in them, and a Vent nearby if they
+  quite drowning in them, and a Sink nearby if they
   run too hot or a Forge nearby if they run too cold.
 - **Heat-averse** — the cryo Rime. It runs the rule **backward**: heat does not
   power it, heat **degrades** it. The Rime slows the surge best when it is
   cold, and its slow weakens as it heats (see `specs/towers.md` for the exact
   curve). It still trips at the redline like any emitter, but you almost never
-  want it near one: keep a Rime isolated or beside a Vent, away from Forges and
+  want it near one: keep a Rime isolated or beside a Sink, away from Forges and
   hot cores, so it stays cold and slows hard.
-- **Heat-movers** — the Forge (a source) and the Vent (a sink). They have no
+- **Heat-movers** — the Forge (a source) and the Sink (a drain). They have no
   heat of their own and never fire; they exist only to push heat into or pull
   heat out of their neighbors, so you can reconcile the hungry and the averse
   on the same floor.
@@ -187,5 +187,5 @@ understand what each tower wants:
 The maze sets each tower's baseline heat — packed lanes run hot, open lanes run
 cold — and the movers let you override that baseline tile by tile. A good floor
 is a deliberate thermal landscape: a white-hot core held just under the redline
-by Vents, a Forge keeping a slow gun fed, and a cold cryo pocket off on its own
+by Sinks, a Forge keeping a slow gun fed, and a cold cryo pocket off on its own
 — with the surge threaded through all of it.

@@ -29,10 +29,10 @@ shown last in the menu.)
 Containment uses every system exactly as the common specs define it, with no
 overrides:
 
-- the tile floor, the two intakes and two exhausts, the mazing rules,
+- the tile floor, the two vents and two exhausts, the mazing rules,
   and live re-pathing from `specs/playfield.md`;
 - heat as power, the heat-to-damage curve, the redline trip, and the
-  Forge/Vent thermal coupling from `specs/heat.md`;
+  Forge/Sink thermal coupling from `specs/heat.md`;
 - the six emitters and the two movers, their stances, upgrades, and selling
   from `specs/towers.md`;
 - the surge types, the flyers, and slow-immunity from `specs/creeps.md`;
