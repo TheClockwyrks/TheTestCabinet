@@ -76,19 +76,13 @@ export function useStaticGallery(): GalleryDataInput {
   // emitted `runs/<id>.json` asset.
   const localById = new Map(local.map((run) => [run.id, run]));
 
-  // The bounded summary cards, local (unpublished) first: dev-only local runs have
-  // no published summary, so derive theirs from the full record (they are
-  // unreviewed previews, so no reviews / null rating is correct); the published
-  // runs supply their cards verbatim from the snapshot's summary index.
   // The produced (dev-only local) runs as their own summary cards, pinned ahead of
   // the queried published window by a paged page — mirroring the console's
-  // `producedSummaries`. They are unreviewed previews (no reviews / null rating).
+  // `producedSummaries`. Dev-only local runs have no published summary, so derive
+  // theirs from the full record (they are unreviewed previews, so no reviews / null
+  // rating is correct). The published summary index stays internal to this module
+  // (queried by `queryRunSummaries` below); it is never exposed whole.
   const producedSummaries = local.map((run) => toRunSummary(run, []));
-
-  const runSummaries = [
-    ...producedSummaries,
-    ...publishedRunSummaries.filter((summary) => !localIds.has(summary.id)),
-  ];
 
   const testCases = catalogTestCases;
 
@@ -195,7 +189,6 @@ export function useStaticGallery(): GalleryDataInput {
   );
 
   return {
-    runSummaries,
     producedSummaries,
     localIds,
     writeups,

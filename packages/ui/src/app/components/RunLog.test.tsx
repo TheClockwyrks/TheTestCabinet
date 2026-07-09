@@ -7,7 +7,7 @@ import {
   type GalleryDataInput,
 } from "../data/galleryContext";
 import type { TestCaseSummary } from "../data/testCases";
-import { RunLog, useRunTable } from "./RunLog";
+import { RunLog, sortStateToQuery, useRunTable } from "./RunLog";
 
 // A run summary carrying only the fields the run log reads.
 function summary(
@@ -60,7 +60,6 @@ const RUNS = [
 
 function galleryValue(): GalleryDataInput {
   return {
-    runSummaries: RUNS,
     producedSummaries: [],
     localIds: new Set(),
     writeups: {},
@@ -75,20 +74,21 @@ function galleryValue(): GalleryDataInput {
   } as unknown as GalleryDataInput;
 }
 
-function Harness() {
+function Harness({ externalOrder = false }: { externalOrder?: boolean }) {
   const table = useRunTable({
     runs: RUNS,
     localIds: new Set(),
     localWriteups: {},
+    externalOrder,
   });
   return <RunLog rows={table.rows} controls={table.controls} />;
 }
 
-function renderLog() {
+function renderLog(externalOrder = false) {
   return render(
     <MemoryRouter>
       <GalleryDataProvider value={galleryValue()}>
-        <Harness />
+        <Harness externalOrder={externalOrder} />
       </GalleryDataProvider>
     </MemoryRouter>,
   );
@@ -163,6 +163,19 @@ describe("RunLog", () => {
     expect(container.querySelector('[data-label="Tokens"]')).toBeNull();
   });
 
+  it("renders rows in the given order and does not reorder on sort in externalOrder mode", () => {
+    renderLog(true);
+    // The given order is preserved (no client sort applied).
+    expect(rowNames()).toEqual(["Gamma", "Alpha", "Beta"]);
+
+    // Clicking a header still activates the sort control (so a page can read it and
+    // re-query) but the already-ordered rows are left as given.
+    const test = screen.getByRole("button", { name: "Sort by TEST" });
+    fireEvent.click(test);
+    expect(test).toHaveAttribute("data-active");
+    expect(rowNames()).toEqual(["Gamma", "Alpha", "Beta"]);
+  });
+
   it("locks the last visible column so the table can't be emptied", () => {
     renderLog();
     fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
@@ -177,5 +190,37 @@ describe("RunLog", () => {
     // A hidden column can still be re-shown, which unlocks the survivor again.
     fireEvent.click(screen.getByRole("checkbox", { name: "COST" }));
     expect(screen.getByRole("checkbox", { name: "RATING" })).not.toBeDisabled();
+  });
+});
+
+describe("sortStateToQuery", () => {
+  it("defaults to date/desc for no sort", () => {
+    expect(sortStateToQuery(null)).toEqual({ sort: "date", dir: "desc" });
+  });
+
+  it("maps run columns to their server sort keys, carrying direction", () => {
+    expect(sortStateToQuery({ columnId: "test", direction: "asc" })).toEqual({
+      sort: "testCase",
+      dir: "asc",
+    });
+    expect(sortStateToQuery({ columnId: "timestamp", direction: "desc" })).toEqual(
+      { sort: "date", dir: "desc" },
+    );
+    expect(sortStateToQuery({ columnId: "duration", direction: "asc" })).toEqual({
+      sort: "runtime",
+      dir: "asc",
+    });
+    expect(sortStateToQuery({ columnId: "category", direction: "desc" })).toEqual(
+      { sort: "testType", dir: "desc" },
+    );
+  });
+
+  it("falls back to date/desc for a column with no server key", () => {
+    // VERSION has no server-side sort; the header still highlights, the query
+    // falls back to the default order.
+    expect(sortStateToQuery({ columnId: "version", direction: "asc" })).toEqual({
+      sort: "date",
+      dir: "desc",
+    });
   });
 });

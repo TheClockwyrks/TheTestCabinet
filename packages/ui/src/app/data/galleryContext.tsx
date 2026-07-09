@@ -77,8 +77,9 @@ export interface ReviewModel {
 // this from the build-time public snapshot; the web/desktop consoles build it
 // live from a backend (catalog + published runs) and a worker (in-progress and
 // produced runs). Pages read it through the existing data hooks
-// (`useRunSummaries`, `useTestCases`, `findReview`), which now resolve to this
-// context — so page logic is unchanged regardless of where the data comes from.
+// (`queryRunSummaries`/`useCaseRunSummaries`, `useTestCases`, `findReview`), which
+// resolve to this context — so page logic is unchanged regardless of where the
+// data comes from.
 
 // A run currently executing on a worker. A run only gains a `RunRecord` at
 // completion, so an in-progress run is represented by its launch identity and
@@ -242,22 +243,16 @@ export interface HarnessAuthApi {
 // provider from `writeups`, so hosts do not supply it.
 export interface GalleryDataInput {
   /**
-   * The bounded summary cards for the runs to display, local (unpublished) first,
-   * then published — the lightweight shape the run log and list pages consume.
-   * Each host supplies these its own way: the console drains the backend's summary
-   * index over the wire and derives its local runs' cards (see `toRunSummary`), the
-   * static site reads its published summary index from the snapshot. Read through
-   * {@link useRunSummaries}. Full records are fetched lazily by id via
-   * {@link readRun}/{@link GalleryData.fetchRun} only when a detail view needs one.
-   */
-  runSummaries: RunSummary[];
-  /**
-   * The summary cards for runs sourced locally (produced but not yet published),
-   * on their own — the subset of {@link runSummaries} the console derives from its
-   * worker's produced worklist. Exposed separately so a paged page can PIN these
-   * (they never appear in the backend's numbered `queryRunSummaries` window) to the
-   * first page ahead of the queried published rows. Empty on the static site (which
-   * has no produced runs) and whenever the host holds none.
+   * The summary cards for runs sourced locally (produced but not yet published) —
+   * the console's worker worklist, derived into cards (see `toRunSummary`). The
+   * published set is never held whole: pages fetch it a page at a time through
+   * {@link queryRunSummaries}. These local cards are exposed separately so a paged
+   * page can PIN them (they never appear in the backend's numbered
+   * `queryRunSummaries` window) to the first page ahead of the queried published
+   * rows. Empty on the static site (which has no produced runs, except dev-only
+   * on-disk ones) and whenever the host holds none. Full records are fetched lazily
+   * by id via {@link readRun}/{@link GalleryData.fetchRun} only when a detail view
+   * needs one.
    */
   producedSummaries: RunSummary[];
   /** Ids of runs sourced locally (produced but not yet published). */
@@ -327,8 +322,8 @@ export interface GalleryDataInput {
   ) => Promise<RunEventStreams | null>;
   /**
    * Resolve one run's full record by id, directly from the host's store. The
-   * gallery no longer holds full records in memory — only the {@link runSummaries}
-   * cards — so a detail view fetches the whole record lazily through this: the
+   * gallery no longer holds full records in memory — pages fetch summary cards a
+   * page at a time — so a detail view fetches the whole record lazily through this: the
    * console reads the run store's `GET /runs/{id}` (worker for a local run, backend
    * otherwise); the static site fetches the per-run record asset the snapshot
    * emitted. Resolves `null` when no run with that id is available. Omitted by a

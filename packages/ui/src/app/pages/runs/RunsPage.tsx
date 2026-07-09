@@ -4,11 +4,12 @@ import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
-import { RunLog, useRunTable } from "../../components/RunLog";
+import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
+import { useDebouncedValue } from "../../components/useDebouncedValue";
 import { useFindModel } from "../../data/useModels";
 import type { ModelSummary } from "../../data/models";
 import { useGalleryData, type InProgressRun } from "../../data/galleryContext";
-import { useRunSummaries } from "../../data/useRuns";
+import type { RunQueryResult } from "../../data/runQuery";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { formatSlug } from "../../format";
 import { routes } from "../../routes";
@@ -21,57 +22,111 @@ const PAGE_SIZE = 20;
 
 // The all-runs index: every published (and locally produced) run, newest first,
 // in the same dense run log the home page leads with — but here the full history
-// is browsable a page at a time rather than just the most recent results, and a
-// search narrows by test case, harness, or model name. It carries no featured
-// run; rows default to recency order but the run log's headers re-sort the whole
-// history, which is then paged.
+// is browsable a page at a time. Each page is a server query (the console's backend
+// offset endpoint, the static site's in-memory index), so only one page of
+// summaries is ever held: a header sort re-queries in that order, and the search
+// narrows by test case, harness, or model. Produced (local, unpublished) and
+// in-progress runs lead the first page, pinned so they don't repeat across pages.
 export function RunsPage() {
-  const { runSummaries, localIds, localWriteups } = useRunSummaries();
-  const { canExecute } = useGalleryData();
+  const { canExecute, producedSummaries, localIds, writeups, queryRunSummaries } =
+    useGalleryData();
   const { inProgress } = useRunsRuntime();
   const findModel = useFindModel();
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 250);
   const [page, setPage] = useState(0);
+  const [result, setResult] = useState<RunQueryResult>({
+    summaries: [],
+    total: 0,
+  });
+  const [loading, setLoading] = useState(true);
 
-  // Every run, newest first, then narrowed by the free-text query.
-  const matched = useMemo(() => {
-    const recent = [...runSummaries].sort(byRecencyDesc);
-    const needle = query.trim().toLowerCase();
-    if (!needle) return recent;
-    return recent.filter((run) => searchText(run, findModel).includes(needle));
-  }, [runSummaries, query, findModel]);
+  const needle = debouncedQuery.trim().toLowerCase();
 
-  // Runs still executing, narrowed by the same query so search behaves uniformly.
+  // Produced (local) runs matching the search, pinned to the first page ahead of
+  // the queried published window (the backend's numbered listing never returns
+  // them). Off the first page they are omitted so they don't repeat.
+  const produced = useMemo(() => {
+    if (!needle) return producedSummaries;
+    return producedSummaries.filter((run) =>
+      searchText(run, findModel).includes(needle),
+    );
+  }, [producedSummaries, needle, findModel]);
+
+  // Runs still executing, narrowed by the same search so it behaves uniformly.
   // Only the consoles have these (the static site's runtime is always empty).
   const activeRuns = useMemo(() => {
     if (!canExecute) return [];
-    const needle = query.trim().toLowerCase();
     if (!needle) return inProgress;
     return inProgress.filter((run) =>
       activeSearchText(run, findModel).includes(needle),
     );
-  }, [canExecute, inProgress, query, findModel]);
+  }, [canExecute, inProgress, needle, findModel]);
 
-  // Enrich and sort the full matched set before paging: sorting only the current
-  // page would order each page independently.
-  const table = useRunTable({ runs: matched, localIds, localWriteups });
+  // On the first page the local/produced runs lead the server window; off it, only
+  // the server page (the local runs stay pinned to page 0).
+  const displayed = useMemo<RunSummary[]>(
+    () => (page === 0 ? [...produced, ...result.summaries] : result.summaries),
+    [page, produced, result.summaries],
+  );
 
-  // A new query — or a re-sort of the whole history — reshapes the result set, so
+  // The table renders the server-ordered page as-is (externalOrder) but still owns
+  // the sort state, so its headers drive the re-query below.
+  const table = useRunTable({
+    runs: displayed,
+    localIds,
+    localWriteups: writeups,
+    externalOrder: true,
+  });
+  const { sort, dir } = sortStateToQuery(table.controls.sort);
+
+  // Fetch one page whenever the search, the active sort, or the page changes. The
+  // prior rows stay on screen until the new page resolves (no empty flash).
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    queryRunSummaries({
+      state: "published",
+      offset: page * PAGE_SIZE,
+      limit: PAGE_SIZE,
+      q: needle || undefined,
+      sort,
+      dir,
+    })
+      .then((res) => {
+        if (!active) return;
+        setResult(res);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setResult({ summaries: [], total: 0 });
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [queryRunSummaries, page, needle, sort, dir]);
+
+  // A new search — or a re-sort of the whole history — reshapes the result set, so
   // jump back to the first page.
   useEffect(() => {
     setPage(0);
-  }, [query, table.controls.sort]);
+  }, [needle, sort, dir]);
 
-  const pageCount = Math.max(1, Math.ceil(table.rows.length / PAGE_SIZE));
-  // Clamp in case the result set shrank under the current page (e.g. a local
-  // run dropped out before a reset, or the query tightened).
+  const pageCount = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
-  const start = current * PAGE_SIZE;
-  const pageRows = table.rows.slice(start, start + PAGE_SIZE);
-  // In-progress runs lead the list, pinned to the first page so they don't repeat
-  // across pages. A run only here until it finishes — then it joins `matched`.
+
+  // If the result set shrank under the current page (the total dropped below the
+  // requested offset), fall back onto the last real page so the list can't strand
+  // on an out-of-range, empty window.
+  useEffect(() => {
+    if (!loading && page > pageCount - 1) setPage(pageCount - 1);
+  }, [loading, page, pageCount]);
+
+  // In-progress runs lead the list, pinned to the first page so they don't repeat.
   const showActive = activeRuns.length > 0 && current === 0;
-  const hasContent = table.rows.length > 0 || showActive;
+  const hasContent = displayed.length > 0 || showActive;
 
   return (
     <PageLayout>
@@ -105,15 +160,22 @@ export function RunsPage() {
       </div>
 
       {!hasContent ? (
-        <p className={styles.empty}>
-          {runSummaries.length === 0
-            ? "No runs have been published yet."
-            : "No runs match that search."}
-        </p>
+        loading ? (
+          <p className={styles.empty}>Loading runs…</p>
+        ) : (
+          <p className={styles.empty}>
+            {needle
+              ? "No runs match that search."
+              : "No runs have been published yet."}
+          </p>
+        )
       ) : (
-        <section className={styles.results}>
+        <section
+          className={styles.results}
+          aria-busy={loading ? "true" : undefined}
+        >
           <RunLog
-            rows={pageRows}
+            rows={table.rows}
             active={showActive ? activeRuns : []}
             controls={table.controls}
           />
@@ -166,15 +228,4 @@ function activeSearchText(
   ]
     .join(" ")
     .toLowerCase();
-}
-
-// Newest first, by finish time, falling back to start time when a run never
-// recorded a finish (e.g. it failed before completing). Matches the home page.
-function byRecencyDesc(a: RunSummary, b: RunSummary): number {
-  return timestamp(b) - timestamp(a);
-}
-
-function timestamp(run: RunSummary): number {
-  const value = Date.parse(run.finishedAt || run.startedAt);
-  return Number.isNaN(value) ? 0 : value;
 }

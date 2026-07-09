@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { MetricChartWidget, Panel } from "@test-cabinet/ui";
-import { useRunSummaries } from "../../../data/useRuns";
+import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindModel } from "../../../data/useModels";
 import {
   providerColor,
@@ -51,7 +51,7 @@ function MetricsContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { runSummaries } = useRunSummaries();
+  const { summaries } = useCaseRunSummaries(testCase.slug);
   const findModel = useFindModel();
 
   // Colors each model's bar by its provider's brand color, so a glance groups the
@@ -71,7 +71,7 @@ function MetricsContent({
   // cost and tokens are zero), so charting them would skew the distribution.
   const variantRuns = useMemo(
     () =>
-      runSummaries
+      summaries
         .filter(
           (run) =>
             run.subject.testCaseSlug === testCase.slug &&
@@ -79,7 +79,7 @@ function MetricsContent({
             run.state === "completed",
         )
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
-    [runSummaries, testCase.slug, variant.slug],
+    [summaries, testCase.slug, variant.slug],
   );
 
   if (variantRuns.length < MIN_RUNS) {

@@ -33,16 +33,16 @@ import { useRunsRuntime } from "./runsRuntime";
 
 // The shared live gallery data source for the consoles (web and desktop). It is
 // written against the BackendClient/WorkerClient interfaces alone, so the two
-// apps differ only in the transports behind those contexts. The published
-// gallery (runs, test cases) comes from the active backend; produced-but-
-// unpublished runs come from the active worker and are flagged local so they
-// read as unpublished and become editable on the Verdict tab. It re-reads
-// produced runs whenever the runs runtime bumps its refresh token (e.g. a
-// launched run finishes). Operations a transport doesn't support are treated as
-// "none" so the rest of the gallery still renders.
-
-// Cap the published-run pagination so a misbehaving backend can't loop forever.
-const MAX_PAGES = 100;
+// apps differ only in the transports behind those contexts. The published gallery
+// is no longer drained whole: pages fetch a page at a time through
+// {@link queryRunSummaries} (the backend's numbered offset endpoint), so this only
+// reads the small produced-but-unpublished worklist from the active worker (flagged
+// local so it reads as unpublished and becomes editable on the Verdict tab, and
+// pinned ahead of the queried published window). The catalog (test cases, models)
+// still comes from the active backend. It re-reads produced runs whenever the runs
+// runtime bumps its refresh token (e.g. a launched run finishes). Operations a
+// transport doesn't support are treated as "none" so the rest of the gallery still
+// renders.
 
 // The produced (local) runs the worker holds, assembled for the gallery. Unlike
 // the published set — which now arrives as lightweight summary cards over the wire
@@ -73,23 +73,6 @@ function ingest(stored: StoredRun, into: ProducedRuns): void {
   const framed = frameReviews(reviews);
   if (framed !== null) into.writeups[stored.id] = framed;
   into.summaries.push(toRunSummary(stored.record, reviews));
-}
-
-// Drain the backend's published run summaries, newest first, over the wire — the
-// bounded `RunSummary` cards the run log and list pages consume, not the full
-// records. The pagination is capped so a misbehaving backend can't loop forever.
-async function fetchPublishedSummaries(
-  backend: BackendClient,
-): Promise<RunSummary[]> {
-  const acc: RunSummary[] = [];
-  let before: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page += 1) {
-    const { summaries, nextCursor } = await backend.listRunSummaries({ before });
-    acc.push(...summaries);
-    if (!nextCursor || summaries.length === 0) break;
-    before = nextCursor;
-  }
-  return acc;
 }
 
 async function fetchProducedRuns(worker: WorkerClient): Promise<ProducedRuns> {
@@ -262,7 +245,6 @@ export function useLiveGallery(
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
 
-  const [runSummaries, setRunSummaries] = useState<RunSummary[]>([]);
   const [producedSummaries, setProducedSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
   const [writeups, setWriteups] = useState<Record<string, string>>({});
@@ -322,27 +304,16 @@ export function useLiveGallery(
     let active = true;
     setRunsLoading(true);
     (async () => {
-      const published = backend
-        ? await fetchPublishedSummaries(backend).catch(
-            () => [] as RunSummary[],
-          )
-        : [];
+      // Only the small produced (local) worklist is read here; the published set is
+      // paged over the wire by each page through `queryRunSummaries`, never drained.
       const produced = workerClient
         ? await fetchProducedRuns(workerClient).catch(() => emptyProduced())
         : emptyProduced();
       if (!active) return;
-      // Produced (local) runs lead; published runs follow, minus any the worker
-      // also holds locally (the local copy wins on id collision). Only the local
-      // runs contribute reviews/writeups here — published runs now get their
-      // reviews from the lazy `readRun` per-detail fetch.
-      const merged = [
-        ...produced.summaries,
-        ...published.filter((s) => !produced.localIds.has(s.id)),
-      ];
-      setRunSummaries(merged);
-      // The produced (local) cards on their own, so a paged page can pin them ahead
-      // of the queried published window (the backend's numbered listing never
-      // returns them — they are unpublished).
+      // The produced (local) cards, which a paged page pins ahead of the queried
+      // published window (the backend's numbered listing never returns them — they
+      // are unpublished). Only the local runs contribute reviews/writeups here;
+      // published runs get their reviews from the lazy `readRun` per-detail fetch.
       setProducedSummaries(produced.summaries);
       setLocalIds(produced.localIds);
       setWriteups(produced.writeups);
@@ -352,7 +323,7 @@ export function useLiveGallery(
     return () => {
       active = false;
     };
-  }, [backend, workerClient, refreshToken]);
+  }, [workerClient, refreshToken]);
 
   useEffect(() => {
     // No backend configured is the same broken state as an unreachable one: the
@@ -481,7 +452,6 @@ export function useLiveGallery(
   );
 
   return {
-    runSummaries,
     producedSummaries,
     localIds,
     writeups,

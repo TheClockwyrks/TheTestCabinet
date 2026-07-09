@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
-import { useRunSummaries } from "../../../data/useRuns";
+import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
 import { useFindModel } from "../../../data/useModels";
 import {
@@ -46,7 +46,7 @@ function LeaderboardContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { runSummaries, localWriteups } = useRunSummaries();
+  const { summaries, localWriteups } = useCaseRunSummaries(testCase.slug);
   const findReview = useFindReview();
   const findModel = useFindModel();
 
@@ -54,7 +54,7 @@ function LeaderboardContent({
   const entries = useMemo<Entry[]>(() => {
     // Score every reviewed run of this case + variant, then keep each model's best.
     const best = new Map<string, Entry>();
-    for (const run of runSummaries) {
+    for (const run of summaries) {
       if (
         run.subject.testCaseSlug !== testCase.slug ||
         run.subject.variant !== variant.slug
@@ -90,7 +90,7 @@ function LeaderboardContent({
     }
     return [...best.values()].sort(byScoreThenRatingThenRecency);
   }, [
-    runSummaries,
+    summaries,
     localWriteups,
     findReview,
     findModel,
