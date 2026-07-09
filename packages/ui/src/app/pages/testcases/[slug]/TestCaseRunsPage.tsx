@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pagination, Panel } from "@test-cabinet/ui";
 import { RunLog, useRunTable } from "../../../components/RunLog";
-import { useRuns } from "../../../data/useRuns";
+import { useRunSummaries } from "../../../data/useRuns";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import styles from "./TestCaseRunsPage.module.scss";
@@ -31,20 +31,20 @@ function RunsContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { runs, localIds, localWriteups } = useRuns();
+  const { runSummaries, localIds, localWriteups } = useRunSummaries();
   const [page, setPage] = useState(0);
 
   // Runs of this case and variant, newest first.
   const variantRuns = useMemo(
     () =>
-      runs
+      runSummaries
         .filter(
           (run) =>
             run.subject.testCaseSlug === testCase.slug &&
             run.subject.variant === variant.slug,
         )
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
-    [runs, testCase.slug, variant.slug],
+    [runSummaries, testCase.slug, variant.slug],
   );
 
   // Enrich and sort the full variant history before paging, so a header sort

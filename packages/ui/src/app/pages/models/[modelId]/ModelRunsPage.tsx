@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pagination, Panel, canonicalModelId } from "@test-cabinet/ui";
 import { RunLog, useRunTable } from "../../../components/RunLog";
 import type { ModelSummary } from "../../../data/models";
-import { useRuns } from "../../../data/useRuns";
+import { useRunSummaries } from "../../../data/useRuns";
 import { ModelDetailLayout } from "../../../layouts/models/ModelDetailLayout";
 import styles from "./ModelRunsPage.module.scss";
 
@@ -23,7 +23,7 @@ export function ModelRunsPage() {
 }
 
 function RunsContent({ model }: { model: ModelSummary }) {
-  const { runs, localIds, localWriteups } = useRuns();
+  const { runSummaries, localIds, localWriteups } = useRunSummaries();
   const [page, setPage] = useState(0);
 
   // This model's runs, newest first. A model may cover several ids, so match any
@@ -32,7 +32,7 @@ function RunsContent({ model }: { model: ModelSummary }) {
   const modelRuns = useMemo(() => {
     const covered = new Set(model.modelIds);
     const canonical = new Set(model.aliases.map((id) => canonicalModelId(id)));
-    return runs
+    return runSummaries
       .filter(
         (run) =>
           covered.has(run.subject.modelId) ||
@@ -41,7 +41,7 @@ function RunsContent({ model }: { model: ModelSummary }) {
           ),
       )
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-  }, [model, runs]);
+  }, [model, runSummaries]);
 
   // Enrich and sort this model's whole run history before paging, so a header
   // sort orders the full set rather than just the current page.

@@ -1,4 +1,4 @@
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { Fragment, useMemo, useRef } from "react";
 import { Link } from "react-router";
 import type { InProgressRun } from "../../client/types";
@@ -50,8 +50,8 @@ interface RunTable {
 }
 
 interface UseRunTableArgs {
-  /** The runs to list, in their default (recency) order. */
-  runs: readonly RunRecord[];
+  /** The run summaries to list, in their default (recency) order. */
+  runs: readonly RunSummary[];
   /** Ids of runs sourced from local disk — flagged as unpublished. */
   localIds: ReadonlySet<string>;
   /** Raw local writeups, keyed by run id, used to resolve a run's rating. */
@@ -185,7 +185,7 @@ export function RunLog({ rows, active = [], controls }: RunLogProps) {
           </Link>
         ))}
         {rows.map((row) => (
-          <RunRow key={row.record.id} row={row} columns={visible} ctx={ctx} />
+          <RunRow key={row.summary.id} row={row} columns={visible} ctx={ctx} />
         ))}
       </div>
     </div>
@@ -204,10 +204,10 @@ function RunRow({
   // A failed run (any non-completed tier) is listed inline so the failure can be
   // inspected, marked with the same negative styling an active row uses; its
   // rating cell shows the failure tier instead of a badge.
-  const failed = describeRunState(row.record.status.state).isFailure;
+  const failed = describeRunState(row.summary.state).isFailure;
   return (
     <Link
-      to={routes.runDetail(row.record.id)}
+      to={routes.runDetail(row.summary.id)}
       className={styles.row}
       data-failed={failed ? "" : undefined}
     >

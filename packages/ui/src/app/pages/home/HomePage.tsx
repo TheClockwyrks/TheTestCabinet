@@ -1,4 +1,4 @@
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
@@ -8,7 +8,7 @@ import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { useFindModel } from "../../data/useModels";
 import { type Rating, worstRating } from "../../data/ratings";
-import { useRuns } from "../../data/useRuns";
+import { useRunSummaries } from "../../data/useRuns";
 import { useFindReview } from "../../data/writeups";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
@@ -20,23 +20,29 @@ import styles from "./HomePage.module.scss";
 // column-aligned run log carried over from the gallery. The log defaults to
 // recency order, but its headers can be clicked to re-sort by any column.
 export function HomePage() {
-  const { runs, localIds, localWriteups } = useRuns();
+  const { runSummaries, localIds, localWriteups } = useRunSummaries();
   const findReview = useFindReview();
-  const recent = useMemo(() => [...runs].sort(byRecencyDesc), [runs]);
+  const recent = useMemo(
+    () => [...runSummaries].sort(byRecencyDesc),
+    [runSummaries],
+  );
   // The hero spotlights the latest *completed* run: a failed run produced no
   // stats or rating, so featuring it would lead with zeros. Failed runs still
   // appear (mixed in, recency-ordered) in the log below.
-  const featured = recent.find((r) => r.status.state === "completed") ?? null;
+  const featured = recent.find((r) => r.state === "completed") ?? null;
   const rest = useMemo(
     () => (featured ? recent.filter((r) => r.id !== featured.id) : recent),
     [recent, featured],
   );
   const table = useRunTable({ runs: rest, localIds, localWriteups });
+  // A local, unpublished writeup wins the featured rating (an in-progress edit
+  // must show before it is published); absent one, the summary's own aggregate
+  // rating stands in.
   const featuredRating = featured
     ? (worstRating(
         findReview(featured.id, localWriteups)?.ratings.map((r) => r.rating) ??
           [],
-      ) ?? null)
+      ) ?? featured.rating)
     : null;
 
   return (
@@ -73,11 +79,11 @@ export function HomePage() {
 
 // Newest first, by finish time, falling back to start time when a run never
 // recorded a finish (e.g. it failed before completing).
-function byRecencyDesc(a: RunRecord, b: RunRecord): number {
+function byRecencyDesc(a: RunSummary, b: RunSummary): number {
   return timestamp(b) - timestamp(a);
 }
 
-function timestamp(run: RunRecord): number {
+function timestamp(run: RunSummary): number {
   const value = Date.parse(run.finishedAt || run.startedAt);
   return Number.isNaN(value) ? 0 : value;
 }
@@ -89,7 +95,7 @@ function FeaturedRun({
   local,
   rating,
 }: {
-  run: RunRecord;
+  run: RunSummary;
   local: boolean;
   rating: Rating | null;
 }) {

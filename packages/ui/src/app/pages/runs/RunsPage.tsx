@@ -1,4 +1,4 @@
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
@@ -8,7 +8,7 @@ import { RunLog, useRunTable } from "../../components/RunLog";
 import { useFindModel } from "../../data/useModels";
 import type { ModelSummary } from "../../data/models";
 import { useGalleryData, type InProgressRun } from "../../data/galleryContext";
-import { useRuns } from "../../data/useRuns";
+import { useRunSummaries } from "../../data/useRuns";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { formatSlug } from "../../format";
 import { routes } from "../../routes";
@@ -26,7 +26,7 @@ const PAGE_SIZE = 20;
 // run; rows default to recency order but the run log's headers re-sort the whole
 // history, which is then paged.
 export function RunsPage() {
-  const { runs, localIds, localWriteups } = useRuns();
+  const { runSummaries, localIds, localWriteups } = useRunSummaries();
   const { canExecute } = useGalleryData();
   const { inProgress } = useRunsRuntime();
   const findModel = useFindModel();
@@ -35,11 +35,11 @@ export function RunsPage() {
 
   // Every run, newest first, then narrowed by the free-text query.
   const matched = useMemo(() => {
-    const recent = [...runs].sort(byRecencyDesc);
+    const recent = [...runSummaries].sort(byRecencyDesc);
     const needle = query.trim().toLowerCase();
     if (!needle) return recent;
     return recent.filter((run) => searchText(run, findModel).includes(needle));
-  }, [runs, query, findModel]);
+  }, [runSummaries, query, findModel]);
 
   // Runs still executing, narrowed by the same query so search behaves uniformly.
   // Only the consoles have these (the static site's runtime is always empty).
@@ -106,7 +106,7 @@ export function RunsPage() {
 
       {!hasContent ? (
         <p className={styles.empty}>
-          {runs.length === 0
+          {runSummaries.length === 0
             ? "No runs have been published yet."
             : "No runs match that search."}
         </p>
@@ -132,7 +132,7 @@ export function RunsPage() {
 // slug), harness, and model (catalog name and raw id). Only these three subjects
 // are searchable — difficulty and tags are deliberately absent here.
 function searchText(
-  run: RunRecord,
+  run: RunSummary,
   findModel: (id: string, harness?: string) => ModelSummary | undefined,
 ): string {
   const { subject } = run;
@@ -170,11 +170,11 @@ function activeSearchText(
 
 // Newest first, by finish time, falling back to start time when a run never
 // recorded a finish (e.g. it failed before completing). Matches the home page.
-function byRecencyDesc(a: RunRecord, b: RunRecord): number {
+function byRecencyDesc(a: RunSummary, b: RunSummary): number {
   return timestamp(b) - timestamp(a);
 }
 
-function timestamp(run: RunRecord): number {
+function timestamp(run: RunSummary): number {
   const value = Date.parse(run.finishedAt || run.startedAt);
   return Number.isNaN(value) ? 0 : value;
 }
