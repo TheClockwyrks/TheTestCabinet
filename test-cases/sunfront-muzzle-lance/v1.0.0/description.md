@@ -9,10 +9,11 @@ particles, but by authoring an **emitter system** — a searing white-gold disch
 core at the lance tip, a thin streaked forward bolt of energy, and a flicker of
 crackle motes, with no smoke or flame, shaped by forward projection, light drag, and
 a velocity stretch on the bolt, with color, opacity, and size curves over each
-particle's life. Unlike a one-shot explosion, the effect **loops**: it plays
-continuously while a unit fires, settling into a repeating discharge rather than
-decaying to empty. The recorded operations emit a `system.json` that the review UI
-and the game **simulate live**; because it is a live, stochastic simulation it
-varies slightly from play to play, so a reviewer judges the effect's character — its
-read as a focused energy discharge, its continuous loop, and its thin forward bolt —
+particle's life. It is a **one-shot** discharge — one shot's worth — that fires at
+the start and decays cleanly to empty; the game plays a fresh instance once per shot,
+in sync with the firing unit's cadence, so the flash rate matches the unit's fire
+rate. The recorded operations emit a `system.json` that the review UI and the game
+**simulate live**; because it is a live, stochastic simulation it varies slightly
+from play to play, so a reviewer judges the effect's character — its read as a
+focused energy discharge, its clean one-shot decay, and its thin forward bolt —
 across replays and from multiple orbit angles, not a frozen frame.

@@ -4,9 +4,9 @@ difficulty = "easy"
 tags = ["asset-generation", "particle", "3d", "vfx", "muzzle-flash"]
 summary = """
 Author the Sunfront small-arms muzzle flash: a compact, forward-directed gun \
-flash — a stuttering white-hot bloom at the muzzle, a short forward spit of hot \
-sparks, and a faint smoke wisp — as a LOOPING particle-3d emitter system that \
-plays continuously while a unit fires, built one recorded operation at a time."""
+flash — a white-hot bloom at the muzzle, a short forward spit of hot sparks, and a \
+faint smoke wisp — as a one-shot particle-3d emitter system the game plays once per \
+shot, built one recorded operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -18,8 +18,9 @@ max_runtime_hours = 0.75
 type = "asset-generation"
 
 # A 3D particle effect: a forward-directed small-arms muzzle flash the model authors
-# as an emitter SYSTEM, simulated live by the review UI and the game. Unlike a
-# one-shot explosion, this effect LOOPS — it plays continuously while a unit fires.
+# as an emitter SYSTEM, simulated live by the review UI and the game. It is a ONE-SHOT
+# flash (one shot's worth) — the game replays it once per shot, in sync with the
+# firing unit's cadence, so the flash rate matches how fast the unit shoots.
 asset_kind = "particle-3d"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
@@ -29,15 +30,15 @@ variants = ["variants/base.toml"]
 
 # The volume the effect plays in. particle-3d gives width/height/depth (a volume,
 # like [voxel]); the flash fires forward along +z from a muzzle point near the rear.
-# duration_ms is the loop window; loop = true, so the effect sustains a steady
-# firing stutter rather than decaying to empty.
+# duration_ms is one flash's length; loop = false, so the flash fires at the start
+# and decays cleanly to empty. The game replays it once per shot.
 [particle]
 width       = 24             # extent along x
 height      = 24             # extent along y — up
 depth       = 32             # extent along z — forward; the flash projects toward +z
-duration_ms = 600            # the loop window; a sustained firing stutter, not a one-shot
+duration_ms = 300            # one flash: fires at the start and decays to empty
 fps         = 60             # preview/playback frame rate
-loop        = true           # LOOPING — a continuous muzzle flash while the unit fires
+loop        = false          # ONE-SHOT — a single shot's flash; the game replays it per shot
 background  = "transparent"  # preview clear color only
 
 # The particle tool. `particle-3d` is the only way to shape the effect; it records
@@ -70,10 +71,10 @@ angles and across replays."""
 id = "motion"
 name = "Motion & timing"
 description = """
-How well the effect plays as a continuous, looping muzzle flash — a rapid stutter \
-of flashes that sustains across the loop with no decay to empty, sparks spitting \
-forward along the barrel and settling under drag, and a seamless loop that reads \
-the same at its start and end."""
+How well the effect plays as a one-shot muzzle flash — a bright flash at the start, \
+sparks spitting forward along the barrel and settling under drag, and a clean decay \
+to empty by the end of duration_ms, reading the same across replays so it holds up \
+when the game replays it once per shot."""
 
 [[review_item]]
 id = "reads-as-muzzle-flash"
@@ -97,13 +98,13 @@ weight = 2
 domain = "read"
 
 [[review_item]]
-id = "continuous-loop"
-title = "Continuous, looping firing stutter"
+id = "one-shot-flash"
+title = "One-shot flash that decays to empty"
 text = """
-Plays as a continuous, looping muzzle flash: a rapid stutter of short flashes that \
-sustains across the whole duration with no decay to empty and no single one-shot \
-burst. The loop is seamless — it reads the same at its start and end — and holds up \
-across replays despite the live simulation varying slightly."""
+Plays as a single one-shot flash: it fires hard at the start and decays cleanly to \
+empty by the end of duration_ms, with no steady-state loop or continuous stream (the \
+game supplies the repetition by replaying it once per shot). It reads the same across \
+replays despite the live simulation varying slightly."""
 weight = 3
 domain = "motion"
 

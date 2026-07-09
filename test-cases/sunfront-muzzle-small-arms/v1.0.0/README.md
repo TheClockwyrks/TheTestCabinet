@@ -1,14 +1,15 @@
 # sunfront-muzzle-small-arms
 
 An **asset-generation** test case (`asset_kind = "particle-3d"`): author the
-*Sunfront* **small-arms muzzle flash** as a volumetric, **looping** particle
+*Sunfront* **small-arms muzzle flash** as a volumetric, **one-shot** particle
 **system**, simulated live.
 
 Sunfront is a real-time tug-of-war of solar-powered war automatons; this is the hot
 flash that spits from the barrel of a rifle or light autocannon as a unit fires — a
-stuttering white-hot bloom at the muzzle, a short forward spit of hot sparks, and a
-faint smoke wisp. Unlike a one-shot explosion, the effect **loops**: it plays
-continuously while a unit is firing. The model does **not** place particles: it
+white-hot bloom at the muzzle, a short forward spit of hot sparks, and a faint smoke
+wisp. It is a **one-shot** flash (one shot's worth) that fires and decays to empty;
+the game replays it once per shot, in sync with the firing unit's cadence, so the
+flash rate matches the unit's fire rate. The model does **not** place particles: it
 authors an emitter system (emitters, forces, and per-particle size/opacity/color
 curves) with the `particle-3d` binary, one recorded operation at a time. The review
 UI and the game **simulate that system live**, so the effect varies slightly from
@@ -51,8 +52,8 @@ subjectively against the brief.
 
 ## Details
 
-- **Field:** 24×24×32 volume, transparent background, **looping** (`loop = true`),
-  600 ms loop window at 60 fps.
+- **Field:** 24×24×32 volume, transparent background, **one-shot** (`loop = false`),
+  300 ms at 60 fps (one flash, decaying to empty).
 - **Directionality:** the flash fires forward along `+z` from a muzzle point near
   the rear of the volume; the consuming game anchors and orients it to each unit's
   muzzle.

@@ -2,11 +2,12 @@ Author the **Sunfront small-arms muzzle flash**, a compact forward-directed gun
 flash, as a 3D particle **system** using only the particle tool.
 
 It is the muzzle flash for *Sunfront*'s rifle and light-autocannon units — the hot
-flash that spits from the barrel as a unit fires: a stuttering white-hot bloom at
-the muzzle, a short forward spit of hot sparks, and a faint smoke wisp. It is a
-**looping** effect: the weapon fires in a sustained stutter, so the flash **plays
-continuously** while the unit is shooting rather than as one isolated pop. You are
-authoring the *effect*, not a single frame of it.
+flash that spits from the barrel as a unit fires: a white-hot bloom at the muzzle, a
+short forward spit of hot sparks, and a faint smoke wisp. It is a **one-shot**
+effect — **one flash per shot**: the game plays a fresh instance each time a unit
+fires, so the flash rate matches the unit's fire rate. You are authoring the
+*effect* (a single shot's flash, which fires and decays to empty), not a single
+frame of it.
 
 ## How the particle tool works
 
@@ -28,12 +29,12 @@ discarded and flagged; only the recorded operations count.
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-particle-3d add-emitter --name flash --shape point --rate 120 --lifetime 70 --speed 6 --dir-z 1
+particle-3d add-emitter --name flash --shape point --burst 6 --at 0 --lifetime 70 --speed 6 --dir-z 1
 ```
 
-This effect **loops**: set the timeline so it sustains a continuous firing stutter
-rather than decaying to empty, and emit continuously (a rate), not as one-shot
-bursts. Rendering is a separate, on-request step: run `particle-3d render` to
+This effect is a **one-shot**: keep the timeline one-shot so it fires at the start
+and decays cleanly to empty, and emit as timed **bursts** at the shot instant, not
+as a continuous rate. Rendering is a separate, on-request step: run `particle-3d render` to
 **simulate the system over its duration, write the preview animation, and emit the
 `system.json` your result is built from**. An unrendered effect leaves an empty
 system, so you **must** run `render` before you finish. The field dimensions,
@@ -43,7 +44,7 @@ so no operation needs those flags.
 Run `particle-3d --help` to list every operation and `particle-3d <operation>
 --help` for one operation's exact flags — that help text is the authoritative
 contract. **Read the rendered `effect.gif` after your calls** to judge the
-effect's read, motion, and loop, and decide what to do next.
+effect's read, motion, and decay, and decide what to do next.
 
 ## What to read first
 
@@ -54,16 +55,17 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the effect, its steady-state loop, the emitters and
+`specs/brief.md` describes the effect, its one-shot lifecycle, the emitters and
 forces, the color/opacity/size curves, the exact palette, and how to work the tool.
 Run `particle-3d --help` for the exact operation contract.
 
 ## What to deliver
 
-Author the muzzle-flash system operation by operation — the stuttering flash core,
-the forward spark spit, and the faint smoke wisp, with the forces and per-particle
-curves that make them project forward and fade as the brief describes, and the
-timeline set to **loop** — running `particle-3d render` to simulate and check the
-effect as you go. When the simulated `effect.gif` reads as a continuous small-arms
-muzzle flash, run `render` one last time and stop: the recorded `actions.json` (and
-the `system.json` it emits) is your finished submission.
+Author the muzzle-flash system operation by operation — the flash core, the forward
+spark spit, and the faint smoke wisp (as timed bursts at the shot instant), with the
+forces and per-particle curves that make them project forward and fade as the brief
+describes, and the timeline kept **one-shot** — running `particle-3d render` to
+simulate and check the effect as you go. When the simulated `effect.gif` reads as a
+single small-arms muzzle flash that decays cleanly to empty, run `render` one last
+time and stop: the recorded `actions.json` (and the `system.json` it emits) is your
+finished submission.

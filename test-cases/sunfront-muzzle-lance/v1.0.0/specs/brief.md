@@ -3,10 +3,10 @@
 You are authoring the **rail-lance muzzle flash** for *Sunfront*, a real-time
 tug-of-war of solar-powered war automatons — the thin, searing energy discharge
 that flares from the tip of a **rail-lance**, the long-range piercing weapon of the
-game's marksman unit. It is a **looping**, continuous effect: the lance discharges
-in a sustained rhythm, so the flash **plays continuously** at the tip for as long as
-the unit is firing, rather than as one isolated shot. You are authoring the *effect*
-as a **system**, not a single frozen frame.
+game's marksman unit. It is a **one-shot** effect: **one discharge per shot**. The
+game plays a fresh instance each time a unit fires, in sync with its firing cadence,
+so the flash rate matches how fast the unit fires. You are authoring the *effect* as
+a **system**, not a single frozen frame.
 
 ## The field
 
@@ -17,10 +17,10 @@ as a **system**, not a single frozen frame.
   deep — this is a focused bolt, not a wide blast. The game anchors this effect to
   the unit's lance tip and orients it along the lance, so it must read as an energy
   discharge from **any orbit angle**, not just one face.
-- The effect **loops** (`loop = true`): it has **no decay to empty**. Over the
-  seeded `duration_ms` it settles into a **steady state** — a repeating firing
-  discharge — that reads the same at the start of the loop as at the end, so the
-  loop is seamless.
+- The effect is a **one-shot** (`loop = false`): it **fires at the start and decays
+  cleanly to empty** by the end of the seeded `duration_ms`. There is no steady state
+  to settle into — this is a single shot's discharge, which the game replays once per
+  shot a unit fires.
 - Keep the lance tip toward the back so the bolt has room to project forward without
   instantly clipping the front face. Keep the whole effect **thin and focused** — a
   lance, not an explosion.
@@ -34,45 +34,44 @@ rail discharge** — clean, bright, and thin. It is **not** a fiery gun flash wi
 flame and smoke, **not** a fireball, and **not** an omnidirectional burst. There is
 **no smoke and no flame** — this is light and energy, not combustion.
 
-## Lifecycle — a continuous loop
+## Lifecycle over the duration
 
-Because this effect **loops**, describe its **steady state** rather than a one-shot
-arc. Across the `duration_ms` the lance tip holds a repeating discharge cadence:
+Describe the effect against real time over its `duration_ms`, as a single shot that
+decays to empty:
 
-- **Each discharge** flares bright and sharp at the tip and dies fast (~50–110 ms),
-  so the tip **pulses** rather than glowing steadily. Discharges recur over the loop.
-- **The bolt** lances **forward** with each discharge — a thin, fast stream of
-  bright energy fired straight out along `+z`, **velocity-stretched** into streaks so
-  it reads as a lance line, fading as it travels.
-- **Crackle** motes flicker briefly around the tip — a few small energy sparks that
-  spark and wink out fast, giving the discharge a live, electric edge.
-
-At every moment of the loop there is a flare at the tip, a thin forward bolt
-mid-flight, and a flicker of crackle. There is no final frame where the volume
-empties, and at no point is there smoke or a spreading fireball.
+- **Discharge (0 – ~50 ms):** the **discharge core** flares on hard at the lance tip
+  — a searing white-gold flash — and the **energy bolt** lances forward in the same
+  instant. This is the brightest moment.
+- **Travel (~50 – ~250 ms):** the flash dies away fast (the tip does not glow after
+  the shot), while the thin **bolt** streaks **forward** along `+z`,
+  velocity-stretched into a lance line, fading with distance under light drag; the
+  **crackle** motes flicker around the tip and wink out.
+- **Settle (~250 ms – end):** the bolt is gone and the crackle has winked out;
+  nothing lingers — there is no smoke to drift off. By the end of `duration_ms` the
+  volume is empty.
 
 ## The emitters (conceptual)
 
 Author these as separate emitters so each layer reads distinctly. These are intent,
 not exact flags — read the binary's `--help` for the real operations:
 
-- **Discharge core** — a searing, white-hot flash at the lance tip. Emit it
-  **continuously** at a rate (this is a looping, sustained effect, not a single
-  burst) but with a **very short particle lifetime** (~50–110 ms) and a **small
-  radius** so the tip flares bright-and-out, tight and focused, rather than glowing
-  solid.
-- **Energy bolt** — a thin stream of bright energy particles emitted continuously
-  from the tip and fired **forward along `+z`** in a **very tight cone** (nearly a
-  straight line), **fast**, with a short-to-medium lifetime so the bolt lances out
-  and fades. Give it a **velocity stretch** so each particle reads as a streak, not a
-  dot — the lance line.
-- **Crackle motes** — a few small, short-lived energy sparks emitted at a **low**
-  rate near the tip, scattering slightly and flickering out fast — the electric edge.
-  Keep them sparse and small.
+- **Discharge core** — a searing, white-hot flash at the lance tip: a small **burst**
+  of a few particles at the shot instant (roughly the first frame) with a **very short
+  lifetime** (~50–110 ms) and a **small radius**, tight to the tip, so it flares
+  bright-and-out and dies rather than glowing solid.
+- **Energy bolt** — a **burst** of thin, bright energy particles at the shot instant,
+  fired **forward along `+z`** in a **very tight cone** (nearly a straight line),
+  **fast**, with a short-to-medium lifetime so the bolt lances out and fades. Give it
+  a **velocity stretch** so each particle reads as a streak, not a dot — the lance
+  line.
+- **Crackle motes** — a small **burst** of a few short-lived energy sparks at (or a
+  hair after) the shot instant near the tip, scattering slightly and flickering out
+  fast — the electric edge. Keep them sparse and small.
 
-Use a **continuous rate** for all three (not one-shot bursts) — this is a sustained,
-looping discharge. An optional fixed random seed gives a repeatable look, but the
-effect should read well whether or not the draws are pinned.
+Use timed **bursts** (not a continuous rate) — this is a one-shot discharge, not a
+sustained stream; the game replays the whole effect per shot. An optional fixed
+random seed gives a repeatable look, but the effect should read well whether or not
+the draws are pinned.
 
 ## The forces (conceptual)
 
@@ -129,10 +128,11 @@ The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
 you **author a system**, not individual particles — emitters, forces, and
 per-particle size/opacity/color curves that the review UI and the game **simulate
 live**. Build it up in sensible layers: add the discharge-core, energy-bolt, and
-crackle-mote emitters; set the forces (forward projection via emission, light drag,
-little-to-no gravity, and a velocity stretch on the bolt); then set each emitter's
-color gradient, opacity curve, and size curve. Make sure the timeline is set to
-**loop** so the effect sustains rather than decaying to empty.
+crackle-mote emitters (as timed bursts at the shot instant); set the forces (forward
+projection via emission, light drag, little-to-no gravity, and a velocity stretch on
+the bolt); then set each emitter's color gradient, opacity curve, and size curve.
+Keep the timeline a **one-shot** so the effect fires once and decays to empty (the
+game replays it per shot).
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json`

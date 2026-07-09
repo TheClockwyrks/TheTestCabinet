@@ -75,10 +75,10 @@ the manifest rather than hard-coding them.
   destroyed (including the Aegis) reaches `0 HP`, **flash the whole model white a few
   times and then remove it**, so it reads as no longer functional. There is no death
   animation — the flash is the only destruction cue.
-- **Play the provided muzzle flash while a unit fires.** A unit that fires a weapon
-  plays its **provided muzzle-flash effect** at its muzzle for as long as it is
-  firing (the *Provided muzzle-flash effects* section below); melee units (Scarab,
-  Bulwark) and the support Lumen play none.
+- **Play a muzzle flash for each shot.** A unit that fires a weapon plays **one
+  instance** of its **provided muzzle-flash effect** at its muzzle **per shot**, in
+  sync with its firing cadence (the *Provided muzzle-flash effects* section below);
+  melee units (Scarab, Bulwark) and the support Lumen play none.
 - **Orient** each model to its facing on the field: a unit faces along its travel or
   toward its target; the Aegis **rotates its hull** to bring its main-gun target into
   its forward cone, while its side turrets traverse independently (`specs/waves.md`).
@@ -108,11 +108,12 @@ the manifest rather than hard-coding it.
 
 Each effect is a **particle system**, not a frozen clip — a description of emitters,
 forces, and per-particle curves, authored on a small transparent volume. You play it
-by **simulating it live**, so it looks slightly different every moment while its
+by **simulating it live**, so it looks slightly different every shot while its
 character (the flash, the forward spit, the smoke or bolt) reads the same. These are
-**looping** systems: **play the effect while a unit is in its firing state and stop
-it when the unit stops firing** — it is a continuous flash, not a one-shot you fire
-per shot.
+**one-shot** systems: **play one fresh instance each time a unit fires a shot**, in
+sync with its firing cadence and attack animation, so the flash rate matches the
+unit's fire rate — a `2.0 s` cannon flashes once every `2 s`; a `0.8 s` rifle flashes
+roughly once a second. Do **not** hold a single instance on continuously.
 
 ### Play them with the provided runtime
 
@@ -133,10 +134,11 @@ flag are carried inside the system itself, so you need not supply them.
   along the barrel** so the flash and its forward spit fire in the direction the unit
   is shooting. Each effect is authored firing **forward along `+z`**; rotate it to the
   muzzle's world facing.
-- **Play it while the unit is firing** (while its attack clip runs, `specs/units.md`)
-  and stop it when the unit stops. The **Aegis** fires from **three** turrets that
-  aim independently (`specs/waves.md`), so play its cannon flash at **each** active
-  turret muzzle.
+- **Trigger one flash per shot** — play a fresh instance each time the unit fires, on
+  its attack cadence (the shot moment of its attack clip, `specs/units.md`), and let
+  each instance run its one-shot and dispose. The **Aegis** fires from **three**
+  turrets that aim independently (`specs/waves.md`), so play its cannon flash at
+  **each** turret as that turret fires.
 - **Scale** each effect to its unit's muzzle — a Monolith's blast reads larger than a
   Sentinel's flash — since the systems are authored small; fit them to the barrel,
   not the whole model. Tinting is optional: the flashes are authored as neutral

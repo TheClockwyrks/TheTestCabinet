@@ -4,10 +4,10 @@ discharge, as a 3D particle **system** using only the particle tool.
 It is the muzzle flash for *Sunfront*'s rail-lance marksman — the searing energy
 discharge that flares from the lance tip as it fires: a bright white-gold flash, a
 thin forward bolt of streaked energy, and a flicker of crackle motes, with **no
-smoke and no flame**. It is a **looping** effect: the lance discharges in a
-sustained rhythm, so the flash **plays continuously** while the unit is firing
-rather than as one isolated shot. You are authoring the *effect*, not a single frame
-of it.
+smoke and no flame**. It is a **one-shot** effect — **one discharge per shot**: the
+game plays a fresh instance each time a unit fires, so the flash rate matches the
+unit's fire rate. You are authoring the *effect* (a single shot's discharge, which
+fires and decays to empty), not a single frame of it.
 
 ## How the particle tool works
 
@@ -29,11 +29,12 @@ discarded and flagged; only the recorded operations count.
 Each operation is an ordinary subcommand with flags, for example:
 
 ```
-particle-3d add-emitter --name bolt --shape point --rate 90 --lifetime 90 --speed 22 --dir-z 1 --cone-angle 6
+particle-3d add-emitter --name bolt --shape point --burst 12 --at 0 --lifetime 90 --speed 22 --dir-z 1 --cone-angle 6
 ```
 
-This effect **loops**: set the timeline so it sustains a continuous discharge rather
-than decaying to empty, and emit continuously (a rate), not as one-shot bursts.
+This effect is a **one-shot**: keep the timeline one-shot so it fires at the start
+and decays cleanly to empty, and emit as timed **bursts** at the shot instant, not
+as a continuous rate.
 Rendering is a separate, on-request step: run `particle-3d render` to **simulate the
 system over its duration, write the preview animation, and emit the `system.json`
 your result is built from**. An unrendered effect leaves an empty system, so you
@@ -44,7 +45,7 @@ needs those flags.
 Run `particle-3d --help` to list every operation and `particle-3d <operation>
 --help` for one operation's exact flags — that help text is the authoritative
 contract. **Read the rendered `effect.gif` after your calls** to judge the
-effect's read, motion, and loop, and decide what to do next.
+effect's read, motion, and decay, and decide what to do next.
 
 ## What to read first
 
@@ -55,17 +56,17 @@ start:
 - `{{this.path}}`
 {{/each}}
 
-`specs/brief.md` describes the effect, its steady-state loop, the emitters and
+`specs/brief.md` describes the effect, its one-shot lifecycle, the emitters and
 forces, the color/opacity/size curves, the exact palette, and how to work the tool.
 Run `particle-3d --help` for the exact operation contract.
 
 ## What to deliver
 
 Author the discharge system operation by operation — the searing discharge core, the
-thin streaked forward bolt, and the flicker of crackle motes, with the forces and
-per-particle curves (including a velocity stretch on the bolt) that make it lance
-forward and fade as the brief describes, and the timeline set to **loop** — running
-`particle-3d render` to simulate and check the effect as you go. When the simulated
-`effect.gif` reads as a continuous rail-lance energy discharge, run `render` one
-last time and stop: the recorded `actions.json` (and the `system.json` it emits) is
-your finished submission.
+thin streaked forward bolt, and the flicker of crackle motes (as timed bursts at the
+shot instant), with the forces and per-particle curves (including a velocity stretch
+on the bolt) that make it lance forward and fade as the brief describes, and the
+timeline kept **one-shot** — running `particle-3d render` to simulate and check the
+effect as you go. When the simulated `effect.gif` reads as a single rail-lance energy
+discharge that decays cleanly to empty, run `render` one last time and stop: the
+recorded `actions.json` (and the `system.json` it emits) is your finished submission.

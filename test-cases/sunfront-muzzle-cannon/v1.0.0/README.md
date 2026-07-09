@@ -1,17 +1,19 @@
 # sunfront-muzzle-cannon
 
 An **asset-generation** test case (`asset_kind = "particle-3d"`): author the
-*Sunfront* **heavy-cannon muzzle flash** as a volumetric, **looping** particle
+*Sunfront* **heavy-cannon muzzle flash** as a volumetric, **one-shot** particle
 **system**, simulated live.
 
 Sunfront is a real-time tug-of-war of solar-powered war automatons; this is the big,
 smoky blast that belches from the barrel of a heavy cannon or mortar as a unit fires
 — a big white-hot bloom at the muzzle, a forward gout of orange flame and heavy
-embers, and a thick rolling smoke plume. Unlike a one-shot explosion, the effect
-**loops**: it plays continuously while a unit is firing. The model does **not**
-place particles: it authors an emitter system (emitters, forces, and per-particle
-size/opacity/color curves) with the `particle-3d` binary, one recorded operation at
-a time. The review UI and the game **simulate that system live**, so the effect
+embers, and a thick rolling smoke plume. It is a **one-shot** blast (one shot's
+worth) that fires and decays to empty; the game replays it once per shot, in sync
+with the firing unit's cadence, so the flash rate matches the unit's fire rate. The
+model does **not** place particles: it authors an emitter system (emitters, forces,
+and per-particle size/opacity/color curves) with the `particle-3d` binary, one
+recorded operation at a time. The review UI and the game **simulate that system
+live**, so the effect
 varies slightly from one play to the next — the character of the blast is what is
 judged, not a frozen frame.
 
@@ -51,8 +53,8 @@ subjectively against the brief.
 
 ## Details
 
-- **Field:** 36×36×48 volume, transparent background, **looping** (`loop = true`),
-  800 ms loop window at 60 fps.
+- **Field:** 36×36×48 volume, transparent background, **one-shot** (`loop = false`),
+  800 ms at 60 fps (one blast, decaying to empty).
 - **Directionality:** the blast fires forward along `+z` from a muzzle point near
   the rear of the volume; the consuming game anchors and orients it to each unit's
   muzzle.

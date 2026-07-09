@@ -1,19 +1,20 @@
 # sunfront-muzzle-lance
 
 An **asset-generation** test case (`asset_kind = "particle-3d"`): author the
-*Sunfront* **rail-lance muzzle flash** as a volumetric, **looping** particle
+*Sunfront* **rail-lance muzzle flash** as a volumetric, **one-shot** particle
 **system**, simulated live.
 
 Sunfront is a real-time tug-of-war of solar-powered war automatons; this is the
 thin, searing energy discharge that flares from the tip of a rail-lance as the
 marksman unit fires — a bright white-gold flash, a thin streaked forward bolt of
-energy, and a flicker of crackle motes, with no smoke or flame. Unlike a one-shot
-explosion, the effect **loops**: it plays continuously while a unit is firing. The
-model does **not** place particles: it authors an emitter system (emitters, forces,
-and per-particle size/opacity/color curves) with the `particle-3d` binary, one
-recorded operation at a time. The review UI and the game **simulate that system
-live**, so the effect varies slightly from one play to the next — the character of
-the discharge is what is judged, not a frozen frame.
+energy, and a flicker of crackle motes, with no smoke or flame. It is a **one-shot**
+discharge (one shot's worth) that fires and decays to empty; the game replays it once
+per shot, in sync with the firing unit's cadence, so the flash rate matches the
+unit's fire rate. The model does **not** place particles: it authors an emitter
+system (emitters, forces, and per-particle size/opacity/color curves) with the
+`particle-3d` binary, one recorded operation at a time. The review UI and the game
+**simulate that system live**, so the effect varies slightly from one play to the
+next — the character of the discharge is what is judged, not a frozen frame.
 
 This is one of Sunfront's shared muzzle-flash effects (the energy-lance discharge
 used by its rail-lance marksman); the small-arms and heavy-cannon flashes are their
@@ -51,8 +52,8 @@ subjectively against the brief.
 
 ## Details
 
-- **Field:** 20×20×44 volume, transparent background, **looping** (`loop = true`),
-  600 ms loop window at 60 fps.
+- **Field:** 20×20×44 volume, transparent background, **one-shot** (`loop = false`),
+  400 ms at 60 fps (one discharge, decaying to empty).
 - **Directionality:** the bolt fires forward along `+z` from a lance tip near the
   rear of the volume; the consuming game anchors and orients it to the unit's lance.
 - **Palette:** searing white core (`#fffdf5`), hot gold energy (`#ffd24a`), amber
