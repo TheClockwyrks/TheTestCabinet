@@ -237,6 +237,33 @@ export function RunReviewEditor({
     });
   }
 
+  // Shortcut for a run that does not launch at all: fail every checklist item and
+  // rate every domain the worst tier, so an unplayable run can be submitted in one
+  // step without walking each question. Purely local state — it flows through the
+  // normal buildReview()/submit path and fills the submit gate. Confirmed first
+  // because it overwrites every verdict and rating already recorded.
+  function markUnplayable() {
+    if (
+      !window.confirm(
+        "Mark this run unplayable? Every checklist item will be set to Fail and every rating to Broken.",
+      )
+    )
+      return;
+    setVerdicts((prev) => {
+      const next: Record<string, VerdictDraft> = {};
+      for (const it of items) {
+        const base = prev[it.id] ?? { status: "", note: "" };
+        next[it.id] = { ...base, status: "fail" };
+      }
+      return next;
+    });
+    setRatings(() => {
+      const next: Record<string, Rating> = {};
+      for (const domain of domains) next[domain.id] = "broken";
+      return next;
+    });
+  }
+
   function buildChecklist(): ReviewVerdict[] {
     return items.map((item) => {
       const draft = verdicts[item.id] ?? { status: "", note: "" };
@@ -381,6 +408,17 @@ export function RunReviewEditor({
                 <p className={styles.sectionLabel}>
                   {answeredCount}/{items.length} addressed
                 </p>
+                {/* Fail everything at once for a run that never launched. */}
+                <button
+                  type="button"
+                  className={styles.unplayable}
+                  onClick={markUnplayable}
+                  disabled={busy}
+                  title="Mark the whole run unplayable — set every checklist item to Fail and every rating to Broken"
+                  aria-label="Mark the whole run unplayable: every checklist item fails and every rating is broken"
+                >
+                  Mark unplayable
+                </button>
                 <ol className={styles.itemNavList}>
                   {items.map((it, index) => {
                     const status = verdicts[it.id]?.status ?? "";

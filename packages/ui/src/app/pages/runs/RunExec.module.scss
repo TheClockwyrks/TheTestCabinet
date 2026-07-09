@@ -519,6 +519,32 @@
   }
 }
 
+// The "Mark unplayable" shortcut atop the rail: one click fails every checklist
+// item and rates every domain the worst tier, so a run that never launched can be
+// submitted without walking each question. Styled as an outlined negative control
+// so it reads as the heavy, all-or-nothing action it is.
+.unplayable {
+  align-self: flex-start;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 .itemNavList {
   list-style: none;
   margin: 0;
