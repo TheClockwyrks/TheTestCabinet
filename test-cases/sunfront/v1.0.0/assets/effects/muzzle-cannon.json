@@ -1,0 +1,530 @@
+{
+  "dimensions": 3,
+  "field": {
+    "width": 36,
+    "height": 36,
+    "depth": 48
+  },
+  "durationMs": 800,
+  "fps": 60,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "blast-core",
+      "shape": "sphere",
+      "position": [
+        0.0,
+        -4.0,
+        -18.0
+      ],
+      "extent": {
+        "radius": 6.5,
+        "size": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 28,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 135.0,
+      "lifetimeSpread": 45.0,
+      "speed": 32.0,
+      "speedSpread": 16.0,
+      "direction": [
+        0.0,
+        0.05,
+        1.0
+      ],
+      "coneAngle": 78.0,
+      "seed": 1101,
+      "forces": {
+        "gravity": 0.0,
+        "drag": 6.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 11.0,
+          "to": 1.5
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#fff3d0",
+            "at": 0.0
+          },
+          {
+            "color": "#fff3d0",
+            "at": 0.55
+          },
+          {
+            "color": "#ff8a2a",
+            "at": 1.0
+          }
+        ],
+        "rotation": 70.0,
+        "sprite": "fx/blast_bloom"
+      }
+    },
+    {
+      "name": "blast-flare",
+      "shape": "point",
+      "position": [
+        0.0,
+        -4.0,
+        -17.8
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 40,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 130.0,
+      "lifetimeSpread": 40.0,
+      "speed": 78.0,
+      "speedSpread": 34.0,
+      "direction": [
+        0.0,
+        0.05,
+        1.0
+      ],
+      "coneAngle": 84.0,
+      "seed": 1202,
+      "forces": {
+        "gravity": 0.0,
+        "drag": 7.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 4.5,
+          "to": 0.6
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#fff3d0",
+            "at": 0.0
+          },
+          {
+            "color": "#fff3d0",
+            "at": 0.4
+          },
+          {
+            "color": "#ff8a2a",
+            "at": 1.0
+          }
+        ],
+        "rotation": 90.0,
+        "sprite": "fx/blast_bloom"
+      }
+    },
+    {
+      "name": "flame",
+      "shape": "cone",
+      "position": [
+        0.0,
+        -4.0,
+        -17.4
+      ],
+      "extent": {
+        "radius": 2.8,
+        "size": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 108,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 300.0,
+      "lifetimeSpread": 100.0,
+      "speed": 132.0,
+      "speedSpread": 48.0,
+      "direction": [
+        0.0,
+        0.05,
+        1.0
+      ],
+      "coneAngle": 27.0,
+      "seed": 2202,
+      "forces": {
+        "gravity": 80.0,
+        "gravityDir": [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        "drag": 1.6,
+        "turbulence": {
+          "amplitude": 26.0,
+          "scale": 0.15
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "linear",
+          "from": 6.2,
+          "to": 1.2
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#fff3d0",
+            "at": 0.0
+          },
+          {
+            "color": "#fff3d0",
+            "at": 0.12
+          },
+          {
+            "color": "#ff8a2a",
+            "at": 0.3
+          },
+          {
+            "color": "#ff8a2a",
+            "at": 0.7
+          },
+          {
+            "color": "#b83c10",
+            "at": 1.0
+          }
+        ],
+        "rotation": 50.0,
+        "sprite": "fx/flame_puff"
+      }
+    },
+    {
+      "name": "embers",
+      "shape": "point",
+      "position": [
+        0.0,
+        -4.0,
+        -17.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 96,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 390.0,
+      "lifetimeSpread": 150.0,
+      "speed": 114.0,
+      "speedSpread": 48.0,
+      "direction": [
+        0.0,
+        0.08,
+        1.0
+      ],
+      "coneAngle": 15.0,
+      "seed": 3303,
+      "forces": {
+        "gravity": 240.0,
+        "gravityDir": [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        "drag": 0.95
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 2.6,
+          "to": 0.4
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ff8a2a",
+            "at": 0.0
+          },
+          {
+            "color": "#ff8a2a",
+            "at": 0.4
+          },
+          {
+            "color": "#b83c10",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.9,
+        "sprite": "fx/ember_spark"
+      }
+    },
+    {
+      "name": "smoke",
+      "shape": "sphere",
+      "position": [
+        0.0,
+        -4.0,
+        -19.0
+      ],
+      "extent": {
+        "radius": 5.0,
+        "size": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 64,
+        "atMs": 110.0
+      },
+      "lifetimeMs": 500.0,
+      "lifetimeSpread": 110.0,
+      "speed": 90.0,
+      "speedSpread": 38.0,
+      "direction": [
+        0.0,
+        0.2,
+        1.0
+      ],
+      "coneAngle": 58.0,
+      "seed": 4404,
+      "forces": {
+        "gravity": 90.0,
+        "gravityDir": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "drag": 0.6,
+        "vortex": 5.0,
+        "turbulence": {
+          "amplitude": 60.0,
+          "scale": 0.075
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.6,
+          "to": 7.5
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#57534c",
+            "at": 0.0
+          },
+          {
+            "color": "#57534c",
+            "at": 0.6
+          },
+          {
+            "color": "#201e1a",
+            "at": 1.0
+          }
+        ],
+        "rotation": 28.0,
+        "sprite": "fx/smoke_puff"
+      }
+    },
+    {
+      "name": "smoke-roll",
+      "shape": "sphere",
+      "position": [
+        0.0,
+        -2.5,
+        -11.0
+      ],
+      "extent": {
+        "radius": 6.5,
+        "size": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 48,
+        "atMs": 210.0
+      },
+      "lifetimeMs": 440.0,
+      "lifetimeSpread": 90.0,
+      "speed": 50.0,
+      "speedSpread": 24.0,
+      "direction": [
+        0.0,
+        0.45,
+        1.0
+      ],
+      "coneAngle": 70.0,
+      "seed": 5505,
+      "forces": {
+        "gravity": 85.0,
+        "gravityDir": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "drag": 0.85,
+        "vortex": 7.0,
+        "turbulence": {
+          "amplitude": 66.0,
+          "scale": 0.065
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 2.6,
+          "to": 8.5
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 0.92,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#57534c",
+            "at": 0.0
+          },
+          {
+            "color": "#57534c",
+            "at": 0.5
+          },
+          {
+            "color": "#201e1a",
+            "at": 1.0
+          }
+        ],
+        "rotation": -24.0,
+        "sprite": "fx/smoke_puff"
+      }
+    },
+    {
+      "name": "smoke-tail",
+      "shape": "sphere",
+      "position": [
+        0.0,
+        0.0,
+        -5.0
+      ],
+      "extent": {
+        "radius": 8.0,
+        "size": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 32,
+        "atMs": 320.0
+      },
+      "lifetimeMs": 340.0,
+      "lifetimeSpread": 70.0,
+      "speed": 26.0,
+      "speedSpread": 13.0,
+      "direction": [
+        0.0,
+        0.7,
+        1.0
+      ],
+      "coneAngle": 80.0,
+      "seed": 6606,
+      "forces": {
+        "gravity": 75.0,
+        "gravityDir": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "drag": 1.2,
+        "vortex": 6.0,
+        "turbulence": {
+          "amplitude": 72.0,
+          "scale": 0.055
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 3.2,
+          "to": 8.0
+        },
+        "opacityCurve": {
+          "interp": "ease-in",
+          "from": 0.8,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#57534c",
+            "at": 0.0
+          },
+          {
+            "color": "#201e1a",
+            "at": 0.6
+          },
+          {
+            "color": "#201e1a",
+            "at": 1.0
+          }
+        ],
+        "rotation": 18.0,
+        "sprite": "fx/smoke_puff"
+      }
+    }
+  ],
+  "forces": {
+    "gravity": 60.0,
+    "gravityDir": [
+      0.0,
+      -1.0,
+      0.0
+    ],
+    "drag": 1.2
+  },
+  "subEmitters": []
+}
