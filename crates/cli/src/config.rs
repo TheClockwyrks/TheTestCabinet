@@ -60,15 +60,26 @@ pub fn load_credentials() -> Option<Credentials> {
     (!creds.token.is_empty()).then_some(creds)
 }
 
-/// The stored bearer token, or `None` when not logged in.
+/// The bearer token attached to mutating backend calls: the value of `TCAB_TOKEN`
+/// when set, otherwise the token persisted by `tcab login`/`tcab register`.
+///
+/// The environment override exists for non-interactive use — CI jobs and scripts
+/// (for example the `publish-reference` workflow) that hold a bearer as a secret
+/// and cannot run an interactive login. An explicit `TCAB_TOKEN` wins over the
+/// stored credentials so a job's secret is never shadowed by a stale local login.
 pub fn load_token() -> Option<String> {
+    if let Some(token) = nonempty_env("TCAB_TOKEN") {
+        return Some(token);
+    }
     load_credentials().map(|creds| creds.token)
 }
 
-/// The stored bearer token, or a clear "log in first" error.
+/// The bearer token, or a clear "log in first" error.
 pub fn require_token() -> Result<String> {
-    load_token()
-        .context("not logged in — run `tcab login --username <name>` (or `tcab register`) first")
+    load_token().context(
+        "not logged in — run `tcab login --username <name>` (or `tcab register`), or set \
+         TCAB_TOKEN to a bearer token",
+    )
 }
 
 /// Persist the credentials, creating the config directory as needed.

@@ -61,6 +61,12 @@ pub enum Command {
     /// Print the prompt a run would hand to the harness for a test case variant,
     /// without seeding or launching anything.
     Prompt(PromptArgs),
+
+    /// Build and deploy a test case variant's **reference implementation** — the
+    /// authored, correct static build of the case — and record its URL on the
+    /// backend so the site's Reference tab can embed it.
+    #[command(name = "publish-reference")]
+    PublishReference(PublishReferenceArgs),
 }
 
 /// The agent harness to drive, selectable on the command line.
@@ -308,6 +314,54 @@ pub struct PromptArgs {
     /// Variant of the test case to render the prompt for (for example, `base`).
     #[arg(long, value_name = "VARIANT")]
     pub variant: String,
+}
+
+/// Arguments for `tcab publish-reference`.
+///
+/// The command targets a case (by slug or folder name) at a single version and,
+/// for each targeted variant that declares a `reference_implementation`, builds
+/// it with the case's own `[build]` commands, deploys the static output to
+/// Cloudflare Pages, and records the served URL on the backend.
+///
+/// `version` is positional and optional: omit it to target the case's newest
+/// version. Variant selection is `--variant <slug>` for exactly one, or
+/// `--all-variants` for every variant that declares a reference implementation;
+/// when neither is given the command defaults to all such variants (the flag is
+/// the explicit, self-documenting form of the default). The two selectors are
+/// mutually exclusive.
+///
+/// `disable_version_flag` frees `--version`/`-V` so it is not consumed as clap's
+/// auto-generated binary-version flag, matching `tcab run`/`tcab prompt` — though
+/// here the version is positional rather than a `--version` flag.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct PublishReferenceArgs {
+    /// Slug (or folder name) of the test case to publish a reference for (for
+    /// example, `carom`).
+    #[arg(value_name = "SLUG")]
+    pub slug: String,
+
+    /// Exact, immutable test case version. Omit to target the case's newest
+    /// version.
+    #[arg(value_name = "VERSION")]
+    pub version: Option<String>,
+
+    /// Publish the reference for exactly this variant (for example, `base`).
+    /// Mutually exclusive with `--all-variants`; errors if the named variant has
+    /// no reference implementation.
+    #[arg(long, value_name = "VARIANT", conflicts_with = "all_variants")]
+    pub variant: Option<String>,
+
+    /// Publish the reference for every variant that declares one. This is also the
+    /// default when neither `--variant` nor `--all-variants` is given.
+    #[arg(long)]
+    pub all_variants: bool,
+
+    /// Print the plan — the targeted variants, their resolved reference-impl
+    /// directories, and the deploy branch each would use — without building,
+    /// deploying, scrubbing, or recording anything.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[cfg(test)]

@@ -1728,3 +1728,81 @@ async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
     assert_eq!(page.len(), 2);
     assert_eq!(total, 6);
 }
+
+#[tokio::test]
+async fn reference_build_upserts_in_place_and_reads_back_per_variant() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // A triple with no deployed build reads back as absent, both singly and in the
+    // per-version map.
+    assert_eq!(
+        db.reference_build("carom", "v1.0.1", "base").await.unwrap(),
+        None
+    );
+    assert!(
+        db.reference_builds_for_version("carom", "v1.0.1")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // First deploy records the URL for the variant.
+    db.upsert_reference_build(
+        "carom",
+        "v1.0.1",
+        "base",
+        "https://carom-base.example.pages.dev",
+        "2026-07-09T00:00:00Z",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        db.reference_build("carom", "v1.0.1", "base").await.unwrap(),
+        Some("https://carom-base.example.pages.dev".to_string())
+    );
+
+    // A re-deploy of the SAME triple upserts the URL in place (composite PK), it
+    // does not accumulate a second row.
+    db.upsert_reference_build(
+        "carom",
+        "v1.0.1",
+        "base",
+        "https://carom-base-2.example.pages.dev",
+        "2026-07-09T01:00:00Z",
+    )
+    .await
+    .unwrap();
+
+    // A different variant of the same version is an independent row.
+    db.upsert_reference_build(
+        "carom",
+        "v1.0.1",
+        "tight",
+        "https://carom-tight.example.pages.dev",
+        "2026-07-09T02:00:00Z",
+    )
+    .await
+    .unwrap();
+
+    let map = db
+        .reference_builds_for_version("carom", "v1.0.1")
+        .await
+        .unwrap();
+    assert_eq!(map.len(), 2);
+    assert_eq!(
+        map.get("base").map(String::as_str),
+        Some("https://carom-base-2.example.pages.dev")
+    );
+    assert_eq!(
+        map.get("tight").map(String::as_str),
+        Some("https://carom-tight.example.pages.dev")
+    );
+
+    // A different version does not see this version's rows.
+    assert!(
+        db.reference_builds_for_version("carom", "v1.0.0")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}

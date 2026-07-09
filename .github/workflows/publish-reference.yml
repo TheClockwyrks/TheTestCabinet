@@ -1,0 +1,89 @@
+name: Publish reference implementation
+
+# Builds and deploys a test-case variant's reference implementation — the
+# authored, correct static build of a case-variant — and records its served URL
+# on the backend so the site's Reference tab can embed it. This is the
+# case-variant analogue of publishing a run's playable build, and it runs the
+# very same `tcab publish-reference` subcommand an operator would run by hand.
+#
+# On-demand only: a reference is (re)published deliberately, per case/version,
+# not on every push. The subcommand builds each targeted variant's
+# `reference_impl` project with the case's own `[build]` commands, deploys the
+# static output to the `test-cabinet-references` Cloudflare Pages project (reading
+# the served URL back from wrangler, never constructing it), and PUTs that URL to
+# the backend's authenticated reference-build endpoint.
+#
+# Requires these repository secrets (the same hosting + auth the run publisher
+# needs):
+#   CLOUDFLARE_API_TOKEN   — token with the "Cloudflare Pages: Edit" permission,
+#                            read from the environment by wrangler
+#   CLOUDFLARE_ACCOUNT_ID  — the account that owns the Pages project
+#   TCAB_BACKEND_URL       — the backend's base URL (where the URL is recorded)
+#   TCAB_TOKEN             — a bearer token for an account allowed to write
+#                            reference builds (honored via the CLI's TCAB_TOKEN
+#                            override, so no interactive `tcab login` is needed)
+#
+# Dormant until the repository is mirrored to GitHub (the same condition as the
+# other deploy/release workflows).
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Test case slug (e.g. carom)"
+        required: true
+      version:
+        description: "Test case version (e.g. v1.0.1). Blank = newest."
+        required: false
+        default: ""
+      variant:
+        description: "Variant slug (e.g. base). Blank = all variants that declare a reference."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# One reference publish at a time so two runs never race the same Pages project.
+concurrency:
+  group: publish-reference
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      # Node provides npm (the case's `[build]` install/build) and wrangler (the
+      # Cloudflare Pages deploy the CLI shells out to).
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      # The CLI invokes `wrangler` as a bare command, so it must be on PATH.
+      - name: Install wrangler
+        run: npm install --global wrangler
+      # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
+      - name: Build tcab
+        run: cargo build --release --locked -p test-cabinet-cli
+      # Build the targeted variant(s), deploy to Cloudflare Pages, and record the
+      # URL(s) on the backend. `--version`/`--variant` are optional inputs, so the
+      # positional version and the `--variant` flag are only appended when set.
+      - name: Publish reference implementation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TCAB_BACKEND_URL: ${{ secrets.TCAB_BACKEND_URL }}
+          TCAB_TOKEN: ${{ secrets.TCAB_TOKEN }}
+          SLUG: ${{ inputs.slug }}
+          VERSION: ${{ inputs.version }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          set -euo pipefail
+          args=("$SLUG")
+          if [ -n "$VERSION" ]; then
+            args+=("$VERSION")
+          fi
+          if [ -n "$VARIANT" ]; then
+            args+=(--variant "$VARIANT")
+          fi
+          ./target/release/tcab publish-reference "${args[@]}"

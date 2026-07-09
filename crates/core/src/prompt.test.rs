@@ -83,6 +83,7 @@ fn frenzy() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     }
 }
 
@@ -177,6 +178,7 @@ fn strict_mode_rejects_unknown_variables() {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     };
     assert!(
         render_prompt(&version, &variant).is_err(),

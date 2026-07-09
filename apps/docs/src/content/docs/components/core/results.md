@@ -39,6 +39,63 @@ asset-generation — must be released as its **own** public git repository.
   a `voxel-animation` gives one orbit-drag viewer per animation with a control per
   caller joint. See [Evaluation](/testing/asset-generation/evaluation/#voxel-validation).
 
+## Reference implementations
+
+Separate from any run's output, a test-case variant may ship a **reference
+implementation**: an authored, in-repo, versioned, buildable static game that is
+the *correct* implementation of that variant. Think of it as the case-variant
+analogue of a run's playable build — the answer key rather than a model's
+attempt. It lets the case page show, alongside the models' runs, what a faithful
+build of the spec looks like.
+
+A reference implementation is authored **in the repository, versioned with the
+case**: it lives in a directory under the version folder (by convention
+`reference-impl/<variant>/`) and a variant opts in by naming that directory with
+its optional
+[`reference_implementation`](/testing/end-to-end/manifests/) key. Because it is
+declared per variant, each variant may have its own correct build, and a variant
+without the key simply has none. It is built with the case's existing
+[`[build]` commands](/testing/end-to-end/manifests/) run from that directory, and
+emits its static site into the same `dist/`, `build/`, or `out/` a run's build
+does.
+
+Two properties keep it honest:
+
+- It is **never seeded** into a run. It is the authored answer, so handing it to a
+  model would defeat the point of the case. It never crosses into the run
+  container, the seeded tree, or the prompt — only into the published gallery.
+- It is deployed **out-of-band**, by a person, not as part of any run's lifecycle.
+  The [`tcab publish-reference`](/components/cli/overview/#commands) command builds
+  the variant's `reference_implementation` directory with the case `[build]`
+  commands, runs the **same secret-redaction scrubber** the run
+  [publisher](#secret-redaction) uses over the output, and deploys it to
+  Cloudflare Pages — its own `test-cabinet-references` project, on a branch named
+  `<slug>-<version-with-dots-as-dashes>-<variant>` — exactly the way a published
+  run's build is deployed to Pages. Cloudflare truncates long subdomains, so the
+  served URL is **read back** from `wrangler`'s output rather than constructed,
+  then recorded on the backend.
+
+The backend keeps these URLs in a dedicated `case_reference_build` table keyed by
+`(slug, version, variant)`, written through an authenticated endpoint
+(`PUT /test-cases/{slug}/versions/{version}/reference-builds/{variant}`, guarded by
+the same bearer auth as the ingest/publish write paths). A version's
+`GET /test-cases/{slug}/versions/{version}` response carries each variant's
+`referenceBuild` URL, and the public snapshot serializes it as each variant's
+`referenceBuild` field, so the console can surface it. On the case page it appears
+as a **Reference** tab — shown only for an end-to-end case whose selected variant
+has a recorded build — that embeds the game inline (loaded by default, with a
+fullscreen toggle and no "unedited model code" caveat, because this is the
+vetted correct build rather than a run's raw output).
+
+A reference implementation is distinct from a **reference visual mockup** (the
+[`[[reference]]`](/testing/end-to-end/manifests/) views). A mockup is a rendered
+screenshot of a single view, **seeded** into the run as a static *target* the
+model builds toward (and used as the baseline for a validation check); it is a
+picture of one screen and it deliberately never includes its source. A reference
+implementation is the **whole playable game**, is **never seeded**, and is
+deployed and shown as a live build. One shows the model where to aim; the other
+shows a human what hitting the mark looks like.
+
 ## Run Record
 
 Each finished run's [run record](/components/core/run-records/) must be uploaded

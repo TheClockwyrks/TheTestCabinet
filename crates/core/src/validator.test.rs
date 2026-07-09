@@ -118,6 +118,7 @@ fn base_variant() -> crate::test_case::Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     }
 }
 

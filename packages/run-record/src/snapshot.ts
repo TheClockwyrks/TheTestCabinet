@@ -300,6 +300,19 @@ export type CaseVariantOut = {
    * domains plus its variant's own.
    */
   domains: Array<CaseDomainOut>;
+  /**
+   * The absolute Cloudflare Pages URL of this variant's **reference
+   * implementation** — the authored, in-repo, versioned static build that is the
+   * *correct* implementation of the variant, deployed out-of-band by
+   * `tcab publish-reference` just as a published run's `playableBuild` is. `None`
+   * when the variant declares no `reference_implementation`, which is the common
+   * case. This is never a seeded input and never produced by a run; it is the
+   * case-variant analogue of [`LinksOut::playableBuild`]. The site iframes it
+   * as-is on the case's Reference tab (no scrubbing at view time — the build was
+   * already redacted at publish), so the value must be a fully-qualified `https`
+   * URL and never a snapshot-relative key.
+   */
+  referenceBuild: string | null;
 };
 
 /**

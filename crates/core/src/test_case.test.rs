@@ -2131,3 +2131,141 @@ fn audio_rejects_zero_duration() {
         .expect_err("a zero max_duration_ms is rejected");
     assert!(format!("{err}").contains("greater than zero"), "got: {err}");
 }
+
+#[test]
+fn variant_reference_implementation_round_trips_to_a_resolved_host_path() {
+    // A variant that declares a `reference_implementation` gets that directory
+    // resolved onto its `reference_impl` as an absolute host path inside the
+    // version folder (the same convention specs and reference sources use), while
+    // the same case with the key omitted resolves to `None` — so the field is
+    // strictly opt-in.
+    let (dir, catalog) =
+        catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
+    let version_dir = dir.path().join("demo/v1.0.0");
+    // The reference implementation is a buildable directory; its contents are
+    // never read here (the deploy is out-of-band), only its existence is checked.
+    fs::create_dir_all(version_dir.join("reference-impl/base")).expect("create reference impl dir");
+    fs::write(
+        version_dir.join("reference-impl/base/index.html"),
+        "<!doctype html><title>correct</title>",
+    )
+    .expect("write reference impl file");
+    fs::write(
+        version_dir.join("variants/base.toml"),
+        "slug = \"base\"\nreference_implementation = \"reference-impl/base\"\n",
+    )
+    .expect("write base variant");
+
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    assert_eq!(
+        base.reference_impl.as_deref(),
+        Some(version_dir.join("reference-impl/base").as_path()),
+        "the reference implementation resolves to an absolute path inside the version folder",
+    );
+
+    // A second case whose `base` variant omits the key resolves with no reference
+    // implementation, proving the field is optional.
+    let (_bare_dir, bare_catalog) =
+        catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
+    let bare_version = bare_catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let bare = bare_version.variant("base").expect("base variant");
+    assert!(
+        bare.reference_impl.is_none(),
+        "a variant that declares no reference_implementation has none",
+    );
+}
+
+#[test]
+fn a_missing_reference_implementation_directory_is_rejected() {
+    // Like every other declared path, the reference implementation is validated to
+    // exist at resolution so a typo fails fast rather than surfacing as a broken
+    // out-of-band deploy. A path that names no directory is rejected.
+    let (dir, catalog) =
+        catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
+    fs::write(
+        dir.path().join("demo/v1.0.0/variants/base.toml"),
+        "slug = \"base\"\nreference_implementation = \"reference-impl/gone\"\n",
+    )
+    .expect("write base variant");
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a reference_implementation naming no directory is rejected");
+    assert!(
+        format!("{err}").contains("reference implementation")
+            && format!("{err}").contains("is not a directory"),
+        "unexpected error: {err}",
+    );
+}
+
+#[test]
+fn a_reference_implementation_is_never_seeded_into_the_run() {
+    // The reference implementation is the authored *answer*: seeding it would hand
+    // a model the finished game. Prove it takes no part in the seed by declaring a
+    // real workspace alongside it and asserting nothing under the reference-impl
+    // directory appears in any seeded set (common or variant specs/workspace).
+    let (dir, catalog) = catalog_with_manifest(
+        "workspace = \"workspace\"\n[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"",
+    );
+    let version_dir = dir.path().join("demo/v1.0.0");
+    // A starter workspace that IS seeded, so the assertion below is meaningful:
+    // there is real seeded content to distinguish the reference impl from.
+    fs::create_dir_all(version_dir.join("workspace")).expect("create workspace dir");
+    fs::write(
+        version_dir.join("workspace/package.json"),
+        "{\"name\":\"demo\"}",
+    )
+    .expect("write workspace file");
+    // The reference implementation lives beside the workspace but must never leak
+    // into the run tree.
+    fs::create_dir_all(version_dir.join("reference-impl/base")).expect("create reference impl dir");
+    fs::write(
+        version_dir.join("reference-impl/base/index.html"),
+        "<!doctype html><title>correct</title>",
+    )
+    .expect("write reference impl file");
+    fs::write(
+        version_dir.join("variants/base.toml"),
+        "slug = \"base\"\nreference_implementation = \"reference-impl/base\"\n",
+    )
+    .expect("write base variant");
+
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    let reference_dir = version_dir.join("reference-impl");
+
+    // The workspace was seeded (proof there is real content), and the reference
+    // implementation was resolved onto the variant.
+    assert!(
+        !version.common_workspace.is_empty(),
+        "the declared workspace is seeded",
+    );
+    assert!(base.reference_impl.is_some(), "the reference impl resolved");
+
+    // Every seeded source — common and variant specs, common and variant
+    // workspace files — must live outside the reference-impl directory.
+    let seeded_sources = version
+        .common_specs
+        .iter()
+        .map(|spec| &spec.source_path)
+        .chain(base.specs.iter().map(|spec| &spec.source_path))
+        .chain(
+            version
+                .common_workspace
+                .iter()
+                .map(|file| &file.source_path),
+        )
+        .chain(
+            base.workspace
+                .iter()
+                .flatten()
+                .map(|file| &file.source_path),
+        );
+    for source in seeded_sources {
+        assert!(
+            !source.starts_with(&reference_dir),
+            "no seeded source may come from the reference implementation, got `{}`",
+            source.display(),
+        );
+    }
+}

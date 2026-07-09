@@ -42,6 +42,11 @@ export const routes = {
   // quick match or run a tournament over a field.
   testCaseArena: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/arena`,
+  // The case's reference implementation: the authored, correct static build for
+  // the selected variant, embedded inline. Shown only for an end-to-end case whose
+  // selected variant declares a `reference_implementation`.
+  testCaseReference: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/reference`,
   models: (): string => "/models",
   modelDetail: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}`,
@@ -155,6 +160,7 @@ export const routePatterns = {
   testCaseMetrics: "/test-cases/:slug/metrics",
   testCaseChangelog: "/test-cases/:slug/changelog",
   testCaseArena: "/test-cases/:slug/arena",
+  testCaseReference: "/test-cases/:slug/reference",
   models: "/models",
   // The `/models/new` static path outranks the `/models/:modelId` dynamic route,
   // so a blank/seeded config form is reachable at a literal segment beside the

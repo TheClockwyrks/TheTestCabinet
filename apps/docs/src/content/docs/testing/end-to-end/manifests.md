@@ -132,6 +132,7 @@ slug = "frenzy"              # stable slug, recorded in the run record
 name = "Frenzy"             # display name (optional; default humanizes the slug)
 description = "..."          # optional inline prose (site-facing)
 workspace = "workspaces/frenzy" # optional; REPLACES the common workspace for this variant
+reference_implementation = "reference-impl/frenzy" # optional; the CORRECT buildable static build of this variant (NEVER seeded)
 # ADDITIVE specs on top of the common specs; same `{ source, dest }` shape as a
 # `[[spec]]`, and `dest` likewise defaults to `source` (trailing `.hbs` stripped).
 spec = [{ source = "specs/modes/frenzy.md" }]
@@ -352,3 +353,23 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   the *worst* rating across its effective domains, so a flawless mode cannot mask a
   broken one. Review items roll up to a domain through their optional `domain`. See
   [Evaluation](/testing/end-to-end/evaluation/#scoring).
+- `reference_implementation` is an **optional** per-variant key naming a
+  **reference implementation** — a directory holding a buildable static web
+  project that is the *correct* implementation of this variant, authored in-repo
+  and versioned with the case. It is declared as a top-level key of a **variant
+  file** (not `test-case.toml`), so each variant may point at its own correct build
+  and a variant that omits the key simply has none. Its value is a path resolved
+  against the **version folder** (`test-cases/<folder>/<version>/`), by convention
+  `reference-impl/<variant>/`. The project is built with the case's existing
+  `[build]` commands — the shared `install` then `build`, run from that
+  directory — and its static output must land in the same `dist/`, `build/`, or
+  `out/` a run's build does. A reference implementation is **never seeded** into a
+  run: it is the authored answer, so exposing it to a model would defeat the case.
+  It exists only to be **published** out-of-band — deployed to Cloudflare Pages by
+  [`tcab publish-reference`](/components/cli/overview/#commands), whose served URL
+  the backend records — and then shown on the case page's **Reference** tab
+  (inline, with a fullscreen option). Do not confuse it with a **reference visual
+  mockup** (`[[reference]]`): a mockup is a rendered screenshot of one view, seeded
+  as a *target* the model builds toward, whereas a reference implementation is the
+  whole playable game and is never seeded. See
+  [Reference implementations](/components/core/results/#reference-implementations).

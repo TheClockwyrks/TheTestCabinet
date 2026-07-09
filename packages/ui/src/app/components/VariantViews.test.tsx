@@ -29,6 +29,7 @@ function variant(overrides: Partial<VariantSummary> = {}): VariantSummary {
     referenceScreenshots: [],
     reviewItems: [],
     domains: [],
+    referenceBuild: null,
     ...overrides,
   };
 }

@@ -115,6 +115,15 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}",
             get(test_cases::resolve_version),
         )
+        // Record a variant's authored reference-implementation URL (auth-gated,
+        // same bearer guard as the other write paths). The `tcab publish-reference`
+        // CLI builds and deploys the variant's static site out-of-band, then PUTs
+        // the served URL here; the version response and public snapshot fold it onto
+        // the variant. Reads stay open via the resolve/snapshot paths.
+        .route(
+            "/test-cases/{slug}/versions/{version}/reference-builds/{variant}",
+            axum::routing::put(test_cases::put_reference_build),
+        )
         .route(
             "/test-cases/{slug}/versions/{version}/artifacts/{*path}",
             get(test_cases::artifact),

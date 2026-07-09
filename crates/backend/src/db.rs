@@ -28,8 +28,8 @@ use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{HarnessSlug, RunLinks, RunRecord};
 use test_cabinet_entities::{
-    job, model, model_alias, model_price, publish_job, review, run, run_link, snapshot_state,
-    tournament,
+    case_reference_build, job, model, model_alias, model_price, publish_job, review, run, run_link,
+    snapshot_state, tournament,
 };
 
 use crate::error::Result;
@@ -2002,6 +2002,89 @@ impl Db {
             backfilled += 1;
         }
         Ok(backfilled)
+    }
+}
+
+/// The reference-implementation store: the deployed URL of a test-case variant's
+/// authored, correct build (the case-variant analogue of a run's `playableBuild`).
+///
+/// The rows are written **out-of-band** by the `tcab publish-reference` CLI (via
+/// the authenticated record endpoint), never at ingest and never seeded into a
+/// run. Reads feed `GET /test-cases/{slug}/versions/{version}` and the public
+/// snapshot, which surface the URL on the test-case page's "Reference" tab.
+impl Db {
+    /// Create or replace the served URL for one `(slug, version, variant)` triple.
+    /// A re-deploy of the same variant upserts its `url` (and `updated_at`) in
+    /// place — the composite primary key means there is never more than one row per
+    /// triple.
+    pub async fn upsert_reference_build(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        url: &str,
+        now: &str,
+    ) -> Result<()> {
+        case_reference_build::Entity::insert(case_reference_build::ActiveModel {
+            slug: Set(slug.to_string()),
+            version: Set(version.to_string()),
+            variant: Set(variant.to_string()),
+            url: Set(url.to_string()),
+            updated_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                case_reference_build::Column::Slug,
+                case_reference_build::Column::Version,
+                case_reference_build::Column::Variant,
+            ])
+            .update_columns([
+                case_reference_build::Column::Url,
+                case_reference_build::Column::UpdatedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(&self.conn)
+        .await?;
+        Ok(())
+    }
+
+    /// The reference-build URL of every variant of `(slug, version)` that has one,
+    /// keyed by variant slug. Feeds the version response and the snapshot, both of
+    /// which fold the URL onto each variant object; a variant absent from the map
+    /// simply has no reference implementation.
+    pub async fn reference_builds_for_version(
+        &self,
+        slug: &str,
+        version: &str,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        Ok(case_reference_build::Entity::find()
+            .filter(case_reference_build::Column::Slug.eq(slug))
+            .filter(case_reference_build::Column::Version.eq(version))
+            .all(&self.conn)
+            .await?
+            .into_iter()
+            .map(|row| (row.variant, row.url))
+            .collect())
+    }
+
+    /// The reference-build URL of a single `(slug, version, variant)` triple, or
+    /// `None` when the variant has no reference implementation deployed. The
+    /// single-row lookup the record endpoint reads back.
+    pub async fn reference_build(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+    ) -> Result<Option<String>> {
+        Ok(case_reference_build::Entity::find_by_id((
+            slug.to_string(),
+            version.to_string(),
+            variant.to_string(),
+        ))
+        .one(&self.conn)
+        .await?
+        .map(|row| row.url))
     }
 }
 

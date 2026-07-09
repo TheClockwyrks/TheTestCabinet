@@ -139,6 +139,10 @@ interface SnapshotCaseFile {
     // The variant's own scoring domains (additive to the common ones), rated only
     // when this variant is selected.
     domains?: SnapshotDomain[];
+    // The absolute URL of this variant's reference-implementation build (emitted
+    // by the Rust snapshot export as camelCase `referenceBuild`). Null/absent when
+    // the variant declares no `reference_implementation`.
+    referenceBuild?: string | null;
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
   // Seeded spec files shared by every variant, bodies inlined. Optional for
@@ -303,6 +307,11 @@ interface AssembledVariant {
   // The variant's effective scoring domains (common + its own) — the set a run of
   // this variant is rated against.
   domains: AssembledDomain[];
+  // The absolute URL of this variant's reference-implementation build, or null
+  // when it declares none. Carried through verbatim from the snapshot (already a
+  // fully-qualified Cloudflare Pages URL), it is the case-variant analogue of a
+  // run's playable build and drives whether the case-detail Reference tab appears.
+  referenceBuild: string | null;
 }
 
 interface AssembledTestCase {
@@ -502,6 +511,9 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       referenceScreenshots,
       reviewItems,
       domains,
+      // The reference-implementation build URL, carried through verbatim (null
+      // when the variant declares none).
+      referenceBuild: variant.referenceBuild ?? null,
     };
   });
   return {

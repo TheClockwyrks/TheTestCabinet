@@ -716,6 +716,20 @@ struct ManifestVariant {
     /// non-voxel case is rejected.
     #[serde(default)]
     voxel: Option<ManifestVoxel>,
+    /// Optional **reference implementation**: a directory, relative to the version
+    /// folder, holding a buildable static web project that is the *correct*
+    /// implementation of this variant. Unlike every other path a variant names,
+    /// this one is **never seeded into a run** — handing a model the finished game
+    /// would defeat the test. Instead it is built out-of-band (with the case's
+    /// existing `[build]` install/build commands, run from this directory, the
+    /// static output landing in the same `dist/`|`build/`|`out/` a run's build
+    /// produces) and deployed like a published run build, then shown on the case's
+    /// "Reference" tab as the authored answer. The value is a bare directory path;
+    /// resolution validates it exists and stays inside the version folder. `None`
+    /// leaves the variant with no reference build. It is the case-variant analogue
+    /// of a run record's `links.playableBuild`.
+    #[serde(default)]
+    reference_implementation: Option<PathBuf>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -2250,6 +2264,18 @@ pub struct Variant {
     /// Resolve the effective volume for a variant with
     /// [`TestCaseVersion::voxel_for`].
     pub voxel: Option<VoxelSpec>,
+    /// The reference implementation's source directory on the host, when this
+    /// variant declares a `reference_implementation`: an absolute path inside the
+    /// version folder holding a buildable static web project that is the *correct*
+    /// build of this variant. Stored as a resolved host path exactly like a
+    /// [`ReferenceView::source_path`] or a workspace source is — and, like a
+    /// reference mockup's source, it is **never seeded into a run**: it is the
+    /// authored answer the "Reference" tab shows, not model input. The build and
+    /// deploy that turn it into a hosted URL happen out-of-band (see the CLI's
+    /// `publish-reference` subcommand), so nothing here reads its contents; the
+    /// path is carried purely so the publisher knows which directory to build.
+    /// `None` when the variant declares no reference implementation.
+    pub reference_impl: Option<PathBuf>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -4553,6 +4579,30 @@ impl TestCaseCatalog {
                 None => None,
             };
 
+            // A variant's reference implementation, when declared, is the authored
+            // *correct* build shown on the case's "Reference" tab. It is a buildable
+            // directory inside the version folder, validated to exist here so a typo
+            // fails resolution rather than a later out-of-band deploy. Crucially it
+            // is resolved but **never seeded**: it takes no part in the seed-dest
+            // `claim`s below (it is neither a spec, a workspace file, an asset, a
+            // reference screenshot, nor a proof), so the finished game never lands in
+            // a run tree. The resolved host path is carried on the `Variant` purely
+            // so the publisher knows which directory to build and deploy.
+            let reference_impl = match &variant.reference_implementation {
+                Some(dir) => {
+                    let path = resolve_inside(dir, "variant reference implementation")?;
+                    if !path.is_dir() {
+                        return Err(invalid(format!(
+                            "variant `{}` reference implementation `{}` is not a directory",
+                            variant.slug,
+                            dir.display()
+                        )));
+                    }
+                    Some(path)
+                }
+                None => None,
+            };
+
             // A variant's `[voxel]`, when declared, replaces the case's common
             // volume for this variant (the size axis behind half/base/double
             // variants). It is meaningful only for a voxel case: a variant of any
@@ -4833,6 +4883,7 @@ impl TestCaseCatalog {
                 review_items,
                 domains: variant_domains,
                 voxel,
+                reference_impl,
             });
         }
 

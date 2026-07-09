@@ -415,3 +415,92 @@ fn orchestrators_parses_with_json_flag() {
         other => panic!("expected an orchestrators command, got {other:?}"),
     }
 }
+
+#[test]
+fn publish_reference_parses_slug_only_and_defaults_version_and_selectors() {
+    // Only the positional slug is required; version is optional (newest), and
+    // neither variant selector is set (defaulting to all variants with a
+    // reference).
+    let cli = Cli::try_parse_from(["tcab", "publish-reference", "carom"])
+        .expect("a slug-only publish-reference invocation should parse");
+
+    match cli.command {
+        Command::PublishReference(args) => {
+            assert_eq!(args.slug, "carom");
+            assert_eq!(args.version, None);
+            assert_eq!(args.variant, None);
+            assert!(!args.all_variants);
+            assert!(!args.dry_run);
+        }
+        other => panic!("expected a publish-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_reference_accepts_a_positional_version_and_variant() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "publish-reference",
+        "carom",
+        "v1.0.1",
+        "--variant",
+        "base",
+    ])
+    .expect("a slug + version + variant invocation should parse");
+
+    match cli.command {
+        Command::PublishReference(args) => {
+            assert_eq!(args.slug, "carom");
+            assert_eq!(args.version.as_deref(), Some("v1.0.1"));
+            assert_eq!(args.variant.as_deref(), Some("base"));
+            assert!(!args.all_variants);
+        }
+        other => panic!("expected a publish-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_reference_accepts_all_variants_and_dry_run() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "publish-reference",
+        "carom",
+        "--all-variants",
+        "--dry-run",
+    ])
+    .expect("--all-variants --dry-run should parse");
+
+    match cli.command {
+        Command::PublishReference(args) => {
+            assert!(args.all_variants);
+            assert!(args.dry_run);
+            assert_eq!(args.variant, None);
+        }
+        other => panic!("expected a publish-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_reference_rejects_variant_with_all_variants() {
+    // The two variant selectors are mutually exclusive.
+    assert!(
+        Cli::try_parse_from([
+            "tcab",
+            "publish-reference",
+            "carom",
+            "--variant",
+            "base",
+            "--all-variants",
+        ])
+        .is_err(),
+        "--variant and --all-variants should conflict"
+    );
+}
+
+#[test]
+fn publish_reference_requires_a_slug() {
+    assert!(
+        Cli::try_parse_from(["tcab", "publish-reference"]).is_err(),
+        "the case slug is required"
+    );
+}

@@ -9,6 +9,7 @@ pub mod harnesses;
 pub mod orchestrators;
 pub mod prompt;
 pub mod publish;
+pub mod publish_reference;
 pub mod run;
 pub mod seed;
 pub mod validate;

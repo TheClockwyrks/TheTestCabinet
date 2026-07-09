@@ -1,5 +1,5 @@
-@use "../../styles/tokens" as t;
-@use "../../styles/surfaces" as s;
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
 
 .embed {
   width: 100%;
@@ -21,8 +21,8 @@
   color: t.$color-text-muted;
 }
 
-// The pre-launch gate: a generic caveat plus the explicit Launch control. The
-// build never loads until clicked.
+// The pre-launch gate (gated mode only): a generic caveat plus the explicit
+// Launch control. The build never loads until clicked.
 .gate {
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
@@ -50,9 +50,37 @@
   }
 }
 
-// The near-fullscreen overlay the build launches into. It covers the viewport
-// but leaves a slim bar at the top for the Back control so the visitor is never
-// trapped inside the embed.
+// The inline presentation (inline mode only): the build loads in place, above a
+// slim bar carrying the fullscreen toggle. There is no caveat — a reference
+// implementation is the correct, authored build, not unedited model code.
+.inline {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.inlineBar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.fullscreenToggle {
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// The near-fullscreen overlay the build launches (gated) or expands (inline)
+// into. It covers the viewport but leaves a slim bar at the top for the Back
+// control so the visitor is never trapped inside the embed.
 .overlay {
   position: fixed;
   inset: 0;

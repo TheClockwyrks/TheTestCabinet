@@ -164,6 +164,10 @@ interface ResolvedVersion {
     // The variant's own additive scoring domains (rated only when this variant is
     // selected, on top of the case's common ones).
     domains?: Domain[];
+    // The absolute URL of this variant's reference implementation, recorded in the
+    // backend's `case_reference_build` table. Null when the variant declares none;
+    // absent on a backend that predates the field.
+    referenceBuild?: string | null;
   }[];
 }
 
@@ -307,6 +311,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
           domains: [...(r.domains ?? []), ...(v.domains ?? [])],
+          // The variant's reference-implementation build URL, carried through
+          // verbatim (already an absolute Cloudflare Pages URL — the backend
+          // records exactly what `tcab publish-reference` deployed). Null when the
+          // variant declares none.
+          referenceBuild: v.referenceBuild ?? null,
         })),
       };
     },
@@ -667,9 +676,7 @@ export function createBackendExec(
         ...(config.maxRuntimeOverride != null
           ? { maxRuntimeSeconds: config.maxRuntimeOverride }
           : {}),
-        ...(config.retryCount != null
-          ? { retryCount: config.retryCount }
-          : {}),
+        ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
       };
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,

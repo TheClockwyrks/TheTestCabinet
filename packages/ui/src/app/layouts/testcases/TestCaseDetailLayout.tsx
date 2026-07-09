@@ -17,7 +17,8 @@ export type DetailTab =
   | "leaderboard"
   | "metrics"
   | "changelog"
-  | "arena";
+  | "arena"
+  | "reference";
 
 interface TestCaseDetailLayoutProps {
   /** Which tab the rendering page represents. */
@@ -97,6 +98,18 @@ export function TestCaseDetailLayout({
       key: "arena",
       label: "Arena",
       to: routes.testCaseArena(testCase.slug),
+    });
+  }
+  // The Reference tab is shown only for an end-to-end case whose selected variant
+  // declares a reference implementation. It keys off the selected variant (not the
+  // case) because a build is per-variant, so switching variants adds or removes the
+  // tab; every host that carries `referenceBuild` (live catalog and static
+  // snapshot alike) can show it — no console-only capability is required.
+  if (testCase.testType === "end-to-end" && variant.referenceBuild) {
+    tabs.push({
+      key: "reference",
+      label: "Reference",
+      to: routes.testCaseReference(testCase.slug),
     });
   }
 

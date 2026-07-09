@@ -119,6 +119,18 @@ export interface VariantSummary {
    * reviewer rates each independently; a run's overall rating is the worst across
    * them. Empty when the host could not resolve them. */
   domains: DomainSummary[];
+  /** The absolute URL of this variant's **reference implementation** — the
+   * authored, in-repo, versioned static build that is the *correct* implementation
+   * of the variant, deployed out-of-band by `tcab publish-reference` exactly as a
+   * published run's playable build is. `null` when the variant declares no
+   * `reference_implementation`, which is the common case. It is never a seeded
+   * input and never produced by a run; it is the case-variant analogue of a run's
+   * `links.playableBuild`, and the case-detail Reference tab (shown only for an
+   * end-to-end case whose selected variant carries one) iframes it as-is — the
+   * build was already redacted at publish, so it is loaded inline with no caveat.
+   * Carried by every host: the backend catalog populates it from the
+   * `case_reference_build` table, the static snapshot from `CaseVariantOut.referenceBuild`. */
+  referenceBuild: string | null;
 }
 
 /** One test case in the catalog, across all of its published versions. */

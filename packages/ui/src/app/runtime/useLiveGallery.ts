@@ -166,6 +166,10 @@ async function toTestCaseSummary(
         name: d.name,
         description: d.description,
       })),
+      // The reference-implementation build URL the backend records for this
+      // variant, or null when it declares none. Drives whether the case-detail
+      // Reference tab appears for the selected variant.
+      referenceBuild: v.referenceBuild ?? null,
     })),
   );
   return {

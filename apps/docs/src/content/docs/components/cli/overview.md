@@ -62,6 +62,22 @@ including:
   Publishing a run requires it to have at least one review; the self-review
   satisfies that. For the flow where different people review, use `review` then
   have an operator publish. Requires a logged-in account.
+- **`publish-reference`** — deploy a case's
+  [reference implementations](/components/core/results/#reference-implementations)
+  and record their URLs: `tcab publish-reference <slug> [<version>] [--variant <slug>]
+  [--all-variants]`. For each targeted variant that declares a
+  [`reference_implementation`](/testing/end-to-end/manifests/), it runs the case
+  `[build]` install then build in that directory, scrubs the output with the same
+  secret-redaction pass the [publisher](/components/core/results/#secret-redaction)
+  uses, deploys the static build to Cloudflare Pages
+  (`wrangler pages deploy <out> --project-name test-cabinet-references
+  --branch <slug>-<version-with-dots-as-dashes>-<variant>`), reads the served URL
+  back from `wrangler`'s output (Cloudflare truncates long subdomains, so the URL
+  is parsed rather than constructed), and PUTs it to the backend's authenticated
+  reference-build endpoint. Unlike a run's build, a reference implementation is
+  **never seeded** and is deployed out-of-band by a person — this command is that
+  step; it is also wired as a `workflow_dispatch` GitHub Actions job. Requires a
+  logged-in account.
 - **`harnesses`** — inspect the supported agent harnesses.
 
 ## Authentication

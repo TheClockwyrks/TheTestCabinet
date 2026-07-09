@@ -75,6 +75,14 @@ pub struct SnapshotBuilder {
     /// The composed model catalog exported alongside the runs, so the public site
     /// renders the Models section from the snapshot. Empty by default.
     models: Vec<ModelOut>,
+    /// The reference-implementation URLs to fold onto each case's variants, keyed by
+    /// `(slug, version)` → (variant slug → served URL). Written out-of-band into the
+    /// `case_reference_build` table (via `tcab publish-reference`) and read from the
+    /// database, not the store — so they are supplied here rather than derived from a
+    /// manifest. Empty by default (a `(slug, version)` absent from the map, or a
+    /// variant absent from its inner map, simply exports `referenceBuild: null`).
+    reference_builds:
+        std::collections::HashMap<(String, String), std::collections::HashMap<String, String>>,
 }
 
 impl SnapshotBuilder {
@@ -93,12 +101,30 @@ impl SnapshotBuilder {
             artifacts_url: None,
             http: reqwest::Client::new(),
             models: Vec::new(),
+            reference_builds: std::collections::HashMap::new(),
         }
     }
 
     /// Set the composed model catalog to export in this snapshot's `models.json`.
     pub fn with_models(mut self, models: Vec<ModelOut>) -> Self {
         self.models = models;
+        self
+    }
+
+    /// Supply the reference-implementation URLs to fold onto each case's variants,
+    /// keyed by `(slug, version)` → (variant slug → served URL). These come from the
+    /// `case_reference_build` table (read by the caller from the database), not from
+    /// any manifest — the URL of a variant's authored, deployed correct build is
+    /// recorded out-of-band by `tcab publish-reference`. A `(slug, version)` or
+    /// variant absent from the map exports `referenceBuild: null`.
+    pub fn with_reference_builds(
+        mut self,
+        reference_builds: std::collections::HashMap<
+            (String, String),
+            std::collections::HashMap<String, String>,
+        >,
+    ) -> Self {
+        self.reference_builds = reference_builds;
         self
     }
 
@@ -224,9 +250,12 @@ impl SnapshotBuilder {
                 continue;
             }
             let (references, reference_objects) = self.case_references(manifest, &prefix);
+            let variant_reference_builds = self
+                .reference_builds
+                .get(&(manifest.slug.clone(), manifest.version.clone()));
             objects.push(json_object(
                 format!("{prefix}/cases/{}/{}.json", manifest.slug, manifest.version),
-                &case_metadata(&self.store, manifest, references)?,
+                &case_metadata(&self.store, manifest, references, variant_reference_builds)?,
             )?);
             objects.extend(reference_objects);
         }
@@ -1091,6 +1120,14 @@ pub struct CaseVariantOut {
     /// variant is selected. The site rates and scores a run against the common
     /// domains plus its variant's own.
     pub domains: Vec<CaseDomainOut>,
+    /// The absolute URL of this variant's authored **reference implementation** — the
+    /// correct, deployed static build (the case-variant analogue of a run's
+    /// `playableBuild`), shown on the static gallery's "Reference" tab. `null` when
+    /// the variant declares no `reference_implementation`, or has one that has not
+    /// been deployed yet. Written out-of-band by `tcab publish-reference` into the
+    /// `case_reference_build` table and folded in here at export — never resolved
+    /// from the manifest and never seeded into a run.
+    pub reference_build: Option<String>,
 }
 
 /// A seeded spec file exposed in case metadata: the run-workspace path it lands at
@@ -1196,6 +1233,7 @@ fn case_metadata(
     store: &DefinitionStore,
     manifest: &StoredManifest,
     references: Vec<CaseReferenceOut>,
+    reference_builds: Option<&std::collections::HashMap<String, String>>,
 ) -> Result<CaseMetadata, BackendError> {
     let common_seeded_inputs = seeded_inputs(
         store,
@@ -1239,6 +1277,9 @@ fn case_metadata(
                 seeded_inputs: seeded_inputs(store, &manifest.slug, &manifest.version, &v.specs),
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
                 domains: v.domains.iter().map(case_domain_out).collect(),
+                reference_build: reference_builds
+                    .and_then(|builds| builds.get(&v.slug))
+                    .cloned(),
             })
         })
         .collect::<Result<Vec<_>, BackendError>>()?;

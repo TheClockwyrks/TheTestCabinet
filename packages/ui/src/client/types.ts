@@ -142,6 +142,12 @@ export interface VariantInfo {
   // case's common domains plus this variant's own additive ones — so a run is
   // always rated on exactly the domains that apply to its selected variant.
   domains: Domain[];
+  // The absolute URL of this variant's reference implementation — the correct,
+  // authored static build the backend records in `case_reference_build` and serves
+  // on the resolved version (camelCase `referenceBuild`). Null when the variant
+  // declares no `reference_implementation`, and absent on a backend that predates
+  // the field.
+  referenceBuild?: string | null;
 }
 
 // The 3D voxel-family asset kinds — the two cube kinds, the six surface-meshed
@@ -203,7 +209,9 @@ export function isAudioAssetKind(kind: AssetKind | null | undefined): boolean {
  * as a self-contained skinned + animated glTF. Its own catalog family: not a
  * voxel-family kind (it is a real mesh, not a voxel field) even though it, too,
  * renders in 3D. An absent kind reads as false. */
-export function isBlenderAssetKind(kind: AssetKind | null | undefined): boolean {
+export function isBlenderAssetKind(
+  kind: AssetKind | null | undefined,
+): boolean {
   return kind === "blender-character";
 }
 

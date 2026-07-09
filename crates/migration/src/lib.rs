@@ -2,8 +2,10 @@
 //!
 //! The initial migration creates the four tables of `design/v0.2.0-contracts.md`
 //! §2 (`run`, `review`, `run_link`, `snapshot_state`) and the `run` indices;
-//! later migrations add the tournament, job, and publish-job tables and the
-//! model-catalog tables (`model`, `model_alias`, `model_price`). They run at
+//! later migrations add the tournament, job, and publish-job tables, the
+//! model-catalog tables (`model`, `model_alias`, `model_price`), and the
+//! `case_reference_build` table (a test-case variant's deployed reference
+//! implementation URL). They run at
 //! backend startup via [`Migrator::up`], and apply identically to the SQLite
 //! (local/tests) and PostgreSQL (deployment) backends because they are built from
 //! SeaORM's portable schema builder rather than backend-specific SQL.
@@ -22,6 +24,7 @@ mod m20260707_000005_add_job_test_case_version;
 mod m20260709_000006_create_model_catalog;
 mod m20260709_000007_add_run_sort_columns;
 mod m20260709_000008_add_job_attempt;
+mod m20260709_000009_create_case_reference_build;
 
 pub struct Migrator;
 
@@ -37,6 +40,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260709_000006_create_model_catalog::Migration),
             Box::new(m20260709_000007_add_run_sort_columns::Migration),
             Box::new(m20260709_000008_add_job_attempt::Migration),
+            Box::new(m20260709_000009_create_case_reference_build::Migration),
         ]
     }
 }

@@ -949,3 +949,58 @@ async fn store_media_is_used_without_calling_the_artifact_service() {
         "the store fast-path made no artifact-service request",
     );
 }
+
+#[tokio::test]
+async fn a_variant_carries_its_reference_build_url_when_one_is_supplied() {
+    // The reference-implementation URL lives in the `case_reference_build` table
+    // (written out-of-band by `tcab publish-reference`), not the manifest, so the
+    // caller hands the builder a `(slug, version)` → (variant → URL) map. It must
+    // land on the matching variant's `referenceBuild`, and a variant absent from the
+    // map (here there is none — the case has a single `base` variant) exports null.
+    let (_tmp, store) = empty_store();
+    let mut builds = std::collections::HashMap::new();
+    builds.insert(
+        ("pong".to_string(), "v1.0.0".to_string()),
+        std::collections::HashMap::from([(
+            "base".to_string(),
+            "https://carom-v1-0-0-base.test-cabinet-references.pages.dev".to_string(),
+        )]),
+    );
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .with_reference_builds(builds)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert_eq!(
+        parsed["variants"][0]["referenceBuild"],
+        "https://carom-v1-0-0-base.test-cabinet-references.pages.dev"
+    );
+}
+
+#[tokio::test]
+async fn a_variant_without_a_reference_build_exports_null() {
+    // No reference build supplied for this case → the variant's `referenceBuild` is
+    // serialized as JSON null (the default), never omitted, so the site can rely on
+    // the key's presence.
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert!(parsed["variants"][0]["referenceBuild"].is_null());
+}
