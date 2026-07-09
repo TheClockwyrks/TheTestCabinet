@@ -21,7 +21,14 @@ and nothing renders. The testing harness must:
 
 - Build the implementation — running the test case's required `[build]` install
   and build commands from the produced repository — and serve its output
-  directory (`dist/`, `build/`, or `out/`) as a static site.
+  directory (`dist/`, `build/`, or `out/`) as a static site. These commands run
+  **inside the run container**, before it is torn down, so they resolve against
+  the run image's baked runtime packages (`/opt/tcab-packages`, referenced by a
+  [`packages`](/testing/end-to-end/manifests/)-declaring case's `file:`
+  dependency) and the `/work` project root the produced `package-lock.json` was
+  resolved against — neither of which exists on the host after teardown. The
+  captured install/build outcome is then folded into the validation summary the
+  host builds around the collected output.
 - Load it in a headless browser.
 - Detect fatal errors, including build failures and uncaught runtime errors that
   prevent the application from rendering.

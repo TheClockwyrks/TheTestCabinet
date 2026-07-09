@@ -45,6 +45,27 @@ pub struct StepResult {
     pub detail: Option<String>,
 }
 
+/// The outcome of running an end-to-end / full-stack case's `[build]` commands
+/// **inside the run container**, captured before teardown so the host validator
+/// folds them into its summary instead of re-running the build on the host.
+///
+/// The build must run in the container because that is where the run image's
+/// baked runtime packages live (`/opt/tcab-packages`, referenced by a
+/// [`packages`](crate::test_case::TestCaseVersion)-declaring case's `file:`
+/// dependency) and where the project root is `/work` — the exact layout the
+/// produced `package-lock.json` was resolved against. On the host neither
+/// exists, so `npm ci` for such a case cannot resolve the dependency and the
+/// build fails even though the produced game is sound. `build` is `None` when
+/// `install` failed and the build step was never reached.
+#[derive(Debug, Clone)]
+pub struct ContainerBuild {
+    /// Outcome of the manifest's `install` command (for example `npm ci`).
+    pub install: StepResult,
+    /// Outcome of the manifest's `build` command (for example `npm run build`),
+    /// or `None` when `install` failed so the build never ran.
+    pub build: Option<StepResult>,
+}
+
 /// The result of a single opt-in validation check.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -650,6 +671,12 @@ pub trait Validator {
     /// case reads the effective bounding volume for the run through it (see
     /// [`TestCaseVersion::voxel_for`]) so a half/double run is scored against the
     /// size it was actually given, not the case's base volume.
+    ///
+    /// `container_build` carries the outcome of a build-based case's `[build]`
+    /// commands already run inside the run container (see [`ContainerBuild`]);
+    /// only the [end-to-end build validator](crate::BuildValidator) consumes it,
+    /// and every other validator ignores it. It is `None` for a case with no
+    /// build steps and for a direct invocation that pre-ran nothing.
     fn validate(
         &self,
         test_case: &TestCaseVersion,
@@ -657,5 +684,6 @@ pub trait Validator {
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
+        container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary>;
 }

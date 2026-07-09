@@ -207,6 +207,7 @@ fn asset_validation_regenerates_and_detects_no_cheating() {
             },
             &[],
             &[],
+            None,
         )
         .expect("validate");
 
@@ -282,6 +283,7 @@ fn asset_validation_regenerates_each_sheet_frame_independently() {
             },
             &[],
             &[],
+            None,
         )
         .expect("validate");
     let asset = summary.asset.expect("asset result");
@@ -327,6 +329,7 @@ fn asset_validation_flags_drawing_outside_the_tool() {
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
+            None,
         )
         .expect("validate");
 
@@ -351,6 +354,7 @@ fn asset_validation_without_an_action_log_fails_to_load() {
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
+            None,
         )
         .expect("validate");
     assert!(!summary.loaded, "no action log means nothing to score");
@@ -446,6 +450,7 @@ fn dispatch_routes_an_adversarial_case_to_the_adversarial_validator() {
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
+            None,
         )
         .expect("validate");
 
@@ -455,6 +460,141 @@ fn dispatch_routes_an_adversarial_case_to_the_adversarial_validator() {
     );
     assert!(summary.asset.is_none(), "not an asset-gen result");
     assert!(summary.build.is_none(), "not an end-to-end build result");
+}
+
+// --- end-to-end build validation -------------------------------------------
+
+use super::BuildValidator;
+use crate::test_case::BuildCommands;
+use crate::validation::{ContainerBuild, StepResult};
+
+/// A minimal end-to-end version whose `[build]` commands would be nonsense to run
+/// on the host — proving the validator uses the supplied [`ContainerBuild`]
+/// outcome rather than shelling out. The command strings are recorded verbatim
+/// into the summary, so they double as a marker that the host build never ran.
+fn e2e_version() -> TestCaseVersion {
+    let mut version = asset_version();
+    version.slug = "carom".to_string();
+    version.name = "Carom".to_string();
+    version.test_type = TestType::EndToEnd;
+    version.build = Some(BuildCommands {
+        install: "false # would fail on the host".to_string(),
+        build: "false # would fail on the host".to_string(),
+        module: None,
+    });
+    version.canvas = None;
+    version.tool = None;
+    version.output = None;
+    version.asset_kind = AssetKind::Sprite;
+    version
+}
+
+/// The build ran in the container, so the validator folds its recorded outcome in
+/// and never shells out on the host. A successful container build over a tree
+/// with no `dist/` still fails to load — but on "no build output", not on a host
+/// `npm ci` — and both steps are reported as the container recorded them.
+#[test]
+fn build_validation_uses_the_container_build_and_skips_the_host_build() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&repo).expect("repo");
+    // The package.json gate must pass; there is no `dist/`, so the load check that
+    // follows a successful build is what fails.
+    std::fs::write(repo.join("package.json"), "{}").expect("package.json");
+
+    let container_build = ContainerBuild {
+        install: StepResult {
+            command: "false # would fail on the host".to_string(),
+            succeeded: true,
+            detail: None,
+        },
+        build: Some(StepResult {
+            command: "false # would fail on the host".to_string(),
+            succeeded: true,
+            detail: None,
+        }),
+    };
+
+    let screenshots = dir.path().join("screenshots");
+    let summary = BuildValidator::new(screenshots)
+        .validate(
+            &e2e_version(),
+            &base_variant(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+            Some(&container_build),
+        )
+        .expect("validate");
+
+    // Both steps are reported as the container recorded them (succeeded), which is
+    // impossible if the host `false` command had run.
+    assert!(
+        summary.install.as_ref().is_some_and(|s| s.succeeded),
+        "install taken from the container build"
+    );
+    assert!(
+        summary.build.as_ref().is_some_and(|s| s.succeeded),
+        "build taken from the container build"
+    );
+    // The build succeeded but produced no output tree, so the run did not load.
+    assert!(!summary.loaded, "no dist/ means nothing loaded");
+    assert!(
+        summary
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("dist")),
+        "the failure is the missing build output, not a host install: {:?}",
+        summary.detail
+    );
+}
+
+/// A failed container install short-circuits with that recorded outcome: the build
+/// step stays unrun and the run does not load, exactly as the host ordering did.
+#[test]
+fn build_validation_reports_a_failed_container_install() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&repo).expect("repo");
+    std::fs::write(repo.join("package.json"), "{}").expect("package.json");
+
+    let container_build = ContainerBuild {
+        install: StepResult {
+            command: "npm ci".to_string(),
+            succeeded: false,
+            detail: Some(
+                "`npm ci` failed: could not resolve @test-cabinet/particle-runtime".to_string(),
+            ),
+        },
+        build: None,
+    };
+
+    let screenshots = dir.path().join("screenshots");
+    let summary = BuildValidator::new(screenshots)
+        .validate(
+            &e2e_version(),
+            &base_variant(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+            Some(&container_build),
+        )
+        .expect("validate");
+
+    assert!(!summary.loaded, "a failed install means nothing loaded");
+    assert!(
+        summary.install.as_ref().is_some_and(|s| !s.succeeded),
+        "the failed install is recorded"
+    );
+    assert!(
+        summary.build.is_none(),
+        "the build step is never reached after a failed install"
+    );
+    assert_eq!(
+        summary.detail.as_deref(),
+        Some("`npm ci` failed: could not resolve @test-cabinet/particle-runtime"),
+        "the container install's failure detail carries through"
+    );
 }
 
 #[test]

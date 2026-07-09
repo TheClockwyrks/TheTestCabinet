@@ -149,6 +149,7 @@ fn a_missing_submission_module_is_a_forfeit_loss() {
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
+            None,
         )
         .expect("validate");
 
@@ -178,6 +179,7 @@ fn a_missing_baseline_opponent_is_a_failed_load() {
             &ArtifactCollection { repo_path: repo },
             &[],
             &[],
+            None,
         )
         .expect("validate");
 
@@ -222,6 +224,7 @@ fn validate_writes_a_replay_per_opponent_and_records_them() {
             },
             &[],
             &[],
+            None,
         )
         .expect("validate");
 

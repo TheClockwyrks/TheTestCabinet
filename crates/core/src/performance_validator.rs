@@ -43,7 +43,8 @@ use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
 use crate::test_case::{PerformanceCase, ProofFile, TestCaseVersion, Variant};
 use crate::validation::{
-    PerformanceCaseResult, PerformanceResult, ProofResult, ValidationSummary, Validator,
+    ContainerBuild, PerformanceCaseResult, PerformanceResult, ProofResult, ValidationSummary,
+    Validator,
 };
 use crate::validator::proof_results;
 
@@ -73,6 +74,7 @@ impl Validator for PerformanceValidator {
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],
+        _container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
         // A case may still declare proofs; record their presence as for any type.

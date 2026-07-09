@@ -42,8 +42,8 @@ use crate::match_play::{
 use crate::reference::RenderedReference;
 use crate::test_case::{ProofFile, TestCaseVersion, Variant};
 use crate::validation::{
-    AdversarialOutcome, AdversarialReplay, AdversarialResult, AdversarialTeam, ValidationSummary,
-    Validator,
+    AdversarialOutcome, AdversarialReplay, AdversarialResult, AdversarialTeam, ContainerBuild,
+    ValidationSummary, Validator,
 };
 use crate::validator::proof_results;
 
@@ -75,6 +75,7 @@ impl Validator for AdversarialValidator {
         artifacts: &ArtifactCollection,
         _references: &[RenderedReference],
         proofs: &[ProofFile],
+        _container_build: Option<&ContainerBuild>,
     ) -> Result<ValidationSummary> {
         let repo = &artifacts.repo_path;
         // A case may still declare proofs; record their presence as for any type.
