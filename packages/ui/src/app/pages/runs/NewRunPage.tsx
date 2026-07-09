@@ -8,6 +8,7 @@ import {
   BUILT_IN_ORCHESTRATORS,
   DEFAULT_ORCHESTRATOR_SLUG,
 } from "../../data/orchestrators";
+import { ModelCombobox } from "../../components/ModelCombobox";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -256,18 +257,13 @@ export function NewRunPage() {
         )}
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Model</span>
-          <input
-            className={styles.input}
-            list="tcab-model-ids"
+          <ModelCombobox
             value={modelId}
-            onChange={(e) => setModelId(e.target.value)}
+            onChange={setModelId}
+            models={models}
+            inputClassName={styles.input}
             placeholder="model id (e.g. claude-opus-4-8)"
           />
-          <datalist id="tcab-model-ids">
-            {models.flatMap((m) =>
-              m.aliases.map((id: string) => <option key={id} value={id} />),
-            )}
-          </datalist>
         </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Max runtime (s, optional)</span>
