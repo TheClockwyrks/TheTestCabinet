@@ -153,6 +153,7 @@ hatchery
 Flak
 hitscan
 autocannon
+crenellated
 prowed
 sponsons
 
