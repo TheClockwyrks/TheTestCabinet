@@ -383,7 +383,8 @@ export function RunReviewEditor({
                 </p>
                 <ol className={styles.itemNavList}>
                   {items.map((it, index) => {
-                    const answered = Boolean(verdicts[it.id]?.status);
+                    const status = verdicts[it.id]?.status ?? "";
+                    const answered = Boolean(status);
                     const isCurrent = index === current;
                     return (
                       <li key={it.id}>
@@ -391,15 +392,28 @@ export function RunReviewEditor({
                           type="button"
                           className={`${styles.itemNav}${
                             isCurrent ? ` ${styles.itemNavActive}` : ""
-                          }${answered ? ` ${styles.itemNavDone}` : ""}`}
+                          }${answered ? ` ${styles.itemNavDone}` : ""}${
+                            status === "fail" ? ` ${styles.itemNavFail}` : ""
+                          }`}
                           onClick={() => setCurrent(index)}
                           aria-current={isCurrent ? "true" : undefined}
+                          title={
+                            answered
+                              ? `${it.title} — ${VERDICT_META[status as VerdictStatus].label}`
+                              : undefined
+                          }
                         >
+                          {/* The mark reflects the verdict: a check for pass, a
+                          cross for fail, else the item's number. */}
                           <span
                             className={styles.itemNavMark}
                             aria-hidden="true"
                           >
-                            {answered ? "✓" : index + 1}
+                            {status === "pass"
+                              ? "✓"
+                              : status === "fail"
+                                ? "✕"
+                                : index + 1}
                           </span>
                           <span className={styles.itemNavTitle}>
                             {it.title} ({pts(it.weight)})
