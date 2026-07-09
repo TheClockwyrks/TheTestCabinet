@@ -223,6 +223,13 @@ impl Db {
             .unwrap_or(false);
         let existing_published_at = existing.and_then(|model| model.published_at);
 
+        // The record-derived sort columns (test type, run time, tokens, cost) are
+        // refreshed on every (re-)push; the review-derived columns (rating /
+        // review_count) are NOT touched here — they are maintained by `add_review`,
+        // and a re-push must preserve an already-reviewed run's aggregate. A brand-
+        // new push writes the zero-review defaults (no rating, count 0).
+        let lifted = lifted_run_metrics(&record);
+
         run::Entity::insert(run::ActiveModel {
             id: Set(record.id.clone()),
             started_at: Set(record.started_at.clone()),
@@ -234,15 +241,23 @@ impl Db {
             harness_slug: Set(record.subject.harness_slug.as_str().to_string()),
             harness_version: Set(record.subject.harness_version.clone()),
             model_id: Set(record.subject.model_id.clone()),
+            test_type: Set(lifted.test_type),
             run_state: Set(run_state_str(record.status.state).to_string()),
+            run_time_seconds: Set(lifted.run_time_seconds),
+            total_tokens: Set(lifted.total_tokens),
+            cost_comparable: Set(lifted.cost_comparable),
+            rating: Set(None),
+            review_count: Set(0),
             loaded: Set(record.validation.loaded),
             published: Set(was_published),
             record_json: Set(record_json),
             events_json: Set(events_json.map(|s| s.to_string())),
         })
         .on_conflict(
-            // Re-push updates the record and lifted columns but never the publish
-            // state (`Published`/`PublishedAt`), which only `publish` changes.
+            // Re-push updates the record and its lifted record-derived columns but
+            // never the publish state (`Published`/`PublishedAt`, changed only by
+            // `publish`) nor the review-derived `Rating`/`ReviewCount` (maintained
+            // by `add_review`).
             OnConflict::column(run::Column::Id)
                 .update_columns([
                     run::Column::StartedAt,
@@ -253,7 +268,11 @@ impl Db {
                     run::Column::HarnessSlug,
                     run::Column::HarnessVersion,
                     run::Column::ModelId,
+                    run::Column::TestType,
                     run::Column::RunState,
+                    run::Column::RunTimeSeconds,
+                    run::Column::TotalTokens,
+                    run::Column::CostComparable,
                     run::Column::Loaded,
                     run::Column::RecordJson,
                     run::Column::EventsJson,
@@ -345,14 +364,33 @@ impl Db {
         .exec(&txn)
         .await?;
 
+        // Recompute the lifted rating / review_count from the run's full review set
+        // (including the review just written) so the console's sort columns stay in
+        // step with the reviews table.
+        let reviews = review::Entity::find()
+            .filter(review::Column::RunId.eq(run_id))
+            .all(&txn)
+            .await?
+            .into_iter()
+            .map(stored_review)
+            .collect::<Result<Vec<_>>>()?;
+        let rating = lifted_rating(&reviews);
+        let review_count = reviews.len() as i64;
+
+        let published = run.published;
+        let mut active = run.into_active_model();
+        active.rating = Set(rating);
+        active.review_count = Set(review_count);
+        active.update(&txn).await?;
+
         // A new/updated review changes a published run's aggregate rating and
         // score, so refresh the snapshot; a pending run is not public.
-        if run.published {
+        if published {
             set_dirty(&txn).await?;
         }
 
         txn.commit().await?;
-        Ok(run.published)
+        Ok(published)
     }
 
     /// Publish a stored run: flip it public. Refused with
@@ -926,6 +964,48 @@ fn stored_tournament(model: tournament::Model) -> Result<StoredTournament> {
         record,
         published_at: model.published_at,
     })
+}
+
+/// The columns lifted out of a run's `RunRecord` for the console's sort/filter
+/// listing, computed once and applied on every insert/upsert of the run row.
+struct LiftedRunMetrics {
+    /// The kebab-case test-type token (`record.subject.test_type`).
+    test_type: String,
+    /// End-to-end wall-clock time in seconds (`record.metrics.run_time_seconds`).
+    run_time_seconds: f64,
+    /// Total token count across every class — the same sum the UI's `totalTokens`
+    /// shows — with an unreported/absent total stored as `0`.
+    total_tokens: i64,
+    /// Comparable cost (USD), or `None` when the cost is unknown.
+    cost_comparable: Option<f64>,
+}
+
+/// Lift the record-derived sort columns out of a run's record. Reuses the core
+/// [`TokenCounts::total`](test_cabinet_core::metrics::TokenCounts::total) so the
+/// lifted `total_tokens` matches the UI's headline figure exactly.
+fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
+    LiftedRunMetrics {
+        test_type: record.subject.test_type.as_str().to_string(),
+        run_time_seconds: record.metrics.run_time_seconds,
+        total_tokens: record.metrics.tokens.total().unwrap_or(0) as i64,
+        cost_comparable: record.metrics.cost.comparable,
+    }
+}
+
+/// The run's aggregate rating — the worst rating any reviewer gave any domain —
+/// or `None` when the run carries no reviews. The single source of truth for the
+/// lifted `run.rating` column and the snapshot's summary cards; wraps the core
+/// [`aggregate_rating`](test_cabinet_core::review::aggregate_rating).
+pub(crate) fn aggregate_review_rating(
+    reviews: &[StoredReview],
+) -> Option<test_cabinet_core::review::Rating> {
+    test_cabinet_core::review::aggregate_rating(reviews.iter().map(|review| review.ratings.as_slice()))
+}
+
+/// The lifted `run.rating` column value: the aggregate rating as its lowercase
+/// wire token, or `None` when the run carries no reviews.
+fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
+    aggregate_review_rating(reviews).map(|rating| rating.as_str().to_string())
 }
 
 /// The wire string for a run state (matching the serde representation).
@@ -1642,11 +1722,74 @@ impl Db {
 
             let mut active = row.into_active_model();
             active.model_id = Set(base);
+            // Keep the lifted cost column in step with the record's recomputed cost.
+            active.cost_comparable = Set(comparable);
             active.record_json = Set(record_json);
             active.update(&self.conn).await?;
             rewritten += 1;
         }
         Ok(rewritten)
+    }
+
+    /// Backfill the sort/filter columns lifted onto the `run` row after rows
+    /// already existed (`test_type`, `run_time_seconds`, `total_tokens`,
+    /// `cost_comparable`, `rating`, `review_count`): parse each un-backfilled row's
+    /// record for the record-derived columns and compute `rating` / `review_count`
+    /// from its reviews.
+    ///
+    /// Idempotent: a row is "un-backfilled" iff its `test_type` is still the empty
+    /// string the migration's default stamped — a value no real run carries, since
+    /// every write sets a kebab-case token. A second boot (or a store whose rows
+    /// were all written with the columns already populated) therefore does no work.
+    /// Best-effort per row: a legacy record that no longer deserializes is left for
+    /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
+    /// [`Self::assemble`] tolerate such rows). Returns how many rows were filled.
+    pub async fn backfill_sort_columns(&self) -> Result<usize> {
+        let rows = run::Entity::find()
+            .filter(run::Column::TestType.eq(""))
+            .all(&self.conn)
+            .await?;
+        if rows.is_empty() {
+            return Ok(0);
+        }
+
+        // Group the candidate rows' reviews by run id in one query.
+        let ids: Vec<String> = rows.iter().map(|row| row.id.clone()).collect();
+        let mut review_map: std::collections::HashMap<String, Vec<StoredReview>> =
+            std::collections::HashMap::new();
+        let reviews = review::Entity::find()
+            .filter(review::Column::RunId.is_in(ids))
+            .all(&self.conn)
+            .await?;
+        for review in reviews {
+            let run_id = review.run_id.clone();
+            review_map
+                .entry(run_id)
+                .or_default()
+                .push(stored_review(review)?);
+        }
+
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                continue;
+            };
+            let lifted = lifted_run_metrics(&record);
+            let reviews = review_map.get(&row.id).map(Vec::as_slice).unwrap_or(&[]);
+            let rating = lifted_rating(reviews);
+            let review_count = reviews.len() as i64;
+
+            let mut active = row.into_active_model();
+            active.test_type = Set(lifted.test_type);
+            active.run_time_seconds = Set(lifted.run_time_seconds);
+            active.total_tokens = Set(lifted.total_tokens);
+            active.cost_comparable = Set(lifted.cost_comparable);
+            active.rating = Set(rating);
+            active.review_count = Set(review_count);
+            active.update(&self.conn).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
     }
 }
 

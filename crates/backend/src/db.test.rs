@@ -1246,3 +1246,134 @@ async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
     // Idempotent: a second pass rewrites nothing.
     assert_eq!(db.normalize_free_model_ids(&base_prices).await.unwrap(), 0);
 }
+
+/// A run record carrying non-default metrics, for the lifted sort/filter columns.
+/// Total tokens sum to 175; comparable cost is `$1.50`; run time is 42s.
+fn record_with_metrics(id: &str) -> RunRecord {
+    let mut r = record(id);
+    r.subject.test_type = test_cabinet_core::TestType::AssetGeneration;
+    r.metrics = RunMetrics {
+        run_time_seconds: 42.0,
+        tokens: TokenCounts {
+            uncached_input: Some(100),
+            cached_input: Some(20),
+            output: Some(50),
+            reasoning: Some(5),
+        },
+        cost: Cost {
+            comparable: Some(1.5),
+            actual: Some(1.5),
+        },
+    };
+    r
+}
+
+/// Read the lifted sort/filter columns off the raw `run` row.
+async fn lifted(db: &Db, id: &str) -> run::Model {
+    run::Entity::find_by_id(id.to_string())
+        .one(db.connection())
+        .await
+        .unwrap()
+        .expect("the run row exists")
+}
+
+#[tokio::test]
+async fn push_lifts_the_record_sort_columns_and_starts_unrated() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.test_type, "asset-generation");
+    assert_eq!(row.run_time_seconds, 42.0);
+    assert_eq!(row.total_tokens, 175);
+    assert_eq!(row.cost_comparable, Some(1.5));
+    // A freshly pushed run carries no reviews yet.
+    assert_eq!(row.rating, None);
+    assert_eq!(row.review_count, 0);
+}
+
+#[tokio::test]
+async fn add_review_maintains_the_lifted_rating_and_count() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+
+    // First review (great) sets the aggregate; the count reaches one.
+    db.add_review("r1", &review_by("u1", Rating::Great))
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("great"));
+    assert_eq!(row.review_count, 1);
+
+    // A second, harsher review drags the aggregate to the worst rating.
+    db.add_review("r1", &review_by("u2", Rating::Scuffed))
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("scuffed"));
+    assert_eq!(row.review_count, 2);
+
+    // Re-pushing the run refreshes the record-derived columns but preserves the
+    // review-derived aggregate (a re-push carries no reviews).
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("scuffed"));
+    assert_eq!(row.review_count, 2);
+    assert_eq!(row.total_tokens, 175);
+}
+
+#[tokio::test]
+async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+    db.add_review("r1", &review_by("u1", Rating::Great))
+        .await
+        .unwrap();
+    db.add_review("r1", &review_by("u2", Rating::Scuffed))
+        .await
+        .unwrap();
+    // A second run with no reviews, to prove the null-rating path is backfilled too.
+    db.push(&record_with_metrics("r2"), &links(), None)
+        .await
+        .unwrap();
+
+    // Simulate rows that predate the sort columns: reset every lifted value to the
+    // migration's defaults (empty test_type is the "un-backfilled" sentinel).
+    for id in ["r1", "r2"] {
+        let mut active = lifted(&db, id).await.into_active_model();
+        active.test_type = Set(String::new());
+        active.run_time_seconds = Set(0.0);
+        active.total_tokens = Set(0);
+        active.cost_comparable = Set(None);
+        active.rating = Set(None);
+        active.review_count = Set(0);
+        active.update(db.connection()).await.unwrap();
+    }
+
+    let filled = db.backfill_sort_columns().await.unwrap();
+    assert_eq!(filled, 2);
+
+    let r1 = lifted(&db, "r1").await;
+    assert_eq!(r1.test_type, "asset-generation");
+    assert_eq!(r1.run_time_seconds, 42.0);
+    assert_eq!(r1.total_tokens, 175);
+    assert_eq!(r1.cost_comparable, Some(1.5));
+    assert_eq!(r1.rating.as_deref(), Some("scuffed"));
+    assert_eq!(r1.review_count, 2);
+
+    let r2 = lifted(&db, "r2").await;
+    assert_eq!(r2.total_tokens, 175);
+    assert_eq!(r2.rating, None);
+    assert_eq!(r2.review_count, 0);
+
+    // Idempotent: a second pass finds nothing un-backfilled.
+    assert_eq!(db.backfill_sort_columns().await.unwrap(), 0);
+}

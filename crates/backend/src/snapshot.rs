@@ -1296,13 +1296,13 @@ fn aggregate_rating(reviews: &[crate::db::StoredReview]) -> test_cabinet_core::r
     aggregate_rating_inner(reviews).unwrap_or(test_cabinet_core::review::Rating::Broken)
 }
 
-/// The aggregate rating, or `None` when the run carries no reviews.
+/// The aggregate rating, or `None` when the run carries no reviews. Delegates to
+/// [`crate::db::aggregate_review_rating`] — the single source of truth shared with
+/// the lifted `run.rating` column.
 fn aggregate_rating_inner(
     reviews: &[crate::db::StoredReview],
 ) -> Option<test_cabinet_core::review::Rating> {
-    test_cabinet_core::review::aggregate_rating(
-        reviews.iter().map(|review| review.ratings.as_slice()),
-    )
+    crate::db::aggregate_review_rating(reviews)
 }
 
 #[cfg(test)]

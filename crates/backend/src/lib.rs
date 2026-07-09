@@ -89,6 +89,17 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // already-migrated store (a restart, or a shared deployment database) is a
     // no-op beyond the version check.
     test_cabinet_migration::Migrator::up(db.connection(), None).await?;
+
+    // Backfill the run row's sort/filter columns for any rows that predate them
+    // (the migration stamps them with defaults; this fills the real record- and
+    // review-derived values). Idempotent, so a restart or an already-populated
+    // store is a no-op; best-effort, so it never blocks startup.
+    match db.backfill_sort_columns().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run sort/filter columns"),
+        Err(err) => tracing::warn!(error = %err, "skipping run sort-column backfill"),
+    }
+
     let db = Arc::new(db);
 
     // Reconcile orphaned in-flight jobs before serving — but only single-box,
