@@ -40,6 +40,16 @@ itself is private, so the site never queries it at runtime — the build fetches
 the snapshot from R2 and ships static output, with no live dependency on the
 backend. A backend deploy hook triggers a rebuild whenever the snapshot changes.
 
+The build does **not** inline every full record into the JS bundle. It ships the
+snapshot's [summary index](/components/backend/snapshot/#runsjson--the-run-index)
+— a lightweight [`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index)
+card per published run — as the in-memory dataset every list, card, leaderboard,
+and metric reads, and emits each run's full record as a per-run
+`runs/<id>.json` **static asset** fetched lazily when that run's detail page
+opens. The runs index and home list page over the in-memory summary index
+client-side (the same filter/sort/paging the console runs server-side), so the
+bundle size no longer grows with each run's full record.
+
 ## Gallery
 
 The site presents published runs as a gallery that can be browsed by test case,

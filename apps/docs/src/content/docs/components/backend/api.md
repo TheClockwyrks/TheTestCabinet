@@ -301,8 +301,7 @@ detail page, shown only for an unpublished run the active worker produced.
 
 ### `GET /runs`
 
-List stored runs, newest first, paginated by a `before` cursor and a `limit`. A
-`state` query parameter selects which runs:
+List stored runs, newest first. A `state` query parameter selects which runs:
 
 - `state=published` (the **default**) — published runs only, ordered by publish
   time, for reporters and the public-facing views.
@@ -320,8 +319,53 @@ List stored runs, newest first, paginated by a `before` cursor and a `limit`. A
   infrastructure failure stays inspectable rather than appearing in no list.
   Disjoint from the default published listing.
 
-The response carries the runs and the cursor for the next page (`null` when there
-are no more).
+#### Two projections
+
+`fields` selects **how much** of each run the listing returns:
+
+- Default (`fields` omitted) — the full stored run per row. Heavy, and used only
+  where the whole record is needed.
+- `fields=summary` — a lightweight **`RunSummary`** card per row: the run's id and
+  timestamps, its [subject](/components/core/run-records/#subject) (including the
+  [test type](/testing/overview/)), [metrics](/components/core/metrics/), the
+  `validationLoaded` signal, state, the aggregate `rating` and `reviewCount`, the
+  denormalized case name, and links — enough to render a run-list row, a card, a
+  leaderboard entry, or a metrics aggregate **without** fetching each full record.
+  The [detail](#get-runsid) endpoint loads the full record (and the run's reviews)
+  lazily, one run at a time. This is the same summary shape the
+  [public snapshot](/components/backend/snapshot/#runsjson--the-run-index) ships as
+  its run index; its schema is
+  [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
+
+#### Two pagination modes
+
+- **Cursor.** `before` (a run id) plus `limit` walks the whole set newest-first,
+  page by page; the response carries the runs and the cursor for the next page
+  (`null` when there are no more). This is the drain the public-snapshot export
+  uses, and it is unaffected by the filter/sort params below.
+- **Numbered offset.** `offset` plus `limit` returns a single page of a
+  filtered, sorted listing as `{ runs, total }`, where `total` is the count under
+  the same filters — enough to drive a numbered (jump-to-page) pager without
+  walking the set. Only available with `fields=summary`.
+
+The offset mode additionally accepts:
+
+- **Filters** `testCase`, `model`, and `harness` — each narrows to runs matching
+  that lifted subject value.
+- **Search** `q` — a free-text match across the lifted subject columns (test case
+  slug, model id, harness slug, variant). It matches the **raw** recorded ids, not
+  a model's resolved display name.
+- **Sort** `sort` — one of `date` (default), `runtime`, `tokens`, `cost`,
+  `rating`, `testType`, `testCase`, `harness`, `model`, or `variant` — with
+  `dir` (`asc` or `desc`), tie-broken by run id.
+
+To keep `sort`/`q`/the filters DB-native, the run row lifts the fields the record
+otherwise buries in its JSON blob — the test type, run time, total tokens,
+comparable cost — alongside the rating and review count derived from the reviews
+table, into indexed columns. These are added by a versioned migration with an
+idempotent startup backfill, and kept current as runs are recorded, reviewed, and
+published. (The columns are an internal detail; the projection and params above
+are the contract.)
 
 ### `GET /runs/{id}`
 
