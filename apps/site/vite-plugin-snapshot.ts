@@ -1,5 +1,6 @@
 import type { Plugin } from "vite";
 import type { AssetKind, TestType } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 
 // Build-time data source: the public R2 snapshot.
 //
@@ -48,22 +49,14 @@ interface SnapshotModelsFile {
   models: unknown[];
 }
 
+// The flat summary index (`runs.json`, the snapshot's `ln` key): the full
+// `RunSummary` cards the backend publishes, newest first. These ARE the app's
+// `runSummaries` — every enriched field is served, so no per-field remapping is
+// needed. An older snapshot that predates a field is tolerated the same way the
+// UI's optional typing tolerates it.
 interface SnapshotRunsFile {
   schemaVersion: number;
-  runs: SnapshotRunSummary[];
-}
-
-interface SnapshotRunSummary {
-  id: string;
-  subject: {
-    testCaseSlug: string;
-    testCaseVersion: string;
-  };
-  // Aggregate verdict across the run's reviews: the worst rating any reviewer
-  // gave any domain, and how many reviews back it. Present on the index summary
-  // (the per-run file carries the full reviews). Optional for older snapshots.
-  rating?: string | null;
-  reviewCount?: number;
+  runs: RunSummary[];
 }
 
 interface SnapshotReviewVerdict {
@@ -225,6 +218,10 @@ interface AssembledSnapshot {
   // Verbatim RunRecord blobs, newest first (the snapshot's `runs/<id>.json`
   // `record`). The app types these as RunRecord[].
   runs: unknown[];
+  // The flat summary index (`runs.json`), newest first — the bounded `RunSummary`
+  // cards the run log and list pages consume, taken verbatim from the backend's
+  // published index (no extra fetches). The app types these as RunSummary[].
+  runSummaries: RunSummary[];
   // `writeups/<runId>` framing reconstructed from each run's reviews (the
   // *aggregate* writeup when there are several), keyed by run id — the same
   // `---\nrating: …\n---\n\n<body>` form the app parses for the cards/badges.
@@ -334,6 +331,7 @@ interface AssembledTestCase {
 
 const EMPTY: AssembledSnapshot = {
   runs: [],
+  runSummaries: [],
   writeups: {},
   reviews: {},
   testCases: [],
@@ -576,9 +574,13 @@ function collapseCases(
 // `index.json` -> versioned prefix -> `runs.json` -> per-run + per-case files.
 // `emitEvents` is called for each run that carries an event stream, so the build
 // can write it out as a per-run static asset the Events tab fetches at runtime.
+// `emitRecord` is called for every run with its full record JSON, so the build
+// can write it out as a runtime-fetchable `runs/<id>.json` asset (the lazy
+// per-run detail fetch), mirroring the events emission.
 async function loadSnapshot(
   base: string,
   emitEvents: (runId: string, json: string) => void,
+  emitRecord: (runId: string, json: string) => void,
 ): Promise<AssembledSnapshot | null> {
   // `index.json` is the atomic pointer the backend writes last, only after a
   // publish. A 404 here means nothing has been published yet (a fresh
@@ -614,6 +616,11 @@ async function loadSnapshot(
       joinUrl(base, `${index.runsPrefix}${summary.id}.json`),
     );
     runs.push(runFile.record);
+    // Emit the full run record as a runtime-fetchable static asset
+    // (`runs/<id>.json`), so a summary-first page can lazily fetch one run's
+    // whole record without the bundle inlining every record (the U7 cleanup drops
+    // the inlined `runs` array in favor of this).
+    emitRecord(summary.id, JSON.stringify(runFile.record));
     const runReviews = runFile.reviews ?? [];
     if (runReviews.length > 0) {
       reviews[summary.id] = runReviews.map(toAssembledReview);
@@ -678,6 +685,9 @@ async function loadSnapshot(
 
   return {
     runs,
+    // The already-fetched summary index — the bounded cards, verbatim. No extra
+    // network calls.
+    runSummaries: runsFile.runs,
     writeups,
     reviews,
     testCases: collapseCases(base, caseFiles),
@@ -691,6 +701,7 @@ function serialize(data: AssembledSnapshot): string {
   return [
     "// Generated at build time by vite-plugin-snapshot. Do not edit.",
     `export const runs = ${JSON.stringify(data.runs)};`,
+    `export const runSummaries = ${JSON.stringify(data.runSummaries)};`,
     `export const writeups = ${JSON.stringify(data.writeups)};`,
     `export const reviews = ${JSON.stringify(data.reviews)};`,
     `export const testCases = ${JSON.stringify(data.testCases)};`,
@@ -726,16 +737,30 @@ export function snapshot(): Plugin {
       }
       try {
         let eventAssets = 0;
-        const data = await loadSnapshot(base, (runId, json) => {
-          // Write each run's events as a stable, predictable asset path the
-          // static site fetches at runtime (`run-events/<id>.json`).
-          this.emitFile({
-            type: "asset",
-            fileName: `run-events/${runId}.json`,
-            source: json,
-          });
-          eventAssets += 1;
-        });
+        let recordAssets = 0;
+        const data = await loadSnapshot(
+          base,
+          (runId, json) => {
+            // Write each run's events as a stable, predictable asset path the
+            // static site fetches at runtime (`run-events/<id>.json`).
+            this.emitFile({
+              type: "asset",
+              fileName: `run-events/${runId}.json`,
+              source: json,
+            });
+            eventAssets += 1;
+          },
+          (runId, json) => {
+            // Write each run's full record as a runtime-fetchable asset
+            // (`runs/<id>.json`) for the lazy per-run detail fetch.
+            this.emitFile({
+              type: "asset",
+              fileName: `runs/${runId}.json`,
+              source: json,
+            });
+            recordAssets += 1;
+          },
+        );
         if (data === null) {
           this.warn(
             `no published snapshot at ${base} yet (index.json 404); building with an empty dataset. The backend's deploy hook will rebuild the gallery once a run is published.`,
@@ -744,7 +769,7 @@ export function snapshot(): Plugin {
           return;
         }
         this.info(
-          `fetched snapshot from ${base}: ${data.runs.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s).`,
+          `fetched snapshot from ${base}: ${data.runs.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s), ${recordAssets} run record(s).`,
         );
         module = serialize(data);
       } catch (error) {

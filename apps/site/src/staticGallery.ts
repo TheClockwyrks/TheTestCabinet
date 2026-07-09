@@ -2,9 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
-import { toModelSummary, type GalleryDataInput } from "@test-cabinet/ui/app";
+import {
+  toModelSummary,
+  toRunSummary,
+  type GalleryDataInput,
+} from "@test-cabinet/ui/app";
 import {
   runs as publishedRuns,
+  runSummaries as publishedRunSummaries,
   writeups as publishedWriteups,
   reviews as publishedReviews,
   testCases as catalogTestCases,
@@ -69,6 +74,15 @@ export function useStaticGallery(): GalleryDataInput {
     ...publishedRuns.filter((run) => !localIds.has(run.id)),
   ];
 
+  // The bounded summary cards, in the same order as `runs`: dev-only local runs
+  // have no published summary, so derive theirs from the full record (they are
+  // unreviewed previews, so no reviews / null rating is correct); the published
+  // runs supply their cards verbatim from the snapshot's summary index.
+  const runSummaries = [
+    ...local.map((run) => toRunSummary(run, [])),
+    ...publishedRunSummaries.filter((summary) => !localIds.has(summary.id)),
+  ];
+
   const testCases = catalogTestCases;
 
   // Local previews take precedence over the published framing on id collision.
@@ -105,6 +119,34 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
+  // Lazily resolve one run's full record. Published runs are emitted at build
+  // time as a per-run static asset (`runs/<id>.json`) by vite-plugin-snapshot, so
+  // a summary-first page can fetch a whole record on demand without the bundle
+  // inlining every record (the U7 cleanup drops the inlined `runs` array in favor
+  // of this). Falls back to the in-memory `runs` array — dev-only local runs (not
+  // emitted as assets) and any published run whose asset 404s — and finally null.
+  // Wired as the host's `readRun` hook; the gallery context's `fetchRun`
+  // delegates to it. Stable identity so consumers don't refetch on every render.
+  const fetchRun = useCallback(
+    async (runId: string): Promise<RunRecord | null> => {
+      const inMemory = runs.find((run) => run.id === runId);
+      if (inMemory) return inMemory;
+      const url = `${import.meta.env.BASE_URL}runs/${encodeURIComponent(
+        runId,
+      )}.json`;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        return (await response.json()) as RunRecord;
+      } catch {
+        return null;
+      }
+    },
+    // `runs` is rebuilt each render, but its only varying input is the loaded
+    // local runs (the published set is a build-time constant); key on that.
+    [localRuns],
+  );
+
   // A published run's proof media, resolved at build time to absolute snapshot
   // URLs keyed by run id then served file name (`<proof-id>.<ext>`). Produced
   // (local, dev-only) runs are not published, so they have no snapshot media.
@@ -126,10 +168,7 @@ export function useStaticGallery(): GalleryDataInput {
 
   return {
     runs,
-    // TODO(U3b): populate from the published summary index (runs.json) inlined by
-    // vite-plugin-snapshot. Empty placeholder for now to keep this compiling while
-    // the run summary contract is additive.
-    runSummaries: [],
+    runSummaries,
     localIds,
     writeups,
     reviews,
@@ -143,6 +182,9 @@ export function useStaticGallery(): GalleryDataInput {
     modelsStatus: "ready",
     canExecute: false,
     fetchRunEvents,
+    // The host's lazy single-run fetcher; the gallery context's `fetchRun`
+    // delegates to it (falling back to the in-memory `runs` internally).
+    readRun: fetchRun,
     proofMediaUrl,
     assetMediaUrl,
   };
