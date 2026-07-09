@@ -103,7 +103,7 @@ the image by test type and asset kind via
 
 ```
 containers/
-├── base/Dockerfile             # the end-to-end run image (toolchain, run user, /opt/tcab-packages)
+├── base/Dockerfile             # the end-to-end run image (toolchain, run user)
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
@@ -172,14 +172,13 @@ case prepares its workspace with an init command. End-to-end runs never touch a
 drawing tool, so neither lives in the base — they live in the asset-generation
 images below.
 
-A produced game no longer consumes anything the run image bakes for the
-**shippable Test Cabinet packages** (below): a case that declares
+The base run image carries nothing for the **shippable Test Cabinet packages**
+(below): a case that declares
 [`packages`](../apps/docs/src/content/docs/testing/end-to-end/manifests.md) has
 them **vendored into its run repository at seed time**, so the produced tree is
 self-contained. The packages that get vendored come from a host **package store**
-baked into the images that *seed* runs (the driver and publisher); the base run
-image still stages a copy today, but nothing at run time reads it, so it can be
-dropped in a follow-up.
+baked into the [driver image](../deployments/images/driver.Dockerfile), which is
+the image that seeds runs.
 
 ## The shippable Test Cabinet packages
 
@@ -198,17 +197,17 @@ key, and the run consumes them as ordinary installed dependencies.
 Because these packages are private (never npm-published) and must match the format
 the validator and review UI play, they are **staged from this repo into a host
 package store** rather than fetched from a registry. The store lives at
-`/opt/tcab-packages/@test-cabinet/<name>/` (world-readable) on the images that seed
-runs — the [driver](../deployments/images/driver.Dockerfile) and
-[publisher](../deployments/images/publisher.Dockerfile) — each a publish-shaped
-copy: its `package.json` plus its built `dist/`. Any dependency **between** two
-shippable packages (for example `particle-runtime`'s type-only dependency on
-`run-record`) is rewritten to a relative `file:` path within the store, so the
-staged set resolves with no npm-published `@test-cabinet/*` package required.
+`/opt/tcab-packages/@test-cabinet/<name>/` (world-readable) on the
+[driver image](../deployments/images/driver.Dockerfile) — the image that seeds
+runs — each a publish-shaped copy: its `package.json` plus its built `dist/`. Any
+dependency **between** two shippable packages (for example `particle-runtime`'s
+type-only dependency on `run-record`) is rewritten to a relative `file:` path
+within the store, so the staged set resolves with no npm-published
+`@test-cabinet/*` package required.
 
 Staging is done by [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs),
-run in a builder stage of the driver and publisher Dockerfiles (the build context
-is the repository root, so the stage can see `packages/`). The script builds the
+run in a builder stage of the driver Dockerfile (the build context is the
+repository root, so the stage can see `packages/`). The script builds the
 npm workspace, then for each package in its **shippable list** copies the package's
 `package.json` and the files its `files` field publishes into
 `/opt/tcab-packages/@test-cabinet/<name>/`, pulling in and rewriting transitive

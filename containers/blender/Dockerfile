@@ -22,8 +22,8 @@
 # run contract a `blender-character` run actually needs — the unprivileged `node` user, a
 # Node.js toolchain for the harness's run-time install, git/curl, and the `/work` working
 # directory (see the sections below). It deliberately omits what only end-to-end and the
-# other asset kinds need (the Chromium link libraries, the shippable `/opt/tcab-packages`
-# tree): a Blender run neither drives a browser nor consumes a produced-asset runtime.
+# other asset kinds need (the Chromium link libraries): a Blender run does not drive a
+# browser.
 #
 # The build context is the repository root so the `COPY` lines below can see
 # `containers/blender/`, and `build.sh` builds it with a dedicated builder (not the

@@ -827,11 +827,11 @@ struct ManifestDomain {
 const MANIFEST_FILE: &str = "test-case.toml";
 
 /// The host **package store** the shippable Test Cabinet packages are baked into
-/// on any image that seeds runs (the driver and publisher images — see
-/// `containers/README.md`). At seed time a `packages`-declaring case's requested
-/// libraries are copied out of this store and **vendored into the run repository**
-/// under [`TCAB_VENDOR_DIR`], so the produced tree is self-contained. This is a
-/// build-host path, never referenced by the produced game.
+/// on the driver image (which seeds runs — see `containers/README.md`). At seed
+/// time a `packages`-declaring case's requested libraries are copied out of this
+/// store and **vendored into the run repository** under [`TCAB_VENDOR_DIR`], so the
+/// produced tree is self-contained. This is a build-host path, never referenced by
+/// the produced game.
 pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 
 /// The in-repository directory a `packages`-declaring case's runtime libraries are

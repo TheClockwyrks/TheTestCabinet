@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 //
 // stage-tcab-packages.mjs — build and stage the shippable Test Cabinet runtime
-// libraries into a directory a run-container image bakes in.
+// libraries into a host **package store**.
 //
-// The run-container base image invokes this in a builder stage (see
-// containers/base/Dockerfile) after `npm ci`, writing the staged tree to
-// /opt/tcab-packages. A test case that declares `packages` ships a workspace
-// `package.json` that depends on each named package via a `file:` dependency
-// pointing under that directory (the harness validates this at resolution but
-// does not write it), so a built game consumes a produced asset that needs a
-// runtime to play it — a particle `system.json`, a voxel rig — as an ordinary
-// installed dependency. See:
+// The driver image invokes this in a builder stage (see
+// deployments/images/driver.Dockerfile) after `npm ci`, writing the staged tree to
+// /opt/tcab-packages. The driver seeds each run, and a test case that declares
+// `packages` has its named libraries **vendored out of this store into the run
+// repository** (under `.tcab/packages/`) at seed time, so the produced tree is
+// self-contained; the case's workspace `package.json` depends on each via an
+// in-repo relative `file:` path (the harness validates this at resolution but does
+// not write it). A built game then consumes a produced asset that needs a runtime
+// to play it — a particle `system.json`, a voxel rig — as an ordinary installed
+// dependency. See:
 //   - containers/README.md#the-shippable-test-cabinet-packages
 //   - apps/docs/.../testing/end-to-end/overview.md (Packages)
 //

@@ -91,9 +91,9 @@ impl FsRepoSeeder {
             if !src.is_dir() {
                 return Err(Error::Seeding(format!(
                     "runtime package `{name}` not found in the package store at `{}` — \
-                     the driver and publisher images bake it under `{}`; for a local \
-                     checkout, stage the packages there (`node scripts/stage-tcab-packages.mjs`) \
-                     or point `TCAB_PACKAGE_STORE` at a staged copy",
+                     the driver image bakes it under `{}`; for a local checkout, stage \
+                     the packages there (`node scripts/stage-tcab-packages.mjs`) or point \
+                     `TCAB_PACKAGE_STORE` at a staged copy",
                     self.package_store.display(),
                     crate::test_case::TCAB_PACKAGES_DIR,
                 )));
