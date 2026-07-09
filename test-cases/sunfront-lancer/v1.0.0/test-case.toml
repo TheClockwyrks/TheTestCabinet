@@ -3,9 +3,10 @@ name = "Sunfront Lancer"
 difficulty = "hard"
 tags = ["voxel", "rig", "mech"]
 summary = """
-Sculpt and rig the Sunfront Lancer: an opaque-voxel bipedal marksman-mech \
-whose long center rail-lance aims up and down at the chest while it strides on two \
-legs whose feet lift clear of the ground and plant flat — built by painting voxel \
+Sculpt and rig the Sunfront Lancer: an opaque-voxel bipedal marksman-mech with a \
+heavy rail-lance cannon mounted on one shoulder — a turret bolted to the frame that \
+elevates on its trunnion and kicks back along its own axis — while it strides on two \
+legs whose feet lift clear of the ground and plant flat. Built by painting voxel \
 cells one recorded operation at a time. The model invents whatever parts and joints \
 it needs; the fixed contract is two animations it must author as F-curves — a \
 striding `walk` and a weapon-only `fire` recoil — the reviewer can play back."""
@@ -33,7 +34,7 @@ variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
 # The volume always starts EMPTY; `background` is only the clear color behind the
 # rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
 [voxel]
-width = 24
+width = 32
 height = 50
 depth = 50
 background = "transparent"
@@ -70,16 +71,17 @@ actions = "parts/{part}.actions.json"
 # opposite phase so one foot is always planted — the machine pushing itself forward
 # rather than flailing. Authored IN PLACE: the body does not translate across the scene
 # (the leg cycle carries the stride; a game supplies the real travel). The legs move;
-# the rail-lance holds level.
+# the shoulder-mounted cannon holds steady.
 [[model.animation]]
 name = "walk"
 loop = true
 auto_play = false
 
 # `fire` — the WEAPON showcase. A game-triggered playable (a viewer play button so a
-# reviewer can watch the lance work without dragging a slider) that recoils the
-# rail-lance about its chest mount: a quick recoil nod off level, an overshoot back, and
-# a settle. Only the lance moves; the legs hold their stance.
+# reviewer can watch the weapon work without dragging a slider) that recoils the whole
+# shoulder-mounted cannon straight back along its own axis in its mount: a sharp kick
+# back, an overshoot, and a settle, with the mount and frame taking the shock. Only the
+# cannon and its recoiling parts move; the legs hold their stance and the body holds still.
 [[model.animation]]
 name = "fire"
 loop = true
@@ -96,19 +98,24 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated, rigged model reads as the Sunfront Lancer and \
-poses correctly — a bipedal marksman-mech whose long center rail-lance aims up and \
-down at its chest mount without detaching while it strides on two articulated legs \
-whose feet lift clear of the ground and plant flat, and the body stays put, with a \
-clear solar-amber charge-coil accent and the disciplined Duneforged palette."""
+poses correctly — a bipedal marksman-mech with a heavy rail-lance cannon mounted on \
+one shoulder as a turret bolted to its frame, elevating on its trunnion and recoiling \
+along its own axis without detaching or clipping the hull, while it strides on two \
+articulated legs whose feet lift clear of the ground and plant flat, and the body stays \
+put, with a clear solar-amber charge-coil accent and the disciplined Duneforged palette."""
 
 [[review_item]]
 id = "reads-as-lancer"
-title = "Reads as a bipedal rail-lance marksman"
+title = "Reads as a bipedal mech with a shoulder-mounted rail-cannon"
 text = """
 From more than one angle the model reads unmistakably as a long-range walking mech: \
 an upright body with a head on top, a pair of articulated legs planted beneath it, \
-and a long, slender rail-lance carried forward on the centerline. It is a bipedal \
-fighting machine, not an abstract stack of boxes."""
+and a heavy rail-lance cannon MOUNTED ON ONE SHOULDER — seated on a structural turret \
+mount (a trunnion cradle or pintle yoke) bolted to the frame, its barrel projecting \
+forward past the hull. It reads as MACHINERY BUILT ONTO THE CHASSIS: a mechanical \
+addition to the body, with no hand and no gripping arm. It is NOT a weapon held or \
+wielded like a soldier's rifle, and NOT a barrel sunk into the chest on the centerline. \
+It is a bipedal fighting machine, not an abstract stack of boxes."""
 weight = 3
 domain = "fidelity"
 
@@ -132,14 +139,17 @@ weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "weapon-pitches"
-title = "Rail-lance aims and recoils"
+id = "weapon-recoils"
+title = "The shoulder-mounted cannon elevates and recoils in its mount"
 text = """
-The rail-lance tilts cleanly up and down about its chest mount, and playing `fire` \
-recoils it convincingly — with no voxel of the weapon tearing away from the frame or \
-clipping into the body across the full range. When `fire` plays only the lance \
-moves and the legs stay planted; when `walk` plays only the legs move and the lance \
-holds level."""
+The rail-lance cannon is mounted on one shoulder, seated on a structural turret mount \
+bolted to the frame. It elevates cleanly up and down on its trunnion, and across the \
+full elevation the barrel CLEARS the hull and head — it never clips into the body, and \
+it is never sunk into the chest. Playing `fire` recoils the WHOLE cannon straight back \
+along its own axis in its mount — a sharp kick, an overshoot, a settle — with the mount \
+and frame taking the shock and no voxel tearing away from its mount. When `fire` plays \
+only the cannon and its recoiling parts move and the legs stay planted; when `walk` \
+plays only the legs move and the cannon holds steady."""
 weight = 3
 domain = "fidelity"
 
@@ -148,20 +158,22 @@ id = "torso-fixed"
 title = "Body stays fixed; only the moving parts move"
 text = """
 The upright body and head are the fixed core of the mech: they stay put, never \
-carried along by the rail-lance or the legs. When `fire` plays, the lance recoils \
-while the legs hold their stance; when `walk` plays, the legs stride while the lance \
-holds level. Nothing but the moving parts moves."""
+carried along by the recoiling cannon or the legs. When `fire` plays, the cannon \
+recoils in its shoulder mount while the legs hold their stance; when `walk` plays, the \
+legs stride while the cannon holds steady. Nothing but the moving parts moves."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "parts-attached"
-title = "Legs and rail-lance stay attached"
+title = "Legs and the shoulder-mounted cannon stay attached"
 text = """
 Every moving piece stays attached across its full range: each leg's segments meet \
-their neighbors cleanly as the leg folds and extends, and the rail-lance meets the \
-body at its mount — with no gap and never floating free or detaching as the legs \
-stride and the lance pitches."""
+their neighbors cleanly as the leg folds and extends, and the cannon stays seated on \
+the shoulder mount that bears it — never floating free or detaching as the legs stride, \
+the cannon elevates, and it recoils along its axis. The mount meets the frame cleanly \
+with no gap, and the barrel clears the hull and head throughout, never clipping into \
+the body."""
 weight = 2
 domain = "fidelity"
 

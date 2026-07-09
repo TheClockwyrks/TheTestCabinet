@@ -1,11 +1,11 @@
 # The double-size variant: the same mech sculpted and rigged in a volume with each
-# extent doubled from the case's base 24x50x50. Its `[voxel]` OVERRIDES the case
+# extent doubled from the case's base 32x50x50. Its `[voxel]` OVERRIDES the case
 # volume for runs of this variant, and the brief is rendered at these dimensions.
 slug = "double"
 name = "Double Size"
 
 [voxel]
-width = 48
+width = 64
 height = 100
 depth = 100
 background = "transparent"

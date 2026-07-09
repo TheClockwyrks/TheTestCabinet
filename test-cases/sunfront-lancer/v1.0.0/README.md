@@ -2,9 +2,9 @@
 
 This is version `v1.0.0` of the **Sunfront Lancer** test case: an
 asset-generation case (`asset_kind = "voxel-animation"`) that asks a model to
-sculpt *and rig* a tall bipedal Duneforged marksman-mech as a 24×50×50
-opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a
-time.
+sculpt *and rig* a tall bipedal Duneforged marksman-mech — one with a heavy rail-lance
+cannon **mounted on one shoulder**, a turret bolted to its frame — as a 32×50×50
+opaque-voxel model using only the `voxel-anim` tool, one recorded operation at a time.
 
 `sunfront-lancer` is the catalog slug for this case. It is one of the `sunfront-*`
 Duneforged voxel roster and shares the faction's brass-and-sandstone palette and
@@ -25,9 +25,18 @@ the F-curves) are both game-triggered playables (`auto_play = false`):
 - **`walk`** — the walk: the two legs stride in opposite phase, each foot planting
   flat and still on the ground then lifting clear, swinging forward, and planting
   again with weight, so the mech pushes itself forward rather than flailing. The
-  legs move; the rail-lance holds level.
-- **`fire`** — the weapon showcase: the rail-lance recoils about its chest mount (a
-  quick nod off level, an overshoot, and a settle) while the legs hold their stance.
+  legs move; the shoulder-mounted cannon holds steady.
+- **`fire`** — the weapon showcase: the whole cannon kicks straight back along its own
+  axis in its shoulder mount (a sharp recoil, an overshoot, and a settle), the mount and
+  frame taking the shock, while the legs hold their stance.
+
+The weapon is **frame-mounted, not held**: a long rail-cannon seated on a structural
+turret mount (a trunnion cradle or pintle yoke) bolted to one shoulder, reading as
+machinery built onto the chassis — no hand, no gripping arm. This deliberately sets the
+Lancer apart from the arm-wielded mechs of the roster (the Sentinel's right-arm rifle,
+the Monolith's right-arm cannon, the Bulwark's held maul). The mech is asymmetric above
+the waist (only the legs mirror), and the barrel clears the hull through its full
+elevation.
 
 The model may add its own extra parts, joints, and animations on top, but must not
 drop or contradict these two required animations.
@@ -51,9 +60,10 @@ the skeleton). There is no target model and no operations schema — the binary'
 
 ## Variants
 
-The Lancer ships a single default variant — `base`, declared in
-`variants/base.toml`. It seeds the common brief and is rated on the case's single
-`fidelity` scoring domain; it adds no specs, review items, or domains of its own.
+The Lancer ships three size variants: **`base`** (the case's 32×50×50 volume, the
+default), **`half`** (each extent ~halved, 16×25×25), and **`double`** (each doubled,
+64×100×100). Each declares its own `[voxel]` override and renders the brief at those
+dimensions; all share the single `fidelity` scoring domain and its review items.
 
 ## Versioning
 

@@ -1,5 +1,6 @@
-Sculpt and rig the **Sunfront Lancer**, a bipedal marksman-mech whose long center
-rail-lance aims up and down at the chest while it strides on two legs — as a
+Sculpt and rig the **Sunfront Lancer**, a bipedal marksman-mech with a heavy rail-lance
+cannon mounted on one shoulder — a turret bolted to its frame that elevates on its
+trunnion and kicks back along its own axis — while it strides on two legs, as a
 {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the `voxel-anim` tool. You build it by
 **painting discrete voxel cells** one operation at a time, and you **author its walk
 and weapon animations** as F-curves.
@@ -49,7 +50,8 @@ that help text is the authoritative contract. **Read `parts/<part>.png` after yo
 `scene/` (`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** —
 the whole mech composed from all your parts, drawn when you run `voxel-anim render`. The
 scene views are how you confirm the parts actually fit together: that the legs seat
-under the body and reach the ground and the rail-lance meets the chest. Because each
+under the body and reach the ground, and the cannon seats on its shoulder mount with
+its barrel clearing the hull through the full elevation. Because each
 part is sculpted in the shared volume's coordinates, position each part where it
 belongs on the finished mech; the scene simply composes them there.
 
@@ -73,12 +75,15 @@ exact operation, rig, and animation subcommands.
 Build and rig the mech up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
 correctly, and the rig is complete: an upright body with a head on top, two
-articulated legs planted beneath it, and a long, slender rail-lance projecting
-forward from the chest. **Author the two required animations** as F-curves with the
-`voxel-anim` animation subcommands: a playable **`walk`** (the two legs striding in
-opposite phase, each foot planting flat and still then lifting and swinging — with
-weight, not a weightless slide) and a weapon-only **`fire`** recoil (the lance
-recoiling while the legs hold their stance). The animations are the fixed contract —
+articulated legs planted beneath it, and a heavy rail-lance cannon mounted on one
+shoulder — seated on a structural turret mount bolted to the frame, machinery built
+onto the chassis, with no hand and no gripping arm. **Author the two required
+animations** as F-curves with the `voxel-anim` animation subcommands: a playable
+**`walk`** (the two legs striding in opposite phase, each foot planting flat and still
+then lifting and swinging — with weight, not a weightless slide) and a weapon-only
+**`fire`** recoil (the whole cannon kicking straight back along its own axis in its
+shoulder mount, then settling, while the legs hold their stance). The animations are
+the fixed contract —
 produce both, by those names; the parts and joints that realize them are yours. When
 you are satisfied, stop: the recorded per-part logs and `rig.json` are your finished
 submission.

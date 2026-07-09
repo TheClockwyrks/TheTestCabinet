@@ -12,7 +12,7 @@
     "sentinel":  { "model": "sentinel/rig.json",  "kind": "rigid",   "dimensions": [20, 40, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "small-arms" },
     "trooper":   { "model": "trooper/mesh.glb",   "kind": "skinned", "dimensions": [24, 48, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire", "brace": "brace" }, "muzzle": "small-arms" },
     "bulwark":   { "model": "bulwark/rig.json",   "kind": "rigid",   "dimensions": [40, 60, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": null },
-    "lancer":    { "model": "lancer/rig.json",    "kind": "rigid",   "dimensions": [24, 50, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "lance" },
+    "lancer":    { "model": "lancer/rig.json",    "kind": "rigid",   "dimensions": [32, 50, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "lance" },
     "bombard":   { "model": "bombard/rig.json",   "kind": "rigid",   "dimensions": [40, 40, 60], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "cannon" },
     "flakhound": { "model": "flakhound/rig.json", "kind": "rigid",   "dimensions": [36, 32, 46], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "small-arms" },
     "sunhawk":   { "model": "sunhawk/rig.json",   "kind": "rigid",   "dimensions": [74, 28, 76], "clips": { "idle": "idle", "move": "fly", "attack": "fire" }, "muzzle": "small-arms" },
