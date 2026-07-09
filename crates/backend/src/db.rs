@@ -16,11 +16,11 @@
 use std::path::{Path, PathBuf};
 
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::{Expr, OnConflict};
+use sea_orm::sea_query::{CaseStatement, Expr, Func, OnConflict, SimpleExpr};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
-    DatabaseConnection, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectOptions, ConnectionTrait, Database,
+    DatabaseBackend, DatabaseConnection, EntityTrait, IntoActiveModel, Order, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
@@ -588,6 +588,55 @@ impl Db {
         Ok((runs, next_before))
     }
 
+    /// List summary rows for the console's **numbered** pager: a `limit`-sized
+    /// window at `offset`, ordered by the chosen lifted column (with an `id`
+    /// tiebreak) under the supplied [`SummaryFilter`], **plus** the total count of
+    /// matching rows (ignoring limit/offset) so the console can size the pager.
+    ///
+    /// This is a distinct path from the `before`-cursor listings (which the public
+    /// snapshot drain and the reviewer worklist use) — it is OFFSET/COUNT-based and
+    /// carries filter/free-text/sort parameters. The two never share a query. The
+    /// backing store is embedded SQLite, so the count is a single `COUNT(*)` over
+    /// the same predicate.
+    ///
+    /// Cost and rating NULLs (unknown cost / an unrated run) always sort **last**,
+    /// in either direction: the ordering leads with a null-group key so the
+    /// non-null rows precede the null ones regardless of `dir`. Rating is ordered by
+    /// its **tier** (`flawless > great > scuffed > broken`), not lexically — see
+    /// [`rating_rank_expr`].
+    ///
+    /// [`assemble`](Self::assemble) preserves the input row order (it maps rows
+    /// one-for-one, only skipping any that no longer deserialize), so the returned
+    /// page stays in the sorted order.
+    pub async fn list_summaries(
+        &self,
+        filter: &SummaryFilter,
+        sort: SummarySort,
+        dir: SortDir,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<StoredRun>, usize)> {
+        // The same predicate drives both the COUNT and the page; count first (no
+        // limit/offset), then order + window the page.
+        let total = summary_query(filter).count(&self.conn).await? as usize;
+
+        let order = match dir {
+            SortDir::Asc => Order::Asc,
+            SortDir::Desc => Order::Desc,
+        };
+        let rows = apply_summary_sort(summary_query(filter), sort, order.clone())
+            // A stable final tiebreak on the primary key so paging is deterministic
+            // even when the sort column ties.
+            .order_by(run::Column::Id, order)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.conn)
+            .await?;
+
+        let runs = self.assemble(rows).await?;
+        Ok((runs, total))
+    }
+
     /// Shared worklist query: runs whose `run_state` is one of `states` (pending
     /// and published), newest-first by `finished_at`, paginated by a `finished_at`
     /// cursor.
@@ -1006,6 +1055,159 @@ pub(crate) fn aggregate_review_rating(
 /// wire token, or `None` when the run carries no reviews.
 fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
     aggregate_review_rating(reviews).map(|rating| rating.as_str().to_string())
+}
+
+/// Which lifecycle slice the console's summary listing draws its page from,
+/// mirroring the `state` selector of the cursor listings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SummaryState {
+    /// Published runs only (the public read side). The default.
+    #[default]
+    Published,
+    /// Completed runs (pending + published) — the reviewer worklist.
+    Review,
+    /// The publishable failure tiers (catastrophic + timed-out), pending and
+    /// published.
+    Failures,
+    /// Every unpublished run whatever its terminal state — the "produced" worklist.
+    Unpublished,
+}
+
+/// The filter for [`Db::list_summaries`]: a lifecycle `state` slice, optional
+/// equality filters on the lifted identity columns, and an optional case-
+/// insensitive free-text query — all combined with AND.
+#[derive(Debug, Clone, Default)]
+pub struct SummaryFilter {
+    /// The lifecycle slice to draw from (default [`SummaryState::Published`]).
+    pub state: SummaryState,
+    /// Restrict to one test-case slug (`test_case_slug`).
+    pub test_case: Option<String>,
+    /// Restrict to one model (`model_id`).
+    pub model: Option<String>,
+    /// Restrict to one harness (`harness_slug`).
+    pub harness: Option<String>,
+    /// Free-text query matched case-insensitively (LIKE `%q%`) across
+    /// `test_case_slug`, `model_id`, `harness_slug`, and `variant`.
+    pub q: Option<String>,
+}
+
+/// The sort column for [`Db::list_summaries`], mapped to a lifted `run` column (or,
+/// for [`SummarySort::Rating`], a tier-rank expression).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SummarySort {
+    /// By start time (`started_at`). The default.
+    #[default]
+    Date,
+    /// By end-to-end wall-clock time (`run_time_seconds`).
+    Runtime,
+    /// By total token count (`total_tokens`).
+    Tokens,
+    /// By comparable cost (`cost_comparable`); unknown-cost NULLs sort last.
+    Cost,
+    /// By rating **tier** (`flawless > great > scuffed > broken`); unrated NULLs
+    /// sort last.
+    Rating,
+    /// By test type (`test_type`).
+    TestType,
+    /// By test-case slug (`test_case_slug`).
+    TestCase,
+    /// By harness slug (`harness_slug`).
+    Harness,
+    /// By model id (`model_id`).
+    Model,
+    /// By variant (`variant`).
+    Variant,
+}
+
+/// The sort direction for [`Db::list_summaries`], applied to the primary sort key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortDir {
+    /// Descending — the default (newest / largest / best first).
+    #[default]
+    Desc,
+    /// Ascending.
+    Asc,
+}
+
+/// Build the filtered `run` query shared by [`Db::list_summaries`]'s COUNT and its
+/// page: the lifecycle-state predicate AND'd with the optional equality filters and
+/// the free-text query. No ordering, limit, or offset — the caller adds those.
+fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
+    let mut query = run::Entity::find();
+    query = match filter.state {
+        SummaryState::Published => query.filter(run::Column::Published.eq(true)),
+        SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
+        SummaryState::Failures => {
+            query.filter(run::Column::RunState.is_in(["catastrophic", "timed_out"]))
+        }
+        SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
+    };
+    if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::TestCaseSlug.eq(test_case));
+    }
+    if let Some(model) = filter.model.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::ModelId.eq(model));
+    }
+    if let Some(harness) = filter.harness.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::HarnessSlug.eq(harness));
+    }
+    if let Some(q) = filter.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        // Lower both sides so the match is case-insensitive on any backend (SQLite's
+        // LIKE is ASCII-case-insensitive already; lowering makes it explicit and
+        // portable). OR across the searchable identity columns; AND'd with the rest.
+        let pattern = format!("%{}%", q.to_lowercase());
+        let text = Condition::any()
+            .add(Expr::expr(Func::lower(run::Column::TestCaseSlug.into_expr())).like(&pattern))
+            .add(Expr::expr(Func::lower(run::Column::ModelId.into_expr())).like(&pattern))
+            .add(Expr::expr(Func::lower(run::Column::HarnessSlug.into_expr())).like(&pattern))
+            .add(Expr::expr(Func::lower(run::Column::Variant.into_expr())).like(&pattern));
+        query = query.filter(text);
+    }
+    query
+}
+
+/// Apply the primary sort key (in `order`) to a summary query. The caller appends
+/// the `id` tiebreak. Cost/rating lead with a null-group key so NULLs always sort
+/// last regardless of `order`.
+fn apply_summary_sort(
+    query: Select<run::Entity>,
+    sort: SummarySort,
+    order: Order,
+) -> Select<run::Entity> {
+    match sort {
+        SummarySort::Date => query.order_by(run::Column::StartedAt, order),
+        SummarySort::Runtime => query.order_by(run::Column::RunTimeSeconds, order),
+        SummarySort::Tokens => query.order_by(run::Column::TotalTokens, order),
+        SummarySort::TestType => query.order_by(run::Column::TestType, order),
+        SummarySort::TestCase => query.order_by(run::Column::TestCaseSlug, order),
+        SummarySort::Harness => query.order_by(run::Column::HarnessSlug, order),
+        SummarySort::Model => query.order_by(run::Column::ModelId, order),
+        SummarySort::Variant => query.order_by(run::Column::Variant, order),
+        // Unknown-cost NULLs sort last in either direction: order first by a
+        // null-group key (non-null `false`/0 before null `true`/1), then the value.
+        SummarySort::Cost => query
+            .order_by(run::Column::CostComparable.into_expr().is_null(), Order::Asc)
+            .order_by(run::Column::CostComparable, order),
+        // Rating is a TIER, not a lexical token: rank it via a CASE, with unrated
+        // NULLs pinned last (again via a leading null-group key).
+        SummarySort::Rating => query
+            .order_by(run::Column::Rating.into_expr().is_null(), Order::Asc)
+            .order_by(rating_rank_expr(), order),
+    }
+}
+
+/// A SQL `CASE` mapping the `run.rating` text token to its tier ordinal (`0` best,
+/// larger worse), drawn from [`Rating::rank`](test_cabinet_core::review::Rating) so
+/// the DB order matches the in-memory "worst wins" aggregate. Any unexpected/legacy
+/// non-null token ranks beyond the worst tier; genuine NULLs are separated out by
+/// the caller's null-group key before this is consulted.
+fn rating_rank_expr() -> SimpleExpr {
+    use test_cabinet_core::review::Rating;
+    let mut case = CaseStatement::new();
+    for rating in Rating::ALL {
+        case = case.case(run::Column::Rating.eq(rating.as_str()), rating.rank() as i32);
+    }
+    case.finally(Rating::ALL.len() as i32).into()
 }
 
 /// The wire string for a run state (matching the serde representation).

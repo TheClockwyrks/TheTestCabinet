@@ -1377,3 +1377,284 @@ async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
     // Idempotent: a second pass finds nothing un-backfilled.
     assert_eq!(db.backfill_sort_columns().await.unwrap(), 0);
 }
+
+
+// --- list_summaries: filter / free-text / sort / offset + total ---------------
+
+/// Push an unpublished run with the given identity columns and token count (cost
+/// `Some(1.0)`, no review) for the filter/free-text tests. Left unpublished so the
+/// tests can query it via the [`SummaryState::Unpublished`] slice.
+async fn seed_ident(
+    db: &Db,
+    id: &str,
+    test_case: &str,
+    model: &str,
+    harness: HarnessSlug,
+    variant: &str,
+    tokens: u64,
+) {
+    let mut r = record(id);
+    r.subject.test_case_slug = test_case.to_string();
+    r.subject.model_id = model.to_string();
+    r.subject.harness_slug = harness;
+    r.subject.variant = variant.to_string();
+    r.metrics.run_time_seconds = 1.0;
+    r.metrics.tokens = TokenCounts {
+        uncached_input: Some(tokens),
+        cached_input: None,
+        output: None,
+        reasoning: None,
+    };
+    r.metrics.cost = Cost {
+        comparable: Some(1.0),
+        actual: Some(1.0),
+    };
+    db.push(&r, &links(), None).await.unwrap();
+}
+
+/// Push an unpublished `pong`/`m`/claude/`base` run varying only the sort metrics:
+/// token count, comparable cost (`None` = unknown), and rating (`None` = unrated,
+/// otherwise one review at that rating). For the sort/offset/total tests.
+async fn seed_metric(db: &Db, id: &str, tokens: u64, cost: Option<f64>, rating: Option<Rating>) {
+    let mut r = record(id);
+    r.subject.test_case_slug = "pong".to_string();
+    r.subject.model_id = "m".to_string();
+    r.subject.variant = "base".to_string();
+    r.metrics.run_time_seconds = 1.0;
+    r.metrics.tokens = TokenCounts {
+        uncached_input: Some(tokens),
+        cached_input: None,
+        output: None,
+        reasoning: None,
+    };
+    r.metrics.cost = Cost {
+        comparable: cost,
+        actual: cost,
+    };
+    db.push(&r, &links(), None).await.unwrap();
+    if let Some(rating) = rating {
+        db.add_review(id, &review_by("u1", rating)).await.unwrap();
+    }
+}
+
+/// The `SummaryFilter` for the unpublished slice (where these tests seed).
+fn unpublished_filter() -> SummaryFilter {
+    SummaryFilter {
+        state: SummaryState::Unpublished,
+        ..SummaryFilter::default()
+    }
+}
+
+/// The run ids of an assembled page, in order.
+fn run_ids(runs: &[StoredRun]) -> Vec<String> {
+    runs.iter().map(|run| run.record.id.clone()).collect()
+}
+
+/// A [`Db::list_summaries`] call over the unpublished slice with the given filter,
+/// sort, and direction (no paging), returning just the ordered run ids.
+async fn summary_ids(
+    db: &Db,
+    filter: &SummaryFilter,
+    sort: SummarySort,
+    dir: SortDir,
+) -> Vec<String> {
+    let (runs, _) = db.list_summaries(filter, sort, dir, 50, 0).await.unwrap();
+    run_ids(&runs)
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_test_case_model_and_harness() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // pong/sonnet/claude, pong/opus/codex, snake/sonnet/claude — distinct axes.
+    seed_ident(&db, "a", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(&db, "b", "pong", "opus", HarnessSlug::Codex, "base", 20).await;
+    seed_ident(&db, "c", "snake", "sonnet", HarnessSlug::Claude, "base", 30).await;
+
+    // test_case narrows to the two pong runs.
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        ..unpublished_filter()
+    };
+    let (runs, total) = db
+        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&runs), ["a", "b"]);
+    assert_eq!(total, 2);
+
+    // model narrows to the two sonnet runs.
+    let filter = SummaryFilter {
+        model: Some("sonnet".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c"]
+    );
+
+    // harness narrows to the single codex run.
+    let filter = SummaryFilter {
+        harness: Some("codex".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+
+    // Filters AND together: pong AND sonnet is just `a`.
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        model: Some("sonnet".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_free_text_matches_across_fields_case_insensitively() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_ident(&db, "a", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(&db, "b", "snake", "opus", HarnessSlug::Codex, "hard", 20).await;
+    seed_ident(&db, "c", "tetris", "haiku", HarnessSlug::Claude, "base", 30).await;
+
+    let q = |text: &str| SummaryFilter {
+        q: Some(text.to_string()),
+        ..unpublished_filter()
+    };
+
+    // Model column, matched case-insensitively ("OP" -> opus).
+    assert_eq!(
+        summary_ids(&db, &q("OP"), SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+    // Variant column.
+    assert_eq!(
+        summary_ids(&db, &q("hard"), SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+    // Harness column, across two runs.
+    assert_eq!(
+        summary_ids(&db, &q("claude"), SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c"]
+    );
+    // Test-case column.
+    assert_eq!(
+        summary_ids(&db, &q("tetris"), SummarySort::Tokens, SortDir::Asc).await,
+        ["c"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_by_tokens_and_reverses_with_dir() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "a", 10, Some(1.0), None).await;
+    seed_metric(&db, "b", 30, Some(1.0), None).await;
+    seed_metric(&db, "c", 20, Some(1.0), None).await;
+
+    let filter = unpublished_filter();
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c", "b"]
+    );
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Desc).await,
+        ["b", "c", "a"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_cost_with_unknown_cost_last_in_both_directions() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "hi", 1, Some(3.0), None).await;
+    seed_metric(&db, "lo", 1, Some(1.0), None).await;
+    seed_metric(&db, "no", 1, None, None).await;
+    seed_metric(&db, "mid", 1, Some(2.0), None).await;
+
+    let filter = unpublished_filter();
+    // Ascending by cost, unknown-cost NULL pinned last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Cost, SortDir::Asc).await,
+        ["lo", "mid", "hi", "no"]
+    );
+    // Descending by cost, unknown-cost NULL STILL last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Cost, SortDir::Desc).await,
+        ["hi", "mid", "lo", "no"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_rating_by_tier_with_unrated_last() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "flaw", 1, Some(1.0), Some(Rating::Flawless)).await;
+    seed_metric(&db, "scuf", 1, Some(1.0), Some(Rating::Scuffed)).await;
+    seed_metric(&db, "unr", 1, Some(1.0), None).await;
+    seed_metric(&db, "grea", 1, Some(1.0), Some(Rating::Great)).await;
+
+    let filter = unpublished_filter();
+    // Ascending by tier rank: best (flawless) first, unrated NULL last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Rating, SortDir::Asc).await,
+        ["flaw", "grea", "scuf", "unr"]
+    );
+    // Descending by tier rank: worst (scuffed) first, unrated NULL STILL last —
+    // proving NULLs are pinned, not merely lexically ordered.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Rating, SortDir::Desc).await,
+        ["scuf", "grea", "flaw", "unr"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Five runs with strictly increasing token counts -> a deterministic order.
+    for (i, id) in ["a", "b", "c", "d", "e"].iter().enumerate() {
+        seed_metric(&db, id, (i as u64 + 1) * 10, Some(1.0), None).await;
+    }
+
+    // Page 2 (offset 2, limit 2) of the ascending-by-tokens order is [c, d]; the
+    // total reflects every matching row, not the page size.
+    let (page, total) = db
+        .list_summaries(&unpublished_filter(), SummarySort::Tokens, SortDir::Asc, 2, 2)
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&page), ["c", "d"]);
+    assert_eq!(total, 5);
+
+    // The tail page is short but the total is unchanged.
+    let (tail, total) = db
+        .list_summaries(&unpublished_filter(), SummarySort::Tokens, SortDir::Asc, 2, 4)
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&tail), ["e"]);
+    assert_eq!(total, 5);
+}
+
+#[tokio::test]
+async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Six pong runs and two snake runs; a filtered-and-paged pong query reports
+    // total 6 (the filtered count) even though the page holds only 2.
+    for i in 0..6 {
+        seed_ident(&db, &format!("p{i}"), "pong", "m", HarnessSlug::Claude, "base", i).await;
+    }
+    for i in 0..2 {
+        seed_ident(&db, &format!("s{i}"), "snake", "m", HarnessSlug::Claude, "base", i).await;
+    }
+
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        ..unpublished_filter()
+    };
+    let (page, total) = db
+        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 2, 0)
+        .await
+        .unwrap();
+    assert_eq!(page.len(), 2);
+    assert_eq!(total, 6);
+}
