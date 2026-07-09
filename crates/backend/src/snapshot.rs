@@ -267,6 +267,11 @@ impl SnapshotBuilder {
     }
 
     /// The denormalized summary card for one run.
+    ///
+    /// This wraps [`RunSummary::from_stored`] and overrides only the two fields
+    /// the snapshot resolves differently from the bare stored run: `case_name`
+    /// comes from the ingested case catalog (falling back to the slug), and the
+    /// snapshot only ever holds reviewed runs so `rating` is always `Some`.
     fn summary(&self, run: &StoredRun) -> RunSummary {
         let record = &run.record;
         let case_name = self
@@ -280,20 +285,9 @@ impl SnapshotBuilder {
             .unwrap_or_else(|| record.subject.test_case_slug.clone());
 
         RunSummary {
-            id: record.id.clone(),
-            // The snapshot only ever contains published runs, so `published_at`
-            // is always set; default defensively rather than panic.
-            published_at: run.published_at.clone().unwrap_or_default(),
-            started_at: record.started_at.clone(),
-            finished_at: record.finished_at.clone(),
-            subject: SubjectOut::from(record),
             case_name,
-            metrics: record.metrics,
-            validation_loaded: record.validation.loaded,
-            state: record.status.state,
             rating: Some(aggregate_rating(&run.reviews)),
-            review_count: run.reviews.len(),
-            links: links_out(&run.links),
+            ..RunSummary::from_stored(run)
         }
     }
 
@@ -814,6 +808,39 @@ pub struct RunSummary {
     /// aggregate sits between the harshest and most generous review.
     pub review_count: usize,
     pub links: LinksOut,
+}
+
+impl RunSummary {
+    /// Build a bounded summary card from a stored run, WITHOUT needing the case
+    /// catalog. This is the single source of truth for the card fields shared by
+    /// the public snapshot ([`SnapshotBuilder::summary`]) and the console's
+    /// `GET /runs?fields=summary` listing.
+    ///
+    /// `rating` is the aggregate across the run's reviews, or `None` when the run
+    /// carries no reviews yet (an unrated console run). `case_name` falls back to
+    /// the test-case slug — a backend-connected console resolves display names
+    /// itself; only the static snapshot substitutes the real catalog name (see
+    /// [`SnapshotBuilder::summary`]).
+    pub fn from_stored(run: &StoredRun) -> Self {
+        let record = &run.record;
+        Self {
+            id: record.id.clone(),
+            // The snapshot only ever contains published runs, so `published_at`
+            // is always set there; default defensively rather than panic. A
+            // console (unpublished) run may legitimately carry none.
+            published_at: run.published_at.clone().unwrap_or_default(),
+            started_at: record.started_at.clone(),
+            finished_at: record.finished_at.clone(),
+            subject: SubjectOut::from(record),
+            case_name: record.subject.test_case_slug.clone(),
+            metrics: record.metrics,
+            validation_loaded: record.validation.loaded,
+            state: record.status.state,
+            rating: aggregate_rating_inner(&run.reviews),
+            review_count: run.reviews.len(),
+            links: links_out(&run.links),
+        }
+    }
 }
 
 /// The run subject as a summary card carries it (the slug enum, not a string).

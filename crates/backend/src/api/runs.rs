@@ -23,6 +23,7 @@ use test_cabinet_core::run_record::RunRecord;
 use crate::auth::AuthUser;
 use crate::db::{Reviewer, StoredReview, StoredRun};
 use crate::error::ApiError;
+use crate::snapshot::RunSummary;
 
 use super::AppState;
 
@@ -193,10 +194,16 @@ pub async fn delete(
 /// state (completed, every failure tier, including the never-publishable
 /// infrastructure failures), ordered by finish time — the console's "produced"
 /// worklist, disjoint from the default published listing.
+///
+/// `fields=summary` returns bounded [`RunSummary`] cards (the lightweight shape
+/// the console's run log and list pages consume) instead of full
+/// [`StoredRunOut`] records; the cursor (`before`/`limit`) and `state` selector
+/// behave identically for both projections. Any other `fields` value (or none)
+/// keeps the default full records.
 pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
-) -> Result<Json<ListResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let (runs, next_before) = match params.state.as_deref() {
         Some("review") | Some("all") => state
@@ -220,10 +227,19 @@ pub async fn list(
             .await
             .map_err(ApiError::from)?,
     };
-    Ok(Json(ListResponse {
-        runs: runs.iter().map(stored_run_out).collect(),
-        next_before,
-    }))
+    if params.fields.as_deref() == Some("summary") {
+        Ok(Json(SummaryListResponse {
+            runs: runs.iter().map(RunSummary::from_stored).collect(),
+            next_before,
+        })
+        .into_response())
+    } else {
+        Ok(Json(ListResponse {
+            runs: runs.iter().map(stored_run_out).collect(),
+            next_before,
+        })
+        .into_response())
+    }
 }
 
 /// `GET /adversarial/controllers?testCase=<slug>` — the pushed adversarial
@@ -383,12 +399,26 @@ pub struct ListParams {
     /// `published` (default) for the public listing, or `review`/`all` for the
     /// reviewer worklist (pending + published).
     state: Option<String>,
+    /// `summary` returns bounded [`RunSummary`] cards instead of full
+    /// [`StoredRunOut`] records; any other value (or none) keeps the full records.
+    fields: Option<String>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListResponse {
     runs: Vec<StoredRunOut>,
+    next_before: Option<String>,
+}
+
+/// The lightweight `fields=summary` projection of [`ListResponse`]: bounded run
+/// cards plus the same cursor. Not a contract-codegen type — a plain axum
+/// response reusing the [`RunSummary`] contract shape (already registered via the
+/// snapshot's `runs.json` index).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummaryListResponse {
+    runs: Vec<RunSummary>,
     next_before: Option<String>,
 }
 

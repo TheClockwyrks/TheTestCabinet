@@ -186,6 +186,35 @@ fn now() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(1_718_660_880).unwrap()
 }
 
+#[test]
+fn run_summary_from_stored_maps_fields_without_a_catalog() {
+    // A reviewed run: the aggregate rating is the worst across its reviews (here a
+    // single `Great`), the test type is carried through, and `case_name` falls
+    // back to the slug because `from_stored` never consults the case catalog.
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    // Add a harsher domain rating so the aggregate is the worst of the two.
+    run.reviews[0].ratings.push(DomainRating {
+        domain: "polish".to_string(),
+        rating: Rating::Scuffed,
+    });
+    let summary = RunSummary::from_stored(&run);
+    assert_eq!(summary.id, "r1");
+    assert_eq!(summary.case_name, "pong"); // slug fallback, not a catalog name
+    assert_eq!(summary.subject.test_type, test_cabinet_core::TestType::EndToEnd);
+    assert_eq!(summary.subject.test_case_slug, "pong");
+    assert_eq!(summary.review_count, 1);
+    assert!(summary.validation_loaded);
+    assert_eq!(summary.rating, Some(Rating::Scuffed)); // worst across the two domains
+
+    // An unrated run (no reviews) carries a `None` rating — the whole point of the
+    // field being optional for console runs.
+    let mut unrated = stored_run("r2", "2026-06-17T21:41:00Z");
+    unrated.reviews.clear();
+    let summary = RunSummary::from_stored(&unrated);
+    assert_eq!(summary.rating, None);
+    assert_eq!(summary.review_count, 0);
+}
+
 #[tokio::test]
 async fn snapshot_has_index_runs_per_run_and_case_objects() {
     let runs = vec![stored_run("r1", "2026-06-17T21:40:00Z")];
