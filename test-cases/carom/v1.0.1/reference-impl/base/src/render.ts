@@ -219,13 +219,18 @@ function drawTrail(ctx: Ctx, game: Game): void {
   ctx.restore();
 }
 
-function drawBall(ctx: Ctx, game: Game): void {
+function drawBall(
+  ctx: Ctx,
+  game: Game,
+  x = game.ball.x,
+  y = game.ball.y,
+): void {
   ctx.save();
   ctx.shadowColor = "rgba(242, 245, 247, 0.8)";
   ctx.shadowBlur = 16;
   ctx.fillStyle = COLOR.ball;
   ctx.beginPath();
-  ctx.arc(game.ball.x, game.ball.y, BALL_R, 0, Math.PI * 2);
+  ctx.arc(x, y, BALL_R, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -248,13 +253,20 @@ function drawVignette(ctx: Ctx): void {
 }
 
 // The full field furniture (net, obstacles, paddles). `alpha` dims it behind a
-// menu overlay.
-function drawField(ctx: Ctx, game: Game, alpha = 1): void {
+// menu overlay. `includePaddles` can be turned off so the match scene can lift
+// the paddles above the vignette (see drawMatchScene) rather than let the
+// vignette darken them at the field edges where they live.
+function drawField(
+  ctx: Ctx,
+  game: Game,
+  alpha = 1,
+  includePaddles = true,
+): void {
   ctx.save();
   ctx.globalAlpha = alpha;
   drawNet(ctx);
   drawObstacles(ctx);
-  drawPaddles(ctx, game);
+  if (includePaddles) drawPaddles(ctx, game);
   ctx.restore();
 }
 
@@ -334,7 +346,10 @@ function drawMenu(
 
 function drawTitle(ctx: Ctx, game: Game): void {
   drawField(ctx, game, 0.28);
-  drawBall(ctx, game); // dim static ball, part of the posed furniture
+  // A posed decorative ball, off in the open field to the lower right so it
+  // clears the title, subtitle, and menu text (it previously sat dead-center
+  // over the "NEON PADDLE DUEL" subtitle and made it hard to read).
+  drawBall(ctx, game, 968, 470);
   drawVignette(ctx);
 
   drawText(ctx, "CAROM", FIELD_W / 2, 246, {
@@ -422,10 +437,16 @@ function drawHowTo(ctx: Ctx, game: Game): void {
 }
 
 function drawMatchScene(ctx: Ctx, game: Game): void {
-  drawField(ctx, game, 1);
+  // Net and obstacles sit under the vignette (atmospheric edge darkening); the
+  // ball, its trail, and the paddles are drawn on top of it so the moving
+  // pieces keep full neon brightness everywhere on the field. Under the
+  // vignette the ball dimmed as it crossed toward the edges — reading as a
+  // brightness pulse — and the edge-hugging paddles looked permanently muted.
+  drawField(ctx, game, 1, false);
+  drawVignette(ctx);
   drawTrail(ctx, game);
   drawBall(ctx, game);
-  drawVignette(ctx);
+  drawPaddles(ctx, game);
   drawHud(ctx, game);
 }
 
