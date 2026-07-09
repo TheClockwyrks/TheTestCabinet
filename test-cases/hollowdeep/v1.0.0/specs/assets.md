@@ -1,10 +1,15 @@
 # Hollowdeep — Assets you produce (the production contract)
 
 Hollowdeep ships with **no** pre-made art, effects, or sound. Instead, the run image
-puts six **asset-generation tools** on your `PATH`, and **you must produce every
-asset the game plays with those tools, during this build**, then wire the produced
-files into the game. This is the defining requirement of the case: you are the
-artist, the VFX author, and the sound designer as well as the engineer. This file is
+puts six **asset-generation tools** on your `PATH` to help you make them, and **you
+must produce every asset the game plays — with those tools or any other way you
+prefer — and commit the produced files**, then wire them into the game. Produce
+them as a one-time step: your build (`npm run build`) must be **self-contained**,
+bundling the committed files without invoking the tools, which are on your
+`PATH` only while this run is live — not when the build is re-run to validate
+it or rebuilt from the published source. This is the defining requirement of the
+case: you are the artist, the VFX author, and the sound designer as well as the
+engineer. This file is
 the contract — what to produce, which tool makes it, where it lands, and how it is
 wired in. **Read it as carefully as the simulation specs.**
 

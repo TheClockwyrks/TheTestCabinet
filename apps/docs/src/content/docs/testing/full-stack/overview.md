@@ -85,6 +85,17 @@ inputs**, and they are judged only as part of the running program a reviewer
 plays — the asset's quality is a dimension of the experience, not a
 independently-scored artifact.
 
+Because they are build *inputs*, asset generation happens **once** and the
+generated files are committed. The asset-generation binaries are on `PATH` only
+while the run is live — they are **not** present when the build is re-run to
+[validate](/components/core/validation/) it, nor when the published source is
+rebuilt. A case's build must therefore be **self-contained**: it bundles the
+committed asset files and must not invoke `draw` or the other binaries. A build
+that shells out to them (regenerating assets it already has) fails wherever those
+tools are absent — a catastrophic load failure, even though the game itself is
+complete. Producing the assets some other way is equally fine; what matters is
+that the committed files are what the build consumes.
+
 How each kind is consumed mirrors how an end-to-end build consumes a provided or
 produced asset:
 
