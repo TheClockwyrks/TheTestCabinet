@@ -121,6 +121,120 @@
   flex-wrap: wrap;
 }
 
+// --- Batch launch: the editable list of harness/model combinations -----------
+
+.comboList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+// One combination row: its per-row fields (harness, model, optional provider) plus
+// a remove control, on one line, wrapping their controls under each other only when
+// the row is truly cramped. Panelled so each row reads as a distinct combination.
+.comboRow {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+// The per-row fields flex to share the row; the model field takes the extra space
+// since ids are the longest values.
+.comboField {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.comboFieldWide {
+  flex: 2 1 14rem;
+  min-width: 0;
+}
+
+// The remove-combination button: a compact, muted glyph that turns negative on
+// hover, aligned to the bottom of the row so it sits on the controls' line.
+.comboRemove {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.4rem;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// --- Batch launch: the per-combination result summary ------------------------
+
+.launchResults {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin: t.$space-md 0;
+}
+
+.resultList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.resultRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.resultOk {
+  border-color: t.$color-positive;
+}
+
+.resultFail {
+  border-color: t.$color-negative;
+}
+
+.resultLabel {
+  color: t.$color-text;
+  min-width: 0;
+}
+
+.resultLink {
+  color: t.$color-accent;
+  white-space: nowrap;
+}
+
+.resultError {
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+  min-width: 0;
+}
+
 .primary,
 .secondary {
   font-family: var(--ttc-font);

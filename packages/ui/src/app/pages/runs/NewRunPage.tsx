@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
@@ -23,10 +23,43 @@ import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import styles from "./RunExec.module.scss";
 
-// Configure and launch a run, then hand off to the live monitor. The catalog
-// (cases, harnesses, models) comes from the active backend; the run is submitted
-// to the active worker. This is the routed home of the old console Run screen's
-// configuration half — the event stream now lives on the monitor page.
+// One harness/model[/provider] combination to launch. The test (case, version,
+// variant, orchestrator, max runtime) is shared across all combinations; each
+// combination varies the harness and model (and, for provider-routed harnesses,
+// the provider) so a single form submission can fan out across many runs.
+interface Combination {
+  /** A stable client-side key so React and per-row edits track the right row. */
+  id: string;
+  harness: string;
+  modelId: string;
+  provider: string;
+}
+
+// The result of attempting to launch one combination. `runId` is set on success
+// (and links to the live monitor); `error` on failure. Partial results are the
+// norm — one combination failing must not abort the rest.
+interface LaunchOutcome {
+  key: string;
+  harness: string;
+  modelId: string;
+  runId?: string;
+  error?: string;
+}
+
+function makeCombination(id: string): Combination {
+  return {
+    id,
+    harness: harnesses[0]?.slug ?? "",
+    modelId: "",
+    provider: OPENROUTER_PROVIDER,
+  };
+}
+
+// Configure and launch one or more runs, then hand off to the live monitor (single
+// run) or a launch summary (batch). The catalog (cases, harnesses, models) comes
+// from the active backend; each run is submitted to the active worker. This is the
+// routed home of the old console Run screen's configuration half — the event stream
+// now lives on the monitor page.
 export function NewRunPage() {
   const navigate = useNavigate();
   const { client: backend } = useBackend();
@@ -45,21 +78,21 @@ export function NewRunPage() {
   const testCaseName = useTestCaseName();
 
   const [models, setModels] = useState<Model[]>([]);
-  // Harnesses are a fixed, code-defined catalog (not backend-served): default to
-  // the first and let the picker choose among them.
-  const [harness, setHarness] = useState(harnesses[0]?.slug ?? "");
   // The orchestrator that conducts the harness sessions. Selectable only for the
   // end-to-end test type (the selector below is hidden otherwise); every other
   // test type always submits the default `one-shot`. Built-in slugs only — the
   // worker has no access to a submitter's local orchestrator directory.
   const [orchestrator, setOrchestrator] = useState(DEFAULT_ORCHESTRATOR_SLUG);
-  const [modelId, setModelId] = useState("");
-  // The provider that routes the model for provider-routed harnesses (OpenCode /
-  // Kilo Code). Ignored for every other harness. Defaults to OpenRouter.
-  const [provider, setProvider] = useState(OPENROUTER_PROVIDER);
   const [maxRuntime, setMaxRuntime] = useState("");
+  // The harness/model combinations to launch. The form starts with one empty row
+  // so the single-run path is unchanged in feel; "Add combination" fans out.
+  const [combinations, setCombinations] = useState<Combination[]>(() => [
+    makeCombination("c0"),
+  ]);
+  const nextComboId = useRef(1);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
+  const [results, setResults] = useState<LaunchOutcome[] | null>(null);
 
   useEffect(() => {
     if (!backend) return;
@@ -68,12 +101,42 @@ export function NewRunPage() {
       .then((ms) => {
         setModels(ms);
         const firstId = ms[0]?.aliases[0] ?? ms[0]?.slug ?? "";
-        if (firstId) setModelId(firstId);
+        // Seed the first (default) combination's model so the single-run path is
+        // ready to launch immediately, without clobbering a model the user has
+        // already typed or any subsequently-added rows.
+        if (firstId) {
+          setCombinations((prev) =>
+            prev.map((c, i) =>
+              i === 0 && !c.modelId ? { ...c, modelId: firstId } : c,
+            ),
+          );
+        }
       })
       .catch(() => {
         // The model catalog is optional; leave the field free-text.
       });
   }, [backend]);
+
+  function updateCombination(id: string, patch: Partial<Combination>) {
+    setCombinations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+    );
+  }
+  function addCombination() {
+    setCombinations((prev) => [
+      ...prev,
+      makeCombination(`c${nextComboId.current++}`),
+    ]);
+  }
+  function removeCombination(id: string) {
+    // Keep at least one row so the form is always usable.
+    setCombinations((prev) =>
+      prev.length <= 1 ? prev : prev.filter((c) => c.id !== id),
+    );
+  }
+
+  const harnessName = (slug: string) =>
+    harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
 
   // The catalog arrives in slug order, but the dropdown labels each option with
   // the display name — so sort by resolved display name to keep the list
@@ -107,6 +170,11 @@ export function NewRunPage() {
   // needs no token.
   const needsAuth = Boolean(worker && !worker.local);
   const signedOut = needsAuth && !token;
+  // Every combination must name a harness and a model; a partially-filled row
+  // would otherwise be silently skipped.
+  const combosValid =
+    combinations.length > 0 &&
+    combinations.every((c) => c.harness && c.modelId);
   const canLaunch = Boolean(
     worker &&
     !mismatched &&
@@ -114,42 +182,77 @@ export function NewRunPage() {
     sel.slug &&
     sel.version &&
     sel.variant &&
-    harness &&
-    modelId &&
+    combosValid &&
     !launching,
   );
 
   async function onLaunch() {
     if (!worker) return;
     setLaunchError(null);
+    setResults(null);
     setLaunching(true);
-    try {
-      const runId = await worker.client.launchRun(
-        {
-          testCase: sel.slug,
-          version: sel.version,
+    // Fan out client-side: one launch per combination. Launches run sequentially
+    // and each is isolated in its own try/catch so a single failure never aborts
+    // the rest — every combination reports its own success or error.
+    const outcomes: LaunchOutcome[] = [];
+    for (const combo of combinations) {
+      try {
+        const runId = await worker.client.launchRun(
+          {
+            testCase: sel.slug,
+            version: sel.version,
+            variant: sel.variant,
+            harness: combo.harness,
+            modelId: resolveLaunchModel(
+              combo.harness,
+              combo.provider,
+              combo.modelId,
+            ),
+            orchestrator: submittedOrchestrator,
+            maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
+          },
+          token,
+        );
+        runtime.track({
+          runId,
+          testCaseSlug: sel.slug,
+          testCaseVersion: sel.version,
           variant: sel.variant,
-          harness,
-          modelId: resolveLaunchModel(harness, provider, modelId),
-          orchestrator: submittedOrchestrator,
-          maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
-        },
-        token,
-      );
-      runtime.track({
-        runId,
-        testCaseSlug: sel.slug,
-        testCaseVersion: sel.version,
-        variant: sel.variant,
-        harnessSlug: harness,
-        modelId,
-        state: "running",
-      });
-      navigate(routes.runMonitor(runId));
-    } catch (e) {
-      setLaunchError(String(e));
-      setLaunching(false);
+          harnessSlug: combo.harness,
+          modelId: combo.modelId,
+          state: "running",
+        });
+        outcomes.push({
+          key: combo.id,
+          harness: combo.harness,
+          modelId: combo.modelId,
+          runId,
+        });
+      } catch (e) {
+        outcomes.push({
+          key: combo.id,
+          harness: combo.harness,
+          modelId: combo.modelId,
+          error: String(e),
+        });
+      }
     }
+    setLaunching(false);
+
+    // Single-launch path is unchanged in feel: on success jump straight to the
+    // live monitor; on failure surface the error inline as before.
+    const only = outcomes.length === 1 ? outcomes[0] : undefined;
+    if (only) {
+      if (only.runId) {
+        navigate(routes.runMonitor(only.runId));
+        return;
+      }
+      setLaunchError(only.error ?? "Launch failed.");
+      return;
+    }
+    // Batch path: keep the user here with a per-combination summary linking to
+    // each launched run (and the runs list), so partial failures stay visible.
+    setResults(outcomes);
   }
 
   return (
@@ -229,21 +332,6 @@ export function NewRunPage() {
             ))}
           </select>
         </label>
-
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Harness</span>
-          <select
-            className={styles.select}
-            value={harness}
-            onChange={(e) => setHarness(e.target.value)}
-          >
-            {harnesses.map((h) => (
-              <option key={h.slug} value={h.slug}>
-                {h.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
         {buildsProgram && (
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Orchestrator</span>
@@ -259,33 +347,6 @@ export function NewRunPage() {
               {BUILT_IN_ORCHESTRATORS.map((o) => (
                 <option key={o.slug} value={o.slug} title={o.description}>
                   {o.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Model</span>
-          <ModelCombobox
-            value={modelId}
-            onChange={setModelId}
-            models={models}
-            inputClassName={styles.input}
-            placeholder="model id (e.g. claude-opus-4-8)"
-          />
-        </label>
-        {harnessUsesProvider(harness) && (
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Provider</span>
-            <select
-              className={styles.select}
-              value={provider}
-              onChange={(e) => setProvider(e.target.value)}
-              title="How this harness reaches the model — the model id is launched with this provider's routing prefix."
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
                 </option>
               ))}
             </select>
@@ -308,18 +369,129 @@ export function NewRunPage() {
         </label>
       </div>
 
+      <p className={styles.sectionLabel}>Harness / model combinations</p>
+      <div className={styles.comboList}>
+        {combinations.map((combo) => (
+          <div key={combo.id} className={styles.comboRow}>
+            <label className={`${styles.field} ${styles.comboField}`}>
+              <span className={styles.fieldLabel}>Harness</span>
+              <select
+                className={styles.select}
+                value={combo.harness}
+                onChange={(e) =>
+                  updateCombination(combo.id, { harness: e.target.value })
+                }
+              >
+                {harnesses.map((h) => (
+                  <option key={h.slug} value={h.slug}>
+                    {h.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={`${styles.field} ${styles.comboFieldWide}`}>
+              <span className={styles.fieldLabel}>Model</span>
+              <ModelCombobox
+                value={combo.modelId}
+                onChange={(v) => updateCombination(combo.id, { modelId: v })}
+                models={models}
+                inputClassName={styles.input}
+                placeholder="model id (e.g. claude-opus-4-8)"
+              />
+            </label>
+            {harnessUsesProvider(combo.harness) && (
+              <label className={`${styles.field} ${styles.comboField}`}>
+                <span className={styles.fieldLabel}>Provider</span>
+                <select
+                  className={styles.select}
+                  value={combo.provider}
+                  onChange={(e) =>
+                    updateCombination(combo.id, { provider: e.target.value })
+                  }
+                  title="How this harness reaches the model — the model id is launched with this provider's routing prefix."
+                >
+                  {PROVIDERS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button
+              type="button"
+              className={styles.comboRemove}
+              onClick={() => removeCombination(combo.id)}
+              disabled={combinations.length <= 1}
+              aria-label="Remove combination"
+              title="Remove combination"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.secondary}
+          onClick={addCombination}
+        >
+          + Add combination
+        </button>
+      </div>
+
       <div className={styles.actions}>
         <button
           className={styles.primary}
           onClick={onLaunch}
           disabled={!canLaunch}
         >
-          {launching ? "Launching…" : "Launch run"}
+          {launching
+            ? "Launching…"
+            : combinations.length > 1
+              ? `Launch ${combinations.length} runs`
+              : "Launch run"}
         </button>
         {sel.loading && (
           <span className={styles.muted}>resolving version…</span>
         )}
       </div>
+
+      {results && (
+        <div className={styles.launchResults}>
+          <p className={styles.sectionLabel}>
+            Launched {results.filter((o) => o.runId).length} of {results.length}
+          </p>
+          <ul className={styles.resultList}>
+            {results.map((o) => (
+              <li
+                key={o.key}
+                className={`${styles.resultRow} ${
+                  o.runId ? styles.resultOk : styles.resultFail
+                }`}
+              >
+                <span className={styles.resultLabel}>
+                  {harnessName(o.harness)} · {o.modelId}
+                </span>
+                {o.runId ? (
+                  <Link
+                    className={styles.resultLink}
+                    to={routes.runMonitor(o.runId)}
+                  >
+                    view run →
+                  </Link>
+                ) : (
+                  <span className={styles.resultError}>{o.error}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <Link className={styles.muted} to={routes.runs()}>
+            Go to runs list →
+          </Link>
+        </div>
+      )}
 
       {(launchError || sel.error) && (
         <p className={`${styles.notice} ${styles.error}`}>
