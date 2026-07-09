@@ -8,6 +8,12 @@ import {
   BUILT_IN_ORCHESTRATORS,
   DEFAULT_ORCHESTRATOR_SLUG,
 } from "../../data/orchestrators";
+import {
+  OPENROUTER_PROVIDER,
+  PROVIDERS,
+  harnessUsesProvider,
+  resolveLaunchModel,
+} from "../../data/providers";
 import { ModelCombobox } from "../../components/ModelCombobox";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
@@ -48,6 +54,9 @@ export function NewRunPage() {
   // worker has no access to a submitter's local orchestrator directory.
   const [orchestrator, setOrchestrator] = useState(DEFAULT_ORCHESTRATOR_SLUG);
   const [modelId, setModelId] = useState("");
+  // The provider that routes the model for provider-routed harnesses (OpenCode /
+  // Kilo Code). Ignored for every other harness. Defaults to OpenRouter.
+  const [provider, setProvider] = useState(OPENROUTER_PROVIDER);
   const [maxRuntime, setMaxRuntime] = useState("");
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
@@ -121,7 +130,7 @@ export function NewRunPage() {
           version: sel.version,
           variant: sel.variant,
           harness,
-          modelId,
+          modelId: resolveLaunchModel(harness, provider, modelId),
           orchestrator: submittedOrchestrator,
           maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
         },
@@ -265,6 +274,23 @@ export function NewRunPage() {
             placeholder="model id (e.g. claude-opus-4-8)"
           />
         </label>
+        {harnessUsesProvider(harness) && (
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Provider</span>
+            <select
+              className={styles.select}
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              title="How this harness reaches the model — the model id is launched with this provider's routing prefix."
+            >
+              {PROVIDERS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Max runtime (s, optional)</span>
           <input

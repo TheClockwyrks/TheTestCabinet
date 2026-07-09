@@ -12,7 +12,7 @@
 // harnesses that route through OpenRouter.
 
 /** The provider-routing prefix OpenCode / Kilo Code prepend to OpenRouter ids. */
-const OPENROUTER_PREFIX = "openrouter/";
+export const OPENROUTER_PREFIX = "openrouter/";
 
 /** The harnesses that reach their model *directly* (not through OpenRouter), so a
  * trailing `:tag` is part of the id rather than an OpenRouter variant to strip. */
