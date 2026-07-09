@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { StoredReview } from "../../../../client/types";
 import { Panel } from "@test-cabinet/ui";
 import { useAuth } from "../../../../client/auth";
 import { useGalleryData } from "../../../data/galleryContext";
@@ -18,19 +19,23 @@ import styles from "./RunDetailPages.module.scss";
 export function RunReviewPage() {
   return (
     <RunDetailLayout tab="verdict">
-      {({ run }) => <SingleReview run={run} />}
+      {({ run, reviews }) => <SingleReview run={run} reviews={reviews} />}
     </RunDetailLayout>
   );
 }
 
-function SingleReview({ run }: { run: RunRecord }) {
+function SingleReview({
+  run,
+  reviews,
+}: {
+  run: RunRecord;
+  reviews: StoredReview[];
+}) {
   const { reviewerId } = useParams<{ reviewerId: string }>();
   const gallery = useGalleryData();
   const { account } = useAuth();
   const { localIds } = gallery;
-  const review = gallery
-    .reviewsFor(run.id)
-    .find((r) => r.reviewerId === reviewerId);
+  const review = reviews.find((r) => r.reviewerId === reviewerId);
   const model = gallery.reviewModelFor(run.subject);
 
   // The overall rating (worst across domains) and score for the top section's

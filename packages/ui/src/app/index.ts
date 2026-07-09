@@ -22,6 +22,7 @@ export {
   type HarnessAuthApi,
   type HarnessAuthMode,
   type InProgressRun,
+  type RunDetail,
   type SubscriptionFile,
 } from "./data/galleryContext";
 

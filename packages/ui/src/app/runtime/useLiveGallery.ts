@@ -21,6 +21,7 @@ import type {
   CatalogStatus,
   GalleryDataInput,
   HarnessAuthApi,
+  RunDetail,
 } from "../data/galleryContext";
 import type {
   ChangelogEntry,
@@ -422,20 +423,27 @@ export function useLiveGallery(
     [runs, reviews],
   );
 
-  // Resolve a single run's record by id for a run the loaded list doesn't carry
+  // Resolve a single run's detail by id for a run the loaded list doesn't carry
   // (an infrastructure failure, in no worklist; or a run off the current page).
   // A produced (local) run is read from its worker, any other from the backend;
-  // both expose the run store's `GET /runs/{id}`, which serves a stored run
-  // whatever its state. A transport that can't reach it resolves to null so the
-  // detail page falls back cleanly to its "no run found" state.
+  // both expose the run store's `GET /runs/{id}`, which serves a stored run — its
+  // record and every review — whatever its state. The reviews travel with the
+  // record (the same `StoredReview` shape `ingest` reads) so the detail layer
+  // frames the verdict from these rather than the console's global reviews map. A
+  // transport that can't reach it resolves to null so the detail page falls back
+  // cleanly to its "no run found" state.
   const readRun = useCallback(
-    async (runId: string): Promise<RunRecord | null> => {
+    async (runId: string): Promise<RunDetail | null> => {
+      const toDetail = (stored: StoredRun): RunDetail => ({
+        record: stored.record,
+        reviews: stored.reviews ?? [],
+      });
       try {
         if (localIds.has(runId) && workerClient) {
-          return (await workerClient.readRun(runId)).record;
+          return toDetail(await workerClient.readRun(runId));
         }
-        if (backend) return (await backend.readRun(runId)).record;
-        if (workerClient) return (await workerClient.readRun(runId)).record;
+        if (backend) return toDetail(await backend.readRun(runId));
+        if (workerClient) return toDetail(await workerClient.readRun(runId));
         return null;
       } catch (e) {
         if (e instanceof NotSupportedError) return null;

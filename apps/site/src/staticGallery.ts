@@ -6,6 +6,7 @@ import {
   toModelSummary,
   toRunSummary,
   type GalleryDataInput,
+  type RunDetail,
 } from "@test-cabinet/ui/app";
 import {
   runs as publishedRuns,
@@ -119,25 +120,30 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
-  // Lazily resolve one run's full record. Published runs are emitted at build
-  // time as a per-run static asset (`runs/<id>.json`) by vite-plugin-snapshot, so
-  // a summary-first page can fetch a whole record on demand without the bundle
-  // inlining every record (the U7 cleanup drops the inlined `runs` array in favor
-  // of this). Falls back to the in-memory `runs` array — dev-only local runs (not
-  // emitted as assets) and any published run whose asset 404s — and finally null.
-  // Wired as the host's `readRun` hook; the gallery context's `fetchRun`
-  // delegates to it. Stable identity so consumers don't refetch on every render.
+  // Lazily resolve one run's detail — its full record plus every review. Published
+  // records are emitted at build time as a per-run static asset (`runs/<id>.json`)
+  // by vite-plugin-snapshot, so a summary-first page can fetch a whole record on
+  // demand without the bundle inlining every record (the U7 cleanup drops the
+  // inlined `runs` array in favor of this). The reviews come from the inlined
+  // published-reviews map (small, kept in the bundle), so the run-detail layer
+  // frames the verdict from these rather than the global writeups map. Falls back
+  // to the in-memory `runs` array — dev-only local runs (not emitted as assets)
+  // and any published run whose asset 404s — and finally null. Wired as the host's
+  // `readRun` hook; the gallery context's `fetchRun` delegates to it. Stable
+  // identity so consumers don't refetch on every render.
   const fetchRun = useCallback(
-    async (runId: string): Promise<RunRecord | null> => {
+    async (runId: string): Promise<RunDetail | null> => {
+      const runReviews = publishedReviews[runId] ?? [];
       const inMemory = runs.find((run) => run.id === runId);
-      if (inMemory) return inMemory;
+      if (inMemory) return { record: inMemory, reviews: runReviews };
       const url = `${import.meta.env.BASE_URL}runs/${encodeURIComponent(
         runId,
       )}.json`;
       try {
         const response = await fetch(url);
         if (!response.ok) return null;
-        return (await response.json()) as RunRecord;
+        const record = (await response.json()) as RunRecord;
+        return { record, reviews: runReviews };
       } catch {
         return null;
       }

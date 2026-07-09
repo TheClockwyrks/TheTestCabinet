@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
-import { useGalleryData } from "../../data/galleryContext";
+import { useGalleryData, type RunDetail } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
-import { type ParsedWriteup, worstRating } from "../../data/ratings";
+import { type ParsedWriteup, parseWriteup, worstRating } from "../../data/ratings";
+import { frameReviews } from "../../data/frameReview";
 import { describeRunState, hasPlayableOutcome } from "../../data/runState";
-import { useFindReview } from "../../data/writeups";
 import { routes } from "../../routes";
 import styles from "./RunDetailLayout.module.scss";
 
@@ -32,10 +33,15 @@ interface RunDetailLayoutProps {
    * Events tab's feed) can grow into the space below the tabs.
    */
   fill?: boolean;
-  /** The tab body, given the resolved run and its review (if any). */
+  /**
+   * The tab body, given the resolved run, its framed review (if any), and the raw
+   * per-reviewer breakdown fetched with the record — so the Verdict/review/editor
+   * tabs read reviews from here rather than the console's global reviews map.
+   */
   children: (ctx: {
     run: RunRecord;
     review: ParsedWriteup | undefined;
+    reviews: StoredReview[];
   }) => ReactNode;
 }
 
@@ -52,7 +58,6 @@ export function RunDetailLayout({
   const { runId } = useParams<{ runId: string }>();
   const { fetchRun, localIds, writeups: localWriteups, canExecute } =
     useGalleryData();
-  const findReview = useFindReview();
   const testCaseName = useTestCaseName();
 
   // A summary-first gallery no longer holds every full record in memory, so the
@@ -65,11 +70,11 @@ export function RunDetailLayout({
   // the fetch; the URL `runId` is what selects the record.
   const fetchRunRef = useRef(fetchRun);
   fetchRunRef.current = fetchRun;
-  const [run, setRun] = useState<RunRecord | null>(null);
+  const [detail, setDetail] = useState<RunDetail | null>(null);
   const [fetching, setFetching] = useState(true);
   useEffect(() => {
     if (!runId) {
-      setRun(null);
+      setDetail(null);
       setFetching(false);
       return;
     }
@@ -77,8 +82,8 @@ export function RunDetailLayout({
     setFetching(true);
     fetchRunRef
       .current(runId)
-      .then((record) => active && setRun(record))
-      .catch(() => active && setRun(null))
+      .then((resolved) => active && setDetail(resolved))
+      .catch(() => active && setDetail(null))
       .finally(() => {
         if (active) setFetching(false);
       });
@@ -88,6 +93,7 @@ export function RunDetailLayout({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
+  const run = detail?.record ?? null;
   if (!run) {
     return (
       <PageLayout>
@@ -100,7 +106,18 @@ export function RunDetailLayout({
 
   const { subject } = run;
   const isLocal = localIds.has(run.id);
-  const review = findReview(run.id, localWriteups);
+  // The run's per-reviewer breakdown, fetched with the record — the detail layer's
+  // source of truth for reviews (the console's global reviews map is no longer
+  // read here). Passed to the tab body so the Verdict/review/editor tabs render
+  // from it directly.
+  const reviews = detail?.reviews ?? [];
+  // Frame the run's review from those reviews into the aggregate writeup the
+  // header badge and the read-only verdict read. A local run the host carries only
+  // a preview writeup for — with no structured reviews (the static site's dev-only
+  // previews) — falls back to that raw writeup override.
+  const localWriteup = isLocal ? localWriteups[run.id] : undefined;
+  const rawReview = localWriteup ?? frameReviews(reviews) ?? undefined;
+  const review = rawReview === undefined ? undefined : parseWriteup(rawReview);
   // The headline badge shows the run's overall rating — the worst across its
   // per-domain ratings.
   const overallRating = review
@@ -198,7 +215,7 @@ export function RunDetailLayout({
         {canExecute && <RunDeleteControl runId={run.id} />}
       </div>
 
-      {children({ run, review })}
+      {children({ run, review, reviews })}
     </PageLayout>
   );
 }

@@ -40,7 +40,7 @@ export function RunVerdictPage() {
   const runtime = useRunsRuntime();
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, review }) => {
+      {({ run, review, reviews }) => {
         const presentation = describeRunState(run.status.state);
         return (
           <div className={styles.tabStack}>
@@ -72,12 +72,12 @@ export function RunVerdictPage() {
               canExecute && localIds.has(run.id) ? (
                 <RunReviewEditor
                   run={run}
+                  reviews={reviews}
                   onChanged={() => runtime.requestRefresh()}
                 />
               ) : (
                 (() => {
                   const model = gallery.reviewModelFor(run.subject);
-                  const reviews = gallery.reviewsFor(run.id);
                   return (
                     <Panel>
                       {review ? (

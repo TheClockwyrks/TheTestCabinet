@@ -73,9 +73,14 @@ function pts(weight: number): string {
 // rating/score are shown above the form.
 export function RunReviewEditor({
   run,
+  reviews,
   onChanged,
 }: {
   run: RunRecord;
+  /** The run's reviews, fetched with the record by the run-detail layout — the
+   * editor seeds from the current account's prior review and gates Publish on the
+   * run carrying at least one. */
+  reviews: StoredReview[];
   onChanged: () => void;
 }) {
   const runId = run.id;
@@ -96,9 +101,9 @@ export function RunReviewEditor({
     () => gallery.reviewModelFor(subject).domains,
     [gallery, subject],
   );
-  // Every review submitted against this run so far, and the current account's own
-  // prior review (when any) — the seed for re-reviewing.
-  const reviews = useMemo(() => gallery.reviewsFor(runId), [gallery, runId]);
+  // The current account's own prior review (when any) among the run's reviews —
+  // the seed for re-reviewing. The reviews arrive from the run-detail layout,
+  // fetched with the record.
   const ownReview = useMemo(
     () => reviews.find((r) => account && r.reviewerId === account.id),
     [reviews, account],

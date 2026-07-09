@@ -49,6 +49,19 @@ import type {
  */
 export type CatalogStatus = "loading" | "ready" | "error";
 
+/**
+ * A run's detail payload, resolved lazily by id: the full {@link RunRecord} plus
+ * every review submitted against it. A summary-first gallery no longer holds the
+ * full records or the per-reviewer breakdown in memory, so the run-detail layer
+ * fetches both together — the record for the tabs and the {@link StoredReview}s for
+ * the Verdict/review/editor surfaces. See {@link GalleryDataInput.readRun} and
+ * {@link GalleryData.fetchRun}.
+ */
+export interface RunDetail {
+  record: RunRecord;
+  reviews: StoredReview[];
+}
+
 /** The scoring model for a run: the variant's weighted checklist items and its
  * effective scoring domains (the case's common domains + the variant's own),
  * resolved from the catalog. Both empty when the case is not in the catalog this
@@ -299,8 +312,12 @@ export interface GalleryDataInput {
    * page stays openable by its id. Resolves `null` when no run with that id is
    * stored. Omitted by a host that can only serve the runs it already listed (the
    * static gallery site).
+   *
+   * Resolves the run's {@link RunDetail} — the record *and* every review submitted
+   * against it — so the detail layer no longer reads reviews from the console's
+   * global {@link reviews} map (the summary-first drain will stop populating it).
    */
-  readRun?: (runId: string) => Promise<RunRecord | null>;
+  readRun?: (runId: string) => Promise<RunDetail | null>;
   /**
    * Resolve the loadable URL for one run's proof media file (`<proof-id>.<ext>`),
    * or null when the host cannot serve it (so the UI shows presence only). Each
@@ -594,10 +611,12 @@ export interface GalleryData extends GalleryDataInput {
    * record lazily only when a detail view needs it. Delegates to the host's
    * {@link GalleryDataInput.readRun} when supplied (the consoles), and otherwise
    * resolves from the in-memory {@link GalleryDataInput.runs} array (the static
-   * site, which holds its records in memory). Resolves `null` when no run with
-   * that id is available.
+   * site, which holds its records in memory) paired with the reviews from the
+   * {@link reviews} map. Resolves the run's {@link RunDetail} — record + reviews —
+   * so the detail layer frames the review from these rather than the global map.
+   * Resolves `null` when no run with that id is available.
    */
-  fetchRun(runId: string): Promise<RunRecord | null>;
+  fetchRun(runId: string): Promise<RunDetail | null>;
   /**
    * The individual reviews submitted against a run, in submission order. Empty
    * when the run has none (or the host carries only framed writeups). The
@@ -699,10 +718,14 @@ export function GalleryDataProvider({
       fetchRun(runId) {
         // Prefer the host's lazy single-run fetcher (the consoles read the run
         // store's `GET /runs/{id}`); otherwise resolve from the records already in
-        // memory (the static site inlines them), so a summary-first page can still
-        // reach a full record without a host fetcher.
+        // memory (the static site inlines them), pairing the record with the
+        // reviews from the in-memory map so a summary-first page can still reach a
+        // full detail without a host fetcher.
         if (value.readRun) return value.readRun(runId);
-        return Promise.resolve(value.runs.find((r) => r.id === runId) ?? null);
+        const record = value.runs.find((r) => r.id === runId);
+        return Promise.resolve(
+          record ? { record, reviews: reviews[record.id] ?? [] } : null,
+        );
       },
       modelForId(modelId, harnessSlug) {
         return findModelByModelId(models, modelId, harnessSlug);
