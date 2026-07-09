@@ -1406,7 +1406,7 @@ struct VersionBody {
     init: Option<String>,
     assets: Vec<AssetBody>,
     #[serde(default)]
-    packages: Vec<String>,
+    packages: Vec<PackageBody>,
     variants: Vec<VariantBody>,
     common_references: Vec<ReferenceBody>,
     #[serde(default)]
@@ -1507,7 +1507,7 @@ impl VersionBody {
                 .iter()
                 .map(|a| PathBuf::from(&a.source))
                 .collect(),
-            packages: self.packages,
+            packages: self.packages.into_iter().map(|p| p.name).collect(),
             variants: self
                 .variants
                 .into_iter()
@@ -1747,6 +1747,17 @@ struct AssetBody {
     source: String,
     #[allow(dead_code)]
     dest: String,
+}
+
+/// One shipped runtime package as the backend serves it: the npm `name` a run
+/// injects as a `file:` dep, plus a UI-only `description`. Only the name flows
+/// into [`TestCaseVersion`]; the description is ignored here (it is gallery-facing).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PackageBody {
+    name: String,
+    #[allow(dead_code)]
+    description: String,
 }
 
 #[derive(Deserialize)]
