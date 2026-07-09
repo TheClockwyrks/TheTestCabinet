@@ -79,25 +79,22 @@ variants = ["variants/base.toml"]
 #
 # Each model directory holds a produced voxel/mesh rig: a `rig.json` plus its
 # `meshes/*.glb` parts (the skinned Trooper is a single `mesh.glb`); `models.json`
-# names each entity's entry file accordingly. TWO entities are not yet seeded and are
-# held commented below: `assets/lancer` (its asset case is being re-run) and
-# `assets/garrison` (the Trooper's spawner has no asset case yet). Their `models.json`
-# entries are kept, so re-adding each is just uncommenting its line once the directory
-# exists. This is a root key, so it must precede the first table header.
+# names each entity's entry file accordingly. All 24 entities of the roster are seeded
+# here — every buildable unit, the Aegis, both structures plus the Solar Extractor, and
+# one spawner per unit — alongside the three provided muzzle-flash particle systems.
+# This is a root key, so it must precede the first table header.
 assets = [
   "assets/models.json",
   # Buildable units
   "assets/scarab", "assets/sentinel", "assets/trooper", "assets/bulwark",
-  "assets/bombard", "assets/flakhound", "assets/sunhawk",
+  "assets/lancer", "assets/bombard", "assets/flakhound", "assets/sunhawk",
   "assets/lumen", "assets/monolith",
-  # "assets/lancer",  # pending: latest run failed at the infrastructure stage; re-running
   # Super-unit
   "assets/aegis",
   # Structures
   "assets/bastion", "assets/reliquary", "assets/solar-extractor",
   # Spawner structures (one per buildable unit)
-  "assets/scarab-hatchery", "assets/sentinel-foundry",
-  # "assets/garrison",  # pending: the Trooper's spawner has no asset case yet
+  "assets/scarab-hatchery", "assets/sentinel-foundry", "assets/garrison",
   "assets/bulwark-foundry", "assets/lancer-foundry", "assets/bombard-foundry",
   "assets/flak-foundry", "assets/skyworks", "assets/lumen-spire",
   "assets/monolith-forge",

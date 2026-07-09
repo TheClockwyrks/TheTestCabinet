@@ -16,14 +16,11 @@ Trooper).
 
 ## Status
 
-**The models are in place and the `assets` key in `../test-case.toml` is active.**
-22 of the 24 entities have been seeded from their asset-generation runs. Two remain
-**pending** and are held commented in the `assets` list:
-
-- **`lancer`** (the unit) — its asset case is being **re-run** (the latest run failed
-  at the infrastructure stage).
-- **`garrison`** (the Trooper's spawner) — it has **no asset case yet**. Its
-  `models.json` entry is kept so re-adding it later is just uncommenting one line.
+**The roster is complete.** All **24** entities — every buildable unit, the Aegis,
+both structures plus the Solar Extractor, and one spawner per unit — have been seeded
+from their asset-generation runs, alongside the three provided muzzle-flash particle
+systems under [`effects/`](effects). The `assets` key in `../test-case.toml` is active
+and lists all of them; nothing is held back.
 
 The build loads each provided model through the **model runtime package** (the voxel
 rigs are posed/animated from their `rig.json`; the skinned Trooper loads its
