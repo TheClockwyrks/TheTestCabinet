@@ -11,8 +11,9 @@ bankruptcy loss state it defines is detailed alongside the other flow in
 
 ## RCI demand
 
-The city's growth is driven by three **demand** values — one each for **R**esidential,
-**C**ommercial, and **I**ndustrial — that rise and fall with the city's state and are
+The city's growth is driven by three **demand** values — one each for **Residential**,
+**Commercial**, and **Industrial** land (**R**, **C**, **I**) — that rise and fall with
+the city's state and are
 shown as live **RCI meters** in the HUD (`specs/flow.md`). Demand is the pressure that
 makes zoned land develop (`specs/map.md`):
 

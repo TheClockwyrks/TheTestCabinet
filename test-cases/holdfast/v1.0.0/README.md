@@ -46,15 +46,15 @@ strong build must both simulate and produce well.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                            |
-| ---------------------- | -------------- | -------------------------------------------------- |
-| `specs/`               | **Yes**        | The spec handed to the model, by concern.          |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.      |
-| `reference/` (source)  | No             | Canonical visual mockups; rendered to screenshots. |
-| reference screenshots  | **Yes**        | Rendered from `reference/`; seeded as targets.     |
-| `workspaces/base/`     | **Yes**        | Starter project seeded to the run root.            |
-| `test-case.toml`       | No             | Manifest: type, specs, variants, checks, review items. |
-| `README.md`            | No             | This overview.                                     |
+| Path                  | Seeded to run? | Purpose                                                |
+| --------------------- | -------------- | ------------------------------------------------------ |
+| `specs/`              | **Yes**        | The spec handed to the model, by concern.              |
+| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.          |
+| `reference/` (source) | No             | Canonical visual mockups; rendered to screenshots.     |
+| reference screenshots | **Yes**        | Rendered from `reference/`; seeded as targets.         |
+| `workspaces/base/`    | **Yes**        | Starter project seeded to the run root.                |
+| `test-case.toml`      | No             | Manifest: type, specs, variants, checks, review items. |
+| `README.md`           | No             | This overview.                                         |
 
 The specification is split across `specs/` by concern: `overview.md`, `world.md`,
 `settlers.md`, `economy.md`, `combat.md`, `time.md`, `controls.md`, `flow.md`, `assets.md`
