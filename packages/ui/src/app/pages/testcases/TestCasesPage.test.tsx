@@ -24,6 +24,13 @@ vi.mock("../../data/useTestCases", () => ({
   useTestCases: () => useTestCases(),
 }));
 
+// The page reads `canExecute` (console vs. static site) from the gallery context;
+// mock it so each test picks the host without a provider.
+const useGalleryData = vi.fn();
+vi.mock("../../data/galleryContext", () => ({
+  useGalleryData: () => useGalleryData(),
+}));
+
 // A catalog entry carrying only the fields the page reads; cast to the full
 // summary rather than spell out every unused field.
 function testCase(
@@ -42,8 +49,15 @@ function testCase(
   } as TestCaseSummary;
 }
 
-function ready(testCases: TestCaseSummary[]) {
+// Seed the catalog and the host. `canExecute` defaults to a console (true), where
+// the tab bar is always the full set; pass `false` for the static gallery site,
+// which shows only tabs the catalog has a case for.
+function ready(
+  testCases: TestCaseSummary[],
+  { canExecute = true }: { canExecute?: boolean } = {},
+) {
   useTestCases.mockReturnValue({ testCases, status: "ready" });
+  useGalleryData.mockReturnValue({ canExecute });
 }
 
 // Render the page at a given tab, with the router's location set to that tab's
@@ -63,7 +77,7 @@ function cardTitles(): string[] {
 }
 
 describe("TestCasesPage", () => {
-  it("shows only the tab's cases and renders a tab bar over every type", () => {
+  it("on a console, shows only the tab's cases and renders a tab bar over every type", () => {
     ready([
       testCase("Sunfront", "end-to-end"),
       testCase("Skyshard", "asset-generation"),
@@ -99,6 +113,40 @@ describe("TestCasesPage", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("on the static site, advertises only tabs the published catalog has cases for", () => {
+    // The static catalog holds only cases with a published run, so a type with no
+    // such case is dropped from the bar (mirroring, for the tabs, the grid's
+    // published-only listing).
+    ready(
+      [
+        testCase("Sunfront", "end-to-end"),
+        testCase("Foray", "adversarial"),
+      ],
+      { canExecute: false },
+    );
+
+    renderPage("end-to-end");
+
+    const nav = screen.getByRole("navigation", { name: "Test type" });
+    // The two covered types stay.
+    within(nav).getByRole("link", { name: "E2E" });
+    within(nav).getByRole("link", { name: "Adversarial" });
+    // Every uncovered type is hidden.
+    for (const label of [
+      "Full-stack",
+      "2D",
+      "3D",
+      "Blender",
+      "Particle",
+      "Audio",
+      "Performance",
+    ]) {
+      expect(
+        within(nav).queryByRole("link", { name: label }),
+      ).not.toBeInTheDocument();
+    }
   });
 
   it("scopes the grid to the rendered tab's type", () => {

@@ -9,17 +9,21 @@ import {
   isVoxelAssetKind,
 } from "../../../client";
 import { useTestCases } from "../../data/useTestCases";
+import { useGalleryData } from "../../data/galleryContext";
 import type { TestCaseSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import type { CatalogTab } from "../../routes";
 import styles from "./TestCasesPage.module.scss";
 
-// The catalog's type tabs, always shown in this order so the bar's shape is
-// stable regardless of which types the catalog currently holds. The catalog
-// shows exactly one tab at a time. Asset-generation is split into five
-// asset-family tabs — "2D" (sprite + paint), "3D" (voxel/mesh/skinned),
-// "Blender" (glTF characters), "Particle", and "Audio"; the other three map
-// one-to-one to a test type.
+// The catalog's type tabs, in this order. On a console (canExecute) they are all
+// shown regardless of which types the catalog currently holds, so the bar's shape
+// is stable even for a type that has cases but no runs yet. On the static gallery
+// site the catalog holds only cases with a published run, so a tab with no case
+// under it is hidden (see `visibleTabs`) — mirroring, for the tab bar, the way the
+// grid already lists only published cases. The catalog shows exactly one tab at a
+// time. Asset-generation is split into five asset-family tabs — "2D" (sprite +
+// paint), "3D" (voxel/mesh/skinned), "Blender" (glTF characters), "Particle", and
+// "Audio"; the other three map one-to-one to a test type.
 const CATALOG_TABS: ReadonlyArray<{ tab: CatalogTab; label: string }> = [
   { tab: "end-to-end", label: "E2E" },
   { tab: "full-stack", label: "Full-stack" },
@@ -45,7 +49,21 @@ interface TestCasesPageProps {
 // listed alphabetically — never ranked.
 export function TestCasesPage({ tab }: TestCasesPageProps) {
   const { testCases, status } = useTestCases();
+  const { canExecute } = useGalleryData();
   const [query, setQuery] = useState("");
+
+  // On the static site (no execution) drop tabs the catalog has no case for, so
+  // the bar advertises only types with a published run; the consoles keep the
+  // full, stable bar.
+  const visibleTabs = useMemo(
+    () =>
+      canExecute
+        ? CATALOG_TABS
+        : CATALOG_TABS.filter((entry) =>
+            testCases.some((testCase) => inTab(testCase, entry.tab)),
+          ),
+    [canExecute, testCases],
+  );
 
   const shown = useMemo(
     () =>
@@ -76,7 +94,7 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
         <>
           <div className={styles.controls}>
             <nav className={styles.tabs} aria-label="Test type">
-              {CATALOG_TABS.map((entry) => (
+              {visibleTabs.map((entry) => (
                 <NavLink
                   key={entry.tab}
                   to={routes.testCasesCatalog(entry.tab)}
