@@ -268,25 +268,29 @@ impl SnapshotBuilder {
 
     /// The denormalized summary card for one run.
     ///
-    /// This wraps [`RunSummary::from_stored`] and overrides only the two fields
-    /// the snapshot resolves differently from the bare stored run: `case_name`
-    /// comes from the ingested case catalog (falling back to the slug), and the
-    /// snapshot only ever holds reviewed runs so `rating` is always `Some`.
+    /// This wraps [`RunSummary::from_stored`] and overrides only the fields the
+    /// snapshot resolves differently from the bare stored run: `case_name` comes
+    /// from the ingested case catalog (falling back to the slug), `score` is the
+    /// aggregate reviewer score computed against that catalog entry's checklist
+    /// weights, and the snapshot only ever holds reviewed runs so `rating` is
+    /// always `Some`.
     fn summary(&self, run: &StoredRun) -> RunSummary {
         let record = &run.record;
-        let case_name = self
-            .cases
-            .iter()
-            .find(|c| {
-                c.slug == record.subject.test_case_slug
-                    && c.version == record.subject.test_case_version
-            })
+        let manifest = self.cases.iter().find(|c| {
+            c.slug == record.subject.test_case_slug && c.version == record.subject.test_case_version
+        });
+        let case_name = manifest
             .map(|c| c.name.clone())
             .unwrap_or_else(|| record.subject.test_case_slug.clone());
+        // Score from the same catalog entry that names the case; both are absent
+        // for a run whose case isn't in the ingested set.
+        let score =
+            manifest.and_then(|m| run_summary_score(m, &record.subject.variant, &run.reviews));
 
         RunSummary {
             case_name,
             rating: Some(aggregate_rating(&run.reviews)),
+            score,
             ..RunSummary::from_stored(run)
         }
     }
@@ -807,7 +811,31 @@ pub struct RunSummary {
     /// How many reviews the run carries. The site averages their scores; the
     /// aggregate sits between the harshest and most generous review.
     pub review_count: usize,
+    /// The run's aggregate reviewer score: the mean earned checklist weight across
+    /// its reviews. `None` when the run has no reviews (or its case's checklist
+    /// weights can't be resolved). Like `case_name`, this is enriched by the
+    /// callers that hold the case catalog (the console listing and the snapshot
+    /// builder); [`RunSummary::from_stored`] leaves it `None` as it is
+    /// catalog-free.
+    pub score: Option<RunScoreOut>,
     pub links: LinksOut,
+}
+
+/// A run's aggregate reviewer score: mean earned checklist weight across its
+/// reviews, over the shared total available. `None` when the run has no reviews
+/// (or its case's checklist weights can't be resolved). The item weights live
+/// only in the case catalog, so this is computed by callers that hold both the
+/// reviews and the catalog (see [`run_summary_score`]).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunScoreOut {
+    /// The mean weight earned across the run's reviews.
+    pub earned: f64,
+    /// The total weight available — identical across the run's reviews.
+    pub total: u32,
+    /// How many reviews the average is taken over.
+    pub reviews: u32,
 }
 
 impl RunSummary {
@@ -838,6 +866,9 @@ impl RunSummary {
             state: record.status.state,
             rating: aggregate_rating_inner(&run.reviews),
             review_count: run.reviews.len(),
+            // Catalog-free: the checklist weights live only in the case catalog,
+            // so a caller that holds it enriches this (see [`run_summary_score`]).
+            score: None,
             links: links_out(&run.links),
         }
     }
@@ -1303,6 +1334,75 @@ fn aggregate_rating_inner(
     reviews: &[crate::db::StoredReview],
 ) -> Option<test_cabinet_core::review::Rating> {
     crate::db::aggregate_review_rating(reviews)
+}
+
+/// The aggregate reviewer score for a run of `manifest`'s `variant`: the case's
+/// declared checklist weights scored against each of the run's `reviews`, then
+/// averaged (see [`test_cabinet_core::review::aggregate_score`]). `None` when the
+/// run carries no reviews.
+///
+/// The checklist weights live only in the case catalog (the manifest), never on a
+/// run or review, so this is the single source of truth shared by the two callers
+/// that hold both a run's reviews and its case: the console `GET /runs?fields=summary`
+/// listing (which reads the manifest from the store) and the public snapshot
+/// builder (which holds it in memory). It is the backend analogue of
+/// [`RunSummary::from_stored`] enriching `case_name`.
+pub(crate) fn run_summary_score(
+    manifest: &StoredManifest,
+    variant: &str,
+    reviews: &[crate::db::StoredReview],
+) -> Option<RunScoreOut> {
+    let items = review_items_for(manifest, variant);
+    let scores: Vec<_> = reviews
+        .iter()
+        .map(|review| test_cabinet_core::review::score_checklist(&items, &review.checklist))
+        .collect();
+    test_cabinet_core::review::aggregate_score(&scores).map(|score| RunScoreOut {
+        earned: score.earned,
+        total: score.total,
+        reviews: score.reviews,
+    })
+}
+
+/// The effective weighted checklist items for a run of `variant`: the case's
+/// common items followed by the selected variant's own (mirrors
+/// [`test_cabinet_core::test_case::TestCaseVersion::review_items_for`], resolving
+/// from the stored manifest). An unrecognized variant contributes only the common
+/// items.
+fn review_items_for(
+    manifest: &StoredManifest,
+    variant: &str,
+) -> Vec<test_cabinet_core::ReviewItem> {
+    manifest
+        .common_review_items
+        .iter()
+        .chain(
+            manifest
+                .variants
+                .iter()
+                .find(|candidate| candidate.slug == variant)
+                .into_iter()
+                .flat_map(|candidate| candidate.review_items.iter()),
+        )
+        .map(core_review_item)
+        .collect()
+}
+
+/// Reconstruct the core [`test_cabinet_core::ReviewItem`] a stored item was
+/// ingested from — the inverse of `ingest::stored_review_item`. Scoring only reads
+/// `id` and `weight`, but the round trip keeps the item whole so it stays honest.
+fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core::ReviewItem {
+    test_cabinet_core::ReviewItem {
+        id: item.id.clone(),
+        title: item.title.clone(),
+        text: item.text.clone(),
+        reference: item.reference.clone(),
+        proof: item.proof.clone(),
+        sequences: item.sequences.clone(),
+        frames: item.frames.clone(),
+        weight: item.weight,
+        domain: item.domain.clone(),
+    }
 }
 
 #[cfg(test)]

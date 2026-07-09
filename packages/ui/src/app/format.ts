@@ -2,6 +2,7 @@
 // rankings or aggregate scores themselves — that's the leaderboard's job.
 
 import type { RunMetrics } from "@test-cabinet/run-record";
+import type { RunScoreOut } from "@test-cabinet/run-record/snapshot";
 
 // Add two nullable token counts, treating an unreported (null) category as zero
 // because a harness that doesn't break the split out still folds those tokens into
@@ -77,6 +78,21 @@ export function formatUsd(value: number | null): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: fractionDigits,
   }).format(value);
+}
+
+// A run's aggregate reviewer score as "earned / total" (e.g. "12.5 / 20") — the
+// mean weight its reviews awarded over the points available. The earned figure is
+// fractional (it averages across reviews) so it carries one decimal; the total is
+// a whole point count. An em dash when the run has no reviews (null score).
+export function formatPoints(score: RunScoreOut | null): string {
+  if (score === null) {
+    return "—";
+  }
+  const earned = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(score.earned);
+  return `${earned} / ${score.total}`;
 }
 
 // Scale a per-token price to a per-million-token figure for display, preserving

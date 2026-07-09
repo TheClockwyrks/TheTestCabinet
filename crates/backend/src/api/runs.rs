@@ -25,9 +25,12 @@ use crate::db::{
     Reviewer, SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState,
 };
 use crate::error::ApiError;
-use crate::snapshot::RunSummary;
+use crate::snapshot::{RunSummary, run_summary_score};
+use crate::store::{DefinitionStore, StoredManifest};
 
 use super::AppState;
+
+use std::collections::HashMap;
 
 /// The default and maximum page size for `GET /runs`.
 const DEFAULT_LIMIT: usize = 50;
@@ -229,7 +232,7 @@ pub async fn list(
             .await
             .map_err(ApiError::from)?;
         return Ok(Json(SummaryListResponse {
-            runs: runs.iter().map(RunSummary::from_stored).collect(),
+            runs: summary_cards(&state.store, &runs),
             next_before: None,
             total: Some(total),
         })
@@ -260,7 +263,7 @@ pub async fn list(
     };
     if params.fields.as_deref() == Some("summary") {
         Ok(Json(SummaryListResponse {
-            runs: runs.iter().map(RunSummary::from_stored).collect(),
+            runs: summary_cards(&state.store, &runs),
             next_before,
             total: None,
         })
@@ -272,6 +275,38 @@ pub async fn list(
         })
         .into_response())
     }
+}
+
+/// Build the summary cards for a page of runs, enriching each with its aggregate
+/// reviewer `score` — the one field [`RunSummary::from_stored`] leaves `None`
+/// because the checklist weights live only in the case catalog, not the run.
+///
+/// Each run's manifest is resolved from the definition store and its reviews
+/// scored against that case's declared weights (see [`run_summary_score`]). The
+/// resolved manifest is cached per `(slug, version)` so a case is read once per
+/// page rather than once per run; a run whose case isn't ingested keeps
+/// `score = None`.
+fn summary_cards(store: &DefinitionStore, runs: &[StoredRun]) -> Vec<RunSummary> {
+    let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
+    runs.iter()
+        .map(|run| {
+            let mut card = RunSummary::from_stored(run);
+            let subject = &run.record.subject;
+            let key = (
+                subject.test_case_slug.clone(),
+                subject.test_case_version.clone(),
+            );
+            let manifest = manifests.entry(key).or_insert_with(|| {
+                store
+                    .read_manifest(&subject.test_case_slug, &subject.test_case_version)
+                    .ok()
+            });
+            if let Some(manifest) = manifest {
+                card.score = run_summary_score(manifest, &subject.variant, &run.reviews);
+            }
+            card
+        })
+        .collect()
 }
 
 /// `GET /adversarial/controllers?testCase=<slug>` — the pushed adversarial

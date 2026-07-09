@@ -42,6 +42,11 @@ export function toRunSummary(
     // the UI (cards, leaderboard, badges).
     rating: aggregateRating(reviews.map((r) => r.ratings ?? [])),
     reviewCount: reviews.length,
+    // Catalog-free, mirroring the Rust `from_stored`: the score's checklist
+    // weights live only in the case catalog, so it stays null here. The wire
+    // summary (enriched by the backend against the catalog) carries the real
+    // value.
+    score: null,
     // The console's records already carry populated links (see the ingest path in
     // useLiveGallery), the same source the full-record path reads.
     links: {

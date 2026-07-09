@@ -12,6 +12,30 @@
       },
       "type": "object"
     },
+    "RunScoreOut": {
+      "description": "A run's aggregate reviewer score: mean earned checklist weight across its\nreviews, over the shared total available. `None` when the run has no reviews\n(or its case's checklist weights can't be resolved). The item weights live\nonly in the case catalog, so this is computed by callers that hold both the\nreviews and the catalog (see [`run_summary_score`]).",
+      "properties": {
+        "earned": {
+          "description": "The mean weight earned across the run's reviews.",
+          "format": "double",
+          "type": "number"
+        },
+        "reviews": {
+          "description": "How many reviews the average is taken over.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "description": "The total weight available — identical across the run's reviews.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["earned", "total", "reviews"],
+      "type": "object"
+    },
     "RunSummary": {
       "description": "The denormalized summary card for one published run.",
       "properties": {
@@ -49,6 +73,17 @@
           "format": "uint",
           "minimum": 0,
           "type": "integer"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunScoreOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run's aggregate reviewer score: the mean earned checklist weight across\nits reviews. `None` when the run has no reviews (or its case's checklist\nweights can't be resolved). Like `case_name`, this is enriched by the\ncallers that hold the case catalog (the console listing and the snapshot\nbuilder); [`RunSummary::from_stored`] leaves it `None` as it is\ncatalog-free."
         },
         "startedAt": {
           "type": "string"

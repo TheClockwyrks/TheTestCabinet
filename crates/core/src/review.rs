@@ -327,13 +327,28 @@ pub fn aggregate_rating<'a>(
 ///
 /// `items` should be the effective checklist for the run's variant (common plus
 /// the variant's own; see [`crate::test_case::TestCaseVersion::review_items_for`]).
+///
+/// A thin wrapper over [`score_checklist`], which does the same over the
+/// verdicts directly — use that when you hold the verdicts without a parsed
+/// [`Writeup`].
 pub fn score(items: &[ReviewItem], writeup: &Writeup) -> Score {
+    score_checklist(items, &writeup.checklist)
+}
+
+/// Score the case's declared `items` against a reviewer's `checklist` verdicts:
+/// an item earns its weight when marked `pass` and none otherwise; the total is
+/// the sum of every item's weight.
+///
+/// The core of [`score`], split out for callers that carry the verdicts on their
+/// own (rather than a parsed [`Writeup`]) — the backend scores its stored reviews
+/// this way. Mirrors the TypeScript `scoreChecklist` in
+/// `packages/ui/src/ratings.ts`.
+pub fn score_checklist(items: &[ReviewItem], checklist: &[ReviewVerdict]) -> Score {
     let total = items.iter().map(|item| item.weight).sum();
     let earned = items
         .iter()
         .filter(|item| {
-            writeup
-                .checklist
+            checklist
                 .iter()
                 .any(|v| v.id == item.id && v.status == VerdictStatus::Pass)
         })

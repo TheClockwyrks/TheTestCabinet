@@ -8,6 +8,7 @@ import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
 import { useTestCaseName } from "../data/useTestCaseName";
 import {
+  formatPoints,
   formatRunTime,
   formatSlug,
   formatTimestamp,
@@ -310,6 +311,28 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       </span>
     ),
     renderActive: () => activeDash("Cost", true),
+  },
+  {
+    id: "points",
+    label: "POINTS",
+    default: "5.5rem",
+    min: 64,
+    numeric: true,
+    optional: true,
+    // Off by default: the points figure is a reviewer aggregate most run lists
+    // don't lead with, and (unlike the metric columns) the server can't sort by
+    // it — the checklist weights it derives from aren't a run column — so it
+    // carries no `sortKey` and its header offers no sort affordance.
+    defaultVisible: false,
+    render: (row) => (
+      <span
+        className={`${styles.num} ${row.summary.score ? "" : styles.noRating}`}
+        data-label="Points"
+      >
+        {formatPoints(row.summary.score)}
+      </span>
+    ),
+    renderActive: () => activeDash("Points", true),
   },
   {
     id: "rating",

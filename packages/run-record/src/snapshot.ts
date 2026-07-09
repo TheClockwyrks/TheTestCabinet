@@ -86,7 +86,38 @@ export type RunSummary = {
    * aggregate sits between the harshest and most generous review.
    */
   reviewCount: number;
+  /**
+   * The run's aggregate reviewer score: the mean earned checklist weight across
+   * its reviews. `None` when the run has no reviews (or its case's checklist
+   * weights can't be resolved). Like `case_name`, this is enriched by the
+   * callers that hold the case catalog (the console listing and the snapshot
+   * builder); [`RunSummary::from_stored`] leaves it `None` as it is
+   * catalog-free.
+   */
+  score: RunScoreOut | null;
   links: LinksOut;
+};
+
+/**
+ * A run's aggregate reviewer score: mean earned checklist weight across its
+ * reviews, over the shared total available. `None` when the run has no reviews
+ * (or its case's checklist weights can't be resolved). The item weights live
+ * only in the case catalog, so this is computed by callers that hold both the
+ * reviews and the catalog (see [`run_summary_score`]).
+ */
+export type RunScoreOut = {
+  /**
+   * The mean weight earned across the run's reviews.
+   */
+  earned: number;
+  /**
+   * The total weight available — identical across the run's reviews.
+   */
+  total: number;
+  /**
+   * How many reviews the average is taken over.
+   */
+  reviews: number;
 };
 
 /**
