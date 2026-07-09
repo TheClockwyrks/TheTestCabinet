@@ -3,10 +3,10 @@
   "_note": "Provided-model manifest for the Caldera build (specs/assets.md). 'dimensions' are the model extents [width, height, depth] and are the on-field relative-scale contract. 'kind' is 'rigid' (parts posed on named joints) or 'static' (a single mesh, no rig). 'clips' maps a game role to the animation clip name to play. 'accent' is the reserved color the recolor tables below act on: it appears nowhere else on that model, so remapping it repaints only the plates/trim/fittings and leaves the body and the acid glow untouched. A destroyed Slag is not animated - it breaks apart or fades and is removed (specs/enemies.md), so there is no death clip. Per-model 'parts'/'joints' lists are added with each model as its asset case lands.",
 
   "tiers": {
-    "_note": "Slag tier accents (specs/enemies.md). Tier I maps the accent onto the true obsidian body so one code path serves every tier. Keyed by the Slag accent color.",
-    "1": { "#2b2433": "#241f2b" },
-    "2": { "#2b2433": "#c9ced6" },
-    "3": { "#2b2433": "#b56bff" }
+    "_note": "Slag tier accents (specs/enemies.md). The accent is authored in a visibly distinct color so the asset case's own reviewer can see the region; Tier I paints it down to the true obsidian body, so one code path serves every tier. Keyed by the Slag accent color.",
+    "1": { "#4a4358": "#241f2b" },
+    "2": { "#4a4358": "#c9ced6" },
+    "3": { "#4a4358": "#b56bff" }
   },
 
   "towerLevels": {
@@ -23,32 +23,32 @@
   },
 
   "slag": {
-    "_note": "One model per archetype; three tiers are produced by the 'tiers' recolor, never by new geometry.",
-    "runner":   { "model": "runner/rig.json",   "kind": "rigid", "dimensions": [12, 14, 12], "clips": { "move": "move", "attack": "attack" }, "accent": "#2b2433" },
-    "breaker":  { "model": "breaker/rig.json",  "kind": "rigid", "dimensions": [18, 20, 18], "clips": { "move": "move", "attack": "attack" }, "accent": "#2b2433" },
-    "sapper":   { "model": "sapper/rig.json",   "kind": "rigid", "dimensions": [14, 16, 14], "clips": { "move": "move", "attack": "attack" }, "accent": "#2b2433" },
-    "colossus": { "model": "colossus/rig.json", "kind": "rigid", "dimensions": [30, 34, 30], "clips": { "move": "move", "attack": "attack", "idle_auto": "aura" }, "accent": "#2b2433" }
+    "_note": "One model per archetype; three tiers are produced by the 'tiers' recolor, never by new geometry. Each 'dimensions' triple is that asset case's base [voxel] volume, so the four archetypes' on-field sizes stay in the proportions their cases were sculpted at. Proportion alone tells them apart: the Runner is low and long, the Sapper tall and thin, the Breaker wide and top-heavy, the Colossus massive.",
+    "runner":   { "model": "runner/rig.json",   "kind": "rigid", "dimensions": [20, 24, 44], "clips": { "move": "move", "attack": "attack" }, "accent": "#4a4358" },
+    "breaker":  { "model": "breaker/rig.json",  "kind": "rigid", "dimensions": [46, 44, 34], "clips": { "move": "move", "attack": "attack" }, "accent": "#4a4358" },
+    "sapper":   { "model": "sapper/rig.json",   "kind": "rigid", "dimensions": [24, 48, 28], "clips": { "move": "move", "attack": "attack" }, "accent": "#4a4358" },
+    "colossus": { "model": "colossus/rig.json", "kind": "rigid", "dimensions": [64, 76, 60], "clips": { "move": "move", "attack": "attack", "idle_auto": "aura" }, "accent": "#4a4358" }
   },
 
   "towers": {
     "_note": "One model per tower; two upgrade levels above base are produced by the 'towerLevels' recolor. The Scald's field is continuous, so it runs 'emit' as a loop rather than firing discrete shots.",
-    "repeater": { "model": "repeater/rig.json", "kind": "rigid", "dimensions": [14, 22, 14], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
-    "mortar":   { "model": "mortar/rig.json",   "kind": "rigid", "dimensions": [18, 20, 18], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
-    "lance":    { "model": "lance/rig.json",    "kind": "rigid", "dimensions": [16, 30, 16], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
-    "scald":    { "model": "scald/rig.json",    "kind": "rigid", "dimensions": [16, 24, 16], "clips": { "idle_auto": "idle", "attack": "emit" }, "accent": "#9a7a34" }
+    "repeater": { "model": "repeater/rig.json", "kind": "rigid", "dimensions": [24, 50, 24], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
+    "mortar":   { "model": "mortar/rig.json",   "kind": "rigid", "dimensions": [34, 34, 34], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
+    "lance":    { "model": "lance/rig.json",    "kind": "rigid", "dimensions": [26, 74, 30], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
+    "scald":    { "model": "scald/rig.json",    "kind": "rigid", "dimensions": [36, 40, 36], "clips": { "idle_auto": "idle", "attack": "emit" }, "accent": "#9a7a34" }
   },
 
   "structures": {
     "_note": "The Core plays a one-shot 'upgrade' on purchase and carries the Holdfast accent across its four upgrade levels. A Boiler plays 'boil' only while fed water; a Pump plays 'pump' only while delivering.",
-    "core":      { "model": "core/rig.json",      "kind": "rigid", "dimensions": [40, 44, 40], "clips": { "idle_auto": "idle", "upgrade": "upgrade" }, "accent": "#9a7a34" },
-    "boiler":    { "model": "boiler/rig.json",    "kind": "rigid", "dimensions": [18, 20, 18], "clips": { "idle_auto": "idle", "work": "boil" }, "accent": "#9a7a34" },
-    "pump":      { "model": "pump/rig.json",      "kind": "rigid", "dimensions": [18, 16, 18], "clips": { "idle_auto": "idle", "work": "pump" }, "accent": "#9a7a34" },
-    "river-tap": { "model": "river-tap/rig.json", "kind": "rigid", "dimensions": [14, 12, 14], "clips": { "idle_auto": "idle", "work": "draw" }, "accent": "#9a7a34" }
+    "core":      { "model": "core/rig.json",      "kind": "rigid", "dimensions": [80, 70, 80], "clips": { "idle_auto": "idle", "upgrade": "upgrade" }, "accent": "#9a7a34" },
+    "boiler":    { "model": "boiler/rig.json",    "kind": "rigid", "dimensions": [34, 44, 34], "clips": { "idle_auto": "idle", "work": "boil" }, "accent": "#9a7a34" },
+    "pump":      { "model": "pump/rig.json",      "kind": "rigid", "dimensions": [40, 34, 40], "clips": { "idle_auto": "idle", "work": "pump" }, "accent": "#9a7a34" },
+    "river-tap": { "model": "river-tap/rig.json", "kind": "rigid", "dimensions": [28, 26, 28], "clips": { "idle_auto": "idle", "work": "draw" }, "accent": "#9a7a34" }
   },
 
   "pipes": {
     "_note": "Static geometry, no rig and no clips. The build owns topology, orientation, the stretch across a terraced edge, the raised river trestle, and the animated flow (specs/assets.md).",
-    "span": { "model": "pipe-span/mesh.glb", "kind": "static", "dimensions": [4, 4, 10], "accent": "#808890" },
-    "hub":  { "model": "pipe-hub/mesh.glb",  "kind": "static", "dimensions": [6, 6, 6], "accent": "#808890" }
+    "span": { "model": "pipe-span/mesh.glb", "kind": "static", "dimensions": [12, 12, 34], "accent": "#808890" },
+    "hub":  { "model": "pipe-hub/mesh.glb",  "kind": "static", "dimensions": [16, 16, 16], "accent": "#808890" }
   }
 }

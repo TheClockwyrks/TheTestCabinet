@@ -71,15 +71,17 @@ recovers the authored byte exactly.
 Each model reserves one **accent region** — the plates and trim on a Slag, the
 fittings on a tower — authored in a color used **nowhere else on that model**:
 
-| Family | Accent color | Reads as, unrecolored |
+| Family | Accent color | Recolored to, at the base level |
 | --- | --- | --- |
-| Slag | `#2b2433` | Obsidian (indistinguishable from the body) |
-| Towers, Core, fluid structures | `#9a7a34` | Brass |
-| Pipe kit | `#808890` | Neutral metal |
+| Slag | `#4a4358` | Obsidian `#241f2b` (Tier I) |
+| Towers, Core, fluid structures | `#9a7a34` | Brass dark `#8a6d2e` (level 0) |
+| Pipe kit | `#808890` | The network's fluid color |
 
-At Tier I and upgrade level `0` the accent is *supposed* to be invisible as an
-accent. That is the design: you still run the recolor, mapping the accent onto the
-true base color, so one code path serves every tier.
+The accent is authored in a color that is **visibly distinct** on the model — so the
+asset's own reviewer can see the region exists, is contiguous, and sits on the plates
+— and the game paints it down to the true base color at Tier I / level `0`. You still
+run the recolor at the base level, mapping the accent onto the base color, so one code
+path serves every tier.
 
 ### The remap
 

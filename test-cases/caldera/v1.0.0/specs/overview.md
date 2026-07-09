@@ -193,7 +193,7 @@ palette and type are below; match them.
 | Pipe — base (provided kit, recolored) | `#808890` |
 | Slag — obsidian (Tier I body) | `#241f2b` |
 | Slag — acid glow (energy / eye) | `#9ede3a` |
-| Slag — accent plate (recolored per tier) | `#2b2433` |
+| Slag — accent plate (authored; recolored per tier) | `#4a4358` |
 | Slag — Tier II plating (steel) | `#c9ced6` |
 | Slag — Tier III trim (elite) | `#b56bff` |
 | Holdfast — accent fitting (recolored per upgrade) | `#9a7a34` |
