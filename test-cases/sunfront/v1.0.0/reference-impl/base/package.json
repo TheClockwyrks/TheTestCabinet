@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --port 4173"
+    "preview": "vite preview --port 4173",
+    "test": "node test/run.mjs"
   },
   "dependencies": {
     "@test-cabinet/particle-runtime": "file:vendor/particle-runtime",

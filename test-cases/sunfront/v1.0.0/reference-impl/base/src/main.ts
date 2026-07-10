@@ -1,21 +1,21 @@
 /**
  * Sunfront — entry point.
  *
- * Phase 3 boots the 3D world: the low oblique command camera, the generated sand
- * terrain (banding, staging-yard panels, the player build grid) and scene lighting,
- * and the GPU-instanced voxel renderer for the rigid unit roster plus the `VoxelRig`
+ * Boots the 3D world: the low oblique command camera, the generated sand terrain
+ * (banding, staging-yard panels, the player build grid) and scene lighting, and the
+ * GPU-instanced voxel renderer for the rigid unit roster plus the `VoxelRig`
  * singletons for the bases, Reliquaries, extractors, spawners, and the Aegis
  * (specs/assets.md, specs/overview.md). While the asset bundle loads, a title card is
- * shown; once ready, a TEMPORARY proof scene (see `demo.ts`) spreads a rank of unit
- * types and structures across the corridor and animates them through the camera so the
- * relative scale, team tint, animation, and the F3/F4 overlays can be verified. Later
- * phases replace the demo with the real simulation, economy, fog, HUD, and AI.
+ * shown; once ready, the headless {@link Match} steps the real simulation (economy,
+ * waves, movement, combat, the Reliquary and its Aegis — `sim/world.ts`) and feeds this
+ * frame's state to the renderer, so units actually spawn, march, fight, and die and the
+ * front line drifts. Later phases add fog, the HUD, player building, and the AI.
  */
 
 import { PALETTE, MONO_FONT_STACK } from "./constants";
 import { loadAssets } from "./assets";
 import { World } from "./render/world";
-import { DemoScene } from "./demo";
+import { Match } from "./match";
 
 const app = document.getElementById("app")!;
 
@@ -38,22 +38,22 @@ loadAssets()
   .then((assets) => {
     status.remove();
     const world = new World(app, assets);
-    const demo = new DemoScene(world, assets);
+    const match = new Match(world, assets);
 
     let last = performance.now();
     function frame(now: number): void {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
-      demo.update(dt);
+      match.update(dt);
       world.render(dt);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
 
-    // Expose for the headless render proof (screenshotting the demo state).
-    (window as unknown as { sunfront?: unknown }).sunfront = { world, demo };
+    // Expose for the headless render proof (screenshotting a live match frame).
+    (window as unknown as { sunfront?: unknown }).sunfront = { world, match };
     console.info(
-      `[sunfront] world up: ${assets.units.size} unit types, ${assets.structures.size} structures, ` +
+      `[sunfront] match up: ${assets.units.size} unit types, ${assets.structures.size} structures, ` +
         `${assets.spawners.size} spawners, ${assets.effects.size} effects, aegis ready`,
     );
   })
