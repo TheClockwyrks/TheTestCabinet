@@ -64,10 +64,10 @@ scale HP and damage per `specs/economy.md`.
 Notes on specific units:
 
 - **Trooper** is the cheapest **ranged** body — a short-range rifle infantry that
-  fills the line between the melee Scarab and the longer-reaching Sentinel. It is the
-  one **skinned** model (its whole body deforms as one skin; `specs/assets.md`); when
-  it stops to fire it plays its **`brace`** clip (a crouch-and-hold), a presentation
-  behavior only — it confers no stat change.
+  fills the line between the melee Scarab and the longer-reaching Sentinel. Like every
+  Sunfront model it is a **rigid** articulated rig (`specs/assets.md`); when it stops to
+  fire it plays its **`brace`** clip (a crouch-and-hold), a presentation behavior only —
+  it confers no stat change.
 - **Bombard** has a **minimum range of `70`**: an enemy closer than that is inside
   its arc and it cannot fire on it, so Bombards must be screened.
 - **Flakhound** always targets an **Air** unit in range if one exists (its natural

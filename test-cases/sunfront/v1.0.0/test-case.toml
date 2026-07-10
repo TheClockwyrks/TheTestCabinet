@@ -78,8 +78,8 @@ variants = ["variants/base.toml"]
 # them, and to load them by page-relative URL. This is a root key, so it must precede
 # the first table header.
 #
-# Each model directory holds a produced voxel/mesh rig: a `rig.json` plus its
-# `meshes/*.glb` parts (the skinned Trooper is a single `mesh.glb`); `models.json`
+# Each model directory holds a produced rigid voxel rig: a `rig.json` plus its
+# `meshes/*.glb` parts; `models.json`
 # names each entity's entry file accordingly. All 24 entities of the roster are seeded
 # here — every buildable unit, the Aegis, both structures plus the Solar Extractor, and
 # one spawner per unit — alongside the three provided muzzle-flash particle systems.
