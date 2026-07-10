@@ -1,0 +1,39 @@
+# The default variant: the standard **Trench** dive — a remembered fog of war,
+# line-of-sight passive light, and a corridor-flooding sonar pulse. Listed first
+# in the case manifest's `variants`, so it is the default. Every path resolves
+# against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard Trench dive: a remembered fog of war, line-of-sight passive light, and a corridor-flooding sonar pulse."
+
+# The signature **sensing** system is seeded per variant, at the common
+# `specs/sensing.md` path every other spec references, so the model sees a single,
+# self-contained sensing spec. Base seeds the Trench sensing model.
+spec = [{ source = "specs/sensing-trench.md", dest = "specs/sensing.md" }]
+
+# The fog/memory, passive-light, and brightness review items are specific to this
+# variant's sensing model (Kindle declares its own). They roll up to the common
+# `sensing` domain. The `title`, `gameplay`, and `game-over` references are common
+# (both variants share the same single-dive menu), so this variant declares none.
+[[review_item]]
+id = "fog-and-memory"
+title = "Fog and memory"
+text = "Unrevealed trench is solid black fog. Walls and plankton you have revealed stay visible (drawn dim) for the rest of the trench, but predators and the bonus drifter are never remembered — shown only while currently lit by your light, a sonar pulse, or a flare."
+weight = 1
+domain = "sensing"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "light-line-of-sight"
+title = "Light is line-of-sight"
+text = "Your passive light reveals a pocket around the forager by line of sight only: it does not show what is around a corner. A predator one tile away around a blind corner is not visible to your light alone."
+weight = 1
+domain = "sensing"
+
+[[review_item]]
+id = "brightness-dial"
+title = "Brightness from eating"
+text = "Eating plankton brightens the forager, which both widens your vision and widens the Lure's detection range; brightness decays back to near-dark within a couple of seconds of not eating, so eating fast lights you up and eating sparingly keeps you hidden."
+weight = 1
+domain = "sensing"

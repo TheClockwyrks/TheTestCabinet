@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!--
+  Fathom — title / main menu reference mockup (common to every variant).
+  Canonical view slug: title
+  Both variants show the same single-dive menu: DIVE, then HOW TO PLAY.
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title / main
+  menu) and ../specs/assets.md (the provided art). The dim trench slice behind the
+  menu embeds the real seeded assets (../assets/): trench tiles, the forager
+  (glimmerfin), and the Lure (lanternjaw).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fathom — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim slice of dark trench behind the menu. -->
+      <div class="maze">
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 224px; top: 448px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/11.png" style="left: 224px; top: 416px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 256px; top: 448px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/14.png" style="left: 224px; top: 480px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/13.png" style="left: 192px; top: 448px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/9.png" style="left: 256px; top: 416px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 288px; top: 448px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/12.png" style="left: 256px; top: 480px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 288px; top: 416px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/7.png" style="left: 320px; top: 448px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 288px; top: 480px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/11.png" style="left: 288px; top: 384px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/7.png" style="left: 320px; top: 416px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/7.png" style="left: 320px; top: 480px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/14.png" style="left: 288px; top: 512px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 992px; top: 192px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/9.png" style="left: 992px; top: 160px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 1024px; top: 192px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/14.png" style="left: 992px; top: 224px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/13.png" style="left: 960px; top: 192px" alt="" />
+        <img class="tile dim floor" src="../assets/trench-walls/16.png" style="left: 1024px; top: 160px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/7.png" style="left: 1056px; top: 192px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/14.png" style="left: 1024px; top: 224px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/11.png" style="left: 1024px; top: 128px" alt="" />
+        <img class="tile dim" src="../assets/trench-walls/7.png" style="left: 1056px; top: 160px" alt="" />
+
+        <div class="light dim" style="left: 168px; top: 360px; width: 300px; height: 300px"></div>
+        <div class="plankton dim" style="left: 224px; top: 448px"></div>
+        <div class="plankton dim" style="left: 288px; top: 416px"></div>
+        <img class="sprite forager dim" src="../assets/glimmerfin/6.png" style="left: 256px; top: 448px" alt="" />
+
+        <div class="light dim" style="left: 928px; top: 112px; width: 256px; height: 256px"></div>
+        <img class="sprite lure dim" src="../assets/lanternjaw/10.png" style="left: 1024px; top: 192px" alt="" />
+        <div class="lure-light dim" style="left: 1050px; top: 194px"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">FATHOM</h1>
+        <div class="tagline">HUNT IN THE DARK</div>
+        <nav class="menu">
+          <div class="menu-item selected">DIVE</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT</div>
+    </div>
+  </body>
+</html>

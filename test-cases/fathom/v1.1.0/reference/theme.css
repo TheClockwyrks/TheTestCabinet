@@ -1,0 +1,413 @@
+/*
+ * Fathom — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Fathom test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/.
+ *
+ * Grid geometry (matches ../specs/overview.md and ../specs/playfield.md):
+ *   - 32px tiles; maze grid is 36 cols x 18 rows (1152 x 576).
+ *   - Maze top-left tile corner at logical (64, 80); region spans x[64,1216],
+ *     y[80,656].
+ *   - A tile (col, row) has its top-left at (64 + col*32, 80 + row*32).
+ *   - HUD strips occupy y[0,80] (top) and y[656,720] (bottom).
+ */
+
+:root {
+  --fog: #03060c;         /* unrevealed fog (also the stage background) */
+  --water: #0a1422;       /* revealed open corridor floor */
+  --rock: #16293d;        /* revealed wall (rock) */
+  --rim: #24506b;         /* wall edge / rim light */
+  --forager: #46f0e0;     /* player forager and its light */
+  --plankton: #b8f5c8;    /* plankton */
+  --sonar: #5ef2ff;       /* sonar pulse ring */
+  --lure: #ffd166;        /* the Lure (light-seeker) */
+  --listener: #c46bff;    /* the Listener (sound-seeker) */
+  --flarefish: #ff7a59;   /* the Flarefish (flare-maker) */
+  --ink: #0b0a1f;         /* ink cloud */
+  --text: #e6edf3;        /* primary text */
+  --text-dim: #8a94a6;    /* secondary text */
+  --text-faint: #4a5567;  /* tertiary / hints */
+  --bg-raised: #0a1018;   /* panels / overlays */
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--fog);
+}
+
+/* The fixed logical stage. All coordinates in the mockups and the
+ * specification are expressed in these 1280x720 logical pixels. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  background: var(--fog);
+  font-family: var(--mono);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- The trench / maze ------------------------------------------------- */
+
+/* The maze region. Starts as flat fog; revealed tiles are drawn over it. */
+.maze {
+  position: absolute;
+  left: 64px;
+  top: 80px;
+  width: 1152px;
+  height: 576px;
+  background: var(--fog);
+  overflow: hidden;
+}
+
+/* The lit pocket around the forager: revealed rock fading out into fog, so the
+ * visible maze is a small island of light in the dark. Centered on the forager;
+ * size/position set inline per mockup. */
+.light {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    rgba(22, 41, 61, 0.95) 0%,
+    rgba(22, 41, 61, 0.8) 42%,
+    rgba(13, 24, 38, 0.5) 66%,
+    rgba(3, 6, 12, 0) 100%
+  );
+}
+
+/* ---- Provided art: tiles, sprites, effects ---------------------------- */
+/* These mockups embed the seeded assets from ../assets/ (see ../specs/assets.md)
+ * so the reference shows the real art in place. Positioned with inline left/top
+ * at a tile's stage pixel (maze-local). 32px sprites/tiles render nearest-
+ * neighbor (pixel art); the 128px effects scale smoothly. */
+
+/* A 32x32 trench tile (wall autotile / floor) or a 32x32 creature sprite. */
+.tile,
+.sprite {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+/* Visibility states are runtime shading over the same tiles (../specs/sensing.md):
+ * lit = full; sonar-revealed = cooler and dimmer; remembered = dim. */
+.tile.sonar {
+  filter: brightness(0.82) saturate(1.15) hue-rotate(-8deg);
+  opacity: 0.92;
+}
+.tile.remembered {
+  filter: brightness(0.62) saturate(0.55);
+  opacity: 0.62;
+}
+
+/* Creature sprites: a soft species glow against the dark sells the neon look. */
+.sprite.forager {
+  filter: drop-shadow(0 0 8px rgba(70, 240, 224, 0.85));
+}
+.sprite.lure {
+  filter: drop-shadow(0 0 7px rgba(255, 209, 102, 0.7));
+}
+.sprite.listener {
+  filter: drop-shadow(0 0 7px rgba(196, 107, 255, 0.65));
+}
+.sprite.flarefish {
+  filter: drop-shadow(0 0 8px rgba(255, 122, 89, 0.78));
+}
+/* A predator only glimpsed (at the light's edge / a sonar mark) is faded. */
+.sprite.glimpse {
+  opacity: 0.6;
+}
+
+/* The sonar pulse: the grayscale ring asset (an <img>), tinted to the emitter
+ * color. The game multiplies the grayscale by the color; the mockup recolors the
+ * grayscale with a hue filter (kept file://-safe — no cross-origin mask fetch),
+ * which preserves the ring's brightness falloff. */
+.pulse {
+  position: absolute;
+  pointer-events: none;
+}
+.pulse.sonar {
+  opacity: 0.5;
+  filter: sepia(1) saturate(5) hue-rotate(150deg) brightness(0.95)
+    drop-shadow(0 0 14px rgba(94, 242, 255, 0.45));
+}
+.pulse.listener {
+  opacity: 0.72;
+  filter: sepia(1) saturate(7) hue-rotate(236deg) brightness(1)
+    drop-shadow(0 0 12px rgba(196, 107, 255, 0.45));
+}
+
+/* The flare bloom: the warm effect asset, composited additively (screen). */
+.bloom {
+  position: absolute;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+/* Soft fog vignette that fades the lit pocket's edge back into the dark, so the
+ * revealed tiles read as an island of light. Sits above the tiles. */
+.fog-edge {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at center,
+    rgba(3, 6, 12, 0) 52%,
+    rgba(3, 6, 12, 0.65) 74%,
+    var(--fog) 92%
+  );
+}
+
+/* ---- Tile-aligned objects --------------------------------------------- */
+/* Positioned with inline left/top at a tile's stage pixel (see header). */
+
+.plankton {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: 12px; /* center the 8px mote inside its 32px tile */
+  border-radius: 50%;
+  background: var(--plankton);
+  box-shadow: 0 0 8px rgba(184, 245, 200, 0.85);
+}
+
+.plankton.faint {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
+/* The Lure's dangling lure-light: a tiny bright point of glow just off its
+ * sprite (the bulb is on the lanternjaw sprite; this is the runtime glow). */
+.lure-light {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff0c2;
+  box-shadow: 0 0 12px rgba(255, 209, 102, 0.95);
+}
+
+/* ---- HUD --------------------------------------------------------------- */
+
+.hud-score {
+  position: absolute;
+  left: 40px;
+  top: 18px;
+  font-size: 48px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--text);
+}
+
+.mode-tag {
+  position: absolute;
+  right: 40px;
+  top: 30px;
+  font-size: 16px;
+  letter-spacing: 6px;
+  color: var(--text-faint);
+}
+
+.lives {
+  position: absolute;
+  left: 40px;
+  bottom: 22px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.life {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--forager);
+  box-shadow: 0 0 10px rgba(70, 240, 224, 0.7);
+}
+
+.depth {
+  position: absolute;
+  right: 40px;
+  bottom: 24px;
+  font-size: 18px;
+  letter-spacing: 6px;
+  color: var(--text-dim);
+}
+
+/* Readiness gauges (sonar / ink), centered in the bottom strip. */
+.gauges {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 28px;
+  align-items: center;
+}
+
+.gauge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: var(--text-faint);
+}
+
+.gauge .bar {
+  width: 88px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(138, 148, 166, 0.16);
+}
+
+.gauge .bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.gauge.sonar .bar > span {
+  background: var(--sonar);
+  box-shadow: 0 0 8px rgba(94, 242, 255, 0.7);
+}
+
+.gauge.ink .bar > span {
+  background: #9aa6ff;
+  box-shadow: 0 0 8px rgba(154, 166, 255, 0.6);
+}
+
+/* ---- Menus / overlays -------------------------------------------------- */
+
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  font-size: 128px;
+  font-weight: 700;
+  letter-spacing: 26px;
+  margin: 0 0 0 26px; /* compensate for trailing letter-spacing */
+  color: var(--forager);
+  text-shadow: 0 0 28px rgba(70, 240, 224, 0.5), 0 0 2px rgba(94, 242, 255, 0.6);
+}
+
+.tagline {
+  font-size: 22px;
+  letter-spacing: 14px;
+  margin: 18px 0 64px 14px;
+  color: var(--text-dim);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+.menu-item {
+  font-size: 30px;
+  letter-spacing: 10px;
+  color: var(--text-dim);
+}
+
+.menu-item.selected {
+  color: var(--text);
+}
+
+.menu-item.selected::before {
+  content: "\25B8  "; /* small right-pointing triangle */
+  color: var(--forager);
+}
+
+.menu-item.selected::after {
+  content: "  \25C2";
+  color: var(--forager);
+}
+
+.hint {
+  position: absolute;
+  bottom: 34px;
+  width: 100%;
+  text-align: center;
+  font-size: 16px;
+  letter-spacing: 8px;
+  color: var(--text-faint);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 4, 8, 0.78);
+}
+
+.panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 56px 48px 48px;
+  text-align: center;
+  background: var(--bg-raised);
+  border: 1px solid #16293d;
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.panel-eyebrow {
+  font-size: 18px;
+  letter-spacing: 10px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
+.panel-title {
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  margin: 0 0 20px;
+  color: var(--forager);
+}
+
+.panel-score {
+  font-size: 36px;
+  letter-spacing: 10px;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.panel-depth {
+  font-size: 20px;
+  letter-spacing: 8px;
+  margin: 0 0 36px;
+  color: var(--text-dim);
+}
+
+/* Dimmed trench furniture shown behind a menu or panel. */
+.dim {
+  opacity: 0.3;
+  filter: saturate(0.7);
+}

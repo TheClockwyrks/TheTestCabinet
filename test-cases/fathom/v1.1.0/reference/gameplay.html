@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<!--
+  Fathom — in-trench reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system,
+  visual design), ../specs/assets.md (the provided art), ../specs/sensing.md
+  (fog, light, sonar), ../specs/predators.md, and ../specs/playfield.md (HUD).
+
+  This frame embeds the real seeded assets (../assets/): the trench tileset draws
+  the maze (floor + wall autotile), and the forager, predators, and sonar pulse
+  are their sprite/effect sheets. Live positions and the maze layout vary at
+  runtime; this is a representative layout for a soft palette/layout comparison,
+  not a strict pixel match. A tile (col,row) has its top-left at
+  (64 + col*32, 80 + row*32); inside .maze, at (col*32, row*32).
+
+  The frame shows: a lit pocket of revealed corridors (rounded rock walls around
+  open floor) fading into black fog around the forager; plankton in the corridors;
+  the Lure glimpsed at the edge of the light; the forager's sonar pulse expanding
+  past the light and revealing a corridor around a bend, where the Listener is
+  marked beyond sight by its own (violet) pulse.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fathom — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- HUD: top strip -->
+      <div class="hud-score">01340</div>
+      <div class="mode-tag">TRENCH</div>
+
+      <div class="maze">
+        <!-- Trench tiles (../assets/trench-walls/): floor + wall autotile.
+             Generated from the maze fragment; frame index = N/E/S/W wall mask. -->
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 416px; top: 288px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 448px; top: 288px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 448px; top: 320px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 448px; top: 352px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 480px; top: 288px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 512px; top: 288px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 192px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 224px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 256px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 288px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 320px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 352px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 544px; top: 384px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 576px; top: 288px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 608px; top: 288px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 640px; top: 224px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 640px; top: 256px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 640px; top: 288px" alt="" />
+        <img class="tile lit floor" src="../assets/trench-walls/16.png" style="left: 672px; top: 288px" alt="" />
+        <img class="tile sonar floor" src="../assets/trench-walls/16.png" style="left: 704px; top: 288px" alt="" />
+        <img class="tile sonar floor" src="../assets/trench-walls/16.png" style="left: 736px; top: 288px" alt="" />
+        <img class="tile sonar floor" src="../assets/trench-walls/16.png" style="left: 736px; top: 256px" alt="" />
+        <img class="tile sonar floor" src="../assets/trench-walls/16.png" style="left: 736px; top: 224px" alt="" />
+        <img class="tile remembered floor" src="../assets/trench-walls/16.png" style="left: 96px; top: 32px" alt="" />
+        <img class="tile remembered floor" src="../assets/trench-walls/16.png" style="left: 128px; top: 32px" alt="" />
+        <img class="tile remembered floor" src="../assets/trench-walls/16.png" style="left: 160px; top: 32px" alt="" />
+        <img class="tile remembered floor" src="../assets/trench-walls/16.png" style="left: 128px; top: 64px" alt="" />
+        <img class="tile remembered floor" src="../assets/trench-walls/16.png" style="left: 128px; top: 96px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 416px; top: 224px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/11.png" style="left: 416px; top: 256px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/12.png" style="left: 416px; top: 320px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/13.png" style="left: 416px; top: 352px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 448px; top: 192px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 448px; top: 224px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/11.png" style="left: 448px; top: 256px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/14.png" style="left: 448px; top: 384px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 480px; top: 160px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 480px; top: 192px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 480px; top: 224px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/11.png" style="left: 480px; top: 256px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/6.png" style="left: 480px; top: 320px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/7.png" style="left: 480px; top: 352px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 480px; top: 384px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 480px; top: 416px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 512px; top: 160px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/13.png" style="left: 512px; top: 192px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/13.png" style="left: 512px; top: 224px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/9.png" style="left: 512px; top: 256px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/12.png" style="left: 512px; top: 320px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/13.png" style="left: 512px; top: 352px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/13.png" style="left: 512px; top: 384px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 512px; top: 416px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/11.png" style="left: 544px; top: 160px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/14.png" style="left: 544px; top: 416px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 576px; top: 160px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/7.png" style="left: 576px; top: 192px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/7.png" style="left: 576px; top: 224px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/3.png" style="left: 576px; top: 256px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/6.png" style="left: 576px; top: 320px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/7.png" style="left: 576px; top: 352px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/7.png" style="left: 576px; top: 384px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 576px; top: 416px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 608px; top: 160px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 608px; top: 192px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/13.png" style="left: 608px; top: 224px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/9.png" style="left: 608px; top: 256px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/14.png" style="left: 608px; top: 320px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 608px; top: 352px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 608px; top: 384px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 608px; top: 416px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/11.png" style="left: 640px; top: 192px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/14.png" style="left: 640px; top: 320px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 640px; top: 352px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 640px; top: 384px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/7.png" style="left: 672px; top: 224px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/3.png" style="left: 672px; top: 256px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/14.png" style="left: 672px; top: 320px" alt="" />
+        <img class="tile lit" src="../assets/trench-walls/15.png" style="left: 672px; top: 352px" alt="" />
+        <img class="tile sonar" src="../assets/trench-walls/9.png" style="left: 704px; top: 256px" alt="" />
+        <img class="tile sonar" src="../assets/trench-walls/14.png" style="left: 704px; top: 320px" alt="" />
+        <img class="tile sonar" src="../assets/trench-walls/7.png" style="left: 768px; top: 288px" alt="" />
+        <img class="tile sonar" src="../assets/trench-walls/14.png" style="left: 736px; top: 320px" alt="" />
+        <img class="tile sonar" src="../assets/trench-walls/7.png" style="left: 768px; top: 256px" alt="" />
+        <img class="tile sonar" src="../assets/trench-walls/11.png" style="left: 736px; top: 192px" alt="" />
+        <img class="tile sonar" src="../assets/trench-walls/7.png" style="left: 768px; top: 224px" alt="" />
+        <img class="tile sonar" src="../assets/trench-walls/13.png" style="left: 704px; top: 224px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/11.png" style="left: 96px; top: 0px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/12.png" style="left: 96px; top: 64px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/13.png" style="left: 64px; top: 32px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/11.png" style="left: 128px; top: 0px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/11.png" style="left: 160px; top: 0px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/7.png" style="left: 192px; top: 32px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/6.png" style="left: 160px; top: 64px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/7.png" style="left: 160px; top: 96px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/14.png" style="left: 128px; top: 128px" alt="" />
+        <img class="tile remembered" src="../assets/trench-walls/13.png" style="left: 96px; top: 96px" alt="" />
+
+        <!-- Fade the lit pocket's edge back into fog (centered on the forager). -->
+        <div class="fog-edge" style="left: 384px; top: 128px; width: 352px; height: 352px"></div>
+        <!-- A soft cyan light glow from the forager. -->
+        <div class="light" style="left: 432px; top: 176px; width: 256px; height: 256px"></div>
+
+        <!-- Plankton in the lit corridors. -->
+        <div class="plankton" style="left: 544px; top: 192px"></div>
+        <div class="plankton" style="left: 544px; top: 224px"></div>
+        <div class="plankton" style="left: 544px; top: 256px"></div>
+        <div class="plankton" style="left: 544px; top: 320px"></div>
+        <div class="plankton" style="left: 544px; top: 352px"></div>
+        <div class="plankton" style="left: 544px; top: 384px"></div>
+        <div class="plankton" style="left: 416px; top: 288px"></div>
+        <div class="plankton" style="left: 448px; top: 288px"></div>
+        <div class="plankton" style="left: 480px; top: 288px"></div>
+        <div class="plankton" style="left: 512px; top: 288px"></div>
+        <div class="plankton" style="left: 576px; top: 288px"></div>
+        <div class="plankton" style="left: 608px; top: 288px"></div>
+        <div class="plankton" style="left: 672px; top: 288px"></div>
+        <div class="plankton" style="left: 640px; top: 256px"></div>
+        <div class="plankton" style="left: 448px; top: 320px"></div>
+        <div class="plankton" style="left: 448px; top: 352px"></div>
+        <!-- Faint plankton in the sonar-revealed corridor (dim, beyond the light). -->
+        <div class="plankton faint" style="left: 704px; top: 288px"></div>
+        <div class="plankton faint" style="left: 736px; top: 224px"></div>
+
+        <!-- The forager's sonar pulse, expanding past the edge of the light
+             (the grayscale sonar-pulse asset, tinted cyan). -->
+        <img class="pulse sonar" src="../assets/sonar-pulse/6.png" style="left: 345px; top: 89px; width: 430px; height: 430px" alt="" />
+
+        <!-- The Lure (../assets/lanternjaw/), glimpsed at the edge of the light
+             (col 20, row 7), with its dangling lure-light. -->
+        <img class="sprite lure glimpse" src="../assets/lanternjaw/10.png" style="left: 640px; top: 224px" alt="" />
+        <div class="lure-light" style="left: 666px; top: 226px"></div>
+
+        <!-- The Listener (../assets/gloamfin/), marked by the sonar pulse beyond
+             sight (col 23, row 8), with its own (violet) pulse ring. -->
+        <img class="pulse listener" src="../assets/sonar-pulse/3.png" style="left: 686px; top: 206px; width: 132px; height: 132px" alt="" />
+        <img class="sprite listener glimpse" src="../assets/gloamfin/4.png" style="left: 736px; top: 256px" alt="" />
+
+        <!-- The forager (../assets/glimmerfin/), at the center of its light
+             (col 17, row 9), facing right mid-chomp. -->
+        <img class="sprite forager" src="../assets/glimmerfin/7.png" style="left: 544px; top: 288px" alt="" />
+      </div>
+
+      <!-- HUD: bottom strip -->
+      <div class="lives">
+        <span class="life"></span>
+        <span class="life"></span>
+      </div>
+      <div class="gauges">
+        <div class="gauge sonar">
+          SONAR
+          <div class="bar"><span style="width: 45%"></span></div>
+        </div>
+        <div class="gauge ink">
+          INK
+          <div class="bar"><span style="width: 100%"></span></div>
+        </div>
+      </div>
+      <div class="depth">DEPTH 2</div>
+    </div>
+  </body>
+</html>
