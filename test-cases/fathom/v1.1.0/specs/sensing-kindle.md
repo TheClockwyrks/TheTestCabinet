@@ -185,12 +185,20 @@ finds predators, at the cost of being heard. (The control is in
 The two enemy effects that spread across the trench behave differently, and this
 distinction matters:
 
-- **The Flarefish's flare reveals tiles for you.** At the bloom it lights a full
+- **The Flarefish's flare is a second vision circle.** At the bloom it lights a full
   **`192 px` (6-tile) radius** around the Flarefish — **floor and wall alike, and
   straight through walls** (the flare ignores rock) — revealing (and remembering)
-  that whole disc, and showing any predator or the drifter inside it live. The flare
-  and what it lights are drawn on top of the vision circle, so a flare beyond your
-  window still reads. It is a gift of vision (`specs/predators.md`).
+  that whole disc, and showing any predator or the drifter inside it live. Unlike the
+  window you carry, the flare's circle is **full vision: it reveals *everything*
+  inside it**, drawn at **full brightness**, even ground you have never explored —
+  so while it burns you see a second, bright disc of trench out beyond your own
+  window, wherever the Flarefish is. This disc is drawn on top of your vision-circle
+  mask, so a flare beyond your window still reads, and it is **stuck to the
+  Flarefish**, moving with it. When the flare **fades, its circle disappears
+  entirely** and only the window you carry remains: everything the flare had lit that
+  lies outside your own vision circle goes **pitch black** again (it is still
+  *remembered*, so it returns when you revisit it). It is a gift of vision
+  (`specs/predators.md`).
 - **The Gloamfin's ping reveals nothing.** Its violet sonar ring is **visible to
   you** — you see the ring and, for that moment, the Gloamfin at its center, even
   beyond the vision circle — but it does **not** light the maze, reveal or remember

@@ -187,10 +187,81 @@ function drawTrench(ctx: CanvasRenderingContext2D, game: Game): void {
   // drawn next and so can show beyond the circle.
   drawVisionMask(ctx, game);
 
+  // A Flarefish's flare is a SECOND vision circle: a full-vision disc that shows
+  // the whole trench inside it at full brightness, punched back through the mask
+  // above so a distant flare still reveals the maze. When it fades, only your own
+  // vision circle remains — the disc goes pitch black again (specs/sensing.md).
+  drawFlareLight(ctx, game);
+
   // Effects and creatures composite additively where they read as light.
   drawEffectsAndCreatures(ctx, game);
 
   ctx.restore();
+}
+
+// The Flarefish's flare as a second, full-vision circle: within its `FLARE_RADIUS`
+// disc, stuck to the moving Flarefish and cut to a pixel-perfect circle, every tile
+// the flare has revealed is redrawn at FULL brightness — punched back through the
+// vision-circle mask so a distant flare still shows the maze (unlike your own
+// circle, which only shows already-explored ground). The light is full through the
+// bloom and fades to nothing across the flare's fade, so when the flare dies only
+// your vision circle remains and the disc returns to pitch black beyond it
+// (specs/predators.md, specs/sensing.md).
+function flareLightAlpha(p: Predator): number {
+  if (!p.flaring) return 0;
+  const t = p.flarePhaseT;
+  const bloomEnd = FLARE_CHARGE + FLARE_BLOOM;
+  const fadeEnd = bloomEnd + FLARE_FADE;
+  if (t < FLARE_CHARGE) return 0; // still charging — nothing revealed yet
+  if (t < bloomEnd) return 1; // full bloom
+  if (t < fadeEnd) return 1 - (t - bloomEnd) / FLARE_FADE; // fade out
+  return 0;
+}
+
+function drawFlareLight(ctx: CanvasRenderingContext2D, game: Game): void {
+  const { maze, fog, assets } = game;
+  for (const p of game.predators) {
+    if (p.kind !== PredKind.Flarefish) continue;
+    const alpha = flareLightAlpha(p);
+    if (alpha <= 0) continue;
+    ctx.save();
+    // Clip to the flare's circle, attached to the Flarefish.
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, FLARE_RADIUS, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.globalAlpha = alpha;
+    const rad = Math.ceil(FLARE_RADIUS / TILE) + 1;
+    // Terrain at full brightness (the flare has already revealed the whole disc).
+    ctx.imageSmoothingEnabled = false;
+    for (let r = p.row - rad; r <= p.row + rad; r++) {
+      if (r < 0 || r >= ROWS) continue;
+      for (let c = p.col - rad; c <= p.col + rad; c++) {
+        if (c < 0 || c >= COLS || !fog.isRevealed(c, r)) continue;
+        const dx = GRID_X + c * TILE;
+        const dy = GRID_Y + r * TILE;
+        if (maze.isWall(c, r)) {
+          ctx.drawImage(assets.trench[maze.wallFrame(c, r)], dx, dy, TILE, TILE);
+        } else {
+          ctx.drawImage(assets.trench[16], dx, dy, TILE, TILE);
+          if (maze.isGate(c, r)) ctx.drawImage(assets.trench[18], dx, dy, TILE, TILE);
+        }
+      }
+    }
+    // Plankton at full (lit) brightness.
+    ctx.imageSmoothingEnabled = true;
+    ctx.fillStyle = COLOR.plankton;
+    for (let r = p.row - rad; r <= p.row + rad; r++) {
+      if (r < 0 || r >= ROWS) continue;
+      for (let c = p.col - rad; c <= p.col + rad; c++) {
+        if (c < 0 || c >= COLS) continue;
+        if (!game.plankton[tileKey(c, r)] || !fog.isRevealed(c, r)) continue;
+        ctx.beginPath();
+        ctx.arc(Maze.cx(c), Maze.cy(r), 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
 }
 
 // The forager's light circle: a soft cyan glow that lifts the brightness of the

@@ -93,7 +93,10 @@ appears and wanders the corridors:
 - It spawns at the den gate at a fixed cadence (for example, once about every
   `25 s` while plankton remain) and drifts slowly (about `64 px/s`, half the
   forager's speed) along the corridors, choosing a new direction at each junction,
-  for about `12 s` before leaving through a wrap tunnel or fading out.
+  for about `12 s` before leaving through a wrap tunnel or fading out. **A wandering
+  Lanternjaw copies this drift exactly** — the same `64 px/s` speed and the same
+  wander — so an undetected Lanternjaw's bulb does not merely *look* like a drifter,
+  it *moves* like one (see `specs/predators.md`).
 - Eating it scores the bonus (see `specs/flow.md`). At most one drifter exists at
   a time.
 - **It is always visible, at any distance.** Unlike almost everything else in the

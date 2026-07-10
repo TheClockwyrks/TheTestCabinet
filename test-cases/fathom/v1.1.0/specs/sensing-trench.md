@@ -160,8 +160,11 @@ distinction matters:
 - **The Flarefish's flare reveals tiles for you.** At the bloom it lights a full
   **`192 px` (6-tile) radius** around the Flarefish — **floor and wall alike, and
   straight through walls** (the flare ignores rock) — revealing (and remembering)
-  that whole disc, and showing any predator or the drifter inside it live. It is a
-  gift of vision (`specs/predators.md`).
+  that whole disc, and showing any predator or the drifter inside it live. For as
+  long as the bloom burns, the **whole disc is drawn at full light** (moving with the
+  Flarefish), and it **fades back to the remembered dim** across the flare's final
+  fade — the tiles stay revealed, they just drop from lit back to normal remembered
+  brightness. It is a gift of vision (`specs/predators.md`).
 - **The Gloamfin's ping reveals nothing.** Its violet sonar ring is **visible to
   you** — you see the ring and, for that moment, the Gloamfin at its center — but it
   does **not** light the maze, reveal or remember any tile, or mark any other

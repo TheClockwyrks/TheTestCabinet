@@ -8,6 +8,7 @@ import {
   COLOR,
   COLS,
   DETECT_FLASH_TIME,
+  DRIFTER_SPEED,
   FLARE_BLOOM,
   FLARE_CHARGE,
   FLARE_FADE,
@@ -22,6 +23,7 @@ import {
   GLOAMFIN_HEAR_RANGE,
   GLOAMFIN_PATROL_SPEED,
   GLOAMFIN_PING_INTERVAL,
+  GLOAMFIN_PING_MIN_GAP,
   GLOAMFIN_PING_RANGE,
   GLOAMFIN_SEARCH_PING_DELAY,
   GLOAMFIN_SEARCH_TIME,
@@ -32,7 +34,15 @@ import {
   ROWS,
   TILE,
 } from "./constants";
-import { advance, CanEnter, Drifter, Forager, Mover, Predator } from "./entities";
+import {
+  advance,
+  CanEnter,
+  Drifter,
+  Forager,
+  Mover,
+  Predator,
+  wanderDir,
+} from "./entities";
 import { Effects } from "./effects";
 import { Maze } from "./maze";
 import { Fog } from "./sensing";
@@ -157,7 +167,6 @@ export function acquire(p: Predator, w: World, col: number, row: number): boolea
 // ---- per-kind sensing --------------------------------------------------
 
 function updateLanternjaw(p: Predator, dt: number, w: World, mult: number): void {
-  p.speed = LANTERNJAW_SPEED * mult;
   let sensed = false;
   if (p.blindT <= 0) {
     const R = LANTERNJAW_RANGE_BASE + LANTERNJAW_RANGE_GAIN * w.forager.g;
@@ -190,6 +199,12 @@ function updateLanternjaw(p: Predator, dt: number, w: World, mult: number): void
     p.hasFix = false;
     p.state = PredState.Patrol;
   }
+
+  // Speed: it hunts at its own pace, but while undetected it drifts at EXACTLY
+  // the bonus drifter's speed (and its wander routing matches too, below), so its
+  // always-visible bulb cannot be told apart from a drifter until it finds you
+  // (specs/predators.md). The drift speed is depth-independent, like the drifter.
+  p.speed = p.state === PredState.Hunt ? LANTERNJAW_SPEED * mult : DRIFTER_SPEED;
 }
 
 // Emit a Gloamfin sonar ping: its violet ring (a visible tell) plus its sense.
@@ -200,6 +215,11 @@ function gloamfinPing(p: Predator, w: World): void {
   w.effects.addRing(p.x, p.y, GLOAMFIN_PING_RANGE * TILE, true);
   w.audio.play("predPulse");
   p.markT = Math.max(p.markT, 0.6); // you see the Gloamfin at the ring's center
+  // Every ping (periodic or the guaranteed "lost you" one) restarts the standard
+  // cadence AND arms a minimum spacing, so re-acquiring you at close range cannot
+  // spin the search→ping→re-acquire loop into a rapid-fire burst (specs/predators.md).
+  p.pulseT = GLOAMFIN_PING_INTERVAL;
+  p.pingLock = GLOAMFIN_PING_MIN_GAP;
   for (const cell of w.maze.flood(p.col, p.row, GLOAMFIN_PING_RANGE)) {
     if (cell.col === w.fcol && cell.row === w.frow) {
       acquire(p, w, w.fcol, w.frow);
@@ -209,16 +229,18 @@ function gloamfinPing(p: Predator, w: World): void {
 }
 
 function updateGloamfin(p: Predator, dt: number, w: World): void {
+  if (p.pingLock > 0) p.pingLock = Math.max(0, p.pingLock - dt);
+
   // Very-close hearing: it always knows your tile within ~2 tiles.
   if (dist(p.x, p.y, w.forager.x, w.forager.y) <= GLOAMFIN_HEAR_RANGE) {
     acquire(p, w, w.fcol, w.frow);
   }
 
-  // Periodic ping (its tell + sense). Fires in every state.
+  // Periodic ping (its tell + sense). Fires in every state, but never sooner than
+  // the minimum ping spacing (gloamfinPing resets both timers).
   p.pulseT -= dt;
-  if (p.pulseT <= 0) {
+  if (p.pulseT <= 0 && p.pingLock <= 0) {
     gloamfinPing(p, w);
-    p.pulseT = GLOAMFIN_PING_INTERVAL;
   }
 
   const mult = w.depthMult;
@@ -236,12 +258,13 @@ function updateGloamfin(p: Predator, dt: number, w: World): void {
     p.speed = GLOAMFIN_PATROL_SPEED * mult;
     p.searchT -= dt;
     // A single guaranteed "lost you" ping a moment after arriving; it resets the
-    // standard ping cadence (specs/predators.md).
+    // standard ping cadence (specs/predators.md). It still respects the minimum
+    // ping spacing, so it holds until the lock clears rather than firing right on
+    // top of the ping that just caught you.
     if (p.searchPingT !== Infinity) {
       p.searchPingT -= dt;
-      if (p.searchPingT <= 0) {
+      if (p.searchPingT <= 0 && p.pingLock <= 0) {
         gloamfinPing(p, w);
-        p.pulseT = GLOAMFIN_PING_INTERVAL;
         p.searchPingT = Infinity;
       }
     }
@@ -279,21 +302,25 @@ function updateFlarefish(p: Predator, dt: number, w: World, mult: number): void 
       const fadeEnd = bloomEnd + FLARE_FADE;
       if (prev < bloomStart && p.flarePhaseT >= bloomStart) {
         w.audio.play("flare");
+      }
+      // While the flare is at full bloom it is a persistent, full-vision light disc
+      // stuck to the Flarefish: reveal it for the player every frame, and catch the
+      // forager the instant it is ANYWHERE inside — including if it was clear at the
+      // bloom but then drifts into the still-burning light (specs/predators.md). The
+      // flare ignores walls (radius only, no line of sight); ink still breaks it.
+      if (p.flaring && p.flarePhaseT >= bloomStart && p.flarePhaseT < bloomEnd) {
+        revealFlareArea(p, w);
         const blinded =
           p.blindT > 0 ||
           w.inkAt(w.forager.x, w.forager.y) ||
           w.inkBetween(p.x, p.y, w.forager.x, w.forager.y);
-        // The flare ignores walls: radius only, no line-of-sight.
         if (dist(p.x, p.y, w.forager.x, w.forager.y) <= FLARE_RADIUS && !blinded) {
           acquire(p, w, w.fcol, w.frow);
           p.linger = FLARE_LINGER;
           p.flaring = false; // it has you now — the chase takes over
         }
       }
-      if (p.flaring && p.flarePhaseT >= bloomStart && p.flarePhaseT < bloomEnd) {
-        revealFlareArea(p, w);
-      }
-      if (p.flarePhaseT >= fadeEnd) p.flaring = false;
+      if (p.flaring && p.flarePhaseT >= fadeEnd) p.flaring = false;
     }
     p.state = PredState.Patrol;
     return;
@@ -347,6 +374,9 @@ export function updatePredator(p: Predator, dt: number, w: World): void {
 
   const canPatrol: CanEnter = (c, r) => w.maze.foragerOpen(c, r);
   const canDen: CanEnter = (c, r) => w.maze.predOpen(c, r);
+  // A drifting Lanternjaw stays out of wrap-tunnel edges, exactly like the drifter.
+  const canDrift: CanEnter = (c, r) =>
+    w.maze.foragerOpen(c, r) && !w.maze.isWrapEdge(c, r);
 
   // Den: idle until release, then navigate up and out through the gate.
   if (p.state === PredState.Den) {
@@ -385,6 +415,7 @@ export function updatePredator(p: Predator, dt: number, w: World): void {
   // Movement: chase the fix greedily; a searching Gloamfin casts around the fix;
   // otherwise wander. (No cornering speed cap — every predator can turn freely.)
   let wantFn: () => Dir;
+  let moveCanEnter: CanEnter = canPatrol;
   if (p.kind === PredKind.Gloamfin && p.searching) {
     wantFn = () =>
       manhattan(p.col, p.row, p.fixCol, p.fixRow) > 2
@@ -392,9 +423,14 @@ export function updatePredator(p: Predator, dt: number, w: World): void {
         : patrolDir(p, canPatrol, w.maze, w.rand);
   } else if (p.state === PredState.Hunt && p.hasFix) {
     wantFn = () => greedyDir(p, p.fixCol, p.fixRow, canPatrol, w.maze);
+  } else if (p.kind === PredKind.Lanternjaw) {
+    // Undetected: wander EXACTLY like the bonus drifter (same routing here, same
+    // speed set in updateLanternjaw) so the bulb is indistinguishable from one.
+    wantFn = () => wanderDir(p, w.maze, w.rand);
+    moveCanEnter = canDrift;
   } else {
     wantFn = () => patrolDir(p, canPatrol, w.maze, w.rand);
   }
 
-  advance(p, dt, w.maze, wantFn, canPatrol, () => true);
+  advance(p, dt, w.maze, wantFn, moveCanEnter, () => true);
 }

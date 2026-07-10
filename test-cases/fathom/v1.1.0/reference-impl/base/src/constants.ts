@@ -124,12 +124,13 @@ export const LANTERNJAW_RANGE_GAIN = 192;
 export const LANTERNJAW_LINGER = 2; // s
 
 // The Gloamfin — hunts your sound. Wanders at the ordinary speed (no wind-up),
-// then sprints faster than the forager to where a ping caught you.
+// then chases just a touch faster than the forager to where a ping caught you.
 export const GLOAMFIN_PATROL_SPEED = PREDATOR_SPEED;
-export const GLOAMFIN_CHASE_SPEED = 168; // faster than the forager's 128
+export const GLOAMFIN_CHASE_SPEED = 134; // only ~5% faster than the forager's 128
 export const GLOAMFIN_HEAR_RANGE = 64; // ~2 tiles, in or out of LOS
 export const GLOAMFIN_PING_INTERVAL = 4; // s, its own periodic ping (tell + sense)
 export const GLOAMFIN_PING_RANGE = 9; // corridor tiles its ping floods
+export const GLOAMFIN_PING_MIN_GAP = 3; // s minimum between ANY two of its pings, so it cannot rapid-fire up close
 export const GLOAMFIN_SEARCH_PING_DELAY = 1.2; // s at an empty fix before the guaranteed "lost you" ping
 export const GLOAMFIN_SEARCH_TIME = 5; // s casting about an empty fix before giving up
 

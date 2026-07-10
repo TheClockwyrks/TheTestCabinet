@@ -95,12 +95,25 @@ farther it finds you.
   drifter** (`specs/playfield.md`): at a glance you cannot tell a harmless drifter
   from a lurking Lanternjaw, so every amber glimmer in the dark is a gamble — and
   the drifter is effectively bait.
+- **Patrol — indistinguishable from the drifter (required).** Until it senses you,
+  the Lanternjaw's wandering AI is **identical to the bonus drifter's**
+  (`specs/playfield.md`): it drifts the corridors at the **drifter's speed** (about
+  **`64 px/s`**, half the forager's — *not* the ordinary predator speed), using the
+  drifter's exact wander routing (a random open direction at each junction, avoiding
+  an immediate reverse), and it does **not** speed up with depth while it wanders.
+  Because only its **bulb-light** shows in the dark (its body obeys the fog), a
+  wandering Lanternjaw looks **exactly** like a drifting amber mote — same glow, same
+  pace, same drift — so you genuinely cannot tell a harmless drifter from a lurking
+  Lanternjaw until it fixes on you and lunges. The instant it senses you it drops the
+  disguise and hunts at its chase speed (below).
 - **Counter.** Go **dim** — stop eating and let `G` decay — to shrink its range and
   slip out of its sight, or drop **ink** (it hunts by sight, so ink blinds it; see
   `specs/movement.md`). Eating a streak of plankton near the Lanternjaw lights you
   up and pulls it straight to you.
-- **Speed.** `116 px/s`, slightly slower than the forager, so a clean straight run
-  loses it once you are dim or behind a wall.
+- **Speed.** While **hunting** it moves at **`116 px/s`**, slightly slower than the
+  forager, so a clean straight run loses it once you are dim or behind a wall. While
+  **wandering** it moves at the **drifter's `64 px/s`** (above), the disguise that
+  makes its bulb pass for a drifter.
 
 ## The Gloamfin — hunts your sound (violet)
 
@@ -121,18 +134,28 @@ sonar. It is the predator your **sonar** is waiting for.
   The fix is the tile the ping caught you on. **Ink does not affect it** (it hunts
   by sound). The instant it takes a fix it may **turn around immediately** to face
   you.
-- **Chase — faster than you, to where the ping found you.** On a fix the Gloamfin
-  **chases**: it drives toward the fixed tile at **`168 px/s` — faster than the
-  forager's `128`** — so it runs you down along the line the ping drew. It heads
-  for the tile the ping actually found you on, not wherever you have since slipped
-  away to.
+- **Chase — a touch faster than you, to where the ping found you.** On a fix the
+  Gloamfin **chases**: it drives toward the fixed tile at **`134 px/s` — only about
+  **5%** faster than the forager's `128`** — so it **slowly gains** along the line the
+  ping drew rather than blowing past you. (This deliberately stays gentle because the
+  Gloamfin often fixes on you at **close range** off its short-range hearing; a big
+  speed jump there would be an unfair blindside.) It heads for the tile the ping
+  actually found you on, not wherever you have since slipped away to. This chase pace
+  is its **only** speed change — its wander stays the ordinary `116 px/s`.
 - **Search — a delayed, guaranteed ping (your escape window).** When the Gloamfin
   **reaches that tile and you are not there**, it does not re-ping at once. It slows
   back to `116 px/s` and **casts back and forth around the spot**, and only after a
   short delay of about **`1.2 s`** does it emit a **guaranteed "lost you" sonar
-  ping**. That ping always fires (regardless of the normal ping cadence) and
+  ping**. That ping always fires (it does not wait out the full normal cadence) and
   **resets** the standard ping timer. The delay is deliberate — it is your chance
   to break away before the ping lands.
+  - **A floor on the ping rate (required, anti-spam).** The Gloamfin never emits two
+    pings closer than about **`3 s`** apart — not even the guaranteed "lost you" one.
+    When it keeps re-finding you at close range (its hearing hands it a fix, it
+    reaches the near tile in a beat, and it would ping again almost at once), this
+    floor holds the next ping back until the gap has passed, so it **cannot
+    rapid-fire its ping**. An earlier build let this loop spin and the Gloamfin
+    stuttered pings on top of each other whenever it got close.
   - If the "lost you" ping (or any later ping) catches you, the Gloamfin takes a
     fresh fix and chases again.
   - If the search turns up nothing, it gives up after a handful of seconds — about
@@ -148,8 +171,9 @@ sonar. It is the predator your **sonar** is waiting for.
   `specs/sensing.md`) — it is a warning you can see, not a map. And when a Gloamfin
   ping *catches you*, the **detection alert** (above) fires so you know you have
   been heard.
-- **Counter — break the fix and run.** The Gloamfin outruns you in a straight
-  chase, so you cannot simply sprint away down a corridor. You beat it by **using
+- **Counter — break the fix and run.** The Gloamfin is a touch faster than you in a
+  straight chase, so simply sprinting away down a long, straight corridor still
+  slowly loses ground — you cannot just outrun it in the open. You beat it by **using
   the escape window**: when it reaches where it last heard you and begins casting
   about, put distance and corners between you before its delayed "lost you" ping
   fires, so the ping comes up empty and it gives up. Keep **your own** sonar for
@@ -179,18 +203,34 @@ flare** it casts. Once it has you it hunts just like the Lanternjaw — but it h
   creature's own sprite, not part of it.
   - **The flare ignores walls.** Its light is not blocked by rock: it fills the full
     **`192 px` radius** around the Flarefish regardless of any walls between.
-  - **The flare reveals that area to you.** Every tile within the flare's radius —
-    **floor and wall alike, straight through walls** — is revealed to you (for as
-    long as `specs/sensing.md` keeps it revealed), and any predator or the drifter
-    inside it is shown live during the bloom. A Flarefish flaring nearby is free
-    reconnaissance — it is the one enemy effect that lights the maze *for* you (the
-    Gloamfin's ping, by contrast, reveals nothing; see `specs/sensing.md`).
-- **Sense — caught in the flash.** If the **forager is within the flare's `192 px`
-  radius at the bloom** (walls do not save you — but **ink does**, see the counter),
-  the Flarefish **acquires a fix on your tile**, the **detection alert** fires, and
-  it **immediately begins to chase**, turning toward you at once. If you are **not**
-  in the light at the bloom, it learns nothing and keeps wandering. Between flares
-  it has no idea where you are.
+  - **The flare reveals that area to you — as a full-light window that follows the
+    Flarefish.** Every tile within the flare's radius — **floor and wall alike,
+    straight through walls** — is revealed to you, and any predator or the drifter
+    inside it is shown live during the bloom. For as long as the bloom burns, the
+    **whole disc reads as full light**: every tile in it is drawn at **full
+    brightness**, moving with the Flarefish, and it **fades back to normal near the
+    end of the flare** — to remembered-dim in Trench, or to **pitch black** beyond
+    your own vision circle in Kindle (see `specs/sensing.md` for each mode). In
+    **Kindle** in particular the flare is effectively a **second vision circle**: a
+    full-vision disc that shows you the trench inside it even out beyond the little
+    window you carry, and that vanishes when the flare dies. A Flarefish flaring
+    nearby is free reconnaissance — it is the one enemy effect that lights the maze
+    *for* you (the Gloamfin's ping, by contrast, reveals nothing; see
+    `specs/sensing.md`).
+- **Sense — caught anywhere in the light, at any point in the bloom.** The flare is a
+  **persistent light that stays attached to the Flarefish for the whole bloom**, not
+  a single instant of the flash. If the **forager is within the flare's `192 px`
+  radius at *any* moment while the bloom burns** (walls do not save you — but **ink
+  does**, see the counter), the Flarefish **acquires a fix on your tile**, the
+  **detection alert** fires, and it **immediately begins to chase**, turning toward
+  you at once. This means:
+  - You are not safe just because you were clear when it first bloomed: **drift into
+    the still-lit disc before it fades and it still catches you.**
+  - Because the disc is **stuck to the Flarefish**, the Flarefish's own movement can
+    **sweep the light over you** mid-bloom and acquire you.
+
+  Only if you stay **outside the light for the entire bloom** does it learn nothing
+  and keep wandering. Between flares it has no idea where you are.
 - **Chase — exactly like the Lanternjaw.** Once it has a fix the Flarefish **stops
   flaring** and pursues you **just as the Lanternjaw does**: it senses you within a
   light-range that grows with your brightness (`R = 128 + 192 * G`) in line of
@@ -209,9 +249,11 @@ flare** it casts. Once it has you it hunts just like the Lanternjaw — but it h
   both the flare and the Flarefish's location; and the **detection alert** fires the
   instant a flare catches you.
 - **Counter.** When you see a flare charging, **break out of its radius** before the
-  bloom so it cannot acquire you — the flare ignores walls, so a wall alone will not
-  hide you; you must be outside the `192 px` circle — **or drop ink**, which blinds
-  it and breaks the acquisition even inside the flare. Once it is chasing, lose it
+  bloom and **stay out for the whole bloom** so it cannot acquire you — the flare
+  ignores walls, so a wall alone will not hide you; you must be outside the `192 px`
+  circle, and mind that the circle **moves with the Flarefish**, so keep clear of
+  where it is drifting, not just where it started — **or drop ink**, which blinds it
+  and breaks the acquisition even inside the flare. Once it is chasing, lose it
   exactly as you lose the Lanternjaw: get behind a wall, go dim, or ink it, then
   stay clear until its flare re-arms. Use its flares to map the trench, but never
   get caught standing in one.

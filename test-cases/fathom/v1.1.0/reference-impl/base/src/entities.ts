@@ -192,6 +192,7 @@ export class Predator extends Mover {
   alertT = 0; // detection-alert window: draw this predator lit even if unlit
   // Per-kind tell / behavior timers.
   pulseT = 0; // Gloamfin: time to next own sonar ping
+  pingLock = 0; // Gloamfin: minimum spacing left before it may ping again (no rapid-fire)
   searching = false; // Gloamfin: casting about an empty fix
   searchT = 0; // Gloamfin: time left casting before giving up
   searchPingT = 0; // Gloamfin: delay before the guaranteed "lost you" ping
@@ -217,4 +218,23 @@ export class Drifter extends Mover {
     super(col, row, speed);
     this.life = life;
   }
+}
+
+// The wander used by BOTH the bonus drifter and the Lanternjaw while it has not
+// spotted you, so the two are indistinguishable in the dark (specs/predators.md):
+// pick an open corridor direction at each junction, avoid an immediate reverse,
+// keep a straight line most of the time for a readable drift, and never dive into
+// a wrap-tunnel edge (the drifter stays out of them, so the Lanternjaw does too).
+const WANDER_DIRS = [Dir.Up, Dir.Down, Dir.Left, Dir.Right];
+export function wanderDir(m: Mover, maze: Maze, rand: () => number): Dir {
+  const opts: Dir[] = [];
+  for (const d of WANDER_DIRS) {
+    const n = maze.step(m.col, m.row, d);
+    if (maze.foragerOpen(n.col, n.row) && !maze.isWrapEdge(n.col, n.row)) opts.push(d);
+  }
+  const noRev = opts.filter((d) => d !== opposite(m.dir));
+  const pool = noRev.length ? noRev : opts;
+  if (!pool.length) return Dir.None;
+  if (pool.includes(m.dir) && rand() < 0.6) return m.dir;
+  return pool[Math.floor(rand() * pool.length)];
 }

@@ -10,14 +10,15 @@ listening.
 Three predators hunt you, each keyed to a different signal you give off. The
 **Lanternjaw** tracks your light, and eating plankton makes you glow brighter — so
 the faster you feed, the more you light yourself up for it; its always-visible
-amber bulb looks just like the harmless bonus drifter, so you can never be sure
-which glimmer in the dark is bait and which is jaws. The **Gloamfin** hunts your
-sound: a sonar pulse — yours or its own — hands it a fix and it sprints to that
-spot faster than you can run, then casts about and re-pings after a moment's delay,
-so you slip it in that window. The **Flarefish** gives off no sign of itself but its
-flares — your light and sonar still catch it like any predator — learning where you
-are only if its own telegraphed burst of light catches you in the open, and once it
-has, it chases just like the Lanternjaw. You carry no weapon
+amber bulb — while it wanders — drifts just like the harmless bonus drifter, at the
+same slow pace, so you can never be sure which glimmer in the dark is bait and which
+is jaws until it lunges. The **Gloamfin** hunts your sound: a sonar pulse — yours or
+its own — hands it a fix and it chases to that spot a touch faster than you can run,
+then casts about and re-pings after a moment's delay, so you slip it in that window.
+The **Flarefish** gives off no sign of itself but its flares — your light and sonar
+still catch it like any predator — learning where you are if its own telegraphed
+burst of light catches you in the open at any point while it burns, and once it has,
+it chases just like the Lanternjaw. You carry no weapon
 and cannot turn the hunt around — only **ink** to blind the two that see, and your
 wits to read the dark.
 

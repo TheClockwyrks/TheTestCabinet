@@ -44,13 +44,13 @@ import {
   VISION_GAIN,
   VISION_MIN,
 } from "./constants";
-import { advance, Drifter, Forager, Predator } from "./entities";
+import { advance, Drifter, Forager, Predator, wanderDir } from "./entities";
 import { Effects } from "./effects";
 import { Input } from "./input";
 import { Maze } from "./maze";
 import { Fog, tileKey } from "./sensing";
 import { updatePredator, World } from "./predators";
-import { Dir, GameState, PredKind, PredState } from "./types";
+import { GameState, PredKind, PredState } from "./types";
 
 export interface Ink {
   x: number;
@@ -169,6 +169,7 @@ export class Game {
       p.markT = 0;
       p.alertT = 0;
       p.pulseT = GLOAMFIN_PING_INTERVAL;
+      p.pingLock = 0;
       p.searching = false;
       p.searchT = 0;
       p.searchPingT = 0;
@@ -455,7 +456,7 @@ export class Game {
         this.drifter,
         dt,
         this.maze,
-        () => patrolWander(this.drifter!, this.maze),
+        () => wanderDir(this.drifter!, this.maze, Math.random),
         (c, r) => this.maze.foragerOpen(c, r) && !this.maze.isWrapEdge(c, r),
         () => true,
       );
@@ -516,28 +517,4 @@ function segDist(
   const cx = x1 + t * dx;
   const cy = y1 + t * dy;
   return Math.hypot(px - cx, py - cy);
-}
-
-const WANDER_DIRS = [Dir.Up, Dir.Down, Dir.Left, Dir.Right];
-function patrolWander(m: Drifter, maze: Maze): Dir {
-  const opts: Dir[] = [];
-  for (const d of WANDER_DIRS) {
-    const n = maze.step(m.col, m.row, d);
-    if (maze.foragerOpen(n.col, n.row) && !maze.isWrapEdge(n.col, n.row))
-      opts.push(d);
-  }
-  const opp = m.dir;
-  const noRev = opts.filter((d) => !isOpposite(d, opp));
-  const pool = noRev.length ? noRev : opts;
-  if (!pool.length) return Dir.None;
-  if (pool.includes(m.dir) && Math.random() < 0.6) return m.dir;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-function isOpposite(a: Dir, b: Dir): boolean {
-  return (
-    (a === Dir.Up && b === Dir.Down) ||
-    (a === Dir.Down && b === Dir.Up) ||
-    (a === Dir.Left && b === Dir.Right) ||
-    (a === Dir.Right && b === Dir.Left)
-  );
 }
