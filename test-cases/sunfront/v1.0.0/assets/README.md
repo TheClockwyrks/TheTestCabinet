@@ -5,14 +5,13 @@ the case supplies. Everything else (the sand arena, staging yards, fog, effects,
 is generated in code; see [`../specs/assets.md`](../specs/assets.md).
 
 Each entity is a directory (e.g. `scarab/`, `aegis/`, `reliquary/`) holding its
-produced model. Most are **rigid, articulated assemblies** delivered as a voxel/mesh
-**rig** — a `rig.json` (parts, joints, animation clips) plus its `meshes/*.glb` parts,
-one per joint; the infantry class (`trooper/`) is a **skinned** mesh delivered as a
-single `mesh.glb` (linear-blend skinning) alongside its `rig.json`. The manifest of
-every entity — its entry file, `rigid`/`skinned` kind, animation clips, and authored
+produced model. Every one is a **rigid, articulated voxel rig** — a `rig.json`
+(parts, joints, animation clips) plus its `meshes/*.glb` parts, one per part. The
+Trooper is rigid too: the whole roster is uniform, which is what lets the build render
+it with a single instanced pipeline. The manifest of every entity — its `rig.json`
+entry file, its (uniformly `rigid`) kind, its animation clips, and its authored
 `width x height x depth` dimensions — is [`models.json`](models.json), whose `model`
-field points at each entity's entry file (`rig.json`, or `mesh.glb` for the skinned
-Trooper).
+field points at each entity's `rig.json`.
 
 ## Status
 
@@ -22,6 +21,9 @@ from their asset-generation runs, alongside the three provided muzzle-flash part
 systems under [`effects/`](effects). The `assets` key in `../test-case.toml` is active
 and lists all of them; nothing is held back.
 
-The build loads each provided model through the **model runtime package** (the voxel
-rigs are posed/animated from their `rig.json`; the skinned Trooper loads its
-`mesh.glb`). Loading is page-relative, per [`../specs/assets.md`](../specs/assets.md).
+The build loads and poses each provided model with **`@test-cabinet/voxel-runtime`**
+(every rig is decoded from its `meshes/*.glb` parts and posed/animated from its
+`rig.json` authored animations), and plays each firing unit's muzzle-flash effect
+under [`effects/`](effects) with **`@test-cabinet/particle-runtime`**. Both runtimes
+are seeded dependencies of the project. Loading is page-relative, per
+[`../specs/assets.md`](../specs/assets.md).

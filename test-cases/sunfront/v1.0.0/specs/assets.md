@@ -3,7 +3,7 @@
 Unlike the battlefield — the sand arena, the lane banding, the staging yards and
 build grid, the fog of war, and every HUD and menu element, all of which you
 **generate in code** (`specs/overview.md`, `specs/playfield.md`) — every **unit and
-structure** in Sunfront is **provided to you** as a finished 3D **model file**, and
+structure** in Sunfront is **provided to you** as a finished **rigid voxel rig**, and
 the **muzzle-flash effects** its firing units play are **provided** too, as particle
 systems (see *Provided muzzle-flash effects* below). This file defines what you are
 given and what you must do with it. The units these models represent are in
@@ -15,7 +15,7 @@ given and what you must do with it. The units these models represent are in
   staging-yard panels and their build grid, the fog of war, health bars, selection
   and placement markers, any projectile or impact effects, and every HUD and
   menu element — in the palette of `specs/overview.md`.
-- **Provided as model files**: every **buildable unit** (`specs/units.md`), the
+- **Provided as rigid voxel rigs**: every **buildable unit** (`specs/units.md`), the
   **Aegis**, both **bases**, both **Reliquaries**, every **spawner structure** (one
   per buildable unit), and the **Solar Extractor** economy structure. You must
   **load and use** these; you must **not** replace them with primitives of your own,
@@ -27,11 +27,13 @@ given and what you must do with it. The units these models represent are in
 
 ## The models, their manifest, and their scale
 
-The models are seeded under `assets/`, one directory per entity. A machine-readable
-manifest ships beside them at **`assets/models.json`**, listing for each entity: its
-model file path, its **named parts, joints, and animation clips**, whether it is
-**rigid** or **skinned** (below), and its authored **dimensions**
-(`width x height x depth`).
+The models are seeded under `assets/`, one directory per entity. Each entity is a
+**voxel rig**: a **`rig.json`** (the `ModelSpec` — its named parts, joints, and
+authored animation clips) plus a **`meshes/*.glb`** file per part holding that part's
+vertex-colored voxel geometry. A machine-readable manifest ships beside them at
+**`assets/models.json`**, listing for each entity: its `rig.json` path, its `kind`
+(`rigid` for every entity), the animation **clips** to play for each game role, and
+its authored **dimensions** (`width x height x depth`).
 
 You must render every entity **at the relative scale its dimensions imply** — a
 Monolith towers over a Scarab, and the Aegis dwarfs every buildable unit — never
@@ -39,25 +41,47 @@ renormalized to a common size. **The dimensions are the size contract; honor the
 Ground the models on the arena floor and space units so their footprints read; a
 unit's on-field footprint follows its model's `width x depth`.
 
-## The models are rigged, articulated assemblies
+## The models are rigid, articulated voxel rigs
 
-Most provided models are **rigid, articulated assemblies**: a hierarchy of rigid
-parts joined by **named joints** — a turret that yaws, a barrel that elevates, legs
-that stride, the Aegis radar vane that sweeps — plus **authored animation clips** you
-play back. The parts move only by rotating or sliding on their joints; there is no
-mesh deformation.
-
-A small number of models — the **infantry** class (the Trooper) — instead deform as
-one **continuous skinned mesh** over a skeleton (linear-blend skinning); the manifest
-marks these `skinned`. Load both kinds with a standard glTF loader and play their
-clips with a standard animation mixer.
+Every provided model is a **rigid, articulated voxel rig**: a hierarchy of rigid parts
+joined by **named joints** — a turret that yaws, a barrel that elevates, legs that
+stride, the Aegis radar vane that sweeps — plus **authored animation clips** you play
+back. The parts move only by rotating or sliding on their joints; there is **no** mesh
+deformation and **no** skinning. The whole roster is uniform this way, which is what
+lets you render it with one instanced pipeline.
 
 Each model is delivered with its **named parts, joints, and clips enumerated** in
-`assets/models.json`, so you know which part is which and which clip to play for each
-game event. Clip names follow a stable convention — a locomotion clip (a `march` /
-`fly`), an attack clip (a `fire` / `bombardment`), and any idle or self-playing clip
-(the Aegis `radar_spin`; the Trooper `brace`) — but always read the exact names from
-the manifest rather than hard-coding them.
+`assets/models.json` and in its own `rig.json`, so you know which part is which and
+which clip to play for each game event. In `models.json`, each entity's `clips` map is
+a game-**role** → clip-**name** map (e.g. `move → "march"`, `attack → "bombardment"`);
+the real animation lives under that name in the rig's `animations[]`. Clip names follow
+a stable convention — a locomotion clip (a `march` / `fly`), an attack clip (a `fire` /
+`bombardment`), and any idle or self-playing clip (the Aegis `radar_spin`) — but always
+resolve the exact animation by reading `models.json`'s `clips` map and then looking that
+name up in the rig, rather than hard-coding it.
+
+## Load and pose the rigs with the provided runtime
+
+You do **not** write a glTF loader or an animation mixer, and you do **not** fetch any
+other art: the runtime that decodes and poses these rigs,
+**`@test-cabinet/voxel-runtime`**, is already a dependency of your project (it is in
+your `package.json`; run your install as usual and import it by name). It is the same
+library the rigs were authored against. For each entity, at load time:
+
+- **Read `assets/models.json`** to resolve the entity's `rig.json` path, its `clips`
+  role→name map, its `dimensions`, and (for firing units) its `muzzle` joint.
+- **Fetch each part's `meshes/*.glb`** (the parts named in the `rig.json`) **and the
+  `rig.json` itself**, page-relative (see *Loading rule* below). Decode each part with
+  the runtime's `parseGlb` and build its geometry with the `/three` binding's
+  `buildPartGeometry`; **reuse one geometry per (entity type, part)** across all
+  instances of that type.
+- **Pose and animate** from the rig's authored animations: sample the active animation
+  at the unit's clock, compose it with any caller-driven joints (e.g. an Aegis turret
+  yaw derived from targeting), and evaluate the rig with the runtime's posing math to
+  get each part's world transform. Play the locomotion clip while a unit advances, the
+  attack clip when it fires (`specs/units.md`), the Aegis `radar_spin` on its own
+  (`specs/waves.md`), and a spawner's emit clip as it stamps out a unit each wave. The
+  runtime's own types are the authoritative API.
 
 ## What you must do with them
 

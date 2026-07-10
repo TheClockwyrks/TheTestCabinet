@@ -4,9 +4,12 @@
   "private": true,
   "description": "Sunfront — a 3D real-time tug-of-war where you build spawner structures that stamp out waves of solar automatons, counter the enemy through the fog, and raze their base. Runs entirely in the browser.",
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
+    "@test-cabinet/voxel-runtime": "file:./.tcab/packages/@test-cabinet/voxel-runtime",
+    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime",
+    "three": "~0.182.0"
   },
   "devDependencies": {
+    "@types/three": "~0.182.0",
     "playwright": "1.61.0"
   }
 }
