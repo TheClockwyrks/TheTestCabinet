@@ -291,5 +291,8 @@ over a neutral viewport; you render the 3D world itself from this specification.
   station-switch indicator.
 - `reference/game-over.png` — an end screen with the battle's result and stats.
 
-Treat them as visual targets: match their layout, palette, and type. They are
-images only — build the screens from this specification.
+Treat them as **illustrative examples, not targets to reproduce**: they show
+one way the screens can look, but design your own menus and layout rather than
+copy them. The only firm requirement is that every menu and navigation path
+this specification mandates is present, rendered in the palette and type the
+spec defines. They are images only — build the screens from this specification.

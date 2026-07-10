@@ -155,17 +155,11 @@ id = "wireframe"
 name = "Wireframe frame"
 dest = "proof/wireframe.png"
 
-# Validation checks (opt-in). Only the checks declared here run. Each drives the
-# built implementation, screenshots it, and compares against the rendered
-# screenshot of `reference`. Only the title screen is deterministic enough to
-# validate for Siege: it is whatever the game shows on load, so it needs no
-# actions. The live 3D siege and the defeat screen depend on play, so they are
-# seeded as references but not validated.
-[[check]]
-view = "title"
-name = "Title Screen"
-reference = "title"
-actions = []
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
 
 # Scoring domains. A reviewer rates each independently while playing the build, and
 # the run's overall rating is the WORST across them — polished terrain cannot mask

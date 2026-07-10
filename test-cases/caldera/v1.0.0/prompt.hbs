@@ -41,10 +41,12 @@ summary here. Two things bear restating, because the harness depends on them:
   a leading `/`; for a bundler, set a relative base such as `base: './'`).
   `specs/overview.md` states this in full; follow it exactly.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are visual targets for the title, in-game HUD, and end screens —
-  match their layout, palette, and type, but build the screens from the
-  specification rather than copying the images. The in-game reference is
-  **HUD-only**; you render the 3D caldera itself for real in WebGL/WebGPU.
+  screenshots that are **illustrative examples** of the title, in-game HUD, and end
+  screens — not targets to reproduce. They show one way the screens can look; design
+  your own menus and layout from the specification, which is authoritative for the
+  palette, type, and every menu and navigation path. The images only illustrate the
+  intended look. The in-game reference is **HUD-only**; you render the 3D caldera
+  itself for real in WebGL/WebGPU.
 
 ## Verify before you finish
 
@@ -58,8 +60,9 @@ assume it works. Before you consider the task complete:
 - **Drive the game** — from the title choose **PLAY**, pick a starting wave, then
   build a working water-to-steam network to power a tower or two, let a wave arrive,
   pan/rotate/zoom the tilted camera — and **screenshot** the title, in-game, and end
-  screens. Compare each against the matching image in `reference/` and against the
-  specs, and fix what does not match before finishing.
+  screens. Verify each against the specs, treating the matching image in
+  `reference/` as an example of the intended look only (not a layout to match), and
+  fix what does not follow the specification before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
   screenshots (including the **terrain close-up**, the **fluid-network overlay**, and
   the **wireframe** frame) and the short assault clip, each written to the precise

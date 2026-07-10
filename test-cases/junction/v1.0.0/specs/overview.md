@@ -200,7 +200,10 @@ The `reference/` folder holds screenshots showing how key screens should look:
 - `reference/gameplay.png` — a representative in-city frame, mid-play.
 - `reference/game-over.png` — the bankruptcy screen.
 
-Treat them as visual targets: match their layout, palette, and type. They are images
-only — and the exact city layout, network, and traffic they show are just **one
-example moment**. Build the screens from this specification, and design your own
-conforming city.
+Treat them as **illustrative examples, not targets to reproduce**: they show
+one way the screens can look, but design your own menus and layout rather than
+copy them. The only firm requirement is that every menu and navigation path
+this specification mandates is present, rendered in the palette and type the
+spec defines. They are images only — and the exact city layout, network, and
+traffic they show are just **one example moment**. Build the screens from this
+specification, and design your own conforming city.

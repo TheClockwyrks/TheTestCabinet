@@ -172,9 +172,12 @@ The `reference/` folder holds screenshots showing how key screens should look:
 - `reference/gameplay.png` — a representative in-match frame, mid-dark.
 - `reference/game-over.png` — the game-over screen.
 
-Treat them as visual targets: match their layout, palette, and type. They show
-the **provided assets** (`specs/assets.md`) in place — the forager, predators,
-effects, and trench tiles you build with — so use them to gauge how those assets
-sit in the scene. They are images only, and the maze they show is just **one
-example layout**: build the screens from this specification, and design your own
-conforming maze.
+Treat them as **illustrative examples, not targets to reproduce**: they show
+one way the screens can look, but design your own menus and layout rather than
+copy them. The only firm requirement is that every menu and navigation path
+this specification mandates is present, rendered in the palette and type the
+spec defines. They show the **provided assets** (`specs/assets.md`) in place —
+the forager, predators, effects, and trench tiles you build with — so use them
+to gauge how those assets sit in the scene. They are images only, and the maze
+they show is just **one example layout**: build the screens from this
+specification, and design your own conforming maze.

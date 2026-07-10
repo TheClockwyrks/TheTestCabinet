@@ -164,17 +164,11 @@ id = "worm"
 name = "Worm split and field clip"
 dest = "proof/worm.webm"
 
-# Validation checks (opt-in). Only the checks declared here run. Each drives the
-# built implementation, screenshots it, and compares against the rendered
-# screenshot of `reference`. Only the title screen is deterministic enough to
-# validate for Wireworm: it is whatever the game shows on load, so it needs no
-# actions. Gameplay and game-over depend on live, grown state, so they are seeded
-# as references but not validated.
-[[check]]
-view = "title"
-name = "Title Screen"
-reference = "title"
-actions = []
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
 
 # Scoring domains. The reviewer rates each independently while playing the build,
 # and the run's overall rating is the WORST across them — a flawless discharge

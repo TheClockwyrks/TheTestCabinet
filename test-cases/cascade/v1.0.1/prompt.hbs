@@ -43,9 +43,11 @@ Two things bear restating, because the harness depends on them:
   hosting exactly that way. `specs/overview.md` states this in full; follow it
   exactly.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are visual targets for the title, gameplay, and win
-  screens — match their layout, palette, and type, but build the screens from the
-  specification rather than copying the images.
+  screenshots that are **illustrative examples, not targets to reproduce**, of the
+  title, gameplay, and win screens — they show one way the screens can look. Design
+  your own menus and layout from the specification; the images only illustrate the
+  intended look. Build the screens from the specification rather than copying the
+  images.
 
 ## Verify before you finish
 
@@ -58,9 +60,10 @@ assume it works. Before you consider the task complete:
   uncaught exceptions.
 - **Drive the game** — deal a game, turn the stock, move cards between piles, send
   cards to the foundations, and reach a won game so the victory cascade plays —
-  and **screenshot** the title, gameplay, and win screens. Compare each against
-  the matching image in `reference/` and against the specs, and fix what does not
-  match before finishing.
+  and **screenshot** the title, gameplay, and win screens. Verify each against the
+  specs, treating the `reference/` images as examples of the intended look only
+  (not a layout to match), and fix what does not follow the specification before
+  finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies:
   the screenshots and the short cascade clip, each written to the precise `proof/`
   path that spec names. These are required deliverables of the finished build, not

@@ -139,5 +139,8 @@ The `reference/` folder holds screenshots showing how key screens should look:
 - `reference/gameplay.png` — a representative in-match frame.
 - `reference/game-over.png` — the match-over screen.
 
-Treat them as visual targets: match their layout, palette, and type. They are
-images only — build the screens from this specification.
+Treat them as **illustrative examples, not targets to reproduce**: they show one
+way the screens can look, but design your own menus and layout rather than copy
+them. The only firm requirement is that every menu and navigation path this
+specification mandates is present, rendered in the palette and type the spec
+defines. They are images only — build the screens from this specification.

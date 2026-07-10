@@ -39,9 +39,10 @@ Two things bear restating, because the harness depends on them:
   hosting exactly that way. `specs/overview.md` states this in full; follow it
   exactly.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are visual targets for the title, gameplay, and game-over
-  screens — match their layout, palette, and type, but build the screens from the
-  specification rather than copying the images.
+  screenshots that are **illustrative examples, not targets to reproduce**, of the
+  title, gameplay, and game-over screens — they show one way the screens can look.
+  Design your own menus and layout from the specification; the images only
+  illustrate the intended look, so do not copy their exact arrangement.
 
 ## Verify before you finish
 
@@ -56,8 +57,9 @@ assume it works. Before you consider the task complete:
   send waves, let an emitter heat up and trip the redline, brake one with a Sink
   and warm one with a Forge, shoot down a flyer with a Flak, take leaks to a loss
   and (if you can) clear waves toward victory — and **screenshot** the title,
-  gameplay, and end screens. Compare each against the matching image in
-  `reference/` and against the specs, and fix what does not match before finishing.
+  gameplay, and end screens. Verify each against the specs, treating the
+  `reference/` images as examples of the intended look only (not a layout to
+  match), and fix what does not follow the specification before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies:
   the screenshots and the two short clips (`heat.webm`, `siege.webm`), each written
   to the precise `proof/` path that spec names. These are required deliverables of

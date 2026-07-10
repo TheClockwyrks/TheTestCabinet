@@ -45,9 +45,11 @@ things bear restating, because the harness depends on them:
   authoritative contract for every asset's layout, how to composite and animate it,
   and the short list of things you do draw in code.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are visual targets for the title, gameplay, and game-over
-  screens — match their layout, palette, and type, but build the screens from the
-  specification rather than copying the images.
+  screenshots that are **illustrative examples, not targets to reproduce**, for the
+  title, gameplay, and game-over screens — they show one way the screens can look.
+  Design your own menus and layout from the specification; the images only
+  illustrate the intended look, so build the screens from the specification rather
+  than copying the images.
 
 ## Verify before you finish
 
@@ -64,9 +66,10 @@ assume it works. Before you consider the task complete:
   fill the bays, and watch the **bear emerge and chase** you across the ice and
   **swim after you** across the water (staying visible) and catch you when you
   hesitate — take hits to a loss and (if you can) clear levels toward victory — and
-  **screenshot** the title, gameplay, and end screens. Compare each against the
-  matching image in `reference/` and against the specs, and fix what does not match
-  before finishing.
+  **screenshot** the title, gameplay, and end screens. Verify each against the
+  specs, treating the `reference/` images as examples of the intended look only —
+  not a layout to match — and fix what does not follow the specification before
+  finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
   screenshots and the two short clips (`hunt.webm`, `cross.webm`), each written to the
   precise `proof/` path that spec names. These are required deliverables of the

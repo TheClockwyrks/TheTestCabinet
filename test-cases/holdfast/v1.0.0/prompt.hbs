@@ -56,9 +56,11 @@ them:
   other dependency; do not fetch or reimplement it). Load every produced file with
   page-relative URLs so it resolves from the served sub-path.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are visual targets for the title, gameplay, and colony-lost
-  screens — match their layout, palette, and type, but build the screens from the
-  specification rather than copying the images.
+  screenshots that are **illustrative examples, not targets to reproduce** for the
+  title, gameplay, and colony-lost screens — they show one way the screens can look,
+  but design your own menus and layout from the specification rather than copying the
+  images. The images only illustrate the intended look; the specification is what you
+  build to.
 
 ## Verify before you finish
 
@@ -73,8 +75,9 @@ assume it works. Before you consider the task complete:
   walk to them and work them, haul materials and build walls, beds, a stove, farm
   plots, and a turret, plant and harvest a crop and cook it into a meal, then let a
   raid arrive and fight it off (or lose the colony) — and **screenshot** the title,
-  in-colony, and colony-lost screens. Compare each against the matching image in
-  `reference/` and against the specs, and fix what does not match before finishing.
+  in-colony, and colony-lost screens. Verify each screen **against the specs**,
+  treating the `reference/` images as examples of the intended look only (not a
+  layout to match), and fix what does not follow the specification before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies:
   the screenshots and the two short clips, each written to the precise `proof/`
   path that spec names. These are required deliverables of the finished build, not

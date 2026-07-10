@@ -50,9 +50,11 @@ things bear restating, because the harness depends on them:
   to composite and animate the sprites, how to play the provided effect, and the
   short list of things you do draw in code.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are visual targets for the title, gameplay, and game-over
-  screens — match their layout, palette, and type, but build the screens from the
-  specification rather than copying the images.
+  screenshots of the title, gameplay, and game-over screens that are
+  **illustrative examples, not targets to reproduce** — they show one way the
+  screens can look, but design your own menus and layout from the specification.
+  The images only illustrate the intended look; build the screens from the specs,
+  in the palette and type they define, rather than copying the images.
 
 ## Verify before you finish
 
@@ -66,8 +68,9 @@ assume it works. Before you consider the task complete:
 - **Drive the game** — move, fire, flip bands, build resonance and discharge, let
   a wave assemble and dive, break a Prism, take a hit to reach game-over — and
   **screenshot** the title, gameplay, and game-over screens. Compare each against
-  the matching image in `reference/` and against the specs, and fix what does not
-  match before finishing.
+  the specs, treating the matching image in `reference/` as an example of the
+  intended look only rather than a layout to match, and fix what does not follow
+  the specification before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies:
   the screenshots and the two short clips, each written to the precise `proof/`
   path that spec names. These are required deliverables of the finished build, not

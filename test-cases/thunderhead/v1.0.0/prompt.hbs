@@ -49,11 +49,11 @@ because the harness depends on them:
   `base: './'`). `specs/overview.md` and `specs/assets.md` state this in full; follow
   it exactly.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are visual targets for the title, the tactical HUD, the
-  direct-control HUD, and the end screen — match their layout, palette, and type, but
-  build the screens from the specification rather than copying the images. The
-  in-battle references are **HUD-only**; you render the 3D world itself for real in
-  WebGL/WebGPU.
+  screenshots for the title, the tactical HUD, the direct-control HUD, and the end
+  screen — treat them as **illustrative examples, not targets to reproduce**: they
+  illustrate one intended look, but design your own menus and layout from the
+  specification rather than copying the images. The in-battle references are
+  **HUD-only**; you render the 3D world itself for real in WebGL/WebGPU.
 
 ## Verify before you finish
 
@@ -68,8 +68,9 @@ it works. Before you consider the task complete:
   opponent on the deploy screen, then command your fleet, **possess** a unit and **man
   a station** aboard it and fire it, let the fleets engage, and pan/rotate/zoom the
   tactical camera — and **screenshot** the title, tactical, direct-control, and end
-  screens. Compare each against the matching image in `reference/` and against the
-  specs, and fix what does not match before finishing.
+  screens. Verify each against the specs, treating the matching image in `reference/`
+  as an example of the intended look only rather than a layout to match, and fix what
+  does not follow the specification before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
   screenshots (including the **generated world**, the **direct-control gunnery
   read-out**, and the **wireframe** frame) and the short engagement clip, each written

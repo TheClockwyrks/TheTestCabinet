@@ -182,17 +182,11 @@ id = "rally"
 name = "Rally clip"
 dest = "proof/rally.webm"
 
-# Validation checks (opt-in). Only the checks declared here run. Each drives the
-# built implementation through `actions`, screenshots it, and compares against the
-# rendered screenshot of `reference`. Only the title screen is deterministic
-# enough to validate for Carom: it is whatever the game shows on load, so it needs
-# no actions. Gameplay and game-over depend on live state and input, so they are
-# seeded as references but not validated.
-[[check]]
-view = "title"
-name = "Title Screen"
-reference = "title"
-actions = []
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
 
 # Scoring domains. A reviewer rates each independently while playing the build,
 # and the run's overall rating is the WORST across them — a flawless single-player
@@ -331,5 +325,5 @@ weight = 1
 [[review_item]]
 id = "menu-rendering"
 title = "Menu Rendering"
-text = "Menus are rendered and styled according to the provided references and without visual bugs; arrow indicators are oriented in the right direction and do not obscure menu options."
+text = "Menus render cleanly, are present and navigable, and are free of visual bugs; arrow indicators are oriented in the right direction and do not obscure menu options."
 weight = 1

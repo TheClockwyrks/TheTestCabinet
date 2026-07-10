@@ -54,9 +54,11 @@ summary here. Three things bear restating, because the harness depends on them:
   project (import it like any other dependency; do not fetch or reimplement it). Load
   every produced file with page-relative URLs so it resolves from the served sub-path.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
-  screenshots that are visual targets for the title, gameplay, and bankruptcy screens —
-  match their layout, palette, and type, but build the screens from the specification
-  rather than copying the images.
+  screenshots that are **illustrative examples, not targets to reproduce**, of the
+  title, gameplay, and bankruptcy screens — they show one way the screens can look.
+  Design your own menus and layout from the specification; the images only illustrate
+  the intended look, so build the screens from the specification rather than copying
+  them.
 
 ## Verify before you finish
 
@@ -73,8 +75,9 @@ it works. Before you consider the task complete:
   path across the network, toggle the traffic overlay to see a corridor congest, then
   over-build or over-tax the city until the budget goes negative and reach the
   bankruptcy loss state — and **screenshot** the title, in-city, and bankruptcy
-  screens. Compare each against the matching image in `reference/` and against the
-  specs, and fix what does not match before finishing.
+  screens. Verify each against the specs, treating the `reference/` images as
+  examples of the intended look only — not a layout to match — and fix what does not
+  follow the specification before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
   screenshots and the two short clips, each written to the precise `proof/` path that
   spec names. These are required deliverables of the finished build, not a private
