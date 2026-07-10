@@ -485,7 +485,7 @@ function drawEndCard(ctx: CanvasRenderingContext2D, game: Game, victory: boolean
     ctx.fillText(spaced(`REACHED LEVEL ${game.levelReached} / 8`, 4), cx, 372);
   }
 
-  drawMenuRow(ctx, OVER_ITEMS, game.menuIndex, 440);
+  drawMenu(ctx, OVER_ITEMS, game.menuIndex, 440, 46);
   ctx.textAlign = "left";
 }
 
@@ -499,24 +499,6 @@ function drawMenu(ctx: CanvasRenderingContext2D, items: string[], selected: numb
     ctx.fillStyle = sel ? COLOR.text : COLOR.textDim;
     const t = sel ? `▸  ${items[i]}  ◂` : items[i];
     ctx.fillText(spaced(t, 6), cx, y);
-  }
-  ctx.textAlign = "left";
-}
-
-function drawMenuRow(ctx: CanvasRenderingContext2D, items: string[], selected: number, y: number): void {
-  const cx = STAGE_W / 2;
-  ctx.textAlign = "center";
-  ctx.font = `700 22px ${MONO}`;
-  const widths = items.map((it) => ctx.measureText(spaced(it, 4)).width + 60);
-  const total = widths.reduce((a, b) => a + b, 0);
-  let x = cx - total / 2;
-  for (let i = 0; i < items.length; i++) {
-    const w = widths[i];
-    const sel = i === selected;
-    ctx.fillStyle = sel ? COLOR.text : COLOR.textDim;
-    const t = sel ? `▸ ${items[i]} ◂` : items[i];
-    ctx.fillText(spaced(t, 4), x + w / 2, y);
-    x += w;
   }
   ctx.textAlign = "left";
 }
