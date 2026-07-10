@@ -375,6 +375,24 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
     ctx.globalAlpha = 1;
   }
 
+  // Bonus drifter bodies — the jellyfish, drawn only where the drifter is currently
+  // visible (in your light, or freshly caught by a sonar mark), exactly like a
+  // predator body. Its swaying tendrils reveal it up close as a harmless jelly; its
+  // always-visible amber bulb is the orb drawn below. A wandering Lanternjaw wears
+  // these very frames, so at a glance the two are one and the same (specs/predators.md).
+  for (const d of game.drifters) {
+    if (!game.entityVisible(d.col, d.row, d.markT)) continue;
+    ctx.globalAlpha = game.fog.isLit(d.col, d.row) ? 1 : 0.6;
+    ctx.drawImage(
+      assets.drifter[Math.floor(d.animT * 8) % 8],
+      d.x - 16,
+      d.y - 16,
+      TILE,
+      TILE,
+    );
+    ctx.globalAlpha = 1;
+  }
+
   // Forager (always drawn).
   const f = game.forager;
   ctx.drawImage(assets.glimmerfin[spriteFrame(f)], f.x - 16, f.y - 16, TILE, TILE);
@@ -412,8 +430,11 @@ function drawPredator(
   let sheet: HTMLImageElement[];
   if (p.kind === PredKind.Lanternjaw) {
     sheet = assets.lanternjaw;
+    // Hunting, it wears its true angler swim (frames 0-7, the jaws). Wandering, it
+    // wears the jellyfish disguise (frames 8-15 — the SAME art as the bonus drifter),
+    // so up close it is indistinguishable from a harmless drifter until it lunges.
     if (p.state === PredState.Hunt) frame = spriteFrame(p);
-    else frame = 8 + (Math.floor(p.animT * 8) % 6); // bulb-bob tell
+    else frame = 8 + (Math.floor(p.animT * 8) % 8);
   } else if (p.kind === PredKind.Gloamfin) {
     sheet = assets.gloamfin;
     frame = spriteFrame(p);

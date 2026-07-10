@@ -104,7 +104,7 @@ export const KINDLE_VISION_MIN = 192; // px (6 tiles) at rest
 export const KINDLE_VISION_GAIN = 128; // R = 192 + 128*G  -> up to 320 (10 tiles)
 
 // ---- Sonar (specs/sensing.md) ------------------------------------------
-export const SONAR_COOLDOWN = 1.75; // s (halved: sonar's real cost is attracting the Gloamfin)
+export const SONAR_COOLDOWN = 1.5; // s (short: sonar's real cost is attracting the Gloamfin, not the cooldown)
 export const SONAR_RANGE_BASE = 9; // corridor tiles (E), shrinks with depth
 export const SONAR_MARK_TIME = 1.5; // s predators stay marked after a pulse
 // The ping is a wavefront that travels OUTWARD through the corridors — bending

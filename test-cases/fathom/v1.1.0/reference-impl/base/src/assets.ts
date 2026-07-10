@@ -42,9 +42,10 @@ async function loadSheet(folder: string): Promise<HTMLImageElement[]> {
 
 export interface Assets {
   glimmerfin: HTMLImageElement[]; // 8 — forager
-  lanternjaw: HTMLImageElement[]; // 16 — the Lanternjaw
+  lanternjaw: HTMLImageElement[]; // 16 — the Lanternjaw: 0-7 hunt swim (jaws), 8-15 wander (the jellyfish disguise, identical to `drifter`)
   gloamfin: HTMLImageElement[]; // 8 — the Gloamfin
   flarefish: HTMLImageElement[]; // 8 — the Flarefish
+  drifter: HTMLImageElement[]; // 8 — the bonus drifter (jellyfish; the very frames a wandering Lanternjaw wears as its disguise)
   trench: HTMLImageElement[]; // 19 — wall autotile + floor + fog + gate
   flareBloom: HTMLImageElement[]; // 8 — the flare (additive, no tint)
   // The sonar pulse is drawn procedurally as a travelling wavefront (render.ts),
@@ -53,12 +54,13 @@ export interface Assets {
 }
 
 export async function loadAssets(): Promise<Assets> {
-  const [glimmerfin, lanternjaw, gloamfin, flarefish, trench, flareBloom] =
+  const [glimmerfin, lanternjaw, gloamfin, flarefish, drifter, trench, flareBloom] =
     await Promise.all([
       loadSheet("glimmerfin"),
       loadSheet("lanternjaw"),
       loadSheet("gloamfin"),
       loadSheet("flarefish"),
+      loadSheet("drifter"),
       loadSheet("trench-walls"),
       loadSheet("flare-bloom"),
     ]);
@@ -67,6 +69,7 @@ export async function loadAssets(): Promise<Assets> {
     lanternjaw,
     gloamfin,
     flarefish,
+    drifter,
     trench,
     flareBloom,
   };

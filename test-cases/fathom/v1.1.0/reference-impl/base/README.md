@@ -27,12 +27,14 @@ by a different signal you give off:
   floored at ~3 s apart and fully **silenced while it is right on top of you** (within
   hearing range), so it can't rapid-fire up close. Break away in that window; ink does
   nothing to it.
-- **The Flarefish** (orange) gives off no tell of its own but its **flares** — your
-  light and sonar reveal it like any predator, it just doesn't announce itself
-  between flares. Its flare is a persistent, moving light for the whole bloom: it
-  learns where you are if that flare (which ignores walls and lights the maze for
-  you) catches you at *any* point while it burns, and then it chases just like the
-  Lanternjaw. Leave the flare's radius — and stay out until it fades — or ink it.
+- **The Flarefish** (orange) **hunts your light exactly like the Lanternjaw** — it
+  simply gives off no tell of its own but its **flares**, so it stays unseen between
+  them (your light and sonar reveal it like any predator). Drift up on it and it
+  fixes on you the moment your glow reaches it in line of sight, then chases like the
+  Lanternjaw. Its **flare** is a second, longer path to you: a persistent, moving
+  light for the whole bloom that ignores walls and lights the maze for you, locking
+  on if it catches you at *any* point while it burns. Go dim or break its sight,
+  leave the flare's radius — and stay out until it fades — or ink it.
 
 When the Gloamfin's ping or the Flarefish's flare catches you, a bright **detection
 alert** flashes so you always know you have been spotted.

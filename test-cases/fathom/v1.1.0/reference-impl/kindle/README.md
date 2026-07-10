@@ -38,10 +38,12 @@ different signal you give off:
   light and sonar reveal it like any predator, it just doesn't announce itself
   between flares. Its flare is a persistent, moving light for the whole bloom: it
   learns where you are if that flare catches you at *any* point while it burns, and
-  then it chases just like the Lanternjaw. The flare doubles as a **second vision
-  circle** — a full-vision disc that reveals the trench inside it even beyond the
-  window you carry, then vanishes when it fades. Leave the flare's radius — and stay
-  out until it fades — or ink it.
+  then it chases just like the Lanternjaw. But it also **hunts your light exactly
+  like the Lanternjaw** whenever it drifts up on you — it fixes on you the moment
+  your glow reaches it in line of sight, unseen between flares though it is. The flare
+  doubles as a **second vision circle** — a full-vision disc that reveals the trench
+  inside it even beyond the window you carry, then vanishes when it fades. Go dim or
+  break its sight, leave the flare's radius — and stay out until it fades — or ink it.
 
 When the Gloamfin's ping or the Flarefish's flare catches you, a bright **detection
 alert** flashes so you always know you have been spotted.

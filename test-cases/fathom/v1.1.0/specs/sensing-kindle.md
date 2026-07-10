@@ -158,7 +158,7 @@ You can emit a **sonar pulse**: an active ability that reveals the maze ahead an
 finds predators, at the cost of being heard. (The control is in
 `specs/movement.md`.)
 
-- **Cooldown.** A pulse is available on a **`1.75 s`** cooldown; the HUD shows a
+- **Cooldown.** A pulse is available on a **`1.5 s`** cooldown; the HUD shows a
   readiness gauge (see `specs/playfield.md`). The pulse recharges fairly quickly —
   its real cost is not the cooldown but that it is **heard** (it can hand the
   Gloamfin a fix), so you can afford to ping fairly often, just never carelessly near

@@ -48,10 +48,12 @@ substitute creatures or effects.
 
 ## Detecting you — the alert (required, anti-blindside)
 
-Two of the predators acquire you in a single, discrete instant — the **Gloamfin**
-when one of its sonar pings finds you, the **Flarefish** when its flare catches
-you. The moment a predator acquires a fix this way, play a clear **detection
-alert** so you always know you have been spotted:
+Two of the predators can blindside you — the **Gloamfin**, which acquires you in
+the discrete instant one of its sonar pings finds you, and the **Flarefish**, which
+gives off no continuous tell and so can find you unseen: the moment its flare
+catches you, **or** the moment it drifts up on you and its ordinary light-sense
+fixes on you (below). The moment a predator acquires a fix in one of these ways,
+play a clear **detection alert** so you always know you have been spotted:
 
 - A sharp, bright **flash burst** in that predator's signature color, centered on
   the predator, that snaps outward and fades over about **`0.5 s`**, together with
@@ -61,9 +63,11 @@ alert** so you always know you have been spotted:
 The alert is runtime art you draw in code (see `specs/assets.md` — it is not a
 sprite sheet), and it must be **unmistakable** against the dark: an earlier build
 left players unsure whether they had actually been detected, so the acquisition
-has to read at a glance. (The Lanternjaw hunts your light *continuously* rather
-than in one instant, so it has no discrete alert — its always-visible bulb, below,
-is its tell.)
+has to read at a glance. (The Lanternjaw also hunts your light *continuously*, but
+it has no discrete alert — its always-visible bulb, below, is its standing tell, so
+you can already see it coming. The Flarefish senses you the same continuous way,
+yet **shows nothing** between flares, so even a quiet light-sense acquisition must
+fire the alert — otherwise its unseen jaws would be a pure blindside.)
 
 ## The den and release
 
@@ -221,8 +225,11 @@ sonar. It is the predator your **sonar** is waiting for.
 ## The Flarefish — hunts in its flare's light (orange)
 
 The Flarefish is a silent hunter: it gives off **no tell of its own except the
-flare** it casts. Once it has you it hunts just like the Lanternjaw — but it has to
-*find* you first, in a single flash.
+flare** it casts. It hunts your light **just like the Lanternjaw** — the only
+difference is that the Lanternjaw's bulb marks it at all times, while the Flarefish
+is unseen between flares. So it finds you in **two** ways: by drifting up on you and
+catching your light the way the Lanternjaw does, **or** by its **flare**, which
+locks onto you at far greater range and straight through walls.
 
 - **No tell but the flare.** Unlike the Lanternjaw (its always-visible bulb) and the
   Gloamfin (its periodic ping), the Flarefish makes **nothing that betrays its
@@ -231,6 +238,16 @@ flare** it casts. Once it has you it hunts just like the Lanternjaw — but it h
   unseeable**, though: like every other predator its body is **revealed wherever your
   light falls on it or a sonar pulse catches it** (`specs/sensing.md`). It simply
   does not advertise itself between flares.
+- **Sense — your light, exactly like the Lanternjaw.** Independently of the flare,
+  the Flarefish senses you the way the Lanternjaw does: whenever you are within a
+  light-range that grows with your brightness (`R = 128 + 192 * G` — about **4
+  tiles** dim, up to about **10 tiles** fully lit) **and** in its line of sight (a
+  wall breaks it, and **ink** breaks it), it takes a **fix on your current tile**,
+  fires the **detection alert** (it was unseen, so being found must announce
+  itself), and chases. This runs **all the time**, wandering or chasing — so a
+  Flarefish that simply drifts up next to you in your glow **fixes on you at once**
+  and pursues, exactly as the Lanternjaw would; it does **not** sit idle waiting for
+  its next flare. Between flares it makes no tell, but it is **not blind**.
 - **Flare.** About every **`7 s`** the Flarefish emits a **flare**: a bright bloom
   lighting a radius of about **`192 px`** (6 tiles) around itself for **`1 s`**,
   preceded by a roughly **`0.5 s`** charge-up glow that telegraphs it and reveals
@@ -255,20 +272,22 @@ flare** it casts. Once it has you it hunts just like the Lanternjaw — but it h
     nearby is free reconnaissance — it is the one enemy effect that lights the maze
     *for* you (the Gloamfin's ping, by contrast, reveals nothing; see
     `specs/sensing.md`).
-- **Sense — caught anywhere in the light, at any point in the bloom.** The flare is a
-  **persistent light that stays attached to the Flarefish for the whole bloom**, not
-  a single instant of the flash. If the **forager is within the flare's `192 px`
-  radius at *any* moment while the bloom burns** (walls do not save you — but **ink
-  does**, see the counter), the Flarefish **acquires a fix on your tile**, the
-  **detection alert** fires, and it **immediately begins to chase**, turning toward
-  you at once. This means:
+- **Flare lock — caught anywhere in the light, at any point in the bloom.** Beyond
+  the ordinary light-sense above, the flare is itself a **far longer-range,
+  wall-ignoring lock**: a **persistent light that stays attached to the Flarefish for
+  the whole bloom**, not a single instant of the flash. If the **forager is within
+  the flare's `192 px` radius at *any* moment while the bloom burns** (walls do not
+  save you — but **ink does**, see the counter), the Flarefish **acquires a fix on
+  your tile**, the **detection alert** fires, and it **immediately begins to chase**,
+  turning toward you at once. This means:
   - You are not safe just because you were clear when it first bloomed: **drift into
     the still-lit disc before it fades and it still catches you.**
   - Because the disc is **stuck to the Flarefish**, the Flarefish's own movement can
     **sweep the light over you** mid-bloom and acquire you.
 
-  Only if you stay **outside the light for the entire bloom** does it learn nothing
-  and keep wandering. Between flares it has no idea where you are.
+  Only if you stay **outside the flare for the entire bloom** — and out of its
+  ordinary light-sense range — does it learn nothing from the flare and keep
+  wandering.
 - **Chase — exactly like the Lanternjaw.** Once it has a fix the Flarefish **stops
   flaring** and pursues you **just as the Lanternjaw does**: it senses you within a
   light-range that grows with your brightness (`R = 128 + 192 * G`) in line of

@@ -38,9 +38,13 @@ The predators were also revised for clarity and fairness:
 - The **Flarefish** now gives off **no tell of its own but its flare** — no bulb, no
   ping. Your light and sonar reveal it like any other predator; it simply does not
   advertise itself between flares (which ignore walls and reveal tiles for you), and
-  its flare is rarer than the Gloamfin's ping so it warns you less often. Once its
-  flare catches you it chases exactly like the Lanternjaw before re-arming its flare
-  on a timer. The flare is now a **persistent, moving light for the whole bloom**:
+  its flare is rarer than the Gloamfin's ping so it warns you less often. It **hunts
+  your light exactly like the Lanternjaw** — fixing on you whenever it drifts up
+  within line-of-sight range of your glow, so it no longer sits idle if it comes
+  across you between flares — and its **flare** is a second, far longer-range,
+  wall-ignoring lock on top of that. Once it has you (either way) it chases exactly
+  like the Lanternjaw before re-arming its flare on a timer. The flare is now a
+  **persistent, moving light for the whole bloom**:
   it catches you at *any* moment you are in the disc (not just the first instant),
   and it stays attached to the Flarefish so its own drift can sweep the light over
   you. Visually the whole disc is drawn at **full light**, fading back to normal near

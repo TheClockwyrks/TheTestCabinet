@@ -326,67 +326,45 @@ function updateGloamfin(p: Predator, dt: number, w: World): void {
   }
 }
 
+// The Flarefish's ordinary sense, EXACTLY the Lanternjaw's: a light-range that
+// grows with your brightness (`R = 128 + 192*G`), in line of sight, broken by ink.
+// This runs whether it is wandering or chasing — so a Flarefish that simply drifts
+// up on you in your light fixes on you at once, just as the Lanternjaw would,
+// instead of ignoring you until its next flare (specs/predators.md).
+function flarefishLightSense(p: Predator, w: World): boolean {
+  if (p.blindT > 0) return false;
+  const R = LANTERNJAW_RANGE_BASE + LANTERNJAW_RANGE_GAIN * w.forager.g;
+  return (
+    dist(p.x, p.y, w.forager.x, w.forager.y) <= R &&
+    Fog.losClear(w.maze, p.col, p.row, w.fcol, w.frow) &&
+    !w.inkBetween(p.x, p.y, w.forager.x, w.forager.y)
+  );
+}
+
 function updateFlarefish(p: Predator, dt: number, w: World, mult: number): void {
   p.speed = FLAREFISH_SPEED * mult;
-  const chasing = p.hasFix;
 
-  if (!chasing) {
-    // Wander (no tell but the flare), running the flare cycle.
-    if (!p.flaring) {
-      p.flareT -= dt;
-      if (p.flareT <= 0) {
-        p.flaring = true;
-        p.flarePhaseT = 0;
-        p.flareT = FLARE_INTERVAL;
-      }
+  if (!p.hasFix) {
+    // Wandering. It now has TWO ways to find you (specs/predators.md):
+    //   1. its flare — a long-range, wall-ignoring lock on anyone caught in the
+    //      bloom (unchanged), and
+    //   2. its ordinary light-sense, exactly like the Lanternjaw, so a Flarefish
+    //      that comes across you between flares pursues instead of ignoring you.
+    runFlareCycle(p, dt, w); // may lock on via the flare (sets hasFix, fires alert)
+    if (!p.hasFix && flarefishLightSense(p, w)) {
+      acquire(p, w, w.fcol, w.frow);
+      p.linger = FLARE_LINGER;
     }
-    if (p.flaring) {
-      const prev = p.flarePhaseT;
-      p.flarePhaseT += dt;
-      const bloomStart = FLARE_CHARGE;
-      const bloomEnd = FLARE_CHARGE + FLARE_BLOOM;
-      const fadeEnd = bloomEnd + FLARE_FADE;
-      if (prev < bloomStart && p.flarePhaseT >= bloomStart) {
-        w.audio.play("flare");
-      }
-      // While the flare is at full bloom it is a persistent, full-vision light disc
-      // stuck to the Flarefish: reveal it for the player every frame, and catch the
-      // forager the instant it is ANYWHERE inside — including if it was clear at the
-      // bloom but then drifts into the still-burning light (specs/predators.md). The
-      // flare ignores walls (radius only, no line of sight); ink still breaks it.
-      if (p.flaring && p.flarePhaseT >= bloomStart && p.flarePhaseT < bloomEnd) {
-        revealFlareArea(p, w);
-        const blinded =
-          p.blindT > 0 ||
-          w.inkAt(w.forager.x, w.forager.y) ||
-          w.inkBetween(p.x, p.y, w.forager.x, w.forager.y);
-        if (dist(p.x, p.y, w.forager.x, w.forager.y) <= FLARE_RADIUS && !blinded) {
-          acquire(p, w, w.fcol, w.frow);
-          p.linger = FLARE_LINGER;
-          p.flaring = false; // it has you now — the chase takes over
-        }
-      }
-      if (p.flaring && p.flarePhaseT >= fadeEnd) p.flaring = false;
+    if (!p.hasFix) {
+      p.state = PredState.Patrol;
+      return;
     }
-    p.state = PredState.Patrol;
-    return;
   }
 
-  // Chase — exactly like the Lanternjaw (brightness range + line of sight + ink),
-  // and no flaring while chasing.
+  // Chase — exactly like the Lanternjaw (light-range + line of sight + ink), and no
+  // flaring while chasing.
   p.flaring = false;
-  let sensed = false;
-  if (p.blindT <= 0) {
-    const R = LANTERNJAW_RANGE_BASE + LANTERNJAW_RANGE_GAIN * w.forager.g;
-    if (
-      dist(p.x, p.y, w.forager.x, w.forager.y) <= R &&
-      Fog.losClear(w.maze, p.col, p.row, w.fcol, w.frow) &&
-      !w.inkBetween(p.x, p.y, w.forager.x, w.forager.y)
-    ) {
-      sensed = true;
-    }
-  }
-  if (sensed) {
+  if (flarefishLightSense(p, w)) {
     p.fixCol = w.fcol;
     p.fixRow = w.frow;
     p.linger = FLARE_LINGER;
@@ -398,6 +376,47 @@ function updateFlarefish(p: Predator, dt: number, w: World, mult: number): void 
     p.state = PredState.Hunt;
     if (p.linger <= 0) loseFlareChase(p);
   }
+}
+
+// The flare cycle: charge → bloom → fade, on its interval. It is the Flarefish's
+// only tell, and it doubles as a long-range sense: while the bloom burns it is a
+// persistent, wall-ignoring full-vision disc stuck to the Flarefish that reveals the
+// maze for the player AND locks onto the forager anywhere inside its `FLARE_RADIUS`
+// — well beyond the ordinary light-sense — including if the forager drifts into the
+// still-burning disc after it opens, or the Flarefish's own drift sweeps the light
+// over it. Ink breaks the flare lock, exactly as it breaks the light-sense
+// (specs/predators.md, specs/sensing.md).
+function runFlareCycle(p: Predator, dt: number, w: World): void {
+  if (!p.flaring) {
+    p.flareT -= dt;
+    if (p.flareT <= 0) {
+      p.flaring = true;
+      p.flarePhaseT = 0;
+      p.flareT = FLARE_INTERVAL;
+    }
+  }
+  if (!p.flaring) return;
+  const prev = p.flarePhaseT;
+  p.flarePhaseT += dt;
+  const bloomStart = FLARE_CHARGE;
+  const bloomEnd = FLARE_CHARGE + FLARE_BLOOM;
+  const fadeEnd = bloomEnd + FLARE_FADE;
+  if (prev < bloomStart && p.flarePhaseT >= bloomStart) {
+    w.audio.play("flare");
+  }
+  if (p.flarePhaseT >= bloomStart && p.flarePhaseT < bloomEnd) {
+    revealFlareArea(p, w);
+    const blinded =
+      p.blindT > 0 ||
+      w.inkAt(w.forager.x, w.forager.y) ||
+      w.inkBetween(p.x, p.y, w.forager.x, w.forager.y);
+    if (dist(p.x, p.y, w.forager.x, w.forager.y) <= FLARE_RADIUS && !blinded) {
+      acquire(p, w, w.fcol, w.frow);
+      p.linger = FLARE_LINGER;
+      p.flaring = false; // it has you now — the chase takes over
+    }
+  }
+  if (p.flaring && p.flarePhaseT >= fadeEnd) p.flaring = false;
 }
 
 // The Flarefish loses you: back to wandering + invisibility, with the flare put on

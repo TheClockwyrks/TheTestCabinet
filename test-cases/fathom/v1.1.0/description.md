@@ -15,10 +15,12 @@ same slow pace, so you can never be sure which glimmer in the dark is bait and w
 is jaws until it lunges. The **Gloamfin** hunts your sound: a sonar pulse — yours or
 its own — hands it a fix and it chases to that spot a touch faster than you can run,
 then casts about and re-pings after a moment's delay, so you slip it in that window.
-The **Flarefish** gives off no sign of itself but its flares — your light and sonar
-still catch it like any predator — learning where you are if its own telegraphed
-burst of light catches you in the open at any point while it burns, and once it has,
-it chases just like the Lanternjaw. You carry no weapon
+The **Flarefish** hunts your light **exactly like the Lanternjaw**, fixing on you
+whenever you drift into its sight — it simply gives off no sign of itself but its
+flares (your light and sonar still catch it like any predator), so it comes unseen
+between them; its telegraphed **flare** is a second, longer reach that locks on
+through walls if its burst of light catches you at any point while it burns. Once it
+has you, it chases just like the Lanternjaw. You carry no weapon
 and cannot turn the hunt around — only **ink** to blind the two that see, and your
 wits to read the dark.
 

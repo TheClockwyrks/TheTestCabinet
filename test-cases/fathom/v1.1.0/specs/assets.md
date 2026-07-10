@@ -67,6 +67,7 @@ opaque, so each composites cleanly over the dark trench.
 | The Lanternjaw | `assets/lanternjaw/` | 16 (`0`–`15`) | 32×32 | Light-seeking predator (sprite) |
 | The Gloamfin | `assets/gloamfin/` | 8 (`0`–`7`) | 32×32 | Sound-seeking predator (sprite) |
 | The Flarefish | `assets/flarefish/` | 8 (`0`–`7`) | 32×32 | Flare-making predator (sprite) |
+| The bonus drifter | `assets/drifter/` | 8 (`0`–`7`) | 32×32 | The harmless amber jellyfish (sprite) |
 | Flare bloom | `assets/flare-bloom/` | 8 (`0`–`7`) | 128×128 | The Flarefish's radial flare (effect) |
 | Trench tiles | `assets/trench-walls/` | 19 (`0`–`18`) | 32×32 | Wall autotile + floor + fog + den gate |
 
@@ -107,29 +108,32 @@ The player character (`#46f0e0`). Four-direction movement with a two-frame
 
 ## The Lanternjaw — `assets/lanternjaw/` (16 frames, 32×32)
 
-The light-seeking predator: a dark anglerfish body with a bright dangling
-**bulb** (`specs/predators.md`). Four-direction swim, plus its signature
-**bulb-bob** tell and an idle:
+The light-seeking predator (`specs/predators.md`). It has **two forms**: its true
+**anglerfish** body — a dark hunter with jaws — that it wears while **hunting**, and
+a **jellyfish disguise** it wears while **wandering**, so an undetected Lanternjaw
+passes for the harmless bonus drifter. The disguise frames are the **same art as the
+`drifter` sheet** (below); the two must be pixel-identical, so author the jellyfish
+once and place it in both sheets:
 
 | Frames | Contents |
 | --- | --- |
-| 0, 1 | swim **down** (two-frame swim cycle) |
+| 0, 1 | swim **down** — the true anglerfish/jaws (two-frame swim cycle) |
 | 2, 3 | swim **up** |
 | 4, 5 | swim **left** |
 | 6, 7 | swim **right** |
-| 8–13 | **bulb-bob** — six frames of the dangling lure bobbing and its amber glow pulsing |
-| 14, 15 | resting idle body |
+| 8–15 | the **jellyfish disguise** — an eight-frame tendril-sway loop, **identical to `assets/drifter/` frames 0–7** |
 
-- While the Lanternjaw **moves**, alternate the two frames of its facing (≈6–8 fps).
-- While it **patrols / sits**, play the **bulb-bob** loop (frames 8→13) — the
-  beckoning bulb (`specs/predators.md`). Frames 14/15 are a quiet resting idle.
-- The amber **bulb** is the brightest part of the sprite. Note its behavior in
-  `specs/predators.md`: the Lanternjaw's **bulb-light is always visible** to the
-  player (a runtime amber glow you draw at the bulb, shown even when the body is
-  unlit), and it is drawn to look **almost identical to the bonus drifter** — so the
-  always-visible amber point is the runtime glow, not just this sprite. The body
-  itself is fog-gated like any predator and drawn from this sheet only where it is
-  lit.
+- While the Lanternjaw is **hunting** (it has fixed on you and lunges), draw its
+  facing pair from frames 0–7 and alternate them (≈6–8 fps) — this is the moment it
+  drops the disguise and its jaws show.
+- While it **wanders** (undetected), play the **jellyfish disguise** loop over frames
+  8–15, exactly as you animate the bonus drifter, so up close it is indistinguishable
+  from a real drifter (`specs/predators.md`).
+- The always-visible amber **bulb** is **not** in these frames: it is a **runtime
+  amber glow** you draw at the creature's center (see "What has no asset" below),
+  shown even when the body is unlit and drawn **identically** for the Lanternjaw and
+  the drifter. The body itself is fog-gated like any predator and drawn from this
+  sheet only where it is lit.
 
 ## The Gloamfin — `assets/gloamfin/` (8 frames, 32×32)
 
@@ -161,6 +165,26 @@ The flare-making predator (`#ff7a59`). Four-direction swim only:
 Alternate the two frames of the current facing while it moves. The sprite carries
 only the small dim **flare organ** on its body; the **flare itself** is the
 separate large effect below.
+
+## The bonus drifter — `assets/drifter/` (8 frames, 32×32)
+
+The harmless drifting jellyfish you graze for bonus points (`specs/playfield.md`).
+An **amber bell** (the "bulb") with a frilled skirt and a few **tendrils** hanging
+below, over an **eight-frame sway loop** — the tendrils ripple gently as it drifts.
+It is directionless (a jellyfish reads the same whichever way it drifts), so there
+is a single loop rather than per-facing pairs; advance the loop (≈8 fps) while it
+moves.
+
+- These are the **very frames a wandering Lanternjaw wears as its disguise**
+  (`assets/lanternjaw/` 8–15): the jellyfish here and the disguise there **must be
+  pixel-identical**, so a wandering Lanternjaw cannot be told from a real drifter up
+  close. Author the jellyfish once and use it for both.
+- The bell reads as the **bulb**, but the **always-visible amber point** is the
+  **runtime glow** drawn at the creature's center (see "What has no asset" below) —
+  the same glow the Lanternjaw's bulb uses — not this sprite. Like a predator body,
+  the jellyfish is **fog-gated**: it is drawn from this sheet only where the drifter
+  is currently lit (in your light) or freshly caught by a sonar mark, so **normally
+  only the amber bulb shows in the dark, and the tendrils appear only up close**.
 
 ## The sonar pulse has no sprite — it is drawn in code
 
@@ -255,15 +279,17 @@ specs describe (using the palette in `specs/overview.md`):
   of short arcs that bulge in the direction the sound is moving, brightest at the
   leading edge. Tinted `#5ef2ff` for the forager and `#c46bff` for the Gloamfin's
   ping (`specs/sensing.md`, `specs/predators.md`).
-- The **bonus drifter** — a glowing **amber** mote (`#ffd166`) drawn to look
-  **almost identical to the Lanternjaw's bulb-light**, and always visible
-  (`specs/playfield.md`, `specs/predators.md`).
-- The **Lanternjaw's always-visible bulb-light** — a runtime amber glow drawn at
-  the Lanternjaw's bulb even when its body is unlit, matching the drifter
-  (`specs/predators.md`).
+- The **always-visible amber bulb-light**, drawn **identically** for the **bonus
+  drifter** and the **Lanternjaw's bulb** — a glowing **amber** mote (`#ffd166`)
+  rendered at the creature's center, shown at all times even across unlit fog. It is
+  the same runtime glow for both, so the two are indistinguishable at a distance; a
+  drifter's jellyfish body and a wandering Lanternjaw's disguise (both from the
+  sprite sheets above) only appear, and only up close, where they are lit
+  (`specs/playfield.md`, `specs/predators.md`). (In **Kindle**, this amber glow is
+  clipped to your vision circle — see `specs/sensing.md`.)
 - The **detection alert** — the bright flash burst (in the acquiring predator's
-  color) that fires the instant the **Gloamfin's ping** or the **Flarefish's flare**
-  catches you (`specs/predators.md`).
+  color) that fires the instant the **Gloamfin's ping**, the **Flarefish's flare**,
+  or the **Flarefish's ordinary light-sense** catches you (`specs/predators.md`).
 - The **ink cloud** (`#0b0a1f`) (`specs/movement.md`).
 - The forager's **brightness glow and the lit-pocket of vision** around it, and
   any predator **glow** at the edge of sight — these are runtime light, not sprite
