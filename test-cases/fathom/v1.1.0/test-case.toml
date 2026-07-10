@@ -139,21 +139,30 @@ source = "specs/assets.md"
 [[spec]]
 source = "specs/proof.md"
 
-# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
-# mockup the harness renders to a screenshot and seeds as a visual target. Both
-# variants show the same single-dive menu (`DIVE`, then `HOW TO PLAY`), so `title`
-# is common too, alongside `gameplay` and `game-over`.
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from the playable `base` reference-impl — the authored,
+# correct build — and served as-is (seeded as a visual target, never rendered). See
+# `reference/README.md` for how they are regenerated. Both variants show the same
+# single-dive menu (`DIVE`, then `HOW TO PLAY`), so `title` is common, alongside
+# `game-over`; `gameplay` and `sonar` depict the Base sensing model (the Kindle
+# variant adds its own `vision-circle` view in `variants/kindle.toml`).
 [[reference]]
 view = "title"
-path = "reference/menu.html"
+media = "reference/screenshots/title.png"
 
 [[reference]]
 view = "gameplay"
-path = "reference/gameplay.html"
+media = "reference/screenshots/gameplay.png"
 
 [[reference]]
 view = "game-over"
-path = "reference/game-over.html"
+media = "reference/screenshots/game-over.png"
+
+# The sonar pulse mid-flight: the travelling wavefront flooding the corridors and
+# reaching past the light. Common to both variants (both dives have sonar).
+[[reference]]
+view = "sonar"
+media = "reference/screenshots/sonar.png"
 
 # Proof of implementation, requested for every variant. Each declares a `dest`
 # path (relative to the run workspace root) the build must write a screenshot
@@ -231,6 +240,7 @@ title = "Sonar travels through corridors as a wavefront"
 text = "A sonar pulse is a travelling wavefront (drawn procedurally, not a sprite ring): it flows outward through the open corridors — bending around corners and reflecting off walls, not expanding as a circle — out to its range, revealing near tiles before far ones and their walls, and marking any predator it reaches for a brief window beyond the bend, as the front arrives. The drawn crest should read as arcs that bulge the way the sound is moving, brightest at the leading edge."
 weight = 1
 domain = "sensing"
+reference = "sonar"
 proof = "sonar"
 
 [[review_item]]

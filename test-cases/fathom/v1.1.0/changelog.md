@@ -18,6 +18,13 @@ Each variant seeds its own self-contained `specs/sensing.md`, and the common spe
 no longer reference "modes" or any other variant. The shared single-dive menu makes
 the `title` reference common to both variants.
 
+The reference visuals are now **captured from the playable reference-impl builds**
+(with Playwright) rather than from hand-authored HTML mockups — the mockups and
+shared `theme.css` are gone, and the committed screenshots the manifest seeds as
+`media` are stills of the real game. Two new reference views come with it: a common
+`sonar` view (the travelling wavefront mid-flight) and a Kindle-only `vision-circle`
+view (the outer window at full glow). See `reference/README.md`.
+
 The predators were also revised for clarity and fairness:
 
 - The two sound/light hunters are named outright — the **Lanternjaw** (light) and

@@ -24,16 +24,22 @@ spec = [{ source = "specs/sensing-kindle.md", dest = "specs/sensing.md" }]
 # remembered.
 reference_implementation = "reference-impl/kindle"
 
+# The Kindle-only in-trench view: its outer vision circle. Captured (with
+# Playwright) from the playable `kindle` reference-impl and served as-is, like the
+# common views (see `reference/README.md`). The `title`, `gameplay`, `game-over`,
+# and `sonar` references are common (declared in the case manifest); this view is
+# additive — the wide circular window of explored trench, pitch black beyond.
+reference = [{ view = "vision-circle", media = "reference/screenshots/kindle/vision-circle.png" }]
+
 # Sensing review items specific to the Kindle model, rolling up to the common
-# `sensing` domain. The `title`, `gameplay`, and `game-over` references are common
-# (both variants share the same single-dive menu), so this variant declares none.
+# `sensing` domain.
 [[review_item]]
 id = "kindle-vision-circle"
 title = "The vision circle"
 text = "An outer vision circle centered on the forager — an actual circle cut at the pixel (not tile-by-tile), growing as you eat and shrinking when you stop — is the only place terrain and plankton are drawn. Everything beyond it is pitch black, even ground you already explored. The circle reveals nothing itself; it only limits what of the already-revealed map is shown."
 weight = 1
 domain = "sensing"
-reference = "gameplay"
+reference = "vision-circle"
 proof = "gameplay"
 
 [[review_item]]
