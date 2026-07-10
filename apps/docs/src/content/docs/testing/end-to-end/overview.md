@@ -291,7 +291,7 @@ When a `packages`-declaring case is seeded, the requested libraries (and their
 seed commit. Because the `package.json` above points at that in-repo path, the
 dependency resolves **wherever the produced tree lives** — the run container, the
 validation host, and any clone of the [published source
-repo](/quickstarts/publish-a-run/) — with no absolute `/opt`-style path to break
+repo](/quickstarts/devops/publish-a-run/) — with no absolute `/opt`-style path to break
 when the tree moves. This is what makes a produced game both validate and stay
 playable/buildable after release; it also means the model's `.tcab/packages/`
 folder is Test-Cabinet-provided scaffolding, not something for it to touch.

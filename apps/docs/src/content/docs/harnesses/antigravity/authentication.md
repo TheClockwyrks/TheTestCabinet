@@ -23,7 +23,7 @@ it. On the CLI/desktop path it is read from your host home; on the
 **backend-driven (cluster) path** it comes from an operator-provided Secret the
 dispatcher mounts into the driver pod instead — so Antigravity, despite being
 subscription-only, now runs from the console too, not just locally (see
-[the service flow](/quickstarts/set-up-authentication/#subscription-in-the-service-flow-the-cluster-path)).
+[the service flow](/quickstarts/setup/set-up-authentication/#subscription-in-the-service-flow-the-cluster-path)).
 If `agy` cannot authenticate from the copied token, the run fails with a clear
 error rather than dropping into an interactive login that would block it.
 

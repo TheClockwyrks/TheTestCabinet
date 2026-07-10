@@ -90,7 +90,7 @@ Task-oriented walkthroughs:
   author a test case, create a variant, publish a run, review a run.
 - Longer guides:
   [`guides/`](apps/docs/src/content/docs/guides/) — including
-  [first-time setup](apps/docs/src/content/docs/guides/first-time-setup.md) for a
+  [first-time setup](apps/docs/src/content/docs/guides/setup/first-time-setup.md) for a
   machine that will actually run test cases (container runtime, run-container
   image, credentials).
 
@@ -126,9 +126,9 @@ Task-oriented walkthroughs:
   (display name, aliases, provider, svgl logo, description, OpenRouter slug) are
   edited **in the app** (web console / desktop Models section, requires sign-in) —
   no `tcab catalog`, `scripts/add-model.mjs`, or recompile. The steps are in
-  [`quickstarts/add-or-update-a-model.md`](apps/docs/src/content/docs/quickstarts/add-or-update-a-model.md)
+  [`quickstarts/add-or-update-a-model.md`](apps/docs/src/content/docs/quickstarts/devops/add-or-update-a-model.md)
   (and the fuller
-  [`guides/adding-or-updating-a-model.md`](apps/docs/src/content/docs/guides/adding-or-updating-a-model.md)).
+  [`guides/adding-or-updating-a-model.md`](apps/docs/src/content/docs/guides/devops/adding-or-updating-a-model.md)).
 - **Harnesses:** [`harnesses/`](harnesses/) — one `harness.toml` per harness
   (`harnesses/<slug>/`) declaring its name, CLI binary, and the command that
   installs the CLI into the run container at run time. See

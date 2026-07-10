@@ -160,7 +160,7 @@ read from* differs by run path, behind a single seam (`CredBytesSource`):
   [Antigravity](/harnesses/antigravity/overview/) — now runs on the cluster path
   too, not just locally. The Secret holds the same files `CredFile` names, keyed by
   basename; one shared subscription per deployment. See
-  [Set Up Authentication → the service flow](/quickstarts/set-up-authentication/#subscription-in-the-service-flow-the-cluster-path)
+  [Set Up Authentication → the service flow](/quickstarts/setup/set-up-authentication/#subscription-in-the-service-flow-the-cluster-path)
   and the [dispatcher](/components/dispatcher/overview/) config. The
   [desktop app](/components/tauri/overview/) is one such cluster deployment: it
   builds this Secret itself from the host's signed-in credential files, driven by

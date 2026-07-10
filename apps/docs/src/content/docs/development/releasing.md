@@ -15,7 +15,7 @@ of this on your own machine is covered under [Running](/development/running/).
 For building locally see [Building](/development/building/); for what a *run*
 publishes (its source repository and playable build) see
 [Results](/components/core/results/) and
-[Publishing a Test Run Result](/guides/publishing-a-test-run-result/). For
+[Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/). For
 pointing a deployed service's telemetry at a collector see
 [Observability](/development/observability/#production-and-staging).
 
@@ -170,7 +170,7 @@ step.
 
 ## Per-run builds (Cloudflare Pages)
 
-A [publish](/guides/publishing-a-test-run-result/) deploys each run's static
+A [publish](/guides/devops/publishing-a-test-run-result/) deploys each run's static
 build to Cloudflare Pages under a per-run branch alias (`--branch=<run-id>`),
 served at the `*.pages.dev` URL `wrangler` reports and embedded by the gallery
 from there. This is the operator's half of a publish, so the operator holds the

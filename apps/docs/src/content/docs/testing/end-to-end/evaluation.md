@@ -93,4 +93,4 @@ Publishing refuses a run with no review, so every published end-to-end
 implementation is both scored and framed by a human assessment rather than
 dropped onto the site as raw output. For how a reviewer arrives at the per-domain
 ratings and works the checklist, see
-[Reviewing Test Run Results](/guides/reviewing-test-run-results/).
+[Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).

@@ -120,7 +120,7 @@ first, confirm the flow, then repeat for prod with prod's own secrets and a
     `images:` transformer pins them — set `newTag` to a `:<git-sha>`. For the
     routine "promote the latest CI build to prod" loop — finding the built sha,
     re-pinning, and applying through the private cluster — see
-    [Rolling Production Service Images](/guides/rolling-prod-service-images/).
+    [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/).
   - **Run-container images** are *not* `image:` fields anywhere; the driver resolves
     them at run time (`core::harness::resolve_run_image`). Pin them by setting
     `TCAB_CONTAINER_TAG` (and optionally `TCAB_CONTAINER_REGISTRY`) on the

@@ -28,7 +28,7 @@ server via a per-run [driver](/components/driver/overview/) `Job` from the
 to the [Components](/components/architecture/) section, while end users should
 focus their attention on the [Quickstarts](/quickstarts/overview/) and
 [User Guides](/guides/overview/) sections. New users should start with
-[First Time Setup](/guides/first-time-setup/).
+[First Time Setup](/guides/setup/first-time-setup/).
 
 ## AI-Generated Documentation
 

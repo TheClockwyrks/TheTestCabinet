@@ -346,7 +346,7 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   than reserving an empty pane. Each named id must resolve for the item's variant
   or resolution is rejected. An item may also break into **sub-items** — see
   [Sub-items](#sub-items) below. See
-  [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
+  [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/#work-the-checklist).
 - Each `[[domain]]` declares a **scoring domain** the reviewer rates
   independently — for example a game's `single-player` and `versus` modes — by a
   stable `id` (recorded with the per-domain rating), an optional `name`

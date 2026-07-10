@@ -268,7 +268,7 @@ review the **overall rating** is the *worst* across those domains, so a flawless
 mode cannot mask a broken one. What each
 tier means is reviewer judgment rather than anything a run emits, so the criteria
 for choosing one live with the review workflow; see
-[Reviewing Test Run Results](/guides/reviewing-test-run-results/#write-the-review).
+[Reviewing Test Run Results](/guides/development/reviewing-test-run-results/#write-the-review).
 
 ### Aggregating across reviews
 

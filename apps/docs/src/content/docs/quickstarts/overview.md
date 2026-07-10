@@ -9,42 +9,42 @@ gives the commands and the bare minimum of context, and links out to the
 sections for the detail it skips.
 
 If you are setting the project up for the first time, start with
-[First Time Setup](/guides/first-time-setup/) instead — the quickstarts assume a
+[First Time Setup](/guides/setup/first-time-setup/) instead — the quickstarts assume a
 working toolchain, a container runtime, the run-container image, and a configured
 API key.
 
 ## Available quickstarts
 
-- [Set Up Authentication](/quickstarts/set-up-authentication/) — give a harness
+- [Set Up Authentication](/quickstarts/setup/set-up-authentication/) — give a harness
   the API key or subscription credentials a run needs.
-- [Register and Log In](/quickstarts/register-and-login/) — create a user account
+- [Register and Log In](/quickstarts/setup/register-and-login/) — create a user account
   and sign in, so push, review, and publish are attributed to you.
-- [Run a Test Case](/quickstarts/run-a-test-case/) — drive a single test case
+- [Run a Test Case](/quickstarts/development/run-a-test-case/) — drive a single test case
   through a harness and write a run record.
-- [Run the Local Service Stack](/quickstarts/run-the-local-service-stack/) — bring
+- [Run the Local Service Stack](/quickstarts/development/run-the-local-service-stack/) — bring
   up the backend, dispatcher, driver, and console on local k3d and enqueue a run.
-- [Author an End-to-End Test Case](/quickstarts/author-an-end-to-end-test-case/)
+- [Author an End-to-End Test Case](/quickstarts/authoring/author-an-end-to-end-test-case/)
   — scaffold a new playable-game case or version under `test-cases/`.
-- [Author an Asset-Generation Test Case](/quickstarts/author-an-asset-generation-test-case/)
+- [Author an Asset-Generation Test Case](/quickstarts/authoring/author-an-asset-generation-test-case/)
   — scaffold a new sprite-drawing case or version.
-- [Create an End-to-End Variant](/quickstarts/create-an-end-to-end-variant/) —
+- [Create an End-to-End Variant](/quickstarts/authoring/create-an-end-to-end-variant/) —
   add a new playable mode to an existing end-to-end version.
-- [Create a Single-Sprite Variant](/quickstarts/create-a-sprite-variant/)
+- [Create a Single-Sprite Variant](/quickstarts/authoring/create-a-sprite-variant/)
   — add a brief variation against the shared target of a single-sprite
   asset-generation version (`asset_kind = "sprite"`).
-- [Create a Sprite-Sheet Variant](/quickstarts/create-a-sprite-sheet-variant/)
+- [Create a Sprite-Sheet Variant](/quickstarts/authoring/create-a-sprite-sheet-variant/)
   — add a brief variation against the shared target sheet of a sprite-sheet
   asset-generation version (`asset_kind = "sprite-sheet"`).
-- [Add or Update a Model](/quickstarts/add-or-update-a-model/) — curate a model
+- [Add or Update a Model](/quickstarts/devops/add-or-update-a-model/) — curate a model
   in the app (display name, aliases, logo, description).
-- [Publish an Audio Sample Pack](/quickstarts/publish-an-audio-sample-pack/) —
+- [Publish an Audio Sample Pack](/quickstarts/authoring/publish-an-audio-sample-pack/) —
   build an `sfx-sample`/`music` pack from its manifest, upload it to R2, and pin
   it so the run image bakes it in.
-- [Review a Run](/quickstarts/review-a-run/) — submit a review (one per account)
+- [Review a Run](/quickstarts/development/review-a-run/) — submit a review (one per account)
   for a pushed run.
-- [Publish a Run](/quickstarts/publish-a-run/) — push, review, and publish a run
+- [Publish a Run](/quickstarts/devops/publish-a-run/) — push, review, and publish a run
   to public hosting and the gallery.
-- [Roll Production Service Images](/quickstarts/roll-prod-service-images/) —
+- [Roll Production Service Images](/quickstarts/devops/roll-prod-service-images/) —
   promote the latest CI-built service images to the prod cluster by re-pinning the
   overlay.
 
