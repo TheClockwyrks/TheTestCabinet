@@ -42,6 +42,30 @@ A conforming maze must satisfy all of the following:
   grid, comparable in density to the example in `reference/gameplay.png` — not a
   sparse few paths.
 
+**Two computable self-checks — openness and corridor length.** The rules above are
+per-tile; these two aggregate numbers let you check the whole board *reads* like the
+corridors of `reference/gameplay.png` rather than a grid of rooms. Compute both over
+the **corridor tiles** — the open floor tiles the forager can enter (exclude the den
+and its gate) — where a tile's **open neighbors** are the orthogonally adjacent
+corridor tiles (the far mouth of a wrap tunnel counts as the neighbor across that
+edge):
+
+- **Openness** — the mean number of open neighbors per corridor tile. A single
+  winding corridor is `2.0`; junctions push it above `2`; open rooms push it toward
+  `4`. Keep it low — **roughly `2.1`–`2.5`** — and treat **above ~`2.8`** as too open
+  (rooms or a grid, not corridors).
+- **Corridor length ("mazing")** — a *corridor run* is a maximal chain of corridor
+  tiles that each have **exactly two** open neighbors (the straightaways and bends
+  between one junction and the next); this metric is the mean run length in tiles. A
+  grid with a junction at almost every tile is ≈ `1`. Aim for **roughly `3`–`5`**;
+  treat **below ~`2`** as too grid-like (junctions so dense the forager never commits
+  to a corridor), and much above `5` as too sparse (long hallways, few choices).
+
+A good board keeps openness low *and* corridor length high at once: a grid fails the
+second, a board of rooms fails the first. These are soft targets to design against,
+not hard validation — but a board far outside them plays as a grid or a set of rooms
+rather than a tense maze.
+
 Draw the maze from the provided **trench tileset** (`assets/trench-walls/`, see
 `specs/assets.md`): the corridor **floor** under every open tile, and the **wall
 autotile** for every wall tile, picking each wall's frame from its wall-neighbors
