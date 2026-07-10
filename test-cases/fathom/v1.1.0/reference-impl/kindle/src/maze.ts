@@ -119,17 +119,19 @@ export class Maze {
   }
 
   // ---- corridor flood (sonar) ------------------------------------------
-  // BFS from (col,row) through predator-open tiles (corridors, gate, den),
-  // out to `range` steps. Returns every reached tile. Follows corridors
-  // (bends around corners) but never passes through walls. The forager's own
-  // start tile is included at step 0.
-  flood(col: number, row: number, range: number): Cell[] {
+  // BFS from (col,row) through open corridor tiles, out to `range` steps, grouped
+  // by BFS depth: the return value's index `d` holds every tile reached in exactly
+  // `d` corridor steps. Follows corridors (bends around corners) but never passes
+  // through walls. Because BFS depth is the shortest corridor distance from the
+  // origin, this is the geometry of a sonar wavefront — the set of tiles the pulse
+  // reaches at each "moment" as it travels out and reflects along the trench
+  // (specs/sensing.md). Index 0 is the origin tile alone.
+  floodBuckets(col: number, row: number, range: number): Cell[][] {
     const seen = new Set<number>();
     const key = (c: number, r: number) => r * COLS + c;
-    const out: Cell[] = [];
-    let frontier: Cell[] = [{ col, row }];
+    const buckets: Cell[][] = [[{ col, row }]];
     seen.add(key(col, row));
-    out.push({ col, row });
+    let frontier: Cell[] = [{ col, row }];
     for (let step = 0; step < range; step++) {
       const next: Cell[] = [];
       for (const cell of frontier) {
@@ -141,13 +143,13 @@ export class Maze {
           if (seen.has(k)) continue;
           seen.add(k);
           next.push(n);
-          out.push(n);
         }
       }
+      if (!next.length) break;
+      buckets.push(next);
       frontier = next;
-      if (!frontier.length) break;
     }
-    return out;
+    return buckets;
   }
 
   // ---- corridor pathfinding (predator chase) ---------------------------

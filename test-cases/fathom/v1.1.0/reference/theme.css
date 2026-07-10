@@ -22,7 +22,7 @@
   --rim: #24506b;         /* wall edge / rim light */
   --forager: #46f0e0;     /* player forager and its light */
   --plankton: #b8f5c8;    /* plankton */
-  --sonar: #5ef2ff;       /* sonar pulse ring */
+  --sonar: #5ef2ff;       /* sonar pulse wavefront */
   --lanternjaw: #ffd166;        /* the Lanternjaw (light-seeker) */
   --gloamfin: #c46bff;    /* the Gloamfin (sound-seeker) */
   --flarefish: #ff7a59;   /* the Flarefish (flare-maker) */
@@ -134,23 +134,31 @@ body {
   opacity: 0.6;
 }
 
-/* The sonar pulse: the grayscale ring asset (an <img>), tinted to the emitter
- * color. The game multiplies the grayscale by the color; the mockup recolors the
- * grayscale with a hue filter (kept file://-safe — no cross-origin mask fetch),
- * which preserves the ring's brightness falloff. */
-.pulse {
+/* The sonar pulse: a travelling wavefront drawn procedurally — there is no sonar
+ * sprite (../specs/assets.md). Rendered as an inline SVG of short arcs that bulge
+ * the way the sound is moving (a "(" heading left, a ")" heading right), brightest
+ * at the leading edge — the forager's ping in cyan, the Gloamfin's in violet.
+ * Composited additively (screen) so it reads as light over the trench. */
+.sonar-wave {
   position: absolute;
+  left: 0;
+  top: 0;
   pointer-events: none;
+  overflow: visible;
+  mix-blend-mode: screen;
 }
-.pulse.sonar {
-  opacity: 0.5;
-  filter: sepia(1) saturate(5) hue-rotate(150deg) brightness(0.95)
-    drop-shadow(0 0 14px rgba(94, 242, 255, 0.45));
+.sonar-wave path {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
 }
-.pulse.gloamfin {
-  opacity: 0.72;
-  filter: sepia(1) saturate(7) hue-rotate(236deg) brightness(1)
-    drop-shadow(0 0 12px rgba(196, 107, 255, 0.45));
+.sonar-wave .cyan {
+  stroke: #5ef2ff;
+  filter: drop-shadow(0 0 6px rgba(94, 242, 255, 0.55));
+}
+.sonar-wave .violet {
+  stroke: #c46bff;
+  filter: drop-shadow(0 0 6px rgba(196, 107, 255, 0.55));
 }
 
 /* The flare bloom: the warm effect asset, composited additively (screen). */

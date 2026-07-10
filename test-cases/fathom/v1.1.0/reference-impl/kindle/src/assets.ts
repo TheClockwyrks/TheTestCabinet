@@ -40,24 +40,6 @@ async function loadSheet(folder: string): Promise<HTMLImageElement[]> {
   return Promise.all(sheetUrls(folder).map(loadImage));
 }
 
-// Multiply a grayscale sprite frame by a tint color, preserving alpha — the
-// runtime tint the sonar-pulse sheet needs (specs/assets.md). Returns a canvas.
-function tint(img: HTMLImageElement, color: string): HTMLCanvasElement {
-  const cv = document.createElement("canvas");
-  cv.width = img.width;
-  cv.height = img.height;
-  const g = cv.getContext("2d")!;
-  g.drawImage(img, 0, 0);
-  g.globalCompositeOperation = "multiply";
-  g.fillStyle = color;
-  g.fillRect(0, 0, cv.width, cv.height);
-  // Restore the original straight alpha (multiply left the transparent margin
-  // opaque-tinted).
-  g.globalCompositeOperation = "destination-in";
-  g.drawImage(img, 0, 0);
-  return cv;
-}
-
 export interface Assets {
   glimmerfin: HTMLImageElement[]; // 8 — forager
   lanternjaw: HTMLImageElement[]; // 16 — the Lanternjaw
@@ -65,12 +47,13 @@ export interface Assets {
   flarefish: HTMLImageElement[]; // 8 — the Flarefish
   trench: HTMLImageElement[]; // 19 — wall autotile + floor + fog + gate
   flareBloom: HTMLImageElement[]; // 8 — the flare (additive, no tint)
-  sonarCyan: HTMLCanvasElement[]; // 8 — the forager's pulse (#5ef2ff)
-  sonarViolet: HTMLCanvasElement[]; // 8 — the Gloamfin's pulse (#c46bff)
+  // The sonar pulse is drawn procedurally as a travelling wavefront (render.ts),
+  // not from a sprite sheet — a sprite can only ever be a circle, and the pulse
+  // reflects along the corridors (specs/sensing.md).
 }
 
 export async function loadAssets(): Promise<Assets> {
-  const [glimmerfin, lanternjaw, gloamfin, flarefish, trench, flareBloom, sonar] =
+  const [glimmerfin, lanternjaw, gloamfin, flarefish, trench, flareBloom] =
     await Promise.all([
       loadSheet("glimmerfin"),
       loadSheet("lanternjaw"),
@@ -78,7 +61,6 @@ export async function loadAssets(): Promise<Assets> {
       loadSheet("flarefish"),
       loadSheet("trench-walls"),
       loadSheet("flare-bloom"),
-      loadSheet("sonar-pulse"),
     ]);
   return {
     glimmerfin,
@@ -87,7 +69,5 @@ export async function loadAssets(): Promise<Assets> {
     flarefish,
     trench,
     flareBloom,
-    sonarCyan: sonar.map((f) => tint(f, "#5ef2ff")),
-    sonarViolet: sonar.map((f) => tint(f, "#c46bff")),
   };
 }

@@ -37,8 +37,8 @@ start; they cross-reference each other by name and form one specification.
 - `specs/flow.md` — scoring, lives, descending to deeper trenches, the game
   states, the HUD, audio, and what is out of scope.
 - `specs/assets.md` — the **provided art assets** (seeded under `assets/`) you
-  must render the game with: the forager, predators, sonar pulse, flare bloom,
-  and trench tiles, their frame layouts, and what is left to draw in code.
+  must render the game with: the forager, predators, flare bloom, and trench tiles,
+  their frame layouts, and what is left to draw in code (including the sonar pulse).
 
 The main menu is a single dive — it lists `DIVE` (begin a dive), then
 `HOW TO PLAY` (see Game states in `specs/flow.md`).
@@ -128,7 +128,7 @@ near-black trench. The canonical palette and type are below; match them.
 | Wall edge / rim light | `#24506b` |
 | Player forager and its light | `#46f0e0` |
 | Plankton | `#b8f5c8` |
-| Sonar pulse ring | `#5ef2ff` |
+| Sonar pulse (forager's ping) | `#5ef2ff` |
 | The Lanternjaw (light-seeker) and its bulb | `#ffd166` |
 | The bonus drifter | `#ffd166` |
 | The Gloamfin (sound-seeker) | `#c46bff` |
@@ -137,13 +137,13 @@ near-black trench. The canonical palette and type are below; match them.
 | Primary text | `#e6edf3` |
 | Secondary text | `#8a94a6` |
 
-- **The art is provided — use it.** The forager, the three predators, the sonar
-  pulse, the flare bloom, and the trench tiles (walls, floor, fog, den gate) are
-  delivered as seeded sprite-sheet assets under `assets/`, already drawn in this
-  palette. Render the game with them rather than drawing your own; their frame
-  layouts and compositing are defined in `specs/assets.md`. The palette below
-  still governs everything you *do* draw in code (plankton, the bonus drifter,
-  ink, the forager's glow, the HUD, and all text).
+- **The art is provided — use it.** The forager, the three predators, the flare
+  bloom, and the trench tiles (walls, floor, fog, den gate) are delivered as seeded
+  sprite-sheet assets under `assets/`, already drawn in this palette. Render the game
+  with them rather than drawing your own; their frame layouts and compositing are
+  defined in `specs/assets.md`. The palette below still governs everything you *do*
+  draw in code (the sonar pulse, plankton, the bonus drifter, ink, the forager's
+  glow, the HUD, and all text).
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do
   not depend on a web font that must be downloaded; a system monospace stack is
   required so the game renders identically offline.

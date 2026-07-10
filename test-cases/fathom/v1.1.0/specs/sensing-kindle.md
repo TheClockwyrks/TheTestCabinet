@@ -90,7 +90,8 @@ is **not drawn at all**.
 - **What still shows beyond the circle.** Only the **enemy effects** are drawn **on
   top of** the blackout and so remain visible outside the vision circle: the
   **Flarefish's flare** (itself a second, full-vision circle — see Enemy effects
-  below) and the **Gloamfin's ping ring** (`specs/predators.md`). The **amber lights**
+  below), your own **sonar wavefront**, and the **Gloamfin's ping wavefront**
+  (`specs/predators.md`). The **amber lights**
   — the drifters and the Lanternjaw's bulb — do **not** show beyond the circle in
   Kindle (above); they are clipped to it. Everything else beyond the circle is pitch
   black.
@@ -162,31 +163,42 @@ finds predators, at the cost of being heard. (The control is in
   its real cost is not the cooldown but that it is **heard** (it can hand the
   Gloamfin a fix), so you can afford to ping fairly often, just never carelessly near
   a Gloamfin.
-- **Reveal (flood through corridors).** A pulse floods outward from the forager's
-  tile **through open tiles only**, following the corridors like sound, out to a
-  path range of **`E` = 9 tiles**. Every open tile within `E` corridor-steps becomes
-  revealed (and **remembered**), **along with the wall tiles that bound those
-  corridors**. Because it follows the corridors, the pulse **reveals around corners
-  and bends through junctions** — unlike your straight-line light — but it does not
-  pass through walls. (What the pulse reveals enters memory and shows through the
-  vision circle: corridors it discovers beyond the circle are remembered, and you
+- **Reveal (a wavefront through the corridors).** A pulse travels outward from the
+  forager's tile **through open tiles only**, following the corridors like sound, out
+  to a path range of **`E` = 9 tiles**. It does not reveal everything at once: the
+  wavefront **expands over a fraction of a second**, so each open tile within `E`
+  corridor-steps becomes revealed (and **remembered**) **as the front reaches it** —
+  near tiles first, far tiles a moment later — **along with the wall tiles that bound
+  those corridors**. Because it follows the corridors, the pulse **reveals around
+  corners and bends through junctions** — unlike your straight-line light — but it
+  does not pass through walls. (What the pulse reveals enters memory and shows through
+  the vision circle: corridors it discovers beyond the circle are remembered, and you
   see them once they fall within the window.)
 - **Find predators.** Any predator or the drifter standing on a tile in the flooded
   set is **marked**: shown at its position for **`1.5 s`** after the pulse, as a
   fading glimpse, even where your light does not reach.
-- **You are heard.** Emitting a pulse makes noise: if it floods over the
+- **You are heard.** Emitting a pulse makes noise: if the wavefront reaches the
   **Gloamfin** it hands the Gloamfin a **fix on you** and sets it chasing (see
-  `specs/predators.md`). A pulse is never free — ping when you need to know, not
-  constantly, and not when a Gloamfin is close.
-- **Presentation.** Render an expanding ring from the forager to suggest the
-  wavefront; the actual reveal is the flooded tile set, not a drawn circle. Use the
-  provided **sonar-pulse** effect sheet (`assets/sonar-pulse/`, see
-  `specs/assets.md`): it is drawn grayscale, so **tint it to the sonar-ring color**
-  (`#5ef2ff`) and play its frames as the ring expands. The ring is a **large area
-  effect** drawn as its own overlay, not part of any character, and it shows even
-  beyond the vision circle. The Gloamfin emits the **same** sonar-pulse effect as
-  its tell, tinted to its own color — but the Gloamfin's ping reveals nothing (see
-  below and `specs/predators.md`).
+  `specs/predators.md`) — and, like the reveal, this lands **when the front arrives**
+  at the Gloamfin, not the instant you ping. A pulse is never free — ping when you
+  need to know, not constantly, and not when a Gloamfin is close.
+- **Presentation — a travelling wavefront, not a sprite.** Draw the pulse as a
+  glowing crest that **flows outward through the corridors** — bending around bends
+  and reflecting off the walls exactly as the reveal does — so it is never a
+  misleading expanding circle. There is **no sonar sprite**; render the wavefront
+  procedurally. At each corridor tile the front has reached, draw the crest as a
+  short **arc that bulges in the direction the sound is travelling** — a `(` heading
+  left, a `)` heading right — swinging round as the pulse turns a corner and reflects,
+  so a run of tiles reads as a marching train of expanding ripples. The crest is
+  **brightest right at the leading edge** and fades behind it; the origin, which has
+  no heading, opens as a full ring. Tint the forager's pulse the **sonar color
+  `#5ef2ff`**. It is a **large area effect** drawn as its own overlay, not part of any
+  character, and — drawn on top of the vision-circle mask — it shows even **beyond the
+  vision circle** (that is the point of sonar: the pulse reaches past the little
+  window you can see). The drawn crest is presentation only; the actual reveal is the
+  flooded tile set as the front reaches each tile. The Gloamfin emits the **same**
+  wavefront as its tell, tinted to its own color — but the Gloamfin's ping reveals
+  nothing (see below and `specs/predators.md`).
 
 ## Enemy effects — what reveals the maze, and what does not
 
@@ -207,11 +219,12 @@ distinction matters:
   lies outside your own vision circle goes **pitch black** again (it is still
   *remembered*, so it returns when you revisit it). It is a gift of vision
   (`specs/predators.md`).
-- **The Gloamfin's ping reveals nothing.** Its violet sonar ring is **visible to
-  you** — you see the ring spread across the trench, even beyond your vision circle —
-  but it does **not** draw the Gloamfin itself, light the maze, reveal or remember
-  any tile, or mark any other predator or a drifter. It is a warning you can see, not
-  a map, and not even a fix on the hunter that cast it (`specs/predators.md`).
+- **The Gloamfin's ping reveals nothing.** Its violet sonar wavefront is **visible
+  to you** — you watch it sweep outward through the corridors, even beyond your vision
+  circle, toward you — but it does **not** draw the Gloamfin itself, light the maze,
+  reveal or remember any tile, or mark any other predator or a drifter. It is a
+  warning you can see, not a map, and not even a fix on the hunter that cast it
+  (`specs/predators.md`).
 
 ## How predators reveal themselves
 

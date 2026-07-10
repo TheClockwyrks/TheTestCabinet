@@ -178,7 +178,7 @@ sonar. It is the predator your **sonar** is waiting for.
     you are **inside its hearing range** (about **2 tiles**), the Gloamfin already
     holds a **continuous lock** straight off its hearing and does **not ping at
     all** — no periodic ping, no "lost you" ping. Pinging there tells it nothing it
-    does not already know and only floods you with rings and pulses; an earlier
+    does not already know and only floods you with wavefronts; an earlier
     build did exactly that, firing pings near-continuously the moment it closed
     within a couple of tiles down a straight corridor. It **stays silent as long as
     it is on you**, and the moment you slip back **out** of hearing range it pings
@@ -187,21 +187,24 @@ sonar. It is the predator your **sonar** is waiting for.
     fresh fix and chases again.
   - If the search turns up nothing, it gives up after a handful of seconds — about
     **`5 s`** from reaching the empty tile — and returns to wandering.
-- **Tell (anti-blindside).** The Gloamfin emits **its own sonar pulses** about
+- **Tell (anti-blindside).** The Gloamfin emits **its own sonar pings** about
   every **`4 s`** (except when it already holds a close-range hearing lock, when it
-  goes silent — see the anti-spam rules under Search above) — the **same large
-  expanding sonar-ring effect** the forager's
-  pulse uses (the provided `assets/sonar-pulse/` sheet, here tinted to the
-  Gloamfin's violet rather than the forager's cyan — see `specs/sensing.md` and
-  `specs/assets.md`), spreading well beyond the Gloamfin's own sprite. You **see the
-  ring** — so you know a Gloamfin is near and hunting — but the **ping does not draw
-  the Gloamfin itself**: unlike an earlier build, its own ping no longer shows its
-  body, so you get the warning without a clean fix on where the source is. (It is
-  still revealed the normal ways — by your light, by *your* sonar mark, or by the
-  detection alert when a ping catches you.) And **its ping reveals nothing else to
-  you** either: unlike your sonar, the Gloamfin's ping does **not** light the maze or
-  mark anything for you (see `specs/sensing.md`) — it is a warning you can see, not a
-  map. When a Gloamfin ping *catches you*, the **detection alert** (above) fires —
+  goes silent — see the anti-spam rules under Search above) — the **same travelling
+  sonar wavefront** the forager's pulse uses (rendered procedurally, here tinted to
+  the Gloamfin's violet rather than the forager's cyan — see `specs/sensing.md` and
+  `specs/assets.md`), sweeping outward through the corridors well beyond the
+  Gloamfin's own sprite. You **see the wavefront** flow toward you — so you know a
+  Gloamfin is near and hunting, and you can watch how far its hearing reaches — but
+  the **ping does not draw the Gloamfin itself**: unlike an earlier build, its own
+  ping no longer shows its body, so you get the warning without a clean fix on where
+  the source is. (It is still revealed the normal ways — by your light, by *your*
+  sonar mark, or by the detection alert when a ping catches you.) And **its ping
+  reveals nothing else to you** either: unlike your sonar, the Gloamfin's ping does
+  **not** light the maze or mark anything for you (see `specs/sensing.md`) — it is a
+  warning you can see, not a map. Because the wavefront travels, a ping **catches you
+  when its front reaches your tile**, not the instant it is cast — a brief, readable
+  moment as the violet crest sweeps over you. When a Gloamfin ping *catches you*, the
+  **detection alert** (above) fires —
   and that alert *does* show it lit for its half-second, so you always learn which
   hunter found you the moment you are actually spotted.
 - **Counter — corner it and break the fix.** The Gloamfin is a touch faster than

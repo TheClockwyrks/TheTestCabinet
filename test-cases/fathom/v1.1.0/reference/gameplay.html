@@ -7,17 +7,18 @@
   (fog, light, sonar), ../specs/predators.md, and ../specs/playfield.md (HUD).
 
   This frame embeds the real seeded assets (../assets/): the trench tileset draws
-  the maze (floor + wall autotile), and the forager, predators, and sonar pulse
-  are their sprite/effect sheets. Live positions and the maze layout vary at
+  the maze (floor + wall autotile), and the forager and predators are their sprite
+  sheets; the sonar pulse has no sprite and is drawn procedurally (the sonar-wave
+  SVG overlay of arcs below). Live positions and the maze layout vary at
   runtime; this is a representative layout for a soft palette/layout comparison,
   not a strict pixel match. A tile (col,row) has its top-left at
   (64 + col*32, 80 + row*32); inside .maze, at (col*32, row*32).
 
   The frame shows: a lit pocket of revealed corridors (rounded rock walls around
   open floor) fading into black fog around the forager; plankton in the corridors;
-  the Lanternjaw glimpsed at the edge of the light; the forager's sonar pulse expanding
-  past the light and revealing a corridor around a bend, where the Gloamfin is
-  marked beyond sight by its own (violet) pulse.
+  the Lanternjaw glimpsed at the edge of the light; the forager's sonar wavefront
+  travelling past the light and revealing a corridor around a bend, where the Gloamfin
+  is glimpsed beyond sight, its own (violet) ping wavefront sweeping back toward you.
 -->
 <html lang="en">
   <head>
@@ -157,18 +158,31 @@
         <div class="plankton faint" style="left: 704px; top: 288px"></div>
         <div class="plankton faint" style="left: 736px; top: 224px"></div>
 
-        <!-- The forager's sonar pulse, expanding past the edge of the light
-             (the grayscale sonar-pulse asset, tinted cyan). -->
-        <img class="pulse sonar" src="../assets/sonar-pulse/6.png" style="left: 345px; top: 89px; width: 430px; height: 430px" alt="" />
+        <!-- The sonar wavefront, drawn procedurally (there is no sonar sprite —
+             ../specs/assets.md, ../specs/sensing.md). Short arcs bulge the way the
+             sound is travelling — the forager's cyan ping flowing out to the right
+             and up around the bend, brightest at the leading edge, and the Gloamfin's
+             violet ping (below) sweeping back toward the forager. -->
+        <svg class="sonar-wave" width="1280" height="720" viewBox="0 0 1280 720" aria-hidden="true">
+          <!-- Forager's cyan ping: ")" arcs marching right, then "∩" up the branch. -->
+          <path class="cyan" opacity="0.40" d="M588.17 285.75 A20 20 0 0 1 588.17 322.25" />
+          <path class="cyan" opacity="0.60" d="M632.17 285.75 A20 20 0 0 1 632.17 322.25" />
+          <path class="cyan" opacity="0.80" d="M676.17 285.75 A20 20 0 0 1 676.17 322.25" />
+          <path class="cyan" opacity="0.62" d="M701.75 261.83 A20 20 0 0 1 738.25 261.83" />
+          <path class="cyan" opacity="0.85" d="M701.75 227.83 A20 20 0 0 1 738.25 227.83" />
+          <!-- Gloamfin's violet ping: "(" arcs sweeping back toward the forager. -->
+          <path class="violet" opacity="0.70" d="M746.83 303.25 A20 20 0 0 0 746.83 266.75" />
+          <path class="violet" opacity="0.45" d="M766.83 303.25 A20 20 0 0 0 766.83 266.75" />
+        </svg>
 
         <!-- The Lanternjaw (../assets/lanternjaw/), glimpsed at the edge of the light
              (col 20, row 7), with its dangling bulb-light. -->
         <img class="sprite lanternjaw glimpse" src="../assets/lanternjaw/10.png" style="left: 640px; top: 224px" alt="" />
         <div class="bulb-light" style="left: 666px; top: 226px"></div>
 
-        <!-- The Gloamfin (../assets/gloamfin/), marked by the sonar pulse beyond
-             sight (col 23, row 8), with its own (violet) pulse ring. -->
-        <img class="pulse gloamfin" src="../assets/sonar-pulse/3.png" style="left: 686px; top: 206px; width: 132px; height: 132px" alt="" />
+        <!-- The Gloamfin (../assets/gloamfin/), glimpsed beyond sight (col 23, row 8);
+             its own violet ping wavefront (the violet arcs in the sonar-wave overlay
+             above) sweeps out through the corridor toward the forager. -->
         <img class="sprite gloamfin glimpse" src="../assets/gloamfin/4.png" style="left: 736px; top: 256px" alt="" />
 
         <!-- The forager (../assets/glimmerfin/), at the center of its light

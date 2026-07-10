@@ -62,8 +62,8 @@ standalone TOML file under `variants/`, listed in order in the manifest's
 
 This version ships a **fixed set of art assets** under `assets/`, seeded into
 every run: the player forager (`glimmerfin`), the three predators (`lanternjaw`,
-`gloamfin`, `flarefish`), the sonar-pulse and flare-bloom effects, and the trench
-tileset (`trench-walls`) — each a sprite-sheet folder of per-frame PNGs, drawn by
+`gloamfin`, `flarefish`), the flare-bloom effect, and the trench tileset
+(`trench-walls`) — each a sprite-sheet folder of per-frame PNGs, drawn by
 The Test Cabinet's own asset-generation cases of the same slugs. The build is
 **required to render the game with these assets** (the contract is `specs/assets.md`),
 so the art is identical across every run and only the implementation varies. The

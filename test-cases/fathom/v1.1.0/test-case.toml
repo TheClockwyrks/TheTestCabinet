@@ -71,7 +71,6 @@ assets = [
   "assets/lanternjaw",   # the Lanternjaw predator (sprite)
   "assets/gloamfin",     # the Gloamfin predator (sprite)
   "assets/flarefish",    # the Flarefish predator (sprite)
-  "assets/sonar-pulse",  # the expanding sonar ring (effect, grayscale → tinted)
   "assets/flare-bloom",  # the Flarefish's radial flare (effect)
   "assets/trench-walls", # the trench tileset: wall autotile + floor + fog + gate
 ]
@@ -228,8 +227,8 @@ description = "The three predators — each one's sense, its tell, and its count
 # is common to both variants, so its item stays here.
 [[review_item]]
 id = "sonar-flood"
-title = "Sonar floods corridors"
-text = "A sonar pulse floods through the open corridors — bending around corners but not through walls — out to its range, revealing corridors and plankton beyond what you can currently see and marking any predator it reaches for a brief window beyond the bend."
+title = "Sonar travels through corridors as a wavefront"
+text = "A sonar pulse is a travelling wavefront (drawn procedurally, not a sprite ring): it flows outward through the open corridors — bending around corners and reflecting off walls, not expanding as a circle — out to its range, revealing near tiles before far ones and their walls, and marking any predator it reaches for a brief window beyond the bend, as the front arrives. The drawn crest should read as arcs that bulge the way the sound is moving, brightest at the leading edge."
 weight = 1
 domain = "sensing"
 proof = "sonar"
@@ -273,7 +272,7 @@ domain = "predators"
 [[review_item]]
 id = "enemy-effects-reveal"
 title = "Enemy effects and the amber look-alikes"
-text = "The Flarefish's flare reveals tiles for you (a radial disc, floor and wall, through walls); the Gloamfin's ping reveals nothing (only its violet ring is visible). The bonus drifter and the Lanternjaw's bulb-light are both always visible and drawn to look almost identical."
+text = "The Flarefish's flare reveals tiles for you (a radial disc, floor and wall, through walls); the Gloamfin's ping reveals nothing (only its violet wavefront, sweeping out through the corridors, is visible). The bonus drifter and the Lanternjaw's bulb-light are both always visible and drawn to look almost identical."
 weight = 1
 domain = "sensing"
 

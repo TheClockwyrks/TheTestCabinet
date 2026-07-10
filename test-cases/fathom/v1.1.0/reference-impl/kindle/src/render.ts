@@ -17,6 +17,9 @@ import {
   MONO,
   ROWS,
   SONAR_COOLDOWN,
+  SONAR_CYAN_RGB,
+  SONAR_VIOLET_RGB,
+  SONAR_WAVE_BAND,
   STAGE_H,
   STAGE_W,
   TILE,
@@ -35,7 +38,7 @@ const MAZE_H = ROWS * TILE;
 // back to pitch-black fog, cutting the circle at the pixel (not the tile), so
 // terrain and pellets show only within it (specs/sensing.md). It is NOT vision
 // for predators — that is the smaller, per-tile light circle. Predators and the
-// enemy effects (the flare, the Gloamfin's ping ring) are drawn AFTER this mask
+// enemy effects (the flare, the Gloamfin's ping wavefront) are drawn AFTER this mask
 // and can appear beyond the circle; the amber lights (drifters, Lanternjaw bulb),
 // unlike in Base, are clipped to the vision circle and do NOT show beyond it.
 function drawVisionMask(ctx: CanvasRenderingContext2D, game: Game): void {
@@ -294,24 +297,72 @@ function spriteFrame(m: { facing: Dir; animT: number; dir: Dir }): number {
   return base + alt;
 }
 
+// Draw every live sonar pulse as travelling wavefront arcs — the crest at each
+// corridor tile is a short arc that BULGES the way the sound is moving (a "(" when
+// it travels left, a ")" when it travels right), swinging round as the pulse rounds
+// a corner and reflects off walls. Consecutive tiles along a run give a marching
+// train of arcs — expanding sound ripples, never a misleading circle. Each arc is
+// brightest right at the leading edge and fades behind it; the origin, which has no
+// heading, opens as a full ring. Forager cyan, Gloamfin violet — that violet arc
+// sweeping toward you is the sound of its ping arriving.
+const SONAR_ARC_R = TILE * 0.62; // radius of curvature of a wavefront arc
+const SONAR_ARC_SPREAD = 1.15; // half-angle (rad) each arc subtends (~66°)
+function drawSonarWaves(ctx: CanvasRenderingContext2D, game: Game): void {
+  if (!game.waves.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  // Two strokes per arc: a wide, faint halo under a narrow, bright core.
+  const HALO = { w: TILE * 0.42, k: 0.16 };
+  const CORE = { w: TILE * 0.16, k: 0.7 };
+  for (const wave of game.waves) {
+    const rgb = wave.violet ? SONAR_VIOLET_RGB : SONAR_CYAN_RGB;
+    for (const seg of [HALO, CORE]) {
+      ctx.lineWidth = seg.w;
+      for (const [key, d] of wave.dist) {
+        const delta = wave.front - d; // how far the front has swept past this tile
+        if (delta < 0 || delta > SONAR_WAVE_BAND) continue;
+        // Brightest at the leading edge (delta 0), fading to nothing behind it.
+        const a = (1 - delta / SONAR_WAVE_BAND) * seg.k;
+        const col = key % COLS;
+        const row = (key - col) / COLS;
+        const x = Maze.cx(col);
+        const y = Maze.cy(row);
+        const dir = wave.dir.get(key)!;
+        ctx.strokeStyle = `rgba(${rgb},${a})`;
+        ctx.beginPath();
+        if (dir.x === 0 && dir.y === 0) {
+          // No heading (the origin, or waves meeting head-on): a full ring pulse.
+          ctx.arc(x, y, SONAR_ARC_R, 0, Math.PI * 2);
+        } else {
+          // Centre the arc behind the tile so it bulges toward the travel heading:
+          // the crest passes through the tile, curving back toward the origin.
+          const theta = Math.atan2(dir.y, dir.x);
+          const cx = x - SONAR_ARC_R * dir.x;
+          const cy = y - SONAR_ARC_R * dir.y;
+          ctx.arc(cx, cy, SONAR_ARC_R, theta - SONAR_ARC_SPREAD, theta + SONAR_ARC_SPREAD);
+        }
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+
 function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): void {
   const { assets } = game;
 
-  // Sonar rings (additive, tinted sheets).
+  // Sonar wavefronts: the forager's cyan pulse and the Gloamfin's violet ping,
+  // drawn as travelling arcs that flow OUT through the corridors — bending round
+  // bends and reflecting off walls exactly where the pulse reaches (self-contained).
+  // Drawn after the vision-circle mask, so a pulse sweeps out past the little
+  // window you carry — that is the whole point of sonar (specs/sensing.md).
+  drawSonarWaves(ctx, game);
+
+  // Flare blooms (additive, warm, no tint).
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   ctx.imageSmoothingEnabled = true;
-  for (const ring of game.effects.rings) {
-    const p = ring.t / ring.dur;
-    const frame = Math.min(7, Math.floor(p * 8));
-    const size = 24 + p * ring.range * 2; // ring diameter grows to ~2*range
-    const img = ring.violet ? assets.sonarViolet[frame] : assets.sonarCyan[frame];
-    ctx.globalAlpha = 0.85 * (1 - p);
-    ctx.drawImage(img, ring.x - size / 2, ring.y - size / 2, size, size);
-  }
-  ctx.globalAlpha = 1;
-
-  // Flare blooms (additive, warm, no tint).
   for (const p of game.predators) {
     if (p.kind !== PredKind.Flarefish || !p.flaring) continue;
     const t = p.flarePhaseT;

@@ -39,7 +39,6 @@ import {
   START_COL,
   START_LIVES,
   START_ROW,
-  TILE,
   VISION_GAIN,
   VISION_MIN,
 } from "./constants";
@@ -49,6 +48,7 @@ import { Input } from "./input";
 import { Maze } from "./maze";
 import { Fog, tileKey } from "./sensing";
 import { updatePredator, World } from "./predators";
+import { SonarWave } from "./sonar";
 import { GameState, PredKind, PredState } from "./types";
 
 export interface Ink {
@@ -81,6 +81,8 @@ export class Game {
   predators: Predator[] = [];
   drifters: Drifter[] = [];
   clouds: Ink[] = [];
+  // Sonar pulses currently travelling out through the trench (forager + Gloamfin).
+  waves: SonarWave[] = [];
 
   // plankton[key] = present
   plankton: boolean[] = new Array(COLS * ROWS).fill(false);
@@ -172,6 +174,7 @@ export class Game {
     }
     this.drifters = [];
     this.clouds = [];
+    this.waves.length = 0;
     this.effects.clear();
     this.sonarCd = 0;
     this.inkCd = 0;
@@ -278,36 +281,83 @@ export class Game {
     this.sonarCd = SONAR_COOLDOWN;
     this.audio.resume();
     this.audio.play("sonar");
+    // Cast the pulse. It reveals terrain and marks/senses movers as its front
+    // sweeps over them (see stepWaves) rather than all at once — near tiles
+    // first, far tiles later, following the corridors it travels down.
     const E = sonarRange(this.depth);
-    const flooded = this.maze.flood(this.forager.col, this.forager.row, E);
-    const set = new Set<number>();
-    for (const cell of flooded) {
-      this.fog.reveal(cell.col, cell.row);
-      set.add(tileKey(cell.col, cell.row));
-      // Reveal the wall tiles bounding this corridor too (specs/sensing.md).
-      for (const [dc, dr] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-        if (this.maze.isWall(cell.col + dc, cell.row + dr))
-          this.fog.reveal(cell.col + dc, cell.row + dr);
+    this.spawnWave(this.forager.x, this.forager.y, this.forager.col, this.forager.row, E, false, null);
+  }
+
+  // Emit a sonar pulse from a source tile. The forager's ping (violet=false)
+  // reveals the trench as it travels; the Gloamfin's ping (violet=true) reveals
+  // nothing — it only carries the sound out to sense the forager (specs/sensing.md).
+  spawnWave = (
+    ox: number,
+    oy: number,
+    col: number,
+    row: number,
+    range: number,
+    violet: boolean,
+    emitter: Predator | null,
+  ): void => {
+    const buckets = this.maze.floodBuckets(col, row, range);
+    const wave = new SonarWave(ox, oy, buckets, violet, !violet);
+    wave.emitter = emitter;
+    this.waves.push(wave);
+  };
+
+  // Advance every live sonar pulse one step: reveal the terrain its front just
+  // reached (forager's ping only), and sense any mover the front just swept over.
+  private stepWaves(dt: number): void {
+    for (const wave of this.waves) {
+      const crossed = wave.advance(dt);
+      if (wave.reveal) {
+        for (const bucket of crossed) {
+          for (const cell of bucket) {
+            this.fog.reveal(cell.col, cell.row);
+            // Reveal the wall tiles bounding this corridor too (specs/sensing.md).
+            for (const [dc, dr] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+              if (this.maze.isWall(cell.col + dc, cell.row + dr))
+                this.fog.reveal(cell.col + dc, cell.row + dr);
+            }
+          }
+        }
       }
+      this.senseWithWave(wave);
     }
-    // Mark predators / drifter caught in the flood for their reveal window.
-    for (const p of this.predators) {
-      if (p.state !== PredState.Den && set.has(tileKey(p.col, p.row)))
+    this.waves = this.waves.filter((w) => !w.done);
+  }
+
+  // Apply a wave's sensing once its front reaches an entity. The forager's ping
+  // marks predators/drifters for their reveal window and hands the Gloamfin a fix
+  // if it reaches it; the Gloamfin's own ping catches the forager when its front
+  // arrives — a brief, watchable delay instead of an instant snap.
+  private senseWithWave(wave: SonarWave): void {
+    if (wave.reveal) {
+      for (const p of this.predators) {
+        if (p.state === PredState.Den || wave.hitPreds.has(p)) continue;
+        if (!wave.reached(p.col, p.row)) continue;
+        wave.hitPreds.add(p);
         p.markT = Math.max(p.markT, SONAR_MARK_TIME);
-    }
-    for (const d of this.drifters) {
-      if (set.has(tileKey(d.col, d.row)))
-        d.markT = Math.max(d.markT, SONAR_MARK_TIME);
-    }
-    // The Gloamfin hears the pulse: if the flood reaches it, it takes a fix on
-    // you and gives chase — and the detection alert fires (specs/predators.md).
-    for (const p of this.predators) {
-      if (p.kind === PredKind.Gloamfin && p.state !== PredState.Den &&
-          set.has(tileKey(p.col, p.row))) {
-        this.alertAcquire(p, this.forager.col, this.forager.row);
+        // The Gloamfin hears the pulse and takes a fix on you (specs/predators.md).
+        if (p.kind === PredKind.Gloamfin)
+          this.alertAcquire(p, this.forager.col, this.forager.row);
       }
+      for (const d of this.drifters) {
+        if (wave.hitDrifters.has(d)) continue;
+        if (!wave.reached(d.col, d.row)) continue;
+        wave.hitDrifters.add(d);
+        d.markT = Math.max(d.markT, SONAR_MARK_TIME);
+      }
+    } else if (
+      !wave.playerHit &&
+      wave.emitter &&
+      wave.emitter.state !== PredState.Den &&
+      wave.reached(this.forager.col, this.forager.row)
+    ) {
+      wave.playerHit = true;
+      this.alertAcquire(wave.emitter, this.forager.col, this.forager.row);
     }
-    this.effects.addRing(this.forager.x, this.forager.y, E * TILE, false);
   }
 
   // The forager's pulse hands the Gloamfin a fix: chase, and fire the detection
@@ -421,13 +471,19 @@ export class Game {
       rand: Math.random,
       inkAt: this.inkAt,
       inkBetween: this.inkBetween,
+      spawnWave: this.spawnWave,
     };
     for (const p of this.predators) updatePredator(p, dt, world);
 
     // Bonus drifters.
     this.updateDrifters(dt);
 
-    // Effects (rings/bursts) + fog. The Lanternjaw's always-visible bulb and the
+    // Advance every travelling sonar pulse: reveal the tiles its front reaches
+    // this step and sense any mover it sweeps over (a ping cast this tick by the
+    // forager or the Gloamfin starts travelling out on the next).
+    this.stepWaves(dt);
+
+    // Effects (bursts) + fog. The Lanternjaw's always-visible bulb and the
     // always-visible drifter are drawn by render.ts, not marked here.
     this.effects.update(dt);
     this.fog.computePassiveLit(this.maze, this.forager.x, this.forager.y, this.visionRadius);

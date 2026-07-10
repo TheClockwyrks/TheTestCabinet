@@ -18,7 +18,7 @@ media.
 | `proof/title.png` | The title menu on load, with every menu item visible. |
 | `proof/gameplay.png` | A live in-trench frame mid-dark: the forager with its lit pocket of revealed maze fading into black fog, plankton, the HUD, and at least one predator visible where light or sonar reaches. |
 | `proof/game-over.png` | The game-over screen after a finished game, with the final score and depth reached. |
-| `proof/sonar.webm` | A short clip of a **sonar pulse**: the pulse flooding outward through the corridors **around a corner** and marking a predator beyond the bend for its brief window (reaching a predator your ordinary light does not). |
+| `proof/sonar.webm` | A short clip of a **sonar pulse**: the wavefront travelling outward through the corridors **around a corner** — revealing near tiles before far ones, not as an expanding circle — and marking a predator beyond the bend for its brief window as the front reaches it (reaching a predator your ordinary light does not). |
 | `proof/hunt.webm` | A short clip of a **predator hunting**: a predator appearing out of the dark and chasing the forager, then being shaken — for example the Gloamfin sprinting to where its ping heard you and casting about when you have slipped away, or the Lanternjaw pulled in as you brighten and lost as you go dim or ink. |
 
 Notes:

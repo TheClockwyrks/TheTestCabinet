@@ -6,8 +6,8 @@ project under **`assets/`**. They are the canonical art for this game and are th
 redraw them.
 
 **You must render the game using these provided assets** for every element they
-cover (the forager, the three predators, the sonar pulse, the flare bloom, and
-the trench tiles). Do **not** substitute your own creatures, tiles, or effect art
+cover (the forager, the three predators, the flare bloom, and the trench tiles).
+Do **not** substitute your own creatures, tiles, or effect art
 for these; do not restyle or recolor them. Elements that have **no** asset
 (listed at the end) you draw in code as the other specs describe. Everything in
 this file is consistent with the palette, grid, and behavior defined across the
@@ -67,7 +67,6 @@ opaque, so each composites cleanly over the dark trench.
 | The Lanternjaw | `assets/lanternjaw/` | 16 (`0`–`15`) | 32×32 | Light-seeking predator (sprite) |
 | The Gloamfin | `assets/gloamfin/` | 8 (`0`–`7`) | 32×32 | Sound-seeking predator (sprite) |
 | The Flarefish | `assets/flarefish/` | 8 (`0`–`7`) | 32×32 | Flare-making predator (sprite) |
-| Sonar pulse | `assets/sonar-pulse/` | 8 (`0`–`7`) | 128×128 | Expanding sonar ring (effect) |
 | Flare bloom | `assets/flare-bloom/` | 8 (`0`–`7`) | 128×128 | The Flarefish's radial flare (effect) |
 | Trench tiles | `assets/trench-walls/` | 19 (`0`–`18`) | 32×32 | Wall autotile + floor + fog + den gate |
 
@@ -144,9 +143,9 @@ The eyeless, sound-hunting predator (`#c46bff`). Four-direction swim only:
 | 6, 7 | right |
 
 Alternate the two frames of the current facing while it moves. The Gloamfin has
-**no eyes** and a faint sonar cue at its head; its tell is the **sonar pulse** it
-emits (below and `specs/predators.md`), which is a separate effect, not on this
-sheet.
+**no eyes** and a faint sonar cue at its head; its tell is the **sonar ping** it
+emits (`specs/predators.md`), which is a separate procedural effect drawn in code
+(not a sprite — see "What has no asset" below), not on this sheet.
 
 ## The Flarefish — `assets/flarefish/` (8 frames, 32×32)
 
@@ -163,23 +162,14 @@ Alternate the two frames of the current facing while it moves. The sprite carrie
 only the small dim **flare organ** on its body; the **flare itself** is the
 separate large effect below.
 
-## The sonar pulse — `assets/sonar-pulse/` (8 frames, 128×128)
+## The sonar pulse has no sprite — it is drawn in code
 
-The expanding ring that travels outward when a character emits sonar — used both
-for the **forager's ping** and as the **Gloamfin's tell** (`specs/sensing.md`,
-`specs/predators.md`). It is **drawn in grayscale**: tint it at runtime by
-**multiplying** the sprite by the emitter's color.
-
-- Frame `0` is a small bright ring near the center; frames `1`–`7` are the same
-  ring expanded and dimmed step by step, frame `7` a wide faint ring near the
-  edges. **Play `0`→`7` once** over the pulse's visible travel, scaling the sprite
-  so the ring reaches the pulse's range as it grows.
-- **Tint:** multiply by the **sonar color `#5ef2ff`** for the forager's pulse, and
-  by the **Gloamfin color `#c46bff`** for the Gloamfin's own pulse, so the two
-  read as different emitters (`specs/predators.md`). Composite additively.
-- This ring is **presentation only**: for the forager's pulse the actual reveal is
-  the flooded tile set defined in `specs/sensing.md`; the Gloamfin's ring reveals
-  **nothing** — it is only the visible ring (`specs/predators.md`).
+There is **no sonar sprite sheet**. The sonar pulse is a **travelling wavefront**
+that flows outward through the corridors — bending around bends and reflecting off
+walls — so it cannot be a fixed expanding circle; it must be **rendered
+procedurally** (see "What has no asset" below and `specs/sensing.md`). This is used
+both for the **forager's ping** (tinted `#5ef2ff`) and, tinted to the Gloamfin's
+violet `#c46bff`, as the **Gloamfin's tell** (`specs/predators.md`).
 
 ## The flare bloom — `assets/flare-bloom/` (8 frames, 128×128)
 
@@ -260,6 +250,11 @@ These are **not** provided and you render them yourself, exactly as the other
 specs describe (using the palette in `specs/overview.md`):
 
 - **Plankton** (`#b8f5c8` motes) (`specs/playfield.md`).
+- The **sonar pulse** — a travelling wavefront that flows outward through the
+  corridors (bending around bends, reflecting off walls), drawn as a glowing crest
+  of short arcs that bulge in the direction the sound is moving, brightest at the
+  leading edge. Tinted `#5ef2ff` for the forager and `#c46bff` for the Gloamfin's
+  ping (`specs/sensing.md`, `specs/predators.md`).
 - The **bonus drifter** — a glowing **amber** mote (`#ffd166`) drawn to look
   **almost identical to the Lanternjaw's bulb-light**, and always visible
   (`specs/playfield.md`, `specs/predators.md`).

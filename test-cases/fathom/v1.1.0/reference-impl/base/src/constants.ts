@@ -101,7 +101,14 @@ export const VISION_GAIN = 64; // V = 96 + 64*G  -> up to 160
 export const SONAR_COOLDOWN = 1.75; // s (halved: sonar's real cost is attracting the Gloamfin)
 export const SONAR_RANGE_BASE = 9; // corridor tiles (E), shrinks with depth
 export const SONAR_MARK_TIME = 1.5; // s predators stay marked after a pulse
-export const SONAR_RING_TIME = 0.7; // s visible travel of the drawn ring
+// The ping is a wavefront that travels OUTWARD through the corridors — bending
+// around bends and reflecting off walls (it follows the corridor flood, not a
+// circle), so it reveals near tiles first and far tiles later, and its true
+// reach is legible instead of a misleading disc (specs/sensing.md).
+export const SONAR_WAVE_SPEED = 14; // corridor tiles/sec the wavefront advances
+export const SONAR_WAVE_BAND = 2.6; // tiles: width of the glowing wavefront band
+export const SONAR_CYAN_RGB = "94,242,255"; // COLOR.sonar (#5ef2ff), the forager's ping
+export const SONAR_VIOLET_RGB = "196,107,255"; // COLOR.gloamfin (#c46bff), the Gloamfin's ping
 
 // ---- Ink (specs/movement.md) -------------------------------------------
 export const INK_COOLDOWN = 8; // s

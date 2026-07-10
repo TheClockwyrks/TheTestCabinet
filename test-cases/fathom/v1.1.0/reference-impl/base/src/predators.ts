@@ -65,6 +65,17 @@ export interface World {
   rand: () => number;
   inkAt: (x: number, y: number) => boolean;
   inkBetween: (x1: number, y1: number, x2: number, y2: number) => boolean;
+  // Cast a travelling sonar pulse from a source tile (owned by the game, which
+  // advances it and applies its reveal/sense as the front sweeps out).
+  spawnWave: (
+    ox: number,
+    oy: number,
+    col: number,
+    row: number,
+    range: number,
+    violet: boolean,
+    emitter: Predator | null,
+  ) => void;
 }
 
 const DIRS = [Dir.Up, Dir.Down, Dir.Left, Dir.Right];
@@ -229,28 +240,23 @@ function updateLanternjaw(p: Predator, dt: number, w: World, mult: number): void
   p.speed = p.state === PredState.Hunt ? LANTERNJAW_SPEED * mult : DRIFTER_SPEED;
 }
 
-// Emit a Gloamfin sonar ping: its violet ring (a visible tell) plus its sense.
-// The ring reveals NOTHING of the maze (specs/sensing.md) — it only marks the
-// Gloamfin's own position briefly and, if the flood reaches the forager, gives a
-// fix and fires the alert.
+// Emit a Gloamfin sonar ping: a travelling violet wavefront (a visible tell) plus
+// its sense. The wave reveals NOTHING of the maze (specs/sensing.md) — it only
+// carries the sound outward through the corridors, and when its front reaches the
+// forager the game hands the Gloamfin a fix and fires the alert. Because the pulse
+// travels, you can watch it bend down the trench toward you and read exactly how
+// far its hearing reaches.
 function gloamfinPing(p: Predator, w: World): void {
-  w.effects.addRing(p.x, p.y, GLOAMFIN_PING_RANGE * TILE, true);
+  // The pulse does NOT give away the Gloamfin itself — the source stays hidden in
+  // the dark (specs/predators.md); it is revealed only by your light, your sonar,
+  // or the detection alert when a ping actually catches you.
+  w.spawnWave(p.x, p.y, p.col, p.row, GLOAMFIN_PING_RANGE, true, p);
   w.audio.play("predPulse");
-  // The ping is a warning you can SEE (the ring) but it does NOT give away the
-  // Gloamfin itself — the source stays hidden in the dark (specs/predators.md), so
-  // we do not mark it here. It is revealed only by your light, your sonar, or the
-  // detection alert when a ping actually catches you.
   // Every ping (periodic or the guaranteed "lost you" one) restarts the standard
   // cadence AND arms a minimum spacing, so re-acquiring you at close range cannot
   // spin the search→ping→re-acquire loop into a rapid-fire burst (specs/predators.md).
   p.pulseT = GLOAMFIN_PING_INTERVAL;
   p.pingLock = GLOAMFIN_PING_MIN_GAP;
-  for (const cell of w.maze.flood(p.col, p.row, GLOAMFIN_PING_RANGE)) {
-    if (cell.col === w.fcol && cell.row === w.frow) {
-      acquire(p, w, w.fcol, w.frow);
-      break;
-    }
-  }
 }
 
 function updateGloamfin(p: Predator, dt: number, w: World): void {
