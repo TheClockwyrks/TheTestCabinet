@@ -141,6 +141,10 @@ fn encode_event(event: &StreamEvent) -> Bytes {
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct IngestBody {
+    /// Restrict the scan to these entries, each a bare case `id` (slug or folder name,
+    /// expanding to all its versions) or a version-qualified `id@version` (that one
+    /// version only). Omitted/empty means a whole-catalog scan. See
+    /// [`IngestRequest::test_cases`].
     #[serde(default)]
     test_cases: Option<Vec<String>>,
     #[serde(default)]

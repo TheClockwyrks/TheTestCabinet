@@ -31,7 +31,11 @@ use crate::store::{
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
 #[derive(Debug, Clone, Default)]
 pub struct IngestRequest {
-    /// Restrict to these case slugs (a full scan when empty).
+    /// Restrict to these entries (a full scan when `None`). Each entry is either a
+    /// bare case `id` — its slug or folder name, expanding to every version the case
+    /// declares — or a version-qualified `id@version`, targeting exactly that one
+    /// version so a single edited version can be re-ingested without re-rendering the
+    /// case's other versions.
     pub test_cases: Option<Vec<String>>,
     /// Re-ingest and re-render even when unchanged.
     pub force: bool,
@@ -207,10 +211,18 @@ impl<'a> Ingestor<'a> {
     }
 
     /// Resolve the set of `(slug, version)` pairs to scan from the checkout.
+    ///
+    /// A whole-catalog scan (no restriction) enumerates every declared case as a bare
+    /// entry; a partial scan takes the request's entries verbatim. Each entry is then
+    /// resolved to targets: a bare `id` (slug or folder name) expands to every version
+    /// the case declares, while a version-qualified `id@version` targets exactly that
+    /// one version — so an edit to a single version re-renders only it, not every
+    /// version of the case. `@` cannot occur in a slug/folder name or a version string,
+    /// so it is an unambiguous separator.
     fn version_targets(&self, request: &IngestRequest) -> Result<Vec<(String, String)>> {
         let catalog = TestCaseCatalog::new(self.checkout.join("test-cases"));
-        let slugs: Vec<String> = match &request.test_cases {
-            Some(slugs) => slugs.clone(),
+        let entries: Vec<String> = match &request.test_cases {
+            Some(entries) => entries.clone(),
             None => catalog
                 .list()
                 .map_err(BackendError::Core)?
@@ -219,10 +231,13 @@ impl<'a> Ingestor<'a> {
                 .collect(),
         };
         let mut targets = Vec::new();
-        for slug in slugs {
-            let versions = catalog.versions(&slug).map_err(BackendError::Core)?;
-            for version in versions {
-                targets.push((slug.clone(), version));
+        for entry in entries {
+            if let Some((id, version)) = entry.split_once('@') {
+                targets.push((id.to_string(), version.to_string()));
+            } else {
+                for version in catalog.versions(&entry).map_err(BackendError::Core)? {
+                    targets.push((entry.clone(), version));
+                }
             }
         }
         Ok(targets)

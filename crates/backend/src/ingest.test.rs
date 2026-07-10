@@ -435,7 +435,11 @@ fn every_stored_manifest_preserves_its_asset_shape() {
 /// Write a minimal end-to-end case (no reference mockups, so ingest needs no
 /// browser render) under `<checkout>/test-cases/<folder>/v1.0.0` declaring `slug`.
 fn write_e2e_case(checkout: &std::path::Path, folder: &str, slug: &str) {
-    let base = checkout.join("test-cases").join(folder).join("v1.0.0");
+    write_e2e_version(checkout, folder, slug, "v1.0.0");
+}
+
+fn write_e2e_version(checkout: &std::path::Path, folder: &str, slug: &str, version: &str) {
+    let base = checkout.join("test-cases").join(folder).join(version);
     write(&base.join("prompt.hbs"), "Build it.");
     write(&base.join("changelog.md"), "Introduced.");
     write(&base.join("variants/base.toml"), "slug = \"base\"\n");
@@ -530,6 +534,35 @@ fn a_folder_rename_that_pins_the_slug_overwrites_in_place_without_duplicating() 
     assert_eq!(stored_slugs(&store), ["pong"]);
     assert!(store.has_version("pong", "v1.0.0"));
     assert!(!store.has_version("carom", "v1.0.0"));
+}
+
+#[test]
+fn a_version_qualified_target_ingests_only_that_version() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_version(checkout.path(), "alpha", "alpha", "v1.0.0");
+    write_e2e_version(checkout.path(), "alpha", "alpha", "v2.0.0");
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+
+    // Target a single version with `slug@version`: the report touches only it, leaving
+    // the case's other versions untouched (a bare `alpha` would expand to both).
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec!["alpha@v1.0.0".to_string()]),
+            force: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let touched: Vec<(&str, &str)> = report
+        .test_case_versions
+        .iter()
+        .map(|v| (v.slug.as_str(), v.version.as_str()))
+        .collect();
+    assert_eq!(touched, [("alpha", "v1.0.0")]);
 }
 
 #[test]

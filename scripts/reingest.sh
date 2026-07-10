@@ -11,14 +11,17 @@
 # instead of one silent blocking POST that looks like a hang.
 #
 # CHANGE DETECTION. Rendering all 50+ cases on every edit is wasteful, so by
-# default this only re-ingests cases whose files changed since the last successful
-# run. We keep a marker file (its mtime is the last-ingest baseline) and, for each
-# candidate case, ask `find` whether any file under test-cases/<slug>/ is newer than
-# that baseline. Cases with no newer file are skipped without touching the backend.
-# The baseline is captured BEFORE the scan and only advanced on success, so an edit
-# made while an ingest is in flight is still caught on the next run. Two escape
-# hatches ignore the baseline: `--force` (re-ingest everything regardless), and a
-# missing marker file (a first run, or `rm .reingest-timestamp`, re-ingests all).
+# default this only re-ingests the individual test-case VERSIONS whose files changed
+# since the last successful run. We keep a marker file (its mtime is the last-ingest
+# baseline) and, for each candidate case, ask `find` whether any file under a given
+# version folder test-cases/<slug>/<version>/ is newer than that baseline. Only the
+# changed versions are re-ingested — sent as `<slug>@<version>` targets — so editing
+# one version no longer re-renders every version the case declares; a case with no
+# newer file in any version is skipped without touching the backend. The baseline is
+# captured BEFORE the scan and only advanced on success, so an edit made while an
+# ingest is in flight is still caught on the next run. Two escape hatches ignore the
+# baseline: `--force` (re-ingest everything regardless), and a missing marker file (a
+# first run, or `rm .reingest-timestamp`, re-ingests all).
 #
 # Note the two distinct meanings of "force": the `--force` FLAG here controls the
 # CLIENT-side change detection (scan everything, skip the mtime filter), while the
@@ -111,11 +114,24 @@ else
   for slug in "${candidates[@]}"; do
     dir="${cases_dir}/${slug}"
     if [[ "$force" == true || ! -e "$timestamp" || ! -d "$dir" ]]; then
-      # --force / no baseline / a slug with no folder on disk (let the backend judge it).
+      # --force / no baseline / a slug with no folder on disk: target the whole case
+      # (a bare entry the backend expands to every version) and let it judge.
       to_ingest+=("$slug")
-    elif [[ -n "$(find "$dir" -newer "$timestamp" -print -quit 2>/dev/null)" ]]; then
-      to_ingest+=("$slug")
+      continue
     fi
+    # Otherwise narrow to the individual version folders that changed, so editing one
+    # version re-renders only it rather than every version the case declares. A version
+    # folder with no file newer than the baseline (`find … -print -quit` stops at the
+    # first hit, so it is cheap) contributes nothing; a case with no changed version is
+    # skipped entirely. A non-matching glob leaves the literal pattern, which the
+    # `-d` guard rejects.
+    for vdir in "${dir}"/*/; do
+      [[ -d "$vdir" ]] || continue
+      version="$(basename "$vdir")"
+      if [[ -n "$(find "$vdir" -newer "$timestamp" -print -quit 2>/dev/null)" ]]; then
+        to_ingest+=("${slug}@${version}")
+      fi
+    done
   done
 
   if [[ ${#to_ingest[@]} -eq 0 ]]; then

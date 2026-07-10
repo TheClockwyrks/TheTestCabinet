@@ -60,19 +60,26 @@ changed [test case versions](/testing/end-to-end/overview/) are copied into the
 backend's store, with each reference mockup rendered to a screenshot during
 ingest (see [Reference Rendering](#reference-rendering)). The scan reports what
 changed; an already-ingested, unchanged version is a no-op unless re-ingestion
-is forced. The request may restrict the scan to specific case slugs. The scan
-runs to completion before the default response returns; a client can instead
-stream per-version progress (see below).
+is forced. The request may restrict the scan to specific cases — or to
+individual versions of a case. The scan runs to completion before the default
+response returns; a client can instead stream per-version progress (see below).
 
 The request body is optional JSON:
 
 ```jsonc
 {
-  "testCases": ["carom"],     // restrict the scan to these slugs (default: all)
+  "testCases": ["carom", "coil@v1.1.0"], // restrict the scan (default: all)
   "force": true,             // re-ingest even versions already in the store
   "catalogVersion": "a1b2c3" // tag a whole-catalog ingest with its content version
 }
 ```
+
+Each `testCases` entry is either a bare case **id** — its slug or folder name,
+expanding to every version the case declares (`"carom"`) — or a
+version-qualified **`id@version`** targeting exactly that one version
+(`"coil@v1.1.0"`). The version-qualified form lets a client that edited a single
+version re-ingest only it, rather than re-rendering every version of the case;
+`scripts/reingest.sh` uses it to send just the versions whose files changed.
 
 `force` overwrites a version already stored, re-rendering its references. It
 exists for **development** iteration on a version no run has been published
