@@ -98,16 +98,15 @@ disciplined Caldera palette."""
 
 [[review_item]]
 id = "reads-as-runner"
-title = "Reads as the Runner, not its siblings"
+title = "Reads as the Runner"
 text = """
 From more than one angle the model reads unmistakably as the Runner: a LOW, LONG, \
 wedge-shaped obsidian body held close to the ground on four thin, sprung legs, narrow \
 at the front and broadening slightly toward the back. A single horizontal acid-green eye \
 slit sits on the low head at the front, and there is NO other acid glow anywhere on the \
-model — that one slit is the Runner's whole glow signature. It reads as the smallest and \
-fastest Slag — nothing about it is heavy, top-heavy, armored, spindly, or massive, so it \
-could never be mistaken for the Breaker, the Sapper, or the Colossus. It carries no \
-weapon, no armor plating, and no tools."""
+model — that one slit is the Runner's whole glow signature. It reads as a small, fast \
+creature: nothing about it is heavy, top-heavy, armored, spindly, or massive. It carries \
+no weapon, no armor plating, and no tools."""
 weight = 3
 domain = "fidelity"
 

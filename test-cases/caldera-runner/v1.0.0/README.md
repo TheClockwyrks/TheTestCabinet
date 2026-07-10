@@ -45,14 +45,6 @@ region is contiguous, correctly colored, and visible from the side and above.
 The brief also forbids steel `#c9ced6` and violet `#b56bff` anywhere on the model, since a
 game paints those on at run time.
 
-## Distinctness from its siblings
-
-The four Slag archetypes must be tellable apart at a glance, so each differs on four axes
-at once — proportion, limb count, glow signature, and accent placement. The Runner is the
-**low, long, fast** one: a single eye slit and no other glow, no weapon, no armor plating.
-It must never be confusable with the wide, top-heavy Breaker, the tall spindly Sapper, or
-the massive Colossus. A review item scores exactly this.
-
 ## Contents
 
 | Path                  | Seeded to run? | Purpose                                                   |

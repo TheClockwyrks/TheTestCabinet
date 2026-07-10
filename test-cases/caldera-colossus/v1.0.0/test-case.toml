@@ -1,0 +1,175 @@
+slug = "caldera-colossus"
+name = "Caldera Colossus"
+difficulty = "hard"
+tags = ["voxel", "rig", "creature"]
+summary = """
+Sculpt and rig the Caldera Colossus: the massive elite bruiser of the Slag — a ponderous, \
+columnar obsidian quadruped on four thick column legs, its enormous body carrying an open \
+furnace crater in its back that exposes a molten acid-green core, that walks with immense \
+weight and crushes what it reaches — painted cell by cell with the `voxel-anim` tool, one \
+recorded operation at a time. The model invents whatever parts and joints it needs; the \
+fixed contract is three animations it must author — a ponderous `move`, a crushing \
+`attack`, and a self-playing `aura` idle — plus a contiguous accent region the game \
+recolors to show the Colossus's tier."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 2.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME Colossus at three sizes — `base` (this case's
+# volume), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D canvas):
+# `width` across (x), `height` up (y), `depth` front-to-back (z), in voxels. Sized
+# from the Colossus's real size at the roster's shared scale — it is the MASSIVE Slag,
+# the biggest thing on the field, and the volume's huge, columnar proportions carry that
+# before a single voxel is placed. Each part is sculpted separately in this shared
+# volume's coordinates. The volume always starts EMPTY; `background` is only the clear
+# color behind the rasterized isometric preview PNG. A voxel case must NOT declare
+# [canvas].
+[voxel]
+width = 64
+height = 76
+depth = 60
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the rig;
+# every operation targets a part with `--part <name>`, recording to that part's action
+# log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help` for the
+# operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each part the
+# model defines), the authoritative output each part's regenerated model is rebuilt
+# from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. All three names here are the
+# ones `caldera`'s `assets/models.json` binds to the Colossus's game events.
+[model]
+
+# `move` — the walk. A game-triggered playable that loops: a ponderous, immensely heavy
+# walk on four thick column legs, each leg landing with weight and the whole mass
+# settling onto it, authored in place so the leg cycle alone carries the stride and the
+# game supplies the travel.
+[[model.animation]]
+name = "move"
+loop = true
+auto_play = false
+
+# `attack` — the slam. A game-triggered playable that loops: the Colossus rears and
+# brings its full mass down in one crushing slam, then settles. It carries no weapon; its
+# whole body is the weapon, and the feet stay planted.
+[[model.animation]]
+name = "attack"
+loop = true
+auto_play = false
+
+# `aura` — the armor-aura idle. A SELF-PLAYING idle (`auto_play = true`) that loops under
+# everything else: the furnace core in the back crater pulses and breathes, and the molten
+# seams swell and dim with it, so the armor aura it projects over nearby Slag reads
+# continuously without being triggered. It moves no leg.
+[[model.animation]]
+name = "aura"
+loop = true
+auto_play = true
+
+# The self-contained brief, seeded for the run. It is a Handlebars template (`.hbs`),
+# rendered per variant so the volume it states matches the selected size. The seeded
+# dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Caldera Colossus and poses \
+correctly — the massive, columnar obsidian quadruped on four thick column legs, its \
+enormous body carrying an open furnace crater that exposes a molten acid-green core, whose \
+ponderous walk and crushing slam carry the weight of the biggest thing on the field and \
+whose self-playing furnace aura pulses continuously, one contiguous accent region and all, \
+in the disciplined Caldera palette."""
+
+[[review_item]]
+id = "reads-as-colossus"
+title = "Reads as the Colossus"
+text = """
+From more than one angle the model reads unmistakably as the Colossus: a MASSIVE, COLUMNAR \
+obsidian quadruped whose four legs are thick columns, carrying an enormous body with heavy \
+shoulder guards — plainly the biggest thing on the field. Set into its back is an OPEN \
+FURNACE CRATER: a broken cavity exposing a molten acid-green core that blazes, with molten \
+acid-green seams radiating from the crater across the body. It is the ONLY Slag with an \
+exposed core, and that furnace-and-seams glow is its whole glow signature. Nothing about it \
+reads as low and long, wide and top-heavy, or tall and spindly."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "move-reads"
+title = "Move walks ponderous and in place"
+text = """
+Playing `move` walks the Colossus forward: each thick column leg lands with weight and the \
+whole enormous mass settles onto it, so it reads as an immensely heavy machine hauling \
+itself along rather than gliding, sliding, or stepping lightly. The motion is ponderous and \
+deliberate, never quick or light. The body does not translate across the scene — the leg \
+cycle alone carries the stride. It loops seamlessly."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "attack-and-aura"
+title = "Attack crushes; the aura idle pulses on its own"
+text = """
+Two motions must read here. Playing `attack` rears the Colossus and brings its full mass \
+down in one crushing slam, then settles to its stance, with the feet staying planted — a \
+weapon-less body slamming a target, the whole enormous weight thrown behind it. Separately, \
+the `aura` idle SELF-PLAYS continuously without being triggered: the furnace core in the \
+back crater pulses and breathes and the molten seams swell and dim with it, so the armor \
+aura it projects reads as always on. The aura moves no leg — only the core and its seams \
+breathe — and both `attack` and `aura` loop seamlessly."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "accent-plates"
+title = "A contiguous accent region on guards and crater rim"
+text = """
+The shoulder guards AND the raised rim around the back crater — and only those — are \
+sculpted in the accent color `#4a4358`, as coherent contiguous plates (the guards and \
+the crater rim each a coherent plate group), not scattered flecks, and clearly visible from \
+more than one angle. That color appears NOWHERE else on the model — not one stray voxel, \
+highlight, or seam, and in particular not on the molten core or its radiating seams. The \
+game finds every voxel of it and repaints it to show the Colossus's tier, so a scattered, \
+broken, or misplaced accent region breaks the tier system outright."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Caldera palette discipline"
+text = """
+Uses only the brief's four colors — obsidian body, obsidian-dark recesses, the accent \
+plate, and the acid glow — with no out-of-palette colors, and in particular NO steel \
+`#c9ced6` and NO violet `#b56bff` anywhere on the model, since a game paints those on \
+at run time. No stray voxels drift off the body."""
+weight = 1
+domain = "fidelity"

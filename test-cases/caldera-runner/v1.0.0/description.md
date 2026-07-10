@@ -10,10 +10,8 @@ hand the model a rig: it fixes only the two animations the model must author —
 **`move`** and a lunging **`attack`** — and leaves the parts, joints, and articulation
 that realize them entirely to the model.
 
-The Runner is one of four Slag archetypes, and the case is explicit that it must not be
-confusable with its siblings: it is the low, long, fast one, with no weapon, no armor
-plating, and exactly one glow. The heavy Breaker, the spindly Sapper, and the massive
-Colossus each read differently at a glance.
+The Runner is one of four Slag archetypes. It is the low, long, fast one, with no weapon,
+no armor plating, and exactly one glow — a single eye slit on a narrow head.
 
 It also carries a machine-readable contract the game depends on. The dorsal ridge is an
 **accent region** sculpted in one reserved color and appearing nowhere else on the model;

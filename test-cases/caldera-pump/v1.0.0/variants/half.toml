@@ -1,0 +1,11 @@
+# The half-size variant: the same Pump sculpted in a volume with each extent ~halved
+# from the case's base 40x34x40. Its `[voxel]` OVERRIDES the case volume for runs of
+# this variant, and the brief is rendered at these dimensions.
+slug = "half"
+name = "Half Size"
+
+[voxel]
+width = 20
+height = 17
+depth = 20
+background = "transparent"

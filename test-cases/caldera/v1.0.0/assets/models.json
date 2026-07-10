@@ -10,10 +10,18 @@
   },
 
   "towerLevels": {
-    "_note": "Tower upgrade accents (specs/towers.md). Level 0 maps the accent onto brass-dark, so an unupgraded tower reads as authored. Keyed by the Holdfast accent color.",
-    "0": { "#9a7a34": "#8a6d2e" },
-    "1": { "#9a7a34": "#b8bcc2" },
-    "2": { "#9a7a34": "#ffce54" }
+    "_note": "Tower upgrade accents (specs/towers.md). The accent is authored as a visibly distinct verdigris fitting; level 0 paints it down to brass-dark, so an unupgraded tower reads as plain brass. Keyed by the Holdfast accent color. Tower models never bake #b8bcc2 or #ffce54 — those are upgrade targets only.",
+    "0": { "#2f7d72": "#8a6d2e" },
+    "1": { "#2f7d72": "#b8bcc2" },
+    "2": { "#2f7d72": "#ffce54" }
+  },
+
+  "coreLevels": {
+    "_note": "The Core has FOUR upgrade levels (0-3, specs/build.md), one more than a tower, so it carries its own table. Level 3 burns white-hot.",
+    "0": { "#2f7d72": "#8a6d2e" },
+    "1": { "#2f7d72": "#b8bcc2" },
+    "2": { "#2f7d72": "#ffce54" },
+    "3": { "#2f7d72": "#dfeaea" }
   },
 
   "pipeFluids": {
@@ -32,18 +40,18 @@
 
   "towers": {
     "_note": "One model per tower; two upgrade levels above base are produced by the 'towerLevels' recolor. The Scald's field is continuous, so it runs 'emit' as a loop rather than firing discrete shots.",
-    "repeater": { "model": "repeater/rig.json", "kind": "rigid", "dimensions": [24, 50, 24], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
-    "mortar":   { "model": "mortar/rig.json",   "kind": "rigid", "dimensions": [34, 34, 34], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
-    "lance":    { "model": "lance/rig.json",    "kind": "rigid", "dimensions": [26, 74, 30], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#9a7a34" },
-    "scald":    { "model": "scald/rig.json",    "kind": "rigid", "dimensions": [36, 40, 36], "clips": { "idle_auto": "idle", "attack": "emit" }, "accent": "#9a7a34" }
+    "repeater": { "model": "repeater/rig.json", "kind": "rigid", "dimensions": [24, 50, 24], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#2f7d72" },
+    "mortar":   { "model": "mortar/rig.json",   "kind": "rigid", "dimensions": [34, 34, 34], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#2f7d72" },
+    "lance":    { "model": "lance/rig.json",    "kind": "rigid", "dimensions": [26, 74, 30], "clips": { "idle_auto": "idle", "attack": "fire" }, "accent": "#2f7d72" },
+    "scald":    { "model": "scald/rig.json",    "kind": "rigid", "dimensions": [36, 40, 36], "clips": { "idle_auto": "idle", "attack": "emit" }, "accent": "#2f7d72" }
   },
 
   "structures": {
     "_note": "The Core plays a one-shot 'upgrade' on purchase and carries the Holdfast accent across its four upgrade levels. A Boiler plays 'boil' only while fed water; a Pump plays 'pump' only while delivering.",
-    "core":      { "model": "core/rig.json",      "kind": "rigid", "dimensions": [80, 70, 80], "clips": { "idle_auto": "idle", "upgrade": "upgrade" }, "accent": "#9a7a34" },
-    "boiler":    { "model": "boiler/rig.json",    "kind": "rigid", "dimensions": [34, 44, 34], "clips": { "idle_auto": "idle", "work": "boil" }, "accent": "#9a7a34" },
-    "pump":      { "model": "pump/rig.json",      "kind": "rigid", "dimensions": [40, 34, 40], "clips": { "idle_auto": "idle", "work": "pump" }, "accent": "#9a7a34" },
-    "river-tap": { "model": "river-tap/rig.json", "kind": "rigid", "dimensions": [28, 26, 28], "clips": { "idle_auto": "idle", "work": "draw" }, "accent": "#9a7a34" }
+    "core":      { "model": "core/rig.json",      "kind": "rigid", "dimensions": [80, 70, 80], "clips": { "idle_auto": "idle", "upgrade": "upgrade" }, "accent": "#2f7d72" },
+    "boiler":    { "model": "boiler/rig.json",    "kind": "rigid", "dimensions": [34, 44, 34], "clips": { "idle_auto": "idle", "work": "boil" }, "accent": "#2f7d72" },
+    "pump":      { "model": "pump/rig.json",      "kind": "rigid", "dimensions": [40, 34, 40], "clips": { "idle_auto": "idle", "work": "pump" }, "accent": "#2f7d72" },
+    "river-tap": { "model": "river-tap/rig.json", "kind": "rigid", "dimensions": [28, 26, 28], "clips": { "idle_auto": "idle", "work": "draw" }, "accent": "#2f7d72" }
   },
 
   "pipes": {

@@ -1,0 +1,125 @@
+# Caldera Mortar — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera Mortar, the squat lobbing tower of the Holdfast
+— a heavy, wide brass base carrying one fat, short, wide-mouthed iron tub angled steeply
+upward — as a 3D voxel model with a rig a game can pose at runtime. Build it with
+`voxel-anim` (painting opaque cells one operation at a time) as a rigged model that reads
+unmistakably as this stubby lobbing emplacement, rocks gently on its own, and recoils hard
+as it lobs a shell on demand. There is no target model to copy.
+
+This test measures creativity and craft, not instruction-following. The brief fixes what
+the Mortar is and how it must move; it deliberately does not hand you a parts list, joint
+placements, or pose angles — working out the pieces a tower whose tub elevates and recoils
+needs, where they attach, and how they articulate is the test. Invent the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the tower, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the tub faces toward `z = {{voxel.maxZ}}` (the front), though its fat mouth is
+  angled steeply **up** toward `y = {{voxel.maxY}}` so it lobs on an arc. Up is +y.
+- The Mortar is a **static emplacement founded on the ground**: its heavy base sits flat on
+  the ground at `y = 0` and does not move. Build it symmetric about the lengthwise vertical
+  centerplane.
+- The Mortar is deliberately the **shortest and squattest** tower — a low, wide, heavy
+  base with a stubby tub, filling the volume near the ground and never rising tall. Nothing
+  about it should read as slender or towering.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same volume's
+  coordinates, positioned where the part sits on the assembled Mortar (the tub already
+  seated on the base, angled up).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Brass — primary plating | `#c8a24a` |
+| Brass dark — shadow, underside | `#8a6d2e` |
+| Iron — mechanisms, barrels, recesses | `#3a3836` |
+| Accent fitting — verdigris (the accent region) | `#2f7d72` |
+
+Do **not** use steel `#b8bcc2`, gold `#ffce54`, or white `#dfeaea` anywhere on the model.
+Those are the colors a game paints onto the accent band at run time to show the tower's
+upgrade level (see *The accent region*); baking any of them in makes a base-level tower
+look permanently upgraded.
+
+## What the Mortar is (and what is yours to invent)
+
+Fixed — the Mortar must read unmistakably as all of these:
+
+- A **heavy, wide brass base** founded flat on the ground — the squat, solid body of the
+  shortest tower on the field. Its shadowed seams and undersides are brass dark.
+- **One fat, short, wide-mouthed iron tub** angled steeply upward on the base — a stubby
+  lobbing barrel with a broad, flared mouth and **no length to it at all**. This one fat,
+  short muzzle pointing up is the Mortar's whole tell: a reviewer must be able to name it
+  from that stubby upward tub alone.
+- A **muzzle band** ringing the flared mouth of the tub — the accent region below.
+
+The Mortar is a **weapon of the Holdfast — brass-and-iron machinery, not a creature**. The
+tell is the **one fat, short, wide-mouthed tub** angled steeply up on a squat base: nothing
+about this tower is slim, towering, or barrel-less.
+
+Everything else is yours to invent — the exact silhouette and proportions of the base and
+tub, how the mouth flares, how the tub is mounted so it can elevate and recoil, how the
+band is formed, and how you break the Mortar into rig parts. Nothing here prescribes a
+shape; the test rewards a bold, characterful design that is unmistakably the Mortar and
+animates convincingly.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time to show the tower's **upgrade level**, by finding
+every voxel of one reserved color and repainting it (brass dark at level 0, steel at level
+1, gold at level 2), so one model serves all three levels. That reserved color is the
+**verdigris accent** `#2f7d72`, and it is what makes the contract work:
+
+- Sculpt the **muzzle band** ringing the flared mouth of the tub — and only that — in
+  `#2f7d72`.
+- Use `#2f7d72` **nowhere else** on the model. Not a stray voxel, not a highlight, not a
+  seam. Every voxel of it is treated as accent fitting.
+- The band must be **one contiguous ring** and clearly **visible from more than one angle**
+  — that is how a player reads a tower's upgrade level at a glance across the battlefield.
+
+Everything else — the base, the tub, the recesses — keeps its own color and is never
+repainted. Get this wrong and every Mortar in the game looks the same level.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author the
+motion). Author each with `voxel-anim define-animation` then `add-keyframe`, choosing the
+period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion reads right — a slow, gentle rock at idle and a heavy elevate-and-recoil when firing.
+
+- **`idle`** — the settle (a self-playing idle, `loop = true`, `auto_play = true`). The tub
+  rocks very slightly on its trunnions, settling and re-settling as if breathing, on its own
+  with no caller, so the tower reads as live and powered even when it is not firing. Only the
+  tub rocks; the heavy base stays fixed. It loops seamlessly.
+- **`fire`** — the lob (a game-triggered playable, `loop = true`). The tub elevates, then
+  recoils hard down into its base as it lobs a shell, and slowly returns to its resting
+  elevation, reading as a stubby mortar throwing a shell on an arc rather than a flat direct
+  shot. The base stays fixed; only the tub moves.
+
+You may add your own extra parts, joints, or animations on top of this (for example a faint
+plume vent at rest), but you must not drop or contradict the required `idle` and `fire`
+animations, by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on your
+`PATH`. Define your own parts with `define-part` (giving each a parent and a pivot), sculpt
+each by selecting it with `--part <name>`, set pivots with `set-pivot`, place joints with
+`define-joint`, and author the two animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
+mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation; run
+`voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png` previews)
+between calls to judge each part against this brief — that the tub seats on the base angled
+up, its mouth flares broad, the band rings the mouth unbroken, and the animations read with
+the right weight. Run `voxel-anim render` before you finish so it emits the per-part `.glb`
+geometry your result is built from — an unrendered part scores as empty (`voxel-anim render
+--component <part>` renders one part; `voxel-anim render --time <ms> --animation <name>`
+renders the model posed at that instant to check the motion).

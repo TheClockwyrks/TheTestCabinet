@@ -196,7 +196,7 @@ palette and type are below; match them.
 | Slag — accent plate (authored; recolored per tier) | `#4a4358` |
 | Slag — Tier II plating (steel) | `#c9ced6` |
 | Slag — Tier III trim (elite) | `#b56bff` |
-| Holdfast — accent fitting (recolored per upgrade) | `#9a7a34` |
+| Holdfast — accent fitting (authored verdigris; recolored per upgrade) | `#2f7d72` |
 | Health — healthy | `#5ec96b` |
 | Health — critical | `#ff5c5a` |
 | Funds / gold accent | `#ffce54` |

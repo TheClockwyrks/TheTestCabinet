@@ -74,8 +74,12 @@ fittings on a tower — authored in a color used **nowhere else on that model**:
 | Family | Accent color | Recolored to, at the base level |
 | --- | --- | --- |
 | Slag | `#4a4358` | Obsidian `#241f2b` (Tier I) |
-| Towers, Core, fluid structures | `#9a7a34` | Brass dark `#8a6d2e` (level 0) |
+| Towers, Core, fluid structures | `#2f7d72` | Brass dark `#8a6d2e` (level 0) |
 | Pipe kit | `#808890` | The network's fluid color |
+
+The towers use `towerLevels` (levels `0`–`2`); the **Core** has four upgrade levels
+(`specs/build.md`) and uses its own `coreLevels` table. The fluid structures do not
+upgrade, so their accent is always painted to brass dark.
 
 The accent is authored in a color that is **visibly distinct** on the model — so the
 asset's own reviewer can see the region exists, is contiguous, and sits on the plates

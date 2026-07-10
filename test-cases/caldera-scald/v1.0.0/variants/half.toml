@@ -1,0 +1,11 @@
+# The half-size variant: the same Scald sculpted in a volume with each extent
+# ~halved (rounded) from the case's base 36x40x36. Its `[voxel]` OVERRIDES the case
+# volume for runs of this variant, and the brief is rendered at these dimensions.
+slug = "half"
+name = "Half Size"
+
+[voxel]
+width = 18
+height = 20
+depth = 18
+background = "transparent"

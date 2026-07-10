@@ -1,0 +1,118 @@
+slug = "caldera-pipe-hub"
+name = "Caldera Pipe Hub"
+difficulty = "easy"
+tags = ["voxel", "pipe"]
+summary = """
+Sculpt the Caldera Pipe Hub: a squat bolted junction drum where up to six pipe runs \
+meet, built as an opaque-voxel model, one recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder).
+# The first version simply reads "Introduced.". Like `description`, it is NOT seeded
+# into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+asset_kind = "voxel-model"
+
+# One variant only. `base` declares no `[voxel]` override, so the volume never
+# varies; the brief states the dimensions literally. This list is a root key, so it
+# must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The voxel volume the model sculpts into (the 3D analog of a 2D canvas): `width`
+# across (x), `height` up (y), `depth` front-to-back (z), in voxels. The volume
+# always starts EMPTY; `background` is only the clear color behind the rasterized
+# preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 16
+height = 16
+depth = 16
+background = "transparent"
+
+# The sculpting tool. `voxel` is the only way to place a voxel; every operation
+# records to the action log and renders nothing — rendering is on request via
+# `voxel render`. Run `voxel --help` to see the operations; no operations schema is
+# seeded. `preview` is a SINGLE file (no {part} token — this is a static model).
+[tool]
+binary = "voxel"
+preview = "model.png"
+
+# The recorded action log — the authoritative output. A SINGLE file (no {part}
+# token). `voxel render` also emits the `.glb` the 3D client renders (not declared
+# here).
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run. It is plain Markdown (there is one
+# variant, so the volume never varies and the brief states its dimensions literally).
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated model reads as one squat, bolted pipe junction — a \
+central drum with a flange socket facing outward on each of its six sides and a \
+bolted cap plate on top, the disciplined pipe palette, and six identical, \
+interchangeable sockets."""
+
+[[review_item]]
+id = "reads-as-hub"
+title = "Bolted junction drum"
+text = """
+From more than one angle the model reads unmistakably as one squat pipe junction: a \
+central DRUM body, a raised flange SOCKET facing outward on each of the six sides \
+where a span bolts in, bolt heads ringing each socket, and a bolted CAP PLATE on top. \
+It reads as a real, heavy, bolted junction box — not a plain sphere or a featureless \
+blob."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "six-identical-sockets"
+title = "Six identical, interchangeable sockets"
+text = """
+There are exactly SIX flange sockets, spaced evenly around the drum and facing \
+outward symmetrically so each aims at one of the six directions a span can arrive \
+from. Every socket is IDENTICAL and interchangeable — same size, same collar, same \
+bolts — because the build chooses at run time which of the six a span plugs into, and \
+a span must bolt into any of them the same way."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "pipe-body-accent"
+title = "Drum body neutral, ironwork iron"
+text = """
+The whole pipe body — the drum and the socket stubs — is sculpted in the neutral base \
+color `#808890`, and the flanges, socket collars, bolt heads, and the cap plate are \
+sculpted in iron `#3a3836`. The neutral base color appears on the pipe body and \
+NOWHERE else: a game finds every voxel of it and repaints the body to the network's \
+fluid color, while the iron ironwork is never repainted, so the drum and stubs must \
+be entirely the base color and the collars, bolts, and cap plate entirely iron."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Pipe palette discipline"
+text = """
+Uses only the two brief colors — the neutral pipe body `#808890` and the iron \
+`#3a3836` — with no out-of-palette colors, and in particular NEITHER the water color \
+`#3d9bd6` NOR the steam color `#7fcabc` anywhere on the model, and no stray voxels \
+drifting outside the junction."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "fills-volume"
+title = "Centered and fills the volume"
+text = """
+The junction is centered in the volume with its six sockets reaching outward toward \
+the faces and the cap plate at the top, using most of the volume with a little margin \
+on every side — neither shrunk into one corner nor clipped where a socket runs past a \
+face."""
+weight = 1
+domain = "fidelity"

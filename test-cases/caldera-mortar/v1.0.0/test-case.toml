@@ -1,0 +1,159 @@
+slug = "caldera-mortar"
+name = "Caldera Mortar"
+difficulty = "medium"
+tags = ["voxel", "rig", "tower"]
+summary = """
+Sculpt and rig the Caldera Mortar: the squat lobbing tower of the Holdfast — a heavy, \
+wide brass base carrying one fat, short, wide-mouthed iron tub angled steeply upward, \
+that rocks gently on its own and recoils hard as it lobs a shell on demand while the \
+base stays fixed — painted cell by cell with the `voxel-anim` tool, one recorded \
+operation at a time. The model invents whatever parts and joints it needs; the fixed \
+contract is two animations it must author — a self-playing `idle` and a triggered \
+`fire` — plus a contiguous verdigris accent band the game recolors to show the tower's \
+upgrade level."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME Mortar at three sizes — `base` (this case's
+# volume), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D canvas):
+# `width` across (x), `height` up (y), `depth` front-to-back (z), in voxels. Sized
+# from the Mortar's real size at the roster's shared scale — it is the SHORTEST and
+# SQUATTEST tower, and the volume's low, cubic proportions carry that before a single
+# voxel is placed. Each part is sculpted separately in this shared volume's
+# coordinates. The volume always starts EMPTY; `background` is only the clear color
+# behind the rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 34
+height = 34
+depth = 34
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the rig;
+# every operation targets a part with `--part <name>`, recording to that part's action
+# log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help` for the
+# operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each part the
+# model defines), the authoritative output each part's regenerated model is rebuilt
+# from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. Both names here are the ones
+# `caldera`'s `assets/models.json` binds to the Mortar's game events.
+[model]
+
+# `idle` — the self-playing settle. A self-playing idle that loops on its own: the tub
+# rocks very slightly on its trunnions, settling and re-settling, as if breathing, so
+# the tower reads as live even when it is not firing. The base stays fixed.
+[[model.animation]]
+name = "idle"
+loop = true
+auto_play = true
+
+# `fire` — the lob. A game-triggered playable that loops: the tub elevates, then recoils
+# hard down into its base as it lobs a shell, and slowly returns to its resting
+# elevation. The base stays fixed.
+[[model.animation]]
+name = "fire"
+loop = true
+auto_play = false
+
+# The self-contained brief, seeded for the run. It is a Handlebars template (`.hbs`),
+# rendered per variant so the volume it states matches the selected size. The seeded
+# dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Caldera Mortar and poses \
+correctly — the shortest, squattest tower, a heavy wide brass base carrying one fat, \
+short, wide-mouthed iron tub angled steeply upward, carrying one contiguous verdigris \
+accent band, whose tub rocks gently on its own and recoils hard as it lobs while the \
+base stays fixed, in the disciplined Holdfast palette."""
+
+[[review_item]]
+id = "reads-as-mortar"
+title = "Reads as the Mortar"
+text = """
+From more than one angle the model reads unmistakably as the Mortar: the SHORTEST and \
+SQUATTEST tower, a heavy, wide brass base founded on the ground carrying ONE FAT, SHORT, \
+WIDE-MOUTHED IRON TUB angled steeply upward — a stubby lobbing barrel with a broad flared \
+mouth, with no length to it at all. That one fat, short muzzle pointing up is the whole \
+tell. It is not slim, towering, or barrel-less, and carries no drum of short barrels, \
+long horizontal rail, or ring of nozzles. It is brass-and-iron machinery — a static \
+emplacement, not a creature."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "idle-reads"
+title = "Idle rocks the tub gently on its own"
+text = """
+Playing `idle` rocks the tub very slightly on its trunnions, settling and re-settling as \
+if breathing, on its own with no caller, so the tower reads as live and powered even when \
+it is not firing. It loops seamlessly with an eased, deliberate cadence rather than a \
+mechanical linear slide. Only the tub rocks — the heavy base stays fixed, never carried \
+along — and the tub stays whole on its mount."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "fire-reads"
+title = "Fire lobs with a hard recoil"
+text = """
+Playing `fire` elevates the tub, then recoils it hard down into its base as it lobs a shell, \
+and slowly returns it to its resting elevation — a heavy lob and a settle, reading as a \
+stubby mortar throwing a shell on an arc rather than a flat direct shot. The tub moves as \
+one solid piece on its mount, staying attached throughout, and the heavy base stays fixed."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "accent-band"
+title = "A contiguous verdigris accent band"
+text = """
+A muzzle band ringing the flared mouth of the tub is sculpted as ONE CONTIGUOUS band in the \
+accent color `#2f7d72`, and clearly visible from more than one angle. That color appears \
+NOWHERE else on the model — not one stray voxel, highlight, or seam. The game finds every \
+voxel of it and repaints it to show the tower's upgrade level, so a scattered, broken, or \
+misplaced accent region breaks the upgrade system outright."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Holdfast palette discipline"
+text = """
+Uses only the brief's four colors — brass plating, brass dark, iron mechanisms, and the \
+verdigris accent — with no out-of-palette colors, and in particular NO steel `#b8bcc2`, NO \
+gold `#ffce54`, and NO white `#dfeaea` anywhere on the model, since a game paints those \
+onto the accent band at run time to show the upgrade level. No stray voxels drift off the \
+model."""
+weight = 1
+domain = "fidelity"
