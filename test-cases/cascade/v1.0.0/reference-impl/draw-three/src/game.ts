@@ -66,6 +66,12 @@ export class Game {
   foundations: Card[][] = [[], [], [], []];
   tableau: Card[][] = [[], [], [], [], [], [], []];
 
+  // How many of the cards from the most recent stock turn are still on the waste.
+  // The waste fans only these (see layout.wasteFanCount), so playing the top card
+  // shrinks the fan 3 → 2 → 1 instead of refilling it from the buried cards. Reset
+  // on each turn, zeroed on recycle, and decremented as the top waste card leaves.
+  wasteTurned = 0;
+
   // Interaction state.
   pending: Pending | null = null;
   drag: DragState | null = null;
@@ -96,6 +102,7 @@ export class Game {
     const deck = shuffle(makeDeck());
     this.stock = [];
     this.waste = [];
+    this.wasteTurned = 0;
     this.foundations = [[], [], [], []];
     this.tableau = [[], [], [], [], [], [], []];
     this.pending = null;
@@ -155,6 +162,8 @@ export class Game {
         card.faceUp = true;
         this.waste.push(card);
       }
+      // The fan now shows this fresh group; the previous cards square underneath.
+      this.wasteTurned = n;
     } else if (this.waste.length > 0) {
       // Recycle the whole waste back to the stock, face-down, preserving order
       // for another pass (no pass limit).
@@ -163,7 +172,15 @@ export class Game {
         card.faceUp = false;
         this.stock.push(card);
       }
+      this.wasteTurned = 0;
     }
+  }
+
+  // The top waste card has just been committed off the pile; shrink the fanned
+  // group so the card beneath is exposed (never below zero — once the turned group
+  // is spent, buried cards show one at a time).
+  private consumedWasteTop(): void {
+    this.wasteTurned = Math.max(0, this.wasteTurned - 1);
   }
 
   // ---- Post-move bookkeeping -------------------------------------------
@@ -227,8 +244,10 @@ export class Game {
     if (!card) return false;
     const idx = this.foundationFor(card);
     if (idx < 0) return false;
-    if (source.kind === "waste") this.waste.pop();
-    else this.tableau[source.col].pop();
+    if (source.kind === "waste") {
+      this.waste.pop();
+      this.consumedWasteTop();
+    } else this.tableau[source.col].pop();
     this.foundations[idx].push(card);
     this.afterMove();
     return true;
@@ -269,7 +288,7 @@ export class Game {
     }
     // Waste top card → pending single-card drag.
     if (this.waste.length > 0) {
-      const r = wasteTopRect(this.waste.length);
+      const r = wasteTopRect(this.waste.length, this.wasteTurned);
       if (pointInRect(x, y, r)) {
         const card = this.waste[this.waste.length - 1];
         this.pending = {
@@ -430,6 +449,10 @@ export class Game {
     } else {
       this.tableau[target.col].push(...cards);
     }
+    // A legal drop commits the detached card; a waste drag is always the single
+    // top card, so its group shrinks by one. (An illegal drop returns to source
+    // via returnToSource and leaves wasteTurned untouched.)
+    if (this.drag!.source.kind === "waste") this.consumedWasteTop();
     this.afterMove();
   }
 
@@ -455,7 +478,7 @@ export class Game {
     this.pending = null;
 
     // Waste top card.
-    if (this.waste.length > 0 && pointInRect(x, y, wasteTopRect(this.waste.length))) {
+    if (this.waste.length > 0 && pointInRect(x, y, wasteTopRect(this.waste.length, this.wasteTurned))) {
       this.autoMoveToFoundation({ kind: "waste" });
       return;
     }
@@ -499,6 +522,6 @@ export class Game {
 
   // Render-facing helpers.
   get wasteVisibleCount(): number {
-    return wasteFanCount(this.waste.length);
+    return wasteFanCount(this.waste.length, this.wasteTurned);
   }
 }

@@ -92,7 +92,7 @@ function drawTopRow(ctx: CanvasRenderingContext2D, game: Game): void {
   if (game.waste.length === 0) {
     drawSlot(ctx, WASTE_X, TOP_Y);
   } else {
-    const count = wasteFanCount(game.waste.length);
+    const count = wasteFanCount(game.waste.length, game.wasteTurned);
     const start = game.waste.length - count;
     for (let i = 0; i < count; i++) {
       drawCard(ctx, game.waste[start + i], wasteCardX(i), TOP_Y);

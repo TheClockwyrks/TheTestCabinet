@@ -45,11 +45,15 @@ export function foundationRect(index: number): Rect {
   return cardRect(FOUNDATION_X[index], TOP_Y);
 }
 
-// The fanned x offsets of the visible waste cards, back-to-front. With Draw
-// Three the most recent up-to-three cards fan to the right; the last entry is the
-// playable top card.
-export function wasteFanCount(wasteLen: number): number {
-  return Math.min(WASTE_FAN_MAX, wasteLen);
+// How many waste cards are fanned. Draw Three fans only the cards from the most
+// recent stock turn (`turned`), so the fan reads 3 → 2 → 1 as the top card is
+// played and does not "refill" from the squared cards buried underneath. Once the
+// turned group is exhausted (`turned` reaches 0) the buried card beneath shows as
+// a single squared card, hence the `max(1, …)`. Clamped to what is actually on
+// the waste so a mid-drag detached top card never over-draws the pile.
+export function wasteFanCount(wasteLen: number, turned: number): number {
+  if (wasteLen === 0) return 0;
+  return Math.min(WASTE_FAN_MAX, wasteLen, Math.max(1, turned));
 }
 
 // The x of the i-th visible waste card (0 = back-most of the fan).
@@ -57,9 +61,10 @@ export function wasteCardX(i: number): number {
   return WASTE_X + i * WASTE_FAN;
 }
 
-// The rect of the playable top waste card, given the current waste length.
-export function wasteTopRect(wasteLen: number): Rect {
-  const count = wasteFanCount(wasteLen);
+// The rect of the playable top waste card, given the waste length and the size of
+// the most recent turn.
+export function wasteTopRect(wasteLen: number, turned: number): Rect {
+  const count = wasteFanCount(wasteLen, turned);
   const i = Math.max(0, count - 1);
   return cardRect(wasteCardX(i), TOP_Y);
 }
