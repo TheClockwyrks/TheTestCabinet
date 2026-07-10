@@ -10,10 +10,6 @@ description = "The standard Trench dive only."
 # supplies its own `title` reference; `gameplay` and `game-over` are common.
 reference = [{ view = "title", path = "reference/menu-base.html" }]
 
-# The authored, *correct* static build of this variant — the case-variant
-# analogue of a run's playable build. A bare directory path (resolved against
-# the version folder) holding a buildable web project, built with this case's
-# `[build]` install/build commands and deployed like a published run build via
-# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
-# **never seeded into a run**.
-reference_implementation = "reference-impl/base"
+# The authored reference implementation for the Fathom lineage now lives on the
+# current version, `test-cases/fathom/v1.1.0/`, with one build per variant
+# (`base` and `kindle`); this older version no longer carries its own.

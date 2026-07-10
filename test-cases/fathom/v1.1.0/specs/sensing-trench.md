@@ -33,20 +33,35 @@ art — lit is the tile at full brightness, remembered is the same tile drawn di
 and
 unrevealed is the fog tile.
 
-**Fixed things are remembered for the whole trench; moving things are not.**
+**The whole explored map stays drawn.** This is a StarCraft-style fog of war:
+every tile you have ever revealed keeps being drawn — remembered ones dim, the
+lit pocket around you bright — across the entire grid at once. There is **no
+circle of visibility that blacks out explored ground**; only your immediate light
+pocket is brighter, and only *never-revealed* tiles are black.
+
+**Fixed things are remembered for the whole trench; moving things are not — with
+two amber exceptions.**
 
 - **Walls and plankton:** once a tile is revealed by any source, it stays
   **remembered for the rest of the current trench** — including across losing a
   life. Descending to a new trench (see `specs/flow.md`) starts the fog over.
-- **Predators and the bonus drifter:** **never remembered.** They are drawn only
-  while currently **lit** — inside your live vision this instant, or during the
-  brief window after a sonar pulse or flare catches them (below). Between glimpses
-  they are invisible, wherever they are.
+- **Predators:** **never remembered.** A predator's body is drawn only while
+  currently **lit** — inside your live vision this instant, during the brief window
+  after a sonar pulse or flare catches it (below), or during its detection alert
+  (`specs/predators.md`). Between glimpses it is invisible, wherever it is.
+- **The two always-visible amber lights (the exception).** Two things are drawn
+  **at all times, at any distance, even across unlit fog and through walls**: the
+  **bonus drifter** and the **Lanternjaw's bulb-light** (`specs/playfield.md`,
+  `specs/predators.md`). They are deliberately drawn to look **almost identical** —
+  a single glowing amber point in the dark — so you always see them coming yet can
+  never be sure, at a glance, which amber glimmer is a harmless drifter and which is
+  a lurking Lanternjaw. (Only the Lanternjaw's *bulb* is always shown; its body
+  still obeys the fog like any predator.)
 
-This split is deliberate and keeps the game fair: once you have explored a
-region you can navigate its corridors in the dark from memory; the only thing the
-darkness hides from a player who has explored is **where the predators are right
-now**.
+This split is deliberate and keeps the game fair: once you have explored a region
+you can navigate its corridors in the dark from memory; the darkness hides only
+**where the predators are right now** — except for those two amber lights, which
+are always in view.
 
 ## Passive vision — your light travels straight
 
@@ -59,21 +74,35 @@ The forager emits a soft light, so a pocket of maze around it is always **lit**.
   forager's center to that tile is not blocked by a wall tile. Walls cast
   shadows: you **cannot see around a corner** with your own glow. A predator one
   tile away around a blind corner is not visible to your passive light.
-- Predators, the drifter, and plankton inside this lit set are drawn live.
+- **Light reveals the walls it lands on, and stops there.** The rock that bounds a
+  corridor your light reaches is **lit and revealed** too — a wall your light falls
+  on is drawn as visible rock, never left as black fog — but the light does **not**
+  pass beyond it: the tiles behind that wall stay dark. You see the wall itself, not
+  what lies on its far side.
+- Predators and plankton inside this lit set are drawn live. (The bonus drifter and
+  the Lanternjaw's bulb are drawn even outside it — they are always visible, above.)
 
 ## Brightness — eating makes you glow (risk dial)
 
 Your brightness is a value `G` in `[0, 1]`, `0` when you have not eaten recently.
 
-- Each plankton eaten adds **`+0.34`** to `G` (clamped at `1`). `G` then **decays**
-  toward `0`, losing half its value every **`0.9 s`** (`G *= 0.5 ^ (dt / 0.9)`),
-  so a forager that stops eating dims back to near-dark within about `2.5 s`.
-- Brightness **widens your vision**: `V = 96 + 64 * G` (96 px dim, 160 px at
-  full glow).
-- Brightness **gives you away to the Lure**: the Lure senses your light from a
-  range that grows with `G` (defined in `specs/predators.md`). Eating fast to
-  clear corridors quickly lights you up like a beacon; eating sparingly keeps you
-  dim and hard to find. Managing this trade-off is core to the game.
+- **Eating raises it.** Each plankton eaten adds **`+0.34`** to `G` (clamped at
+  `1`).
+- **It holds, then decays — never a constant drain.** After you eat, `G` does
+  **not** begin dropping immediately: it **holds steady for `1.0 s`** first, and
+  only then starts to **decay**, losing half its remaining value every **`0.9 s`**
+  (`G *= 0.5 ^ (dt / 0.9)`). The `1.0 s` hold **resets every time you eat a
+  plankton**, so a forager grazing steadily (a pellet at least once a second) keeps
+  its glow up, while a forager that stops eating holds for that second and then dims
+  to near-dark within about another `2.5 s`. Brightness never bleeds away while you
+  are actively eating.
+- **It widens your vision.** `V = 96 + 64 * G`: **`96 px` (3 tiles)** when dim, out
+  to **`160 px` (5 tiles)** at full glow. Each plankton's `+0.34` is worth about
+  **`+22 px` (~0.7 tile)** of extra vision radius, up to that 5-tile cap.
+- **It gives you away to the Lanternjaw.** The Lanternjaw senses your light from a
+  range that grows with `G` (defined in `specs/predators.md`). Eating fast to clear
+  corridors quickly lights you up like a beacon; eating sparingly keeps you dim and
+  hard to find. Managing this trade-off is core to the game.
 
 ## The sonar pulse — sound bends around corners
 
@@ -86,17 +115,20 @@ finds predators, at the cost of being heard. (The control is in
 - **Reveal (flood through corridors).** A pulse floods outward from the forager's
   tile **through open tiles only**, following the corridors like sound, out to a
   path range of **`E` = 9 tiles**. Every open tile within `E` corridor-steps
-  becomes revealed (and **remembered**). Because it follows the corridors, the
-  pulse **reveals around corners and bends through junctions** — unlike your
-  straight-line light — but it does not pass through walls, so a chamber sealed
-  off by rock is not revealed unless a corridor reaches it within range.
+  becomes revealed (and **remembered**), **along with the wall tiles that bound
+  those corridors** — so a pinged passage is drawn as corridor *and* rock, not a
+  ribbon of floor floating in black. Because it follows the corridors, the pulse
+  **reveals around corners and bends through junctions** — unlike your straight-line
+  light — but it does not pass through walls, so a chamber sealed off by rock is not
+  revealed unless a corridor reaches it within range.
 - **Find predators.** Any predator or the drifter standing on a tile in the
   flooded set is **marked**: shown at its position for **`1.5 s`** after the
   pulse, as a fading glimpse, even where your light does not reach. This is how
   you locate a hunter around a corner before committing to a route.
-- **You are heard.** Emitting a pulse makes noise: it **strongly attracts the
-  Listener** and alerts nearby predators (see `specs/predators.md`). A pulse is
-  never free — ping when you need to know, not constantly.
+- **You are heard.** Emitting a pulse makes noise: if it floods over the
+  **Gloamfin** it hands the Gloamfin a **fix on you** and sets it chasing (see
+  `specs/predators.md`). A pulse is never free — ping when you need to know, not
+  constantly, and not when a Gloamfin is close.
 - **Presentation.** Render an expanding ring from the forager to suggest the
   wavefront; the actual reveal is the flooded tile set, not a drawn circle. Use
   the provided **sonar-pulse** effect sheet (`assets/sonar-pulse/`, see
@@ -104,8 +136,9 @@ finds predators, at the cost of being heard. (The control is in
   (`#5ef2ff`) and play its frames as the ring expands. The ring is a **large area
   effect** — it spreads across many tiles, well beyond a single tile or the
   forager's own sprite — drawn as its own overlay, not as part of any character.
-  The Listener emits the **same** sonar-pulse effect as its tell, tinted to its
-  own color (see `specs/predators.md`).
+  The Gloamfin emits the **same** sonar-pulse effect as its tell, tinted to its
+  own color — but the Gloamfin's ping reveals nothing (see below and
+  `specs/predators.md`).
 
 ## The two rules, together
 
@@ -117,12 +150,28 @@ The heart of Fathom's sensing is that **light and sound propagate differently**:
   reveals and finds predators beyond the bend, but it is loud.
 
 So you always see your immediate surroundings for free but learn nothing about the
-next corridor without pinging, and pinging is what the Listener is waiting for.
+next corridor without pinging, and pinging is what the Gloamfin is waiting for.
+
+## Enemy effects — what reveals the maze, and what does not
+
+The two enemy effects that spread across the trench behave differently, and this
+distinction matters:
+
+- **The Flarefish's flare reveals tiles for you.** At the bloom it lights a full
+  **`192 px` (6-tile) radius** around the Flarefish — **floor and wall alike, and
+  straight through walls** (the flare ignores rock) — revealing (and remembering)
+  that whole disc, and showing any predator or the drifter inside it live. It is a
+  gift of vision (`specs/predators.md`).
+- **The Gloamfin's ping reveals nothing.** Its violet sonar ring is **visible to
+  you** — you see the ring and, for that moment, the Gloamfin at its center — but it
+  does **not** light the maze, reveal or remember any tile, or mark any other
+  predator or the drifter. It is a warning you can see, not a map (`specs/predators.md`).
 
 ## How predators reveal themselves
 
 You are never left fully blind to a predator: in addition to catching them in your
-light or a sonar pulse, **each predator leaks a tell of its own** — the Lure's
-faint lure-light, the Listener's own periodic pulses, the Flarefish's flare bloom.
-Those tells, and exactly how each predator senses and hunts you, are defined in
-`specs/predators.md`.
+light or a sonar pulse, **each leaks a tell of its own** — the Lanternjaw's
+always-visible amber **bulb**, the Gloamfin's own periodic **violet pings**, the
+Flarefish's **flare bloom** (and, for the Gloamfin and Flarefish, the **detection
+alert** that fires the instant they acquire you). Those tells, and exactly how each
+predator senses and hunts you, are defined in `specs/predators.md`.

@@ -56,15 +56,17 @@ Ink is your defense against the predators that hunt by **sight**.
   where it was released (it does not follow the forager) and it neither blocks nor
   slows anyone — it is a screen of darkness, not a wall.
 - **Effect — blinds sight-based predators.** A predator that hunts by sight — the
-  **Lure** and the **Flarefish** (see `specs/predators.md`) — that is inside the
-  cloud, or whose line to the forager passes through it, is **blinded**: it
+  **Lanternjaw** and the **Flarefish** (see `specs/predators.md`) — that is inside
+  the cloud, or whose line to the forager passes through it, is **blinded**: it
   immediately loses any fix it has on you and cannot see, acquire, or track you
-  while blinded by the cloud. Blinded, it falls back to drifting/patrolling until
-  the cloud clears or it leaves the cloud.
-- **No effect on the Listener.** The **Listener** hunts by sound, not sight, so
-  ink does nothing to it. You cannot ink your way past the Listener — you have to
-  out-maneuver it (see the juke in `specs/predators.md`).
+  while blinded by the cloud. Blinded, it falls back to wandering/patrolling until
+  the cloud clears or it leaves the cloud. (Inking a Flarefish standing in its own
+  flare breaks the acquisition too — see `specs/predators.md`.)
+- **No effect on the Gloamfin.** The **Gloamfin** hunts by sound, not sight, so
+  ink does nothing to it. You cannot ink your way past the Gloamfin — you have to
+  out-maneuver it, breaking its fix and using the escape window it gives you (see
+  `specs/predators.md`).
 
-Ink is the counter to the two seeing predators; the Listener is the one you must
+Ink is the counter to the two seeing predators; the Gloamfin is the one you must
 lose by movement. Spend ink to break a chase or to cross open ground unseen, but
 mind the cooldown.

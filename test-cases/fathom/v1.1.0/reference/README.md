@@ -32,8 +32,8 @@ The `menu.html` title screen lists the single dive (`DIVE`), then `HOW TO PLAY`.
 
 The `gameplay.html` frame shows the intended look of the dark trench: a lit pocket
 of revealed corridors fading into black fog around the forager, plankton in the
-corridors, the Lure glimpsed at the edge of the light, and a sonar pulse reaching
-past the light to mark the Listener around a bend. (It depicts the Base sensing
+corridors, the Lanternjaw glimpsed at the edge of the light, and a sonar pulse reaching
+past the light to mark the Gloamfin around a bend. (It depicts the Base sensing
 model; the Kindle variant's in-trench look — a wide radial glow of sensed rock
 with plankton and predators hidden until lit or pinged — should get its own
 `gameplay` mockup when the Kindle art is revised.)

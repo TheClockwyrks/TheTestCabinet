@@ -1,41 +1,51 @@
-# The **Kindle** variant: the same dive, but your light is a wide radial glow you
-# feed by eating. It replaces the standard Trench sensing model — it does not add a
-# second mode. Instead of a remembered fog of war uncovered by line-of-sight light,
-# your kindle-glow senses only the *rock* around you (bending around corners),
-# swelling as you eat and guttering when you stop; nothing is remembered, and the
-# plankton and predators inside the glow are found only by a small line-of-sight
-# light pocket or a sonar ping. Every path resolves against the version folder.
+# The **Kindle** variant: the same dive and the same fog of war as the base, with
+# one addition that defines it — an outer **vision circle** you carry. It reveals
+# nothing; it is a rendering mask. You explore and remember the trench exactly as in
+# the base dive (a StarCraft-style fog of war: explored terrain and pellets stay
+# known, eaten pellets stay eaten), but you only ever *see* the part of your
+# explored map that lies inside a circular window centered on the forager — a window
+# that grows as you eat and gutters when you stop. Everything beyond it is pitch
+# black (though still remembered), except the always-visible amber lights and the
+# enemy effects. Every path resolves against the version folder.
 slug = "kindle"
 name = "Kindle"
-description = "The Kindle dive: your light is a wide radial glow you feed by eating that senses only the rock around you; nothing is remembered, and plankton and predators are found only by a small light pocket or a sonar ping."
+description = "The Kindle dive: the same StarCraft-style fog of war as the base, but you see only the part of your explored map inside a circular window that grows as you eat — everything beyond it is pitch black, though still remembered."
 
 # Kindle seeds its own sensing model at the common `specs/sensing.md` path (the
 # base variant seeds the Trench model there instead), so the model sees a single,
 # self-contained sensing spec with no mention of any other model.
 spec = [{ source = "specs/sensing-kindle.md", dest = "specs/sensing.md" }]
 
+# The authored, *correct* static build of this variant (see the note in
+# `base.toml`), shown on the case's "Reference" tab and never seeded into a run.
+# It is the same game as the base build with the Kindle vision circle added: the
+# same StarCraft-style fog of war, but terrain and pellets are drawn only within an
+# outer circular window that grows as you eat — pitch black beyond it, though still
+# remembered.
+reference_implementation = "reference-impl/kindle"
+
 # Sensing review items specific to the Kindle model, rolling up to the common
 # `sensing` domain. The `title`, `gameplay`, and `game-over` references are common
 # (both variants share the same single-dive menu), so this variant declares none.
 [[review_item]]
-id = "kindle-glow-terrain"
-title = "The kindle-glow senses rock"
-text = "A wide radial glow around the forager reveals the maze geometry — walls and corridor floor — including around corners (not line-of-sight), out to a radius that grows as you eat (from smaller than a sonar ping, out to roughly a ping's reach after a streak of ~8 plankton, larger beyond) and shrinks back within a few seconds when you stop. It reveals terrain only — never plankton, predators, or the drifter."
+id = "kindle-vision-circle"
+title = "The vision circle"
+text = "An outer vision circle centered on the forager — an actual circle cut at the pixel (not tile-by-tile), growing as you eat and shrinking when you stop — is the only place terrain and plankton are drawn. Everything beyond it is pitch black, even ground you already explored. The circle reveals nothing itself; it only limits what of the already-revealed map is shown."
 weight = 1
 domain = "sensing"
 reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
-id = "kindle-no-memory"
-title = "Nothing is remembered"
-text = "The trench keeps no map: the instant a tile leaves your kindle-glow, light pocket, or a live sonar mark it returns to flat black fog. Walls, plankton, predators, and the drifter are shown only while currently lit — leave a corridor and it goes dark again, exactly as before you arrived."
+id = "kindle-memory-like-base"
+title = "A remembered fog, only windowed"
+text = "Underneath, Kindle is the same StarCraft-style fog of war as the base dive: explored terrain and plankton stay known and eaten plankton stay eaten, revealed by the line-of-sight light circle and the corridor-flooding sonar. Ground that falls outside the vision circle is only hidden, not forgotten — return and it is drawn again with any uneaten plankton still there."
 weight = 1
 domain = "sensing"
 
 [[review_item]]
-id = "kindle-life-vs-rock"
-title = "Rock far, life near"
-text = "Plankton and predators are found only by your small line-of-sight light pocket or a sonar ping — never by the wide kindle-glow, which shows only rock. You can see the shape of a corridor well ahead yet not the plankton or the hunter waiting in it until you light it or ping it."
+id = "kindle-outside-circle"
+title = "What shows beyond the circle"
+text = "The vision circle governs terrain and plankton only — not predators, which follow the smaller line-of-sight light circle (and sonar/flare marks). Beyond the vision circle only the always-visible amber lights (the bonus drifter and the Lanternjaw's bulb) and the enemy effects (the Flarefish's flare, the Gloamfin's ping ring) remain visible."
 weight = 1
 domain = "sensing"

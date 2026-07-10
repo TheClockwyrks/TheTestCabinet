@@ -68,8 +68,8 @@ init = "npm install && npx playwright install chromium"
 # (A root key, so it must sit above the first `[table]` header below.)
 assets = [
   "assets/glimmerfin",   # the player forager (sprite)
-  "assets/lanternjaw",   # the Lure predator (sprite)
-  "assets/gloamfin",     # the Listener predator (sprite)
+  "assets/lanternjaw",   # the Lanternjaw predator (sprite)
+  "assets/gloamfin",     # the Gloamfin predator (sprite)
   "assets/flarefish",    # the Flarefish predator (sprite)
   "assets/sonar-pulse",  # the expanding sonar ring (effect, grayscale → tinted)
   "assets/flare-bloom",  # the Flarefish's radial flare (effect)
@@ -84,11 +84,12 @@ assets = [
 # items for its model (all rolling up to the common `sensing` domain). The menu,
 # `gameplay`, and `game-over` references are common — both variants show the same
 # single-dive menu:
-#   - base   — Trench: a remembered fog of war, line-of-sight passive light, and a
-#              corridor-flooding sonar pulse.
-#   - kindle — Kindle: your light is a wide radial glow you feed by eating that
-#              senses only the rock around you; nothing is remembered, and plankton
-#              and predators are found only by a small light pocket or a sonar ping.
+#   - base   — Trench: a StarCraft-style remembered fog of war, line-of-sight
+#              passive light, and a corridor-flooding sonar pulse.
+#   - kindle — Kindle: the same fog of war as base, plus an outer **vision circle**
+#              you carry (grows as you eat) beyond which the explored map is pitch
+#              black. The circle reveals nothing — it only limits what of the
+#              already-revealed trench is shown.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
@@ -234,23 +235,23 @@ domain = "sensing"
 proof = "sonar"
 
 [[review_item]]
-id = "sonar-attracts-listener"
+id = "sonar-attracts-gloamfin"
 title = "Sonar is heard"
-text = "Emitting a sonar pulse makes noise that pulls the Listener and gives it a fix on you — pinging near the Listener feeds the chase rather than helping you."
+text = "Emitting a sonar pulse makes noise: if it floods over the Gloamfin it hands the Gloamfin a fix on you and sets it chasing — pinging near the Gloamfin feeds the chase rather than helping you."
 weight = 1
 domain = "predators"
 
 [[review_item]]
-id = "lure-behavior"
-title = "The Lure hunts light"
-text = "The Lure's detection range grows with your brightness, it carries a faint lure-light you can sometimes spot first, and it is shaken by going dim or by ink. Eating a streak near it pulls it straight to you."
+id = "lanternjaw-behavior"
+title = "The Lanternjaw hunts light"
+text = "The Lanternjaw's detection range grows with your brightness, and it is shaken by going dim or by ink. Its bulb-light is always visible at any distance — drawn to look almost identical to the bonus drifter, so you cannot tell the two apart at a glance — while its body stays hidden by the dark. Eating a streak near it pulls it straight to you."
 weight = 1
 domain = "predators"
 
 [[review_item]]
-id = "listener-juke"
-title = "Juking the Listener"
-text = "The Listener is faster than the forager at top speed but cannot take a turn while moving fast (above ~112 px/s), so it overshoots junctions; you lose it by juking through tight turns, and ink does nothing to it."
+id = "gloamfin-hunt"
+title = "The Gloamfin hunts sound"
+text = "The Gloamfin wanders at ordinary speed (no speed wind-up over time). When one of its pings, or yours, catches you it turns and sprints — faster than the forager — to that tile; finding you gone, it casts about and, after a short delay, fires a guaranteed 'lost you' ping. You lose it by breaking away in that delay window; ink does nothing to it."
 weight = 1
 domain = "predators"
 proof = "hunt"
@@ -258,14 +259,28 @@ proof = "hunt"
 [[review_item]]
 id = "flarefish-flare"
 title = "The Flarefish's flare"
-text = "The Flarefish only learns where you are if you are caught in its telegraphed flare at the bloom; its flare also reveals that area to you. Staying out of the flare's light, or dropping ink, prevents it acquiring you."
+text = "The Flarefish is invisible while wandering, seen only by its flare — which ignores walls and reveals that radial area to you. If its flare catches you at the bloom it acquires you and then chases exactly like the Lanternjaw, no longer flaring; lose it and its flare re-arms on a timer. Staying out of the flare's radius, or dropping ink, prevents it acquiring you."
 weight = 1
 domain = "predators"
 
 [[review_item]]
+id = "detection-alert"
+title = "Detection alert"
+text = "When the Gloamfin's ping or the Flarefish's flare acquires you, a clear, unmistakable alert (a bright flash in the predator's color, the predator shown lit) fires so you know at a glance you have been detected."
+weight = 1
+domain = "predators"
+
+[[review_item]]
+id = "enemy-effects-reveal"
+title = "Enemy effects and the amber look-alikes"
+text = "The Flarefish's flare reveals tiles for you (a radial disc, floor and wall, through walls); the Gloamfin's ping reveals nothing (only its violet ring is visible). The bonus drifter and the Lanternjaw's bulb-light are both always visible and drawn to look almost identical."
+weight = 1
+domain = "sensing"
+
+[[review_item]]
 id = "ink-blinds-sight"
 title = "Ink blinds the seers"
-text = "Ink blinds the two sight-based predators — the Lure and the Flarefish — breaking their fix, but does nothing to the sound-based Listener."
+text = "Ink blinds the two sight-based predators — the Lanternjaw and the Flarefish — breaking their fix, but does nothing to the sound-based Gloamfin."
 weight = 1
 domain = "predators"
 

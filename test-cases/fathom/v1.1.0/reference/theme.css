@@ -23,8 +23,8 @@
   --forager: #46f0e0;     /* player forager and its light */
   --plankton: #b8f5c8;    /* plankton */
   --sonar: #5ef2ff;       /* sonar pulse ring */
-  --lure: #ffd166;        /* the Lure (light-seeker) */
-  --listener: #c46bff;    /* the Listener (sound-seeker) */
+  --lanternjaw: #ffd166;        /* the Lanternjaw (light-seeker) */
+  --gloamfin: #c46bff;    /* the Gloamfin (sound-seeker) */
   --flarefish: #ff7a59;   /* the Flarefish (flare-maker) */
   --ink: #0b0a1f;         /* ink cloud */
   --text: #e6edf3;        /* primary text */
@@ -120,10 +120,10 @@ body {
 .sprite.forager {
   filter: drop-shadow(0 0 8px rgba(70, 240, 224, 0.85));
 }
-.sprite.lure {
+.sprite.lanternjaw {
   filter: drop-shadow(0 0 7px rgba(255, 209, 102, 0.7));
 }
-.sprite.listener {
+.sprite.gloamfin {
   filter: drop-shadow(0 0 7px rgba(196, 107, 255, 0.65));
 }
 .sprite.flarefish {
@@ -147,7 +147,7 @@ body {
   filter: sepia(1) saturate(5) hue-rotate(150deg) brightness(0.95)
     drop-shadow(0 0 14px rgba(94, 242, 255, 0.45));
 }
-.pulse.listener {
+.pulse.gloamfin {
   opacity: 0.72;
   filter: sepia(1) saturate(7) hue-rotate(236deg) brightness(1)
     drop-shadow(0 0 12px rgba(196, 107, 255, 0.45));
@@ -192,9 +192,9 @@ body {
   box-shadow: none;
 }
 
-/* The Lure's dangling lure-light: a tiny bright point of glow just off its
+/* The Lanternjaw's dangling bulb-light: a tiny bright point of glow just off its
  * sprite (the bulb is on the lanternjaw sprite; this is the runtime glow). */
-.lure-light {
+.bulb-light {
   position: absolute;
   width: 6px;
   height: 6px;

@@ -40,7 +40,7 @@ trench (`DEPTH 1`, `DEPTH 2`, ...):
   first trench):
   - Predator speeds are multiplied by `1 + 0.08 * (d - 1)`, capped at `1.40` (so
     they stop getting faster after `DEPTH 6`). This scales each predator's patrol
-    and chase speeds and the Listener's top speed together.
+    and chase speeds together (including the Gloamfin's faster chase).
   - The sonar pulse range `E` (`specs/sensing.md`) shrinks by 1 tile per depth,
     `E = max(5, 9 - (d - 1))` tiles — the deep is harder to read.
   - All other rules (the predators' senses, ink, brightness) are unchanged.
@@ -89,18 +89,27 @@ The game must exhibit these behaviors. They are observable and make good test
 targets:
 
 - Dark tiles are flat fog; how tiles are revealed and what, if anything, is
-  remembered is defined in `specs/sensing.md` — but predators and the drifter are
-  shown **only while lit**, never as a lasting mark.
+  remembered is defined in `specs/sensing.md` — predators' bodies are shown **only
+  while lit**, never as a lasting mark, but the **bonus drifter** and the
+  **Lanternjaw's bulb-light** are **always visible** and drawn to look almost
+  identical (`specs/sensing.md`, `specs/predators.md`).
 - How your own light reveals the trench is defined in `specs/sensing.md`; a sonar
-  pulse **floods through corridors** and reveals and marks predators around corners,
-  out to range `E`; emitting a pulse **draws the Listener**.
+  pulse **floods through corridors** and reveals corridors and their walls and marks
+  predators around corners, out to range `E`; emitting a pulse **draws the
+  Gloamfin**. The **Flarefish's flare reveals tiles** (a radial disc, through walls);
+  the **Gloamfin's ping reveals nothing** (only its ring is visible).
 - Eating raises brightness `G`, which **widens what you can see** and **widens the
-  Lure's detection range**; `G` decays back toward dark when you stop eating.
-- The **Lure** is lost by dimming or by ink; the **Listener** ignores ink and is
-  lost by **juking** (it overshoots junctions when faster than `112 px/s`); the
-  **Flarefish** only acquires you if you are in its flare at the bloom, and ink
-  breaks that.
-- **Ink** blinds the Lure and the Flarefish but not the Listener.
+  Lanternjaw's detection range**; `G` **holds for a short delay after your last
+  pellet** (resetting each time you eat) and only then decays back toward dark.
+- The **Gloamfin's ping or the Flarefish's flare acquiring you fires a clear
+  detection alert** so you know you have been spotted.
+- The **Lanternjaw** is lost by dimming or by ink. The **Gloamfin** ignores ink and
+  **outruns you** once it has a fix, but when it reaches where it last heard you it
+  casts about and re-pings only after a delay — so you lose it by breaking away in
+  that window. The **Flarefish** is invisible until its flare catches you, then
+  **chases exactly like the Lanternjaw** (and stops flaring); ink breaks its
+  acquisition, and losing it re-arms its flare on a timer.
+- **Ink** blinds the Lanternjaw and the Flarefish but not the Gloamfin.
 - Contact with a predator costs a life; clearing all plankton descends a depth;
   deeper trenches scale predator speed and shrink sonar range as specified above.
 

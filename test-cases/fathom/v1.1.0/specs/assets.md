@@ -64,8 +64,8 @@ opaque, so each composites cleanly over the dark trench.
 | Asset | Folder | Frames | Frame size | What it is |
 | --- | --- | --- | --- | --- |
 | Forager | `assets/glimmerfin/` | 8 (`0`–`7`) | 32×32 | The player character (sprite) |
-| The Lure | `assets/lanternjaw/` | 16 (`0`–`15`) | 32×32 | Light-seeking predator (sprite) |
-| The Listener | `assets/gloamfin/` | 8 (`0`–`7`) | 32×32 | Sound-seeking predator (sprite) |
+| The Lanternjaw | `assets/lanternjaw/` | 16 (`0`–`15`) | 32×32 | Light-seeking predator (sprite) |
+| The Gloamfin | `assets/gloamfin/` | 8 (`0`–`7`) | 32×32 | Sound-seeking predator (sprite) |
 | The Flarefish | `assets/flarefish/` | 8 (`0`–`7`) | 32×32 | Flare-making predator (sprite) |
 | Sonar pulse | `assets/sonar-pulse/` | 8 (`0`–`7`) | 128×128 | Expanding sonar ring (effect) |
 | Flare bloom | `assets/flare-bloom/` | 8 (`0`–`7`) | 128×128 | The Flarefish's radial flare (effect) |
@@ -106,11 +106,11 @@ The player character (`#46f0e0`). Four-direction movement with a two-frame
   runtime effect you draw around the sprite (see `specs/sensing.md`), not part of
   the art. The small **lives** icons in the HUD may reuse a forager frame.
 
-## The Lure — `assets/lanternjaw/` (16 frames, 32×32)
+## The Lanternjaw — `assets/lanternjaw/` (16 frames, 32×32)
 
 The light-seeking predator: a dark anglerfish body with a bright dangling
-**lure-light** (`specs/predators.md`). Four-direction swim, plus its signature
-**lure-bob** tell and an idle:
+**bulb** (`specs/predators.md`). Four-direction swim, plus its signature
+**bulb-bob** tell and an idle:
 
 | Frames | Contents |
 | --- | --- |
@@ -118,17 +118,21 @@ The light-seeking predator: a dark anglerfish body with a bright dangling
 | 2, 3 | swim **up** |
 | 4, 5 | swim **left** |
 | 6, 7 | swim **right** |
-| 8–13 | **lure-bob** — six frames of the dangling lure bobbing and its amber glow pulsing |
+| 8–13 | **bulb-bob** — six frames of the dangling lure bobbing and its amber glow pulsing |
 | 14, 15 | resting idle body |
 
-- While the Lure **moves**, alternate the two frames of its facing (≈6–8 fps).
-- While it **patrols / sits**, play the **lure-bob** loop (frames 8→13) — this is
-  the beckoning lure-light the player can sometimes spot first (`specs/predators.md`).
-  Frames 14/15 are a quiet resting idle.
-- The lure bulb is the brightest part of the sprite; the faint point the player
-  glimpses at range is that bulb plus a runtime glow.
+- While the Lanternjaw **moves**, alternate the two frames of its facing (≈6–8 fps).
+- While it **patrols / sits**, play the **bulb-bob** loop (frames 8→13) — the
+  beckoning bulb (`specs/predators.md`). Frames 14/15 are a quiet resting idle.
+- The amber **bulb** is the brightest part of the sprite. Note its behavior in
+  `specs/predators.md`: the Lanternjaw's **bulb-light is always visible** to the
+  player (a runtime amber glow you draw at the bulb, shown even when the body is
+  unlit), and it is drawn to look **almost identical to the bonus drifter** — so the
+  always-visible amber point is the runtime glow, not just this sprite. The body
+  itself is fog-gated like any predator and drawn from this sheet only where it is
+  lit.
 
-## The Listener — `assets/gloamfin/` (8 frames, 32×32)
+## The Gloamfin — `assets/gloamfin/` (8 frames, 32×32)
 
 The eyeless, sound-hunting predator (`#c46bff`). Four-direction swim only:
 
@@ -139,7 +143,7 @@ The eyeless, sound-hunting predator (`#c46bff`). Four-direction swim only:
 | 4, 5 | left |
 | 6, 7 | right |
 
-Alternate the two frames of the current facing while it moves. The Listener has
+Alternate the two frames of the current facing while it moves. The Gloamfin has
 **no eyes** and a faint sonar cue at its head; its tell is the **sonar pulse** it
 emits (below and `specs/predators.md`), which is a separate effect, not on this
 sheet.
@@ -162,7 +166,7 @@ separate large effect below.
 ## The sonar pulse — `assets/sonar-pulse/` (8 frames, 128×128)
 
 The expanding ring that travels outward when a character emits sonar — used both
-for the **forager's ping** and as the **Listener's tell** (`specs/sensing.md`,
+for the **forager's ping** and as the **Gloamfin's tell** (`specs/sensing.md`,
 `specs/predators.md`). It is **drawn in grayscale**: tint it at runtime by
 **multiplying** the sprite by the emitter's color.
 
@@ -171,10 +175,11 @@ for the **forager's ping** and as the **Listener's tell** (`specs/sensing.md`,
   edges. **Play `0`→`7` once** over the pulse's visible travel, scaling the sprite
   so the ring reaches the pulse's range as it grows.
 - **Tint:** multiply by the **sonar color `#5ef2ff`** for the forager's pulse, and
-  by the **Listener color `#c46bff`** for the Listener's own pulse, so the two
+  by the **Gloamfin color `#c46bff`** for the Gloamfin's own pulse, so the two
   read as different emitters (`specs/predators.md`). Composite additively.
-- This ring is **presentation only**: the actual reveal is the flooded tile set
-  defined in `specs/sensing.md`, not whatever the ring overlaps.
+- This ring is **presentation only**: for the forager's pulse the actual reveal is
+  the flooded tile set defined in `specs/sensing.md`; the Gloamfin's ring reveals
+  **nothing** — it is only the visible ring (`specs/predators.md`).
 
 ## The flare bloom — `assets/flare-bloom/` (8 frames, 128×128)
 
@@ -254,12 +259,20 @@ the other specs.
 These are **not** provided and you render them yourself, exactly as the other
 specs describe (using the palette in `specs/overview.md`):
 
-- **Plankton** (`#b8f5c8` motes) and the **bonus drifter** glowing jelly
-  (`specs/playfield.md`).
+- **Plankton** (`#b8f5c8` motes) (`specs/playfield.md`).
+- The **bonus drifter** — a glowing **amber** mote (`#ffd166`) drawn to look
+  **almost identical to the Lanternjaw's bulb-light**, and always visible
+  (`specs/playfield.md`, `specs/predators.md`).
+- The **Lanternjaw's always-visible bulb-light** — a runtime amber glow drawn at
+  the Lanternjaw's bulb even when its body is unlit, matching the drifter
+  (`specs/predators.md`).
+- The **detection alert** — the bright flash burst (in the acquiring predator's
+  color) that fires the instant the **Gloamfin's ping** or the **Flarefish's flare**
+  catches you (`specs/predators.md`).
 - The **ink cloud** (`#0b0a1f`) (`specs/movement.md`).
 - The forager's **brightness glow and the lit-pocket of vision** around it, and
-  any predator/drifter **glow** at the edge of sight — these are runtime light,
-  not sprite art (`specs/sensing.md`).
+  any predator **glow** at the edge of sight — these are runtime light, not sprite
+  art (`specs/sensing.md`).
 - The entire **HUD** (score, mode label, lives readout, depth, the sonar/ink
   gauges) and **all text, menus, panels, overlays, and the dive countdown**
   (`specs/flow.md`).

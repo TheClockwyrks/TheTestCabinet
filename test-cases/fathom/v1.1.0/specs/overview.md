@@ -129,8 +129,9 @@ near-black trench. The canonical palette and type are below; match them.
 | Player forager and its light | `#46f0e0` |
 | Plankton | `#b8f5c8` |
 | Sonar pulse ring | `#5ef2ff` |
-| The Lure (light-seeker) | `#ffd166` |
-| The Listener (sound-seeker) | `#c46bff` |
+| The Lanternjaw (light-seeker) and its bulb | `#ffd166` |
+| The bonus drifter | `#ffd166` |
+| The Gloamfin (sound-seeker) | `#c46bff` |
 | The Flarefish (flare-maker) | `#ff7a59` |
 | Ink cloud | `#0b0a1f` |
 | Primary text | `#e6edf3` |

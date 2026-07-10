@@ -4,8 +4,8 @@ This is version `v1.1.0` of the **Fathom** test case. The implemented game is an
 original maze chase titled **Fathom**: a bioluminescent forager grazing plankton
 through a pitch-dark trench, where the maze is hidden by fog of war until your
 light or a **sonar** pulse reveals it, and three predators each hunt by a
-different signal — your **light** (the Lure), your **sound** (the Listener), or
-its own **flare** (the Flarefish).
+different signal — your **light** (the Lanternjaw), your **sound** (the Gloamfin),
+or its own **flare** (the Flarefish).
 
 `fathom` is the catalog slug for this lineage of maze-chase cases, and the game's
 in-fiction title. The case is inspired by classic maze-chase arcade games
@@ -20,9 +20,10 @@ the chase), and the visible, personality-driven ghosts become predators you most
 
 Fathom raises the bar above the catalog's easy paddle and grid cases. It still
 asks for a real, polished, rendered game with multiple screens and a HUD, but adds
-a signature sensing system — in two variants, a remembered fog of war read by
-line-of-sight light and corridor-flooding sonar, or a fed radial glow that senses
-only the rock around you — tile-locked maze movement and cornering, three distinct
+a signature sensing system — in two variants, a remembered (StarCraft-style) fog of
+war read by line-of-sight light and corridor-flooding sonar, or that same fog seen
+only through a fed, growing vision circle — tile-locked maze movement and cornering,
+three distinct
 sensory predator behaviors, and a maze the model must design itself — a genuinely
 harder front-end task that should separate stronger builds from weaker ones.
 
@@ -50,12 +51,14 @@ the model always sees exactly one coherent specification. Each variant is a
 standalone TOML file under `variants/`, listed in order in the manifest's
 `variants` key (the first is the default). The case offers two variants:
 
-- **`base` (Trench)** — a remembered fog of war, line-of-sight passive light, and
-  a corridor-flooding sonar pulse (seeds `specs/sensing-trench.md`).
-- **`kindle` (Kindle)** — your light is a wide radial glow you feed by eating that
-  senses only the rock around you (bending around corners); nothing is remembered,
-  and plankton and predators are found only by a small line-of-sight light pocket
-  or a sonar ping (seeds `specs/sensing-kindle.md`).
+- **`base` (Trench)** — a StarCraft-style remembered fog of war, line-of-sight
+  passive light, and a corridor-flooding sonar pulse (seeds
+  `specs/sensing-trench.md`).
+- **`kindle` (Kindle)** — the same fog of war as base, plus an outer **vision
+  circle** you carry (an actual circle that grows as you eat) beyond which the
+  explored map is pitch black. It reveals nothing — it only limits what of the
+  already-revealed trench is shown, so you see only the windowed part of your
+  explored map (seeds `specs/sensing-kindle.md`).
 
 This version ships a **fixed set of art assets** under `assets/`, seeded into
 every run: the player forager (`glimmerfin`), the three predators (`lanternjaw`,

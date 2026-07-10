@@ -87,7 +87,7 @@ left-right mirror.
 
 ## The bonus drifter
 
-Periodically a **bonus drifter** — a glowing jelly worth a burst of points —
+Periodically a **bonus drifter** — a glowing amber mote worth a burst of points —
 appears and wanders the corridors:
 
 - It spawns at the den gate at a fixed cadence (for example, once about every
@@ -96,9 +96,14 @@ appears and wanders the corridors:
   for about `12 s` before leaving through a wrap tunnel or fading out.
 - Eating it scores the bonus (see `specs/flow.md`). At most one drifter exists at
   a time.
-- The drifter is subject to the same fog of war as everything else: it is only
-  visible where your light, a sonar pulse, or a flare reveals it. It carries a
-  faint glow of its own, the same way the predators do (see `specs/sensing.md`).
+- **It is always visible, at any distance.** Unlike almost everything else in the
+  trench, the drifter is **never hidden by the dark** — you always see it drifting,
+  a single glowing amber point, wherever it is (`specs/sensing.md`). And it is drawn
+  to look **almost identical to the Lanternjaw's always-visible bulb-light**
+  (`specs/predators.md`): the whole point is that, at a brief glance, you cannot tell
+  a harmless drifter from a lurking Lanternjaw, so chasing an amber glimmer for
+  points is always a gamble. Draw it in code as a soft amber mote with a bright core
+  (the amber palette color `#ffd166`), matching the Lanternjaw's bulb.
 
 ## HUD
 

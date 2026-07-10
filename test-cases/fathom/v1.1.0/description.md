@@ -8,14 +8,17 @@ finds hunters past the bend — but pinging is loud, and something out there is
 listening.
 
 Three predators hunt you, each keyed to a different signal you give off. The
-**Lure** tracks your light, and eating plankton makes you glow brighter — so the
-faster you feed, the more you light yourself up for it. The **Listener** hunts
-your sound: a sonar pulse pulls it straight to you, and it outruns you in a
-straight line, but it is too clumsy to corner at speed — so you juke it through
-tight turns. The **Flarefish** is blind between flares, learning where you
-are only if its own telegraphed burst of light catches you standing in the open.
-You carry no weapon and cannot turn the hunt around — only **ink** to blind the
-two that see, and your wits to read the dark.
+**Lanternjaw** tracks your light, and eating plankton makes you glow brighter — so
+the faster you feed, the more you light yourself up for it; its always-visible
+amber bulb looks just like the harmless bonus drifter, so you can never be sure
+which glimmer in the dark is bait and which is jaws. The **Gloamfin** hunts your
+sound: a sonar pulse — yours or its own — hands it a fix and it sprints to that
+spot faster than you can run, then casts about and re-pings after a moment's delay,
+so you slip it in that window. The **Flarefish** is invisible between flares,
+learning where you are only if its own telegraphed burst of light catches you in
+the open — and once it has, it chases just like the Lanternjaw. You carry no weapon
+and cannot turn the hunt around — only **ink** to blind the two that see, and your
+wits to read the dark.
 
 Fathom is inspired by classic maze-chase arcade games but is entirely its own:
 original name, look, fog-of-war sensing, and predators — and it deliberately
