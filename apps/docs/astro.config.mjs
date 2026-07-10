@@ -126,7 +126,6 @@ export default defineConfig({
       sidebar: [
         { label: "Overview", link: "/" },
         { label: "Terminology", link: "/terminology" },
-        { label: "Roadmap", link: "/roadmap" },
         // End-user material: short task refreshers, then the detailed guides.
         // Placed above the developer-facing Components section to match the
         // audience split called out on the home page.
