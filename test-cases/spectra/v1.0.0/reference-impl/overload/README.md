@@ -114,4 +114,3 @@ src/
   game.ts                State machine, polarity combat, the Overload charge/reactions
   render.ts              All canvas drawing (neon-on-void)
 ```
-</content>

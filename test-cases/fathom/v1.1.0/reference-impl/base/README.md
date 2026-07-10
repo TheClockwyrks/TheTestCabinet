@@ -109,7 +109,7 @@ src/
   main.ts             Bootstrap: canvas fit/letterbox + fixed-timestep loop
   constants.ts        Palette, grid, the maze, timings, speeds, ranges (logical 1280x720)
   types.ts            Shared enums and small helpers
-  maze.ts             Maze parsing, wall autotile, wrap tunnel, corridor flood (+ distance buckets)
+  maze.ts             Maze parsing, wall autotile, wrap tunnel, corridor flood + buckets
   assets.ts           Loads the sprite sheets
   input.ts            Keyboard: held movement + edge events
   audio.ts            Web Audio cues (optional, muteable)
