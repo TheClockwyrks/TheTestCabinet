@@ -1,0 +1,30 @@
+# The obstacles sway and rotate, so the ball bounces off tilted, oriented faces.
+# The change applies to both Solo and Versus, so gyre is rated on the case's
+# common `single-player` and `versus` domains — it adds no domain of its own.
+slug = "gyre"
+name = "Gyre"
+description = "The obstacles sway and rotate, so the ball bounces off tilted, oriented faces."
+
+# Same single-ball serving as base (`specs/balls.md`), but the moving/rotating
+# obstacles and their oriented collision replace the static ones at
+# `specs/obstacles.md`.
+spec = [
+  { source = "specs/obstacles-gyre.md", dest = "specs/obstacles.md" },
+  { source = "specs/balls-standard.md", dest = "specs/balls.md" },
+]
+reference = [{ view = "title", path = "reference/menu-gyre.html" }]
+
+# The distinctive requirement of this variant. It applies to the whole game (both
+# Solo and Versus), so it names no domain.
+[[review_item]]
+id = "gyre-oriented-bounce"
+title = "Oriented bounces"
+text = "The two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles — not axis-aligned reflections. The bounce direction tracks each obstacle's current orientation."
+weight = 1
+
+# Shared with base: gyre serves toward the receiver, so it checks serve direction.
+[[review_item]]
+id = "serve-direction"
+title = "Serve direction"
+text = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always goes to the same side."
+weight = 1
