@@ -75,15 +75,17 @@ init = "npm install && npx playwright install chromium"
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = ["variants/base.toml"]
 
-# Provided library packages, injected into the seeded workspace's `package.json` as
-# `file:` dependencies at seed time (baked into the run image; see the end-to-end
+# Provided library packages: core bakes each into the run image and vendors it into
+# the run repository under `.tcab/packages/` at seed time (see the end-to-end
 # `packages` manifest key). `@test-cabinet/voxel-runtime` is the runtime the build
 # imports to load and pose the provided models — its root `parseGlb` decodes each
 # part's `.glb` into a `PartMesh` (the `{ positions, normals, colors, indices }` typed
 # arrays the recolor in `specs/assets.md` walks), and its `three` binding's `VoxelRig`
 # poses the parts on their joints and plays the authored animations by name. It is the
-# same library the asset cases were authored against. The build imports it by bare
-# name; do NOT hand-add it to `workspaces/base/package.json`. See `specs/assets.md`.
+# same library the asset cases were authored against. The workspace `package.json` must
+# depend on it via the exact `file:./.tcab/packages/…` spec (already declared in
+# `workspaces/base/package.json`) so `npm ci`/`npm install` resolves it to the vendored
+# copy; the build then imports it by bare name. See `specs/assets.md`.
 # This is a root key, so it must precede the first table header.
 packages = ["@test-cabinet/voxel-runtime"]
 
