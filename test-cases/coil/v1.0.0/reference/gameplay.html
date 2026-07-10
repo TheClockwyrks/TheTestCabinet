@@ -36,20 +36,25 @@
       <!-- Pellet at cell (22,5). -->
       <div class="pellet" style="left: 864px; top: 280px"></div>
 
-      <!-- Snake (head to tail), a coil heading up out of cell (15,6). -->
+      <!--
+        Snake (head to tail), a coil heading up out of the field, rendered from
+        the produced sprite set: an up-facing biting head, straight-body sprites,
+        corner sprites at each bend, and a tapered tail. Each `corner`'s `out-*`
+        modifier names its rounded outer corner. See ../specs/assets.md.
+      -->
       <div class="seg head" style="left: 640px; top: 312px"></div>
       <div class="seg body" style="left: 640px; top: 344px"></div>
-      <div class="seg body" style="left: 640px; top: 376px"></div>
+      <div class="seg body corner out-br" style="left: 640px; top: 376px"></div>
       <div class="seg body" style="left: 608px; top: 376px"></div>
       <div class="seg body" style="left: 576px; top: 376px"></div>
-      <div class="seg body" style="left: 544px; top: 376px"></div>
+      <div class="seg body corner out-tl" style="left: 544px; top: 376px"></div>
       <div class="seg body" style="left: 544px; top: 408px"></div>
-      <div class="seg body" style="left: 544px; top: 440px"></div>
+      <div class="seg body corner out-bl" style="left: 544px; top: 440px"></div>
       <div class="seg body" style="left: 576px; top: 440px"></div>
       <div class="seg body" style="left: 608px; top: 440px"></div>
       <div class="seg body" style="left: 640px; top: 440px"></div>
-      <div class="seg body" style="left: 672px; top: 440px"></div>
-      <div class="seg body" style="left: 672px; top: 408px"></div>
+      <div class="seg body corner out-br" style="left: 672px; top: 440px"></div>
+      <div class="seg tail" style="left: 672px; top: 408px"></div>
     </div>
   </body>
 </html>

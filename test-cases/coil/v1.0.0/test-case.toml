@@ -10,11 +10,25 @@ experimental = true
 # Human-readable display name for this test case.
 name = "Coil"
 
-# Relative difficulty of this case, surfaced on the site. Coil's rules are
-# simple, but a polished, playable build with a correct fixed-timestep loop,
-# grid-locked turning, a decaying combo, multiple modes, and several states is a
-# real front-end task — so it sits at the easy end of the scale, alongside Carom.
-difficulty = "easy"
+# Test type. Coil is a `full-stack` case: an end-to-end (playable-browser-game) case
+# with one addition — the model under test must PRODUCE some of the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. Here that produced set is the snake's full sprite
+# set and the game's sound and music; everything else (the board, walls, obstacles,
+# pellet, and HUD) is still drawn in code. The `full-stack` type schedules the run onto
+# the `test-cabinet-full-stack-2d` image, which carries six binaries on `PATH` —
+# `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no
+# others; `specs/assets.md` is the production contract. A root identity field, so it
+# sits above the first table.
+type = "full-stack"
+
+# Relative difficulty of this case, surfaced on the site. Coil's rules are simple, and
+# a polished, playable build with a correct fixed-timestep loop, grid-locked turning, a
+# decaying combo, and several states would sit at the easy end on its own — but this
+# version also asks the model to PRODUCE the snake's sprite set (an animated biting head
+# plus body and corner sprites) and the game's sound and music with the on-`PATH` tools,
+# a full asset-production pass on top of the code. That added craft lifts it to medium.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "grid", "score-attack"]
@@ -26,7 +40,8 @@ tags = ["arcade", "2d", "grid", "score-attack"]
 summary = """
 A neon grid serpent that grows with every pellet, where eating in quick \
 succession builds a decaying combo multiplier — so the real game is planning \
-the most efficient route, not just staying alive."""
+the most efficient route, not just staying alive — and the build must produce \
+its own snake sprites and sound with the on-PATH asset tools."""
 
 # Site-facing prose describing the case, relative to this version folder. This is
 # NOT seeded into a run; it exists only to introduce the case on the site.
@@ -46,9 +61,11 @@ prompt = "prompt.hbs"
 # Maximum wall-clock runtime, in hours, for the harness session before the run
 # is stopped. This is the per-case default; a run can override it (for example
 # `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
-# unbounded. Coil is an easy case, so 90 minutes is comfortably more than a
-# healthy build needs while still catching a session that never terminates.
-max_runtime_hours = 1.5
+# unbounded. The game itself is small, but producing the snake's sprite set and the
+# game's audio with the on-`PATH` tools is a real added pass, so Coil gets three
+# hours — comfortably more than a healthy build needs while still bounding a session
+# that never terminates.
+max_runtime_hours = 3
 # Starter workspace seeded into the root of every run before the specs. It gives
 # the model a baseline project to build on: a `package.json` that pins
 # `playwright` as a dev dependency, so the in-container browser tooling is a
@@ -68,20 +85,15 @@ init = "npm install && npx playwright install chromium"
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
 # the first is the default. Each seeds the common specs plus its own additive
-# specs, supplies its own `title` menu reference (the main menu lists a different
-# set of modes per variant; `gameplay` and `game-over` are common), and — for the
-# three mode variants — declares its own scoring domain and the review item that
-# rolls up to it:
-#   - base  — Classic mode only.
-#   - wrap  — adds Wrap mode, where the board edges become wrapping tunnels (own domain).
-#   - maze  — adds Maze mode, with fixed fatal interior obstacles (own domain).
-#   - feast — adds Feast mode, with a periodic, time-limited bonus orb (own domain).
+# specs, supplies its own `title` menu reference (the main menu lists the modes for
+# that variant; `gameplay` and `game-over` are common), and declares its own scoring
+# domain and the review item that rolls up to it. This version offers a single
+# variant:
+#   - maze — the always-present Classic mode plus Maze mode, with fixed fatal
+#            interior obstacles the snake must navigate around (own `maze` domain).
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = [
-  "variants/base.toml",
-  "variants/wrap.toml",
   "variants/maze.toml",
-  "variants/feast.toml",
 ]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
@@ -97,9 +109,9 @@ build = "npm run build"
 
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within
 # the run workspace. The specification is decomposed by concern so that
-# mode-specific material can be seeded per variant (see `[[variant]]` below).
-# These five files are always present, so the mode specs may reference them
-# freely; the common specs, in turn, must never reference a mode spec that a
+# mode-specific material can be seeded per variant (see the variant files under
+# `variants/`). These files are always present, so the mode specs may reference
+# them freely; the common specs, in turn, must never reference a mode spec that a
 # given variant does not seed (only `modes/standard.md` is always present). All
 # common specs are plain Markdown and are seeded verbatim.
 # A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
@@ -115,6 +127,14 @@ source = "specs/mechanics.md"
 
 [[spec]]
 source = "specs/flow.md"
+
+# The asset-production contract: the assets the model must PRODUCE with the six on-PATH
+# binaries during the run — the snake's full sprite set and the game's sound and music —
+# where each lands in the workspace, and how it is wired into the build; and what stays
+# drawn in code. Seeded for every variant so the produced-asset review items and this
+# spec stay in lockstep. This is the defining spec of a full-stack case.
+[[spec]]
+source = "specs/assets.md"
 
 [[spec]]
 source = "specs/modes/standard.md"
@@ -182,14 +202,22 @@ name = "Title Screen"
 reference = "title"
 actions = []
 
-# Scoring domain. A reviewer rates each declared domain independently and the
-# run's overall rating is the WORST across them; every case must declare at least
-# one. Coil is a single-player game, so it has one domain covering the whole
-# experience. The point checklist below is scored globally.
+# Scoring domains. A reviewer rates each declared domain independently while playing
+# the build, and the run's overall rating is the WORST across them — a flawless snake
+# game cannot mask crude, un-produced art or silence, and a beautiful produced snake
+# cannot mask a game that does not play correctly; every case must declare at least one.
+# Domains are case-level; an individual review item rolls up to one through its optional
+# `domain`, while a general item (states, window fit) omits it. The Maze variant adds
+# its own `maze` domain (see `variants/maze.toml`).
 [[domain]]
 id = "gameplay"
 name = "Gameplay"
-description = "The single-player snake game: movement, scoring, collisions, and presentation."
+description = "The single-player snake game itself: the fixed-tick movement, grid-locked turning, growth and collision, the decaying combo, scoring, and the states — how it plays."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "The genuinely tool-produced assets and how the build presents them: the snake's produced sprite set — an animated head that bites when it eats, and body and corner sprites that render the snake turning — rendered crisp on the board, and the produced sound effects and music bed the game plays."
 
 # Reviewer checklist items, common to every variant. These are the major,
 # observable requirements a reviewer must explicitly check by playing the build —
@@ -205,12 +233,14 @@ id = "combo-multiplier"
 title = "Combo multiplier"
 text = "Eating pellets in quick succession raises the combo multiplier by one per pellet (capped at x5) while the combo window is open; a pellet eaten after the window has lapsed resets the multiplier to 1. Each pellet scores 10 x M using the updated multiplier."
 weight = 1
+domain = "gameplay"
 
 [[review_item]]
 id = "combo-window"
 title = "Combo window"
 text = "The 2.4-second combo window reopens on every eat and drains as a thin bar beneath the multiplier in the HUD. The combo readout and bar appear only while the multiplier is at least x2 and are absent at x1, and wandering until the window lapses drops the multiplier back to 1."
 weight = 1
+domain = "gameplay"
 # A video proof with no still that meaningfully depicts the combo window timing,
 # so the clip stands alone — the reviewer judges it against the spec, not a
 # side-by-side reference. The review UI shows a proof-only item full width.
@@ -221,36 +251,42 @@ id = "fixed-tick"
 title = "Constant tick rate"
 text = "The snake advances exactly one cell per tick at a constant 8 ticks per second; it never speeds up as it grows or as the score rises, and rendering stays smooth and independent of the fixed simulation tick."
 weight = 1
+domain = "gameplay"
 
 [[review_item]]
 id = "turning-rules"
 title = "Turning and reversal"
 text = "A turn takes effect on the next tick and only perpendicular to the current direction; a reversal back into the neck is ignored, and at most one turn is applied per tick, so a rapid double-press (e.g. down then left while moving right) can never fold the snake onto itself."
 weight = 1
+domain = "gameplay"
 
 [[review_item]]
 id = "tail-follow"
 title = "Tail-follow rule"
 text = "On a normal tick the head may safely enter the cell the tail is vacating, so the snake can chase its own tail; but on a growth tick — when the tail does not retract — moving the head into any body cell, including the current tail cell, is fatal."
 weight = 1
+domain = "gameplay"
 
 [[review_item]]
 id = "collision-immediate"
 title = "Immediate death"
 text = "The head entering a wall cell or any solid body cell ends the round immediately, with no grace frames, forgiveness window, or second chance."
 weight = 1
+domain = "gameplay"
 
 [[review_item]]
 id = "growth-spawn"
 title = "Growth and pellet spawn"
 text = "Eating a pellet grows the snake by exactly one cell and immediately spawns exactly one new pellet at a random valid cell — never on a wall, the snake, an obstacle, or another pellet/orb — so exactly one pellet is on the board at any time."
 weight = 1
+domain = "gameplay"
 
 [[review_item]]
 id = "high-score"
 title = "Persistent high score"
 text = "The BEST score persists across sessions via localStorage with no backend, is shown on the title screen and during play, and updates live the instant the current score passes it; nothing other than the high score persists between sessions."
 weight = 1
+domain = "gameplay"
 
 [[review_item]]
 id = "states-complete"
@@ -265,6 +301,7 @@ id = "board-cleared"
 title = "Board-cleared win"
 text = "If the snake grows to fill every interior cell, the round ends cleanly on a BOARD CLEARED screen — the game-over screen with that heading and the same choices — without the game crashing or attempting an impossible pellet placement."
 weight = 1
+domain = "gameplay"
 reference = "game-over"
 proof = "game-over"
 
@@ -276,8 +313,38 @@ weight = 1
 
 [[review_item]]
 id = "crisp-grid"
-title = "Crisp grid and snake"
-text = "Cells render as crisp, un-blurred squares on the faintly gridded board, and the snake's brighter head is always distinguishable from its dimmer body segments."
+title = "Crisp board and snake"
+text = "The board renders as a crisp, un-blurred grid of cells, and the snake's produced sprites are sampled crisply (nearest-neighbor, not smoothed or blurred) and stay pixel-aligned to the grid, so the look is sharp and blocky rather than soft."
 weight = 1
+domain = "presentation"
 reference = "gameplay"
 proof = "gameplay"
+
+# --- Presentation & Assets ------------------------------------------------------
+# The genuinely produced assets: the snake's sprite set and the game's audio. These
+# roll up to the `presentation` domain and each restates a requirement in
+# `specs/assets.md`. They are what a `full-stack` case adds over an end-to-end one.
+[[review_item]]
+id = "produced-snake-sprites"
+title = "Produced snake sprites"
+text = "The snake is rendered from a sprite set the build produced with `draw`/`draw-sheet` — genuine pixel art: a head sprite, a straight-body sprite, and corner/turn sprites — not code-drawn rounded rectangles. The corner sprites are used where the snake bends, so the body reads as a continuous turning coil, and the head is always distinguishable from the body."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-head-bite"
+title = "Produced head-bite animation"
+text = "The head is an animated sprite sheet the build produced with `draw-sheet` — genuine per-frame pixel art — that plays a bite/chomp when the snake eats a pellet (the mouth opens and closes on the eat) and otherwise shows the resting head, advanced on a timer in the game; not a single static head sprite and not an ad-hoc code-drawn mouth."
+weight = 1
+domain = "presentation"
+proof = "combo"
+
+[[review_item]]
+id = "produced-audio"
+title = "Produced sound and music"
+text = "The game has real audio the build produced with the audio tools: an eat cue, a combo-up cue, and a death sound (`sfx-synth` and/or `sfx-sample`) plus a low-key music bed (`music`), played via Web Audio with a mute toggle and no autoplay before the first input — not silence and not a hand-oscillated Web Audio stand-in."
+weight = 1
+domain = "presentation"
+proof = "combo"

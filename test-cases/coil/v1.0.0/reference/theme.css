@@ -99,38 +99,87 @@ body {
   background-size: 32px 32px;
 }
 
-/* Wrap mode: the perimeter reads as open tunnels rather than a solid wall. */
-.board.tunnel {
-  background: transparent;
-  box-shadow: none;
-  border: 2px dashed var(--wall);
-}
-
-.board.tunnel .field {
-  left: 0;
-  top: 0;
-  width: 956px;
-  height: 572px;
-}
-
 /* ---- Cell-aligned objects --------------------------------------------- */
 /* Positioned with inline left/top at a cell's stage pixel (see header). */
 
+/* The snake is a produced sprite set (see ../specs/assets.md): an animated head
+ * that bites when it eats, a straight-body sprite, corner sprites for its turns,
+ * and a tail. These mockup segments approximate that sprite look for a soft
+ * palette/layout target — the built game renders the real produced PNGs. */
 .seg {
   position: absolute;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-}
-
-.seg.head {
-  background: var(--head);
-  box-shadow: 0 0 16px rgba(94, 243, 140, 0.75);
 }
 
 .seg.body {
   background: var(--body);
-  box-shadow: 0 0 12px rgba(47, 208, 122, 0.5);
+  border-radius: 7px;
+  box-shadow: 0 0 12px rgba(47, 208, 122, 0.5),
+    inset 0 0 0 2px rgba(120, 255, 190, 0.18);
+}
+
+/* Corner segments: the outer corner rounds and the inner corner stays square, so
+ * a bend reads as a continuous turn. The modifier names the OUTER (rounded)
+ * corner (tl/tr/bl/br), i.e. the corner diagonally opposite the elbow. */
+.seg.corner {
+  border-radius: 4px;
+}
+.seg.corner.out-tl {
+  border-top-left-radius: 15px;
+}
+.seg.corner.out-tr {
+  border-top-right-radius: 15px;
+}
+.seg.corner.out-bl {
+  border-bottom-left-radius: 15px;
+}
+.seg.corner.out-br {
+  border-bottom-right-radius: 15px;
+}
+
+/* Tail tapers toward its trailing end. In this frame the tail points up, so it
+ * narrows upward. */
+.seg.tail {
+  background: var(--body);
+  border-radius: 7px;
+  box-shadow: 0 0 10px rgba(47, 208, 122, 0.4);
+  clip-path: polygon(16% 0, 84% 0, 100% 100%, 0 100%);
+}
+
+/* The head: brighter, with a produced-sprite face — two eyes and a biting mouth
+ * at the leading edge. In this frame the head faces UP. */
+.seg.head {
+  background: var(--head);
+  border-radius: 9px 9px 7px 7px;
+  box-shadow: 0 0 16px rgba(94, 243, 140, 0.75),
+    inset 0 0 0 2px rgba(180, 255, 210, 0.25);
+}
+
+/* Eyes: two dark dots near the leading edge (one dot + a box-shadow twin). */
+.seg.head::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #08160e;
+  box-shadow: 11px 0 0 #08160e;
+}
+
+/* Mouth: a dark biting notch at the leading (top) edge, centered. */
+.seg.head::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 6px;
+  border-radius: 0 0 6px 6px;
+  background: #08160e;
 }
 
 .pellet {

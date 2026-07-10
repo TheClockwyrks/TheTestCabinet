@@ -60,13 +60,20 @@ Keyboard only.
 
 ## Audio
 
-Audio is recommended but optional, and must never be required for the game to
-run or load. If included, synthesize it with the Web Audio API (no audio files):
-a short blip when a pellet is eaten, a brighter blip when the combo multiplier
-increases, and a distinct tone when the snake dies. Modes with a bonus orb may
-add a chime for eating one. Use simple synthesized waveforms (square/sine), not
-samples. Provide a mute toggle, and do not start audio until the player
-interacts (browsers block autoplay).
+Audio is **required** and is **produced** with the audio tools on your `PATH`, then
+played back through the Web Audio API — see `specs/assets.md` for the production
+contract. Produce and play, at least:
+
+- a short **eat** cue when a pellet is eaten,
+- a brighter **combo-up** cue when the combo multiplier increases,
+- a distinct **death** sound when the snake dies, and
+- a low-key **background music bed** that loops under the game.
+
+Modes with a bonus orb may add a chime for eating one. Provide a **mute** toggle, and
+do not start audio until the player interacts (browsers block autoplay). The game must
+still **load** if audio is unavailable — guard playback so a decode or autoplay failure
+never breaks the game — but a finished build ships the produced sound and music, not
+silence and not a hand-oscillated Web Audio stand-in.
 
 ## HUD
 

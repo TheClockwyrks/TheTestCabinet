@@ -29,6 +29,9 @@ This specification is split across several files:
   and the combo mechanic.
 - `specs/flow.md` — scoring, game states, controls, audio, the HUD, key
   behaviors, and what is out of scope.
+- `specs/assets.md` — the assets you must **produce** during the build (the
+  snake's sprite set and the game's sound and music) with the tools on your
+  `PATH`, where they land, and how they are wired in.
 - the mode specs under `specs/modes/` — the playable game modes. Each mode spec
   defines one mode and the main-menu entry for it.
 
@@ -50,8 +53,16 @@ a tech demo.
 - **Renders real graphics.** Draw the game with Canvas 2D, WebGL/WebGPU, or
   positioned DOM elements. A text-only or ASCII rendering does not satisfy this
   test case.
+- **Produces its own snake art and audio.** This is a **full-stack** build: the
+  run image puts asset-generation tools on your `PATH`, and you must **produce**
+  the snake's sprite set and the game's sound and music with them during the
+  build, then bundle the committed files into the game. `specs/assets.md` is the
+  authoritative production contract; the board, walls, obstacles, pellet, and HUD
+  stay drawn in code. The build must be **self-contained** — it bundles the
+  produced files and must **not** invoke the tools at build time.
 - **Runs in the browser with no backend.** No server, accounts, database, or
-  network calls at runtime. Everything needed to play must be self-contained.
+  network calls at runtime. Everything needed to play must be self-contained,
+  including the produced assets, which are bundled into the build.
 - **No API keys or credentials** of any kind to build, run, or play.
 - **npm-driven static build.** The project must be a Node project with a
   `package.json` at its root, buildable with **only Node.js and npm-installed
@@ -107,7 +118,10 @@ Presentation requirements:
   clipped or pushed past the edges. The build must fit correctly on load, before
   any input, and at any pixel density.
 - Cells render as crisp squares. Do not blur or smooth the grid; the look is
-  sharp and blocky, not anti-aliased into softness.
+  sharp and blocky, not anti-aliased into softness. The **produced snake sprites**
+  are sampled **nearest-neighbor** (`imageSmoothingEnabled = false` /
+  `image-rendering: pixelated`) so the pixel art stays crisp at any scale (see
+  `specs/assets.md`).
 
 ## Visual design
 
@@ -136,9 +150,12 @@ match them.
 - The snake, pellets, bonus orbs, and obstacles have a soft neon glow. The board
   interior is faintly gridded with the grid-line color so individual cells read
   without dominating the field.
-- The snake's **head** is drawn in the brighter head color and its **body**
-  segments in the dimmer body color, so the leading cell is always
-  distinguishable from the trail.
+- The snake is rendered from a **produced sprite set** — an animated head, a
+  straight-body sprite, corner sprites for its turns, and a tail — that you make
+  with the on-`PATH` tools (`specs/assets.md`), not from code-drawn rectangles.
+  The **head** uses the brighter head color and the **body** segments the dimmer
+  body color, so the leading cell is always distinguishable from the trail, and
+  the head **bites** when the snake eats a pellet.
 - The canonical screens — the title screen, the in-game view, and the game-over
   screen — are described in full under Game States in `specs/flow.md`. Implement
   each as described, in this palette and type.

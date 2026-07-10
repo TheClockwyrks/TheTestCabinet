@@ -70,6 +70,13 @@ The player steers with the arrow keys or `WASD` (see Controls in
   tick, and *left* — now a valid perpendicular turn — is applied on the
   following tick, never both at once.
 
+**Presentation.** A body cell whose head-ward and tail-ward neighbors are
+**perpendicular** is a bend: render it with the produced **corner sprite**, and
+render straight runs with the straight-body sprite, so a turning snake reads as a
+continuous coil rather than a staircase of squares. The exact sprite set and how it
+is oriented per cell is defined in `specs/assets.md`; this is rendering only and does
+not affect the simulation.
+
 ## Collision
 
 Collision is tested against the **new head cell** computed in step 2, before the
@@ -109,6 +116,11 @@ Eating a pellet grows the snake by exactly **one** cell, by not removing the tai
 on that tick (step 4). On every non-eating tick the length is constant: one cell
 added at the head, one removed at the tail. The body therefore always traces the
 exact path the head has taken, with no gaps or branches.
+
+**Presentation.** On the eat tick, play the produced **head-bite** animation — the
+head's mouth opens and chomps shut — then return the head to its resting frame (see
+`specs/assets.md`). It is a visual flourish tied to the eat and does not affect the
+simulation or its timing.
 
 ## The combo mechanic (signature)
 
