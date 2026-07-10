@@ -87,7 +87,10 @@ fn resolves_carom_from_its_manifest() {
         .expect("resolve latest carom by folder name");
     assert_eq!(version.slug, "pong");
     // The prompt template and the decomposed common specs are resolved from the
-    // manifest. Every variant seeds the overview spec and the standard mode.
+    // manifest. Every variant seeds the overview spec and the common modes spec;
+    // the obstacle and ball rules that differ per variant are seeded from each
+    // variant's own file (to the stable `specs/obstacles.md` and `specs/balls.md`
+    // paths the common specs reference).
     assert!(version.prompt_path.ends_with("prompt.hbs"));
     assert!(
         version
@@ -100,8 +103,8 @@ fn resolves_carom_from_its_manifest() {
         version
             .common_specs
             .iter()
-            .any(|spec| spec.dest == Path::new("specs/modes/standard.md")),
-        "the standard mode should be common to every variant"
+            .any(|spec| spec.dest == Path::new("specs/modes.md")),
+        "the modes spec should be common to every variant"
     );
     // Site-facing metadata is surfaced from the manifest. Carom declares all of
     // it, including a site-facing description that is resolved but never seeded.
@@ -127,17 +130,20 @@ fn resolves_carom_from_its_manifest() {
             .is_some_and(|s| s.contains("paddle duel")),
         "the inline site-facing summary should be surfaced from the manifest"
     );
-    // Four variants are offered: base (standard only), frenzy, multi, and gyre.
+    // Three variants are offered: base (fixed obstacles, one ball), multi (three
+    // independent balls), and gyre (swaying, rotating obstacles).
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
-    assert_eq!(variant_slugs, ["base", "frenzy", "multi", "gyre"]);
-    // The frenzy variant adds the frenzy mode spec on top of the common specs.
-    let frenzy = version.variant("frenzy").expect("frenzy variant");
+    assert_eq!(variant_slugs, ["base", "multi", "gyre"]);
+    // The multi variant seeds its own ball rules on top of the common specs,
+    // replacing the single ball at the stable `specs/balls.md` path the common
+    // specs reference.
+    let multi = version.variant("multi").expect("multi variant");
     assert!(
-        frenzy
+        multi
             .specs
             .iter()
-            .any(|spec| spec.dest == Path::new("specs/modes/frenzy.md")),
-        "frenzy should add the frenzy mode spec"
+            .any(|spec| spec.dest == Path::new("specs/balls.md")),
+        "multi should seed its ball rules to specs/balls.md"
     );
     // The `gameplay` and `game-over` views are common to every variant; the
     // `title` view is variant-specific because the main menu differs per variant,
@@ -150,18 +156,18 @@ fn resolves_carom_from_its_manifest() {
         .collect();
     assert_eq!(common_views, ["gameplay", "game-over"]);
     assert!(
-        frenzy.references.iter().any(|v| v.view == "title"),
-        "frenzy should declare its own title reference"
+        multi.references.iter().any(|v| v.view == "title"),
+        "multi should declare its own title reference"
     );
     // The full reference set for a variant is the common references plus its own,
     // so every variant still offers the three views — with its variant-specific
     // title menu.
-    let frenzy_views: Vec<String> = version
-        .references_for(frenzy)
+    let multi_views: Vec<String> = version
+        .references_for(multi)
         .iter()
         .map(|v| v.view.clone())
         .collect();
-    assert_eq!(frenzy_views, ["gameplay", "game-over", "title"]);
+    assert_eq!(multi_views, ["gameplay", "game-over", "title"]);
     // Validation is opt-in: the manifest declares a single title check, with an
     // explicit display name. Its `title` baseline resolves per variant.
     assert_eq!(version.checks.len(), 1);
