@@ -8,7 +8,7 @@
  * of these; this file is the vocabulary, not the mutable state.
  */
 
-import type { ModelSpec, AnimationSpec, ParticleSystem } from "./runtime";
+import type { ModelSpec, AnimationSpec, ParticleSystem, PartMesh } from "./runtime";
 
 /** The two legions. The player always holds the origin corner (specs/playfield.md). */
 export type Team = "player" | "enemy";
@@ -94,17 +94,73 @@ export interface RigTemplate {
   /**
    * One geometry per part that has geometry, keyed by part name. Empty/socket parts
    * are absent. REUSE across every instance of this type (specs/assets.md — the
-   * whole point of the rigid uniform roster).
+   * whole point of the rigid uniform roster). Consumed by the GPU-instanced unit
+   * renderer, which builds one `THREE.InstancedMesh` per (type, part) from these.
    */
   readonly geometries: ReadonlyMap<string, import("three").BufferGeometry>;
+  /**
+   * One decoded {@link PartMesh} per non-empty part, keyed by part name — the same
+   * geometry as {@link geometries} but in the runtime's framework-agnostic form,
+   * kept so the few one-off singletons (bases, reliquaries, extractors, spawners, the
+   * Aegis) can be rendered with the runtime's `VoxelRig` directly (specs/assets.md).
+   */
+  readonly meshes: ReadonlyMap<string, PartMesh>;
   /** The authored animations resolved by game role (e.g. `move`, `attack`, `idle`). */
   readonly clips: ReadonlyMap<string, AnimationSpec>;
   /** Authored extents `[width, height, depth]` in model units (the scale contract). */
   readonly dimensions: readonly [number, number, number];
+  /**
+   * The rest-pose world-space bounds of the assembled rig, in model units — used to
+   * ground each instance on the floor (`minY`) and centre its footprint on its
+   * ground position (`centerX`/`centerZ`), since the rigs are sculpted in a positive
+   * octant rather than about their own centre.
+   */
+  readonly bounds: RigBounds;
   /** The muzzle joint name for firing units (specs/assets.md), or `null`. */
   readonly muzzleJoint: string | null;
   /** Which muzzle-flash family this entity plays, or `null`. */
   readonly muzzle: MuzzleKind | null;
+}
+
+/** The assembled rest-pose extents of a rig in its own model units. */
+export interface RigBounds {
+  readonly minY: number;
+  readonly centerX: number;
+  readonly centerZ: number;
+  readonly sizeX: number;
+  readonly sizeY: number;
+  readonly sizeZ: number;
+}
+
+/**
+ * One entity's per-frame render state, the handoff from the simulation (phases 4+)
+ * to the renderer. The renderer never reads simulation state directly — it draws
+ * exactly this list each frame: which rig template to pose, where it stands and
+ * faces on the ground plane, its animation clock and active clip role, any
+ * caller-driven joint overrides (e.g. an Aegis turret yaw), and a destruction flash.
+ */
+export interface RenderEntity {
+  /** Stable per-entity id (kept stable so an instance keeps its slot frame to frame). */
+  readonly id: number;
+  /** The owning team, or `neutral` for the Reliquary's own colour. */
+  readonly team: Team | "neutral";
+  /** Ground-plane position (specs/playfield.md). */
+  readonly x: number;
+  readonly z: number;
+  /** Render-only height off the floor (0 for ground units; > 0 for the Air Sunhawk). */
+  readonly altitude: number;
+  /** Facing yaw about `+y`, radians. */
+  readonly yaw: number;
+  /** Animation clock in milliseconds for the active clip. */
+  readonly animMs: number;
+  /** The active clip role to play (`move` / `attack` / `idle` / `emit`). */
+  readonly role: string;
+  /** Caller-driven joint overrides composed over the active clip (turrets, aim). */
+  readonly caller?: Record<string, number>;
+  /** Destruction white-flash amount `0..1` (specs/assets.md — flash then remove). */
+  readonly flash?: number;
+  /** Veteran level marker: brighten the team accent when set (specs/economy.md). */
+  readonly accent?: boolean;
 }
 
 /** The fully loaded asset bundle handed to the renderer and simulation. */

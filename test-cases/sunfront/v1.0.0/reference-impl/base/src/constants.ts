@@ -105,6 +105,13 @@ export const BUILD_CELL_SIZE = 72;
 export const BUILD_GRID_COLS = 8;
 export const BUILD_GRID_ROWS = 3;
 export const BUILD_GRID_CELLS = BUILD_GRID_COLS * BUILD_GRID_ROWS; // 24
+/**
+ * The player yard's grid origin (the centre of cell `[0,0]`), in the corner along the
+ * near edge, off the diagonal corridor and clear of the base (specs/playfield.md — the
+ * exact corner offset is ours). Cell `[col,row]` steps by {@link BUILD_CELL_SIZE} in
+ * each axis; the enemy grid is the 180° mirror about the arena centre.
+ */
+export const PLAYER_GRID_ORIGIN = { x: 210, z: 18 } as const;
 
 /** Vision radii (specs/playfield.md fog of war). */
 export const VISION_BASE = 180;

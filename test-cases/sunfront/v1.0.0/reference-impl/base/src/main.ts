@@ -1,116 +1,64 @@
 /**
  * Sunfront — entry point.
  *
- * Phase-2 scaffold: boots three, fits a 16:9 letterboxed renderer that stays
- * correct and centred at any window size and pixel density (specs/overview.md), and
- * draws an empty lit scene with the sand ground plane through a fixed low-oblique
- * command camera. Later phases fill this with the generated arena, the GPU-instanced
- * voxel roster, the simulation, the fog, the HUD, and the state machine. The asset
- * bundle (specs/assets.md) is loaded here so the whole roster is ready for those
- * phases; the scaffold itself only proves the app boots and renders.
+ * Phase 3 boots the 3D world: the low oblique command camera, the generated sand
+ * terrain (banding, staging-yard panels, the player build grid) and scene lighting,
+ * and the GPU-instanced voxel renderer for the rigid unit roster plus the `VoxelRig`
+ * singletons for the bases, Reliquaries, extractors, spawners, and the Aegis
+ * (specs/assets.md, specs/overview.md). While the asset bundle loads, a title card is
+ * shown; once ready, a TEMPORARY proof scene (see `demo.ts`) spreads a rank of unit
+ * types and structures across the corridor and animates them through the camera so the
+ * relative scale, team tint, animation, and the F3/F4 overlays can be verified. Later
+ * phases replace the demo with the real simulation, economy, fog, HUD, and AI.
  */
 
-import * as THREE from "three";
-import {
-  PALETTE,
-  ASPECT_RATIO,
-  ARENA_SIZE,
-  PLAYER_MUSTER,
-} from "./constants";
+import { PALETTE, MONO_FONT_STACK } from "./constants";
 import { loadAssets } from "./assets";
-import type { LoadedAssets } from "./types";
+import { World } from "./render/world";
+import { DemoScene } from "./demo";
 
 const app = document.getElementById("app")!;
 
-// --- Renderer -------------------------------------------------------------
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setClearColor(new THREE.Color(PALETTE.sand));
-app.appendChild(renderer.domElement);
-Object.assign(renderer.domElement.style, {
+const status = document.createElement("div");
+Object.assign(status.style, {
   position: "absolute",
-  left: "0",
-  top: "0",
+  inset: "0",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  font: `16px ${MONO_FONT_STACK}`,
+  color: PALETTE.textSecondary,
+  zIndex: "20",
+  pointerEvents: "none",
 });
+status.textContent = "SUNFRONT — loading roster…";
+app.appendChild(status);
 
-// --- Scene ----------------------------------------------------------------
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(PALETTE.sand);
-
-// A warm low sun plus soft fill so the models read against the sand
-// (specs/overview.md — sunlit desert war).
-const sun = new THREE.DirectionalLight(0xfff0d8, 2.1);
-sun.position.set(-0.6, 1.0, -0.4).multiplyScalar(600);
-scene.add(sun);
-scene.add(new THREE.HemisphereLight(0xfff2d6, 0x2a2214, 0.9));
-
-// Placeholder sand ground plane (the generated arena replaces this in Phase 3).
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(ARENA_SIZE, ARENA_SIZE),
-  new THREE.MeshStandardMaterial({
-    color: new THREE.Color(PALETTE.sand),
-    roughness: 1,
-  }),
-);
-ground.rotation.x = -Math.PI / 2;
-ground.position.set(ARENA_SIZE / 2, 0, ARENA_SIZE / 2);
-scene.add(ground);
-
-// --- Camera: fixed low-oblique command view (specs/overview.md) -----------
-// Centred on the player's corner by default; the full ~480-unit corridor width is
-// framed; the diagonal (toward the enemy corner) recedes into the screen. Panning
-// and precise framing are refined in Phase 3.
-const camera = new THREE.PerspectiveCamera(45, ASPECT_RATIO, 1, 6000);
-
-function positionCamera(): void {
-  const target = new THREE.Vector3(PLAYER_MUSTER.x, 0, PLAYER_MUSTER.z);
-  const diag = new THREE.Vector3(1, 0, 1).normalize();
-  const back = 320;
-  const height = 380;
-  camera.position.copy(target).addScaledVector(diag, -back);
-  camera.position.y = height;
-  camera.lookAt(target);
-}
-positionCamera();
-
-// --- Letterboxed 16:9 fit (specs/overview.md) -----------------------------
-function fit(): void {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  let vw = w;
-  let vh = Math.round(w / ASPECT_RATIO);
-  if (vh > h) {
-    vh = h;
-    vw = Math.round(h * ASPECT_RATIO);
-  }
-  const left = Math.round((w - vw) / 2);
-  const top = Math.round((h - vh) / 2);
-  renderer.domElement.style.left = `${left}px`;
-  renderer.domElement.style.top = `${top}px`;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(vw, vh);
-  camera.aspect = ASPECT_RATIO;
-  camera.updateProjectionMatrix();
-}
-window.addEventListener("resize", fit);
-fit();
-
-// --- Render loop ----------------------------------------------------------
-function frame(): void {
-  renderer.render(scene, camera);
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
-
-// --- Load the asset bundle for later phases -------------------------------
-// The scaffold does not yet place the models; loading here surfaces any asset
-// wiring problem early and hands the ready templates to the next phase.
-let assets: LoadedAssets | null = null;
 loadAssets()
-  .then((loaded) => {
-    assets = loaded;
+  .then((assets) => {
+    status.remove();
+    const world = new World(app, assets);
+    const demo = new DemoScene(world, assets);
+
+    let last = performance.now();
+    function frame(now: number): void {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      demo.update(dt);
+      world.render(dt);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // Expose for the headless render proof (screenshotting the demo state).
+    (window as unknown as { sunfront?: unknown }).sunfront = { world, demo };
     console.info(
-      `[sunfront] loaded ${assets.units.size} units, ${assets.structures.size} structures, ` +
+      `[sunfront] world up: ${assets.units.size} unit types, ${assets.structures.size} structures, ` +
         `${assets.spawners.size} spawners, ${assets.effects.size} effects, aegis ready`,
     );
   })
-  .catch((err) => console.error("[sunfront] asset load failed", err));
+  .catch((err) => {
+    console.error("[sunfront] asset load failed", err);
+    status.textContent = "SUNFRONT — asset load failed (see console)";
+    status.style.color = PALETTE.invalid;
+  });
