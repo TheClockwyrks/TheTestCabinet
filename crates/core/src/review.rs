@@ -222,19 +222,22 @@ impl Writeup {
     }
 }
 
-/// The ids of declared checklist `items` that `writeup` does not record a verdict
-/// for.
+/// The verdict ids the declared checklist `items` require that `writeup` does not
+/// record a verdict for. An item graded as a whole contributes its own id; an
+/// item with sub-items contributes one composite id per sub-item (see
+/// [`ReviewItem::verdict_ids`]), so a review is incomplete until every sub-item
+/// has been judged.
 ///
 /// An empty result means every declared item has been addressed — the condition
 /// the reviewer UI and the publish gate require so a case's checklist is
 /// guaranteed to be worked through before a run is released. Verdicts for ids not
-/// among `items` are ignored: a stale entry does not, on its own, make a review
-/// incomplete.
+/// required by `items` are ignored: a stale entry does not, on its own, make a
+/// review incomplete.
 pub fn missing_verdicts(items: &[ReviewItem], writeup: &Writeup) -> Vec<String> {
     items
         .iter()
-        .filter(|item| !writeup.checklist.iter().any(|v| v.id == item.id))
-        .map(|item| item.id.clone())
+        .flat_map(|item| item.verdict_ids())
+        .filter(|id| !writeup.checklist.iter().any(|v| &v.id == id))
         .collect()
 }
 
@@ -252,10 +255,12 @@ pub fn missing_ratings(domains: &[Domain], writeup: &Writeup) -> Vec<String> {
 }
 
 /// A run's numeric score: the point weight it earned over the total available.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Score {
-    /// The weight of the items the reviewer marked `pass`.
-    pub earned: u32,
+    /// The weight of the items the reviewer marked `pass`. Fractional when a
+    /// passed item is only partially credited — an item with sub-items earns the
+    /// fraction of its weight whose sub-items passed (see [`score_checklist`]).
+    pub earned: f64,
     /// The total weight of every declared item — the points available.
     pub total: u32,
 }
@@ -290,11 +295,7 @@ pub fn aggregate_score(scores: &[Score]) -> Option<AggregateScore> {
         return None;
     }
     let total = scores.iter().map(|score| score.total).max().unwrap_or(0);
-    let earned = scores
-        .iter()
-        .map(|score| f64::from(score.earned))
-        .sum::<f64>()
-        / scores.len() as f64;
+    let earned = scores.iter().map(|score| score.earned).sum::<f64>() / scores.len() as f64;
     Some(AggregateScore {
         earned,
         total,
@@ -336,23 +337,40 @@ pub fn score(items: &[ReviewItem], writeup: &Writeup) -> Score {
 }
 
 /// Score the case's declared `items` against a reviewer's `checklist` verdicts:
-/// an item earns its weight when marked `pass` and none otherwise; the total is
-/// the sum of every item's weight.
+/// an item graded as a whole earns its weight when marked `pass` and none
+/// otherwise, while an item with sub-items has its weight split evenly across
+/// them and earns the fraction whose sub-items passed (so `earned` can be
+/// fractional); the total is the sum of every item's weight.
 ///
 /// The core of [`score`], split out for callers that carry the verdicts on their
 /// own (rather than a parsed [`Writeup`]) — the backend scores its stored reviews
 /// this way. Mirrors the TypeScript `scoreChecklist` in
 /// `packages/ui/src/ratings.ts`.
 pub fn score_checklist(items: &[ReviewItem], checklist: &[ReviewVerdict]) -> Score {
+    let passed = |id: &str| {
+        checklist
+            .iter()
+            .any(|v| v.id == id && v.status == VerdictStatus::Pass)
+    };
     let total = items.iter().map(|item| item.weight).sum();
     let earned = items
         .iter()
-        .filter(|item| {
-            checklist
-                .iter()
-                .any(|v| v.id == item.id && v.status == VerdictStatus::Pass)
+        .map(|item| {
+            let weight = f64::from(item.weight);
+            if item.sub_items.is_empty() {
+                // Graded as a whole: the item earns all its weight or none.
+                if passed(&item.id) { weight } else { 0.0 }
+            } else {
+                // Graded per sub-item: the weight is split evenly, so the item
+                // earns the fraction of its sub-items that passed.
+                let passed_subs = item
+                    .sub_items
+                    .iter()
+                    .filter(|sub| passed(&ReviewItem::sub_item_verdict_id(&item.id, &sub.id)))
+                    .count();
+                weight * passed_subs as f64 / item.sub_items.len() as f64
+            }
         })
-        .map(|item| item.weight)
         .sum();
     Score { earned, total }
 }

@@ -24,6 +24,8 @@ import {
   aggregateScore,
   isRating,
   scoreChecklist,
+  subItemVerdictId,
+  verdictIdsForItem,
   type Rating,
 } from "../../../data/ratings";
 import { ReviewList } from "./ReviewList";
@@ -168,13 +170,18 @@ export function RunReviewEditor({
       )
       .then((loaded) => {
         if (cancelled) return;
+        // Verdicts are keyed by verdict id — the item's own id when it is graded
+        // as a whole, or a `<item>.<sub>` composite per sub-item. Seed a draft for
+        // each from the account's prior verdict of the same id.
         const drafts: Record<string, VerdictDraft> = {};
         for (const item of loaded) {
-          const existing = prior.get(item.id);
-          drafts[item.id] = {
-            status: existing?.status ?? "",
-            note: existing?.note ?? "",
-          };
+          for (const vid of verdictIdsForItem(item)) {
+            const existing = prior.get(vid);
+            drafts[vid] = {
+              status: existing?.status ?? "",
+              note: existing?.note ?? "",
+            };
+          }
         }
         setItems(loaded);
         setVerdicts(drafts);
@@ -220,9 +227,14 @@ export function RunReviewEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.id]);
 
-  const allAddressed = items.every((item) => verdicts[item.id]?.status);
+  // An item is fully addressed once every one of its verdict ids (its own, or one
+  // per sub-item) carries a status. The publish gate and the rail's progress count
+  // both require every item to be addressed.
+  const itemAddressed = (item: ReviewItem) =>
+    verdictIdsForItem(item).every((vid) => verdicts[vid]?.status);
+  const allAddressed = items.every(itemAddressed);
   const allRated = domains.every((domain) => ratings[domain.id]);
-  const answeredCount = items.filter((i) => verdicts[i.id]?.status).length;
+  const answeredCount = items.filter(itemAddressed).length;
 
   function setVerdict(id: string, patch: Partial<VerdictDraft>) {
     setVerdicts((prev) => {
@@ -235,6 +247,67 @@ export function RunReviewEditor({
         },
       };
     });
+  }
+
+  // The pass/fail control (and its optional note) for one gradable unit, keyed by
+  // its verdict id — the item's own id, or a `<item>.<sub>` composite for a
+  // sub-item. Shared so a whole-item verdict and each sub-item's verdict use the
+  // identical radiogroup: Pass/Fail as two radio-like buttons, a roving tabindex +
+  // arrow keys, and clicking the selected option clearing it back to unset.
+  function renderVerdict(verdictId: string) {
+    const d = verdicts[verdictId] ?? { status: "", note: "" };
+    return (
+      <div className={styles.checklistControls}>
+        <div
+          className={styles.verdictChoice}
+          role="radiogroup"
+          aria-label="Verdict"
+        >
+          {STATUSES.map((s, i) => {
+            const selected = d.status === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                tabIndex={selected || (!d.status && i === 0) ? 0 : -1}
+                className={`${styles.verdictOption} ${
+                  s === "pass"
+                    ? styles.verdictOptionPass
+                    : styles.verdictOptionFail
+                }${selected ? ` ${styles.verdictOptionActive}` : ""}`}
+                onClick={() =>
+                  setVerdict(verdictId, { status: selected ? "" : s })
+                }
+                onKeyDown={(e) => {
+                  const forward =
+                    e.key === "ArrowRight" || e.key === "ArrowDown";
+                  const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+                  if (!forward && !back) return;
+                  e.preventDefault();
+                  const nextIndex =
+                    (i + (forward ? 1 : STATUSES.length - 1)) % STATUSES.length;
+                  setVerdict(verdictId, { status: STATUSES[nextIndex] });
+                  const group = e.currentTarget.parentElement;
+                  (
+                    group?.children[nextIndex] as HTMLElement | undefined
+                  )?.focus();
+                }}
+              >
+                {VERDICT_META[s].label}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          className={styles.input}
+          value={d.note}
+          onChange={(e) => setVerdict(verdictId, { note: e.target.value })}
+          placeholder="note (optional)"
+        />
+      </div>
+    );
   }
 
   // Shortcut for a run that does not launch at all: fail every checklist item and
@@ -252,8 +325,10 @@ export function RunReviewEditor({
     setVerdicts((prev) => {
       const next: Record<string, VerdictDraft> = {};
       for (const it of items) {
-        const base = prev[it.id] ?? { status: "", note: "" };
-        next[it.id] = { ...base, status: "fail" };
+        for (const vid of verdictIdsForItem(it)) {
+          const base = prev[vid] ?? { status: "", note: "" };
+          next[vid] = { ...base, status: "fail" };
+        }
       }
       return next;
     });
@@ -265,15 +340,19 @@ export function RunReviewEditor({
   }
 
   function buildChecklist(): ReviewVerdict[] {
-    return items.map((item) => {
-      const draft = verdicts[item.id] ?? { status: "", note: "" };
-      const note = draft.note.trim();
-      return {
-        id: item.id,
-        status: draft.status as VerdictStatus,
-        ...(note ? { note } : {}),
-      };
-    });
+    // One verdict per verdict id: the item's own when graded as a whole, or one
+    // per sub-item (keyed by the `<item>.<sub>` composite) when it has sub-items.
+    return items.flatMap((item) =>
+      verdictIdsForItem(item).map((vid) => {
+        const draft = verdicts[vid] ?? { status: "", note: "" };
+        const note = draft.note.trim();
+        return {
+          id: vid,
+          status: draft.status as VerdictStatus,
+          ...(note ? { note } : {}),
+        };
+      }),
+    );
   }
 
   // The reviewer's input as the worker contract carries it.
@@ -367,7 +446,6 @@ export function RunReviewEditor({
     ) : null;
 
   const item = items[current];
-  const draft = item ? (verdicts[item.id] ?? { status: "", note: "" }) : null;
   const expected = item?.reference
     ? referencesByView.get(item.reference)
     : undefined;
@@ -400,7 +478,7 @@ export function RunReviewEditor({
             </p>
           )}
 
-          {item && draft && (
+          {item && (
             <div className={styles.reviewLayout}>
               {/* The navigable rail of every checklist item; answered items are
               marked done, the current one highlighted. */}
@@ -421,9 +499,20 @@ export function RunReviewEditor({
                 </button>
                 <ol className={styles.itemNavList}>
                   {items.map((it, index) => {
-                    const status = verdicts[it.id]?.status ?? "";
-                    const answered = Boolean(status);
+                    // Aggregate the item's verdict ids (its own, or one per
+                    // sub-item) into a single rail mark: fully addressed and all
+                    // passing shows a check, fully addressed with any fail shows a
+                    // cross, otherwise the item's number.
+                    const statuses = verdictIdsForItem(it).map(
+                      (vid) => verdicts[vid]?.status ?? "",
+                    );
+                    const answered = statuses.every(Boolean);
+                    const anyFail = statuses.some((s) => s === "fail");
                     const isCurrent = index === current;
+                    const mark = !answered ? index + 1 : anyFail ? "✕" : "✓";
+                    const title = answered
+                      ? `${it.title} — ${anyFail ? "some Fail" : "all Pass"}`
+                      : undefined;
                     return (
                       <li key={it.id}>
                         <button
@@ -431,27 +520,19 @@ export function RunReviewEditor({
                           className={`${styles.itemNav}${
                             isCurrent ? ` ${styles.itemNavActive}` : ""
                           }${answered ? ` ${styles.itemNavDone}` : ""}${
-                            status === "fail" ? ` ${styles.itemNavFail}` : ""
+                            answered && anyFail ? ` ${styles.itemNavFail}` : ""
                           }`}
                           onClick={() => setCurrent(index)}
                           aria-current={isCurrent ? "true" : undefined}
-                          title={
-                            answered
-                              ? `${it.title} — ${VERDICT_META[status as VerdictStatus].label}`
-                              : undefined
-                          }
+                          title={title}
                         >
-                          {/* The mark reflects the verdict: a check for pass, a
-                          cross for fail, else the item's number. */}
+                          {/* The mark reflects the verdict: a check when every
+                          point passed, a cross when any failed, else the number. */}
                           <span
                             className={styles.itemNavMark}
                             aria-hidden="true"
                           >
-                            {status === "pass"
-                              ? "✓"
-                              : status === "fail"
-                                ? "✕"
-                                : index + 1}
+                            {mark}
                           </span>
                           <span className={styles.itemNavTitle}>
                             {it.title} ({pts(it.weight)})
@@ -534,68 +615,27 @@ export function RunReviewEditor({
                   </div>
                 )}
 
-                <div className={styles.checklistControls}>
-                  {/* Pass/Fail as two radio-like buttons so recording a verdict
-                  is one click. A roving tabindex + arrow keys make the pair a
-                  proper radiogroup; clicking the selected option clears it back
-                  to unset. */}
-                  <div
-                    className={styles.verdictChoice}
-                    role="radiogroup"
-                    aria-label="Verdict"
-                  >
-                    {STATUSES.map((s, i) => {
-                      const selected = draft.status === s;
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          tabIndex={
-                            selected || (!draft.status && i === 0) ? 0 : -1
-                          }
-                          className={`${styles.verdictOption} ${
-                            s === "pass"
-                              ? styles.verdictOptionPass
-                              : styles.verdictOptionFail
-                          }${selected ? ` ${styles.verdictOptionActive}` : ""}`}
-                          onClick={() =>
-                            setVerdict(item.id, { status: selected ? "" : s })
-                          }
-                          onKeyDown={(e) => {
-                            const forward =
-                              e.key === "ArrowRight" || e.key === "ArrowDown";
-                            const back =
-                              e.key === "ArrowLeft" || e.key === "ArrowUp";
-                            if (!forward && !back) return;
-                            e.preventDefault();
-                            const nextIndex =
-                              (i + (forward ? 1 : STATUSES.length - 1)) %
-                              STATUSES.length;
-                            setVerdict(item.id, { status: STATUSES[nextIndex] });
-                            const group = e.currentTarget.parentElement;
-                            (
-                              group?.children[nextIndex] as
-                                | HTMLElement
-                                | undefined
-                            )?.focus();
-                          }}
-                        >
-                          {VERDICT_META[s].label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <input
-                    className={styles.input}
-                    value={draft.note}
-                    onChange={(e) =>
-                      setVerdict(item.id, { note: e.target.value })
-                    }
-                    placeholder="note (optional)"
-                  />
-                </div>
+                {/* Record a verdict. An item graded as a whole gets one Pass/Fail
+                control; an item with sub-items is graded per sub-item, each a
+                name-only row (lettered a, b, c…) with its own control, so its
+                weight is split across independently scored points. */}
+                {item.subItems && item.subItems.length > 0 ? (
+                  <ol className={styles.subItemList}>
+                    {item.subItems.map((sub, i) => (
+                      <li key={sub.id} className={styles.subItem}>
+                        <span className={styles.subItemTitle}>
+                          <span className={styles.subItemLetter}>
+                            {String.fromCharCode(97 + i)}.
+                          </span>{" "}
+                          {sub.title}
+                        </span>
+                        {renderVerdict(subItemVerdictId(item.id, sub.id))}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  renderVerdict(item.id)
+                )}
 
                 <div className={styles.questionNav}>
                   <button

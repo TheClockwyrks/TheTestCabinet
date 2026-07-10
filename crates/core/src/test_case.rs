@@ -816,11 +816,37 @@ struct ManifestReviewItem {
     frames: Vec<u32>,
     /// How many points this item is worth toward the run's score (an academic
     /// test's per-question marks). **Required** and must be greater than zero.
+    /// When the item declares `sub_items`, this weight is split evenly across
+    /// them (each sub-item is worth `weight / sub_items.len()` points).
     weight: u32,
     /// Optional scoring domain this item belongs to. Must name a declared
     /// `[[domain]]`. `None` for a general item that belongs to no single domain.
     #[serde(default)]
     domain: Option<String>,
+    /// Optional name-only sub-items breaking this item into independently graded
+    /// points (an academic question's "2a", "2b"). When present, the reviewer
+    /// records a pass/fail per sub-item instead of one for the item as a whole,
+    /// and the item's `weight` is split evenly across them. Declared as an inline
+    /// array of `{ id, title }` tables (or repeated `[[review_item.sub_item]]`
+    /// tables).
+    #[serde(default, rename = "sub_item", alias = "sub_items")]
+    sub_items: Vec<ManifestSubReviewItem>,
+}
+
+/// A single name-only sub-item of a `[[review_item]]`: an independently graded
+/// point within the item, carrying only an id (which keys its verdict) and a
+/// title (its heading in the reviewer UI). It has no prose of its own — the
+/// parent item's `text` is the shared context, and the sub-item's title names
+/// the specific point.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestSubReviewItem {
+    /// Stable slug identifying this sub-item within its parent item. The verdict
+    /// recorded against it is keyed by the composite `<item id>.<sub-item id>`
+    /// (see [`ReviewItem::sub_item_verdict_id`]).
+    id: String,
+    /// The short heading shown for this sub-item in the reviewer UI (a
+    /// synthesized letter is prefixed at display time).
+    title: String,
 }
 
 /// A single `[[domain]]` entry in the manifest: one scoring domain a reviewer
@@ -2411,14 +2437,65 @@ pub struct ReviewItem {
     #[serde(default)]
     pub frames: Vec<u32>,
     /// How many points this item is worth toward the run's score. Always greater
-    /// than zero. A run earns this item's weight when the reviewer marks it
-    /// `pass`, and none when they mark it `fail`; the run's score is the earned
-    /// weight over the total declared weight (see [`crate::review::score`]).
+    /// than zero. When the item has no [`Self::sub_items`], a run earns this whole
+    /// weight when the reviewer marks it `pass` and none when they mark it `fail`.
+    /// When it has sub-items, the weight is split evenly across them and the item
+    /// earns the fraction of it that passed. Either way, the run's score is the
+    /// earned weight over the total declared weight (see [`crate::review::score`]).
     pub weight: u32,
     /// The scoring [`Domain`] this item belongs to (by id), or `None` for a
     /// general item that belongs to no single domain. Used to group the score
     /// breakdown by domain in the reviewer and verdict UIs.
     pub domain: Option<String>,
+    /// Name-only sub-items breaking this item into independently graded points.
+    /// Empty for an item graded as a whole (the common case). When non-empty, the
+    /// reviewer records a pass/fail per sub-item rather than one for the item, and
+    /// the item's [`Self::weight`] is split evenly across them; each sub-item's
+    /// verdict is keyed by the composite [`Self::sub_item_verdict_id`].
+    #[serde(default)]
+    pub sub_items: Vec<SubReviewItem>,
+}
+
+impl ReviewItem {
+    /// The verdict id for one of this item's sub-items: the composite
+    /// `<item id>.<sub-item id>`. This is the id a reviewer's [`ReviewVerdict`]
+    /// carries for the sub-item, so a sub-item's verdict is an ordinary verdict
+    /// (no new wire shape) whose id names the point within the item. Mirrored by
+    /// `subItemVerdictId` in `packages/ui/src/ratings.ts`.
+    ///
+    /// [`ReviewVerdict`]: crate::review::ReviewVerdict
+    pub fn sub_item_verdict_id(item_id: &str, sub_item_id: &str) -> String {
+        format!("{item_id}.{sub_item_id}")
+    }
+
+    /// The verdict ids a reviewer must record for this item: the item's own id
+    /// when it is graded as a whole, or one composite id per sub-item when it
+    /// declares [`Self::sub_items`]. This is the set of ids that must appear in a
+    /// review's checklist for the item to be fully addressed, and the ids scoring
+    /// looks up. Mirrored by `verdictIdsForItem` in `packages/ui/src/ratings.ts`.
+    pub fn verdict_ids(&self) -> Vec<String> {
+        if self.sub_items.is_empty() {
+            vec![self.id.clone()]
+        } else {
+            self.sub_items
+                .iter()
+                .map(|sub| Self::sub_item_verdict_id(&self.id, &sub.id))
+                .collect()
+        }
+    }
+}
+
+/// A name-only sub-item of a [`ReviewItem`]: one independently graded point
+/// within the item, carrying only an id and a title. See
+/// [`ManifestSubReviewItem`] for the manifest shape and the semantics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubReviewItem {
+    /// Stable slug identifying this sub-item within its parent item; part of the
+    /// composite verdict id (see [`ReviewItem::sub_item_verdict_id`]).
+    pub id: String,
+    /// The short heading shown for this sub-item in the reviewer UI.
+    pub title: String,
 }
 
 /// A scoring domain a test case declares.
@@ -4518,6 +4595,31 @@ impl TestCaseCatalog {
                         }
                     }
                 }
+                // Sub-items break the item into independently graded points. Each
+                // needs a non-empty id (it keys the sub-item's verdict) and title
+                // (its heading), and the ids must be unique within the item so a
+                // recorded sub-item verdict is unambiguous.
+                let mut seen_sub_ids = std::collections::BTreeSet::new();
+                for sub in &item.sub_items {
+                    if sub.id.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "review_item `{}` has a sub-item with an empty `id`",
+                            item.id
+                        )));
+                    }
+                    if sub.title.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "review_item `{}` sub-item `{}` has an empty `title`",
+                            item.id, sub.id
+                        )));
+                    }
+                    if !seen_sub_ids.insert(&sub.id) {
+                        return Err(invalid(format!(
+                            "review_item `{}` declares two sub-items with the same id `{}`",
+                            item.id, sub.id
+                        )));
+                    }
+                }
                 Ok(ReviewItem {
                     id: item.id.clone(),
                     title: item.title.clone(),
@@ -4528,6 +4630,14 @@ impl TestCaseCatalog {
                     frames: item.frames.clone(),
                     weight: item.weight,
                     domain: item.domain.clone(),
+                    sub_items: item
+                        .sub_items
+                        .iter()
+                        .map(|sub| SubReviewItem {
+                            id: sub.id.clone(),
+                            title: sub.title.clone(),
+                        })
+                        .collect(),
                 })
             };
 
@@ -4827,16 +4937,22 @@ impl TestCaseCatalog {
             for item in &variant.review_items {
                 review_items.push(resolve_review_item(item, &effective_domains)?);
             }
-            // The common items and the variant's own are recorded under one id
-            // each; two items sharing an id would make a recorded verdict
-            // ambiguous, so a collision is rejected.
+            // Each verdict a reviewer records is keyed by an id (the item's own,
+            // or a composite `<item>.<sub-item>` when the item has sub-items); two
+            // that collide would make a recorded verdict ambiguous, so a collision
+            // across the common items and the variant's own is rejected. Expanding
+            // to verdict ids also catches a sub-item id colliding with a plain
+            // item id.
             let mut seen_ids = std::collections::BTreeSet::new();
             for item in common_review_items.iter().chain(review_items.iter()) {
-                if !seen_ids.insert(&item.id) {
-                    return Err(invalid(format!(
-                        "variant `{}` declares two review items with the same id `{}`",
-                        variant.slug, item.id
-                    )));
+                for verdict_id in item.verdict_ids() {
+                    if !seen_ids.insert(verdict_id.clone()) {
+                        return Err(invalid(format!(
+                            "variant `{}` declares two review items (or sub-items) resolving to \
+                             the same verdict id `{}`",
+                            variant.slug, verdict_id
+                        )));
+                    }
                 }
             }
 

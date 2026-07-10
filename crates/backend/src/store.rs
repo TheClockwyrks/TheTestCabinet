@@ -507,12 +507,27 @@ pub struct StoredReviewItem {
     #[serde(default)]
     pub frames: Vec<u32>,
     /// How many points the item is worth toward the run's score. Always greater
-    /// than zero.
+    /// than zero. Split evenly across `sub_items` when the item has any.
     pub weight: u32,
     /// The scoring domain (by id) the item belongs to, or `None` for a general
     /// item that belongs to no single domain.
     #[serde(default)]
     pub domain: Option<String>,
+    /// Name-only sub-items this item is graded by, each an independently scored
+    /// point. Empty for an item graded as a whole.
+    #[serde(default)]
+    pub sub_items: Vec<StoredSubReviewItem>,
+}
+
+/// A name-only sub-item of a [`StoredReviewItem`], persisted in a
+/// [`StoredManifest`]: one independently graded point within the item.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredSubReviewItem {
+    /// Stable slug identifying the sub-item within its parent; part of the
+    /// composite verdict id the reviewer records against it.
+    pub id: String,
+    /// The short heading shown for the sub-item in the reviewer UI.
+    pub title: String,
 }
 
 /// A scoring domain persisted in a [`StoredManifest`]. A reviewer rates each

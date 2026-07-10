@@ -197,6 +197,14 @@ interface SnapshotReviewItem {
   frames?: number[];
   weight: number;
   domain?: string | null;
+  // Name-only sub-items this item is graded by, each an independently scored
+  // pass/fail point. Absent on snapshots written before sub-items existed.
+  subItems?: SnapshotSubReviewItem[];
+}
+
+interface SnapshotSubReviewItem {
+  id: string;
+  title: string;
 }
 
 interface SnapshotDomain {
@@ -260,6 +268,12 @@ interface AssembledReviewItem {
   frames: number[];
   weight: number;
   domain: string | null;
+  subItems: AssembledSubReviewItem[];
+}
+
+interface AssembledSubReviewItem {
+  id: string;
+  title: string;
 }
 
 interface AssembledDomain {
@@ -493,6 +507,10 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       frames: item.frames ?? [],
       weight: item.weight,
       domain: item.domain ?? null,
+      subItems: (item.subItems ?? []).map((sub) => ({
+        id: sub.id,
+        title: sub.title,
+      })),
     }));
     // The common domains apply to every variant; the variant's own additive
     // domains follow. This effective set is what a run of this variant is rated

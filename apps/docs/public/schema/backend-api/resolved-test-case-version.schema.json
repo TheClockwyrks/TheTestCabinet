@@ -472,6 +472,13 @@
         "reference": {
           "type": ["string", "null"]
         },
+        "subItems": {
+          "description": "Name-only sub-items the reviewer grades this item by, each an\nindependently scored pass/fail point. Empty for an item graded as a whole.",
+          "items": {
+            "$ref": "#/$defs/SubReviewItemOut"
+          },
+          "type": "array"
+        },
         "text": {
           "type": "string"
         },
@@ -484,7 +491,7 @@
           "type": "integer"
         }
       },
-      "required": ["id", "title", "text", "weight"],
+      "required": ["id", "title", "text", "weight", "subItems"],
       "type": "object"
     },
     "SpecKind": {
@@ -626,6 +633,18 @@
       "required": ["timestepMs", "maxTicks"],
       "type": "object"
     },
+    "SubReviewItemOut": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "title"],
+      "type": "object"
+    },
     "ToolOut": {
       "properties": {
         "binary": {
@@ -710,6 +729,10 @@
             "$ref": "#/$defs/ProofOut"
           },
           "type": "array"
+        },
+        "referenceBuild": {
+          "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), served on the console's \"Reference\" tab. `None` when the\nvariant declares no `reference_implementation`, or has one but it has not been\ndeployed yet. Written out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run.",
+          "type": ["string", "null"]
         },
         "references": {
           "items": {

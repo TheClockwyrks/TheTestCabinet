@@ -69,9 +69,10 @@ plays the finished build and writes it up. A review carries three things:
   effective set, so a flawless mode cannot mask a broken one.
 - A **checklist** of binary verdicts — **pass** or **fail**, with an optional
   note — one for each [`[[review_item]]`](/testing/end-to-end/manifests/) the
-  case version declares. Every declared item must carry a verdict before a run
-  can be published, so a reviewer cannot silently skip a requirement the author
-  called out.
+  case version declares, or one per **sub-item** for an item that declares
+  [sub-items](/testing/end-to-end/manifests/#sub-items). Every declared item (and
+  every sub-item) must carry a verdict before a run can be published, so a reviewer
+  cannot silently skip a requirement the author called out.
 
 ## Scoring
 
@@ -81,6 +82,12 @@ the total declared weight — `scored / total` points, like an academic test. Th
 score and the overall rating are shown together on the run, and each test case's
 [leaderboard](/components/site/overview/#leaderboard) ranks the models that have
 scored runs of it by points (each model's best run).
+
+An item with [sub-items](/testing/end-to-end/manifests/#sub-items) is scored per
+sub-item instead of as a whole: its weight splits evenly across them, so it earns
+`weight × (passed sub-items ÷ total sub-items)` — partial credit for a section a
+build gets mostly right. The available total is unchanged (still the sum of item
+weights); only the earned score becomes fractional.
 
 Publishing refuses a run with no review, so every published end-to-end
 implementation is both scored and framed by a human assessment rather than

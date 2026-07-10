@@ -1135,7 +1135,61 @@ fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
         .resolve("demo", "v1.0.0")
         .expect_err("a colliding review-item id is rejected");
     assert!(
-        format!("{err}").contains("two review items with the same id `dup`"),
+        format!("{err}").contains("the same verdict id `dup`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn resolves_review_item_sub_items() {
+    // A review item declaring name-only sub-items (inline table array).
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[review_item]]\nid = \"ball-spin\"\ntitle = \"Paddle spin\"\n\
+         text = \"Swinging a paddle imparts spin on the ball.\"\nweight = 2\n\
+         sub_items = [\n\
+           { id = \"stationary\", title = \"No spin while stationary\" },\n\
+           { id = \"moving\", title = \"Imparts spin while moving\" },\n\
+         ]\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
+        .to_string();
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let item = &version.common_review_items[0];
+    let sub_ids: Vec<&str> = item.sub_items.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(sub_ids, ["stationary", "moving"]);
+    // The verdict ids expand to one composite per sub-item.
+    assert_eq!(
+        item.verdict_ids(),
+        vec![
+            "ball-spin.stationary".to_string(),
+            "ball-spin.moving".to_string()
+        ]
+    );
+}
+
+#[test]
+fn a_review_item_with_duplicate_sub_item_ids_is_rejected() {
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[review_item]]\nid = \"ball-spin\"\ntitle = \"Paddle spin\"\n\
+         text = \"Swinging a paddle imparts spin on the ball.\"\nweight = 2\n\
+         sub_items = [\n\
+           { id = \"dup\", title = \"First\" },\n\
+           { id = \"dup\", title = \"Second\" },\n\
+         ]\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n"
+        .to_string();
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("duplicate sub-item ids are rejected");
+    assert!(
+        format!("{err}").contains("two sub-items with the same id `dup`"),
         "unexpected error: {err}"
     );
 }

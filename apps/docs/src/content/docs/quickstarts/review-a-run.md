@@ -54,13 +54,14 @@ tcab review runs/<id>/run-record.json --writeup runs/<id>/writeup.md
 The review file is also hand-editable. Create `runs/<id>/writeup.md` beside the
 run's `run-record.json`, with a `rating.<domain>:` line per scoring domain in
 YAML frontmatter and any checklist verdicts as `review.<id>: <status> [note]`
-lines:
+lines (a sub-itemed item uses one `review.<item>.<sub>:` line per sub-item):
 
 ```markdown
 ---
 rating.single-player: flawless
 rating.versus: scuffed
-review.ball-spin: pass
+review.ball-spin.stationary: pass
+review.ball-spin.moving: pass
 review.obstacle-bank: fail ball clips the top obstacle corner
 ---
 
@@ -77,8 +78,8 @@ Each domain's rating must be one of:
 - **broken** — doesn't follow the spec, or is unplayable.
 
 The body must not be empty, and a run cannot be published while any declared
-domain is unrated or any declared checklist item is missing its verdict. The
-run's overall rating is the worst across its domains.
+domain is unrated or any declared checklist item — or sub-item — is missing its
+verdict. The run's overall rating is the worst across its domains.
 
 ## Preview the build
 

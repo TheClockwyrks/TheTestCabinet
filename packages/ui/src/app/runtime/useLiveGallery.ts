@@ -157,6 +157,10 @@ async function toTestCaseSummary(
         frames: item.frames ?? [],
         weight: item.weight,
         domain: item.domain ?? null,
+        subItems: (item.subItems ?? []).map((sub) => ({
+          id: sub.id,
+          title: sub.title,
+        })),
       })),
       // The variant's effective scoring domains (common + its own), already
       // merged on the resolved VariantInfo — the set a run of this variant is

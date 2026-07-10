@@ -24,7 +24,8 @@ use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
     StoredContract, StoredDomain, StoredManifest, StoredMatch, StoredOutput, StoredProof,
     StoredReference, StoredReplay, StoredReviewItem, StoredSandbox, StoredSimulation, StoredSpec,
-    StoredTool, StoredVariant, StoredWorkspaceFile, reference_in, write_manifest_in,
+    StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspaceFile, reference_in,
+    write_manifest_in,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -558,6 +559,14 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
         frames: item.frames.clone(),
         weight: item.weight,
         domain: item.domain.clone(),
+        sub_items: item
+            .sub_items
+            .iter()
+            .map(|sub| StoredSubReviewItem {
+                id: sub.id.clone(),
+                title: sub.title.clone(),
+            })
+            .collect(),
     }
 }
 

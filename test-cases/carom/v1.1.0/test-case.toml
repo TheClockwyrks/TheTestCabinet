@@ -225,6 +225,11 @@ id = "ball-spin"
 title = "Paddle spin"
 text = "Swinging a paddle as it strikes the ball curves the ball's flight afterward (up vs. down curves it opposite ways); a stationary paddle imparts no new spin."
 weight = 1
+# Two independently graded points: the item's weight splits evenly across them.
+sub_items = [
+  { id = "stationary", title = "No spin while stationary" },
+  { id = "moving", title = "Imparts spin while moving" },
+]
 
 [[review_item]]
 id = "spin-decay"
@@ -237,6 +242,10 @@ id = "paddle-angle"
 title = "Paddle hit angle"
 text = "Hitting the center of a stationary paddle sends the ball straight across; hitting the extreme top or bottom edge sends it off at a steep (~55-degree) angle."
 weight = 1
+sub_items = [
+  { id = "center", title = "Center hit goes straight" },
+  { id = "edge", title = "Edge hit goes off at a steep angle" },
+]
 
 [[review_item]]
 id = "paddle-speed"
@@ -261,12 +270,20 @@ id = "obstacle-bank"
 title = "Obstacle bank shots"
 text = "The ball bounces off both mid-field obstacles, enabling bank shots, and never tunnels through an obstacle, paddle, or wall even at high speed."
 weight = 1
+sub_items = [
+  { id = "bounces", title = "Bounces off both obstacles" },
+  { id = "no-tunnel", title = "Never tunnels through at high speed" },
+]
 
 [[review_item]]
 id = "gameplay-keybinds"
 title = "Gameplay keybinds"
 text = "The paddles can be controlled with the <Up> and <Down> or <w> and <s> keys (both in Versus mode), and the game can be paused using <Esc> or <p>"
 weight = 1
+sub_items = [
+  { id = "movement", title = "Arrow and W/S keys move the paddles" },
+  { id = "pause", title = "Esc or P pauses" },
+]
 
 [[review_item]]
 id = "scoring-point"

@@ -242,6 +242,11 @@ weight = 1
 domain = "sensing"
 reference = "sonar"
 proof = "sonar"
+sub_items = [
+  { id = "wavefront", title = "Travels as a wavefront through corridors, bending and reflecting" },
+  { id = "near-before-far", title = "Reveals near tiles before far ones" },
+  { id = "marks-predators", title = "Marks any predator it reaches" },
+]
 
 [[review_item]]
 id = "sonar-attracts-gloamfin"
@@ -256,6 +261,11 @@ title = "The Lanternjaw hunts light"
 text = "The Lanternjaw's detection range grows with your brightness, and it is shaken by going dim or by ink. Its bulb-light is always visible at any distance — drawn to look almost identical to the bonus drifter, so you cannot tell the two apart at a glance — while its body stays hidden by the dark. Eating a streak near it pulls it straight to you."
 weight = 1
 domain = "predators"
+sub_items = [
+  { id = "brightness-range", title = "Detection range grows with your brightness" },
+  { id = "shaken", title = "Going dim or ink shakes it" },
+  { id = "bulb-lookalike", title = "Bulb-light always visible, near-identical to the drifter" },
+]
 
 [[review_item]]
 id = "gloamfin-hunt"
@@ -264,6 +274,11 @@ text = "The Gloamfin wanders at ordinary speed (no speed wind-up over time). Whe
 weight = 1
 domain = "predators"
 proof = "hunt"
+sub_items = [
+  { id = "steady-wander", title = "Wanders at steady speed, no wind-up" },
+  { id = "sprints-to-ping", title = "A ping catching you sets it sprinting to that tile" },
+  { id = "lost-you-window", title = "Fires a guaranteed 'lost you' ping you can break away during" },
+]
 
 [[review_item]]
 id = "flarefish-flare"
@@ -300,6 +315,10 @@ text = "Contact with any predator costs a life and resets the trench — the for
 weight = 1
 reference = "game-over"
 proof = "game-over"
+sub_items = [
+  { id = "caught", title = "Contact costs a life and resets the trench, eaten plankton stay eaten" },
+  { id = "descend", title = "Clearing every plankton descends to a deeper, harder trench" },
+]
 
 [[review_item]]
 id = "states-complete"

@@ -306,12 +306,27 @@ export interface ReviewItem {
   // (it applies to the asset as a whole).
   sequences?: string[];
   frames?: number[];
-  // Points this item is worth toward the run's score: a pass earns this weight, a
-  // fail earns none.
+  // Points this item is worth toward the run's score. Graded as a whole (no
+  // sub-items): a pass earns this weight, a fail earns none. With sub-items: the
+  // weight is split evenly across them and the item earns the fraction that
+  // passed.
   weight: number;
   // Optional scoring domain (by id) this item belongs to, or null/undefined for a
   // general item that belongs to no single domain.
   domain?: string | null;
+  // Optional name-only sub-items breaking this item into independently graded
+  // pass/fail points (an academic question's "2a", "2b"). When present, the
+  // reviewer records a verdict per sub-item instead of one for the item; each
+  // sub-item's verdict is keyed by the composite `<item id>.<sub id>` (see
+  // `subItemVerdictId`). Empty/undefined for an item graded as a whole.
+  subItems?: ReviewSubItem[];
+}
+
+// A name-only sub-item of a review item: one independently graded pass/fail
+// point, carrying only its id (which keys its verdict) and its title (a heading).
+export interface ReviewSubItem {
+  id: string;
+  title: string;
 }
 
 // A scoring domain a test case declares; a reviewer rates each independently and

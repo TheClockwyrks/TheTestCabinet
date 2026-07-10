@@ -2,7 +2,7 @@
 //! rendering the canonical file back out, and scoring a run.
 
 use super::*;
-use crate::test_case::{Domain, ReviewItem};
+use crate::test_case::{Domain, ReviewItem, SubReviewItem};
 
 /// A review item with the given id and weight, in no domain — the common shape
 /// for these tests.
@@ -17,6 +17,40 @@ fn item(id: &str, weight: u32) -> ReviewItem {
         frames: Vec::new(),
         weight,
         domain: None,
+        sub_items: Vec::new(),
+    }
+}
+
+/// A review item graded by name-only sub-items (each id becomes its own point),
+/// with the given total weight split evenly across them.
+fn item_with_sub_items(id: &str, weight: u32, sub_ids: &[&str]) -> ReviewItem {
+    ReviewItem {
+        sub_items: sub_ids
+            .iter()
+            .map(|sub_id| SubReviewItem {
+                id: sub_id.to_string(),
+                title: sub_id.to_string(),
+            })
+            .collect(),
+        ..item(id, weight)
+    }
+}
+
+/// A pass verdict for the checklist id (an item id, or a `<item>.<sub>` composite).
+fn pass(id: &str) -> ReviewVerdict {
+    ReviewVerdict {
+        id: id.to_string(),
+        status: VerdictStatus::Pass,
+        note: None,
+    }
+}
+
+/// A fail verdict for the checklist id.
+fn fail(id: &str) -> ReviewVerdict {
+    ReviewVerdict {
+        id: id.to_string(),
+        status: VerdictStatus::Fail,
+        note: None,
     }
 }
 
@@ -338,9 +372,63 @@ fn score_sums_the_weight_of_passed_items() {
     assert_eq!(
         score(&items, &writeup),
         Score {
-            earned: 3,
+            earned: 3.0,
             total: 6
         }
+    );
+}
+
+#[test]
+fn score_credits_the_fraction_of_an_items_sub_items_that_passed() {
+    // One plain item (weight 2) and one item graded by two sub-items (weight 4,
+    // so each sub-item is worth 2). The plain item passes; of the sub-itemed
+    // item's two sub-items, one passes and one fails.
+    let items = vec![
+        item("plain", 2),
+        item_with_sub_items("spin", 4, &["stationary", "moving"]),
+    ];
+    let checklist = vec![pass("plain"), pass("spin.stationary"), fail("spin.moving")];
+    // plain earns 2; spin earns 4 * 1/2 = 2. Total is 2 + 4 = 6.
+    let scored = score_checklist(&items, &checklist);
+    assert_eq!(scored.total, 6);
+    assert!((scored.earned - 4.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn score_of_a_sub_itemed_item_is_all_or_nothing_at_the_extremes() {
+    let items = vec![item_with_sub_items("q", 1, &["a", "b", "c"])];
+    // All three sub-items pass: the item earns its whole weight.
+    let all = score_checklist(&items, &[pass("q.a"), pass("q.b"), pass("q.c")]);
+    assert!((all.earned - 1.0).abs() < f64::EPSILON);
+    // None pass: the item earns nothing (a plain-item fail would look the same).
+    let none = score_checklist(&items, &[fail("q.a"), fail("q.b"), fail("q.c")]);
+    assert_eq!(none.earned, 0.0);
+    // One of three passes: a third of the weight.
+    let some = score_checklist(&items, &[pass("q.a"), fail("q.b"), fail("q.c")]);
+    assert!((some.earned - 1.0 / 3.0).abs() < f64::EPSILON);
+    assert_eq!(some.total, 1);
+}
+
+#[test]
+fn missing_verdicts_requires_every_sub_item_of_a_sub_itemed_item() {
+    let items = vec![
+        item("plain", 1),
+        item_with_sub_items("spin", 2, &["stationary", "moving"]),
+    ];
+    let writeup = Writeup {
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }],
+        body: "Body.".to_string(),
+        // The plain item and one of the two sub-items are addressed; the other
+        // sub-item ("spin.moving") is not, and a verdict on the parent id "spin"
+        // does not count for it.
+        checklist: vec![pass("plain"), pass("spin.stationary"), pass("spin")],
+    };
+    assert_eq!(
+        missing_verdicts(&items, &writeup),
+        vec!["spin.moving".to_string()]
     );
 }
 
@@ -349,11 +437,11 @@ fn aggregate_score_averages_earned_over_the_shared_total() {
     // Two reviewers scored the same 6-point checklist: one earned 6, one earned 3.
     let scores = [
         Score {
-            earned: 6,
+            earned: 6.0,
             total: 6,
         },
         Score {
-            earned: 3,
+            earned: 3.0,
             total: 6,
         },
     ];

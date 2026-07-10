@@ -205,6 +205,13 @@
           },
           "type": "array"
         },
+        "subItems": {
+          "description": "Name-only sub-items this item is graded by, each an independently scored\npass/fail point. Empty for an item graded as a whole.",
+          "items": {
+            "$ref": "#/$defs/CaseSubReviewItemOut"
+          },
+          "type": "array"
+        },
         "text": {
           "type": "string"
         },
@@ -217,7 +224,15 @@
           "type": "integer"
         }
       },
-      "required": ["id", "title", "text", "sequences", "frames", "weight"],
+      "required": [
+        "id",
+        "title",
+        "text",
+        "sequences",
+        "frames",
+        "weight",
+        "subItems"
+      ],
       "type": "object"
     },
     "CaseSeededInputOut": {
@@ -239,6 +254,19 @@
       "required": ["path", "text", "kind"],
       "type": "object"
     },
+    "CaseSubReviewItemOut": {
+      "description": "A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one\nindependently graded point within the item, carrying only its id and title.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "title"],
+      "type": "object"
+    },
     "CaseVariantOut": {
       "description": "One variant of a case as the gallery shows it.",
       "properties": {
@@ -258,6 +286,10 @@
         "prompt": {
           "description": "The variant's prompt, rendered as a real run receives it, so the public\ngallery's Specifications tab shows the instruction the model was handed.",
           "type": "string"
+        },
+        "referenceBuild": {
+          "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), shown on the static gallery's \"Reference\" tab. `null` when\nthe variant declares no `reference_implementation`, or has one that has not\nbeen deployed yet. Written out-of-band by `tcab publish-reference` into the\n`case_reference_build` table and folded in here at export — never resolved\nfrom the manifest and never seeded into a run.",
+          "type": ["string", "null"]
         },
         "reviewItems": {
           "description": "Reviewer checklist items additive to the common ones, with their point\nweights, surfaced only when this variant is selected.",

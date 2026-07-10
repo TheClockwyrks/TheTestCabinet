@@ -248,11 +248,16 @@ record.
 The **checklist** records a binary verdict — **pass** or **fail**, with an
 optional note — for each reviewer checklist item the test case version declares
 (see the version manifest's
-[`review_item`s](/testing/end-to-end/manifests/)). Every declared item must carry
-a verdict before a review can be submitted, so a reviewer cannot silently skip a
-requirement the case author called out. Each item is worth a **weight** in
-points: a `pass` earns the item's weight and a `fail` earns none, and a review's
-**score** is the earned weight over the total declared weight.
+[`review_item`s](/testing/end-to-end/manifests/)). An item that declares
+[sub-items](/testing/end-to-end/manifests/#sub-items) is instead verdicted per
+sub-item, its verdict recorded under the composite id `<item id>.<sub-item id>`.
+Every declared item — and every sub-item — must carry a verdict before a review
+can be submitted, so a reviewer cannot silently skip a requirement the case author
+called out. Each item is worth a **weight** in points: graded as a whole, a `pass`
+earns the item's weight and a `fail` earns none; graded by sub-items, the weight
+splits evenly across them and the item earns the fraction that passed (so a
+review's earned score can be fractional). A review's **score** is the earned
+weight over the total declared weight.
 
 A case declares one or more **common scoring domains** (for example a game's
 single-player and versus modes), and the run's variant may add its own; the

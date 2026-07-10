@@ -131,9 +131,9 @@ pub use seeding::FsRepoSeeder;
 pub use test_case::{
     AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec, MediaKind,
     ModelSpec, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
-    SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, TestCase,
-    TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile,
-    shippable_package_description,
+    SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
+    TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec,
+    WorkspaceFile, shippable_package_description,
 };
 pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,

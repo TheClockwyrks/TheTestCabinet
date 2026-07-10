@@ -81,6 +81,12 @@ a binary verdict before the review can be saved or the run published:
 - **pass** — checked, and the build satisfies it. Earns the item's weight.
 - **fail** — checked, and the build does not satisfy it. Earns none of it.
 
+Some items break into **sub-items** — a handful of named points, each with its own
+pass/fail — so a section can be graded on more than one axis. You verdict each
+sub-item (there is no separate verdict for the item as a whole); the item's weight
+splits evenly across them, so it earns partial credit — `weight × (passed ÷ total)`
+sub-items. Every sub-item must be judged before the review is complete.
+
 Add a short note alongside a verdict to record what you observed. The verdicts and
 the items' weights produce the run's **score** — the earned weight over the total
 declared weight. The per-domain ratings below remain your own call.
@@ -90,13 +96,15 @@ declared weight. The per-domain ratings below remain your own call.
 Create `runs/<id>/writeup.md`, beside the run's `run-record.json`, with a rating
 for each scoring domain in YAML frontmatter and a non-empty body. Each domain's
 rating is a `rating.<domain>:` line; checklist verdicts, when the case declares
-items, follow as `review.<id>: <status> [note]` lines:
+items, follow as `review.<id>: <status> [note]` lines. A sub-item's verdict uses
+the composite id `review.<item id>.<sub-item id>: <status> [note]`:
 
 ```markdown
 ---
 rating.single-player: flawless
 rating.versus: scuffed
-review.ball-spin: pass
+review.ball-spin.stationary: pass
+review.ball-spin.moving: pass
 review.obstacle-bank: fail ball clips the top obstacle corner
 ---
 
@@ -107,7 +115,7 @@ playable but scuffed.
 The consoles write this file for you, including the rating and checklist lines;
 the format is documented here because the file is also hand-editable. A run
 cannot be published while any declared domain is unrated or any declared
-checklist item is missing its verdict.
+checklist item — or sub-item — is missing its verdict.
 
 The **writeup** is the short prose the site shows before the playable build. The
 **ratings** travel with it in the frontmatter (not in the run record). You rate

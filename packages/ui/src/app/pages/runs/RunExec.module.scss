@@ -460,6 +460,36 @@
   gap: t.$space-sm;
 }
 
+// A sub-itemed question's name-only sub-items, each a lettered row (its title)
+// above its own Pass/Fail control, so the item's weight is graded across
+// independent points.
+.subItemList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.subItem {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding-left: t.$space-md;
+  border-left: t.$border-hairline solid t.$color-border;
+}
+
+.subItemTitle {
+  color: t.$color-text;
+  font-weight: 500;
+}
+
+.subItemLetter {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
 // The verdict picker: two radio-like buttons (Pass / Fail) so recording a
 // verdict is a single click. Reuses the shared positive/negative cues — the
 // selected option fills with its cue color, the rest read as outlined choices.

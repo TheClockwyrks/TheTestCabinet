@@ -200,6 +200,29 @@
   padding: t.$space-xs 0 t.$space-xs t.$space-md;
 }
 
+// A sub-itemed item in the breakdown: its title + total weight as a heading,
+// then its per-sub-item pass/fail rows indented beneath.
+.verdictItemGroup {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.verdictItemGroupTitle {
+  color: t.$color-text;
+  font-weight: 600;
+  font-size: t.$font-sm;
+}
+
+.checklistSubItems {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
 .verdictStatus {
   flex-shrink: 0;
   min-width: 3rem;

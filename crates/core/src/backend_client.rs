@@ -33,8 +33,8 @@ use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
     MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec, PerformanceCase,
     ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec, SheetSpec,
-    SimulationSpec, SpecFile, SpecKind, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec,
-    Variant, VoxelSpec, WorkspaceFile,
+    SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType,
+    ToolSpec, UiSpec, Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1660,6 +1660,14 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
         frames: item.frames,
         weight: item.weight,
         domain: item.domain,
+        sub_items: item
+            .sub_items
+            .into_iter()
+            .map(|sub| SubReviewItem {
+                id: sub.id,
+                title: sub.title,
+            })
+            .collect(),
     }
 }
 
@@ -1882,6 +1890,17 @@ struct ReviewItemBody {
     weight: u32,
     #[serde(default)]
     domain: Option<String>,
+    #[serde(default)]
+    sub_items: Vec<SubReviewItemBody>,
+}
+
+/// A name-only sub-item of a [`ReviewItemBody`] in the wire shape: an
+/// independently graded point carrying only its id and title.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubReviewItemBody {
+    id: String,
+    title: String,
 }
 
 #[derive(Deserialize)]

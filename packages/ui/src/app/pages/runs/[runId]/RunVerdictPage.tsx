@@ -2,10 +2,13 @@ import { Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
 import {
   RATING_META,
   VERDICT_META,
+  formatPoints,
   scoreChecklist,
+  subItemVerdictId,
   worstRating,
   type ParsedWriteup,
 } from "../../../data/ratings";
+import type { ReviewItemSummary } from "../../../data/testCases";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
 import { describeRunState } from "../../../data/runState";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
@@ -185,7 +188,7 @@ export function PublishedVerdict({
           {score && (
             <p className={styles.score}>
               <span className={styles.scoreValue}>
-                {score.earned} / {score.total}
+                {formatPoints(score.earned)} / {score.total}
               </span>{" "}
               <span className={styles.scoreUnit}>pts</span>
             </p>
@@ -234,14 +237,30 @@ export function PublishedVerdict({
                   <h3 className={styles.breakdownGroupHeading}>{group.name}</h3>
                 )}
                 <ul className={styles.checklistItems}>
-                  {group.itemIds.map((itemId) => (
-                    <ChecklistRow
-                      key={itemId}
-                      itemId={itemId}
-                      item={itemsById.get(itemId)}
-                      verdict={verdictById.get(itemId)}
-                    />
-                  ))}
+                  {group.itemIds.map((itemId) => {
+                    const item = itemsById.get(itemId);
+                    // An item graded per sub-item shows its title as a heading
+                    // with one nested pass/fail row per sub-item; a whole-item
+                    // item is a single row keyed by its own id.
+                    if (item && (item.subItems?.length ?? 0) > 0) {
+                      return (
+                        <ChecklistItemGroup
+                          key={itemId}
+                          item={item}
+                          verdictById={verdictById}
+                        />
+                      );
+                    }
+                    return (
+                      <ChecklistRow
+                        key={itemId}
+                        label={
+                          item ? `${item.title} (${pts(item.weight)})` : itemId
+                        }
+                        verdict={verdictById.get(itemId)}
+                      />
+                    );
+                  })}
                 </ul>
               </div>
             ))}
@@ -254,8 +273,7 @@ export function PublishedVerdict({
                 {review.checklist.map((verdict) => (
                   <ChecklistRow
                     key={verdict.id}
-                    itemId={verdict.id}
-                    item={undefined}
+                    label={verdict.id}
                     verdict={verdict}
                   />
                 ))}
@@ -267,17 +285,42 @@ export function PublishedVerdict({
   );
 }
 
-function ChecklistRow({
-  itemId,
+// A sub-itemed review item in the read-only breakdown: its title + total weight
+// as a heading, then one nested pass/fail row per sub-item (lettered a, b, c…),
+// each keyed by the composite `<item>.<sub>` verdict id.
+function ChecklistItemGroup({
   item,
+  verdictById,
+}: {
+  item: ReviewItemSummary;
+  verdictById: Map<string, { status: "pass" | "fail"; note?: string }>;
+}) {
+  return (
+    <li className={styles.verdictItemGroup}>
+      <span className={styles.verdictItemGroupTitle}>
+        {item.title} ({pts(item.weight)})
+      </span>
+      <ul className={styles.checklistSubItems}>
+        {(item.subItems ?? []).map((sub, i) => (
+          <ChecklistRow
+            key={sub.id}
+            label={`${String.fromCharCode(97 + i)}. ${sub.title}`}
+            verdict={verdictById.get(subItemVerdictId(item.id, sub.id))}
+          />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+function ChecklistRow({
+  label,
   verdict,
 }: {
-  itemId: string;
-  item: { title: string; weight: number } | undefined;
+  label: string;
   verdict: { status: "pass" | "fail"; note?: string } | undefined;
 }) {
   if (!verdict) return null;
-  const label = item ? `${item.title} (${pts(item.weight)})` : itemId;
   return (
     <li className={`${styles.verdictRow} ${VERDICT_CLASS[verdict.status]}`}>
       <span className={styles.verdictStatus}>

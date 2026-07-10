@@ -108,6 +108,12 @@ weight = 1                   # points this item is worth toward the score (requi
 reference = "gameplay"       # optional: a reference view shown as the EXPECTED target
 proof = "title"              # optional: a proof id whose SUBMITTED media is shown
 domain = "single-player"     # optional: a COMMON item may name only a COMMON domain
+# optional: name-only sub-items graded pass/fail independently (see "Sub-items" below).
+# When present, the reviewer verdicts each sub-item and `weight` splits evenly across them.
+sub_items = [
+  { id = "stationary", title = "No spin while stationary" },
+  { id = "moving", title = "Imparts spin while moving" },
+]
 
 # COMMON scoring domains, rated for EVERY variant. The reviewer rates each
 # independently while playing the build; the run's OVERALL rating is the WORST
@@ -338,7 +344,8 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   `proof` with no `reference` (a video clip with no still that meaningfully
   depicts it, say); the reviewer UI then shows that one side full width rather
   than reserving an empty pane. Each named id must resolve for the item's variant
-  or resolution is rejected. See
+  or resolution is rejected. An item may also break into **sub-items** — see
+  [Sub-items](#sub-items) below. See
   [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
 - Each `[[domain]]` declares a **scoring domain** the reviewer rates
   independently — for example a game's `single-player` and `versus` modes — by a
@@ -373,3 +380,47 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   as a *target* the model builds toward, whereas a reference implementation is the
   whole playable game and is never seeded. See
   [Reference implementations](/components/core/results/#reference-implementations).
+
+## Sub-items
+
+A `[[review_item]]` that covers a section of the build often has several points a
+reviewer would grade independently. Rather than collapsing them into one pass/fail
+(where a single missed point fails the whole item), an item may declare **sub-items**:
+name-only entries, each verdicted `pass`/`fail` on its own — an academic question's
+"2a", "2b", …
+
+```toml
+[[review_item]]
+id = "ball-spin"
+title = "Paddle spin"
+text = "Swinging a paddle as it strikes the ball curves the ball's flight afterward; a stationary paddle imparts no new spin."
+weight = 2
+sub_items = [
+  { id = "stationary", title = "No spin while stationary" },
+  { id = "moving", title = "Imparts spin while moving" },
+]
+```
+
+Each sub-item carries only an `id` (which keys its verdict) and a `title` (its
+heading, shown lettered a, b, c… in the reviewer UI); it has **no** `text`, `weight`,
+or media of its own — the parent item's `text`, reference, and proof are the shared
+context. Rules:
+
+- **Ids** must be non-empty and unique **within the item**. A sub-item's verdict is
+  recorded under the composite id `<item id>.<sub-item id>` (for example
+  `ball-spin.moving`), so it must not collide with any other item's verdict id.
+- **Scoring** splits the item's `weight` evenly across its sub-items: the item earns
+  `weight × (passed sub-items ÷ total sub-items)`. So a two-point item with two
+  sub-items awards one point per passed sub-item, and a one-point item with three
+  awards a third each. The item's earned score is therefore **fractional** in general,
+  while the case's total available points are unchanged (still the sum of item
+  weights).
+- **Completeness.** Every sub-item must be verdicted before a run can be published,
+  exactly as every whole-item must be — an item with sub-items has no verdict of its
+  own.
+
+Sub-items are declared inline as an array of `{ id, title }` tables (shown above) or,
+equivalently, as repeated `[[review_item.sub_item]]` tables. They are available to a
+variant's own additive items too, with the same shape and rules. See
+[Evaluation](/testing/end-to-end/evaluation/#scoring) for how they roll up to the
+score.

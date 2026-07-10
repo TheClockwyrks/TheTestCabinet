@@ -416,6 +416,14 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
         proof: item.proof.clone(),
         weight: item.weight,
         domain: item.domain.clone(),
+        sub_items: item
+            .sub_items
+            .iter()
+            .map(|sub| SubReviewItemOut {
+                id: sub.id.clone(),
+                title: sub.title.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -727,6 +735,17 @@ struct ReviewItemOut {
     proof: Option<String>,
     weight: u32,
     domain: Option<String>,
+    /// Name-only sub-items the reviewer grades this item by, each an
+    /// independently scored pass/fail point. Empty for an item graded as a whole.
+    sub_items: Vec<SubReviewItemOut>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct SubReviewItemOut {
+    id: String,
+    title: String,
 }
 
 #[derive(Serialize)]

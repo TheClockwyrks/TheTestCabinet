@@ -43,7 +43,9 @@ review](/testing/end-to-end/evaluation/#review): a **writeup**, a **rating per
 scoring domain** (one of **flawless**, **great**, **scuffed**, or **broken**, for
 each [`[[domain]]`](/testing/full-stack/manifests/) in the run's effective set,
 the overall rating being the _worst_ across them), and a **checklist** of binary
-**pass**/**fail** verdicts, one per [`[[review_item]]`](/testing/full-stack/manifests/).
+**pass**/**fail** verdicts, one per [`[[review_item]]`](/testing/full-stack/manifests/)
+(or one per [sub-item](/testing/end-to-end/manifests/#sub-items) for an item that
+declares them).
 
 What full-stack adds is that the reviewer, playing the build, is judging assets
 the model **produced** rather than assets a case provided. The **quality of the

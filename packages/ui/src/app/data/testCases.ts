@@ -54,10 +54,23 @@ export interface ReviewItemSummary {
   /** For a sprite-sheet asset-generation case: the frame indices this item is
    * about, surfaced as the relevant frames beside it. Empty when none. */
   frames?: number[];
-  /** Points this item is worth: a pass earns this weight, a fail earns none. */
+  /** Points this item is worth. Graded as a whole: a pass earns this weight, a
+   * fail earns none. With sub-items: split evenly across them, so the item earns
+   * the fraction that passed. */
   weight: number;
   /** Scoring domain (by id) this item belongs to, or null for a general item. */
   domain?: string | null;
+  /** Name-only sub-items this item is graded by, each an independently scored
+   * pass/fail point keyed by the composite `<item id>.<sub id>`. Empty for an
+   * item graded as a whole. */
+  subItems?: ReviewSubItemSummary[];
+}
+
+/** A name-only sub-item of a {@link ReviewItemSummary}: one independently graded
+ * pass/fail point, carrying only its id and title. */
+export interface ReviewSubItemSummary {
+  id: string;
+  title: string;
 }
 
 /** A scoring domain a case declares. A reviewer rates each independently; a run's

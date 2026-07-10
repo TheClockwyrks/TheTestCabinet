@@ -1177,6 +1177,19 @@ pub struct CaseReviewItemOut {
     pub frames: Vec<u32>,
     pub weight: u32,
     pub domain: Option<String>,
+    /// Name-only sub-items this item is graded by, each an independently scored
+    /// pass/fail point. Empty for an item graded as a whole.
+    pub sub_items: Vec<CaseSubReviewItemOut>,
+}
+
+/// A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
+/// independently graded point within the item, carrying only its id and title.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseSubReviewItemOut {
+    pub id: String,
+    pub title: String,
 }
 
 /// A scoring domain exposed in case metadata.
@@ -1350,6 +1363,14 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
         frames: item.frames.clone(),
         weight: item.weight,
         domain: item.domain.clone(),
+        sub_items: item
+            .sub_items
+            .iter()
+            .map(|sub| CaseSubReviewItemOut {
+                id: sub.id.clone(),
+                title: sub.title.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -1430,8 +1451,9 @@ fn review_items_for(
 }
 
 /// Reconstruct the core [`test_cabinet_core::ReviewItem`] a stored item was
-/// ingested from — the inverse of `ingest::stored_review_item`. Scoring only reads
-/// `id` and `weight`, but the round trip keeps the item whole so it stays honest.
+/// ingested from — the inverse of `ingest::stored_review_item`. Scoring reads
+/// `id`, `weight`, and `sub_items` (a sub-itemed item is scored per sub-item), and
+/// the round trip keeps the rest of the item whole so it stays honest.
 fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core::ReviewItem {
     test_cabinet_core::ReviewItem {
         id: item.id.clone(),
@@ -1443,6 +1465,14 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
         frames: item.frames.clone(),
         weight: item.weight,
         domain: item.domain.clone(),
+        sub_items: item
+            .sub_items
+            .iter()
+            .map(|sub| test_cabinet_core::SubReviewItem {
+                id: sub.id.clone(),
+                title: sub.title.clone(),
+            })
+            .collect(),
     }
 }
 

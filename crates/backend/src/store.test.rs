@@ -75,6 +75,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 frames: vec![],
                 weight: 1,
                 domain: None,
+                sub_items: vec![],
             }],
             domains: vec![],
             voxel: None,
@@ -96,6 +97,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             frames: vec![],
             weight: 2,
             domain: Some("single-player".to_string()),
+            sub_items: vec![],
         }],
         domains: vec![StoredDomain {
             id: "single-player".to_string(),

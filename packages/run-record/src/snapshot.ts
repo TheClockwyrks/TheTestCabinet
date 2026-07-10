@@ -216,7 +216,18 @@ export type CaseReviewItemOut = {
   frames: Array<number>;
   weight: number;
   domain: string | null;
+  /**
+   * Name-only sub-items this item is graded by, each an independently scored
+   * pass/fail point. Empty for an item graded as a whole.
+   */
+  subItems: Array<CaseSubReviewItemOut>;
 };
+
+/**
+ * A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
+ * independently graded point within the item, carrying only its id and title.
+ */
+export type CaseSubReviewItemOut = { id: string; title: string };
 
 /**
  * A reference baseline exposed in case metadata. `variant` is `null` for a
@@ -301,16 +312,13 @@ export type CaseVariantOut = {
    */
   domains: Array<CaseDomainOut>;
   /**
-   * The absolute Cloudflare Pages URL of this variant's **reference
-   * implementation** — the authored, in-repo, versioned static build that is the
-   * *correct* implementation of the variant, deployed out-of-band by
-   * `tcab publish-reference` just as a published run's `playableBuild` is. `None`
-   * when the variant declares no `reference_implementation`, which is the common
-   * case. This is never a seeded input and never produced by a run; it is the
-   * case-variant analogue of [`LinksOut::playableBuild`]. The site iframes it
-   * as-is on the case's Reference tab (no scrubbing at view time — the build was
-   * already redacted at publish), so the value must be a fully-qualified `https`
-   * URL and never a snapshot-relative key.
+   * The absolute URL of this variant's authored **reference implementation** — the
+   * correct, deployed static build (the case-variant analogue of a run's
+   * `playableBuild`), shown on the static gallery's "Reference" tab. `null` when
+   * the variant declares no `reference_implementation`, or has one that has not
+   * been deployed yet. Written out-of-band by `tcab publish-reference` into the
+   * `case_reference_build` table and folded in here at export — never resolved
+   * from the manifest and never seeded into a run.
    */
   referenceBuild: string | null;
 };

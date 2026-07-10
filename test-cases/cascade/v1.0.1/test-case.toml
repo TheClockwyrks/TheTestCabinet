@@ -193,6 +193,11 @@ id = "correct-deal"
 title = "Correct deal"
 text = "A new game deals seven tableau columns of 1..7 cards with exactly one face-up card on top of each, 24 cards in the stock, and the waste and all four foundations empty; the deal is reshuffled and different every new game."
 weight = 1
+sub_items = [
+  { id = "tableau", title = "Seven columns of 1..7, one face-up on top" },
+  { id = "stock-and-empties", title = "24 in stock, waste and foundations empty" },
+  { id = "reshuffled", title = "Reshuffled and different every new game" },
+]
 reference = "gameplay"
 proof = "gameplay"
 
@@ -231,6 +236,10 @@ id = "stock-recycle"
 title = "Stock and recycle"
 text = "Only the top waste card is playable, and when the stock empties, clicking its slot recycles the whole waste back to the stock in order for another pass, with no pass limit."
 weight = 1
+sub_items = [
+  { id = "top-waste", title = "Only the top waste card is playable" },
+  { id = "recycle", title = "Empty stock recycles the waste, no pass limit" },
+]
 
 [[review_item]]
 id = "auto-move"
@@ -243,6 +252,11 @@ id = "drag-and-drop"
 title = "Drag-and-drop feel"
 text = "Cards are moved by dragging with the mouse: the held card or run follows the cursor and floats above the table, a legal drop target under the cursor is highlighted, and releasing over an illegal spot returns the cards to their origin."
 weight = 1
+sub_items = [
+  { id = "follows-cursor", title = "Held card or run follows the cursor, floating above" },
+  { id = "highlight", title = "Legal drop target is highlighted" },
+  { id = "snap-back", title = "Illegal drop returns the cards to their origin" },
+]
 
 [[review_item]]
 id = "win-detection"
@@ -255,6 +269,11 @@ id = "victory-cascade"
 title = "Victory cascade"
 text = "On winning, the foundation cards launch one at a time and bounce off the bottom edge under gravity, each leaving a permanent painted trail so the table fills with arcs of overlapping cards, ending with a YOU WIN prompt to start a new game."
 weight = 1
+sub_items = [
+  { id = "launch-bounce", title = "Cards launch one at a time and bounce under gravity" },
+  { id = "painted-trail", title = "Each leaves a permanent painted trail of arcs" },
+  { id = "you-win", title = "Ends with a YOU WIN prompt to start a new game" },
+]
 reference = "victory"
 proof = "cascade"
 
