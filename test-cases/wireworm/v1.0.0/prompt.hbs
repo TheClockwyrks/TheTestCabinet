@@ -15,27 +15,9 @@ script on top of it, and keep the lockfile in sync (see below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette. Then read `charge` carefully — the charged node field, the chain-arc
-discharge, and critical nodes making the worm dive are the heart of this game.
-Then `playfield` (the tile board, the node field, the player band, and the HUD),
-`worm` (how the data-worm winds, dives, splits, and grows the field), `foes` (the
-glitch, packet-dropper, and corruptor), `controls` (moving the band-bound cursor
-and firing up), `flow` (lives, the 12-level run, scoring, and states), and
-`assets` (the provided sprite art and how to load it). Finally read `standard`
-for the playable mode. The specs cross-reference each
-other by name — treat them as one specification. **There is no fixed node field:
-it is scattered at the start and grows at runtime, so do not ship a fixed one** —
-you design the spawn timing, level pacing, and per-level foe cadence within the
-constraints in `worm`, `foes`, and `flow`.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

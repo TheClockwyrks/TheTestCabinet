@@ -15,26 +15,9 @@ keep the lockfile in sync (see below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in your
-project. Read every one of them before you start, then implement the game they
-describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette. Then read `hunter` carefully — the bear that chases the critter across the
-whole strait, only held back by its speed, is the heart of this game. Then
-`playfield` (the tile strait, its bands, and the goal bays), `hazards` (the sliding
-ice-band lanes), `water` (the drifting floes and drift/off-edge death), `controls`
-(the one-tile hop), `flow` (lives, the timer, the 8-level run, scoring, and states),
-and `assets` (the provided sprite art and how to load it). Finally read
-`standard` for the playable mode. The specs cross-reference each other
-by name — treat them as one specification. **There is no fixed lane layout: the
-hazards and floes are populated at runtime and the bear pursues live, so do not ship
-a fixed one** — you design the lane speeds, floe sizes and spacing, and per-level
-pacing within the constraints in `hazards`, `water`, `hunter`, and `flow`.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

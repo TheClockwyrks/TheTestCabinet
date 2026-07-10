@@ -17,23 +17,9 @@ alongside their manifest `assets/models.json`; load them by **page-relative** UR
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette; then `playfield` for the diagonal arena and its fog of war; then `assets`
-for the **provided models** you must load and render and the **provided muzzle-flash
-particle effects** you must play (via the seeded `@test-cabinet/particle-runtime`);
-then `economy`, `units`, and
-`waves` for the resource loop, the unit roster and its counter system, and the wave
-clock and Reliquary objective; then `flow` for states, controls, the HUD, and the AI;
-then `standard` for the playable mode. The specs
-cross-reference each other by name — treat them as one specification.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

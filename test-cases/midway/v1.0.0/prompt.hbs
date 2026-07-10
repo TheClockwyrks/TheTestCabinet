@@ -17,28 +17,9 @@ below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in your
-project. Read every one of them before you start, then implement the game they
-describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette. Then read `park` (the tile grid, the paths guests walk, and how rides and
-stalls are placed), `guests` carefully (the desire-driven guest AI, spending, and
-happiness that are the heart of the game), `rides` (ride capacity, throughput,
-queues, breakdowns, and what stalls sell), `economy` (admission and the prices you
-set, upkeep, wages, and bankruptcy), `staff` (janitors, mechanics, and entertainers),
-`controls` (the camera, the path/build/staff/price tools, and simulation speed), and
-`flow` (the reputation feedback loop, the day clock, scoring, the loss state, the HUD
-dashboard, and the game states). Then read `assets` — the contract for the art,
-effects, and audio **you must produce** — and finally the mode spec(s) under `modes/`
-for the playable start(s). The specs cross-reference each other by name — treat them
-as one specification. **You design the exact size and layout of the starting plot,
-the full set of rides, stalls, and scenery beyond the required ones, and how the park
-reads on screen** within the constraints in the specs.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

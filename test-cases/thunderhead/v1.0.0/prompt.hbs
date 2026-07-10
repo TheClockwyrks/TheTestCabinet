@@ -21,25 +21,9 @@ your own geometry and do not fetch any other art at runtime.
 
 ## What to read first
 
-The full specification is split across the files below, all already present in your
-project. Read every one of them before you start, then implement the game they
-describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, the coordinate system and the
-three **altitude bands**, the palette, and the rendering/camera/performance
-requirements; then `world` for the procedural terrain, floating islands, and the
-cloud sea and murk; then `factions` and `units` for the three asymmetric powers,
-their rosters, and the **possessable stations** on every unit; then `command` for the
-tactical command layer and the **possession** model; then `combat` for gunnery, the
-damage model, and the stats; then `recon` for detection and the fog of war; then
-`battle` for deployment, the economy, and how a battle is won or lost; then `flow`
-for the states, controls, and HUD; then `assets` for the provided models; and the
-mode spec under `modes/`. The specs cross-reference each other by name — treat them as
-one specification.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

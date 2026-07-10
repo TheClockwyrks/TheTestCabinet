@@ -15,19 +15,9 @@ sync (see below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette; then `playfield`, `mechanics`, and `flow` for the board geometry, the
-game loop, and scoring and states; then the mode spec(s) under `modes/` for the
-playable modes. The specs cross-reference each other by name — treat them as one
-specification.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

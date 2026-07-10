@@ -17,28 +17,9 @@ below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette. Then read `world` (the tile grid, digging, and the resources it yields),
-`gas` carefully (the oxygen/CO2 diffusion, buoyancy, and suffocation that are the
-heart of the survival puzzle), `power` (generators, wires, machines, and
-brownouts), `delvers` (needs, the job priority queue, and pathfinding), `economy`
-(refining, build orders, and food), `controls` (the camera, the dig and build
-tools, and simulation speed), and `flow` (survival pressure, the cycle clock,
-scoring, the loss state, the HUD dashboard, and the game states). Then read
-`assets` — the contract for the art, effects, and audio **you must produce** — and
-finally the mode spec(s) under `modes/` for the playable start(s). The specs
-cross-reference each other by name — treat them as one specification. **You design
-the exact layout of the starting cavern, the machine and building set beyond the
-required ones, and how the colony reads on screen** within the constraints in the
-specs.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

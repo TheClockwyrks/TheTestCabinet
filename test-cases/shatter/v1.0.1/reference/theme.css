@@ -1,0 +1,241 @@
+/*
+ * Shatter — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Shatter test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/.
+ */
+
+:root {
+  --bg: #060910;          /* deep-space field background */
+  --bg-raised: #0d1320;   /* panels / overlays */
+  --ship: #6cf0ff;        /* the player ship */
+  --thrust: #ffd166;      /* thrust flame */
+  --bullet: #f2f5f7;      /* bullets */
+  --rock: #9aa7bd;        /* rocks */
+  --star-core: #ffd27a;   /* star core */
+  --star-halo: #ff7b3d;   /* star halo / gravity glow */
+  --saucer: #ff5c8a;      /* enemy saucer */
+  --torpedo: #b8ff5c;     /* homing torpedo (Warhead mode secondary fire) */
+  --text: #e6edf3;        /* primary text */
+  --text-dim: #8a94a6;    /* secondary text */
+  --text-faint: #4a5567;  /* tertiary / hints */
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* The fixed logical play area. All coordinates in the mockups and the
+ * specification are expressed in these 1280x720 logical pixels. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  background: radial-gradient(
+    120% 120% at 50% 50%,
+    #0a1120 0%,
+    var(--bg) 62%
+  );
+  font-family: var(--mono);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A faint vignette so the neon elements read against the field. */
+.stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 120% at 50% 50%,
+    rgba(0, 0, 0, 0) 58%,
+    rgba(0, 0, 0, 0.5) 100%
+  );
+}
+
+/* ---- Field layers ------------------------------------------------------ */
+
+/* An SVG layer spanning the whole logical stage; the ship, rocks, bullets, and
+ * bullet trails are drawn in stage coordinates on it. */
+.field {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+/* ---- The star (gravity well) ------------------------------------------- */
+
+/* The star sits fixed at the field center (640, 360). The bright core is
+ * radius 30; the softer halo fades outward to roughly radius 120, hinting at
+ * the region of strongest pull. Only the core is a physical boundary. */
+.star {
+  position: absolute;
+  left: 520px;   /* 640 - 120 */
+  top: 240px;    /* 360 - 120 */
+  width: 240px;  /* halo diameter */
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    var(--star-core) 0,
+    var(--star-core) 22px,
+    rgba(255, 180, 84, 0.85) 30px,
+    rgba(255, 123, 61, 0.5) 52px,
+    rgba(255, 123, 61, 0.22) 84px,
+    rgba(255, 123, 61, 0) 120px
+  );
+}
+
+/* ---- HUD --------------------------------------------------------------- */
+
+.hud-score {
+  position: absolute;
+  left: 40px;
+  top: 28px;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--text);
+}
+
+.hud-lives {
+  position: absolute;
+  left: 44px;
+  top: 92px;
+}
+
+/* ---- Menus / overlays -------------------------------------------------- */
+
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  font-size: 138px;
+  font-weight: 700;
+  letter-spacing: 26px;
+  margin: 0 0 0 26px; /* compensate for trailing letter-spacing */
+  color: var(--ship);
+  text-shadow: 0 0 26px rgba(108, 240, 255, 0.5),
+    0 0 3px rgba(255, 123, 61, 0.6);
+}
+
+.tagline {
+  font-size: 22px;
+  letter-spacing: 13px;
+  margin: 20px 0 66px 13px;
+  color: var(--text-dim);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+.menu-item {
+  font-size: 30px;
+  letter-spacing: 10px;
+  color: var(--text-dim);
+}
+
+.menu-item.selected {
+  color: var(--text);
+}
+
+.menu-item.selected::before {
+  content: "\25B8  "; /* small right-pointing triangle */
+  color: var(--ship);
+}
+
+.menu-item.selected::after {
+  content: "  \25C2";
+  color: var(--ship);
+}
+
+.hint {
+  position: absolute;
+  bottom: 34px;
+  width: 100%;
+  text-align: center;
+  font-size: 16px;
+  letter-spacing: 8px;
+  color: var(--text-faint);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 7, 12, 0.72);
+}
+
+.panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 580px;
+  padding: 56px 48px 48px;
+  text-align: center;
+  background: var(--bg-raised);
+  border: 1px solid #20283a;
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.panel-eyebrow {
+  font-size: 18px;
+  letter-spacing: 10px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
+.panel-title {
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: 10px;
+  margin: 0 0 22px;
+  color: var(--ship);
+}
+
+.panel-score {
+  font-size: 40px;
+  letter-spacing: 8px;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+
+.panel-sub {
+  font-size: 20px;
+  letter-spacing: 8px;
+  margin: 0 0 38px;
+  color: var(--text-dim);
+}
+
+.dim {
+  opacity: 0.3;
+  filter: saturate(0.75);
+}

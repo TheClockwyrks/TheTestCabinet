@@ -26,22 +26,9 @@ touch authoritative state.
 
 ## What to read first
 
-The files below are already present at `{{workspace}}`. Read every one before you
-start:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `specs/rules.md` for the game itself — the role flip, eating/carrying/
-banking, tagging, and the two twists (carry weight and royal jelly) with the
-shipped constants. Then `specs/contract.md` for how your controller talks to the
-game (the `world` and `action` schemas, the legality rules, and the SDK that wires
-the wasm ABI up for you), `specs/sandbox.md` for the per-tick fuel and memory
-limits you must stay inside, and `specs/baselines.md` for the three reference
-opponents you must beat — chiefly `border-soldier`, the canonical scoring opponent.
-`schemas/world.json` and `schemas/action.json` are the exact contract schemas
-(generated from the engine).
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Your starting point
 

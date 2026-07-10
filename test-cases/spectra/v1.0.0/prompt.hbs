@@ -15,26 +15,9 @@ below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette. Then read `polarity` carefully — the two bands, the match-to-destroy
-rule, the dual-use shield, and the resonance/discharge are the heart of this
-game. Then `playfield` (the player lane, the formation and its sway, lanes,
-bullets, HUD), `controls` (movement, firing, the band flip, the discharge),
-`enemies` (the three drones, their entrances and dives, and the Prism's spectral
-inversion), `flow` (stages, challenge stages, scoring, lives, states), and
-`assets` (the provided ship and drone sprites you must render from, and how to
-load them). Finally read the mode spec(s) under `modes/` for the playable modes. The specs
-cross-reference each other by name — treat them as one specification. **You design
-the entrance choreography, the formation layout, and the dive paths** within the
-constraints in `playfield` and `enemies`; there is no fixed set of paths to copy.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

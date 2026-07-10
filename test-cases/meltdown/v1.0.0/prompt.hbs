@@ -15,27 +15,9 @@ below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette. Then read `heat` carefully — heat as power, the accelerating
-damage curve, the redline trip, and the Forge/Sink coupling are the heart of this
-game. Then `playfield` (the tile floor, the vents and exhausts, towers-as-walls
-mazing, and how the surge paths), `towers` (the six emitters and two movers, their
-stats and thermal stances, upgrades, and selling), `creeps` (the surge types and
-the maze-ignoring flyers), `controls` (mouse-driven building, selecting, and
-running the waves), and `flow` (the economy, lives, the 20-wave progression and
-victory, scoring, and states). Finally read `standard` for the playable mode.
-The specs cross-reference each other by name — treat them as
-one specification. **There is no fixed maze: the player builds it at runtime, so
-do not ship one** — you design the surge's spawn timing and per-wave composition
-within the constraints in `creeps` and `flow`.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

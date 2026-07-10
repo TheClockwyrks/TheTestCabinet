@@ -15,22 +15,9 @@ below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system,
-palette, and the rendering/performance requirements; then `world` for the arena,
-the procedurally generated terrain, and the three redoubts; then `phases` for the
-survival loop, how redoubts fall, and how the assault escalates; then `combat` for
-the classes, weapons, and the Scourge roster; then `ai` for pathfinding, the enemy
-behaviors, and your squad; then `flow` for states, controls, and the HUD; then
-`standard` for the playable mode. The specs cross-reference each other by name — treat them
-as one specification.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

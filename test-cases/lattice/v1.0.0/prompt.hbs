@@ -27,25 +27,9 @@ is better.**
 
 ## What to read first
 
-The files below are already present at `{{workspace}}`. Read every one before you
-start:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `specs/rules.md` for the simulation itself — the two-lane belt model,
-movement and compaction, side-loading, splitters, inserters, assemblers, the
-source/sink fixtures, and the exact deterministic tick order. Then
-`specs/prototypes.md` for the authoritative constants (TILE/SPACING, belt and
-inserter tiers, the item table and its index order, recipes, assembler buffer
-caps, and the direction/lane convention) — your engine must use these exact
-integers. `specs/contract.md` covers how your engine talks to the host (the
-`simulate` entry, the ABI, the `scenario`/`state` JSON shapes, and the SDK that
-wires the wasm ABI up for you); `specs/canonical-state.md` is the exact byte
-layout and FNV-1a checksum so your state hashes identically to the reference;
-`specs/cli.md` is the `lattice` CLI you iterate with. `schemas/scenario.json` and
-`schemas/state.json` are the exact contract schemas (generated from the engine).
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Your starting point
 

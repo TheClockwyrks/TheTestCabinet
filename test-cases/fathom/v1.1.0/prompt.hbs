@@ -15,23 +15,9 @@ below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, tile
-grid, and palette. Then read `sensing` carefully — how you perceive the dark
-trench, and the brightness dial that trades seeing against being seen, is the
-heart of this game. Then `playfield` (maze, den, tunnels, plankton, HUD),
-`movement` (tile movement, controls, ink), `predators` (the three hunters), and
-`flow` (scoring, lives, depth, states). Read `assets` for the **provided art**
-you must build with. The specs cross-reference each other by name — treat them as
-one specification. **You design the maze layout** within the constraints in
-`playfield`; there is no fixed maze to copy.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

@@ -14,19 +14,9 @@ sync (see below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette; then `playfield`, `physics`, `obstacles`, and `balls` for the geometry,
-simulation, how the obstacles behave, and how the balls are served; then `flow`
-and `modes` for the match flow, game states, and the Solo and Versus play. The
-specs cross-reference each other by name — treat them as one specification.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 

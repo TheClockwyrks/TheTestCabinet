@@ -17,29 +17,9 @@ below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette. Then read `world` (the top-down tile grid, terrain, and the resource
-nodes settlers chop and mine), `settlers` (their needs, mood, skills, the job
-priority queue, and pathfinding), `economy` (designating work, hauling, building,
-cooking, and farming), `combat` carefully (the escalating threat director, the
-ranged raids, cover, and the downed/bleed-out that are the heart of the survival
-pressure), `time` (the day/night cycle), `controls` (the camera, the designation
-and build tools, the work-priority grid, and simulation speed), and `flow`
-(survival, scoring, the loss state, the HUD dashboard, and the game states). Then
-read `assets` — the contract for the art, effects, and audio **you must produce** —
-and finally the mode spec(s) under `modes/` for the playable start(s). The specs
-cross-reference each other by name — treat them as one specification. **You design
-the exact layout of the starting map and its resource nodes, the building and
-turret set beyond the required ones, and how the colony reads on screen** within
-the constraints in the specs.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
 
 ## Build requirements
 
