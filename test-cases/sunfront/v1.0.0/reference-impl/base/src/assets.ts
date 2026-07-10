@@ -21,6 +21,7 @@ import type { ModelSpec, AnimationSpec, ParticleSystem, PartMesh } from "./runti
 import type {
   LoadedAssets,
   MuzzleKind,
+  MuzzleMount,
   RigBounds,
   RigTemplate,
   UnitType,
@@ -191,11 +192,8 @@ async function loadRigTemplate(id: string, entry: ManifestEntity): Promise<RigTe
 
   const clips = resolveClips(id, rig, entry.clips);
   const bounds = computeBounds(rig, meshes);
-  const muzzleJoint = rig.joints.some((j) => j.name === "muzzle")
-    ? "muzzle"
-    : rig.parts.some((p) => p.name === "muzzle")
-      ? "muzzle"
-      : null;
+  const muzzle = (entry.muzzle ?? null) as MuzzleKind | null;
+  const muzzleMounts = resolveMuzzleMounts(id, rig, meshes, muzzle);
 
   return {
     id,
@@ -205,9 +203,90 @@ async function loadRigTemplate(id: string, entry: ManifestEntity): Promise<RigTe
     clips,
     dimensions: entry.dimensions,
     bounds,
-    muzzleJoint,
-    muzzle: (entry.muzzle ?? null) as MuzzleKind | null,
+    muzzleMounts,
+    muzzle,
   };
+}
+
+/**
+ * Part-name keywords, in priority order, for locating a firing unit's muzzle-bearing
+ * part when the rig does not name a joint `muzzle` outright. The seeded rigs carry the
+ * muzzle on a barrel / rifle / lance / cannon part; we anchor the flash to the forward
+ * tip of the first part whose name contains one of these (specs/assets.md — read the
+ * muzzle from the model, don't hard-code a single name).
+ */
+const MUZZLE_PART_KEYWORDS: readonly string[] = [
+  "muzzle", "barrel", "barrels", "cannon_barrel", "rifle", "lance", "cannon", "gun",
+];
+
+/** The Aegis fires from three turrets (specs/waves.md); these are their barrel parts. */
+const AEGIS_MUZZLE_PARTS: readonly string[] = ["cannon_barrel", "sgun_l", "sgun_r"];
+
+/**
+ * Build a {@link MuzzleMount} for one rig part: the forward tip of the part's geometry
+ * (its on-axis, forward-most point, in the part's own model coordinates, so it tracks
+ * the barrel as it poses) plus the part's girth for scaling the effect to the muzzle.
+ * The rigs are sculpted facing model `+z` (the same forward the effects are authored
+ * along), so the muzzle tip is the part's forward-most (`maxZ`) point on its centre.
+ */
+function muzzleMountFor(
+  meshes: ReadonlyMap<string, PartMesh>,
+  part: string,
+  kind: MuzzleKind,
+): MuzzleMount | null {
+  const mesh = meshes.get(part);
+  if (!mesh || mesh.positions.length === 0) return null;
+  const p = mesh.positions;
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i], y = p[i + 1], z = p[i + 2];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  if (!Number.isFinite(minX)) return null;
+  const local: [number, number, number] = [(minX + maxX) / 2, (minY + maxY) / 2, maxZ];
+  const scale = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+  return { kind, part, local, scale };
+}
+
+/**
+ * Resolve the firing points on a rig (specs/assets.md). Melee/support units and
+ * structures have none (manifest `muzzle` is `null`/absent); the Aegis has one per
+ * turret barrel; every other firing unit anchors its single flash to its muzzle part.
+ */
+function resolveMuzzleMounts(
+  id: string,
+  rig: ModelSpec,
+  meshes: ReadonlyMap<string, PartMesh>,
+  kind: MuzzleKind | null,
+): MuzzleMount[] {
+  if (!kind) return [];
+  if (id === "aegis") {
+    const mounts: MuzzleMount[] = [];
+    for (const part of AEGIS_MUZZLE_PARTS) {
+      const m = muzzleMountFor(meshes, part, kind);
+      if (m) mounts.push(m);
+    }
+    return mounts;
+  }
+  // A single-barrel firing unit: a part literally named `muzzle`, else the first
+  // barrel/rifle/lance/cannon part (in keyword priority), else the rig's last part.
+  let part = rig.parts.find((pt) => pt.name === "muzzle")?.name;
+  if (!part) {
+    for (const kw of MUZZLE_PART_KEYWORDS) {
+      const hit = rig.parts.find((pt) => pt.name.includes(kw) && meshes.has(pt.name));
+      if (hit) { part = hit.name; break; }
+    }
+  }
+  if (!part) part = rig.parts[rig.parts.length - 1]?.name;
+  const mount = part ? muzzleMountFor(meshes, part, kind) : null;
+  if (!mount) {
+    console.info(`[assets] ${id}: muzzle "${kind}" declared but no muzzle part resolved`);
+    return [];
+  }
+  return [mount];
 }
 
 /** The three muzzle-flash families the manifest names (specs/assets.md). */

@@ -15,6 +15,7 @@ import type { Team } from "../types";
 /** A material collection with a single wireframe switch (specs/overview.md, F4). */
 export class MaterialRegistry {
   private readonly materials = new Set<THREE.Material & { wireframe?: boolean }>();
+  private readonly listeners = new Set<(on: boolean) => void>();
   private wire = false;
 
   /** Register a material so the wireframe toggle reaches it; returns it for chaining. */
@@ -22,6 +23,18 @@ export class MaterialRegistry {
     this.materials.add(material as THREE.Material & { wireframe?: boolean });
     if ("wireframe" in material) (material as { wireframe: boolean }).wireframe = this.wire;
     return material;
+  }
+
+  /**
+   * Subscribe to wireframe-state changes (specs/overview.md — F4 must also reach the
+   * runtime-generated muzzle-flash effects, whose transient materials are not registered
+   * here). Returns an unsubscribe fn; the callback fires immediately with the current
+   * state so a subscriber starts in sync.
+   */
+  onWireframe(cb: (on: boolean) => void): () => void {
+    this.listeners.add(cb);
+    cb(this.wire);
+    return () => this.listeners.delete(cb);
   }
 
   /** Whether wireframe mode is on. */
@@ -35,6 +48,7 @@ export class MaterialRegistry {
     for (const m of this.materials) {
       if ("wireframe" in m) (m as { wireframe: boolean }).wireframe = on;
     }
+    for (const cb of this.listeners) cb(on);
   }
 
   /** Flip wireframe mode; returns the new state. */

@@ -17,10 +17,15 @@ import type { RigTemplate, Team } from "../types";
 import { MaterialRegistry, createTintedMaterial, teamTint } from "./materials";
 import { applyPlacement } from "./placement";
 
+const WHITE = new THREE.Color(0xffffff);
+
 /** One placed, animating singleton (a base, Reliquary, extractor, spawner, or Aegis). */
 export class SingletonActor {
   readonly rig: VoxelRig;
   private readonly template: RigTemplate;
+  private readonly material: THREE.MeshStandardMaterial;
+  private readonly baseColor: THREE.Color;
+  private flash = 0;
 
   constructor(
     scene: THREE.Scene,
@@ -29,11 +34,24 @@ export class SingletonActor {
     registry: MaterialRegistry,
   ) {
     this.template = template;
-    const material = createTintedMaterial(registry, teamTint(team));
+    this.material = createTintedMaterial(registry, teamTint(team));
+    this.baseColor = this.material.color.clone();
     const meshes: Record<string, PartMesh> = {};
     for (const [name, mesh] of template.meshes) meshes[name] = mesh;
-    this.rig = new VoxelRig(template.rig, meshes, { material });
+    this.rig = new VoxelRig(template.rig, meshes, { material: this.material });
     scene.add(this.rig.root);
+  }
+
+  /**
+   * Destruction white-flash (specs/assets.md): lerp the whole model's tint toward white
+   * by `amount` (0 = normal, 1 = full white). The Aegis flashes a few times as it dies
+   * before the simulation culls it. Idempotent — re-setting the same value is cheap.
+   */
+  setFlash(amount: number): void {
+    const a = amount < 0 ? 0 : amount > 1 ? 1 : amount;
+    if (a === this.flash) return;
+    this.flash = a;
+    this.material.color.copy(this.baseColor).lerp(WHITE, a);
   }
 
   /** Place on the ground plane facing `yaw` (specs/playfield.md). */

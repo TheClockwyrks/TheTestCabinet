@@ -38,6 +38,26 @@ export type SpawnerType = UnitType;
 /** The three muzzle-flash effect families (specs/assets.md). */
 export type MuzzleKind = "small-arms" | "cannon" | "lance";
 
+/**
+ * One firing point on a rig: the barrel/lance tip a muzzle flash plays at (specs/assets.md).
+ * Most firing units have exactly one; the Aegis has three (its cannon plus two side guns).
+ * Computed once at load from the muzzle-bearing part's geometry: `part` is the rig part
+ * whose forward tip the flash anchors to, `local` is that tip in the part's own model
+ * coordinates (so it tracks the part as the barrel elevates/recoils when posed), and
+ * `scale` is the part's model-unit girth — used to size the (small, authored) effect to
+ * the barrel so a Monolith's blast reads larger than a Sentinel's flash.
+ */
+export interface MuzzleMount {
+  /** Which muzzle-flash family to play (from `models.json`'s `muzzle` key). */
+  readonly kind: MuzzleKind;
+  /** The rig part whose forward tip the flash anchors to. */
+  readonly part: string;
+  /** The barrel tip in the part's own model coordinates (forward-most, on-axis). */
+  readonly local: readonly [number, number, number];
+  /** The part's model-unit girth, used to scale the effect to the muzzle. */
+  readonly scale: number;
+}
+
 /** The pre-placed, non-build-grid structures. */
 export type FixedStructureType = "base" | "reliquary";
 
@@ -116,8 +136,13 @@ export interface RigTemplate {
    * octant rather than about their own centre.
    */
   readonly bounds: RigBounds;
-  /** The muzzle joint name for firing units (specs/assets.md), or `null`. */
-  readonly muzzleJoint: string | null;
+  /**
+   * The firing points on this rig where a muzzle flash plays (specs/assets.md). Empty
+   * for melee/support units and structures; one entry for a single-barrel firing unit;
+   * three for the Aegis (its cannon plus two side guns). Resolved at load from the
+   * rig's geometry (see {@link MuzzleMount}).
+   */
+  readonly muzzleMounts: readonly MuzzleMount[];
   /** Which muzzle-flash family this entity plays, or `null`. */
   readonly muzzle: MuzzleKind | null;
 }
