@@ -12,7 +12,9 @@ the render frame rate.
 
 - The forager travels along the **center lines of corridors** at a constant
   **`128 px/s`** (4 tiles per second). It is always moving in one of the four
-  cardinal directions, or stopped against a wall.
+  cardinal directions, or stopped against a wall. Its motion is continuous, not
+  tile-by-tile — it slides smoothly between centers, which serve only as the
+  points where it may change direction.
 - **Turning happens at tile centers.** The player sets a *desired* direction (see
   Controls). The forager keeps moving in its current direction until reaching a
   tile center; there, if the desired direction leads into an **open** tile, it
