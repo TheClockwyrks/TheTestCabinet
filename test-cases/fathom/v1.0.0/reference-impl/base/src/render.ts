@@ -474,6 +474,10 @@ function drawHowTo(ctx: CanvasRenderingContext2D): void {
     ["LIGHT travels straight; SOUND bends around corners.", ""],
     ["Graze every plankton to descend. Contact costs a life.", ""],
   ];
+  // Two-column layout anchored left of centre so the long descriptions on
+  // the right stay within the stage instead of running off the edge.
+  const keyRight = STAGE_W / 2 - 220;
+  const valueLeft = STAGE_W / 2 - 200;
   ctx.textAlign = "left";
   let y = 200;
   for (const [k, v] of lines) {
@@ -485,10 +489,10 @@ function drawHowTo(ctx: CanvasRenderingContext2D): void {
     if (v) {
       ctx.fillStyle = COLOR.forager;
       ctx.textAlign = "right";
-      ctx.fillText(k, STAGE_W / 2 - 30, y);
+      ctx.fillText(k, keyRight, y);
       ctx.fillStyle = COLOR.textDim;
       ctx.textAlign = "left";
-      ctx.fillText(v, STAGE_W / 2 - 10, y);
+      ctx.fillText(v, valueLeft, y);
     } else {
       ctx.fillStyle = COLOR.text;
       ctx.textAlign = "center";
