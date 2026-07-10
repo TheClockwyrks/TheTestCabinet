@@ -4,9 +4,8 @@
 
 This file defines how a game is dealt and every legal move. It builds on the pile
 layout in `specs/layout.md` and the coordinate system in `specs/overview.md`. How
-many cards the stock turns at once is the one setting that varies by mode; it is
-defined in the mode spec under `specs/modes/`, and this file refers to it as the
-mode's **turn count**.
+many cards the stock turns at once is defined in `specs/deal-mode.md`, and this
+file refers to it as the **turn count**.
 
 ## The Deck and the Deal
 
@@ -58,9 +57,9 @@ and foundations empty.
 
 ## Stock and Waste
 
-- Clicking the **stock** turns the mode's **turn count** of cards face-up onto
-  the **waste** (see the mode spec under `specs/modes/`). If fewer than that many
-  remain, it turns all that remain.
+- Clicking the **stock** turns the **turn count** of cards face-up onto the
+  **waste** (see `specs/deal-mode.md`). If fewer than that many remain, it turns
+  all that remain.
 - Only the **top card of the waste** is playable — onto a foundation or a tableau
   column by the rules above. Playing it exposes the card beneath.
 - When the stock is **empty**, clicking its (empty) slot **recycles** the entire

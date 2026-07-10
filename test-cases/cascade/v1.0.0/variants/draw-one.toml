@@ -4,7 +4,11 @@ slug = "draw-one"
 name = "Draw One"
 description = "The gentler deal — the stock turns one card at a time, with unlimited redeals."
 
-spec = [{ source = "specs/modes/draw-one.md" }]
+# The deal-mode spec is the only variant-specific spec. It seeds to a flat
+# `specs/deal-mode.md` (not under a `modes/` folder) so the run only ever sees
+# the single deal mode that is actually present — there is no `modes/` directory
+# implying other modes exist. Draw Three seeds its own file to the same dest.
+spec = [{ source = "specs/modes/draw-one.md", dest = "specs/deal-mode.md" }]
 reference = [{ view = "title", media = "reference/screenshots/draw-one/title.png" }, { view = "gameplay", media = "reference/screenshots/draw-one/gameplay.png" }]
 
 # The authored, *correct* static build of this variant — the case-variant

@@ -36,11 +36,11 @@ This specification is split across several files:
   controls, the HUD, and what is out of scope.
 - `specs/cascade.md` — the signature **victory cascade** animation, defined with
   exact motion values.
-- the mode spec under `specs/modes/` — the one playable configuration, defining
-  how many cards the stock turns at a time and its menu entry.
+- `specs/deal-mode.md` — the deal mode: how many cards the stock turns at a time
+  and its menu label.
 
-Read every spec file, including the mode spec under `specs/modes/`, and implement
-the game they describe as a single, cohesive build. The specs cross-reference
+Read every spec file, including `specs/deal-mode.md`, and implement the game they
+describe as a single, cohesive build. The specs cross-reference
 each other by name; treat them as one specification.
 
 ## Goal of this build
