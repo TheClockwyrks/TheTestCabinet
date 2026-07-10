@@ -378,6 +378,8 @@ export class Game {
   }
   /** Test hook: open the pause menu. */
   debugPause(): void { this.toPaused(); }
+  /** Test hook: the live match (for headless proof + performance drives), or null. */
+  get liveMatch(): Match | null { return this.match; }
   /** Test hook: force the match to end for a side. */
   debugEndMatch(winner: "player" | "enemy"): void {
     if (!this.match) return;
