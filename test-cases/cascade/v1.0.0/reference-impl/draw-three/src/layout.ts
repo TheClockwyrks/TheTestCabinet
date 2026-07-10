@@ -143,13 +143,17 @@ export interface HudLayout {
 }
 
 // The bottom-edge HUD (specs/flow.md): a NEW GAME control on the left, a dim mode
-// label in the center, a MENU control on the right — all clear of the piles.
+// label in the center, a MENU control on the right — all clear of the piles. The
+// label is centered in the gap between the two controls (not on the stage) so the
+// wider "DRAW THREE" text stays clear of the off-center NEW GAME button.
 export function hudLayout(): HudLayout {
   const y = 670;
   const h = 40;
+  const newGame = { x: 415, y, w: 165, h };
+  const menu = { x: 760, y, w: 105, h };
   return {
-    newGame: { x: 415, y, w: 165, h },
-    menu: { x: 760, y, w: 105, h },
-    modeLabel: { cx: 640, cy: y + h / 2 },
+    newGame,
+    menu,
+    modeLabel: { cx: (newGame.x + newGame.w + menu.x) / 2, cy: y + h / 2 },
   };
 }
