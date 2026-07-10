@@ -5,8 +5,9 @@ stops: it traces a single unbroken path across a bordered grid, and every pellet
 it swallows adds a cell to its tail. Growth is the whole problem — the longer the
 snake, the less free board there is to thread, so the game slowly fills the space
 it has to move through until one misjudged turn buries the head in a wall or its
-own coils. It plays in **Maze** mode: the classic open board plus a fixed course
-of fatal interior obstacles to navigate around.
+own coils. It ships two ways to play: a **base** Classic run on the open board,
+and a **Maze** variant that adds a fixed course of fatal interior obstacles to
+thread.
 
 What keeps Coil from being pure survival is the **combo**. Pellets eaten in
 close succession stack a scoring multiplier, but the window decays in a couple

@@ -83,16 +83,17 @@ workspace = "workspaces/base"
 init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# Each is declared in its own file under `variants/` and listed here in order —
-# the first is the default. Each seeds the common specs plus its own additive
-# specs, supplies its own `title` menu reference (the main menu lists the modes for
-# that variant; `gameplay` and `game-over` are common), and declares its own scoring
-# domain and the review item that rolls up to it. This version offers a single
-# variant:
-#   - maze — the always-present Classic mode plus Maze mode, with fixed fatal
-#            interior obstacles the snake must navigate around (own `maze` domain).
+# Each is declared in its own file under `variants/` and listed here in order — the
+# first is the default. Every variant seeds the common specs (which include the
+# Classic mode, `specs/modes/standard.md`) and supplies its own `title` menu mockup;
+# `gameplay` and `game-over` references are common. A variant that adds a mode also
+# seeds that mode's spec and declares the scoring domain and review item for it:
+#   - base — Classic mode on the open board (the base game).
+#   - maze — Classic plus Maze mode, which adds a fixed course of fatal interior
+#            obstacles to thread; seeds `specs/modes/maze.md` and its own `maze` domain.
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = [
+  "variants/base.toml",
   "variants/maze.toml",
 ]
 
@@ -108,12 +109,13 @@ install = "npm ci"
 build = "npm run build"
 
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within
-# the run workspace. The specification is decomposed by concern so that
-# mode-specific material can be seeded per variant (see the variant files under
-# `variants/`). These files are always present, so the mode specs may reference
-# them freely; the common specs, in turn, must never reference a mode spec that a
-# given variant does not seed (only `modes/standard.md` is always present). All
-# common specs are plain Markdown and are seeded verbatim.
+# the run workspace. The specification is decomposed by concern; mode-specific
+# material is seeded per variant (see the variant files under `variants/`). Because
+# these files are seeded for every variant, they must describe ONLY what every
+# variant shares — the Classic base game — and must NOT mention a feature or mode
+# that only some variants add (obstacles, for example). Each added mode's spec (e.g.
+# `specs/modes/maze.md`) carries that mode's own material, so a variant's seeded set
+# reads as self-contained. All common specs are plain Markdown, seeded verbatim.
 # A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
 # these need only name the source they seed.
 [[spec]]
@@ -224,8 +226,8 @@ description = "The genuinely tool-produced assets and how the build presents the
 # the things validation cannot judge and that are easy to miss at a glance. They
 # are reporter-side material: never seeded into a run, so the model never sees the
 # checklist; each one restates a requirement the seeded specification already
-# states. A variant adds its own items (see the `review_item` arrays above) for
-# the mode it introduces. Each item is worth `weight` points toward the run's
+# states. A variant that adds a mode adds its own items (in its file under
+# `variants/`) for that mode. Each item is worth `weight` points toward the run's
 # score; the reviewer records a pass/fail verdict for each before the run can be
 # published. The domain rating stays the reviewer's call.
 [[review_item]]
@@ -277,7 +279,7 @@ domain = "gameplay"
 [[review_item]]
 id = "growth-spawn"
 title = "Growth and pellet spawn"
-text = "Eating a pellet grows the snake by exactly one cell and immediately spawns exactly one new pellet at a random valid cell — never on a wall, the snake, an obstacle, or another pellet/orb — so exactly one pellet is on the board at any time."
+text = "Eating a pellet grows the snake by exactly one cell and immediately spawns exactly one new pellet at a random valid cell — never on a wall or on the snake — so exactly one pellet is on the board at any time."
 weight = 1
 domain = "gameplay"
 
@@ -299,7 +301,7 @@ proof = "title"
 [[review_item]]
 id = "board-cleared"
 title = "Board-cleared win"
-text = "If the snake grows to fill every interior cell, the round ends cleanly on a BOARD CLEARED screen — the game-over screen with that heading and the same choices — without the game crashing or attempting an impossible pellet placement."
+text = "If the snake fills the board so no new pellet can spawn, the round ends cleanly on a BOARD CLEARED screen — the game-over screen with that heading and the same choices — without the game crashing or attempting an impossible pellet placement."
 weight = 1
 domain = "gameplay"
 reference = "game-over"

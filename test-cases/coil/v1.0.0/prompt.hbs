@@ -62,8 +62,8 @@ depends on them:
   contract**: it enumerates the snake sprites (an animated biting head, a
   straight-body sprite, corner sprites, and a tail) and the sounds (eat / combo-up
   / death cues and a music bed), names which tool produces each and where it lands
-  under `assets/`, and states how each is wired in. The board, walls, obstacles,
-  pellet, and HUD stay drawn in code. Your build must be **self-contained** — it
+  under `assets/`, and states how each is wired in. The board, walls, pellet, and
+  HUD stay drawn in code. Your build must be **self-contained** — it
   bundles the committed files and must **not** invoke these tools at build time
   (they are gone when the build is re-run to validate it). Load every produced file
   with page-relative URLs so it resolves from the served sub-path.

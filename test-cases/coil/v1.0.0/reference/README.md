@@ -22,18 +22,18 @@ implementation.
 Each file corresponds to a canonical view slug. The `gameplay` and `game-over`
 views are **common** — the same mockup is rendered and seeded for every variant.
 The `title` view is **variant-specific**: each variant declares its own menu
-mockup (see the `[[variant]]` `reference` entries in `../test-case.toml`). This
-version ships a single variant, `maze`, so there is one `title` mockup.
+mockup (see the `[[variant]]` `reference` entries in `../test-case.toml`), because
+the main menu differs per variant.
 
-| View slug   | File(s)          | Description                                      |
-| ----------- | ---------------- | ------------------------------------------------ |
-| `title`     | `menu-maze.html` | Title screen and main menu (the `maze` variant). |
-| `gameplay`  | `gameplay.html`  | Representative in-game frame (common).           |
-| `game-over` | `game-over.html` | Game-over result panel (common).                 |
+| View slug   | File(s)                            | Description                                         |
+| ----------- | ---------------------------------- | --------------------------------------------------- |
+| `title`     | `menu-base.html`, `menu-maze.html` | Title screen and main menu, one mockup per variant. |
+| `gameplay`  | `gameplay.html`                    | Representative in-game frame (common).              |
+| `game-over` | `game-over.html`                   | Game-over result panel (common).                    |
 
-`menu-maze.html` shows the menu list `CLASSIC` / `MAZE` / `HOW TO PLAY` — matching
-the always-present Classic mode plus the seeded `maze` mode spec — and draws the
-dimmed interior obstacle bars behind the menu to hint at the mode.
+`menu-base.html` (the `base` variant) shows the menu list `CLASSIC` / `HOW TO PLAY`.
+`menu-maze.html` (the `maze` variant) shows `CLASSIC` / `MAZE` / `HOW TO PLAY` and
+draws the dimmed interior obstacle bars behind the menu to hint at the Maze mode.
 
 The `gameplay` mockup renders the snake as its **produced sprite set** — a
 biting head, straight-body sprites, corner sprites at each bend, and a tapered
@@ -57,6 +57,9 @@ not clobber another variant's render. Each variant folder holds that variant's
 full set — the common views plus its own `title` menu:
 
 ```text
+reference/screenshots/base/title.png       # from menu-base.html
+reference/screenshots/base/gameplay.png
+reference/screenshots/base/game-over.png
 reference/screenshots/maze/title.png       # from menu-maze.html
 reference/screenshots/maze/gameplay.png
 reference/screenshots/maze/game-over.png

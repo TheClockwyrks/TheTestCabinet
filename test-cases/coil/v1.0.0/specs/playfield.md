@@ -37,9 +37,6 @@ Every cell is exactly one of:
 - **Snake** — a cell occupied by a segment of the snake (head or body).
 - **Pellet** — the cell holding the current pellet.
 
-(A bonus orb and interior obstacle cells also exist in specific modes; the mode
-specs under `specs/modes/` define them. They never appear in the base game.)
-
 ## Walls
 
 The wall border is **one cell thick** on all four sides:
@@ -49,11 +46,9 @@ The wall border is **one cell thick** on all four sides:
 
 This leaves an **interior playable area of 28 x 16 cells**: `col` in `[1, 28]`
 and `row` in `[1, 16]`. Walls are drawn in the wall-border color, are always
-visible, and never change during a round. The snake dies the moment its head
-enters any wall cell (see Collision in `specs/mechanics.md`). The board does
-**not** wrap in the base game — the walls are hard boundaries. (A mode spec
-under `specs/modes/` may replace the wall boundaries with wrapping edges; when
-it does, that mode spec defines the wrapping behavior.)
+visible, and never change during a round. The walls are hard boundaries: the
+snake dies the moment its head enters any wall cell (see Collision in
+`specs/mechanics.md`).
 
 ## The snake
 
@@ -79,9 +74,8 @@ it does, that mode spec defines the wrapping behavior.)
 
 A pellet spawns at a uniformly random cell chosen from the set of **valid**
 cells. A valid cell is an interior cell (`col` in `[1, 28]`, `row` in `[1, 16]`)
-that is **not** currently occupied by any snake segment, by another pellet or
-bonus orb, or by an obstacle cell (in modes that have them). Food must never
-spawn on a wall, on the snake, or on an obstacle.
+that is **not** currently occupied by any snake segment or by the current pellet.
+Food must never spawn on a wall or on the snake.
 
 - The placement must remain correct and performant even when very few valid
   cells remain — for example, when the snake has grown to fill most of the
@@ -90,8 +84,8 @@ spawn on a wall, on the snake, or on an obstacle.
 - **First pellet.** The first pellet of a round spawns at a valid cell *after*
   the snake has been placed at its starting position, so it never overlaps the
   initial body.
-- **Board cleared.** If the snake grows to occupy every interior cell, no valid
-  cell remains for a new pellet. This is the board-cleared win condition (see
-  Game states in `specs/flow.md`); the round ends cleanly and the game must not
-  crash or attempt an impossible placement. In normal play this is effectively
-  unreachable, but it must be handled.
+- **Board cleared.** If the snake grows until no valid cell remains for a new
+  pellet — it has filled all playable cells — the round ends on the board-cleared
+  win condition (see Game states in `specs/flow.md`); the round ends cleanly and
+  the game must not crash or attempt an impossible placement. In normal play this
+  is effectively unreachable, but it must be handled.

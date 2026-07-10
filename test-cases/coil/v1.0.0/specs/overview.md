@@ -32,11 +32,12 @@ This specification is split across several files:
 - `specs/assets.md` — the assets you must **produce** during the build (the
   snake's sprite set and the game's sound and music) with the tools on your
   `PATH`, where they land, and how they are wired in.
-- the mode specs under `specs/modes/` — the playable game modes. Each mode spec
-  defines one mode and the main-menu entry for it.
+- `specs/modes/standard.md` — the Classic mode and its main-menu entry. Any
+  further mode spec under `specs/modes/` defines an additional mode and its own
+  menu entry the same way.
 
-Read every spec file, including each mode spec under `specs/modes/`, and
-implement the modes they define. The main menu lists those modes, then `HOW TO
+Read every spec file, including each mode spec under `specs/modes/`, and build
+the game and its mode(s). The main menu lists each mode's entry, then `HOW TO
 PLAY`.
 
 ## Goal of this build
@@ -57,9 +58,9 @@ a tech demo.
   run image puts asset-generation tools on your `PATH`, and you must **produce**
   the snake's sprite set and the game's sound and music with them during the
   build, then bundle the committed files into the game. `specs/assets.md` is the
-  authoritative production contract; the board, walls, obstacles, pellet, and HUD
-  stay drawn in code. The build must be **self-contained** — it bundles the
-  produced files and must **not** invoke the tools at build time.
+  authoritative production contract; the board, walls, pellet, and HUD stay drawn
+  in code. The build must be **self-contained** — it bundles the produced files
+  and must **not** invoke the tools at build time.
 - **Runs in the browser with no backend.** No server, accounts, database, or
   network calls at runtime. Everything needed to play must be self-contained,
   including the produced assets, which are bundled into the build.
@@ -137,8 +138,6 @@ match them.
 | Snake head             | `#5ef38c` |
 | Snake body             | `#2fd07a` |
 | Pellet                 | `#ff5c8a` |
-| Bonus orb              | `#ffd23f` |
-| Maze obstacle          | `#ffb454` |
 | Combo accent           | `#ffd23f` |
 | Primary text           | `#e6edf3` |
 | Secondary text         | `#8a94a6` |
@@ -147,9 +146,9 @@ match them.
 - Use a **monospace** type family for all text (scores, menus, labels). Do not
   depend on a web font that must be downloaded; a system monospace stack is
   required so the game renders identically offline.
-- The snake, pellets, bonus orbs, and obstacles have a soft neon glow. The board
-  interior is faintly gridded with the grid-line color so individual cells read
-  without dominating the field.
+- The snake and pellets have a soft neon glow. The board interior is faintly
+  gridded with the grid-line color so individual cells read without dominating the
+  field.
 - The snake is rendered from a **produced sprite set** — an animated head, a
   straight-body sprite, corner sprites for its turns, and a tail — that you make
   with the on-`PATH` tools (`specs/assets.md`), not from code-drawn rectangles.

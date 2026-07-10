@@ -11,9 +11,8 @@ The simulation runs on a **fixed timestep**: the game advances in discrete
 direction. The tick rate is constant for the whole round — there is **no
 speed-up** as the snake grows or the score rises.
 
-- The base tick interval is **125 ms** (**8 ticks per second**). A mode spec
-  under `specs/modes/` may state a different interval; when none does, 125 ms
-  applies.
+- The tick interval is **125 ms** (**8 ticks per second**), constant for the
+  whole round.
 - Decouple **rendering** from the tick (for example, draw with
   `requestAnimationFrame`) so the display stays smooth while the simulation
   steps at the fixed rate. Rendering must never advance the simulation; only a
@@ -38,8 +37,8 @@ Each tick, in this exact order:
    **moves**: prepend the new head and remove the current tail cell.
 5. **Resolve food.** If a pellet was eaten, apply scoring and the combo (see
    below), then spawn a new pellet (see `specs/playfield.md`).
-6. **Advance timers.** Decrement the combo window and any mode timers by the
-   tick's elapsed time; expire them if they reach zero (see Combo).
+6. **Advance timers.** Decrement the combo window by the tick's elapsed time;
+   expire it if it reaches zero (see Combo).
 
 This order is what makes the subtle cases correct; follow it exactly.
 
@@ -83,13 +82,9 @@ Collision is tested against the **new head cell** computed in step 2, before the
 tail is resolved. The head moving into any of the following ends the round
 immediately:
 
-- **A wall cell** — any perimeter cell (see `specs/playfield.md`). (A mode that
-  replaces the walls with wrapping edges removes this case for those edges, as
-  that mode spec defines.)
+- **A wall cell** — any perimeter cell (see `specs/playfield.md`).
 - **The snake's own body** — any cell occupied by a body segment, subject to the
   tail rule below.
-- **An obstacle cell** — only in modes that place interior obstacles, as that
-  mode spec defines.
 
 There are **no** grace frames, forgiveness windows, or second chances: a single
 fatal collision ends the round.
@@ -147,5 +142,4 @@ per-second rate, 2.4 s is roughly 19 ticks — enough travel to reach most
 pellets if you take an efficient route, but easily lost by wandering.
 
 The full scoring rules, including how the multiplier and its window are shown in
-the HUD, are in `specs/flow.md`. Modes that introduce a bonus orb state how the
-orb interacts with the combo in their own mode spec under `specs/modes/`.
+the HUD, are in `specs/flow.md`.

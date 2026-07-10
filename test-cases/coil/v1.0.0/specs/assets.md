@@ -4,9 +4,8 @@ Coil ships with **no** pre-made art or sound. Instead, the run image puts six
 **asset-generation tools** on your `PATH`, and **you must produce the snake's sprite
 set and the game's audio with those tools — or any other way you prefer — and commit
 the produced files**, then wire them into the game. Everything else the game draws (the
-board, its walls, the maze obstacles, the pellet, and the whole HUD) stays **drawn in
-code**, as it always was; only the snake and the sound become produced assets in this
-version.
+board, its walls, the pellet, and the HUD) stays **drawn in code**; only the snake and
+the sound are produced assets.
 
 Produce the assets as a **one-time step**: your build (`npm run build`) must be
 **self-contained**, bundling the committed files without invoking the tools, which are
@@ -80,8 +79,8 @@ game loads with no 404s.
 
 ## The snake sprite set — `draw` and `draw-sheet`
 
-The snake is no longer drawn as code rectangles: **render it from a produced sprite
-set**, pixel art on a **32×32** transparent (straight-alpha) canvas per cell, matching
+**Render the snake from a produced sprite set** (not code-drawn rectangles): pixel
+art on a **32×32** transparent (straight-alpha) canvas per cell, matching
 the cell size in `specs/playfield.md`. These are pixel art — draw at native size and
 sample them **nearest-neighbor** in the game (`imageSmoothingEnabled = false` for Canvas,
 `image-rendering: pixelated` for DOM) so they stay crisp (`specs/overview.md`). Use the
@@ -120,16 +119,16 @@ produced sprites.
 
 ## Audio — `sfx-synth` / `sfx-sample` and `music`, played via Web Audio
 
-Coil's audio is now **required and produced** (this supersedes the earlier "optional,
-synthesize it inline" note — see `specs/flow.md`). Produce the sound with the audio tools
-and play the resulting `.wav`s via the Web Audio API. Land them under `assets/audio/`.
+Coil's audio is **required and produced** (see `specs/flow.md`). Produce the sound with
+the audio tools and play the resulting `.wav`s via the Web Audio API. Land them under
+`assets/audio/`.
 
 - **Sound effects** — produce at least an **eat** cue (a short blip when a pellet is
   eaten), a **combo-up** cue (a brighter blip when the combo multiplier increases), and a
   **death** sound (a distinct tone when the snake dies) with `sfx-synth` and/or
   `sfx-sample`. `sfx-synth` builds a sound from synth voices alone; `sfx-sample` layers
   over the baked sample pack (browse it via `list-samples`) for a richer result — use
-  whichever suits each cue. A short chime for any mode bonus is optional.
+  whichever suits each cue.
 - **Music** — produce a **low-key background music bed** with `music`: an unobtrusive
   loop that sits under the game. `music` emits both a `.wav` (the ready asset you play)
   and a `.mid` score alongside it; **play the `.wav`** (the `.mid` is a portable companion
@@ -149,8 +148,6 @@ of the board code-drawn. In the palette from `specs/overview.md`, draw in code
 
 - The **board** — the interior field, its faint per-cell grid, and the **wall border**
   (`specs/playfield.md`).
-- The **maze obstacles** — the fixed interior obstacle bars the Maze mode places
-  (`specs/modes/maze.md`), drawn in the obstacle color.
 - The **pellet** — the single food dot, drawn in the pellet color with its glow
   (`specs/playfield.md`). (Producing a pellet sprite is not required; keep it code-drawn.)
 - The entire **HUD** — score, best, the combo readout and its draining window bar, and the

@@ -16,13 +16,11 @@ shown last in the menu.)
 
 ## Mode
 
-- **Classic** — the standard game on the fully enclosed `30 x 18` board from
-  `specs/playfield.md`. The four walls are solid and fatal; the board does not
-  wrap. Exactly one pellet is on the board at a time, there are no interior
-  obstacles, and there is no bonus orb.
+- **Classic** — the game on the fully enclosed `30 x 18` board from
+  `specs/playfield.md`. The four walls are solid and fatal, and exactly one pellet
+  is on the board at a time.
 
-Classic uses the base tick interval (**125 ms**, see `specs/mechanics.md`), the
-standard single-pellet placement (`specs/playfield.md`), the combo scoring
-(`specs/mechanics.md` and `specs/flow.md`), and the standard collision and growth
-rules. It is the reference mode against which the other modes' differences are
-described.
+Classic uses the tick interval (**125 ms**, see `specs/mechanics.md`), the
+single-pellet placement (`specs/playfield.md`), the combo scoring
+(`specs/mechanics.md` and `specs/flow.md`), and the collision and growth rules
+exactly as those specs define them.

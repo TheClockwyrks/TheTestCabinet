@@ -2,8 +2,8 @@
 
 This file defines the **Maze** mode. It builds on the board in
 `specs/playfield.md`, the simulation in `specs/mechanics.md`, and the scoring and
-flow in `specs/flow.md`. Everything in Classic mode applies except where this
-spec overrides it.
+flow in `specs/flow.md`. Maze adds a fixed course of interior obstacles to the
+Classic game (`specs/modes/standard.md`); every Classic rule still applies.
 
 ## Menu entry
 
@@ -15,9 +15,10 @@ This mode spec adds the following entry to the main menu (see Game states in
 ## Mode
 
 - **Maze** — the same fully enclosed `30 x 18` board as Classic, with a set of
-  **fixed interior obstacles** added. Obstacle cells are solid and fatal on
-  contact, just like walls, turning the open board into a course the snake must
-  thread.
+  **fixed interior obstacles** added. An **obstacle cell** is a new board cell type
+  (alongside the wall, empty, snake, and pellet cells in `specs/playfield.md`):
+  solid and fatal on contact, just like a wall, turning the open board into a course
+  the snake must thread.
 
 ### Obstacles
 
@@ -40,8 +41,8 @@ Bars 1 and 2 are mirrors of each other; bars 3 and 4 are mirrors of each other.
 The snake's start row (`row = 8`) is deliberately clear of every obstacle, so it
 has a free horizontal runway at the start.
 
-- Draw obstacle cells in the maze-obstacle color with a soft glow, the same size
-  as one cell. They are part of the board, not the snake.
+- Draw obstacle cells in the obstacle color `#ffb454` with a soft glow, the same
+  size as one cell. They are part of the board, not the snake.
 - The head moving into any obstacle cell is **fatal**, exactly like a wall
   (see Collision in `specs/mechanics.md`).
 - A pellet is never placed on an obstacle cell: obstacle cells are excluded from

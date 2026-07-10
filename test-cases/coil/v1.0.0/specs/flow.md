@@ -2,8 +2,8 @@
 
 This file defines scoring, the game's state machine, controls, audio, the HUD,
 and the behaviors that make good test targets. It refers to the geometry in
-`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the modes in
-the mode specs under `specs/modes/`.
+`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the game's
+mode(s) in `specs/modes/`.
 
 ## Scoring
 
@@ -17,19 +17,15 @@ the mode specs under `specs/modes/`.
   updates live during play the instant the current score passes it, and is shown
   on the title screen and during play. The high score is the **only** thing that
   persists between sessions; nothing else is saved.
-- Modes that add a bonus orb define that orb's point value in their own mode
-  spec under `specs/modes/`.
 
 ## Game states
 
 The game is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `COIL`, the tagline `GRID SERPENT`,
-   the current `BEST` score, and a vertical menu. The menu lists the playable
-   modes defined by the mode specs — each mode spec declares its own entry and
-   where it sits in the menu — followed by `HOW TO PLAY`. The selected item is
-   highlighted. The board furniture (walls, a coiled snake, a pellet) may show
-   dimmed behind the menu.
+   the current `BEST` score, and a vertical menu of the game's mode entries in
+   order, followed by `HOW TO PLAY`. The selected item is highlighted. The board
+   furniture (walls, a coiled snake, a pellet) may show dimmed behind the menu.
 2. **How to play.** A simple screen describing the controls and the combo
    mechanic. Returns to the menu.
 3. **Playing.** The live game: the board, walls, the snake, the pellet, and the
@@ -40,8 +36,8 @@ The game is a small state machine. Each state has a clear screen and controls.
 5. **Game over.** Shown when the snake dies. Displays `GAME OVER`, the final
    score, and the `BEST` score, with **PLAY AGAIN** and **MENU**. The final
    frame may show dimmed behind the panel.
-6. **Board cleared.** The win state, shown if the snake fills every interior
-   cell (see `specs/playfield.md`). It is the game-over screen with a
+6. **Board cleared.** The win state, shown if the snake fills the board so no new
+   pellet can spawn (see `specs/playfield.md`). It is the game-over screen with a
    `BOARD CLEARED` heading instead of `GAME OVER`; it offers the same choices.
 
 The game starts on the title screen and does not begin a round until the player
@@ -69,8 +65,8 @@ contract. Produce and play, at least:
 - a distinct **death** sound when the snake dies, and
 - a low-key **background music bed** that loops under the game.
 
-Modes with a bonus orb may add a chime for eating one. Provide a **mute** toggle, and
-do not start audio until the player interacts (browsers block autoplay). The game must
+Provide a **mute** toggle, and do not start audio until the player interacts
+(browsers block autoplay). The game must
 still **load** if audio is unavailable — guard playback so a decode or autoplay failure
 never breaks the game — but a finished build ships the produced sound and music, not
 silence and not a hand-oscillated Web Audio stand-in.
@@ -102,7 +98,7 @@ tests:
   direction; a reversal into the neck is ignored, and at most one turn is
   applied per tick, so a rapid double-press can never reverse the snake.
 - Eating a pellet grows the snake by exactly one cell and spawns exactly one new
-  pellet, never on a wall, the snake, an obstacle, or another pellet/orb.
+  pellet, never on a wall or on the snake.
 - The snake may follow its own retreating tail on a normal tick, but moving into
   any body cell on a growth tick (when the tail does not retract) is fatal.
 - Hitting a wall or the snake's own body ends the round immediately, with no
