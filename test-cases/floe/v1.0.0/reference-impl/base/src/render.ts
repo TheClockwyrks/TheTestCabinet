@@ -189,18 +189,33 @@ function inView(x: number, w: number): boolean {
   return x < STRAIT_W && x + w > 0;
 }
 
+// Item positions live on a track longer than the strait and wrap by trackLen
+// (see updateLane). A left-moving item that has just wrapped sits near trackLen,
+// but its real continuous position is its wrapped copy at x - trackLen, still
+// sliding off the left edge — draw that copy so it exits gradually instead of
+// vanishing the instant it reaches x = 0. trackLen >> strait width, so only the
+// item's own x and its x - trackLen copy can ever fall in view.
+function drawXs(x: number, w: number, trackLen: number): number[] {
+  const xs: number[] = [];
+  if (inView(x, w)) xs.push(x);
+  const wrapped = x - trackLen;
+  if (inView(wrapped, w)) xs.push(wrapped);
+  return xs;
+}
+
 function drawFloes(ctx: CanvasRenderingContext2D, lanes: Lane<Floe>[], s: Sprites): void {
   for (const lane of lanes) {
     const y = lane.row * TILE;
     for (const f of lane.items) {
       const w = f.len * TILE;
-      if (!inView(f.x, w)) continue;
-      if (f.kind === "pan") {
-        ctx.drawImage(s.pan, f.x, y, TILE, TILE);
-      } else if (f.kind === "raft3") {
-        ctx.drawImage(s.raft[0], 0, 0, 96, 32, f.x, y, 96, TILE);
-      } else {
-        ctx.drawImage(s.raft[1], f.x, y, 128, TILE);
+      for (const dx of drawXs(f.x, w, lane.trackLen)) {
+        if (f.kind === "pan") {
+          ctx.drawImage(s.pan, dx, y, TILE, TILE);
+        } else if (f.kind === "raft3") {
+          ctx.drawImage(s.raft[0], 0, 0, 96, 32, dx, y, 96, TILE);
+        } else {
+          ctx.drawImage(s.raft[1], dx, y, 128, TILE);
+        }
       }
     }
   }
@@ -212,16 +227,17 @@ function drawVehicles(ctx: CanvasRenderingContext2D, lanes: Lane<Vehicle>[], s: 
     const mirror = lane.dir === -1; // sprites face right; mirror a left-moving lane
     for (const v of lane.items) {
       const w = v.len * TILE;
-      if (!inView(v.x, w)) continue;
       const img = v.kind === "plow" ? s.plow : v.kind === "dogsled" ? s.dogsled : s.car;
-      if (mirror) {
-        ctx.save();
-        ctx.translate(v.x + w, y);
-        ctx.scale(-1, 1);
-        ctx.drawImage(img, 0, 0, w, TILE);
-        ctx.restore();
-      } else {
-        ctx.drawImage(img, v.x, y, w, TILE);
+      for (const dx of drawXs(v.x, w, lane.trackLen)) {
+        if (mirror) {
+          ctx.save();
+          ctx.translate(dx + w, y);
+          ctx.scale(-1, 1);
+          ctx.drawImage(img, 0, 0, w, TILE);
+          ctx.restore();
+        } else {
+          ctx.drawImage(img, dx, y, w, TILE);
+        }
       }
     }
   }
