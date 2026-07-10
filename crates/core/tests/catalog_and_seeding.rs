@@ -259,6 +259,107 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
     assert!(seeded.path.join(".git").is_dir());
 }
 
+#[test]
+fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
+    // A demo case that declares `packages` and ships a workspace `package.json`
+    // depending on the runtime library via the in-repo relative `file:` path the
+    // seeder vendors it to, plus a `.gitignore` that ignores `dist/` (as every
+    // real case does for its own build output).
+    let manifest = format!(
+        "variants = [\"variants/base.toml\"]\nworkspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n{DEMO_HEAD}"
+    );
+    let (dir, catalog) = temp_catalog(&manifest, &[("base.toml", VARIANT_BASE_TITLE)]);
+    let workspace = dir.path().join("demo/v1.0.0/workspaces/base");
+    std::fs::create_dir_all(&workspace).expect("workspace dir");
+    std::fs::write(
+        workspace.join("package.json"),
+        r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:./.tcab/packages/@test-cabinet/particle-runtime"}}"#,
+    )
+    .expect("workspace package.json");
+    std::fs::write(workspace.join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
+
+    // A fake host package store: particle-runtime (with a `dist/`) depending on
+    // run-record via the relative sibling `file:` the staging script writes, so the
+    // vendoring closure must follow the edge and copy run-record too.
+    let store = tempfile::tempdir().expect("store dir");
+    let pr = store.path().join("@test-cabinet/particle-runtime");
+    let rr = store.path().join("@test-cabinet/run-record");
+    std::fs::create_dir_all(pr.join("dist")).expect("pr dist");
+    std::fs::create_dir_all(rr.join("dist")).expect("rr dist");
+    std::fs::write(
+        pr.join("package.json"),
+        r#"{"name":"@test-cabinet/particle-runtime","version":"0.0.0","dependencies":{"@test-cabinet/run-record":"file:../run-record"}}"#,
+    )
+    .expect("pr manifest");
+    std::fs::write(pr.join("dist/index.js"), "// runtime").expect("pr dist file");
+    std::fs::write(
+        rr.join("package.json"),
+        r#"{"name":"@test-cabinet/run-record","version":"0.0.0"}"#,
+    )
+    .expect("rr manifest");
+    std::fs::write(rr.join("dist/index.js"), "// types").expect("rr dist file");
+
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve demo");
+    let base = version.variant("base").expect("base variant");
+    let specs = version.seeded_specs(base);
+    let seed_base = tempfile::tempdir().expect("seed base");
+    let seeder = FsRepoSeeder::with_package_store(seed_base.path(), store.path());
+    let seeded = seeder
+        .seed(&SeedRequest {
+            test_case: &version,
+            variant: base,
+            specs: &specs,
+            workspace: version.workspace_for(base),
+            references: &[],
+            live_preview: None,
+        })
+        .expect("seed demo");
+
+    // The declared package and its transitive `@test-cabinet` closure are vendored
+    // into the repo at the path the case's `package.json` depends on.
+    let vendor = seeded.path.join(".tcab/packages/@test-cabinet");
+    assert!(
+        vendor.join("particle-runtime/package.json").is_file(),
+        "the declared package is vendored"
+    );
+    assert!(
+        vendor.join("run-record/package.json").is_file(),
+        "the transitive @test-cabinet dependency is vendored too"
+    );
+    let vendored_dist = vendor.join("particle-runtime/dist/index.js");
+    assert!(vendored_dist.is_file(), "the package's dist is vendored");
+
+    // The workspace `package.json` is seeded verbatim — the seeder never rewrites it.
+    let pkg = std::fs::read_to_string(seeded.path.join("package.json")).expect("read package.json");
+    assert!(pkg.contains("file:./.tcab/packages/@test-cabinet/particle-runtime"));
+
+    // The vendored tree is in the initial commit, dist included: the case's
+    // `.gitignore` ignores `dist/`, so this only holds if seeding force-adds
+    // `.tcab/`. Without it the published repo would be missing the package code.
+    let tracked = git_tracked_files(&seeded.path);
+    assert!(
+        tracked.contains(".tcab/packages/@test-cabinet/particle-runtime/dist/index.js"),
+        "the vendored dist must be committed despite the `dist/` gitignore rule; tracked:\n{tracked}"
+    );
+    assert!(
+        tracked.contains(".tcab/packages/@test-cabinet/run-record/package.json"),
+        "the whole vendored closure is committed"
+    );
+}
+
+/// The newline-joined list of files git tracks in `repo` (its `git ls-files`), for
+/// asserting what the seeder's initial commit captured.
+fn git_tracked_files(repo: &Path) -> String {
+    let output = std::process::Command::new("git")
+        .args(["-C"])
+        .arg(repo)
+        .args(["ls-files"])
+        .output()
+        .expect("run git ls-files");
+    assert!(output.status.success(), "git ls-files failed");
+    String::from_utf8(output.stdout).expect("utf8 ls-files")
+}
+
 /// Materialize a throwaway catalog holding a single `demo@v1.0.0` whose manifest
 /// is `manifest`, alongside the handful of source files the manifests below
 /// reference (a prompt, one spec, and three reference mockups). Each entry in

@@ -1,0 +1,12 @@
+{
+  "name": "hollowdeep",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hollowdeep — a side-view sealed-colony survival simulation that runs entirely in the browser, whose art, effects, and audio the build produces itself.",
+  "dependencies": {
+    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
+  },
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

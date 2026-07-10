@@ -1,0 +1,8 @@
+slug = "base"
+name = "Base"
+# The base variant is the case itself: it adds nothing beyond identity. All the contract
+# — the bounding box, the tool, the required animations, the brief, and the domains —
+# lives in the common set in test-case.toml.
+spec = []                              # ADDITIVE specs on top of the common specs
+# review_item = [...]                  # ADDITIVE reviewer items (may name a common domain)
+# [[domain]]                           # ADDITIONAL scoring domains, rated only for this variant

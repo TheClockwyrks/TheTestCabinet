@@ -1,5 +1,6 @@
 import type { Plugin } from "vite";
 import type { AssetKind, TestType } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 
 // Build-time data source: the public R2 snapshot.
 //
@@ -37,24 +38,25 @@ interface SnapshotIndex {
   runsKey: string;
   runsPrefix: string;
   casesPrefix: string;
+  // Optional so a snapshot published before the model catalog existed still loads
+  // (the site then renders an empty Models section).
+  modelsKey?: string;
 }
 
+interface SnapshotModelsFile {
+  schemaVersion: number;
+  // Wire `ModelOut` shape; the app maps it via `toModelSummary`.
+  models: unknown[];
+}
+
+// The flat summary index (`runs.json`, the snapshot's `ln` key): the full
+// `RunSummary` cards the backend publishes, newest first. These ARE the app's
+// `runSummaries` — every enriched field is served, so no per-field remapping is
+// needed. An older snapshot that predates a field is tolerated the same way the
+// UI's optional typing tolerates it.
 interface SnapshotRunsFile {
   schemaVersion: number;
-  runs: SnapshotRunSummary[];
-}
-
-interface SnapshotRunSummary {
-  id: string;
-  subject: {
-    testCaseSlug: string;
-    testCaseVersion: string;
-  };
-  // Aggregate verdict across the run's reviews: the worst rating any reviewer
-  // gave any domain, and how many reviews back it. Present on the index summary
-  // (the per-run file carries the full reviews). Optional for older snapshots.
-  rating?: string | null;
-  reviewCount?: number;
+  runs: RunSummary[];
 }
 
 interface SnapshotReviewVerdict {
@@ -137,11 +139,18 @@ interface SnapshotCaseFile {
     // The variant's own scoring domains (additive to the common ones), rated only
     // when this variant is selected.
     domains?: SnapshotDomain[];
+    // The absolute URL of this variant's reference-implementation build (emitted
+    // by the Rust snapshot export as camelCase `referenceBuild`). Null/absent when
+    // the variant declares no `reference_implementation`.
+    referenceBuild?: string | null;
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
   // Seeded spec files shared by every variant, bodies inlined. Optional for
   // snapshots written before specs were inlined.
   commonSeededInputs?: SnapshotSeededInput[];
+  // The runtime packages this case ships into every run (case-level), each with a
+  // UI-only description. Optional for snapshots written before the field existed.
+  packages?: SnapshotPackage[];
   // Reviewer checklist items shared by every variant, with point weights.
   commonReviewItems?: SnapshotReviewItem[];
   // The case's common scoring domains (shared by every variant; a variant's own
@@ -166,6 +175,16 @@ interface SnapshotCaseFile {
 interface SnapshotSeededInput {
   path: string;
   text: string;
+  // The seeded file's role (`spec`/`script`), so the Inputs tab can tag it. Absent
+  // on snapshots written before the field existed; treated as "spec".
+  kind?: "spec" | "script";
+}
+
+// One runtime package a case ships into its runs, inlined in case metadata: its
+// npm name and the UI-only description of what it provides.
+interface SnapshotPackage {
+  name: string;
+  description: string;
 }
 
 interface SnapshotReviewItem {
@@ -200,9 +219,10 @@ interface AssembledReview {
 }
 
 interface AssembledSnapshot {
-  // Verbatim RunRecord blobs, newest first (the snapshot's `runs/<id>.json`
-  // `record`). The app types these as RunRecord[].
-  runs: unknown[];
+  // The flat summary index (`runs.json`), newest first — the bounded `RunSummary`
+  // cards the run log and list pages consume, taken verbatim from the backend's
+  // published index (no extra fetches). The app types these as RunSummary[].
+  runSummaries: RunSummary[];
   // `writeups/<runId>` framing reconstructed from each run's reviews (the
   // *aggregate* writeup when there are several), keyed by run id — the same
   // `---\nrating: …\n---\n\n<body>` form the app parses for the cards/badges.
@@ -212,6 +232,9 @@ interface AssembledSnapshot {
   reviews: Record<string, AssembledReview[]>;
   // Test-case metadata, mapped to the app's TestCaseSummary shape.
   testCases: AssembledTestCase[];
+  // The composed model catalog (wire `ModelOut[]`); the app maps it via
+  // `toModelSummary`. Empty when the snapshot predates the model catalog.
+  models: unknown[];
   // Resolved proof media URLs, keyed by run id then by served file name
   // (`<proof-id>.<ext>`). The app's `proofMediaUrl(runId, file)` reads this.
   proofMediaUrls: Record<string, Record<string, string>>;
@@ -257,7 +280,17 @@ interface AssembledChangelogEntry {
 interface AssembledSeededInput {
   path: string;
   kind: "text";
+  // The seeded file's role, so the Inputs tab can tag a "Script" distinctly from a
+  // "Spec". Defaults to "spec" for snapshots that predate the field.
+  role: "spec" | "script";
   text: string;
+}
+
+// A runtime package the app consumes (mirrors `PackageInput` in the UI's
+// testCases): the package name and its UI-only description.
+interface AssembledPackage {
+  name: string;
+  description: string;
 }
 
 interface AssembledVariant {
@@ -266,11 +299,19 @@ interface AssembledVariant {
   description: string | null;
   prompt: string;
   seededInputs: AssembledSeededInput[];
+  // The runtime packages a run of this variant ships (case-level, so the same on
+  // every variant), each with its UI-only description.
+  packages: AssembledPackage[];
   referenceScreenshots: AssembledReference[];
   reviewItems: AssembledReviewItem[];
   // The variant's effective scoring domains (common + its own) — the set a run of
   // this variant is rated against.
   domains: AssembledDomain[];
+  // The absolute URL of this variant's reference-implementation build, or null
+  // when it declares none. Carried through verbatim from the snapshot (already a
+  // fully-qualified Cloudflare Pages URL), it is the case-variant analogue of a
+  // run's playable build and drives whether the case-detail Reference tab appears.
+  referenceBuild: string | null;
 }
 
 interface AssembledTestCase {
@@ -295,10 +336,11 @@ interface AssembledTestCase {
 }
 
 const EMPTY: AssembledSnapshot = {
-  runs: [],
+  runSummaries: [],
   writeups: {},
   reviews: {},
   testCases: [],
+  models: [],
   proofMediaUrls: {},
   assetMediaUrls: {},
 };
@@ -412,6 +454,12 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   const commonItems = file.commonReviewItems ?? [];
   const commonSeeded = file.commonSeededInputs ?? [];
   const commonDomains = file.domains ?? [];
+  // Case-level packages apply to every variant; carry them onto each so the
+  // per-variant Inputs tab can show them alongside the seeded files.
+  const packages: AssembledPackage[] = (file.packages ?? []).map((p) => ({
+    name: p.name,
+    description: p.description,
+  }));
   const variants: AssembledVariant[] = file.variants.map((variant) => {
     const own = refs.filter((r) => r.variant === variant.slug);
     const referenceScreenshots = [...commonRefs, ...own].map((r) => ({
@@ -424,7 +472,12 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     const seededInputs: AssembledSeededInput[] = [
       ...commonSeeded,
       ...(variant.seededInputs ?? []),
-    ].map((s) => ({ path: s.path, kind: "text", text: s.text }));
+    ].map((s) => ({
+      path: s.path,
+      kind: "text",
+      role: s.kind ?? "spec",
+      text: s.text,
+    }));
     // The common checklist items apply to every variant; the variant's own
     // follow. Each carries the point weight used to score runs.
     const reviewItems: AssembledReviewItem[] = [
@@ -454,9 +507,13 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       description: variant.description,
       prompt: variant.prompt,
       seededInputs,
+      packages,
       referenceScreenshots,
       reviewItems,
       domains,
+      // The reference-implementation build URL, carried through verbatim (null
+      // when the variant declares none).
+      referenceBuild: variant.referenceBuild ?? null,
     };
   });
   return {
@@ -525,9 +582,13 @@ function collapseCases(
 // `index.json` -> versioned prefix -> `runs.json` -> per-run + per-case files.
 // `emitEvents` is called for each run that carries an event stream, so the build
 // can write it out as a per-run static asset the Events tab fetches at runtime.
+// `emitRecord` is called for every run with its full record JSON, so the build
+// can write it out as a runtime-fetchable `runs/<id>.json` asset (the lazy
+// per-run detail fetch), mirroring the events emission.
 async function loadSnapshot(
   base: string,
   emitEvents: (runId: string, json: string) => void,
+  emitRecord: (runId: string, json: string) => void,
 ): Promise<AssembledSnapshot | null> {
   // `index.json` is the atomic pointer the backend writes last, only after a
   // publish. A 404 here means nothing has been published yet (a fresh
@@ -549,7 +610,6 @@ async function loadSnapshot(
     joinUrl(base, index.runsKey),
   );
 
-  const runs: unknown[] = [];
   const writeups: Record<string, string> = {};
   const reviews: Record<string, AssembledReview[]> = {};
   const proofMediaUrls: Record<string, Record<string, string>> = {};
@@ -562,7 +622,11 @@ async function loadSnapshot(
     const runFile = await fetchJson<SnapshotRunFile>(
       joinUrl(base, `${index.runsPrefix}${summary.id}.json`),
     );
-    runs.push(runFile.record);
+    // Emit the full run record as a runtime-fetchable static asset
+    // (`runs/<id>.json`), so a summary-first page lazily fetches one run's whole
+    // record on demand — the bundle ships the summary index but NOT the array of
+    // full records.
+    emitRecord(summary.id, JSON.stringify(runFile.record));
     const runReviews = runFile.reviews ?? [];
     if (runReviews.length > 0) {
       reviews[summary.id] = runReviews.map(toAssembledReview);
@@ -610,11 +674,29 @@ async function loadSnapshot(
     }
   }
 
+  // The model catalog. Absent from a snapshot published before it existed, in
+  // which case the Models section renders empty.
+  let models: unknown[] = [];
+  if (index.modelsKey) {
+    try {
+      const modelsFile = await fetchJson<SnapshotModelsFile>(
+        joinUrl(base, index.modelsKey),
+      );
+      models = modelsFile.models;
+    } catch {
+      // Missing/unreadable catalog file: render an empty Models section rather
+      // than failing the whole build.
+    }
+  }
+
   return {
-    runs,
+    // The already-fetched summary index — the bounded cards, verbatim. No extra
+    // network calls.
+    runSummaries: runsFile.runs,
     writeups,
     reviews,
     testCases: collapseCases(base, caseFiles),
+    models,
     proofMediaUrls,
     assetMediaUrls,
   };
@@ -623,10 +705,11 @@ async function loadSnapshot(
 function serialize(data: AssembledSnapshot): string {
   return [
     "// Generated at build time by vite-plugin-snapshot. Do not edit.",
-    `export const runs = ${JSON.stringify(data.runs)};`,
+    `export const runSummaries = ${JSON.stringify(data.runSummaries)};`,
     `export const writeups = ${JSON.stringify(data.writeups)};`,
     `export const reviews = ${JSON.stringify(data.reviews)};`,
     `export const testCases = ${JSON.stringify(data.testCases)};`,
+    `export const models = ${JSON.stringify(data.models)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
   ].join("\n");
@@ -658,16 +741,30 @@ export function snapshot(): Plugin {
       }
       try {
         let eventAssets = 0;
-        const data = await loadSnapshot(base, (runId, json) => {
-          // Write each run's events as a stable, predictable asset path the
-          // static site fetches at runtime (`run-events/<id>.json`).
-          this.emitFile({
-            type: "asset",
-            fileName: `run-events/${runId}.json`,
-            source: json,
-          });
-          eventAssets += 1;
-        });
+        let recordAssets = 0;
+        const data = await loadSnapshot(
+          base,
+          (runId, json) => {
+            // Write each run's events as a stable, predictable asset path the
+            // static site fetches at runtime (`run-events/<id>.json`).
+            this.emitFile({
+              type: "asset",
+              fileName: `run-events/${runId}.json`,
+              source: json,
+            });
+            eventAssets += 1;
+          },
+          (runId, json) => {
+            // Write each run's full record as a runtime-fetchable asset
+            // (`runs/<id>.json`) for the lazy per-run detail fetch.
+            this.emitFile({
+              type: "asset",
+              fileName: `runs/${runId}.json`,
+              source: json,
+            });
+            recordAssets += 1;
+          },
+        );
         if (data === null) {
           this.warn(
             `no published snapshot at ${base} yet (index.json 404); building with an empty dataset. The backend's deploy hook will rebuild the gallery once a run is published.`,
@@ -676,7 +773,7 @@ export function snapshot(): Plugin {
           return;
         }
         this.info(
-          `fetched snapshot from ${base}: ${data.runs.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s).`,
+          `fetched snapshot from ${base}: ${data.runSummaries.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s), ${recordAssets} run record(s).`,
         );
         module = serialize(data);
       } catch (error) {

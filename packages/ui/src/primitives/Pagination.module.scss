@@ -1,36 +1,47 @@
 @use "../styles/tokens" as t;
 @use "../styles/surfaces" as s;
-@use "../styles/halo" as h;
 
 .pagination {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: t.$space-md;
+  gap: t.$space-xs;
   margin-top: t.$space-md;
 }
 
-// Accent-outlined pills; muted and inert once a boundary page is reached.
-.button {
+// Shared shell for every control: an accent-outlined square pill sized so the
+// number and the chevron buttons line up on one row.
+.page,
+.nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  padding: 0 t.$space-xs;
   font: inherit;
   font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: t.$space-xs t.$space-md;
+  font-variant-numeric: tabular-nums;
   color: t.$color-accent;
   background: s.$panel-bg;
   border: t.$border-hairline solid t.$color-accent;
   border-radius: t.$radius-sm;
   cursor: pointer;
 
-  &:hover:not(:disabled) {
+  &:hover:not(:disabled):not(.active) {
     background: color-mix(in srgb, t.$color-accent 16%, transparent);
   }
 
   &:focus-visible {
     outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
   }
+}
 
+// The chevron buttons sit slightly quieter than the numbers until hovered, and go
+// muted + inert once a boundary page is reached.
+.nav {
   &:disabled {
     color: t.$color-text-muted;
     border-color: t.$color-border;
@@ -38,9 +49,14 @@
   }
 }
 
-.status {
-  font-size: t.$font-sm;
-  font-variant-numeric: tabular-nums;
-  color: t.$color-text-muted;
-  @include h.halo;
+.icon {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+// The current page: a filled accent chip reading against the dark background.
+.active {
+  color: t.$color-bg;
+  background: t.$color-accent;
+  cursor: default;
 }

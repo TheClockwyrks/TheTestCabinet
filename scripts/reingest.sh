@@ -137,7 +137,27 @@ fi
 # stream emits and a pretty-printed error body. Returns empty when the key is absent;
 # never fails under `set -e`.
 jval() { # jval <key> <line>
-  if [[ "$2" =~ \"$1\"[[:space:]]*:[[:space:]]*\"?([^,\"}]*) ]]; then
+  # A string value is captured in full — its body may legitimately contain commas
+  # and (backslash-escaped) quotes, e.g. an error `message` that quotes a JSON
+  # snippet like `add `"pkg": "file:…"``. Naively stopping at the first `"`/`,`
+  # (the old `[^,\"}]*`) truncated such messages mid-value, so match the whole
+  # quoted body honoring escapes (`\"`, `\\`, …) and then unescape it.
+  local str_re="\"$1\"[[:space:]]*:[[:space:]]*\"(([^\"\\]|\\\\.)*)\""
+  if [[ "$2" =~ $str_re ]]; then
+    local s="${BASH_REMATCH[1]}" bs=$'\001'
+    s="${s//\\\\/$bs}"    # protect escaped backslashes before unescaping the rest
+    s="${s//\\\"/\"}"     # \" -> "
+    s="${s//\\\//\/}"     # \/ -> /
+    s="${s//\\n/$'\n'}"   # \n -> newline
+    s="${s//\\t/$'\t'}"   # \t -> tab
+    s="${s//\\r/$'\r'}"   # \r -> carriage return
+    s="${s//$bs/\\}"      # restore literal backslashes
+    printf '%s' "$s"
+    return
+  fi
+  # A bare scalar (number, boolean, null) runs up to the next structural delimiter.
+  local scalar_re="\"$1\"[[:space:]]*:[[:space:]]*([^,\"}[:space:]]+)"
+  if [[ "$2" =~ $scalar_re ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
   fi
 }

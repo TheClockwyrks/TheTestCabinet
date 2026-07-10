@@ -1,6 +1,7 @@
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { Fragment, useMemo, useRef } from "react";
 import { Link } from "react-router";
+import type { RunSort, SortDir } from "../../client/clients";
 import type { InProgressRun } from "../../client/types";
 import { describeRunState } from "../data/runState";
 import { useTestCaseName } from "../data/useTestCaseName";
@@ -50,14 +51,24 @@ interface RunTable {
 }
 
 interface UseRunTableArgs {
-  /** The runs to list, in their default (recency) order. */
-  runs: readonly RunRecord[];
+  /** The run summaries to list, in their default (recency) order. */
+  runs: readonly RunSummary[];
   /** Ids of runs sourced from local disk — flagged as unpublished. */
   localIds: ReadonlySet<string>;
   /** Raw local writeups, keyed by run id, used to resolve a run's rating. */
   localWriteups: Readonly<Record<string, string>>;
   /** Column set to render. Defaults to the full cross-case layout. */
   scope?: RunScope;
+  /**
+   * Render `runs` in the order given rather than re-sorting them by the active
+   * sort — for a page whose data source already returned the rows ordered (a
+   * server-paged listing). The sort state and header cycle still work exactly as
+   * usual, so the page can read {@link RunTableControls.sort}, map it with
+   * {@link sortStateToQuery}, and re-query the server; the headers just no longer
+   * reorder an already-ordered page in the browser. Defaults to false, where the
+   * table sorts `runs` itself (the static/client-paged pages).
+   */
+  externalOrder?: boolean;
 }
 
 /**
@@ -66,12 +77,18 @@ interface UseRunTableArgs {
  * slice plus `controls` to {@link RunLog}. Sort and visibility persist per scope,
  * so the ordering and chosen columns are shared across the pages that use the
  * same layout (e.g. the home gallery and the all-runs index).
+ *
+ * With `externalOrder`, the table skips its own sort and renders `runs` in the
+ * given order (the page's data source already ordered them, e.g. a server-paged
+ * query); the sort STATE and header cycle are unchanged so the page can read the
+ * active sort and drive its re-query from it.
  */
 export function useRunTable({
   runs,
   localIds,
   localWriteups,
   scope = "global",
+  externalOrder = false,
 }: UseRunTableArgs): RunTable {
   const columns = useMemo(() => columnsForScope(scope), [scope]);
   const { sort, cycle } = useTableSort(`ttc:runlog:${scope}:sort`);
@@ -80,11 +97,49 @@ export function useRunTable({
     columns,
   );
   const enriched = useEnrichedRuns(runs, localIds, localWriteups);
-  const rows = useMemo(() => sortRuns(enriched, sort), [enriched, sort]);
+  const rows = useMemo(
+    () => (externalOrder ? enriched : sortRuns(enriched, sort)),
+    [enriched, sort, externalOrder],
+  );
   return {
     rows,
     controls: { scope, columns, sort, cycleSort: cycle, isVisible, toggle },
   };
+}
+
+// The server sort key each run column drives, keyed by column id. A column absent
+// here has no server-side equivalent (the caret gutter; the VERSION column — the
+// backend has no test-case-version sort), so {@link sortStateToQuery} falls back
+// to the default `date`/`desc` query for it: the header still highlights, and the
+// data simply comes back date-ordered. Note the two id differences from the sort
+// tokens: the TIMESTAMP column maps to `date` and the DURATION column to `runtime`.
+const COLUMN_SORT_KEYS: Readonly<Record<string, RunSort>> = {
+  test: "testCase",
+  category: "testType",
+  harness: "harness",
+  variant: "variant",
+  model: "model",
+  timestamp: "date",
+  duration: "runtime",
+  tokens: "tokens",
+  cost: "cost",
+  rating: "rating",
+};
+
+/**
+ * Map a run table's active sort state to the `{ sort, dir }` a summary query
+ * takes, so an `externalOrder` page can re-query the server in the order its
+ * headers show. A null sort (the table's default order) and any column with no
+ * server key both resolve to the default `date`/`desc`.
+ */
+export function sortStateToQuery(sort: SortState | null): {
+  sort: RunSort;
+  dir: SortDir;
+} {
+  if (!sort) return { sort: "date", dir: "desc" };
+  const key = COLUMN_SORT_KEYS[sort.columnId];
+  if (!key) return { sort: "date", dir: "desc" };
+  return { sort: key, dir: sort.direction };
 }
 
 interface RunLogProps {
@@ -185,7 +240,7 @@ export function RunLog({ rows, active = [], controls }: RunLogProps) {
           </Link>
         ))}
         {rows.map((row) => (
-          <RunRow key={row.record.id} row={row} columns={visible} ctx={ctx} />
+          <RunRow key={row.summary.id} row={row} columns={visible} ctx={ctx} />
         ))}
       </div>
     </div>
@@ -204,10 +259,10 @@ function RunRow({
   // A failed run (any non-completed tier) is listed inline so the failure can be
   // inspected, marked with the same negative styling an active row uses; its
   // rating cell shows the failure tier instead of a badge.
-  const failed = describeRunState(row.record.status.state).isFailure;
+  const failed = describeRunState(row.summary.state).isFailure;
   return (
     <Link
-      to={routes.runDetail(row.record.id)}
+      to={routes.runDetail(row.summary.id)}
       className={styles.row}
       data-failed={failed ? "" : undefined}
     >

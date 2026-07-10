@@ -52,6 +52,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         orchestrator,
         max_runtime_seconds: args.max_runtime.map(runtime_hours_to_seconds),
         auth_mode: args.auth_mode.clone(),
+        retry_count: args.retry_count,
     };
 
     println!(

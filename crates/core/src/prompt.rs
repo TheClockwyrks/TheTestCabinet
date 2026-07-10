@@ -42,6 +42,21 @@ use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
 /// for [`TestType::AssetGeneration`]; every other test type renders unchanged.
 const ASSET_QUALITY_PREAMBLE: &str = "You are producing a finished, high-quality asset — treat this as work you would be proud to ship, not a rough draft. The brief below is the floor, not the goal: satisfying it is only the minimum for a passing result, and a plain asset that merely ticks its boxes is a weak one. Aim for the best-looking, most convincing result you can make within the brief's constraints — a clean, readable silhouette, believable proportions and form, and deliberate, purposeful use of the palette — and make every operation you spend count toward that. Push for the genuine ceiling of what you can produce here, not the least that passes.";
 
+/// A standing directive prepended to every full-stack case's rendered prompt.
+///
+/// A full-stack case asks the model to do two jobs at once: build a working
+/// program *and* produce the program's own assets. The largest risk is that the
+/// model shortcuts the asset half — shipping flat colored rectangles, procedural
+/// canvas drawing, or silence in place of real art, animation, effects, and
+/// sound. This block, prepended once at the single point every prompt renders
+/// through (rather than duplicated across each case's `prompt.hbs`), sets the bar:
+/// the asset-generation binaries on `PATH` are the required tools for producing
+/// assets, and those assets are held to the same quality ceiling as the build
+/// itself. It is deliberately generic — no per-subject or per-asset detail, and no
+/// comparison, ranking, or benchmark framing. Prepended only for
+/// [`TestType::FullStack`]; every other test type renders unchanged.
+const FULL_STACK_PREAMBLE: &str = "This is a full-stack build: you must deliver a complete, working program AND the genuine assets it ships — its art, animation, particle effects, and sound — and both are judged. The run image puts asset-generation binaries on your PATH to help you make them (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help` to learn its operations); use them, or produce the assets any other way you prefer. What is not acceptable is shipping placeholders in place of real assets — flat colored rectangles, stand-ins drawn on the fly at runtime, or silence — which count as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live — not when your build is re-run to validate it, nor when the project is rebuilt from its published source — so treat asset generation as a one-time step that writes committed files into the repository, and make your build (the `npm run build` the harness runs) simply bundle those committed files. It must NOT invoke `draw` or the other generation binaries; a build that shells out to them fails everywhere they are absent. Hold the assets to the same ceiling as the code: the brief is the floor, and both the program and the art, motion, effects, and sound it ships should be the best you can make within the brief's constraints.";
+
 /// The Handlebars context exposed to a test case's `prompt.hbs`.
 ///
 /// These are the only variables a template may reference (rendering runs in
@@ -208,10 +223,12 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
 /// Specifications tab from stored manifest fields rather than a disk checkout.
 /// `spec_dests` are the seeded specs' workspace-relative destination paths in
 /// seed order (the common specs first, then the variant's own), exactly as
-/// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects whether the
-/// shared [`ASSET_QUALITY_PREAMBLE`] is prepended: it is, and only is, for
-/// [`TestType::AssetGeneration`], so every asset-generation case's rendered
-/// prompt opens with the same quality directive while other types render bare.
+/// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects which shared
+/// preamble is prepended: the [`ASSET_QUALITY_PREAMBLE`] for
+/// [`TestType::AssetGeneration`], the [`FULL_STACK_PREAMBLE`] for
+/// [`TestType::FullStack`], and none for the other types, so every asset-generation
+/// and full-stack case opens with the same standing directive while other types
+/// render bare.
 /// `voxel` is the effective bounding volume for a voxel case (the variant's
 /// override, else the case's `[voxel]`), exposed to the template as `{{voxel}}`;
 /// pass `None` for a non-voxel case. Rendering uses the same strict, no-escape
@@ -247,12 +264,15 @@ pub fn render_prompt_from_template(
             detail: err.to_string(),
         })?;
 
-    // The quality preamble is a standing directive, not part of any case's
-    // authored template, so prepend it to the rendered body only for
-    // asset-generation cases. It is intentionally not run through the template
-    // engine (it holds no `{{...}}`), keeping it out of strict-mode resolution.
+    // The quality preambles are standing directives, not part of any case's
+    // authored template, so prepend the one for this type to the rendered body:
+    // the asset-quality directive for an asset-generation case, the full-stack
+    // directive for a full-stack case, and nothing for the other types. They are
+    // intentionally not run through the template engine (they hold no `{{...}}`),
+    // keeping them out of strict-mode resolution.
     Ok(match test_type {
         TestType::AssetGeneration => format!("{ASSET_QUALITY_PREAMBLE}\n\n{body}"),
+        TestType::FullStack => format!("{FULL_STACK_PREAMBLE}\n\n{body}"),
         _ => body,
     })
 }

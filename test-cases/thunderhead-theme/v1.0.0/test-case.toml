@@ -1,11 +1,13 @@
 slug = "thunderhead-theme"
+experimental = true
 name = "Thunderhead Theme"
-difficulty = "medium"
+difficulty = "hard"
 tags = ["music", "naval"]
 summary = """
-Compose the Thunderhead battle theme: a short, clean-looping naval-battle cue for \
-the fleet-command game, sequenced note by note as instrument tracks over the \
-gm-lite bank."""
+Compose the Thunderhead main-menu theme: a 3-to-5-minute grand, cinematic \
+main-title overture for the fleet-command game — sweeping, evocative, and \
+clean-looping — sequenced note by note as instrument tracks over the gm-lite \
+bank."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -13,7 +15,7 @@ description = "description.md"
 # case's changelog. Like `description`, it is NOT seeded into a run.
 changelog = "changelog.md"
 prompt = "prompt.hbs"
-max_runtime_hours = 0.75
+max_runtime_hours = 2.0
 type = "asset-generation"
 asset_kind = "music"
 
@@ -28,7 +30,7 @@ variants = ["variants/base.toml"]
 [audio]
 sample_rate = 44100                 # output sample rate in Hz (required)
 channels = "stereo"                 # "mono" | "stereo" (required)
-max_duration_ms = 8000              # cap on the rendered clip's length in ms (required, positive)
+max_duration_ms = 300000            # cap on the rendered clip's length in ms (required, positive) — up to 5 minutes
 instrument_bank = "gm-lite@0.1.0"   # music ONLY: the baked instrument bank (name@version)
 
 # The sequencer. `music` is the only way to shape sound; it records every
@@ -52,73 +54,87 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How convincingly the clip reads as the Thunderhead battle theme the brief \
-describes — a driving, militaristic minor-key naval cue with a steady low pulse, \
-a determined melodic line, and a sense of building tension that loops cleanly."""
+How convincingly the clip reads as the Thunderhead main-menu theme the brief \
+describes — a grand, cinematic main-title overture that evokes a cold, high war \
+over an endless cloud sea: sweeping and evocative, serious and stirring, neutral \
+to the three powers, and long enough to feel like a full menu score."""
 
 [[domain]]
 id = "craft"
 name = "Craft"
 description = """
-Musicianship in the writing — coherent tempo and key, sensible instrument \
-choices and voicings from the gm-lite bank, a clean loop, and a balanced stereo \
-mix."""
+Musicianship in the writing — a coherent tonality and pulse, a memorable main \
+theme that genuinely develops across the piece's length, tasteful instrument \
+choices and voicings from the gm-lite bank, a clean seamless loop, and a \
+balanced, dynamic stereo mix."""
 
 [[review_item]]
-id = "driving-minor-cue"
-title = "Driving militaristic minor cue"
+id = "grand-cinematic-overture"
+title = "Grand cinematic main-title overture"
 text = """
-The clip reads at once as a determined, militaristic naval battle theme in a \
-minor key — tense and forward-driving, not calm, cheerful, or ambient. It carries \
-real momentum from the first bar."""
+The clip reads at once as a sweeping, cinematic main-menu theme — the grand \
+overture that would play over a title screen — evocative and stirring, carrying \
+both the weight of a coming war and a sense of vast open sky. It is not a short \
+gameplay loop and not a frantic battle cue."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "low-pulse"
-title = "Steady low pulse"
+id = "cold-high-world"
+title = "Evokes the cold, high cloud-sea world"
 text = """
-A steady low pulse underpins the whole cue — a driving bass line reinforced by \
-low percussion (or low strings) on the beat — giving the theme its relentless, \
-marching drive."""
+The mood fits the game's setting — an austere, cold, high war over an endless \
+cloud sea — through a serious, largely dark or minor-leaning color with room for \
+a hopeful or heroic lift, rather than a bright, casual, or generic feel."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "melodic-line"
-title = "Determined melodic line"
+id = "faction-neutral"
+title = "Neutral to the three powers"
 text = """
-A clear, determined melodic line — carried by strings and/or brass from the bank \
-— sits over the pulse and states a memorable martial theme, not just held chords."""
+The theme speaks for the whole game and does not lean on the identity of any one \
+faction — no single power's signature sound (industrial iron, cool energy, or \
+crystalline resonance) dominates it."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "memorable-theme"
+title = "A memorable, stated main theme"
+text = """
+The piece states a clear, memorable main melodic theme — the tune a player would \
+come to associate with the game — rather than drifting through ambient texture \
+with no thematic anchor."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "building-tension"
-title = "Building tension"
+id = "develops-over-length"
+title = "Develops across its length"
 text = """
-The arrangement builds over its length — instruments or intensity accumulate and \
-the harmony pushes toward the dominant — so the cue feels like it is tightening, \
-not repeating one static bar."""
-weight = 2
-domain = "fidelity"
+Over its three-to-five minutes the piece genuinely grows and breathes — an \
+opening, a theme statement, development or contrast, a climactic restatement, and \
+a settling — rather than vamping on one repeated idea for the whole duration."""
+weight = 3
+domain = "craft"
 
 [[review_item]]
 id = "clean-loop"
 title = "Clean loop"
 text = """
 The end flows back into the start with no click, gap, or jarring harmonic seam — \
-the last bar sets up the return to the opening downbeat so the cue can loop under \
-gameplay indefinitely."""
+the close sets up the return to the opening so the theme can play on repeat under \
+the menu indefinitely."""
 weight = 2
 domain = "craft"
 
 [[review_item]]
 id = "stereo-mix"
-title = "Balanced stereo mix"
+title = "Balanced, dynamic stereo mix"
 text = """
-The clip is stereo with a deliberate image — the pulse anchored center, the \
-melodic and harmony voices given width — and a clean balance with no clipping or \
-one voice swamping the rest."""
+The clip is stereo with a deliberate, wide cinematic image and holds a clean \
+balance across its long dynamic arc — no clipping at the climaxes and no single \
+voice swamping the rest."""
 weight = 1
 domain = "craft"

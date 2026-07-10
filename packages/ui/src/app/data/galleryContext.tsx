@@ -17,6 +17,7 @@ import type {
   RunSubject,
   TournamentRecord,
 } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   parseGlb,
   parseSkinnedGlb,
@@ -32,11 +33,13 @@ import type {
 } from "../../client/types";
 import { type ParsedWriteup, parseWriteup } from "./ratings";
 import { extensionFor } from "./proofMedia";
+import { findModelByModelId, type ModelSummary } from "./models";
 import type {
   DomainSummary,
   ReviewItemSummary,
   TestCaseSummary,
 } from "./testCases";
+import type { RunQuery, RunQueryResult } from "./runQuery";
 
 /**
  * The load state of the test-case catalog. `"loading"` while the host is still
@@ -46,6 +49,19 @@ import type {
  * Hosts whose catalog is static (the public site) are always `"ready"`.
  */
 export type CatalogStatus = "loading" | "ready" | "error";
+
+/**
+ * A run's detail payload, resolved lazily by id: the full {@link RunRecord} plus
+ * every review submitted against it. A summary-first gallery no longer holds the
+ * full records or the per-reviewer breakdown in memory, so the run-detail layer
+ * fetches both together — the record for the tabs and the {@link StoredReview}s for
+ * the Verdict/review/editor surfaces. See {@link GalleryDataInput.readRun} and
+ * {@link GalleryData.fetchRun}.
+ */
+export interface RunDetail {
+  record: RunRecord;
+  reviews: StoredReview[];
+}
 
 /** The scoring model for a run: the variant's weighted checklist items and its
  * effective scoring domains (the case's common domains + the variant's own),
@@ -60,9 +76,10 @@ export interface ReviewModel {
 // in `@test-cabinet/ui`, but its data differs per app: the static site builds
 // this from the build-time public snapshot; the web/desktop consoles build it
 // live from a backend (catalog + published runs) and a worker (in-progress and
-// produced runs). Pages read it through the existing data hooks (`useRuns`,
-// `useTestCases`, `findReview`), which now resolve to this context — so page
-// logic is unchanged regardless of where the data comes from.
+// produced runs). Pages read it through the existing data hooks
+// (`queryRunSummaries`/`useCaseRunSummaries`, `useTestCases`, `findReview`), which
+// resolve to this context — so page logic is unchanged regardless of where the
+// data comes from.
 
 // A run currently executing on a worker. A run only gains a `RunRecord` at
 // completion, so an in-progress run is represented by its launch identity and
@@ -225,8 +242,19 @@ export interface HarnessAuthApi {
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.
 export interface GalleryDataInput {
-  /** Completed runs to display: local (unpublished) first, then published. */
-  runs: RunRecord[];
+  /**
+   * The summary cards for runs sourced locally (produced but not yet published) —
+   * the console's worker worklist, derived into cards (see `toRunSummary`). The
+   * published set is never held whole: pages fetch it a page at a time through
+   * {@link queryRunSummaries}. These local cards are exposed separately so a paged
+   * page can PIN them (they never appear in the backend's numbered
+   * `queryRunSummaries` window) to the first page ahead of the queried published
+   * rows. Empty on the static site (which has no produced runs, except dev-only
+   * on-disk ones) and whenever the host holds none. Full records are fetched lazily
+   * by id via {@link readRun}/{@link GalleryData.fetchRun} only when a detail view
+   * needs one.
+   */
+  producedSummaries: RunSummary[];
   /** Ids of runs sourced locally (produced but not yet published). */
   localIds: ReadonlySet<string>;
   /**
@@ -253,6 +281,12 @@ export interface GalleryDataInput {
   /** The catalog's load state, so the UI can tell loading and an unreachable
    * backend apart from a genuinely empty catalog. See {@link CatalogStatus}. */
   testCasesStatus: CatalogStatus;
+  /** The model catalog: curated configs merged with the models recorded runs
+   * reference, each with its price history. The console fetches it from the
+   * backend; the static site reads it from the snapshot. */
+  models: ModelSummary[];
+  /** The model catalog's load state (see {@link CatalogStatus}). */
+  modelsStatus: CatalogStatus;
   /**
    * Whether this UI can launch, monitor, review, and publish runs. False on the
    * static gallery site; true in the web and desktop consoles. Gates the
@@ -260,6 +294,18 @@ export interface GalleryDataInput {
    * connections drawer).
    */
   canExecute: boolean;
+  /**
+   * Answer one page of a filtered/sorted summary query — the host-agnostic paged
+   * listing the run-log pages drive. The console forwards it to the backend's
+   * offset endpoint (`GET /runs?fields=summary&offset=…`), which filters, sorts,
+   * and windows server-side and returns the matching `total`; the static site has
+   * no backend, so it answers from its in-memory summary index with the same
+   * semantics (see `runSummaryPage`). Both resolve the sorted window plus the count
+   * of all matching rows, so a numbered pager sizes identically on either host.
+   * Only published runs are queryable this way — a console pins its
+   * {@link producedSummaries} separately.
+   */
+  queryRunSummaries: (query: RunQuery) => Promise<RunQueryResult>;
   /**
    * Fetch a finished run's recorded event streams for the run-detail Events tab.
    * Each host sources these its own way (the static site from a published asset,
@@ -275,16 +321,19 @@ export interface GalleryDataInput {
     onProgress?: ProgressCallback,
   ) => Promise<RunEventStreams | null>;
   /**
-   * Resolve one run's record by id, directly from the host's store, for a run
-   * reached by a direct link that the loaded list does not carry. The run-detail
-   * page resolves a run from the in-memory list first and falls back to this when
-   * it misses — so a run that appears in no worklist (an infrastructure failure,
-   * retained for inspection but never publishable) or simply isn't on the current
-   * page stays openable by its id. Resolves `null` when no run with that id is
-   * stored. Omitted by a host that can only serve the runs it already listed (the
-   * static gallery site).
+   * Resolve one run's full record by id, directly from the host's store. The
+   * gallery no longer holds full records in memory — pages fetch summary cards a
+   * page at a time — so a detail view fetches the whole record lazily through this: the
+   * console reads the run store's `GET /runs/{id}` (worker for a local run, backend
+   * otherwise); the static site fetches the per-run record asset the snapshot
+   * emitted. Resolves `null` when no run with that id is available. Omitted by a
+   * host that cannot serve a run by id.
+   *
+   * Resolves the run's {@link RunDetail} — the record *and* every review submitted
+   * against it — so the detail layer reads reviews from here rather than the
+   * console's global {@link reviews} map (which now carries only local runs).
    */
-  readRun?: (runId: string) => Promise<RunRecord | null>;
+  readRun?: (runId: string) => Promise<RunDetail | null>;
   /**
    * Resolve the loadable URL for one run's proof media file (`<proof-id>.<ext>`),
    * or null when the host cannot serve it (so the UI shows presence only). Each
@@ -401,10 +450,19 @@ export interface VoxelResultView {
    */
   skinned: boolean;
   /**
+   * Whether this is a **Blender character** run (`blender-character`): the emitted
+   * mesh is a self-contained skinned + animated glTF whose animations are baked into
+   * the file. A Blender run is also `skinned`, but the viewer loads its glTF with a
+   * native glTF player (skeleton + baked clips) rather than posing the mesh from an
+   * inline `rig.json`. `false` for every non-Blender run.
+   */
+  blender: boolean;
+  /**
    * The single skinned `mesh.glb` a skinned run emits (the first — and only —
    * part's mesh), or null for a non-skinned run (or when the host cannot serve it).
    * Decoded with `parseSkinnedGlb` into the {@link SkinnedMesh} the skinned viewer
-   * poses.
+   * poses. For a Blender run this is the emitted `character.glb`, loaded whole by the
+   * native glTF player instead.
    */
   skinnedMeshUrl: string | null;
   /**
@@ -565,6 +623,15 @@ export interface GalleryData extends GalleryDataInput {
     override?: Readonly<Record<string, string>>,
   ): ParsedWriteup | undefined;
   /**
+   * Resolve one run's full record by id — a summary-first page fetches the whole
+   * record lazily only when a detail view needs it. Delegates to the host's
+   * {@link GalleryDataInput.readRun}, resolving the run's {@link RunDetail} —
+   * record + reviews — so the detail layer frames the review from these rather than
+   * the global map. Resolves `null` when the host supplies no `readRun` or no run
+   * with that id is available.
+   */
+  fetchRun(runId: string): Promise<RunDetail | null>;
+  /**
    * The individual reviews submitted against a run, in submission order. Empty
    * when the run has none (or the host carries only framed writeups). The
    * run-detail page renders each reviewer's verdict and computes the aggregate
@@ -631,6 +698,17 @@ export interface GalleryData extends GalleryDataInput {
    * leaderboard score a run from its review verdicts and per-domain ratings.
    */
   reviewModelFor(subject: RunSubject): ReviewModel;
+  /**
+   * Resolve a run's `modelId` (optionally with its harness slug, for harness-aware
+   * canonicalization) to its catalog entry, over the loaded model catalog. Returns
+   * undefined for an id the catalog does not cover.
+   */
+  modelForId(modelId: string, harnessSlug?: string): ModelSummary | undefined;
+  /**
+   * Resolve a Models-section URL parameter — a curated slug or any covered/alias
+   * id — to its catalog entry. Returns undefined when nothing matches.
+   */
+  modelForSlug(slug: string): ModelSummary | undefined;
 }
 
 const GalleryDataContext = createContext<GalleryData | null>(null);
@@ -643,13 +721,29 @@ export function GalleryDataProvider({
   children: ReactNode;
 }) {
   const full = useMemo<GalleryData>(() => {
-    const { writeups, reviews, proofMediaUrl, assetMediaUrl, testCases } =
+    const { writeups, reviews, proofMediaUrl, assetMediaUrl, testCases, models } =
       value;
     return {
       ...value,
       findReview(runId, override) {
         const raw = override?.[runId] ?? writeups[runId];
         return raw === undefined ? undefined : parseWriteup(raw);
+      },
+      fetchRun(runId) {
+        // The gallery holds no full records in memory anymore — only summary
+        // cards — so a detail view resolves the whole record lazily through the
+        // host's single-run fetcher (the console reads `GET /runs/{id}`, the static
+        // site fetches the emitted per-run record asset). A host that supplies none
+        // resolves to null.
+        return value.readRun ? value.readRun(runId) : Promise.resolve(null);
+      },
+      modelForId(modelId, harnessSlug) {
+        return findModelByModelId(models, modelId, harnessSlug);
+      },
+      modelForSlug(slug) {
+        return models.find(
+          (model) => model.slug === slug || model.modelIds.includes(slug) || model.aliases.includes(slug),
+        );
       },
       reviewsFor(runId) {
         return reviews[runId] ?? [];
@@ -734,11 +828,15 @@ export function GalleryDataProvider({
         // single part's `.glb` — the viewer decodes and drives by linear-blend
         // skinning rather than posing per-part meshes.
         const skinned = voxel.skinned ?? false;
+        // A Blender character is skinned but carries its animations baked into the
+        // emitted glTF, so the viewer loads it whole with a native glTF player.
+        const blender = voxel.blender ?? false;
         return {
           // A static model declares neither the required nor the produced rig; an
           // animated one carries both. The produced rig drives the viewer.
           animated,
           skinned,
+          blender,
           skinnedMeshUrl: skinned ? (parts[0]?.meshUrl ?? null) : null,
           rig: voxel.rig ?? null,
           model: voxel.model ?? null,

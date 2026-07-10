@@ -12,7 +12,7 @@ import type {
   StoredReview,
   VerdictStatus,
 } from "../../../../client/types";
-import type { RunSubject } from "@test-cabinet/run-record";
+import type { RunRecord } from "@test-cabinet/run-record";
 import { useGalleryData } from "../../../data/galleryContext";
 import { MediaView } from "../../../components/MediaView";
 import { ReviewItemAssets } from "./AssetResultSection";
@@ -72,14 +72,19 @@ function pts(weight: number): string {
 // evidence before judging. The run's existing reviews and the aggregate
 // rating/score are shown above the form.
 export function RunReviewEditor({
-  runId,
-  subject,
+  run,
+  reviews,
   onChanged,
 }: {
-  runId: string;
-  subject: RunSubject;
+  run: RunRecord;
+  /** The run's reviews, fetched with the record by the run-detail layout — the
+   * editor seeds from the current account's prior review and gates Publish on the
+   * run carrying at least one. */
+  reviews: StoredReview[];
   onChanged: () => void;
 }) {
+  const runId = run.id;
+  const subject = run.subject;
   const { active: worker } = useWorkers();
   const client = worker?.client ?? null;
   // The desktop's local worker collapses review/publish into one solo command, so
@@ -96,9 +101,9 @@ export function RunReviewEditor({
     () => gallery.reviewModelFor(subject).domains,
     [gallery, subject],
   );
-  // Every review submitted against this run so far, and the current account's own
-  // prior review (when any) — the seed for re-reviewing.
-  const reviews = useMemo(() => gallery.reviewsFor(runId), [gallery, runId]);
+  // The current account's own prior review (when any) among the run's reviews —
+  // the seed for re-reviewing. The reviews arrive from the run-detail layout,
+  // fetched with the record.
   const ownReview = useMemo(
     () => reviews.find((r) => account && r.reviewerId === account.id),
     [reviews, account],
@@ -137,22 +142,16 @@ export function RunReviewEditor({
   }, [gallery.testCases, subject.testCaseSlug, subject.variant]);
 
   const proofsById = useMemo(() => {
-    const run = gallery.runs.find((r) => r.id === runId);
     const map = new Map<string, ProofMedia>();
-    if (run) {
-      for (const proof of gallery.proofMediaFor(run)) map.set(proof.id, proof);
-    }
+    for (const proof of gallery.proofMediaFor(run)) map.set(proof.id, proof);
     return map;
-  }, [gallery, runId]);
+  }, [gallery, run]);
 
   // For an asset-generation run, its resolved result (frames + sprite sheet) so a
   // checklist item that names sequences/frames can show exactly those assets
   // beside the question — no scrolling up to the generated-asset section. Null for
   // a non-asset run.
-  const asset = useMemo(() => {
-    const run = gallery.runs.find((r) => r.id === runId);
-    return run ? gallery.assetResultFor(run) : null;
-  }, [gallery, runId]);
+  const asset = useMemo(() => gallery.assetResultFor(run), [gallery, run]);
 
   // Load the case's declared checklist items from the backend (common + this
   // variant's own), seeding verdicts from the account's own prior review so
@@ -238,6 +237,33 @@ export function RunReviewEditor({
     });
   }
 
+  // Shortcut for a run that does not launch at all: fail every checklist item and
+  // rate every domain the worst tier, so an unplayable run can be submitted in one
+  // step without walking each question. Purely local state — it flows through the
+  // normal buildReview()/submit path and fills the submit gate. Confirmed first
+  // because it overwrites every verdict and rating already recorded.
+  function markUnplayable() {
+    if (
+      !window.confirm(
+        "Mark this run unplayable? Every checklist item will be set to Fail and every rating to Broken.",
+      )
+    )
+      return;
+    setVerdicts((prev) => {
+      const next: Record<string, VerdictDraft> = {};
+      for (const it of items) {
+        const base = prev[it.id] ?? { status: "", note: "" };
+        next[it.id] = { ...base, status: "fail" };
+      }
+      return next;
+    });
+    setRatings(() => {
+      const next: Record<string, Rating> = {};
+      for (const domain of domains) next[domain.id] = "broken";
+      return next;
+    });
+  }
+
   function buildChecklist(): ReviewVerdict[] {
     return items.map((item) => {
       const draft = verdicts[item.id] ?? { status: "", note: "" };
@@ -264,7 +290,7 @@ export function RunReviewEditor({
 
   // Run a mutating lifecycle action, wrapping it in the busy/error/message
   // plumbing so each button shares one path.
-  async function run(label: string, action: () => Promise<void>) {
+  async function runAction(label: string, action: () => Promise<void>) {
     if (!client || !token) return;
     setBusy(true);
     setError(null);
@@ -285,7 +311,7 @@ export function RunReviewEditor({
   // Submit review: attribute this account's review to the run (web flow). On the
   // solo desktop path this saves the local draft.
   const onSubmitReview = () =>
-    run("Review submitted.", async () => {
+    runAction("Review submitted.", async () => {
       await client!.submitReview(runId, buildReview(), token!);
       setSubmittedThisSession(true);
       // Collapse back to the summary; the just-submitted review now shows there.
@@ -295,7 +321,7 @@ export function RunReviewEditor({
   // Publish: clear the gate (web flow). On the solo desktop path this saves the
   // review and runs review + publish in one step.
   const onPublish = () =>
-    run("Published.", async () => {
+    runAction("Published.", async () => {
       if (solo) {
         await client!.submitReview(runId, buildReview(), token!);
       }
@@ -382,9 +408,21 @@ export function RunReviewEditor({
                 <p className={styles.sectionLabel}>
                   {answeredCount}/{items.length} addressed
                 </p>
+                {/* Fail everything at once for a run that never launched. */}
+                <button
+                  type="button"
+                  className={styles.unplayable}
+                  onClick={markUnplayable}
+                  disabled={busy}
+                  title="Mark the whole run unplayable — set every checklist item to Fail and every rating to Broken"
+                  aria-label="Mark the whole run unplayable: every checklist item fails and every rating is broken"
+                >
+                  Mark unplayable
+                </button>
                 <ol className={styles.itemNavList}>
                   {items.map((it, index) => {
-                    const answered = Boolean(verdicts[it.id]?.status);
+                    const status = verdicts[it.id]?.status ?? "";
+                    const answered = Boolean(status);
                     const isCurrent = index === current;
                     return (
                       <li key={it.id}>
@@ -392,15 +430,28 @@ export function RunReviewEditor({
                           type="button"
                           className={`${styles.itemNav}${
                             isCurrent ? ` ${styles.itemNavActive}` : ""
-                          }${answered ? ` ${styles.itemNavDone}` : ""}`}
+                          }${answered ? ` ${styles.itemNavDone}` : ""}${
+                            status === "fail" ? ` ${styles.itemNavFail}` : ""
+                          }`}
                           onClick={() => setCurrent(index)}
                           aria-current={isCurrent ? "true" : undefined}
+                          title={
+                            answered
+                              ? `${it.title} — ${VERDICT_META[status as VerdictStatus].label}`
+                              : undefined
+                          }
                         >
+                          {/* The mark reflects the verdict: a check for pass, a
+                          cross for fail, else the item's number. */}
                           <span
                             className={styles.itemNavMark}
                             aria-hidden="true"
                           >
-                            {answered ? "✓" : index + 1}
+                            {status === "pass"
+                              ? "✓"
+                              : status === "fail"
+                                ? "✕"
+                                : index + 1}
                           </span>
                           <span className={styles.itemNavTitle}>
                             {it.title} ({pts(it.weight)})
@@ -484,22 +535,58 @@ export function RunReviewEditor({
                 )}
 
                 <div className={styles.checklistControls}>
-                  <select
-                    className={styles.select}
-                    value={draft.status}
-                    onChange={(e) =>
-                      setVerdict(item.id, {
-                        status: e.target.value as VerdictStatus | "",
-                      })
-                    }
+                  {/* Pass/Fail as two radio-like buttons so recording a verdict
+                  is one click. A roving tabindex + arrow keys make the pair a
+                  proper radiogroup; clicking the selected option clears it back
+                  to unset. */}
+                  <div
+                    className={styles.verdictChoice}
+                    role="radiogroup"
+                    aria-label="Verdict"
                   >
-                    <option value="">— pick —</option>
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {VERDICT_META[s].label}
-                      </option>
-                    ))}
-                  </select>
+                    {STATUSES.map((s, i) => {
+                      const selected = draft.status === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          tabIndex={
+                            selected || (!draft.status && i === 0) ? 0 : -1
+                          }
+                          className={`${styles.verdictOption} ${
+                            s === "pass"
+                              ? styles.verdictOptionPass
+                              : styles.verdictOptionFail
+                          }${selected ? ` ${styles.verdictOptionActive}` : ""}`}
+                          onClick={() =>
+                            setVerdict(item.id, { status: selected ? "" : s })
+                          }
+                          onKeyDown={(e) => {
+                            const forward =
+                              e.key === "ArrowRight" || e.key === "ArrowDown";
+                            const back =
+                              e.key === "ArrowLeft" || e.key === "ArrowUp";
+                            if (!forward && !back) return;
+                            e.preventDefault();
+                            const nextIndex =
+                              (i + (forward ? 1 : STATUSES.length - 1)) %
+                              STATUSES.length;
+                            setVerdict(item.id, { status: STATUSES[nextIndex] });
+                            const group = e.currentTarget.parentElement;
+                            (
+                              group?.children[nextIndex] as
+                                | HTMLElement
+                                | undefined
+                            )?.focus();
+                          }}
+                        >
+                          {VERDICT_META[s].label}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <input
                     className={styles.input}
                     value={draft.note}

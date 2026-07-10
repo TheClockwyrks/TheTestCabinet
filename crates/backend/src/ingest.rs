@@ -368,7 +368,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
     let common_specs = resolved
         .common_specs
         .iter()
-        .map(|spec| stored_spec(root, &spec.source_path, &spec.dest))
+        .map(|spec| stored_spec(root, spec))
         .collect::<Result<Vec<_>>>()?;
 
     // The starter workspace files (common + each variant's override) are keyed by
@@ -395,7 +395,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             let specs = variant
                 .specs
                 .iter()
-                .map(|spec| stored_spec(root, &spec.source_path, &spec.dest))
+                .map(|spec| stored_spec(root, spec))
                 .collect::<Result<Vec<_>>>()?;
             let workspace = variant
                 .workspace
@@ -437,6 +437,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         changelog,
         max_runtime_seconds: resolved.max_runtime_seconds,
         test_type: resolved.test_type,
+        experimental: resolved.experimental,
         build: resolved.build.as_ref().map(|build| StoredBuild {
             install: build.install.clone(),
             build: build.build.clone(),
@@ -580,19 +581,21 @@ fn stored_proof(proof: &test_cabinet_core::ProofFile) -> StoredProof {
     }
 }
 
-/// Build a `StoredSpec` from a host source path and a workspace dest, deriving
-/// the store-relative `source` key and the `template` flag (a `.hbs` source).
-fn stored_spec(root: &Path, source_path: &Path, dest: &Path) -> Result<StoredSpec> {
-    let source = relative_key(root, source_path)?;
-    let template = source_path
+/// Build a `StoredSpec` from a resolved [`SpecFile`], deriving the store-relative
+/// `source` key and the `template` flag (a `.hbs` source) and carrying its `kind`.
+fn stored_spec(root: &Path, spec: &test_cabinet_core::SpecFile) -> Result<StoredSpec> {
+    let source = relative_key(root, &spec.source_path)?;
+    let template = spec
+        .source_path
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.eq_ignore_ascii_case("hbs"))
         .unwrap_or(false);
     Ok(StoredSpec {
         source,
-        dest: to_forward_slash(dest),
+        dest: to_forward_slash(&spec.dest),
         template,
+        kind: spec.kind,
     })
 }
 

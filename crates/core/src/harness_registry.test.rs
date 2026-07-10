@@ -204,49 +204,9 @@ fn other_harnesses_use_the_same_key_var_on_host_and_in_the_container() {
     }
 }
 
-#[test]
-fn codex_maps_model_ids_to_openrouter_slugs() {
-    let registry = DefaultHarnessRegistry::new();
-    let codex = registry
-        .get(HarnessSlug::Codex)
-        .expect("codex is registered");
-    assert_eq!(codex.pricing_model_id("gpt-5.5"), "openai/gpt-5.5");
-    // An already-prefixed ID is passed through rather than double-prefixed.
-    assert_eq!(codex.pricing_model_id("openai/gpt-5.5"), "openai/gpt-5.5");
-}
-
-#[test]
-fn openrouter_routed_harnesses_pass_model_ids_through() {
-    let registry = DefaultHarnessRegistry::new();
-    let goose = registry
-        .get(HarnessSlug::Goose)
-        .expect("goose is registered");
-    assert_eq!(
-        goose.pricing_model_id("anthropic/claude-sonnet-4.6"),
-        "anthropic/claude-sonnet-4.6"
-    );
-}
-
-#[test]
-fn opencode_and_kilo_strip_their_openrouter_provider_prefix() {
-    let registry = DefaultHarnessRegistry::new();
-    for slug in [HarnessSlug::Opencode, HarnessSlug::Kilo] {
-        let harness = registry.get(slug).expect("harness is registered");
-        // OpenCode and Kilo Code report the slug under their `openrouter/`
-        // provider id; the price lookup needs the bare OpenRouter slug.
-        assert_eq!(
-            harness.pricing_model_id("openrouter/anthropic/claude-opus-4.8"),
-            "anthropic/claude-opus-4.8",
-            "{slug:?} should strip its openrouter/ provider prefix"
-        );
-        // A bare slug without the prefix is left untouched.
-        assert_eq!(
-            harness.pricing_model_id("anthropic/claude-opus-4.8"),
-            "anthropic/claude-opus-4.8",
-            "{slug:?} should leave an unprefixed slug alone"
-        );
-    }
-}
+// The model-id → OpenRouter price-lookup mapping (Codex's `openai/` prefix,
+// OpenCode/Kilo's `openrouter/` strip, and `:free` tag handling) is now owned by
+// `crate::model_id` and tested in `model_id.test.rs`.
 
 #[test]
 fn parses_a_version_line() {

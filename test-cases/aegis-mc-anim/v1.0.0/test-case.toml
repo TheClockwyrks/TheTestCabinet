@@ -1,4 +1,5 @@
 slug = "aegis-mc-anim"
+experimental = true
 name = "Aegis (Marching Cubes, Animated)"
 difficulty = "hard"
 tags = ["mesh", "marching-cubes", "rig", "walker"]

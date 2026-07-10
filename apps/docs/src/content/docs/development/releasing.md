@@ -130,10 +130,11 @@ connected to the GitHub mirror:
   another workspace runtime dependency.
 - **Build output directory:** `apps/site/dist`.
 - The build is **pure Node** — Cloudflare's build image has no Rust, and none is
-  needed: the bundled model dataset (`packages/ui/src/app/data/models.json`) is
-  committed, so the site builds against whatever prices are in the repo. Refresh
-  them by running `tcab catalog` and committing the result (or with a scheduled
-  job that does the same); a commit triggers a rebuild like any other push.
+  needed. The model catalog is no longer a release artifact: it is owned by the
+  backend and baked into the public R2 snapshot (as `models.json`, pointed to by
+  the snapshot `index.json`'s `modelsKey`), which the site consumes at runtime.
+  Model curation and refreshed prices reach the gallery through the next snapshot
+  publish, not a repo commit and rebuild.
 - Add `testcabinet.ai` as a **custom domain** on the project (apex), so the
   gallery is served from the apex.
 - Create the project's **deploy hook** and give its URL to the backend as
@@ -154,8 +155,8 @@ subdomains, so the literal `<run-id>.<project>.pages.dev` is not a reliable host
 
 The developer docs (`apps/docs`) deploy to Cloudflare Pages at
 `docs.testcabinet.ai`, separately from the gallery, driven by
-`.github/workflows/deploy-docs.yml`. They are a pure static build with no
-Rust/catalog step.
+`.github/workflows/deploy-docs.yml`. They are a pure static build with no Rust
+step.
 
 - In the Cloudflare dashboard, create a Pages project named `test-cabinet-docs`
   (this must match `--project-name` in the deploy workflow). Use a

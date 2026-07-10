@@ -138,19 +138,38 @@ export function framing(meshes: Record<string, PartMesh> | PartMesh): {
       if (z > maxZ) maxZ = z;
     }
   }
-  if (minX > maxX) {
-    // No geometry to frame yet — a neutral default.
+  // `minX > maxX` (no geometry) falls through to framingFromBounds' neutral default.
+  return framingFromBounds([minX, minY, minZ], [maxX, maxY, maxZ]);
+}
+
+/**
+ * {@link framing} reduced to the AABB's two corners (world units). Split out so a
+ * caller that already holds an axis-aligned box — the Blender character viewer frames
+ * the loaded glTF from a three `Box3` — gets the identical perspective-correct fit the
+ * vertex path computes, without flattening every position back into an array. A `min`
+ * that exceeds `max` on any axis (an empty box) returns a neutral default.
+ */
+export function framingFromBounds(
+  min: Vec3,
+  max: Vec3,
+): {
+  center: Vec3;
+  distance: number;
+  far: number;
+} {
+  if (min[0] > max[0]) {
+    // No geometry to frame — a neutral default.
     return { center: [0, 0, 0], distance: 32, far: 400 };
   }
   const center: Vec3 = [
-    (minX + maxX) / 2,
-    (minY + maxY) / 2,
-    (minZ + maxZ) / 2,
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2,
   ];
   const halfExtents: Vec3 = [
-    Math.max((maxX - minX) / 2, 0),
-    Math.max((maxY - minY) / 2, 0),
-    Math.max((maxZ - minZ) / 2, 0),
+    Math.max((max[0] - min[0]) / 2, 0),
+    Math.max((max[1] - min[1]) / 2, 0),
+    Math.max((max[2] - min[2]) / 2, 0),
   ];
   const size =
     Math.max(halfExtents[0], halfExtents[1], halfExtents[2], 0.5) * 2;

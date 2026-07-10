@@ -101,8 +101,10 @@ export type RunTooling = {
  * The type of a test case: which class of capability it measures and which
  * manifest tables it declares.
  *
- * Today four types exist in code: the original [`Self::EndToEnd`] (build a
- * working program), [`Self::AssetGeneration`] (drive a drawing tool toward a
+ * Today five types exist in code: the original [`Self::EndToEnd`] (build a
+ * working program), [`Self::FullStack`] (build a working program *and* produce
+ * its own assets with the asset-generation binaries, which are on `PATH` in the
+ * full-stack run image), [`Self::AssetGeneration`] (drive a drawing tool toward a
  * target image), [`Self::Adversarial`] (write a wasm controller pitted
  * head-to-head against a baseline), and [`Self::Performance`] (write a wasm
  * engine scored on correctness plus the fuel it burns). The type is the explicit
@@ -113,6 +115,7 @@ export type RunTooling = {
  */
 export type TestType =
   | "end-to-end"
+  | "full-stack"
   | "asset-generation"
   | "adversarial"
   | "performance";
@@ -151,7 +154,8 @@ export type AssetKind =
   | "particle-3d"
   | "sfx-synth"
   | "sfx-sample"
-  | "music";
+  | "music"
+  | "blender-character";
 
 /**
  * The subject of a run: what was run, with what, against which model.
@@ -551,6 +555,15 @@ export type VoxelGenResult = {
    * meshes. `false` for every non-skinned voxel-family run.
    */
   skinned: boolean;
+  /**
+   * Whether this is a **Blender character** run (`blender-character`): the emitted
+   * mesh is a self-contained skinned + animated glTF whose animations are baked
+   * into the file itself (glTF animation channels), not authored as `rig.json`
+   * F-curves. A Blender run is also `skinned`, but the marker tells the 3D viewer
+   * to load the glTF with a native glTF player (skeleton + baked clips) rather than
+   * posing the mesh from an inline rig. `false` for every non-Blender run.
+   */
+  blender: boolean;
   /**
    * Detail about anything that could not be evaluated at the run level, or
    * `None`. Per-part detail lives on each [`VoxelPartResult`].

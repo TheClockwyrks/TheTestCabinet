@@ -31,15 +31,73 @@ export type { MediaKind, TestType };
 // from the shared client types.
 export type { HarnessEvent };
 
-// --- Catalog (served by the backend) ---
+// --- Model catalog (served by the backend `GET /models`) ---
 
+/** A comparable per-token price triple, USD; each member null when unknown. */
+export interface ModelPrices {
+  uncachedInput: number | null;
+  cachedInput: number | null;
+  output: number | null;
+}
+
+/** One observation in a model's price history. */
+export interface PriceObservation {
+  observedAt: string;
+  prices: ModelPrices;
+}
+
+/** One catalog entry: a curated model merged with its runs + price history, or a
+ * model derived from runs alone (`curated: false`). Mirrors the backend `ModelOut`. */
 export interface Model {
   slug: string;
   name: string;
   provider: string;
+  /** Whether this entry has curated config, versus being derived from runs. */
+  curated: boolean;
+  /** `https://openrouter.ai/<slug>` when on OpenRouter, else null. */
+  openrouterUrl: string | null;
+  /** Curated description markdown, or null. */
+  description: string | null;
+  /** The curated, sanitized provider-logo SVG, or null. */
+  logoSvg: string | null;
+  /** The raw run-record `modelId`s this entry absorbs (what a run matches on). */
+  coveredModelIds: string[];
+  /** The canonical model ids this entry claims. */
+  aliases: string[];
+  /** The latest observed comparable price, or null. */
+  price: ModelPrices | null;
+  /** The observed price history, ascending, consecutive-equal deduped. */
+  priceHistory: PriceObservation[];
+  /** The latest observed context window in tokens, or null. */
+  contextLength: number | null;
+  /** The latest observed release date (RFC 3339), or null. */
+  releasedAt: string | null;
+}
+
+/** The `POST /models` / `PUT /models/{slug}` request body. */
+export interface ModelInput {
+  slug: string;
+  name: string;
+  provider: string;
+  aliases: string[];
   openrouterSlug: string | null;
-  descriptionPath: string | null;
-  modelIds: string[];
+  description: string | null;
+  logoSvg: string | null;
+  providerLogoUrl: string | null;
+}
+
+/** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
+export interface ModelSeed {
+  slug: string;
+  name: string;
+  provider: string;
+  aliases: string[];
+  openrouterSlug: string | null;
+}
+
+/** The `POST /models/logo` result: the fetched, sanitized SVG. */
+export interface LogoFetchResult {
+  logoSvg: string;
 }
 
 export interface TestCase {
@@ -84,6 +142,12 @@ export interface VariantInfo {
   // case's common domains plus this variant's own additive ones — so a run is
   // always rated on exactly the domains that apply to its selected variant.
   domains: Domain[];
+  // The absolute URL of this variant's reference implementation — the correct,
+  // authored static build the backend records in `case_reference_build` and serves
+  // on the resolved version (camelCase `referenceBuild`). Null when the variant
+  // declares no `reference_implementation`, and absent on a backend that predates
+  // the field.
+  referenceBuild?: string | null;
 }
 
 // The 3D voxel-family asset kinds — the two cube kinds, the six surface-meshed
@@ -140,6 +204,17 @@ export function isAudioAssetKind(kind: AssetKind | null | undefined): boolean {
   return kind != null && AUDIO_ASSET_KINDS.has(kind);
 }
 
+/** Whether an asset kind is a **Blender character** (`blender-character`) — a
+ * rigged, animated skinned character authored by driving headless Blender, emitted
+ * as a self-contained skinned + animated glTF. Its own catalog family: not a
+ * voxel-family kind (it is a real mesh, not a voxel field) even though it, too,
+ * renders in 3D. An absent kind reads as false. */
+export function isBlenderAssetKind(
+  kind: AssetKind | null | undefined,
+): boolean {
+  return kind === "blender-character";
+}
+
 export interface VersionInfo {
   slug: string;
   version: string;
@@ -177,11 +252,30 @@ export interface VersionInfo {
   // stable slot per declared part as the model sculpts, named from the parts.
   model?: ModelSpec | null;
   maxRuntimeSeconds: number;
+  // The Test Cabinet runtime packages this case ships into every run, each with a
+  // UI-only description. Empty for a case that declares none. Case-level (shared by
+  // every variant), surfaced on the Inputs tab.
+  packages: PackageInfo[];
 }
+
+// A runtime package a case ships into its runs: its npm name and the UI-only
+// description of what it provides (never seeded into a run — it exists only to
+// explain, in the Inputs UI, what the package is for).
+export interface PackageInfo {
+  name: string;
+  description: string;
+}
+
+// The role a seeded file plays, so the Inputs UI can tag an executable starter
+// ("script") distinctly from a prose spec ("spec"). Presentation only.
+export type SpecRole = "spec" | "script";
 
 export interface SpecDocument {
   dest: string;
   body: string;
+  // The seeded file's role, carried so the Inputs tab can tag it. Absent on a
+  // backend that predates the field; treated as "spec".
+  kind?: SpecRole;
 }
 
 export interface Specification {
@@ -307,6 +401,10 @@ export interface LaunchConfig {
   // only for the end-to-end test type.
   orchestrator: string;
   maxRuntimeOverride: number | null;
+  // How many times the backend automatically retries this run after a terminal
+  // infrastructure error or catastrophic (won't-load) build. Omit (undefined) to
+  // accept the backend default of 1; a timeout or completed run is never retried.
+  retryCount?: number;
 }
 
 // The terminal outcome of a publish. Publishing is **asynchronous**: the backend

@@ -47,12 +47,43 @@ COPY . .
 # rebuilding every dependency from scratch. target/ is a cache mount (not a layer),
 # so the freshly built binary is copied to a stable path inside the same RUN,
 # before the mount is detached — the runtime stage COPYs it from there.
+#
+# TCAB_BUILD_COMMIT stamps the build's provenance commit into the binary
+# (crates/core/build.rs → the run record's testCabinetCommit): this context has no
+# `.git` for build.rs to query — the repo-root .dockerignore never re-includes it —
+# so without this every driver run would record an "unknown" commit. CI passes the
+# commit (github.sha) as a build arg; unset, it falls through and stamps null.
+ARG TCAB_BUILD_COMMIT
+# Refresh the COPYed sources' mtimes before building: BuildKit's `COPY . .` stamps
+# every copied file with a FIXED mtime, so cargo's mtime-based freshness check can't
+# tell the source changed relative to artifacts already sitting in the persistent
+# target/ cache mount (left by an earlier build — a different branch, or one that was
+# interrupted) and reuses the STALE .rmeta/.rlib — silently baking a stale binary, or
+# failing with spurious E0599s when the reused crate's API no longer matches. Touching
+# the tree forces cargo's content-hash fallback, so only genuinely-changed crates
+# recompile (target/ is pruned so build outputs keep their real mtimes).
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/local/rustup \
     --mount=type=cache,target=/src/target \
-    cargo build --release -p test-cabinet-driver \
+    find /src -path /src/target -prune -o -type f -exec touch {} + \
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release -p test-cabinet-driver \
     && cp /src/target/release/tcab-driver /tcab-driver
+
+# ── Package store stage ───────────────────────────────────────────────────────
+# The driver seeds each run's repository, and a `packages`-declaring case has its
+# requested `@test-cabinet/*` runtime libraries vendored into the run repo at seed
+# time (crates/core seeding → `.tcab/packages/`). Those libraries are read from a
+# host package store, so the driver image bakes one exactly as the base run image
+# does: `npm ci` over the npm workspace (the repo-root `.dockerignore` re-includes
+# the packages slice), then `scripts/stage-tcab-packages.mjs` builds the shippable
+# libraries and stages them under /opt/tcab-packages.
+FROM docker.io/library/node:24-bookworm-slim AS tcab-packages
+WORKDIR /repo
+COPY . .
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci \
+    && node scripts/stage-tcab-packages.mjs /opt/tcab-packages
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 # Node base so the bundled Playwright driver (invoked as `node driver.mjs`) can run
@@ -88,6 +119,12 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/* /root/.npm
 
 COPY --from=build /tcab-driver /usr/local/bin/tcab-driver
+
+# The host package store the seeder vendors a `packages`-declaring case's runtime
+# libraries out of (crates/core `TCAB_PACKAGES_DIR`). World-readable so the
+# unprivileged `node` user below can read it during seeding.
+COPY --from=tcab-packages /opt/tcab-packages /opt/tcab-packages
+RUN chmod -R a+rX /opt/tcab-packages
 
 # Run as an unprivileged user: the Kubernetes runtime needs only API access (its
 # ServiceAccount token), never host privileges. The Node base already ships a

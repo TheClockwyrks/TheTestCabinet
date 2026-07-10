@@ -56,6 +56,15 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   `"dc-skinned"`) executes in — the base image plus the baked-in `mc-skin` /
   `sn-skin` / `dc-skin` binary (a single continuous, skeleton-bound skin, one
   image per algorithm);
+- the **blender** image, which every Blender character run
+  (`asset_kind = "blender-character"`) executes in — a **self-contained `ubuntu:26.04`
+  image** carrying **headless Blender** (installed from `apt`) and the baked-in
+  **`tcab-blend`** runner (which runs a model's `build.py` under Blender to export a
+  skinned, animated glTF). It is the **one run image not built `FROM` the shared base**:
+  Blender ships no upstream Linux build for aarch64, so getting a modern, arch-parity
+  Blender means taking it from a distro that packages it for both arches, and only Ubuntu
+  (26.04 → Blender 5.0.x) does — the Debian base is stuck at Blender 3.4.x. See
+  [`blender/Dockerfile`](blender/Dockerfile) for the full rationale;
 - the **particle-2d** and **particle-3d** images, which every particle-effect run
   (`asset_kind = "particle-2d"` / `"particle-3d"`) executes in — the base image
   plus the baked-in `particle-2d` / `particle-3d` binary;
@@ -94,7 +103,7 @@ the image by test type and asset kind via
 
 ```
 containers/
-├── base/Dockerfile             # the end-to-end run image (toolchain, run user, /opt/tcab-packages)
+├── base/Dockerfile             # the end-to-end run image (toolchain, run user)
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
@@ -110,6 +119,10 @@ containers/
 ├── mc-skinned/Dockerfile       # the base image plus the baked-in `mc-skin` binary (skinned character)
 ├── sn-skinned/Dockerfile       # the base image plus the baked-in `sn-skin` binary
 ├── dc-skinned/Dockerfile       # the base image plus the baked-in `dc-skin` binary
+├── blender/                    # self-contained ubuntu:26.04 + headless Blender + `tcab-blend` (NOT FROM base)
+│   ├── Dockerfile              #   (a `blender-character` run authors via a build.py bpy script)
+│   ├── tcab-blend              #   the runner: execs `blender --background --python build.py`
+│   └── tcab_blend_export.py    #   the bundled glTF export + preview helper build.py calls
 ├── particle-2d/Dockerfile      # the base image plus the baked-in `particle-2d` binary
 ├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary
 ├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary
@@ -159,11 +172,13 @@ case prepares its workspace with an init command. End-to-end runs never touch a
 drawing tool, so neither lives in the base — they live in the asset-generation
 images below.
 
-It does, however, bake in one thing every end-to-end run may opt into: the
-**shippable Test Cabinet packages** (below), staged under `/opt/tcab-packages` so
-a case that declares
-[`packages`](../apps/docs/src/content/docs/testing/end-to-end/manifests.md) can
-consume a produced asset that needs a runtime to play it.
+The base run image carries nothing for the **shippable Test Cabinet packages**
+(below): a case that declares
+[`packages`](../apps/docs/src/content/docs/testing/end-to-end/manifests.md) has
+them **vendored into its run repository at seed time**, so the produced tree is
+self-contained. The packages that get vendored come from a host **package store**
+baked into the [driver image](../deployments/images/driver.Dockerfile), which is
+the image that seeds runs.
 
 ## The shippable Test Cabinet packages
 
@@ -179,33 +194,38 @@ names the ones it needs with the manifest's
 [`packages`](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)
 key, and the run consumes them as ordinary installed dependencies.
 
-Because a run container must work **offline-first and in lockstep with this
-repo** — and because these packages are private (never npm-published) and must
-match the format the validator and review UI play — the packages are **baked into
-the base image**, exactly like the drawing binaries and the Foray/Lattice
-buildkits, rather than fetched from a registry at run time. They live under
-`/opt/tcab-packages/@test-cabinet/<name>/` (world-readable), each a publish-shaped
-copy: its `package.json` plus its built `dist/`. Any dependency **between** two
-shippable packages (for example `particle-runtime`'s type-only dependency on
-`run-record`) is rewritten to a `file:` path within `/opt/tcab-packages`, so the
-staged set resolves entirely offline with no npm-published `@test-cabinet/*`
-package required.
+Because these packages are private (never npm-published) and must match the format
+the validator and review UI play, they are **staged from this repo into a host
+package store** rather than fetched from a registry. The store lives at
+`/opt/tcab-packages/@test-cabinet/<name>/` (world-readable) on the
+[driver image](../deployments/images/driver.Dockerfile) — the image that seeds
+runs — each a publish-shaped copy: its `package.json` plus its built `dist/`. Any
+dependency **between** two shippable packages (for example `particle-runtime`'s
+type-only dependency on `run-record`) is rewritten to a relative `file:` path
+within the store, so the staged set resolves with no npm-published
+`@test-cabinet/*` package required.
 
 Staging is done by [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs),
-run in a builder stage of [`base/Dockerfile`](base/Dockerfile) (the build context
-is the repository root, so the stage can see `packages/`). The script builds the
+run in a builder stage of the driver Dockerfile (the build context is the
+repository root, so the stage can see `packages/`). The script builds the
 npm workspace, then for each package in its **shippable list** copies the package's
 `package.json` and the files its `files` field publishes into
 `/opt/tcab-packages/@test-cabinet/<name>/`, pulling in and rewriting transitive
-`@test-cabinet/*` dependencies. The final base stage `COPY --from`s that tree in.
+`@test-cabinet/*` dependencies. The runtime stage `COPY --from`s that tree in.
 
 **How a case uses them, end to end.** A case declares
-`packages = ["@test-cabinet/particle-runtime"]`; at seed time `crates/core`
-injects `"@test-cabinet/particle-runtime": "file:/opt/tcab-packages/@test-cabinet/particle-runtime"`
-into the seeded workspace `package.json`, so the model installs and imports it
-like any other dependency (see
+`packages = ["@test-cabinet/particle-runtime"]` **and** ships a workspace whose
+`package.json` depends on it via an in-repo relative path:
+`"@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"`.
+The harness does not modify that `package.json` — it only validates at resolution
+that the shipped file declares each declared package via exactly this `file:` spec.
+At seed time the core copies the declared packages (and their `@test-cabinet`
+closure) out of the store into `.tcab/packages/` inside the run repo and commits
+them, so the seeded workspace is ready to `npm install` and the relative `file:`
+dependency resolves wherever the produced tree later lives — the run container, the
+validation host, or a clone of the published repo — with no absolute path to break.
+The model imports the library like any other dependency (see
 [Packages](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)).
-The `/opt` path is an internal detail the model never types.
 
 **The lockstep rule** is the same one the baked binaries carry: the staged
 package format must match what `crates/core` and the review UI expect, so **build
@@ -233,9 +253,10 @@ To add one:
 3. **Add its name to the `SHIPPABLE_PACKAGES` allowlist** in
    [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) so a case may
    declare it. Keep this in lockstep with step 2.
-4. **Rebuild the base image** (`./build.sh`; for the local cluster,
-   `make -C deployments/local run-images` to rebuild and re-import). The
-   asset-generation images inherit it via `FROM` the base.
+4. **Rebuild the base image** (`./build.sh base`; for the local cluster,
+   `make -C deployments/local run-images-e2e` to rebuild and re-import just the
+   base, or `run-images` for the whole set). The asset-generation images inherit it
+   via `FROM` the base.
 
 ## Asset-generation images
 
@@ -300,10 +321,12 @@ deterministic isometric rasterizer, and their output is judged from the emitted
 data plus the rendered previews — there is no cheat-divergence check on these
 binaries.
 
-Every asset-generation Dockerfile is `FROM` the base, so each inherits the
-toolchain, the `node` run user, the `/work` working directory, and the keep-alive
-`CMD`, and adds only its binary — or, for the `ui` and `material` images, its two
-binaries. Unlike a harness CLI, these binaries are part
+Every asset-generation Dockerfile is `FROM` the base — **except the `blender`
+image**, which is a self-contained `ubuntu:26.04` image that re-creates the run
+contract itself (see its bullet above and [`blender/Dockerfile`](blender/Dockerfile)) —
+so each inherits the toolchain, the `node` run user, the `/work` working directory, and
+the keep-alive `CMD`, and adds only its binary — or, for the `ui` and `material` images,
+its two binaries. Unlike a harness CLI, these binaries are part
 of The Test Cabinet itself and must match the orchestrator's own logic — the
 orchestrator regenerates a `draw`/`draw-sheet` run's scored image from its action
 log through the *same* library those tools use, and core's validator decodes the
@@ -432,8 +455,10 @@ drifted from the repository's workspace dependencies fails the image build.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
-DOCKER=podman ./build.sh  # build with Podman instead
+./build.sh                     # build all images (the base, every asset-generation kind, adversarial, and performance)
+./build.sh voxel-animation     # build ONLY the named image(s) — base is (re)built as needed for the FROM
+./build.sh adversarial performance
+DOCKER=podman ./build.sh       # build with Podman instead
 ```
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per

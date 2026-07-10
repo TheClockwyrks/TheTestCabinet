@@ -14,14 +14,23 @@ import { MediaView } from "./MediaView";
 /**
  * The kind of input an entry represents. It is shown as the entry's tag (in place
  * of the media type) so one scannable list still tells prompt from spec from
- * reference. `asset` is reserved for a future input kind and is not yet produced.
+ * script from package from reference. `asset` is reserved for a future input kind
+ * and is not yet produced.
  */
-export type InputKind = "prompt" | "spec" | "reference" | "asset";
+export type InputKind =
+  | "prompt"
+  | "spec"
+  | "script"
+  | "package"
+  | "reference"
+  | "asset";
 
 /** The tag text shown for each input kind. */
 const INPUT_KIND_LABELS: Record<InputKind, string> = {
   prompt: "Prompt",
   spec: "Spec",
+  script: "Script",
+  package: "Package",
   reference: "Reference",
   asset: "Asset",
 };
@@ -45,11 +54,25 @@ export function VariantInputsView({ variant }: { variant: VariantSummary }) {
       : []),
     // The exact files a run of the variant is seeded with — the same set
     // `tcab seed --variant <slug>` materializes. The public snapshot inlines these
-    // spec bodies, so they show on the static site too.
+    // spec bodies, so they show on the static site too. Each is tagged by its role
+    // (a prose "Spec" or an executable "Script" the model edits and runs).
     ...variant.seededInputs.map((input) => ({
       path: input.path,
-      kind: INPUT_KIND_LABELS.spec,
+      kind:
+        input.role === "script"
+          ? INPUT_KIND_LABELS.script
+          : INPUT_KIND_LABELS.spec,
       body: <SeededBody input={input} />,
+    })),
+    // The Test Cabinet runtime packages the build is given — baked into the run
+    // image and depended on by the seeded `package.json`, so the build imports them
+    // to play a produced asset (e.g. a particle system). The body is the package's
+    // UI-only description; unlike a spec it carries no seeded file, so it names what
+    // the build uses the library for.
+    ...variant.packages.map((pkg) => ({
+      path: pkg.name,
+      kind: INPUT_KIND_LABELS.package,
+      body: <Markdown>{pkg.description}</Markdown>,
     })),
     // The reference media that are the variant's visual targets: rendered mockups
     // and static images, plus any reference video clips. They are validation

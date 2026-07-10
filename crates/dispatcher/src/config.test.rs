@@ -32,14 +32,12 @@ const ALL_VARS: &[&str] = &[
     // Run-container image passthroughs — cleared for the same reason as the
     // observability vars below: a developer or CI machine may have these set (they
     // are the runner's own image-resolution env), and they must not leak into the
-    // passthrough-collection assertions (notably the exact-count one).
+    // passthrough-collection assertions (notably the exact-count one). The registry
+    // and tag are listed here; every per-image `TCAB_CONTAINER_IMAGE_*` override is
+    // cleared from `RUN_IMAGE_OVERRIDE_ENVS` in `clear_all` (the same canonical list
+    // the dispatcher forwards), so the two stay in lockstep as asset kinds are added.
     "TCAB_CONTAINER_REGISTRY",
     "TCAB_CONTAINER_TAG",
-    "TCAB_CONTAINER_IMAGE_BASE",
-    "TCAB_CONTAINER_IMAGE_SPRITE",
-    "TCAB_CONTAINER_IMAGE_SPRITE_SHEET",
-    "TCAB_CONTAINER_IMAGE_ADVERSARIAL",
-    "TCAB_CONTAINER_IMAGE_PERFORMANCE",
     // Observability passthroughs — cleared so the ambient process env (which may set
     // TCAB_ENV / OTEL_* on a developer or CI machine) cannot leak into the
     // passthrough-collection assertions below.
@@ -50,7 +48,10 @@ const ALL_VARS: &[&str] = &[
 ];
 
 fn clear_all() {
-    for var in ALL_VARS {
+    for var in ALL_VARS
+        .iter()
+        .chain(test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS.iter())
+    {
         unsafe { std::env::remove_var(var) };
     }
 }

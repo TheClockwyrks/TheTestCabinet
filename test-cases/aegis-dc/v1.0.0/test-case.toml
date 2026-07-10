@@ -1,4 +1,5 @@
 slug = "aegis-dc"
+experimental = true
 name = "Aegis (Dual Contouring)"
 difficulty = "medium"
 tags = ["mesh", "dual-contouring", "walker"]

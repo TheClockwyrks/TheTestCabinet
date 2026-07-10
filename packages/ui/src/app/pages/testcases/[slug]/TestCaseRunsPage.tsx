@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Pagination, Panel } from "@test-cabinet/ui";
 import { RunLog, useRunTable } from "../../../components/RunLog";
-import { useRuns } from "../../../data/useRuns";
+import {
+  usePagedSearchParams,
+  useResetPageOnChange,
+} from "../../../components/usePagedSearchParams";
+import { useCaseRunSummaries } from "../../../data/useRuns";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import styles from "./TestCaseRunsPage.module.scss";
@@ -11,9 +15,10 @@ import styles from "./TestCaseRunsPage.module.scss";
 const PAGE_SIZE = 20;
 
 // The Runs tab (`/test-cases/:slug/runs`): the full run log for the selected
-// variant, newest first and paged. The token/cost distributions live on the
-// Metrics tab. Rows default to recency order; the run log's headers re-sort the
-// whole variant history, which is then paged.
+// variant, newest first and paged. The case's runs are fetched in one bounded,
+// case-scoped query (the backend has no variant filter, so the per-variant
+// narrowing — and the sort and paging — happen client-side over the case's bounded
+// set). The token/cost distributions live on the Metrics tab.
 export function TestCaseRunsPage() {
   return (
     <TestCaseDetailLayout tab="runs">
@@ -31,20 +36,22 @@ function RunsContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { runs, localIds, localWriteups } = useRuns();
-  const [page, setPage] = useState(0);
+  const { summaries, localIds, localWriteups, loading } = useCaseRunSummaries(
+    testCase.slug,
+  );
+  const { page, setPage } = usePagedSearchParams();
 
   // Runs of this case and variant, newest first.
   const variantRuns = useMemo(
     () =>
-      runs
+      summaries
         .filter(
           (run) =>
             run.subject.testCaseSlug === testCase.slug &&
             run.subject.variant === variant.slug,
         )
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
-    [runs, testCase.slug, variant.slug],
+    [summaries, testCase.slug, variant.slug],
   );
 
   // Enrich and sort the full variant history before paging, so a header sort
@@ -58,15 +65,18 @@ function RunsContent({
 
   // Switching variants swaps the whole run set, and re-sorting reshapes it, so
   // jump back to the first page in either case.
-  useEffect(() => {
-    setPage(0);
-  }, [variant.slug, table.controls.sort]);
+  useResetPageOnChange(
+    setPage,
+    `${variant.slug}:${JSON.stringify(table.controls.sort)}`,
+  );
 
   if (variantRuns.length === 0) {
     return (
       <section className={styles.section}>
         <Panel>
-          <p className={styles.empty}>No runs of {variant.name} yet.</p>
+          <p className={styles.empty}>
+            {loading ? "Loading runs…" : `No runs of ${variant.name} yet.`}
+          </p>
         </Panel>
       </section>
     );
@@ -82,11 +92,7 @@ function RunsContent({
   return (
     <section className={styles.section}>
       <RunLog rows={pageRows} controls={table.controls} />
-      <Pagination
-        page={current}
-        pageCount={pageCount}
-        onPageChange={setPage}
-      />
+      <Pagination page={current} pageCount={pageCount} onPageChange={setPage} />
     </section>
   );
 }

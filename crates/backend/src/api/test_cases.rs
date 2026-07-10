@@ -1,15 +1,24 @@
 //! Test-case catalog, version resolution, artifacts, and reference handlers
 //! (§1.2 of `design/v0.2.0-contracts.md`).
 
+#[cfg(test)]
+#[path = "test_cases.test.rs"]
+mod tests;
+
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
-use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
+use test_cabinet_core::{
+    AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec, shippable_package_description,
+};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
+use crate::auth::AuthUser;
 use crate::error::ApiError;
 use crate::store::{
     StoredContract, StoredManifest, StoredMatch, StoredReplay, StoredSandbox, StoredSimulation,
@@ -18,10 +27,14 @@ use crate::store::{
 use super::AppState;
 
 /// `GET /test-cases` — the catalog of ingested cases and their versions.
+///
+/// Experimental versions are omitted unless the deployment has opted in via
+/// `TCAB_BACKEND_ALLOW_EXPERIMENTAL` (see [`crate::config::Config::allow_experimental`]),
+/// so an experimental case a deployment has not enabled is not offered to the UI.
 pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogResponse>, ApiError> {
     let cases = state
         .store
-        .list_cases()
+        .list_visible_cases(state.config.allow_experimental)
         .map_err(ApiError::from)?
         .into_iter()
         .map(|(slug, versions)| CatalogCase { slug, versions })
@@ -34,7 +47,13 @@ pub async fn versions(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> Result<Json<VersionsResponse>, ApiError> {
-    let versions = state.store.list_versions(&slug).map_err(ApiError::from)?;
+    // Hide experimental versions unless the deployment opted in; a case whose only
+    // versions are experimental then reports none and 404s, exactly as if it were
+    // never ingested.
+    let versions = state
+        .store
+        .list_visible_versions(&slug, state.config.allow_experimental)
+        .map_err(ApiError::from)?;
     if versions.is_empty() {
         return Err(ApiError::not_found(format!("test case `{slug}` not found")));
     }
@@ -52,7 +71,68 @@ pub async fn resolve_version(
         .store
         .read_manifest(&slug, &version)
         .map_err(ApiError::from)?;
-    Ok(Json(version_response(&manifest)?))
+    // An experimental version is treated as if it does not exist unless the
+    // deployment opted in, so it cannot be resolved (and therefore cannot be run)
+    // even by a client that guessed its slug and version.
+    if manifest.experimental && !state.config.allow_experimental {
+        return Err(ApiError::not_found(format!(
+            "test-case version `{slug}@{version}` is not ingested"
+        )));
+    }
+    // The reference-implementation URLs (variant → served build) are stored
+    // out-of-band — written by `tcab publish-reference`, never at ingest — so they
+    // live in the database, not the resolved manifest. Fold them onto each variant
+    // so the console's "Reference" tab can embed the correct build. A variant with
+    // no deployed reference simply resolves to `None`.
+    let reference_builds = state
+        .db
+        .reference_builds_for_version(&slug, &version)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(version_response(&manifest, &reference_builds)?))
+}
+
+/// `PUT /test-cases/{slug}/versions/{version}/reference-builds/{variant}` — record
+/// the deployed URL of a variant's authored reference implementation. Requires a
+/// bearer token (the same guard the ingest/publish write paths use), because it
+/// mutates the served catalog.
+///
+/// This is the out-of-band write half of the reference-implementation feature: the
+/// `tcab publish-reference` CLI builds and deploys the variant's static site
+/// (Cloudflare Pages), reads the served URL back, and PUTs it here. The backend
+/// never builds or deploys anything — it only remembers the URL and surfaces it on
+/// the version response and the public snapshot. The upsert is idempotent on
+/// `(slug, version, variant)`, so a re-deploy replaces the URL in place.
+#[tracing::instrument(
+    name = "test_cases.put_reference_build",
+    skip(state, _user, body),
+    fields(slug = %slug, version = %version, variant = %variant),
+    err(Debug),
+)]
+pub async fn put_reference_build(
+    State(state): State<AppState>,
+    Path((slug, version, variant)): Path<(String, String, String)>,
+    _user: AuthUser,
+    Json(body): Json<ReferenceBuildBody>,
+) -> Result<StatusCode, ApiError> {
+    let url = body.url.trim();
+    if url.is_empty() {
+        return Err(ApiError::unprocessable(
+            "referenceBuild.url must be non-empty",
+        ));
+    }
+    let now = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))?;
+    state
+        .db
+        .upsert_reference_build(&slug, &version, &variant, url, &now)
+        .await
+        .map_err(ApiError::from)?;
+    // The public snapshot folds each variant's reference-build URL onto its case
+    // metadata, so a newly-recorded (or re-deployed) URL must be re-exported.
+    state.publisher.queue_refresh();
+    Ok(StatusCode::OK)
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/artifacts/{path...}` — one seeded
@@ -167,7 +247,10 @@ pub async fn put_run_controller(
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
 /// prompt the way a real run receives it.
-fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiError> {
+fn version_response(
+    manifest: &StoredManifest,
+    reference_builds: &std::collections::HashMap<String, String>,
+) -> Result<VersionResponse, ApiError> {
     let reference_out = |scope: &str, r: &crate::store::StoredReference| ReferenceOut {
         view: r.view.clone(),
         kind: r.kind,
@@ -200,6 +283,7 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
                 review_items: v.review_items.iter().map(review_item_out).collect(),
                 domains: v.domains.iter().map(domain_out).collect(),
                 voxel: v.voxel.clone(),
+                reference_build: reference_builds.get(&v.slug).cloned(),
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
@@ -247,6 +331,11 @@ fn version_response(manifest: &StoredManifest) -> Result<VersionResponse, ApiErr
         audio: manifest.audio.clone(),
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
+        packages: manifest
+            .packages
+            .iter()
+            .map(|name| package_out(name))
+            .collect(),
         workspace: manifest.workspace.iter().map(workspace_out).collect(),
         init: manifest.init.clone(),
         assets: manifest
@@ -355,6 +444,20 @@ fn spec_out(spec: &crate::store::StoredSpec) -> SpecOut {
         source: spec.source.clone(),
         dest: spec.dest.clone(),
         template: spec.template,
+        kind: spec.kind,
+    }
+}
+
+/// Map a case's declared package name to the wire `{name, description}` shape,
+/// looking the UI-only description up from core's shippable registry. A name with
+/// no registry entry (a store ingested against a newer core) falls back to an
+/// empty description rather than dropping the package.
+fn package_out(name: &str) -> PackageOut {
+    PackageOut {
+        name: name.to_string(),
+        description: shippable_package_description(name)
+            .unwrap_or_default()
+            .to_string(),
     }
 }
 
@@ -485,6 +588,10 @@ pub struct VersionResponse {
     audio: Option<AudioSpec>,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
+    /// The Test Cabinet runtime packages this case ships into every run, each with
+    /// a UI-only description. Shown on the console's Inputs tab; empty for a case
+    /// that declares none.
+    packages: Vec<PackageOut>,
     workspace: Vec<WorkspaceOut>,
     init: Option<String>,
     assets: Vec<AssetOut>,
@@ -535,6 +642,20 @@ struct SpecOut {
     source: String,
     dest: String,
     template: bool,
+    /// The seeded file's role (`spec`/`script`), so the console's Inputs tab can
+    /// tag it. Presentation only.
+    kind: SpecKind,
+}
+
+/// A runtime package a case ships into its runs, exposed for the console's Inputs
+/// tab: its npm name and the UI-only description of what it provides (never seeded
+/// into a run).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct PackageOut {
+    name: String,
+    description: String,
 }
 
 #[derive(Serialize)]
@@ -572,6 +693,27 @@ struct VariantOut {
     /// (the size axis behind a case's half/base/double variants). `None` inherits
     /// the case's common [`VersionResponse::voxel`].
     voxel: Option<VoxelSpec>,
+    /// The absolute URL of this variant's authored **reference implementation** — the
+    /// correct, deployed static build (the case-variant analogue of a run's
+    /// `playableBuild`), served on the console's "Reference" tab. `None` when the
+    /// variant declares no `reference_implementation`, or has one but it has not been
+    /// deployed yet. Written out-of-band by `tcab publish-reference` and read from the
+    /// `case_reference_build` table — never resolved from the manifest and never
+    /// seeded into a run.
+    reference_build: Option<String>,
+}
+
+/// The body of `PUT /test-cases/{slug}/versions/{version}/reference-builds/{variant}`:
+/// the deployed URL of a variant's authored reference implementation, recorded by
+/// `tcab publish-reference` after it builds and hosts the static site.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ReferenceBuildBody {
+    /// The absolute (https) URL the reference build is served at. Cloudflare Pages
+    /// truncates long branch subdomains, so the CLI reads the served URL back from
+    /// `wrangler` output rather than constructing it, and PUTs the exact value here.
+    pub url: String,
 }
 
 #[derive(Serialize)]

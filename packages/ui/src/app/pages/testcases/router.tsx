@@ -7,6 +7,7 @@ import { TestCaseLeaderboardPage } from "./[slug]/TestCaseLeaderboardPage";
 import { TestCaseMetricsPage } from "./[slug]/TestCaseMetricsPage";
 import { TestCaseChangelogPage } from "./[slug]/TestCaseChangelogPage";
 import { TestCaseArenaPage } from "./[slug]/TestCaseArenaPage";
+import { TestCaseReferencePage } from "./[slug]/TestCaseReferencePage";
 import { TestCasesPage } from "./TestCasesPage";
 
 // Routes owned by the test-cases section: the catalog list — one route per type
@@ -31,12 +32,20 @@ export function testCasesRoutes() {
         element={<TestCasesPage tab="end-to-end" />}
       />
       <Route
+        path={routePatterns.testCasesFullStack}
+        element={<TestCasesPage tab="full-stack" />}
+      />
+      <Route
         path={routePatterns.testCases2D}
         element={<TestCasesPage tab="2d" />}
       />
       <Route
         path={routePatterns.testCases3D}
         element={<TestCasesPage tab="3d" />}
+      />
+      <Route
+        path={routePatterns.testCasesBlender}
+        element={<TestCasesPage tab="blender" />}
       />
       <Route
         path={routePatterns.testCasesParticle}
@@ -80,6 +89,13 @@ export function testCasesRoutes() {
       <Route
         path={routePatterns.testCaseArena}
         element={<TestCaseArenaPage />}
+      />
+      {/* The Reference tab is shown only for an end-to-end case whose selected
+          variant carries a reference build; the page itself degrades to a short
+          placeholder for a variant that declares none. */}
+      <Route
+        path={routePatterns.testCaseReference}
+        element={<TestCaseReferencePage />}
       />
     </>
   );

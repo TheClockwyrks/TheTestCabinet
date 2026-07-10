@@ -1,4 +1,5 @@
 slug = "sunfront-aegis"
+experimental = true
 name = "Sunfront Aegis"
 difficulty = "hard"
 tags = ["voxel", "rig", "walker"]

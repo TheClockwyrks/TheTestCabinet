@@ -17,6 +17,14 @@ spec = [{ source = "specs/modes/warhead.md" }]
 # mid-damage, a torpedo homing on its target, and the torpedo-charge HUD.
 reference = [{ view = "warhead", path = "reference/gameplay-warhead.html" }]
 
+# The authored, *correct* static build of this variant — the case-variant
+# analogue of a run's playable build. A bare directory path (resolved against
+# the version folder) holding a buildable web project, built with this case's
+# `[build]` install/build commands and deployed like a published run build via
+# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
+# **never seeded into a run**.
+reference_implementation = "reference-impl/warhead"
+
 # Variant-only proofs the standard modes do not ask for: a still of the armored
 # rock + torpedo + charge HUD (paired with the `warhead` reference), and a clip of
 # a torpedo run (the launch-straight-then-home behavior and the harder scatter no

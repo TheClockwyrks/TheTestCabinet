@@ -256,3 +256,29 @@ chiptune
 bitcrush
 bezelled
 voicings
+reharmonize
+loopable
+bmesh
+gltf
+bpy
+
+# Full-stack test cases (hollowdeep, holdfast, junction, midway): case + variant
+# slugs, coined game/sim terms, and reference-mockup CSS identifiers.
+hollowdeep
+deepstart
+unmined
+siegeworks
+gatherable
+gatherables
+roughterrain
+zoneable
+roadline
+terraforming
+unstaffed
+pathed
+topbar
+bottombar
+needbar
+
+# Standard input-device term (siege-rifleman brief).
+numpad

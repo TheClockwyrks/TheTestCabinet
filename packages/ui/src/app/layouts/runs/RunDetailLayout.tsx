@@ -1,16 +1,16 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
-import { useGalleryData } from "../../data/galleryContext";
+import { useGalleryData, type RunDetail } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
-import { type ParsedWriteup, worstRating } from "../../data/ratings";
+import { type ParsedWriteup, parseWriteup, worstRating } from "../../data/ratings";
+import { frameReviews } from "../../data/frameReview";
 import { describeRunState, hasPlayableOutcome } from "../../data/runState";
-import { useRuns } from "../../data/useRuns";
-import { useFindReview } from "../../data/writeups";
 import { routes } from "../../routes";
 import styles from "./RunDetailLayout.module.scss";
 
@@ -33,10 +33,15 @@ interface RunDetailLayoutProps {
    * Events tab's feed) can grow into the space below the tabs.
    */
   fill?: boolean;
-  /** The tab body, given the resolved run and its review (if any). */
+  /**
+   * The tab body, given the resolved run, its framed review (if any), and the raw
+   * per-reviewer breakdown fetched with the record — so the Verdict/review/editor
+   * tabs read reviews from here rather than the console's global reviews map.
+   */
   children: (ctx: {
     run: RunRecord;
     review: ParsedWriteup | undefined;
+    reviews: StoredReview[];
   }) => ReactNode;
 }
 
@@ -51,51 +56,49 @@ export function RunDetailLayout({
   children,
 }: RunDetailLayoutProps) {
   const { runId } = useParams<{ runId: string }>();
-  const { runs, localIds, localWriteups, loading } = useRuns();
-  const { readRun, canExecute } = useGalleryData();
-  const findReview = useFindReview();
+  const { fetchRun, localIds, writeups: localWriteups, canExecute } =
+    useGalleryData();
   const testCaseName = useTestCaseName();
-  const listed = runId
-    ? runs.find((candidate) => candidate.id === runId)
-    : undefined;
 
-  // A run reached by a direct link — the live monitor's "open the failed run"
-  // link is the common case — may not be in the loaded list: an infrastructure
-  // failure is retained for inspection but appears in no worklist, and a run can
-  // simply be off the current page. Fall back to fetching it by id so any
-  // persisted run stays openable, not only listed ones.
-  const [fetched, setFetched] = useState<RunRecord | null>(null);
-  const [fetching, setFetching] = useState(false);
+  // A summary-first gallery no longer holds every full record in memory, so the
+  // detail chrome resolves just the one run it needs, lazily by id, through the
+  // context's `fetchRun` (the consoles read the run store's `GET /runs/{id}`; the
+  // static site reads its emitted per-run asset). This also covers a run reached
+  // by a direct link that no worklist carries — an infrastructure failure retained
+  // for inspection, or a run simply off the current page. `fetchRun` is read
+  // through a ref so a fresh gallery-value identity each render can't re-trigger
+  // the fetch; the URL `runId` is what selects the record.
+  const fetchRunRef = useRef(fetchRun);
+  fetchRunRef.current = fetchRun;
+  const [detail, setDetail] = useState<RunDetail | null>(null);
+  const [fetching, setFetching] = useState(true);
   useEffect(() => {
-    if (listed || !runId || !readRun || loading) {
-      setFetched(null);
+    if (!runId) {
+      setDetail(null);
       setFetching(false);
       return;
     }
     let active = true;
     setFetching(true);
-    readRun(runId)
-      .then((record) => active && setFetched(record))
-      .catch(() => active && setFetched(null))
+    fetchRunRef
+      .current(runId)
+      .then((resolved) => active && setDetail(resolved))
+      .catch(() => active && setDetail(null))
       .finally(() => {
         if (active) setFetching(false);
       });
     return () => {
       active = false;
     };
-  }, [listed, runId, readRun, loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId]);
 
-  const run = listed ?? fetched ?? undefined;
-
+  const run = detail?.record ?? null;
   if (!run) {
     return (
       <PageLayout>
         <p className={styles.notFound}>
-          {loading || fetching ? (
-            "Loading…"
-          ) : (
-            <>No run found for &ldquo;{runId}&rdquo;.</>
-          )}
+          {fetching ? "Loading…" : <>No run found for &ldquo;{runId}&rdquo;.</>}
         </p>
       </PageLayout>
     );
@@ -103,7 +106,18 @@ export function RunDetailLayout({
 
   const { subject } = run;
   const isLocal = localIds.has(run.id);
-  const review = findReview(run.id, localWriteups);
+  // The run's per-reviewer breakdown, fetched with the record — the detail layer's
+  // source of truth for reviews (the console's global reviews map is no longer
+  // read here). Passed to the tab body so the Verdict/review/editor tabs render
+  // from it directly.
+  const reviews = detail?.reviews ?? [];
+  // Frame the run's review from those reviews into the aggregate writeup the
+  // header badge and the read-only verdict read. A local run the host carries only
+  // a preview writeup for — with no structured reviews (the static site's dev-only
+  // previews) — falls back to that raw writeup override.
+  const localWriteup = isLocal ? localWriteups[run.id] : undefined;
+  const rawReview = localWriteup ?? frameReviews(reviews) ?? undefined;
+  const review = rawReview === undefined ? undefined : parseWriteup(rawReview);
   // The headline badge shows the run's overall rating — the worst across its
   // per-domain ratings.
   const overallRating = review
@@ -201,7 +215,7 @@ export function RunDetailLayout({
         {canExecute && <RunDeleteControl runId={run.id} />}
       </div>
 
-      {children({ run, review })}
+      {children({ run, review, reviews })}
     </PageLayout>
   );
 }

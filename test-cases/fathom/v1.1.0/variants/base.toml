@@ -1,0 +1,47 @@
+# The default variant: the standard **Trench** dive — a remembered fog of war,
+# line-of-sight passive light, and a corridor-flooding sonar pulse. Listed first
+# in the case manifest's `variants`, so it is the default. Every path resolves
+# against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard Trench dive: a remembered fog of war, line-of-sight passive light, and a corridor-flooding sonar pulse."
+
+# The signature **sensing** system is seeded per variant, at the common
+# `specs/sensing.md` path every other spec references, so the model sees a single,
+# self-contained sensing spec. Base seeds the Trench sensing model.
+spec = [{ source = "specs/sensing-trench.md", dest = "specs/sensing.md" }]
+
+# The authored, *correct* static build of this variant — the case-variant analogue
+# of a run's playable build. A bare directory path (resolved against the version
+# folder) holding a buildable web project, built with this case's `[build]`
+# install/build commands and deployed like a published run build via
+# `tcab publish-reference`, then shown on the case's "Reference" tab. It implements
+# the Trench sensing model; it is **never seeded into a run**.
+reference_implementation = "reference-impl/base"
+
+# The fog/memory, passive-light, and brightness review items are specific to this
+# variant's sensing model (Kindle declares its own). They roll up to the common
+# `sensing` domain. The `title`, `gameplay`, and `game-over` references are common
+# (both variants share the same single-dive menu), so this variant declares none.
+[[review_item]]
+id = "fog-and-memory"
+title = "Fog and memory"
+text = "Unrevealed trench is solid black fog. Walls and plankton you have revealed stay visible (drawn dim) for the rest of the trench, and walls are revealed by your light, a sonar pulse, or a flare (but not the Gloamfin's ping). Predators' bodies are never remembered — shown only while currently lit — except the bonus drifter and the Lanternjaw's bulb-light, which are always visible."
+weight = 1
+domain = "sensing"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "light-line-of-sight"
+title = "Light is line-of-sight"
+text = "Your passive light reveals a pocket around the forager by line of sight only: it does not show what is around a corner. A predator one tile away around a blind corner is not visible to your light alone. The light reveals the walls it lands on (they become visible rock, not black fog) but does not pass beyond them."
+weight = 1
+domain = "sensing"
+
+[[review_item]]
+id = "brightness-dial"
+title = "Brightness from eating"
+text = "Eating plankton brightens the forager (about +0.7 tile of vision per pellet, up to 5 tiles), which both widens your vision and widens the Lanternjaw's detection range. Brightness holds for a short delay after your last pellet (resetting each time you eat) and only then decays back toward dark — never a constant drain — so eating fast lights you up and eating sparingly keeps you hidden."
+weight = 1
+domain = "sensing"

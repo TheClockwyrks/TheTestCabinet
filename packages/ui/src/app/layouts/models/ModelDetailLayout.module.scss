@@ -57,6 +57,19 @@
     0 0 1.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
 }
 
+// A subtle pill marking a model the catalog only knows from its runs — muted, so
+// it reads as a qualifier beside the name rather than competing with it.
+.derivedTag {
+  align-self: center;
+  padding: 0.1rem t.$space-sm;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+}
+
 .provider {
   margin: t.$space-xs 0 0;
   font-size: t.$font-md;
@@ -102,6 +115,37 @@
   gap: t.$space-md;
   margin-bottom: t.$space-xl;
   border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+// The Edit link / Add-model affordance, pushed to the trailing edge opposite the
+// tabs and bottom-aligned so it meets the strip's hairline border like the tabs.
+.editLink {
+  margin-left: auto;
+  align-self: center;
+  margin-bottom: t.$space-xs;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  @include h.halo;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: none;
+    background: color-mix(in srgb, t.$color-accent 14%, transparent);
+    box-shadow: var(--ttc-glow);
+  }
+}
+
+// The Add-model control (a derived model) sits in the same trailing slot.
+.headerAction {
+  margin-left: auto;
+  align-self: center;
+  margin-bottom: t.$space-xs;
 }
 
 .tabs {

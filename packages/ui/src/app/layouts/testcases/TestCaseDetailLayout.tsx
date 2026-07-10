@@ -17,7 +17,8 @@ export type DetailTab =
   | "leaderboard"
   | "metrics"
   | "changelog"
-  | "arena";
+  | "arena"
+  | "reference";
 
 interface TestCaseDetailLayoutProps {
   /** Which tab the rendering page represents. */
@@ -99,15 +100,33 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
+  // The Reference tab is shown only for an end-to-end case whose selected variant
+  // declares a reference implementation. It keys off the selected variant (not the
+  // case) because a build is per-variant, so switching variants adds or removes the
+  // tab; every host that carries `referenceBuild` (live catalog and static
+  // snapshot alike) can show it — no console-only capability is required.
+  if (testCase.testType === "end-to-end" && variant.referenceBuild) {
+    tabs.push({
+      key: "reference",
+      label: "Reference",
+      to: routes.testCaseReference(testCase.slug),
+    });
+  }
 
   return (
     <PageLayout>
-      {/* Two rows spanning the content width: the title against the version,
-          then the tags against the difficulty rating. */}
+      {/* Two rows spanning the content width: the title (with the version sat
+          immediately after it) against the difficulty rating, then the tags
+          against the page-level actions. */}
       <header className={styles.header}>
         <div className={styles.titleRow}>
-          <h1 className={styles.title}>{testCase.name}</h1>
-          <span className={styles.version}>{testCase.latestVersion}</span>
+          <div className={styles.titleGroup}>
+            <h1 className={styles.title}>{testCase.name}</h1>
+            <span className={styles.version}>{testCase.latestVersion}</span>
+          </div>
+          <span className={styles.difficulty} data-level={testCase.difficulty}>
+            {testCase.difficulty}
+          </span>
         </div>
         <div className={styles.metaRow}>
           <div className={styles.tags}>
@@ -117,46 +136,43 @@ export function TestCaseDetailLayout({
               </span>
             ))}
           </div>
-          <span className={styles.difficulty} data-level={testCase.difficulty}>
-            {testCase.difficulty}
-          </span>
-        </div>
-        {/* Page-level actions live in the header (not the tab strip): the
-            variant selector drives every tab at once, and the Run action carries
-            the viewed case + variant into the new-run form. Keeping them here
-            leaves the tab strip a clean single row that reads like the run and
-            model detail strips, and a long variant name can no longer shove the
-            Run action onto its own line. */}
-        <div className={styles.actionRow}>
-          <label className={styles.variant}>
-            <span className={styles.variantLabel}>Variant</span>
-            <select
-              className={styles.variantSelect}
-              value={variant.slug}
-              onChange={(event) => setVariant(event.target.value)}
-            >
-              {testCase.variants.map((entry) => (
-                <option key={entry.slug} value={entry.slug}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {/* Only the consoles can launch runs; the static site omits this and
-              has no new-run form to land on. The selected variant carries
-              through so the run form opens on exactly what is being viewed. */}
-          {canExecute && (
-            <Link
-              className={styles.run}
-              to={routes.runNew({
-                slug: testCase.slug,
-                version: testCase.latestVersion,
-                variant: variant.slug,
-              })}
-            >
-              Run ▸
-            </Link>
-          )}
+          {/* Page-level actions live in the header (not the tab strip): the
+              variant selector drives every tab at once, and the Run action
+              carries the viewed case + variant into the new-run form. Keeping
+              them here leaves the tab strip a clean single row that reads like
+              the run and model detail strips, and a long variant name can no
+              longer shove the Run action onto its own line. */}
+          <div className={styles.actionRow}>
+            <label className={styles.variant}>
+              <span className={styles.variantLabel}>Variant</span>
+              <select
+                className={styles.variantSelect}
+                value={variant.slug}
+                onChange={(event) => setVariant(event.target.value)}
+              >
+                {testCase.variants.map((entry) => (
+                  <option key={entry.slug} value={entry.slug}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {/* Only the consoles can launch runs; the static site omits this and
+                has no new-run form to land on. The selected variant carries
+                through so the run form opens on exactly what is being viewed. */}
+            {canExecute && (
+              <Link
+                className={styles.run}
+                to={routes.runNew({
+                  slug: testCase.slug,
+                  version: testCase.latestVersion,
+                  variant: variant.slug,
+                })}
+              >
+                Run ▸
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 

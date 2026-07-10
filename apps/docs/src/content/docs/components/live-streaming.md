@@ -106,7 +106,7 @@ in-container binary ──TCP──▶ host listener (core) ──▶ Sink
   TCP is the portable default.
 - **Podman `host-gateway`.** Podman resolves `host-gateway` natively, but under
   `podman machine` (macOS/Windows hosts) the internal hostname is handled by the
-  VM's resolver rather than `/etc/hosts`; verify reachability for that topology.
+  VM's resolver rather than `/etc/hosts`.
 
 ## Adding a new instance
 

@@ -589,3 +589,34 @@ async fn deleting_when_no_service_token_is_configured_is_disabled() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert!(store.run_dir("run-disabled").exists());
 }
+
+#[tokio::test]
+async fn cors_preflight_covers_the_authorization_header() {
+    // A browser preflight for a request carrying a bearer token: the CORS layer must
+    // echo `Authorization` back in `Access-Control-Allow-Headers`. `permissive()`'s
+    // `*` does not cover `Authorization` per the Fetch spec, so a plain permissive
+    // layer leaves it uncovered and the browser blocks the request.
+    let (app, _store, _dir) = app("http://backend.invalid").await;
+
+    let preflight = Request::builder()
+        .method("OPTIONS")
+        .uri("/runs/run-x/asset/mesh-0.glb")
+        .header("Origin", "http://console.example")
+        .header("Access-Control-Request-Method", "GET")
+        .header("Access-Control-Request-Headers", "authorization")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(preflight).await.unwrap();
+    let allow = response
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("preflight response carries allow-headers")
+        .to_str()
+        .unwrap()
+        .to_ascii_lowercase();
+    assert!(
+        allow.contains("authorization"),
+        "allow-headers must cover Authorization, got {allow:?}"
+    );
+}

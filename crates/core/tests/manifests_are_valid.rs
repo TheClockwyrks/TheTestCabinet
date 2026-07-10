@@ -6,9 +6,11 @@
 //! covers the remaining manifest kinds so that **no** committed manifest — of any
 //! kind — can be malformed without a test failing:
 //!
-//!   - models        (`models/<slug>.toml`)         via [`ModelCatalog`]
 //!   - orchestrators (`orchestrators/<slug>/…`)      via [`OrchestratorCatalog`]
 //!   - harnesses     (`harnesses/<slug>/harness.toml`) via [`DefaultHarnessRegistry`]
+//!
+//! (Model configs no longer live on disk — they are seeded into and edited in the
+//! backend store — so there is no `models/` manifest to guard here.)
 //!
 //! Each loader discovers or enumerates the real on-disk files, so a newly added
 //! manifest is covered automatically and a schema drift (like a required field the
@@ -18,8 +20,8 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use test_cabinet_core::{
-    BUILT_IN_SLUGS, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug, ModelCatalog,
-    OrchestratorCatalog, OrchestratorSelection,
+    BUILT_IN_SLUGS, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug, OrchestratorCatalog,
+    OrchestratorSelection,
 };
 
 /// The repository root (two levels up from this crate's `Cargo.toml`).
@@ -43,20 +45,6 @@ fn is_hidden(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.starts_with('.'))
-}
-
-/// Every committed model manifest must list and resolve. Guards `models/*.toml`
-/// against schema drift — the model equivalent of a test case failing to ingest.
-#[test]
-fn every_model_manifest_resolves() {
-    let catalog = ModelCatalog::new(repo_root().join("models"));
-    let models = catalog.list().expect("list models");
-    assert!(!models.is_empty(), "the model catalog should not be empty");
-    for model in &models {
-        catalog
-            .resolve(&model.slug)
-            .unwrap_or_else(|err| panic!("resolve model {}: {err:?}", model.slug));
-    }
 }
 
 /// Every committed orchestrator directory must load from disk, and every built-in

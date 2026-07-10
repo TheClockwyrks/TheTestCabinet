@@ -1,0 +1,130 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/halo" as h;
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xl;
+  margin-bottom: t.$space-xl;
+}
+
+.chartPanel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text;
+  @include h.halo;
+}
+
+// Give the chart room to breathe; <Chart> fills the width and sizes its own
+// height from the plot.
+.chart {
+  min-height: 16rem;
+}
+
+// The current-price fallback grid, shown when there's no history to chart.
+.currentGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: t.$space-md;
+  margin-top: t.$space-md;
+}
+
+.current {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 28%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.currentLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.currentValue {
+  font-size: t.$font-lg;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+// --- Observation table --------------------------------------------------------
+
+// The neon-outlined surface panel, scrolling horizontally on a narrow viewport
+// rather than forcing the page to.
+.tableWrap {
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  box-shadow:
+    0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
+    inset 0 0 1.5rem color-mix(in srgb, t.$color-accent 10%, transparent);
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--ttc-font);
+  white-space: nowrap;
+
+  th,
+  td {
+    padding: t.$space-sm t.$space-md;
+    text-align: left;
+  }
+
+  thead th {
+    font-size: t.$font-sm;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: t.$color-text-muted;
+    border-bottom: t.$border-hairline solid
+      color-mix(in srgb, t.$color-accent 28%, transparent);
+  }
+
+  tbody tr + tr td {
+    border-top: t.$border-hairline solid
+      color-mix(in srgb, t.$color-accent 18%, transparent);
+  }
+
+  td {
+    color: t.$color-text;
+  }
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+// th shares the `.num` class for the right-aligned figure columns; force the
+// header cells right too (the base rule left-aligns all cells).
+th.num {
+  text-align: right;
+}
+
+.muted {
+  color: t.$color-text-muted;
+  opacity: 0.6;
+  text-shadow: none;
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+}

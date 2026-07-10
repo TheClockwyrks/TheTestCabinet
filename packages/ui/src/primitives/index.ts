@@ -13,7 +13,12 @@ export { MetricTile } from "./MetricTile";
 export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";
 export { MetricChartWidget } from "./MetricChartWidget";
-export { barChart, type BarPoint } from "./plot/charts";
+export {
+  barChart,
+  priceHistoryChart,
+  type BarPoint,
+  type PricePoint,
+} from "./plot/charts";
 export {
   basePlotOptions,
   readChartPalette,

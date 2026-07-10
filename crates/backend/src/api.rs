@@ -11,7 +11,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
 use axum::routing::{get, post};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
@@ -23,6 +23,7 @@ use crate::store::DefinitionStore;
 
 mod ingest_api;
 mod jobs;
+mod models;
 mod publish_jobs;
 mod runs;
 mod test_cases;
@@ -33,6 +34,10 @@ mod tournaments;
 pub use jobs::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
     StatusUpdate,
+};
+pub use models::{
+    LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput, ModelOut, ModelPricesOut,
+    ModelSeedOut, PriceObservationOut, compose_catalog,
 };
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
@@ -59,8 +64,11 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// The HTTP client for the backend's own outbound calls — today the best-effort
     /// prune of a deleted run's tree in the artifact service (see
-    /// [`crate::artifacts`]).
+    /// [`crate::artifacts`]) and the svgl.app model-logo fetch.
     pub http: reqwest::Client,
+    /// The OpenRouter price source used to record a model's price history when a
+    /// run completes and on the periodic refresh.
+    pub prices: test_cabinet_core::OpenRouterPrices,
 }
 
 /// The maximum body size, in bytes, accepted on the run-media and tournament-replay
@@ -88,11 +96,33 @@ pub fn router(state: AppState) -> Router {
         // bytes). A single read, no auth.
         .route("/config", get(client_config))
         .route("/ingest", post(ingest_api::ingest))
+        // The model catalog: a merged read (curated config ⋃ models derived from
+        // runs, with price history) plus operator-driven config CRUD, a
+        // seed-from-run authoring helper, and the svgl.app logo fetch. Reads are
+        // open; the mutations, the seed, and the logo fetch require a token.
+        // `/models/seed` and `/models/logo` are static, so they outrank the
+        // `/models/{slug}` dynamic route regardless of registration order.
+        .route("/models", get(models::list).post(models::create))
+        .route("/models/seed", get(models::seed))
+        .route("/models/logo", post(models::logo))
+        .route(
+            "/models/{slug}",
+            axum::routing::put(models::update).delete(models::delete),
+        )
         .route("/test-cases", get(test_cases::catalog))
         .route("/test-cases/{slug}/versions", get(test_cases::versions))
         .route(
             "/test-cases/{slug}/versions/{version}",
             get(test_cases::resolve_version),
+        )
+        // Record a variant's authored reference-implementation URL (auth-gated,
+        // same bearer guard as the other write paths). The `tcab publish-reference`
+        // CLI builds and deploys the variant's static site out-of-band, then PUTs
+        // the served URL here; the version response and public snapshot fold it onto
+        // the variant. Reads stay open via the resolve/snapshot paths.
+        .route(
+            "/test-cases/{slug}/versions/{version}/reference-builds/{variant}",
+            axum::routing::put(test_cases::put_reference_build),
         )
         .route(
             "/test-cases/{slug}/versions/{version}/artifacts/{*path}",
@@ -224,7 +254,11 @@ pub fn router(state: AppState) -> Router {
         // private-network, no-auth model in this module's docs); a permissive CORS
         // policy keeps the browser from blocking those callers without narrowing
         // that model. No credentials are sent, so a wildcard origin is valid.
-        .layer(CorsLayer::permissive())
+        // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
+        // spec `*` does not cover `Authorization`, so a browser rejects a preflight
+        // for a request carrying our bearer token. Mirror the request's headers
+        // instead, which echoes `Authorization` back explicitly.
+        .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
         .with_state(state)
 }
 

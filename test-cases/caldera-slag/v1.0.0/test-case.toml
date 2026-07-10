@@ -1,4 +1,5 @@
 slug = "caldera-slag"
+experimental = true
 name = "Caldera Slag"
 difficulty = "medium"
 tags = ["skinned", "creature"]

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!--
+  Midway — title / main menu reference mockup for the `downpour` variant.
+  Canonical view slug: title
+  Inserts the DOWNPOUR start between NEW PARK and HOW TO PLAY.
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title).
+  Objects in .park use field-local coordinates (top = field row * 24).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Midway — Title</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim park slice behind the menu, for atmosphere. -->
+      <div class="park">
+        <div class="region path dim" style="--c: 4; --r: 16; --w: 46; --h: 2"></div>
+        <div class="region path dim" style="--c: 10; --r: 4; --w: 2; --h: 12"></div>
+        <div class="ride on dim" style="--c: 6; --r: 4; --w: 3; --h: 3">&#9784;</div>
+        <div class="ride on dim" style="--c: 42; --r: 12; --w: 2; --h: 4">&#8645;</div>
+        <div class="stall dim" style="--c: 20; --r: 15; --w: 2">FOOD</div>
+        <div class="tree dim" style="--c: 15; --r: 14"></div>
+        <div class="tree dim" style="--c: 34; --r: 14"></div>
+        <div class="guest happy dim" style="left: 300px; top: 452px"></div>
+        <div class="guest dim" style="left: 340px; top: 452px"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">MIDWAY</h1>
+        <div class="tagline">BUILD. THRILL. PROFIT.</div>
+        <nav class="menu">
+          <div class="menu-item selected">NEW PARK</div>
+          <div class="menu-item">DOWNPOUR</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </nav>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT</div>
+    </div>
+  </body>
+</html>

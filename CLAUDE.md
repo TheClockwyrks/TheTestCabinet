@@ -119,9 +119,13 @@ Task-oriented walkthroughs:
   [end-to-end](apps/docs/src/content/docs/testing/end-to-end/) type, whose
   manifest format is at
   [`testing/end-to-end/manifests.md`](apps/docs/src/content/docs/testing/end-to-end/manifests.md).
-- **Models:** [`models/`](models/) — one `<model>.toml` + `<model>.md` per
-  model. Add or refresh with `scripts/add-model.mjs` + `tcab catalog`; the steps
-  are documented in
+- **Models:** the model catalog is **owned by the backend** (SeaORM `model` /
+  `model_alias` / `model_price` tables), served at `GET /models`, and baked into
+  the public R2 snapshot as `models.json`. There is no `models/` directory. Any
+  model with a recorded run appears automatically (derived); curated models
+  (display name, aliases, provider, svgl logo, description, OpenRouter slug) are
+  edited **in the app** (web console / desktop Models section, requires sign-in) —
+  no `tcab catalog`, `scripts/add-model.mjs`, or recompile. The steps are in
   [`quickstarts/add-or-update-a-model.md`](apps/docs/src/content/docs/quickstarts/add-or-update-a-model.md)
   (and the fuller
   [`guides/adding-or-updating-a-model.md`](apps/docs/src/content/docs/guides/adding-or-updating-a-model.md)).

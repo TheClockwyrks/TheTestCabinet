@@ -9,6 +9,10 @@
     "generatedAt": {
       "type": "string"
     },
+    "modelsKey": {
+      "description": "Where this snapshot's model catalog lives (`<prefix>/models.json`).",
+      "type": "string"
+    },
     "runCount": {
       "format": "uint",
       "minimum": 0,
@@ -36,7 +40,8 @@
     "runCount",
     "runsKey",
     "runsPrefix",
-    "casesPrefix"
+    "casesPrefix",
+    "modelsKey"
   ],
   "title": "SnapshotIndex",
   "type": "object"

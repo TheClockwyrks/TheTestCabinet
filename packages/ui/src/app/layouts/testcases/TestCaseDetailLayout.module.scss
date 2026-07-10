@@ -11,13 +11,24 @@
   margin-bottom: t.$space-lg;
 }
 
-// First row: title on the left, version pushed to the right edge. Second row:
-// the tag badges on the left, the difficulty rating on the right. Both span the
-// full content width so the header uses the available space.
+// First row: the title with its version, then the difficulty rating pushed to
+// the right edge. Second row: the tag badges on the left, the page-level actions
+// on the right. Both span the full content width so the header uses the
+// available space.
 .titleRow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
+// Keeps the version sat immediately after the title, both aligned on their
+// shared baseline, while the row's space-between pushes the difficulty rating to
+// the far edge.
+.titleGroup {
+  display: flex;
+  align-items: baseline;
   flex-wrap: wrap;
   gap: t.$space-sm t.$space-md;
 }

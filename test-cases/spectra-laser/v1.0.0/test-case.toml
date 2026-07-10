@@ -1,4 +1,5 @@
 slug = "spectra-laser"
+experimental = true
 name = "Spectra Laser"
 difficulty = "medium"
 tags = ["sfx", "synth"]

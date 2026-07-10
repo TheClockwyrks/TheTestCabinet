@@ -46,6 +46,15 @@
 !/containers/adversarial/buildkit/Cargo.toml
 !/containers/performance/buildkit/Cargo.toml
 
+# The Blender run-container image (containers/blender/Dockerfile) COPYs its two
+# authoring helpers — the importable glTF export module and the `tcab-blend`
+# runner — straight from its own directory into the image (there is no cargo
+# source to ride under !/crates for these). They live outside every path
+# re-included above, so without this the COPYs fail with "not found" against the
+# allowlisted context (transferring context: 2B).
+!/containers/blender/tcab_blend_export.py
+!/containers/blender/tcab-blend
+
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder (see containers/performance/Dockerfile's
 # `COPY test-cases/.../references/training`). It is the one test-case tree a build

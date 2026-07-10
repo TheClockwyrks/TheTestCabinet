@@ -1,4 +1,5 @@
 slug = "spectra-burst"
+experimental = true
 name = "Spectra Burst"
 difficulty = "medium"
 tags = ["vfx", "2d"]

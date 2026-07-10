@@ -1,4 +1,4 @@
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { describe, expect, it } from "vitest";
 import type { Rating } from "../data/ratings";
 import { columnsForScope, sortRuns, type EnrichedRun } from "./runColumns";
@@ -10,7 +10,7 @@ function run(
 ): EnrichedRun {
   const { rating = null, tokens = null } = opts;
   return {
-    record: {
+    summary: {
       id,
       startedAt: "2026-01-01T00:00:00Z",
       finishedAt: "2026-01-01T00:00:00Z",
@@ -30,8 +30,8 @@ function run(
         },
         cost: { comparable: null },
       },
-      status: { state: "completed" },
-    } as unknown as RunRecord,
+      state: "completed",
+    } as unknown as RunSummary,
     local: false,
     displayName: id,
     rating,
@@ -70,7 +70,7 @@ describe("sortRuns", () => {
       run("great", { rating: "great" }),
     ];
     const asc = sortRuns(rows, { columnId: "rating", direction: "asc" });
-    expect(asc.map((r) => r.record.id)).toEqual([
+    expect(asc.map((r) => r.summary.id)).toEqual([
       "flawless",
       "great",
       "broken",
@@ -78,7 +78,7 @@ describe("sortRuns", () => {
     ]);
     // Descending flips the rated runs but still parks the unrated one last.
     const desc = sortRuns(rows, { columnId: "rating", direction: "desc" });
-    expect(desc.map((r) => r.record.id)).toEqual([
+    expect(desc.map((r) => r.summary.id)).toEqual([
       "broken",
       "great",
       "flawless",
@@ -93,6 +93,6 @@ describe("sortRuns", () => {
       run("low", { tokens: 100 }),
     ];
     const asc = sortRuns(rows, { columnId: "tokens", direction: "asc" });
-    expect(asc.map((r) => r.record.id)).toEqual(["low", "mid", "none"]);
+    expect(asc.map((r) => r.summary.id)).toEqual(["low", "mid", "none"]);
   });
 });

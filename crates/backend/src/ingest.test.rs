@@ -184,6 +184,57 @@ fn stored_manifest_carries_adversarial_specs() {
 }
 
 #[test]
+fn ingest_tolerates_a_variant_reference_implementation_key() {
+    // A variant that declares `reference_implementation` must ingest cleanly. The
+    // reference implementation is the authored, correct static build, hosted
+    // out-of-band by `tcab publish-reference` and surfaced on the case page's
+    // "Reference" tab — it is never seeded into a run and never built at ingest. So
+    // resolution parses and resolves the key (proving ingest does not choke on it),
+    // while `build_stored_manifest` simply carries the variant through without the
+    // reference-impl host path: the URL lives in the `case_reference_build` table,
+    // not the stored manifest.
+    let dir = TempDir::new().expect("temp dir");
+    let version = dir.path().join("demo/v1.0.0");
+    write(&version.join("prompt.hbs"), "Build it.");
+    write(&version.join("changelog.md"), "Introduced.");
+    // A real, buildable reference project would live here; a directory is all
+    // resolution requires (it validates the path is a directory and never reads it).
+    write(
+        &version.join("reference-impl/base/index.html"),
+        "<!doctype html>",
+    );
+    write(
+        &version.join("test-case.toml"),
+        "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n",
+    );
+    write(
+        &version.join("variants/base.toml"),
+        "slug = \"base\"\nreference_implementation = \"reference-impl/base\"\n",
+    );
+
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(dir.path());
+    let resolved = catalog
+        .resolve("demo", "v1.0.0")
+        .expect("resolve tolerates the key");
+    // Resolution recognized and resolved the key onto the variant.
+    assert!(
+        resolved.variants[0].reference_impl.is_some(),
+        "resolution resolves the reference implementation onto the variant",
+    );
+
+    // Ingest tolerates the key: the stored manifest builds, and the variant carries
+    // through (the reference-impl host path is intentionally dropped — it is not part
+    // of the run-facing stored shape).
+    let manifest = build_stored_manifest(&resolved).expect("build tolerates the key");
+    assert_eq!(manifest.variants.len(), 1);
+    assert_eq!(manifest.variants[0].slug, "base");
+}
+
+#[test]
 fn stored_manifest_carries_performance_specs() {
     // A performance case's `[contract]` (input/output), per-scenario `[sandbox]`
     // (fuel_limit), and the held-out `[[case]]` scored set must survive into the
@@ -323,6 +374,19 @@ fn every_stored_manifest_preserves_its_asset_shape() {
                     assert!(
                         manifest.model.is_some(),
                         "{id}: skinned meshed kind lost its [model] rig"
+                    );
+                }
+                // The Blender character kind reuses both tables verbatim: `[voxel]`
+                // as the bounding box and `[model]` as the required animations (see
+                // `AssetKind::is_blender`). Both must survive ingest.
+                AssetKind::BlenderCharacter => {
+                    assert!(
+                        manifest.voxel.is_some(),
+                        "{id}: blender-character kind lost its [voxel] bounding box"
+                    );
+                    assert!(
+                        manifest.model.is_some(),
+                        "{id}: blender-character kind lost its [model] rig"
                     );
                 }
                 // The painted (`ui`/`material`), particle, and audio kinds each carry

@@ -183,6 +183,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
     TestCaseVersion {
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
+        experimental: false,
         name: "Carom".to_string(),
         difficulty: "easy".to_string(),
         tags: Vec::new(),

@@ -9,8 +9,22 @@
   margin: 0;
 }
 
+// Positioning context for the column-picker trigger, which hangs off the board's
+// top-right corner so it doesn't crowd the last header label.
+.wrap {
+  position: relative;
+}
+
+.menuAnchor {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.1rem;
+  z-index: 5;
+}
+
 // A dense, column-aligned board mirroring the run log's treatment: rank, model,
-// score, rating. Unlike the run log this is genuinely ranked — top score first.
+// and the chosen metric columns. Unlike the run log this is genuinely ranked —
+// top average score first.
 .board {
   display: flex;
   flex-direction: column;
@@ -18,10 +32,16 @@
 
 .row {
   display: grid;
-  grid-template-columns: 2.5rem 1fr 8rem 6rem;
+  // Driven by the visible column set (the leading rank/model tracks plus each
+  // shown metric column's width), set as `--ttc-lb-cols` on the board so the
+  // header and every row share one template. The fallback keeps the two default
+  // columns aligned if the variable is ever unset.
+  grid-template-columns: var(--ttc-lb-cols, 2.5rem 1fr 9rem 7rem 7rem);
   align-items: center;
   gap: t.$space-md;
-  padding: t.$space-xs 0;
+  // Reserve room on the right so a full row of columns clears the floating picker
+  // trigger. Every row carries the same gutter so their widths stay identical.
+  padding: t.$space-xs 1.75rem t.$space-xs 0;
   border-bottom: 1px solid t.$color-border;
 }
 

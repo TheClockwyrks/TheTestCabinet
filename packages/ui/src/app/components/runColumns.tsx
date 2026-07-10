@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from "react";
-import type { RunRecord, TestType } from "@test-cabinet/run-record";
+import type { TestType } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import { type Rating, RATINGS, worstRating } from "../data/ratings";
@@ -7,6 +8,7 @@ import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
 import { useTestCaseName } from "../data/useTestCaseName";
 import {
+  formatPoints,
   formatRunTime,
   formatSlug,
   formatTimestamp,
@@ -30,13 +32,14 @@ import styles from "./RunLog.module.scss";
 export type RunScope = "global" | "variant" | "model";
 
 /**
- * A finished run resolved for the table: the record plus the two values a cell
- * (and a sort) needs that don't live on the record — the case's display name and
- * the run's reviewer rating. Resolved once per row (see {@link useEnrichedRuns})
- * so sorting and rendering share the work instead of each cell re-deriving it.
+ * A finished run resolved for the table: the summary card plus the two values a
+ * cell (and a sort) needs that don't live on the card — the case's display name
+ * and the run's reviewer rating. Resolved once per row (see {@link
+ * useEnrichedRuns}) so sorting and rendering share the work instead of each cell
+ * re-deriving it.
  */
 export interface EnrichedRun {
-  record: RunRecord;
+  summary: RunSummary;
   local: boolean;
   displayName: string;
   rating: Rating | null;
@@ -80,6 +83,7 @@ export interface RunColumn {
 
 const CATEGORY_LABELS: Readonly<Record<string, string>> = {
   "end-to-end": "End-to-end",
+  "full-stack": "Full-stack",
   "asset-generation": "Asset gen",
   adversarial: "Adversarial",
   performance: "Performance",
@@ -147,10 +151,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     min: 56,
     optional: true,
     defaultVisible: false,
-    sortKey: (row) => row.record.subject.testCaseVersion.toLowerCase(),
+    sortKey: (row) => row.summary.subject.testCaseVersion.toLowerCase(),
     render: (row) => (
       <span className={styles.version} data-label="Version">
-        {row.record.subject.testCaseVersion}
+        {row.summary.subject.testCaseVersion}
       </span>
     ),
     // The launched version is fixed at enqueue, so an in-progress run already
@@ -168,10 +172,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     min: 72,
     optional: true,
     defaultVisible: false,
-    sortKey: (row) => categoryLabel(row.record.subject.testType).toLowerCase(),
+    sortKey: (row) => categoryLabel(row.summary.subject.testType).toLowerCase(),
     render: (row) => (
       <span className={styles.category} data-label="Category">
-        {categoryLabel(row.record.subject.testType)}
+        {categoryLabel(row.summary.subject.testType)}
       </span>
     ),
     // The category is the case's type, which the catalog carries independently of
@@ -194,10 +198,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     default: "7rem",
     min: 64,
     optional: true,
-    sortKey: (row) => row.record.subject.harnessSlug.toLowerCase(),
+    sortKey: (row) => row.summary.subject.harnessSlug.toLowerCase(),
     render: (row, ctx) => (
       <span className={styles.harness} data-label="Harness">
-        {row.record.subject.harnessSlug}
+        {row.summary.subject.harnessSlug}
         {/* Without a TEST column to host it, flag unpublished runs here. */}
         {!ctx.visible.has("test") && row.local && (
           <UnpublishedTag className={styles.tag} />
@@ -216,10 +220,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     default: "6rem",
     min: 56,
     optional: true,
-    sortKey: (row) => row.record.subject.variant.toLowerCase(),
+    sortKey: (row) => row.summary.subject.variant.toLowerCase(),
     render: (row) => (
       <span className={styles.variant} data-label="Variant">
-        {row.record.subject.variant}
+        {row.summary.subject.variant}
       </span>
     ),
     renderActive: (run) => (
@@ -235,10 +239,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     min: 96,
     optional: true,
     sortKey: (row) =>
-      canonicalModelId(row.record.subject.modelId).toLowerCase(),
+      canonicalModelId(row.summary.subject.modelId).toLowerCase(),
     render: (row) => (
       <span className={styles.model} data-label="Model">
-        {canonicalModelId(row.record.subject.modelId)}
+        {canonicalModelId(row.summary.subject.modelId)}
       </span>
     ),
     renderActive: (run) => (
@@ -254,10 +258,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     min: 120,
     optional: true,
     defaultVisible: false,
-    sortKey: (row) => row.record.startedAt,
+    sortKey: (row) => row.summary.startedAt,
     render: (row) => (
       <span className={styles.when} data-label="Started">
-        {formatTimestamp(row.record.startedAt)}
+        {formatTimestamp(row.summary.startedAt)}
       </span>
     ),
     renderActive: () => activeDash("Started", false),
@@ -270,10 +274,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     optional: true,
     defaultVisible: false,
     numeric: true,
-    sortKey: (row) => row.record.metrics.runTimeSeconds,
+    sortKey: (row) => row.summary.metrics.runTimeSeconds,
     render: (row) => (
       <span className={styles.num} data-label="Duration">
-        {formatRunTime(row.record.metrics.runTimeSeconds)}
+        {formatRunTime(row.summary.metrics.runTimeSeconds)}
       </span>
     ),
     renderActive: () => activeDash("Duration", true),
@@ -285,10 +289,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     min: 56,
     numeric: true,
     optional: true,
-    sortKey: (row) => totalTokens(row.record.metrics),
+    sortKey: (row) => totalTokens(row.summary.metrics),
     render: (row) => (
       <span className={styles.num} data-label="Tokens">
-        {formatTokenTotal(row.record.metrics)}
+        {formatTokenTotal(row.summary.metrics)}
       </span>
     ),
     renderActive: () => activeDash("Tokens", true),
@@ -300,13 +304,35 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     min: 56,
     numeric: true,
     optional: true,
-    sortKey: (row) => row.record.metrics.cost.comparable,
+    sortKey: (row) => row.summary.metrics.cost.comparable,
     render: (row) => (
       <span className={styles.num} data-label="Cost">
-        {formatUsd(row.record.metrics.cost.comparable)}
+        {formatUsd(row.summary.metrics.cost.comparable)}
       </span>
     ),
     renderActive: () => activeDash("Cost", true),
+  },
+  {
+    id: "points",
+    label: "POINTS",
+    default: "5.5rem",
+    min: 64,
+    numeric: true,
+    optional: true,
+    // Off by default: the points figure is a reviewer aggregate most run lists
+    // don't lead with, and (unlike the metric columns) the server can't sort by
+    // it — the checklist weights it derives from aren't a run column — so it
+    // carries no `sortKey` and its header offers no sort affordance.
+    defaultVisible: false,
+    render: (row) => (
+      <span
+        className={`${styles.num} ${row.summary.score ? "" : styles.noRating}`}
+        data-label="Points"
+      >
+        {formatPoints(row.summary.score)}
+      </span>
+    ),
+    renderActive: () => activeDash("Points", true),
   },
   {
     id: "rating",
@@ -317,13 +343,13 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     // Ordered best→worst by RATINGS rank, so ascending lists the best runs first.
     sortKey: (row) => (row.rating == null ? null : RATINGS.indexOf(row.rating)),
     render: (row) => {
-      const presentation = describeRunState(row.record.status.state);
+      const presentation = describeRunState(row.summary.state);
       if (presentation.isFailure) {
         return (
           <span className={styles.rating} data-label="Rating">
             <span
               className={styles.activeStatus}
-              data-state={row.record.status.state}
+              data-state={row.summary.state}
             >
               {presentation.chip}
             </span>
@@ -385,12 +411,16 @@ export function sortRuns(
 
 /**
  * Resolve each run's display name and rating once, up front — the two values a
- * cell or a sort needs that aren't on the record. A hook because it reads the
- * catalog (for names) and the active review source (for ratings); call it at the
- * top of a page, then sort/page/render the result freely.
+ * cell or a sort needs that aren't already resolved on the card. A hook because
+ * it reads the catalog (for names) and the active review source (for ratings);
+ * call it at the top of a page, then sort/page/render the result freely.
+ *
+ * A local, unpublished writeup still wins the rating (an in-progress edit must
+ * show before it is published); absent one, the summary's own aggregate rating
+ * (`summary.rating`) stands in.
  */
 export function useEnrichedRuns(
-  runs: readonly RunRecord[],
+  runs: readonly RunSummary[],
   localIds: ReadonlySet<string>,
   localWriteups: Readonly<Record<string, string>>,
 ): EnrichedRun[] {
@@ -398,16 +428,16 @@ export function useEnrichedRuns(
   const findReview = useFindReview();
   return useMemo(
     () =>
-      runs.map((record) => ({
-        record,
-        local: localIds.has(record.id),
-        displayName: testCaseName(record.subject.testCaseSlug),
+      runs.map((summary) => ({
+        summary,
+        local: localIds.has(summary.id),
+        displayName: testCaseName(summary.subject.testCaseSlug),
         rating:
           worstRating(
-            findReview(record.id, localWriteups)?.ratings.map(
+            findReview(summary.id, localWriteups)?.ratings.map(
               (r) => r.rating,
             ) ?? [],
-          ) ?? null,
+          ) ?? summary.rating,
       })),
     [runs, localIds, localWriteups, testCaseName, findReview],
   );

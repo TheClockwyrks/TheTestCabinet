@@ -3,7 +3,6 @@ import { useNavigate } from "react-router";
 import { useWorkers } from "../../client/context";
 import { useAuth } from "../../client/auth";
 import { useGalleryData } from "../data/galleryContext";
-import { useRuns } from "../data/useRuns";
 import { useRunsRuntime } from "../runtime/runsRuntime";
 import { routes } from "../routes";
 import styles from "./RunDeleteControl.module.scss";
@@ -20,8 +19,7 @@ import styles from "./RunDeleteControl.module.scss";
 // list and nudge the data source to drop it from the worklist. A failure keeps
 // the user on the page with the reason shown inline.
 export function RunDeleteControl({ runId }: { runId: string }) {
-  const { canExecute } = useGalleryData();
-  const { localIds } = useRuns();
+  const { canExecute, localIds } = useGalleryData();
   const { active: worker } = useWorkers();
   const { token } = useAuth();
   const runtime = useRunsRuntime();

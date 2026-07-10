@@ -1,4 +1,5 @@
 slug = "sunfront-scarab"
+experimental = true
 name = "Sunfront Scarab"
 difficulty = "hard"
 tags = ["voxel", "rig", "walker"]

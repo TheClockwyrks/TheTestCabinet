@@ -33,6 +33,7 @@ an end-to-end case has no `asset_kind`.
 | A static meshed model (`mc-model`/`sn-model`/`dc-model`) | [`guides/authoring-a-mesh-model-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring-a-mesh-model-test-case.md) | — |
 | A rigged, animated meshed model (`mc-animation`/`sn-animation`/`dc-animation`) | [`guides/authoring-a-mesh-animation-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring-a-mesh-animation-test-case.md) | — |
 | A skinned character (`mc-skinned`/`sn-skinned`/`dc-skinned`) | [`guides/authoring-a-skinned-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring-a-skinned-test-case.md) | — |
+| A Blender-authored skinned character (`blender-character`) | [`guides/authoring-a-blender-character-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring-a-blender-character-test-case.md) | — |
 | A high-res 2D UI asset (`ui`) | [`guides/authoring-a-ui-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring-a-ui-test-case.md) | — |
 | A PBR material (`material`) | [`guides/authoring-a-material-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring-a-material-test-case.md) | — |
 | A particle system (`particle`) | [`guides/authoring-a-particle-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring-a-particle-test-case.md) | — |

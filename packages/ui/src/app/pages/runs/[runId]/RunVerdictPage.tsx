@@ -8,7 +8,6 @@ import {
 } from "../../../data/ratings";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
 import { describeRunState } from "../../../data/runState";
-import { useRuns } from "../../../data/useRuns";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
@@ -36,13 +35,12 @@ function pts(weight: number): string {
 // visitor reads the verdict before launching the (possibly broken) build on the
 // Play tab.
 export function RunVerdictPage() {
-  const { canExecute } = useGalleryData();
-  const { localIds } = useRuns();
-  const runtime = useRunsRuntime();
   const gallery = useGalleryData();
+  const { canExecute, localIds } = gallery;
+  const runtime = useRunsRuntime();
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, review }) => {
+      {({ run, review, reviews }) => {
         const presentation = describeRunState(run.status.state);
         return (
           <div className={styles.tabStack}>
@@ -73,14 +71,13 @@ export function RunVerdictPage() {
               // read-only.
               canExecute && localIds.has(run.id) ? (
                 <RunReviewEditor
-                  runId={run.id}
-                  subject={run.subject}
+                  run={run}
+                  reviews={reviews}
                   onChanged={() => runtime.requestRefresh()}
                 />
               ) : (
                 (() => {
                   const model = gallery.reviewModelFor(run.subject);
-                  const reviews = gallery.reviewsFor(run.id);
                   return (
                     <Panel>
                       {review ? (

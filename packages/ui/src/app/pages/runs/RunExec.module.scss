@@ -121,6 +121,129 @@
   flex-wrap: wrap;
 }
 
+// --- Batch launch: the editable list of harness/model combinations -----------
+
+.comboList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+// One combination row: its per-row fields (harness, model, optional provider) plus
+// a remove control, on one line, wrapping their controls under each other only when
+// the row is truly cramped. Panelled so each row reads as a distinct combination.
+.comboRow {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+// The per-row fields flex to share the row; the model field takes the extra space
+// since ids are the longest values.
+.comboField {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.comboFieldWide {
+  flex: 2 1 14rem;
+  min-width: 0;
+}
+
+// The remove-combination button: a compact, muted glyph that turns negative on
+// hover, aligned to the bottom of the row so it sits on the controls' line.
+.comboRemove {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.4rem;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// The run-count multiplier beside the launch button: a compact numeric field so it
+// reads as a modifier of the launch action rather than a full-width form field.
+.runCountField {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  width: 7rem;
+}
+
+// --- Batch launch: the per-combination result summary ------------------------
+
+.launchResults {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin: t.$space-md 0;
+}
+
+.resultList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.resultRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.resultOk {
+  border-color: t.$color-positive;
+}
+
+.resultFail {
+  border-color: t.$color-negative;
+}
+
+.resultLabel {
+  color: t.$color-text;
+  min-width: 0;
+}
+
+.resultLink {
+  color: t.$color-accent;
+  white-space: nowrap;
+}
+
+.resultError {
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+  min-width: 0;
+}
+
 .primary,
 .secondary {
   font-family: var(--ttc-font);
@@ -335,9 +458,58 @@
 .checklistControls {
   display: flex;
   gap: t.$space-sm;
+}
 
-  .select {
-    flex: 0 0 10rem;
+// The verdict picker: two radio-like buttons (Pass / Fail) so recording a
+// verdict is a single click. Reuses the shared positive/negative cues — the
+// selected option fills with its cue color, the rest read as outlined choices.
+.verdictChoice {
+  display: flex;
+  flex: 0 0 auto;
+  gap: t.$space-xs;
+}
+
+.verdictOption {
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-text;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+.verdictOptionPass {
+  &:hover,
+  &.verdictOptionActive {
+    border-color: t.$color-positive;
+  }
+
+  &.verdictOptionActive {
+    background: t.$color-positive;
+    color: t.$color-bg;
+  }
+}
+
+.verdictOptionFail {
+  &:hover,
+  &.verdictOptionActive {
+    border-color: t.$color-negative;
+  }
+
+  &.verdictOptionActive {
+    background: t.$color-negative;
+    color: t.$color-bg;
   }
 }
 
@@ -470,6 +642,32 @@
   }
 }
 
+// The "Mark unplayable" shortcut atop the rail: one click fails every checklist
+// item and rates every domain the worst tier, so a run that never launched can be
+// submitted without walking each question. Styled as an outlined negative control
+// so it reads as the heavy, all-or-nothing action it is.
+.unplayable {
+  align-self: flex-start;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 .itemNavList {
   list-style: none;
   margin: 0;
@@ -480,7 +678,8 @@
 }
 
 // One item button in the rail: a status mark plus the item title. The current
-// item is accented; an answered item is tinted and its mark becomes a check.
+// item is accented; an addressed item is tinted and its mark becomes a check
+// (pass) or a cross (fail).
 .itemNav {
   display: flex;
   align-items: baseline;
@@ -508,6 +707,14 @@
 
 .itemNavDone .itemNavMark {
   color: t.$color-accent;
+}
+
+// A failing item is still "addressed" (its mark is not the muted number), but the
+// cross reads as the negative cue so a failure stands apart from a pass at a
+// glance. Placed after `.itemNavDone .itemNavMark` so it wins on equal specificity
+// — a failing item carries both classes.
+.itemNavFail .itemNavMark {
+  color: t.$color-negative;
 }
 
 .itemNavMark {

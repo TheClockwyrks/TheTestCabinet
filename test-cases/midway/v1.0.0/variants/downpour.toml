@@ -1,0 +1,18 @@
+# The standard park plus Downpour, a wetter opening: changing weather with periodic
+# rain that empties the park and raises upkeep and breakdowns, so a park that runs a
+# thin margin in fair weather can tip into the red during a storm. Its review item
+# rolls up to the common `simulation` domain, since Downpour presses the same park
+# systems harder rather than adding a new axis of judgement.
+slug = "downpour"
+name = "Downpour"
+description = "The standard park, played under changing weather: periodic rain that empties the paths, drops arrivals and mood, and raises upkeep and ride breakdowns, so the economy is under weather pressure."
+
+spec = [{ source = "specs/modes/downpour.md" }]
+reference = [{ view = "title", path = "reference/menu-downpour.html" }]
+
+[[review_item]]
+id = "downpour-weather"
+title = "Downpour weather"
+text = "In Downpour, rain rolls through the park periodically: while it rains the guest arrival rate drops and guests already inside sour and head for shelter or the exit, and upkeep and ride breakdowns rise, so a thin-margin park can tip into the red during a wet stretch. The weather is real, not cosmetic: a build where rain changes nothing, and that plays identically to the standard start, has not implemented it."
+weight = 1
+domain = "simulation"

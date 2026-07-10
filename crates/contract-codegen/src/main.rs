@@ -171,10 +171,12 @@ fn main() -> Result<()> {
             file: "snapshot.ts",
             decls: ts_decls![&cfg;
                 snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
-                snap::RunsIndex, snap::RunProofOut, snap::RunAssetOut, snap::PerRun,
-                tc::ReferenceKind, snap::CaseCheckOut, snap::CaseDomainOut,
+                snap::RunScoreOut, snap::RunsIndex, snap::RunProofOut, snap::RunAssetOut,
+                snap::PerRun,
+                tc::ReferenceKind, tc::SpecKind, snap::CaseCheckOut, snap::CaseDomainOut,
                 snap::CaseReviewItemOut, snap::CaseReferenceOut, snap::CaseSeededInputOut,
-                snap::CaseVariantOut, snap::CaseMetadata,
+                snap::CasePackageOut, snap::CaseVariantOut, snap::CaseMetadata,
+                snap::ModelCatalogFile,
             ],
         },
         // The backend HTTP API response envelopes (error + catalog/versions).
@@ -183,6 +185,9 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 berr::ErrorBody, berr::ErrorEnvelope, bapi::CatalogCase, bapi::CatalogResponse,
                 bapi::VersionsResponse,
+                bapi::ModelCatalogResponse, bapi::ModelOut, bapi::ModelPricesOut,
+                bapi::PriceObservationOut, bapi::ModelConfigInput, bapi::ModelSeedOut,
+                bapi::LogoFetchInput, bapi::LogoFetchOut,
             ],
         },
         // The backend's run-queue control plane (the `/jobs` namespace) — what

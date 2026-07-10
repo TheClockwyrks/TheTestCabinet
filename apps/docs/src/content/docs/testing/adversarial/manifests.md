@@ -17,6 +17,7 @@ into a wasm module and to drive matches.
 slug = "capture"             # stable identity (required); the store key + recorded in every run
 name = "Capture"             # human-readable display name (site-facing)
 difficulty = "hard"          # relative difficulty: easy | medium | hard (required)
+experimental = false         # optional; true hides the case from the UI unless the deployment enables experimental cases (default false)
 tags = ["adversarial", "ctf"] # free-form classification tags (site-facing, required)
 summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)

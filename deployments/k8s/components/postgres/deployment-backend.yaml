@@ -36,6 +36,14 @@ spec:
       labels:
         app.kubernetes.io/name: tcab-backend
         app.kubernetes.io/part-of: test-cabinet
+      annotations:
+        # Single active coordinator (replicas: 1, Recreate) — cannot be scaled out.
+        # AKS's cluster autoscaler defaults skip-nodes-with-local-storage=false, so it
+        # will drain a node running this emptyDir-backed pod during scale-down and cause
+        # a ~1-2 min outage (Recreate + 640MB image pull) each time. Keep the autoscaler
+        # from consolidating a node out from under it. Planned node upgrades, which do
+        # not honor this annotation, still move the pod.
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       containers:
         - name: backend

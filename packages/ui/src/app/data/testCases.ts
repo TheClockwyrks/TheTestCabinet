@@ -17,10 +17,24 @@ export interface SeededInput {
   path: string;
   /** Whether the file is inlined text or a binary referenced by URL. */
   kind: "text" | "image";
+  /** The role the file plays — a prose `spec` (the default) or an executable
+   * `script` the model edits and runs (e.g. a Blender `build.py`). Drives the tag
+   * the Inputs surfaces show; presentation only. */
+  role?: "spec" | "script";
   /** Inlined contents, present for `kind: "text"`. */
   text?: string;
   /** Public `/catalog/...` URL, present for `kind: "image"`. */
   url?: string;
+}
+
+/** A runtime package a case ships into every run, as the catalog records it: its
+ * npm name and a UI-only description of what it provides (never seeded into a run —
+ * it exists only to explain, on the Inputs surfaces, what the package is for). */
+export interface PackageInput {
+  /** The npm package name the case declares (e.g. `@test-cabinet/particle-runtime`). */
+  name: string;
+  /** The UI-only description of what the package provides. */
+  description: string;
 }
 
 /** A reviewer checklist item a case declares for a variant, with the point weight
@@ -90,6 +104,10 @@ export interface VariantSummary {
   /** What a run of this variant is seeded with — identical to what
    * `tcab seed --variant <slug>` materializes. */
   seededInputs: SeededInput[];
+  /** The Test Cabinet runtime packages a run of this variant ships (case-level, so
+   * the same set on every variant), each with a UI-only description. Empty when the
+   * case declares none. Shown on the Inputs surfaces alongside the seeded files. */
+  packages: PackageInput[];
   /** Rendered reference screenshots that are visual targets for this variant. */
   referenceScreenshots: ReferenceScreenshot[];
   /** The reviewer checklist items for this variant (common + the variant's own),
@@ -101,6 +119,18 @@ export interface VariantSummary {
    * reviewer rates each independently; a run's overall rating is the worst across
    * them. Empty when the host could not resolve them. */
   domains: DomainSummary[];
+  /** The absolute URL of this variant's **reference implementation** — the
+   * authored, in-repo, versioned static build that is the *correct* implementation
+   * of the variant, deployed out-of-band by `tcab publish-reference` exactly as a
+   * published run's playable build is. `null` when the variant declares no
+   * `reference_implementation`, which is the common case. It is never a seeded
+   * input and never produced by a run; it is the case-variant analogue of a run's
+   * `links.playableBuild`, and the case-detail Reference tab (shown only for an
+   * end-to-end case whose selected variant carries one) iframes it as-is — the
+   * build was already redacted at publish, so it is loaded inline with no caveat.
+   * Carried by every host: the backend catalog populates it from the
+   * `case_reference_build` table, the static snapshot from `CaseVariantOut.referenceBuild`. */
+  referenceBuild: string | null;
 }
 
 /** One test case in the catalog, across all of its published versions. */

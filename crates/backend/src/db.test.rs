@@ -486,6 +486,7 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         harness_slug: "claude".to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
         job_token: format!("token-{id}"),
+        attempt: 0,
         created_at: created_at.to_string(),
     }
 }
@@ -1084,5 +1085,724 @@ async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
             ("pong".to_string(), "v1.1.0".to_string()),
             ("carom".to_string(), "v2.0.0".to_string()),
         ])
+    );
+}
+
+// --- Model catalog store ---
+
+use std::collections::HashMap;
+use test_cabinet_core::metrics::{Cost, TokenCounts, TokenPrices};
+
+/// A model-config write with the common fields defaulted.
+fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
+    ModelConfigWrite {
+        slug: slug.to_string(),
+        display_name: name.to_string(),
+        provider: "Anthropic".to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: aliases.first().map(|a| a.to_string()),
+        aliases: aliases.iter().map(|a| a.to_string()).collect(),
+        now: "2026-07-09T00:00:00Z".to_string(),
+    }
+}
+
+/// A run record with an explicit model id + harness (and, optionally, token
+/// counts), for the derive/normalize tests.
+fn run_with_model(
+    id: &str,
+    model_id: &str,
+    harness: HarnessSlug,
+    tokens: TokenCounts,
+) -> RunRecord {
+    let mut r = record(id);
+    r.subject.model_id = model_id.to_string();
+    r.subject.harness_slug = harness;
+    r.metrics.tokens = tokens;
+    r
+}
+
+#[tokio::test]
+async fn model_config_crud_and_alias_conflict() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(model_write(
+        "opus",
+        "Claude Opus 4.8",
+        &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+    ))
+    .await
+    .unwrap();
+
+    let got = db.get_model_config("opus").await.unwrap().unwrap();
+    assert_eq!(got.config.display_name, "Claude Opus 4.8");
+    assert_eq!(
+        got.aliases,
+        vec!["anthropic/claude-opus-4.8", "claude-opus-4-8"]
+    );
+
+    // A second model claiming an alias the first owns is a conflict.
+    let err = db
+        .upsert_model_config(model_write(
+            "sonnet",
+            "Claude Sonnet 5",
+            &["anthropic/claude-opus-4.8"],
+        ))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::BackendError::Conflict(_)),
+        "{err:?}"
+    );
+
+    // Updating the same model replaces its alias set and keeps created_at.
+    db.upsert_model_config(ModelConfigWrite {
+        display_name: "Opus (renamed)".to_string(),
+        aliases: vec!["claude-opus-4-8".to_string()],
+        now: "2026-08-01T00:00:00Z".to_string(),
+        ..model_write("opus", "ignored", &[])
+    })
+    .await
+    .unwrap();
+    let updated = db.get_model_config("opus").await.unwrap().unwrap();
+    assert_eq!(updated.config.display_name, "Opus (renamed)");
+    assert_eq!(updated.config.created_at, "2026-07-09T00:00:00Z");
+    assert_eq!(updated.aliases, vec!["claude-opus-4-8"]);
+
+    assert!(db.delete_model_config("opus").await.unwrap());
+    assert!(db.get_model_config("opus").await.unwrap().is_none());
+    assert!(!db.delete_model_config("opus").await.unwrap());
+}
+
+#[tokio::test]
+async fn price_observations_dedup_and_latest() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let obs = |input: f64, at: &str| PriceWrite {
+        model_id: "x/y".to_string(),
+        observed_at: at.to_string(),
+        uncached_input: Some(input),
+        cached_input: None,
+        output: Some(2.0),
+        context_length: Some(200_000),
+        released_at: None,
+    };
+    db.insert_price_observation(obs(1.0, "2026-01-01T00:00:00Z"))
+        .await
+        .unwrap();
+    db.insert_price_observation(obs(1.5, "2026-01-02T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let latest = db.latest_price("x/y").await.unwrap().unwrap();
+    assert_eq!(latest.uncached_input, Some(1.5));
+    assert_eq!(db.all_model_prices().await.unwrap().len(), 2);
+    assert!(db.latest_price("nope").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn distinct_run_models_returns_pairs() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let z = TokenCounts::default();
+    db.push(
+        &run_with_model("r1", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &run_with_model("r2", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &run_with_model("r3", "gpt-5.5", HarnessSlug::Codex, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    let mut pairs = db.distinct_run_models().await.unwrap();
+    pairs.sort();
+    assert_eq!(
+        pairs,
+        vec![
+            ("anthropic/claude-opus-4.8".to_string(), "kilo".to_string()),
+            ("gpt-5.5".to_string(), "codex".to_string()),
+        ]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let tokens = TokenCounts {
+        uncached_input: Some(1_000_000),
+        cached_input: None,
+        output: Some(1_000_000),
+        reasoning: None,
+    };
+    // An OpenRouter-accessed run tagged `:free` with a $0 recorded cost.
+    let mut kilo = run_with_model(
+        "free-run",
+        "deepseek/deepseek-v4:free",
+        HarnessSlug::Kilo,
+        tokens,
+    );
+    kilo.metrics.cost = Cost {
+        comparable: Some(0.0),
+        actual: Some(0.0),
+    };
+    db.push(&kilo, &links(), None).await.unwrap();
+    // A provider-native Codex run whose id happens to contain a colon is left alone.
+    let codex = run_with_model("codex-run", "gpt-5.5:preview", HarnessSlug::Codex, tokens);
+    db.push(&codex, &links(), None).await.unwrap();
+
+    let mut base_prices = HashMap::new();
+    base_prices.insert(
+        "deepseek/deepseek-v4".to_string(),
+        TokenPrices {
+            uncached_input: Some(0.000_002),
+            cached_input: None,
+            output: Some(0.000_006),
+        },
+    );
+    let rewritten = db.normalize_free_model_ids(&base_prices).await.unwrap();
+    assert_eq!(rewritten, 1);
+
+    let run = db.get_run("free-run").await.unwrap().unwrap();
+    assert_eq!(run.record.subject.model_id, "deepseek/deepseek-v4");
+    // Re-priced at the base rate: 1e6 * 2e-6 + 1e6 * 6e-6 = 8.0, not $0.
+    assert_eq!(run.record.metrics.cost.comparable, Some(8.0));
+
+    let codex_run = db.get_run("codex-run").await.unwrap().unwrap();
+    assert_eq!(codex_run.record.subject.model_id, "gpt-5.5:preview");
+
+    // Idempotent: a second pass rewrites nothing.
+    assert_eq!(db.normalize_free_model_ids(&base_prices).await.unwrap(), 0);
+}
+
+/// A run record carrying non-default metrics, for the lifted sort/filter columns.
+/// Total tokens sum to 175; comparable cost is `$1.50`; run time is 42s.
+fn record_with_metrics(id: &str) -> RunRecord {
+    let mut r = record(id);
+    r.subject.test_type = test_cabinet_core::TestType::AssetGeneration;
+    r.metrics = RunMetrics {
+        run_time_seconds: 42.0,
+        tokens: TokenCounts {
+            uncached_input: Some(100),
+            cached_input: Some(20),
+            output: Some(50),
+            reasoning: Some(5),
+        },
+        cost: Cost {
+            comparable: Some(1.5),
+            actual: Some(1.5),
+        },
+    };
+    r
+}
+
+/// Read the lifted sort/filter columns off the raw `run` row.
+async fn lifted(db: &Db, id: &str) -> run::Model {
+    run::Entity::find_by_id(id.to_string())
+        .one(db.connection())
+        .await
+        .unwrap()
+        .expect("the run row exists")
+}
+
+#[tokio::test]
+async fn push_lifts_the_record_sort_columns_and_starts_unrated() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.test_type, "asset-generation");
+    assert_eq!(row.run_time_seconds, 42.0);
+    assert_eq!(row.total_tokens, 175);
+    assert_eq!(row.cost_comparable, Some(1.5));
+    // A freshly pushed run carries no reviews yet.
+    assert_eq!(row.rating, None);
+    assert_eq!(row.review_count, 0);
+}
+
+#[tokio::test]
+async fn add_review_maintains_the_lifted_rating_and_count() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+
+    // First review (great) sets the aggregate; the count reaches one.
+    db.add_review("r1", &review_by("u1", Rating::Great))
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("great"));
+    assert_eq!(row.review_count, 1);
+
+    // A second, harsher review drags the aggregate to the worst rating.
+    db.add_review("r1", &review_by("u2", Rating::Scuffed))
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("scuffed"));
+    assert_eq!(row.review_count, 2);
+
+    // Re-pushing the run refreshes the record-derived columns but preserves the
+    // review-derived aggregate (a re-push carries no reviews).
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("scuffed"));
+    assert_eq!(row.review_count, 2);
+    assert_eq!(row.total_tokens, 175);
+}
+
+#[tokio::test]
+async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+    db.add_review("r1", &review_by("u1", Rating::Great))
+        .await
+        .unwrap();
+    db.add_review("r1", &review_by("u2", Rating::Scuffed))
+        .await
+        .unwrap();
+    // A second run with no reviews, to prove the null-rating path is backfilled too.
+    db.push(&record_with_metrics("r2"), &links(), None)
+        .await
+        .unwrap();
+
+    // Simulate rows that predate the sort columns: reset every lifted value to the
+    // migration's defaults (empty test_type is the "un-backfilled" sentinel).
+    for id in ["r1", "r2"] {
+        let mut active = lifted(&db, id).await.into_active_model();
+        active.test_type = Set(String::new());
+        active.run_time_seconds = Set(0.0);
+        active.total_tokens = Set(0);
+        active.cost_comparable = Set(None);
+        active.rating = Set(None);
+        active.review_count = Set(0);
+        active.update(db.connection()).await.unwrap();
+    }
+
+    let filled = db.backfill_sort_columns().await.unwrap();
+    assert_eq!(filled, 2);
+
+    let r1 = lifted(&db, "r1").await;
+    assert_eq!(r1.test_type, "asset-generation");
+    assert_eq!(r1.run_time_seconds, 42.0);
+    assert_eq!(r1.total_tokens, 175);
+    assert_eq!(r1.cost_comparable, Some(1.5));
+    assert_eq!(r1.rating.as_deref(), Some("scuffed"));
+    assert_eq!(r1.review_count, 2);
+
+    let r2 = lifted(&db, "r2").await;
+    assert_eq!(r2.total_tokens, 175);
+    assert_eq!(r2.rating, None);
+    assert_eq!(r2.review_count, 0);
+
+    // Idempotent: a second pass finds nothing un-backfilled.
+    assert_eq!(db.backfill_sort_columns().await.unwrap(), 0);
+}
+
+// --- list_summaries: filter / free-text / sort / offset + total ---------------
+
+/// Push an unpublished run with the given identity columns and token count (cost
+/// `Some(1.0)`, no review) for the filter/free-text tests. Left unpublished so the
+/// tests can query it via the [`SummaryState::Unpublished`] slice.
+async fn seed_ident(
+    db: &Db,
+    id: &str,
+    test_case: &str,
+    model: &str,
+    harness: HarnessSlug,
+    variant: &str,
+    tokens: u64,
+) {
+    let mut r = record(id);
+    r.subject.test_case_slug = test_case.to_string();
+    r.subject.model_id = model.to_string();
+    r.subject.harness_slug = harness;
+    r.subject.variant = variant.to_string();
+    r.metrics.run_time_seconds = 1.0;
+    r.metrics.tokens = TokenCounts {
+        uncached_input: Some(tokens),
+        cached_input: None,
+        output: None,
+        reasoning: None,
+    };
+    r.metrics.cost = Cost {
+        comparable: Some(1.0),
+        actual: Some(1.0),
+    };
+    db.push(&r, &links(), None).await.unwrap();
+}
+
+/// Push an unpublished `pong`/`m`/claude/`base` run varying only the sort metrics:
+/// token count, comparable cost (`None` = unknown), and rating (`None` = unrated,
+/// otherwise one review at that rating). For the sort/offset/total tests.
+async fn seed_metric(db: &Db, id: &str, tokens: u64, cost: Option<f64>, rating: Option<Rating>) {
+    let mut r = record(id);
+    r.subject.test_case_slug = "pong".to_string();
+    r.subject.model_id = "m".to_string();
+    r.subject.variant = "base".to_string();
+    r.metrics.run_time_seconds = 1.0;
+    r.metrics.tokens = TokenCounts {
+        uncached_input: Some(tokens),
+        cached_input: None,
+        output: None,
+        reasoning: None,
+    };
+    r.metrics.cost = Cost {
+        comparable: cost,
+        actual: cost,
+    };
+    db.push(&r, &links(), None).await.unwrap();
+    if let Some(rating) = rating {
+        db.add_review(id, &review_by("u1", rating)).await.unwrap();
+    }
+}
+
+/// The `SummaryFilter` for the unpublished slice (where these tests seed).
+fn unpublished_filter() -> SummaryFilter {
+    SummaryFilter {
+        state: SummaryState::Unpublished,
+        ..SummaryFilter::default()
+    }
+}
+
+/// The run ids of an assembled page, in order.
+fn run_ids(runs: &[StoredRun]) -> Vec<String> {
+    runs.iter().map(|run| run.record.id.clone()).collect()
+}
+
+/// A [`Db::list_summaries`] call over the unpublished slice with the given filter,
+/// sort, and direction (no paging), returning just the ordered run ids.
+async fn summary_ids(
+    db: &Db,
+    filter: &SummaryFilter,
+    sort: SummarySort,
+    dir: SortDir,
+) -> Vec<String> {
+    let (runs, _) = db.list_summaries(filter, sort, dir, 50, 0).await.unwrap();
+    run_ids(&runs)
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_test_case_model_and_harness() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // pong/sonnet/claude, pong/opus/codex, snake/sonnet/claude — distinct axes.
+    seed_ident(&db, "a", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(&db, "b", "pong", "opus", HarnessSlug::Codex, "base", 20).await;
+    seed_ident(&db, "c", "snake", "sonnet", HarnessSlug::Claude, "base", 30).await;
+
+    // test_case narrows to the two pong runs.
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        ..unpublished_filter()
+    };
+    let (runs, total) = db
+        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&runs), ["a", "b"]);
+    assert_eq!(total, 2);
+
+    // model narrows to the two sonnet runs.
+    let filter = SummaryFilter {
+        model: Some("sonnet".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c"]
+    );
+
+    // harness narrows to the single codex run.
+    let filter = SummaryFilter {
+        harness: Some("codex".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+
+    // Filters AND together: pong AND sonnet is just `a`.
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        model: Some("sonnet".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_free_text_matches_across_fields_case_insensitively() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_ident(&db, "a", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(&db, "b", "snake", "opus", HarnessSlug::Codex, "hard", 20).await;
+    seed_ident(&db, "c", "tetris", "haiku", HarnessSlug::Claude, "base", 30).await;
+
+    let q = |text: &str| SummaryFilter {
+        q: Some(text.to_string()),
+        ..unpublished_filter()
+    };
+
+    // Model column, matched case-insensitively ("OP" -> opus).
+    assert_eq!(
+        summary_ids(&db, &q("OP"), SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+    // Variant column.
+    assert_eq!(
+        summary_ids(&db, &q("hard"), SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+    // Harness column, across two runs.
+    assert_eq!(
+        summary_ids(&db, &q("claude"), SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c"]
+    );
+    // Test-case column.
+    assert_eq!(
+        summary_ids(&db, &q("tetris"), SummarySort::Tokens, SortDir::Asc).await,
+        ["c"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_by_tokens_and_reverses_with_dir() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "a", 10, Some(1.0), None).await;
+    seed_metric(&db, "b", 30, Some(1.0), None).await;
+    seed_metric(&db, "c", 20, Some(1.0), None).await;
+
+    let filter = unpublished_filter();
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c", "b"]
+    );
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Desc).await,
+        ["b", "c", "a"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_cost_with_unknown_cost_last_in_both_directions() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "hi", 1, Some(3.0), None).await;
+    seed_metric(&db, "lo", 1, Some(1.0), None).await;
+    seed_metric(&db, "no", 1, None, None).await;
+    seed_metric(&db, "mid", 1, Some(2.0), None).await;
+
+    let filter = unpublished_filter();
+    // Ascending by cost, unknown-cost NULL pinned last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Cost, SortDir::Asc).await,
+        ["lo", "mid", "hi", "no"]
+    );
+    // Descending by cost, unknown-cost NULL STILL last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Cost, SortDir::Desc).await,
+        ["hi", "mid", "lo", "no"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_rating_by_tier_with_unrated_last() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "flaw", 1, Some(1.0), Some(Rating::Flawless)).await;
+    seed_metric(&db, "scuf", 1, Some(1.0), Some(Rating::Scuffed)).await;
+    seed_metric(&db, "unr", 1, Some(1.0), None).await;
+    seed_metric(&db, "grea", 1, Some(1.0), Some(Rating::Great)).await;
+
+    let filter = unpublished_filter();
+    // Ascending by tier rank: best (flawless) first, unrated NULL last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Rating, SortDir::Asc).await,
+        ["flaw", "grea", "scuf", "unr"]
+    );
+    // Descending by tier rank: worst (scuffed) first, unrated NULL STILL last —
+    // proving NULLs are pinned, not merely lexically ordered.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Rating, SortDir::Desc).await,
+        ["scuf", "grea", "flaw", "unr"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Five runs with strictly increasing token counts -> a deterministic order.
+    for (i, id) in ["a", "b", "c", "d", "e"].iter().enumerate() {
+        seed_metric(&db, id, (i as u64 + 1) * 10, Some(1.0), None).await;
+    }
+
+    // Page 2 (offset 2, limit 2) of the ascending-by-tokens order is [c, d]; the
+    // total reflects every matching row, not the page size.
+    let (page, total) = db
+        .list_summaries(
+            &unpublished_filter(),
+            SummarySort::Tokens,
+            SortDir::Asc,
+            2,
+            2,
+        )
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&page), ["c", "d"]);
+    assert_eq!(total, 5);
+
+    // The tail page is short but the total is unchanged.
+    let (tail, total) = db
+        .list_summaries(
+            &unpublished_filter(),
+            SummarySort::Tokens,
+            SortDir::Asc,
+            2,
+            4,
+        )
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&tail), ["e"]);
+    assert_eq!(total, 5);
+}
+
+#[tokio::test]
+async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Six pong runs and two snake runs; a filtered-and-paged pong query reports
+    // total 6 (the filtered count) even though the page holds only 2.
+    for i in 0..6 {
+        seed_ident(
+            &db,
+            &format!("p{i}"),
+            "pong",
+            "m",
+            HarnessSlug::Claude,
+            "base",
+            i,
+        )
+        .await;
+    }
+    for i in 0..2 {
+        seed_ident(
+            &db,
+            &format!("s{i}"),
+            "snake",
+            "m",
+            HarnessSlug::Claude,
+            "base",
+            i,
+        )
+        .await;
+    }
+
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        ..unpublished_filter()
+    };
+    let (page, total) = db
+        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 2, 0)
+        .await
+        .unwrap();
+    assert_eq!(page.len(), 2);
+    assert_eq!(total, 6);
+}
+
+#[tokio::test]
+async fn reference_build_upserts_in_place_and_reads_back_per_variant() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // A triple with no deployed build reads back as absent, both singly and in the
+    // per-version map.
+    assert_eq!(
+        db.reference_build("carom", "v1.0.1", "base").await.unwrap(),
+        None
+    );
+    assert!(
+        db.reference_builds_for_version("carom", "v1.0.1")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // First deploy records the URL for the variant.
+    db.upsert_reference_build(
+        "carom",
+        "v1.0.1",
+        "base",
+        "https://carom-base.example.pages.dev",
+        "2026-07-09T00:00:00Z",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        db.reference_build("carom", "v1.0.1", "base").await.unwrap(),
+        Some("https://carom-base.example.pages.dev".to_string())
+    );
+
+    // A re-deploy of the SAME triple upserts the URL in place (composite PK), it
+    // does not accumulate a second row.
+    db.upsert_reference_build(
+        "carom",
+        "v1.0.1",
+        "base",
+        "https://carom-base-2.example.pages.dev",
+        "2026-07-09T01:00:00Z",
+    )
+    .await
+    .unwrap();
+
+    // A different variant of the same version is an independent row.
+    db.upsert_reference_build(
+        "carom",
+        "v1.0.1",
+        "tight",
+        "https://carom-tight.example.pages.dev",
+        "2026-07-09T02:00:00Z",
+    )
+    .await
+    .unwrap();
+
+    let map = db
+        .reference_builds_for_version("carom", "v1.0.1")
+        .await
+        .unwrap();
+    assert_eq!(map.len(), 2);
+    assert_eq!(
+        map.get("base").map(String::as_str),
+        Some("https://carom-base-2.example.pages.dev")
+    );
+    assert_eq!(
+        map.get("tight").map(String::as_str),
+        Some("https://carom-tight.example.pages.dev")
+    );
+
+    // A different version does not see this version's rows.
+    assert!(
+        db.reference_builds_for_version("carom", "v1.0.0")
+            .await
+            .unwrap()
+            .is_empty()
     );
 }

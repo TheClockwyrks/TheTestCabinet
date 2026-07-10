@@ -1,0 +1,618 @@
+/*
+ * Holdfast — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Holdfast test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/.
+ *
+ * Stage geometry (matches ../specs/overview.md):
+ *   - 1280x720 stage; top HUD y[0,64] (colony vitals), colony view y[64,656]
+ *     (a top-down camera onto the tile world), bottom HUD y[656,720] (settler
+ *     roster + build palette).
+ *   - Tiles are 24x24 logical px (--t). Objects inside .colony use FIELD-LOCAL
+ *     coordinates: the colony view starts at stage y=64, so a tile at world row
+ *     r that the camera shows at stage y=Y has top = Y - 64.
+ *
+ * These mockups depict the colony with simple CSS stand-ins for the terrain,
+ * nodes, structures, settlers, raiders, and effects. In the real build those
+ * are PRODUCED assets (sprites, animated sheets, and live particle systems) —
+ * see ../specs/assets.md; here they are only visual targets for layout,
+ * palette, and type.
+ */
+
+:root {
+  --void: #14110d;      /* deep shadow / void (background) */
+  --soil: #5a4632;      /* soil / bare ground */
+  --soil-2: #4f3d2b;    /* soil shade variation */
+  --grass: #6a7638;     /* grass / fertile ground */
+  --grass-2: #5c6730;   /* grass shade */
+  --rock: #38332c;      /* rock / impassable outcrop */
+  --tree: #3f6b3a;      /* tree / forest node */
+  --tree-2: #2f5230;    /* tree shade */
+  --ore: #c9a24a;       /* ore node (mineral vein) */
+  --built: #8a6a44;     /* built structure (walls, beds, stove) */
+  --built-2: #6f5436;   /* built structure shade */
+  --floor: #4a3f30;     /* built floor / path */
+  --settler: #4f93c9;   /* settler (colonist) */
+  --settler-2: #cfe6f5; /* settler helmet / mark */
+  --raider: #c0473f;    /* raider (hostile) */
+  --food: #7cc45a;      /* food / crop */
+  --wood: #b98b4e;      /* wood / material */
+  --medical: #e05a6a;   /* health / medical */
+  --alert: #ff5a52;     /* alert / danger */
+  --power: #ffcb52;     /* muzzle / energy accent */
+  --panel: #1b1712;     /* panels / overlays */
+  --text: #ece6db;      /* primary text */
+  --text-dim: #a89e8d;  /* secondary text */
+  --text-faint: #6b6355;/* tertiary / hints */
+
+  --t: 24px;            /* tile size */
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--void);
+}
+
+/* The fixed logical stage. All coordinates are in 1280x720 logical pixels. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  font-family: var(--mono);
+  color: var(--text);
+  background-color: var(--void);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Top HUD strip: colony vitals dashboard (y[0,64]) ------------------ */
+.topbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 22px;
+  background: linear-gradient(180deg, #201a13, var(--panel));
+  border-bottom: 1px solid #2c2419;
+  z-index: 5;
+}
+
+.stock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 74px;
+}
+.stock .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.stock .dot.wood { background: var(--wood); }
+.stock .dot.ore { background: var(--ore); }
+.stock .dot.crop { background: var(--food); }
+.stock .dot.meal { background: var(--medical); }
+.stock .lbl {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stock .k {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+}
+.stock .v {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+.stock .v.food { color: var(--food); }
+
+.spacer { flex: 1; }
+
+.clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.clock .day { font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+.clock .tod { font-size: 11px; letter-spacing: 3px; color: var(--text-dim); }
+.clock .tod .moon { color: var(--settler); }
+
+/* A prominent raid/threat warning chip in the top bar. */
+.threat-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(255, 90, 82, 0.16);
+  border: 1px solid rgba(255, 90, 82, 0.55);
+  color: var(--alert);
+  font-size: 12px;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+/* ---- Colony view: the top-down tile world under the camera (y[64,656]) - */
+.colony {
+  position: absolute;
+  left: 0;
+  top: 64px;
+  width: 1280px;
+  height: 592px;
+  overflow: hidden;
+  /* soil ground fill with a faint 24px tile grid over it */
+  background-color: var(--soil);
+  background-image:
+    linear-gradient(0deg, rgba(0, 0, 0, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.18) 1px, transparent 1px),
+    linear-gradient(180deg, var(--soil), var(--soil-2));
+  background-size: var(--t) var(--t), var(--t) var(--t), 100% 100%;
+}
+
+/* A rectangular region of a given terrain kind, sized in tiles via --w/--h and
+ * placed at a tile origin via --c/--r (column/row from the field's top-left). */
+.region {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(var(--w) * var(--t));
+  height: calc(var(--h) * var(--t));
+}
+.region.grass {
+  background-color: var(--grass);
+  background-image: linear-gradient(180deg, var(--grass), var(--grass-2));
+}
+.region.rock {
+  background-color: var(--rock);
+  background-image: radial-gradient(6px 6px at 8px 10px, #433d34 60%, transparent 62%),
+    radial-gradient(5px 5px at 18px 18px, #433d34 60%, transparent 62%);
+  background-size: var(--t) var(--t);
+}
+
+/* A single tile-sized element placed at column --c, row --r. */
+.cell {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+}
+.cell.floor {
+  background: var(--floor);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.cell.wall {
+  background: linear-gradient(180deg, var(--built), var(--built-2));
+  border: 1px solid #9c7a4f;
+  border-radius: 2px;
+}
+.cell.door {
+  background: var(--built-2);
+  border: 1px solid #9c7a4f;
+  border-radius: 2px;
+}
+.cell.door::after {
+  content: "";
+  position: absolute;
+  inset: 5px 3px;
+  background: var(--floor);
+  border-radius: 1px;
+}
+
+/* Resource nodes — a tree stand or an ore vein sitting on a ground tile. */
+.node {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+}
+.node.tree {
+  background: radial-gradient(9px 9px at 50% 45%, var(--tree) 70%, transparent 72%);
+}
+.node.tree::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 13px;
+  width: 4px;
+  height: 9px;
+  background: var(--tree-2);
+}
+.node.ore {
+  background: var(--soil-2);
+  background-image: radial-gradient(3px 3px at 7px 9px, var(--ore) 60%, transparent 62%),
+    radial-gradient(3px 3px at 16px 15px, var(--ore) 60%, transparent 62%),
+    radial-gradient(2px 2px at 12px 5px, var(--ore) 60%, transparent 62%);
+}
+
+/* Farm plot — a tilled row that may carry a ripening crop. */
+.farm {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+  background: var(--soil-2);
+  border: 1px solid #6a5236;
+  background-image: repeating-linear-gradient(90deg, transparent 0 5px, rgba(0, 0, 0, 0.25) 5px 6px);
+}
+.farm.ripe::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  background: radial-gradient(4px 4px at 8px 8px, var(--food) 70%, transparent),
+    radial-gradient(4px 4px at 15px 14px, var(--food) 70%, transparent);
+}
+
+/* Buildings that occupy a 1x1 or larger footprint, with a label + glow. */
+.build {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(var(--bw, 1) * var(--t));
+  height: calc(var(--bh, 1) * var(--t));
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--built), var(--built-2));
+  border: 1px solid #9c7a4f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: var(--text);
+}
+.build.stove.on { box-shadow: 0 0 14px rgba(255, 203, 82, 0.55); border-color: var(--power); }
+.build.bed { font-size: 13px; color: var(--settler-2); }
+
+/* Turret — an armed defense that reads as active when firing. */
+.turret {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #7c8697, var(--built-2));
+  border: 1px solid #9aa3b3;
+}
+.turret::after { /* barrel */
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: -6px;
+  width: 4px;
+  height: 12px;
+  background: #9aa3b3;
+}
+.turret.firing { box-shadow: 0 0 14px rgba(255, 203, 82, 0.7); border-color: var(--power); }
+
+/* Chop/mine/build designation overlay on a marked tile. */
+.designate {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+  border: 1px dashed var(--power);
+  background: rgba(255, 203, 82, 0.14);
+}
+.designate::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-top: 2px solid rgba(255, 203, 82, 0.7);
+  transform: rotate(45deg);
+}
+
+/* A person — a settler or a raider — placed at a stage pixel. Top-down: a body
+ * disc with a directional mark. */
+.person {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+.person.settler {
+  background: var(--settler);
+  box-shadow: 0 0 8px rgba(79, 147, 201, 0.5);
+}
+.person.settler::before { /* helmet mark, top-down */
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--settler-2);
+}
+.person.raider {
+  background: var(--raider);
+  box-shadow: 0 0 8px rgba(192, 71, 63, 0.5);
+}
+.person.raider::before { /* hostile mark */
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 5px;
+  width: 6px;
+  height: 6px;
+  background: #2a0f0d;
+  transform: rotate(45deg);
+}
+.person.downed {
+  background: var(--medical);
+  opacity: 0.75;
+  transform: scale(1.1);
+  box-shadow: 0 0 10px rgba(224, 90, 106, 0.6);
+}
+
+/* Effect stand-ins for the produced particle systems (muzzle, blood, dust). */
+.fx {
+  position: absolute;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.fx.muzzle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 203, 82, 0.9), rgba(255, 90, 82, 0.3) 60%, transparent);
+}
+.fx.blood {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(224, 90, 106, 0.8), rgba(224, 90, 106, 0.1) 65%, transparent);
+}
+.fx.dust {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(184, 139, 78, 0.6), transparent 68%);
+}
+
+/* Tracer line between a shooter and its target. */
+.tracer {
+  position: absolute;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255, 203, 82, 0.9), rgba(255, 203, 82, 0));
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+/* Night lighting overlay — a cooling dim over the map (see ../specs/time.md). */
+.night {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 26, 48, 0.34);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+/* ---- Bottom HUD strip: settler roster + build palette (y[656,720]) ----- */
+.bottombar {
+  position: absolute;
+  left: 0;
+  top: 656px;
+  width: 1280px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  background: linear-gradient(0deg, #201a13, var(--panel));
+  border-top: 1px solid #2c2419;
+  z-index: 5;
+}
+
+.roster {
+  display: flex;
+  gap: 10px;
+}
+.crew {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #2c2419;
+}
+.crew .face {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--settler);
+  box-shadow: 0 0 6px rgba(79, 147, 201, 0.7);
+}
+.crew .face.hurt { background: var(--medical); box-shadow: 0 0 6px rgba(224, 90, 106, 0.7); }
+.crew .needs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.crew .job {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+.needbar {
+  width: 62px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(168, 158, 141, 0.16);
+  overflow: hidden;
+}
+.needbar > span { display: block; height: 100%; border-radius: 2px; }
+.needbar > span.hu { background: var(--food); }
+.needbar > span.re { background: var(--settler); }
+.needbar > span.mo { background: var(--power); }
+.needbar > span.low { background: var(--alert); }
+
+.palette {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.tool {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #2c2419;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-dim);
+}
+.tool.selected {
+  border-color: var(--power);
+  color: var(--text);
+  box-shadow: 0 0 12px rgba(255, 203, 82, 0.4);
+}
+
+/* ---- Menus / overlays -------------------------------------------------- */
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* HOLDFAST title: an earth-to-green gradient across the letters. */
+.title {
+  font-size: 108px;
+  font-weight: 700;
+  letter-spacing: 16px;
+  margin: 0 0 0 16px;
+  background: linear-gradient(90deg, var(--wood), var(--food));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 20px rgba(185, 139, 78, 0.25))
+    drop-shadow(0 0 20px rgba(124, 196, 90, 0.2));
+}
+
+.tagline {
+  font-size: 20px;
+  letter-spacing: 12px;
+  margin: 14px 0 54px 10px;
+  color: var(--text-dim);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.menu-item {
+  font-size: 28px;
+  letter-spacing: 9px;
+  color: var(--text-dim);
+}
+.menu-item.selected {
+  color: var(--text);
+}
+.menu-item.selected::before {
+  content: "\25B8  ";
+  color: var(--power);
+}
+.menu-item.selected::after {
+  content: "  \25C2";
+  color: var(--food);
+}
+
+.hint {
+  position: absolute;
+  bottom: 30px;
+  width: 100%;
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 7px;
+  color: var(--text-faint);
+  z-index: 10;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 6, 4, 0.8);
+  z-index: 8;
+}
+
+.panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 52px 48px 44px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid #2c2419;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+}
+.panel-eyebrow {
+  font-size: 17px;
+  letter-spacing: 9px;
+  color: var(--alert);
+  margin: 0 0 12px;
+}
+.panel-title {
+  font-size: 48px;
+  font-weight: 700;
+  letter-spacing: 7px;
+  margin: 0 0 22px;
+  background: linear-gradient(90deg, var(--raider), var(--alert));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.panel-stat {
+  font-size: 30px;
+  letter-spacing: 6px;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.panel-sub {
+  font-size: 17px;
+  letter-spacing: 4px;
+  margin: 0 0 34px;
+  color: var(--text-dim);
+}
+
+/* Dimmed field furniture shown behind a menu or panel. */
+.dim {
+  opacity: 0.4;
+  filter: saturate(0.85);
+}

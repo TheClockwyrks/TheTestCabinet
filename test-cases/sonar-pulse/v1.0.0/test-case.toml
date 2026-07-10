@@ -1,4 +1,5 @@
 slug = "sonar-pulse"
+experimental = true
 name = "Sonar Pulse"
 difficulty = "medium"
 tags = ["sprite-sheet", "effect"]

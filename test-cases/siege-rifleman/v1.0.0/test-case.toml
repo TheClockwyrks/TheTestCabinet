@@ -1,0 +1,229 @@
+slug = "siege-rifleman"
+experimental = true
+name = "Siege Rifleman"
+difficulty = "hard"
+tags = ["asset-generation", "3d", "blender", "skinned", "character"]
+summary = """
+Model, rig, and animate the Warden Rifleman — a Siege squad NPC — by driving HEADLESS \
+BLENDER through its Python API. The model writes a `build.py` (a `bpy` script) that \
+builds ONE skinned character mesh (body plus permanently-worn gear), an armature it \
+invents, skin weights, an empty `weapon_socket` bone for the rifle, and six authored \
+animations, then runs `tcab-blend` to export a standard skinned + animated `character.glb`. \
+The emitted glTF is judged — rendered in the browser — and the script is re-run for \
+provenance."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder),
+# recording what changed in THIS version — the first version simply reads "Introduced.".
+# Site-facing only; NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 2.0
+type = "asset-generation"
+# The first Blender-authored asset kind: a rigged, animated skinned CHARACTER authored by
+# driving headless Blender through a `build.py` script (NOT a constrained op-log tool).
+# The authoritative output is the emitted `character.glb` (a skinned + animated glTF 2.0),
+# rendered in-browser and judged; `build.py` is the recorded authoring trace, re-run for
+# provenance. See /testing/asset-generation/blender-binaries/.
+asset_kind = "blender-character"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record. The
+# flagship ships a single `base` variant. This list is a root key, so it must precede the
+# first table header.
+variants = ["variants/base.toml"]
+
+# The character's BOUNDING BOX — the volume the whole character must fit within, in world
+# units (`width` across, `height` the standing height, `depth` front-to-back). The character
+# is authored in Blender-native space (+Z up, facing -Y) and the bundled export converts it to
+# the family's +Y-up/+Z-forward glTF. This is the `[voxel]` table reused as a bounds box (a
+# Blender character is a real mesh, not a voxel field). `background` is only the clear color behind the rendered preview PNG. A
+# blender-character case must NOT declare [canvas].
+[voxel]
+width = 24
+height = 48
+depth = 20
+background = "transparent"
+
+# The authoring tool. `tcab-blend` is the runner that executes the model's `build.py`
+# under headless Blender (`blender --background --python build.py -- blender.config.json`),
+# emits `character.glb`, and renders the preview. It is the ONLY sanctioned build path;
+# anything produced outside it is discarded. Run `tcab-blend --help` for its usage; the
+# Blender Python API (`bpy`) is the authoring surface. `preview` is a SINGLE file — a
+# Blender character is one mesh, so no `{part}` token.
+[tool]
+binary = "tcab-blend"
+preview = "model.png"
+
+# The authored `build.py` IS the recorded output/trace (there is NO operation log): the
+# validator re-runs it through `tcab-blend` for provenance and compares the re-exported
+# glTF to the run's. The emitted skinned `character.glb` (geometry + the glTF skin: bones,
+# per-vertex weights, inverse-bind matrices, and the animations) is emitted by the runner
+# and is NOT declared here — core provides its path.
+[output]
+actions = "build.py"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. The case
+# does NOT prescribe bones, joints, pivots, or the vertex weights that bind the skin: the
+# model invents the whole skeleton (including the `weapon_socket` bone) and its binding in
+# `build.py`, and is judged on whether the character deforms convincingly. What is fixed is
+# the set of NAMED ANIMATIONS the model must author (a game plays them by name) and whether
+# each loops or plays once and holds. They are authored IN PLACE — the game supplies world
+# travel.
+[model]
+
+# `idle` — the READY STANCE. Plays continuously on its own: an upright, weight-settled
+# rifleman breathing and subtly shifting, weapon held ready.
+[[model.animation]]
+name = "idle"
+loop = true
+auto_play = true
+
+# `run` — the LOCOMOTION. A game-triggered looping run cycle: planted feet, opposite-phase
+# legs, counter-swinging arms, the torso leaning into the stride — authored in place (the
+# feet cycle under a body that holds its ground; the game supplies the real travel).
+[[model.animation]]
+name = "run"
+loop = true
+auto_play = false
+
+# `fire` — the SHOT. A game-triggered one-shot: the rifleman shoulders the socketed weapon,
+# braces, and takes a single recoil kick that ripples back through the shoulder and torso
+# and settles. The skin folds at the shoulder and elbow; the legs stay planted.
+[[model.animation]]
+name = "fire"
+loop = false
+auto_play = false
+
+# `reload` — the RELOAD. A game-triggered one-shot: the hands work at the weapon and the
+# `weapon_socket` — drop, swap, seat, chamber — and return to the ready pose. The socket
+# moves with the hands so a game's attached rifle follows.
+[[model.animation]]
+name = "reload"
+loop = false
+auto_play = false
+
+# `hit` — the FLINCH. A game-triggered one-shot: a sharp stagger from an impact — the torso
+# recoils and the head snaps — then recovers to the ready stance, the skin folding at the
+# waist and spine as one continuous surface.
+[[model.animation]]
+name = "hit"
+loop = false
+auto_play = false
+
+# `death` — the DEATH. A game-triggered one-shot that plays ONCE and HOLDS: the rifleman
+# collapses — legs buckling, torso folding, arms going slack — and holds the final downed
+# pose. The whole body folds across its joints as one skin; nothing tears away.
+[[model.animation]]
+name = "death"
+loop = false
+auto_play = false
+
+# The self-contained brief, seeded for the run (dest defaults to source).
+[[spec]]
+source = "specs/brief.md"
+
+# The `build.py` STARTER STUB, seeded to the run workspace ROOT as `build.py` (the path
+# `[output].actions` names) so the model edits it in place and `tcab-blend` runs it.
+# `kind = "script"` marks it an executable starter (not a prose spec), so the Inputs
+# surfaces tag it "Script" rather than "Spec".
+[[spec]]
+source = "specs/build.py"
+dest = "build.py"
+kind = "script"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged character reads as the Warden Rifleman — an \
+upright Cobalt infantry soldier with permanently-worn gear (helmet, light armor, pouches) \
+built as ONE skinned mesh, in the disciplined Warden palette, holding a ready stance with \
+an empty weapon socket where a rifle mounts."""
+
+[[domain]]
+id = "deformation"
+name = "Deformation"
+description = """
+How convincingly the single skinned mesh deforms across its joints in each animation — an \
+elbow, knee, waist, or shoulder that folds smoothly without the surface tearing or a limb \
+detaching — and how well each required animation reads (a settled idle, a planted run, a \
+braced fire, a worked reload, a sharp hit, a folding death)."""
+
+[[review_item]]
+id = "reads-as-rifleman"
+title = "Reads as a Warden infantry rifleman"
+text = """
+From more than one angle the model reads unmistakably as a Warden Rifleman: an upright \
+humanoid on two legs, a helmeted head, a torso in light body armor with pouches, two arms, \
+and hands positioned to hold a rifle at the ready. The gear is part of the body, not \
+floating; it is a standard-issue infantry soldier, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "one-continuous-skin"
+title = "Deforms as one continuous skin, not rigid segments"
+text = """
+The whole body is ONE continuous skinned mesh bound to a skeleton: when any animation \
+plays, the surface folds and stretches smoothly ACROSS its joints — an elbow, knee, hip, \
+or waist bends without the mesh tearing open, a limb detaching, or a hard gap opening at a \
+joint the way a bolted-together puppet would. The worn gear rides the deforming body as \
+one piece."""
+weight = 3
+domain = "deformation"
+
+[[review_item]]
+id = "weapon-socket"
+title = "An empty weapon socket, no modeled rifle"
+text = """
+The rifle is NOT part of the mesh: the model exposes an empty `weapon_socket` bone \
+(parented to the right hand, with no vertex influence) where a game hangs a separate weapon \
+asset, and the hands are shaped and posed to hold a rifle there. No gun geometry is welded \
+into the character."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "run-cycle"
+title = "Runs in place on planted feet"
+text = """
+Playing `run` is a believable looping run cycle authored IN PLACE — the body holds its \
+ground while the leg cycle alone carries the stride (played on its own the planted foot \
+slides back under the body, a treadmill), a game supplying the real travel. The legs move \
+in opposite phase with weight, the arms counter-swing, and no foot is dragged or driven \
+through the ground; the skin folds cleanly across the hips and knees through the cycle."""
+weight = 2
+domain = "deformation"
+
+[[review_item]]
+id = "fire-and-reload"
+title = "Shoulders and fires, then works a reload"
+text = """
+Playing `fire` once shoulders the weapon and takes a single recoil kick that ripples \
+through the shoulder and torso and settles, the skin folding at the shoulder and elbow, the \
+legs planted. Playing `reload` once works the hands and the `weapon_socket` through a \
+drop-swap-seat-chamber and back to ready. Both play ONCE, not on a loop, and nothing tears \
+away from the arms."""
+weight = 2
+domain = "deformation"
+
+[[review_item]]
+id = "hit-and-death"
+title = "Flinches from a hit and folds into death"
+text = """
+Playing `hit` once is a sharp stagger — the torso recoils, the head snaps — that recovers \
+to the ready stance. Playing `death` once collapses the body — legs buckling, torso \
+folding, arms going slack — and HOLDS the downed pose. Both read as the continuous skin \
+folding across the spine, waist, hips, and knees, not rigid segments pivoting with a gap."""
+weight = 2
+domain = "deformation"
+
+[[review_item]]
+id = "palette"
+title = "Warden palette discipline"
+text = """
+Uses only the Warden colors from the brief (Cobalt body, the light-Cobalt accent, and the \
+small set of gunmetal, dark-iron, and charcoal fittings and the pale-cobalt visor named \
+there) with a clear silhouette, no out-of-palette colors, and no stray surface drifting off \
+the body."""
+weight = 1
+domain = "fidelity"

@@ -39,6 +39,14 @@
 #
 # Usage:
 #   ./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
+#   ./build.sh <name>...      # build ONLY the named images (e.g. `./build.sh voxel-animation`,
+#                             #   `./build.sh adversarial performance`). Names are the short
+#                             #   image names (the IMAGE_NAME_PREFIX suffix / the containers/<name>
+#                             #   directory). The FROM-base invariant is upheld either way: `base`
+#                             #   is (re)built when it is named, and auto-built when a non-base
+#                             #   image is named but no base image is present locally yet. This is
+#                             #   how deployments/local/Makefile rebuilds one test type — or one
+#                             #   asset-generation kind — without paying for the whole set.
 #
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type and asset kind from its own registry
@@ -228,6 +236,65 @@ build_audio_image() {
 	fi
 }
 
+# Build the 2D full-stack image: the base plus the six 2D asset-generation binaries
+# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the two audio packs
+# those tools need (the combat-core sample pack for `sfx-sample`, the gm-lite instrument
+# bank for `music`). It is the union of a plain asset image and BOTH audio images, so it
+# presigns two content-addressed packs from the private R2 bucket at build time (see
+# build_audio_image for the mechanism and credentials) and passes both — plus the base —
+# to the one Dockerfile. Like the audio images, a missing pin or a failed presign for
+# EITHER pack is a HARD error: a full-stack image is never shipped with an empty audio
+# palette. Publish a pack with `node scripts/build-sample-pack.mjs <pack> --publish` and
+# commit the pin before building this image.
+build_full_stack_2d() {
+	local image="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
+	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
+	local sample_ref="combat-core@0.1.0" bank_ref="gm-lite@0.1.0"
+
+	# Both packs must be pinned (not a skip): the image bakes both.
+	local ref
+	for ref in "${sample_ref}" "${bank_ref}"; do
+		if [[ ! -f "${lock}" ]] || ! grep -q "\"${ref}\"" "${lock}"; then
+			echo "ERROR: cannot build ${image}: pack ${ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
+			echo "       Publish it with: node scripts/build-sample-pack.mjs <pack> --publish" >&2
+			exit 1
+		fi
+	done
+
+	# Presign a download URL + digest for each pack (two lines each: URL, then digest).
+	local presign lines
+	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${sample_ref}")"; then
+		echo "ERROR: ${sample_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
+		exit 1
+	fi
+	mapfile -t lines <<<"${presign}"
+	local sample_url="${lines[0]}" sample_sha="${lines[1]}"
+	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${bank_ref}")"; then
+		echo "ERROR: ${bank_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
+		exit 1
+	fi
+	mapfile -t lines <<<"${presign}"
+	local bank_url="${lines[0]}" bank_sha="${lines[1]}"
+
+	echo "==> building ${image} (FROM ${BASE_IMAGE}) with ${sample_ref} + ${bank_ref}"
+	"$DOCKER" build \
+		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "SAMPLE_PACK=${sample_ref}" \
+		--build-arg "SAMPLE_PACK_URL=${sample_url}" \
+		--build-arg "SAMPLE_PACK_SHA256=${sample_sha}" \
+		--build-arg "INSTRUMENT_BANK=${bank_ref}" \
+		--build-arg "INSTRUMENT_BANK_URL=${bank_url}" \
+		--build-arg "INSTRUMENT_BANK_SHA256=${bank_sha}" \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/full-stack-2d/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" full-stack-2d)"
+		echo "==> full-stack-2d reference: ${reference}"
+	fi
+}
+
 build_adversarial() {
 	echo "==> building ${ADVERSARIAL_IMAGE} (FROM ${BASE_IMAGE})"
 	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
@@ -248,6 +315,26 @@ build_adversarial() {
 		local reference
 		reference="$(push_and_pin "${ADVERSARIAL_IMAGE}" adversarial)"
 		echo "==> adversarial reference: ${reference}"
+	fi
+}
+
+# Build the Blender character image. UNLIKE every other run image, this one is NOT built
+# `FROM` the shared base: it is a self-contained `ubuntu:26.04` image (see
+# `containers/blender/Dockerfile` for why — Ubuntu is the only distro shipping a modern,
+# arch-parity Blender via `apt` on the aarch64 hosts this project runs on). So it takes no
+# `BASE_IMAGE` build arg and does not depend on the base being built first. The build
+# context is still the repository root so its `COPY` lines can see `containers/blender/`.
+build_blender() {
+	local image="${IMAGE_NAME_PREFIX}blender:${IMAGE_TAG}"
+	echo "==> building ${image} (self-contained; FROM ubuntu:26.04, NOT the base)"
+	"$DOCKER" build \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/blender/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" blender)"
+		echo "==> blender reference: ${reference}"
 	fi
 }
 
@@ -275,34 +362,101 @@ build_performance() {
 	fi
 }
 
-# The base must be built before the sprite, sprite-sheet, voxel, voxel-animation,
-# mc, mc-animation, sn, sn-animation, dc, dc-animation, adversarial, and
-# performance images, which are all `FROM` it.
-build_base
-build_asset_image sprite
-build_asset_image sprite-sheet
-build_asset_image voxel
-build_asset_image voxel-animation
-build_asset_image mc
-build_asset_image mc-animation
-build_asset_image sn
-build_asset_image sn-animation
-build_asset_image dc
-build_asset_image dc-animation
-build_asset_image ui
-build_asset_image material
-build_asset_image mc-skinned
-build_asset_image sn-skinned
-build_asset_image dc-skinned
-build_asset_image particle-2d
-build_asset_image particle-3d
-build_asset_image sfx-synth
-# The sfx-sample and music images bake a content-addressed audio pack pulled from the
-# private R2 bucket at build time (see build_audio_image). Each pack ref must match the
-# SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and be published + pinned in
-# packs.lock.json first.
-build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256
-build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256
-build_adversarial
-build_performance
+# Build one image by its short name, dispatching to the right builder: the audio
+# images (sfx-sample/music) carry their pack ref + build-arg names; base,
+# adversarial, and performance have dedicated builders; everything else is a plain
+# asset-generation image built `FROM` the base.
+build_one() {
+	case "$1" in
+		base)         build_base ;;
+		adversarial)  build_adversarial ;;
+		performance)  build_performance ;;
+		# The full-stack-2d image bakes six binaries AND two content-addressed audio
+		# packs pulled from the private R2 bucket at build time (see
+		# build_full_stack_2d). Both packs must be published + pinned first.
+		full-stack-2d) build_full_stack_2d ;;
+		# The sfx-sample and music images bake a content-addressed audio pack pulled
+		# from the private R2 bucket at build time (see build_audio_image). Each pack
+		# ref must match the SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and
+		# be published + pinned in packs.lock.json first.
+		sfx-sample)   build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256 ;;
+		music)        build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256 ;;
+		# The Blender character image is self-contained (FROM ubuntu:26.04, NOT the base),
+		# so it has its own builder and takes no BASE_IMAGE arg — see build_blender.
+		blender)      build_blender ;;
+		# Every other name is a plain asset-generation image `FROM` the base.
+		*)            build_asset_image "$1" ;;
+	esac
+}
+
+# The full set of images, in dependency order (base first — every other image is
+# `FROM` it). With no arguments the script builds all of them; with arguments it
+# builds only the named subset.
+ALL_NAMES=(
+	base
+	full-stack-2d
+	sprite sprite-sheet
+	voxel voxel-animation
+	mc mc-animation sn sn-animation dc dc-animation
+	ui material
+	mc-skinned sn-skinned dc-skinned
+	blender
+	particle-2d particle-3d
+	sfx-synth sfx-sample music
+	adversarial performance
+)
+
+# Whether an image tag is present in the local image store (used to decide whether
+# the FROM base has to be built before a selected non-base image).
+image_present() { "$DOCKER" image inspect "$1" >/dev/null 2>&1; }
+
+# Resolve the selection: no args → everything; otherwise exactly the named images.
+if [[ $# -eq 0 ]]; then
+	selected=("${ALL_NAMES[@]}")
+else
+	selected=("$@")
+fi
+
+# Reject an unknown name up front with a clear message, so a mistyped selection
+# (e.g. `voxel-anim` for `voxel-animation`) fails fast instead of building nothing.
+for name in "${selected[@]}"; do
+	found=""
+	for known in "${ALL_NAMES[@]}"; do
+		[[ "$name" == "$known" ]] && { found=1; break; }
+	done
+	if [[ -z "${found}" ]]; then
+		echo "unknown image '${name}'. Known images: ${ALL_NAMES[*]}" >&2
+		exit 1
+	fi
+done
+
+# Uphold the FROM-base invariant. Rebuild base first if it was selected; otherwise,
+# if any base-dependent image was selected but no base image exists yet, build it so the
+# `FROM ${BASE_IMAGE}` in those Dockerfiles resolves. An existing base is reused
+# untouched — select `base` explicitly to rebuild it after a base-level change.
+select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
+
+# Whether the selection includes any image built `FROM` the base. Every image is, EXCEPT
+# `blender`, which is a self-contained `ubuntu:26.04` image (see build_blender) — so a
+# selection of only `blender` must NOT drag in a base build.
+select_needs_base() {
+	local x
+	for x in "${selected[@]}"; do
+		[[ "$x" != base && "$x" != blender ]] && return 0
+	done
+	return 1
+}
+
+if select_has base; then
+	build_base
+elif select_needs_base && ! image_present "${BASE_IMAGE}"; then
+	echo "==> base image ${BASE_IMAGE} not present; building it first (every image but blender is FROM it)"
+	build_base
+fi
+
+# Build each selected image (base is already handled above).
+for name in "${selected[@]}"; do
+	[[ "$name" == base ]] && continue
+	build_one "$name"
+done
 echo "==> done"

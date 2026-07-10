@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { canonicalModelId } from "../modelId";
 import { Chart } from "./Chart";
 import { Panel } from "./Panel";
@@ -22,14 +22,14 @@ interface MetricChartWidgetProps {
   /** Heading naming the metric, e.g. "Average tokens". */
   title: string;
   /** The runs to chart, already scoped to one case + variant and sorted. */
-  runs: RunRecord[];
+  runs: RunSummary[];
   /**
    * Pulls the charted value out of a run (token total, cost, …). A run for which
    * the value is `null` — the metric could not be determined for that run's
    * harness — is excluded from the chart entirely rather than plotted as zero, so
    * an incomplete figure never distorts the comparison.
    */
-  value: (run: RunRecord) => number | null;
+  value: (run: RunSummary) => number | null;
   /** Unit shown on the y axis, e.g. "tokens" or "USD". */
   unit: string;
   /** d3 tick format for the y axis; pass a compact format for large counts. */
@@ -87,8 +87,8 @@ export function MetricChartWidget({
 // equivalent count as the same model. Runs whose value is unknown (`null`) are
 // dropped so they don't appear as zero bars.
 function runBars(
-  runs: RunRecord[],
-  value: (run: RunRecord) => number | null,
+  runs: RunSummary[],
+  value: (run: RunSummary) => number | null,
   colorForModel?: (modelId: string) => string | null | undefined,
 ): BarPoint[] {
   const counts = new Map<string, number>();
@@ -120,8 +120,8 @@ function runBars(
 // excluded from the mean; a model with no known values gets no bar at all rather
 // than a misleading zero.
 function meanBars(
-  runs: RunRecord[],
-  value: (run: RunRecord) => number | null,
+  runs: RunSummary[],
+  value: (run: RunSummary) => number | null,
   colorForModel?: (modelId: string) => string | null | undefined,
 ): BarPoint[] {
   const totals = new Map<string, { sum: number; count: number }>();

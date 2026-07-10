@@ -27,6 +27,7 @@ use time::macros::format_description;
 use test_cabinet_core::redact::SecretScrubber;
 use test_cabinet_core::run_record::RunRecord;
 
+use crate::api::ModelOut;
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
 use crate::r2::R2Client;
@@ -71,6 +72,17 @@ pub struct SnapshotBuilder {
     artifacts_url: Option<String>,
     /// The HTTP client for that fallback. Unused when `artifacts_url` is `None`.
     http: reqwest::Client,
+    /// The composed model catalog exported alongside the runs, so the public site
+    /// renders the Models section from the snapshot. Empty by default.
+    models: Vec<ModelOut>,
+    /// The reference-implementation URLs to fold onto each case's variants, keyed by
+    /// `(slug, version)` → (variant slug → served URL). Written out-of-band into the
+    /// `case_reference_build` table (via `tcab publish-reference`) and read from the
+    /// database, not the store — so they are supplied here rather than derived from a
+    /// manifest. Empty by default (a `(slug, version)` absent from the map, or a
+    /// variant absent from its inner map, simply exports `referenceBuild: null`).
+    reference_builds:
+        std::collections::HashMap<(String, String), std::collections::HashMap<String, String>>,
 }
 
 impl SnapshotBuilder {
@@ -88,7 +100,32 @@ impl SnapshotBuilder {
             store,
             artifacts_url: None,
             http: reqwest::Client::new(),
+            models: Vec::new(),
+            reference_builds: std::collections::HashMap::new(),
         }
+    }
+
+    /// Set the composed model catalog to export in this snapshot's `models.json`.
+    pub fn with_models(mut self, models: Vec<ModelOut>) -> Self {
+        self.models = models;
+        self
+    }
+
+    /// Supply the reference-implementation URLs to fold onto each case's variants,
+    /// keyed by `(slug, version)` → (variant slug → served URL). These come from the
+    /// `case_reference_build` table (read by the caller from the database), not from
+    /// any manifest — the URL of a variant's authored, deployed correct build is
+    /// recorded out-of-band by `tcab publish-reference`. A `(slug, version)` or
+    /// variant absent from the map exports `referenceBuild: null`.
+    pub fn with_reference_builds(
+        mut self,
+        reference_builds: std::collections::HashMap<
+            (String, String),
+            std::collections::HashMap<String, String>,
+        >,
+    ) -> Self {
+        self.reference_builds = reference_builds;
+        self
     }
 
     /// Enable the artifact-service fallback: when a run's proof/asset media is not in
@@ -213,12 +250,26 @@ impl SnapshotBuilder {
                 continue;
             }
             let (references, reference_objects) = self.case_references(manifest, &prefix);
+            let variant_reference_builds = self
+                .reference_builds
+                .get(&(manifest.slug.clone(), manifest.version.clone()));
             objects.push(json_object(
                 format!("{prefix}/cases/{}/{}.json", manifest.slug, manifest.version),
-                &case_metadata(&self.store, manifest, references)?,
+                &case_metadata(&self.store, manifest, references, variant_reference_builds)?,
             )?);
             objects.extend(reference_objects);
         }
+
+        // models.json — the composed model catalog (curated ⋃ derived-from-runs,
+        // with price history), so the public site renders the Models section from
+        // the snapshot rather than a bundled dataset.
+        objects.push(json_object(
+            format!("{prefix}/models.json"),
+            &ModelCatalogFile {
+                schema_version: SCHEMA_VERSION,
+                models: self.models.clone(),
+            },
+        )?);
 
         let index = json_object(
             "index.json".to_string(),
@@ -232,6 +283,7 @@ impl SnapshotBuilder {
                 runs_key: format!("{prefix}/runs.json"),
                 runs_prefix: format!("{prefix}/runs/"),
                 cases_prefix: format!("{prefix}/cases/"),
+                models_key: format!("{prefix}/models.json"),
             },
         )?;
 
@@ -244,33 +296,31 @@ impl SnapshotBuilder {
     }
 
     /// The denormalized summary card for one run.
+    ///
+    /// This wraps [`RunSummary::from_stored`] and overrides only the fields the
+    /// snapshot resolves differently from the bare stored run: `case_name` comes
+    /// from the ingested case catalog (falling back to the slug), `score` is the
+    /// aggregate reviewer score computed against that catalog entry's checklist
+    /// weights, and the snapshot only ever holds reviewed runs so `rating` is
+    /// always `Some`.
     fn summary(&self, run: &StoredRun) -> RunSummary {
         let record = &run.record;
-        let case_name = self
-            .cases
-            .iter()
-            .find(|c| {
-                c.slug == record.subject.test_case_slug
-                    && c.version == record.subject.test_case_version
-            })
+        let manifest = self.cases.iter().find(|c| {
+            c.slug == record.subject.test_case_slug && c.version == record.subject.test_case_version
+        });
+        let case_name = manifest
             .map(|c| c.name.clone())
             .unwrap_or_else(|| record.subject.test_case_slug.clone());
+        // Score from the same catalog entry that names the case; both are absent
+        // for a run whose case isn't in the ingested set.
+        let score =
+            manifest.and_then(|m| run_summary_score(m, &record.subject.variant, &run.reviews));
 
         RunSummary {
-            id: record.id.clone(),
-            // The snapshot only ever contains published runs, so `published_at`
-            // is always set; default defensively rather than panic.
-            published_at: run.published_at.clone().unwrap_or_default(),
-            started_at: record.started_at.clone(),
-            finished_at: record.finished_at.clone(),
-            subject: SubjectOut::from(record),
             case_name,
-            metrics: record.metrics,
-            validation_loaded: record.validation.loaded,
-            state: record.status.state,
-            rating: aggregate_rating(&run.reviews),
-            review_count: run.reviews.len(),
-            links: links_out(&run.links),
+            rating: Some(aggregate_rating(&run.reviews)),
+            score,
+            ..RunSummary::from_stored(run)
         }
     }
 
@@ -746,6 +796,18 @@ pub struct SnapshotIndex {
     pub runs_key: String,
     pub runs_prefix: String,
     pub cases_prefix: String,
+    /// Where this snapshot's model catalog lives (`<prefix>/models.json`).
+    pub models_key: String,
+}
+
+/// The model catalog file (`models.json`): the composed catalog the public site
+/// renders the Models section from.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ModelCatalogFile {
+    pub schema_version: u32,
+    pub models: Vec<ModelOut>,
 }
 
 /// The flat index of run summary cards (`runs.json`), newest first.
@@ -772,11 +834,73 @@ pub struct RunSummary {
     pub validation_loaded: bool,
     pub state: test_cabinet_core::run_record::RunState,
     /// The run's overall rating: the worst rating any reviewer gave any domain.
-    pub rating: test_cabinet_core::review::Rating,
+    /// `None` when the run carries no reviews yet (an unrated console run); the
+    /// snapshot only contains reviewed runs, so it is always `Some` there.
+    pub rating: Option<test_cabinet_core::review::Rating>,
     /// How many reviews the run carries. The site averages their scores; the
     /// aggregate sits between the harshest and most generous review.
     pub review_count: usize,
+    /// The run's aggregate reviewer score: the mean earned checklist weight across
+    /// its reviews. `None` when the run has no reviews (or its case's checklist
+    /// weights can't be resolved). Like `case_name`, this is enriched by the
+    /// callers that hold the case catalog (the console listing and the snapshot
+    /// builder); [`RunSummary::from_stored`] leaves it `None` as it is
+    /// catalog-free.
+    pub score: Option<RunScoreOut>,
     pub links: LinksOut,
+}
+
+/// A run's aggregate reviewer score: mean earned checklist weight across its
+/// reviews, over the shared total available. `None` when the run has no reviews
+/// (or its case's checklist weights can't be resolved). The item weights live
+/// only in the case catalog, so this is computed by callers that hold both the
+/// reviews and the catalog (see [`run_summary_score`]).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunScoreOut {
+    /// The mean weight earned across the run's reviews.
+    pub earned: f64,
+    /// The total weight available — identical across the run's reviews.
+    pub total: u32,
+    /// How many reviews the average is taken over.
+    pub reviews: u32,
+}
+
+impl RunSummary {
+    /// Build a bounded summary card from a stored run, WITHOUT needing the case
+    /// catalog. This is the single source of truth for the card fields shared by
+    /// the public snapshot ([`SnapshotBuilder::summary`]) and the console's
+    /// `GET /runs?fields=summary` listing.
+    ///
+    /// `rating` is the aggregate across the run's reviews, or `None` when the run
+    /// carries no reviews yet (an unrated console run). `case_name` falls back to
+    /// the test-case slug — a backend-connected console resolves display names
+    /// itself; only the static snapshot substitutes the real catalog name (see
+    /// [`SnapshotBuilder::summary`]).
+    pub fn from_stored(run: &StoredRun) -> Self {
+        let record = &run.record;
+        Self {
+            id: record.id.clone(),
+            // The snapshot only ever contains published runs, so `published_at`
+            // is always set there; default defensively rather than panic. A
+            // console (unpublished) run may legitimately carry none.
+            published_at: run.published_at.clone().unwrap_or_default(),
+            started_at: record.started_at.clone(),
+            finished_at: record.finished_at.clone(),
+            subject: SubjectOut::from(record),
+            case_name: record.subject.test_case_slug.clone(),
+            metrics: record.metrics,
+            validation_loaded: record.validation.loaded,
+            state: record.status.state,
+            rating: aggregate_rating_inner(&run.reviews),
+            review_count: run.reviews.len(),
+            // Catalog-free: the checklist weights live only in the case catalog,
+            // so a caller that holds it enriches this (see [`run_summary_score`]).
+            score: None,
+            links: links_out(&run.links),
+        }
+    }
 }
 
 /// The run subject as a summary card carries it (the slug enum, not a string).
@@ -786,6 +910,9 @@ pub struct RunSummary {
 pub struct SubjectOut {
     pub test_case_slug: String,
     pub test_case_version: String,
+    /// The test type this run's case belongs to. The UI run-log branches on this
+    /// to render the category column.
+    pub test_type: test_cabinet_core::test_case::TestType,
     pub variant: String,
     pub harness_slug: test_cabinet_core::run_record::HarnessSlug,
     pub harness_version: Option<String>,
@@ -797,6 +924,7 @@ impl SubjectOut {
         Self {
             test_case_slug: record.subject.test_case_slug.clone(),
             test_case_version: record.subject.test_case_version.clone(),
+            test_type: record.subject.test_type,
             variant: record.subject.variant.clone(),
             harness_slug: record.subject.harness_slug,
             harness_version: record.subject.harness_version.clone(),
@@ -939,6 +1067,10 @@ pub struct CaseMetadata {
     /// variant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the
     /// site concatenates the two (common first) exactly as a run is seeded.
     pub common_seeded_inputs: Vec<CaseSeededInputOut>,
+    /// The Test Cabinet runtime packages this case ships into every run, each with
+    /// its UI-only description, so the static gallery's Inputs tab can show them.
+    /// Empty for a case that declares none.
+    pub packages: Vec<CasePackageOut>,
     pub checks: Vec<CaseCheckOut>,
     /// Rendered reference baselines, named by snapshot-relative key. The site
     /// resolves these to absolute URLs to show baselines on the References tab.
@@ -988,6 +1120,14 @@ pub struct CaseVariantOut {
     /// variant is selected. The site rates and scores a run against the common
     /// domains plus its variant's own.
     pub domains: Vec<CaseDomainOut>,
+    /// The absolute URL of this variant's authored **reference implementation** — the
+    /// correct, deployed static build (the case-variant analogue of a run's
+    /// `playableBuild`), shown on the static gallery's "Reference" tab. `null` when
+    /// the variant declares no `reference_implementation`, or has one that has not
+    /// been deployed yet. Written out-of-band by `tcab publish-reference` into the
+    /// `case_reference_build` table and folded in here at export — never resolved
+    /// from the manifest and never seeded into a run.
+    pub reference_build: Option<String>,
 }
 
 /// A seeded spec file exposed in case metadata: the run-workspace path it lands at
@@ -1003,6 +1143,23 @@ pub struct CaseSeededInputOut {
     pub path: String,
     /// The spec's inlined text body.
     pub text: String,
+    /// The seeded file's role (`spec`/`script`), so the static gallery's Inputs
+    /// tab can tag it. Presentation only.
+    pub kind: test_cabinet_core::SpecKind,
+}
+
+/// A runtime package a case ships into its runs, exposed in case metadata for the
+/// static gallery's Inputs tab: its npm name and the UI-only description of what it
+/// provides. The description is never seeded into a run — it exists only to
+/// explain, on the site, what a declared package is for.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CasePackageOut {
+    /// The npm package name the case declares in `packages`.
+    pub name: String,
+    /// The UI-only description of what the package provides.
+    pub description: String,
 }
 
 /// A reviewer checklist item exposed in case metadata, carrying its point weight
@@ -1061,6 +1218,7 @@ fn seeded_inputs(
             Some(CaseSeededInputOut {
                 path: spec.dest.clone(),
                 text,
+                kind: spec.kind,
             })
         })
         .collect()
@@ -1075,6 +1233,7 @@ fn case_metadata(
     store: &DefinitionStore,
     manifest: &StoredManifest,
     references: Vec<CaseReferenceOut>,
+    reference_builds: Option<&std::collections::HashMap<String, String>>,
 ) -> Result<CaseMetadata, BackendError> {
     let common_seeded_inputs = seeded_inputs(
         store,
@@ -1118,6 +1277,9 @@ fn case_metadata(
                 seeded_inputs: seeded_inputs(store, &manifest.slug, &manifest.version, &v.specs),
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
                 domains: v.domains.iter().map(case_domain_out).collect(),
+                reference_build: reference_builds
+                    .and_then(|builds| builds.get(&v.slug))
+                    .cloned(),
             })
         })
         .collect::<Result<Vec<_>, BackendError>>()?;
@@ -1136,6 +1298,16 @@ fn case_metadata(
         changelog: manifest.changelog.clone(),
         variants,
         common_seeded_inputs,
+        packages: manifest
+            .packages
+            .iter()
+            .map(|name| CasePackageOut {
+                name: name.clone(),
+                description: test_cabinet_core::shippable_package_description(name)
+                    .unwrap_or_default()
+                    .to_string(),
+            })
+            .collect(),
         checks: manifest
             .checks
             .iter()
@@ -1196,13 +1368,82 @@ fn aggregate_rating(reviews: &[crate::db::StoredReview]) -> test_cabinet_core::r
     aggregate_rating_inner(reviews).unwrap_or(test_cabinet_core::review::Rating::Broken)
 }
 
-/// The aggregate rating, or `None` when the run carries no reviews.
+/// The aggregate rating, or `None` when the run carries no reviews. Delegates to
+/// [`crate::db::aggregate_review_rating`] — the single source of truth shared with
+/// the lifted `run.rating` column.
 fn aggregate_rating_inner(
     reviews: &[crate::db::StoredReview],
 ) -> Option<test_cabinet_core::review::Rating> {
-    test_cabinet_core::review::aggregate_rating(
-        reviews.iter().map(|review| review.ratings.as_slice()),
-    )
+    crate::db::aggregate_review_rating(reviews)
+}
+
+/// The aggregate reviewer score for a run of `manifest`'s `variant`: the case's
+/// declared checklist weights scored against each of the run's `reviews`, then
+/// averaged (see [`test_cabinet_core::review::aggregate_score`]). `None` when the
+/// run carries no reviews.
+///
+/// The checklist weights live only in the case catalog (the manifest), never on a
+/// run or review, so this is the single source of truth shared by the two callers
+/// that hold both a run's reviews and its case: the console `GET /runs?fields=summary`
+/// listing (which reads the manifest from the store) and the public snapshot
+/// builder (which holds it in memory). It is the backend analogue of
+/// [`RunSummary::from_stored`] enriching `case_name`.
+pub(crate) fn run_summary_score(
+    manifest: &StoredManifest,
+    variant: &str,
+    reviews: &[crate::db::StoredReview],
+) -> Option<RunScoreOut> {
+    let items = review_items_for(manifest, variant);
+    let scores: Vec<_> = reviews
+        .iter()
+        .map(|review| test_cabinet_core::review::score_checklist(&items, &review.checklist))
+        .collect();
+    test_cabinet_core::review::aggregate_score(&scores).map(|score| RunScoreOut {
+        earned: score.earned,
+        total: score.total,
+        reviews: score.reviews,
+    })
+}
+
+/// The effective weighted checklist items for a run of `variant`: the case's
+/// common items followed by the selected variant's own (mirrors
+/// [`test_cabinet_core::test_case::TestCaseVersion::review_items_for`], resolving
+/// from the stored manifest). An unrecognized variant contributes only the common
+/// items.
+fn review_items_for(
+    manifest: &StoredManifest,
+    variant: &str,
+) -> Vec<test_cabinet_core::ReviewItem> {
+    manifest
+        .common_review_items
+        .iter()
+        .chain(
+            manifest
+                .variants
+                .iter()
+                .find(|candidate| candidate.slug == variant)
+                .into_iter()
+                .flat_map(|candidate| candidate.review_items.iter()),
+        )
+        .map(core_review_item)
+        .collect()
+}
+
+/// Reconstruct the core [`test_cabinet_core::ReviewItem`] a stored item was
+/// ingested from — the inverse of `ingest::stored_review_item`. Scoring only reads
+/// `id` and `weight`, but the round trip keeps the item whole so it stays honest.
+fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core::ReviewItem {
+    test_cabinet_core::ReviewItem {
+        id: item.id.clone(),
+        title: item.title.clone(),
+        text: item.text.clone(),
+        reference: item.reference.clone(),
+        proof: item.proof.clone(),
+        sequences: item.sequences.clone(),
+        frames: item.frames.clone(),
+        weight: item.weight,
+        domain: item.domain.clone(),
+    }
 }
 
 #[cfg(test)]

@@ -117,16 +117,18 @@ source = "specs/cascade.md"
 [[spec]]
 source = "specs/proof.md"
 
-# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
-# mockup; the harness renders it to a screenshot that is seeded into the run as a
-# visual target. The reference source is rendered, then never seeded directly.
-# References are not validated unless a `[[check]]` below names them. The `title`
-# and `gameplay` views are variant-specific (declared per variant above): the menu
-# shows the active deal mode, and the waste is fanned (Draw Three) or a single card
-# (Draw One). Only `victory` looks the same in every variant, so it is common.
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl builds — the
+# authored, correct games under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. References are not validated unless a `[[check]]` below
+# names them. The `title` and `gameplay` views are variant-specific (declared per
+# variant above): the menu shows the active deal mode, and the waste is fanned
+# (Draw Three) or a single card (Draw One). Only `victory` looks the same in every
+# variant, so it is common.
 [[reference]]
 view = "victory"
-path = "reference/victory.html"
+media = "reference/screenshots/victory.png"
 
 # Proof of implementation, requested for every variant. Each declares a `dest`
 # path (relative to the run workspace root) the build must write a screenshot

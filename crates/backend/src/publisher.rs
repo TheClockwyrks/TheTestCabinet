@@ -178,8 +178,35 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
 
+    // Compose the model catalog for the public site: curated configs merged with
+    // the models the **published** runs reference (the public derived set), and
+    // the observed price history. The same composition the `GET /models` read
+    // uses, so the console and the site show one catalog.
+    let configs = inner.db.list_model_configs().await?;
+    let prices = inner.db.all_model_prices().await?;
+    let run_models = inner.db.distinct_published_run_models().await?;
+    let models = crate::api::compose_catalog(&configs, &prices, &run_models);
+
+    // The reference-implementation URLs live in the `case_reference_build` table
+    // (written out-of-band by `tcab publish-reference`), not the definition store,
+    // so read them per ingested case and hand the builder a `(slug, version)` →
+    // (variant → URL) map to fold onto each case's variants. A case with no recorded
+    // reference build simply contributes an empty inner map.
+    let mut reference_builds = std::collections::HashMap::new();
+    for case in &cases {
+        let builds = inner
+            .db
+            .reference_builds_for_version(&case.slug, &case.version)
+            .await?;
+        if !builds.is_empty() {
+            reference_builds.insert((case.slug.clone(), case.version.clone()), builds);
+        }
+    }
+
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
+        .with_models(models)
+        .with_reference_builds(reference_builds)
         .build(generated_at)
         .await?;
     let run_count = snapshot.run_count;

@@ -1,0 +1,125 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+.embed {
+  width: 100%;
+  height: t.$embed-height;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: t.$embed-height;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  color: t.$color-text-muted;
+}
+
+// The pre-launch gate (gated mode only): a generic caveat plus the explicit
+// Launch control. The build never loads until clicked.
+.gate {
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  padding: t.$space-lg;
+}
+
+.notice {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+.launch {
+  margin-top: t.$space-lg;
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-md;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: none;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// The inline presentation (inline mode only): the build loads in place, above a
+// slim bar carrying the fullscreen toggle. There is no caveat — a reference
+// implementation is the correct, authored build, not unedited model code.
+.inline {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.inlineBar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.fullscreenToggle {
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// The near-fullscreen overlay the build launches (gated) or expands (inline)
+// into. It covers the viewport but leaves a slim bar at the top for the Back
+// control so the visitor is never trapped inside the embed.
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: t.$color-bg;
+}
+
+.overlayBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: t.$topbar-height;
+  padding: 0 t.$space-lg;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  background: t.$color-bg-2;
+}
+
+.overlayExit {
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-md;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: none;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.overlayStage {
+  flex: 1;
+  min-height: 0;
+  padding: t.$space-md;
+
+  .embed {
+    height: 100%;
+  }
+}

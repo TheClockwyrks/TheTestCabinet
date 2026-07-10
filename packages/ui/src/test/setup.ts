@@ -8,6 +8,18 @@ if (!Element.prototype.scrollTo) {
   Element.prototype.scrollTo = () => {};
 }
 
+// jsdom has no canvas backend, so HTMLCanvasElement.getContext throws a "Not
+// implemented" error — and jsdom logs that to its virtual console (→ test stderr)
+// even when the caller catches it (as `supportsWebGL` does). None of these tests
+// assert on drawn pixels: the 2D/WebGL render + GIF-encode paths are exercised in
+// the browser, and every consumer already guards a missing context (`if (!ctx)
+// return`, the WebGL probe's `?? null`, the encoders' explicit throw). So report
+// "no context available" by returning null instead of throwing — the same signal a
+// canvas-less environment should give, minus the noise. Preserves behavior:
+// getContext already effectively yielded "unavailable" here; this just does it
+// quietly.
+HTMLCanvasElement.prototype.getContext = () => null;
+
 // react-virtuoso virtualizes off real element measurements, which jsdom reports
 // as zero — so it would render no rows under test. Replace it with a plain list
 // that renders every item, so feed tests can assert on the rendered content

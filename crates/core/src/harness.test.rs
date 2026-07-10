@@ -201,3 +201,108 @@ fn explicit_image_override_wins_verbatim() {
         "ghcr.io/theclockwyrks/test-cabinet-sprite-sheet:latest"
     );
 }
+
+#[test]
+fn run_image_override_envs_is_exhaustive() {
+    // RUN_IMAGE_OVERRIDE_ENVS is the set the dispatcher forwards so a full-ref
+    // `TCAB_CONTAINER_IMAGE_*` override reaches the driver. It MUST equal exactly the
+    // set of override envs `image_spec_for` can return — one per run image. If they
+    // drift (a new asset kind whose override is not forwarded), a deployment's
+    // per-image pin silently never reaches the run. This test pins them together.
+
+    // Compile-time guard: adding an AssetKind variant makes this match non-exhaustive,
+    // so the build breaks HERE, forcing whoever adds the kind to also extend
+    // `all_kinds` below and RUN_IMAGE_OVERRIDE_ENVS in `harness.rs`.
+    fn _exhaustive(kind: AssetKind) {
+        match kind {
+            AssetKind::Sprite
+            | AssetKind::SpriteSheet
+            | AssetKind::VoxelModel
+            | AssetKind::VoxelAnimation
+            | AssetKind::McModel
+            | AssetKind::McAnimation
+            | AssetKind::SnModel
+            | AssetKind::SnAnimation
+            | AssetKind::DcModel
+            | AssetKind::DcAnimation
+            | AssetKind::Ui
+            | AssetKind::Material
+            | AssetKind::McSkinned
+            | AssetKind::SnSkinned
+            | AssetKind::DcSkinned
+            | AssetKind::Particle2d
+            | AssetKind::Particle3d
+            | AssetKind::SfxSynth
+            | AssetKind::SfxSample
+            | AssetKind::Music
+            | AssetKind::BlenderCharacter => {}
+        }
+    }
+
+    let all_kinds = [
+        AssetKind::Sprite,
+        AssetKind::SpriteSheet,
+        AssetKind::VoxelModel,
+        AssetKind::VoxelAnimation,
+        AssetKind::McModel,
+        AssetKind::McAnimation,
+        AssetKind::SnModel,
+        AssetKind::SnAnimation,
+        AssetKind::DcModel,
+        AssetKind::DcAnimation,
+        AssetKind::Ui,
+        AssetKind::Material,
+        AssetKind::McSkinned,
+        AssetKind::SnSkinned,
+        AssetKind::DcSkinned,
+        AssetKind::Particle2d,
+        AssetKind::Particle3d,
+        AssetKind::SfxSynth,
+        AssetKind::SfxSample,
+        AssetKind::Music,
+        AssetKind::BlenderCharacter,
+    ];
+
+    // The complete set of override envs every image can resolve: the four
+    // test-type-only images (base for end-to-end, full-stack-2d for full-stack,
+    // adversarial, performance) plus one per asset kind.
+    let mut expected: Vec<&str> = vec![
+        image_spec_for(TestType::EndToEnd, AssetKind::Sprite).override_env,
+        image_spec_for(TestType::FullStack, AssetKind::Sprite).override_env,
+        image_spec_for(TestType::Adversarial, AssetKind::Sprite).override_env,
+        image_spec_for(TestType::Performance, AssetKind::Sprite).override_env,
+    ];
+    expected.extend(
+        all_kinds
+            .iter()
+            .map(|&kind| image_spec_for(TestType::AssetGeneration, kind).override_env),
+    );
+
+    // Nothing an image needs is missing from the forwarded set …
+    for env in &expected {
+        assert!(
+            RUN_IMAGE_OVERRIDE_ENVS.contains(env),
+            "{env} resolves for some run but is missing from RUN_IMAGE_OVERRIDE_ENVS — \
+             the dispatcher would not forward it, so a full-ref override for that image \
+             would never reach the driver"
+        );
+    }
+    // … and nothing stale/typo'd is forwarded that no run resolves to.
+    for env in RUN_IMAGE_OVERRIDE_ENVS {
+        assert!(
+            expected.contains(env),
+            "{env} is in RUN_IMAGE_OVERRIDE_ENVS but no run resolves to it — stale entry?"
+        );
+    }
+
+    // Each image contributes exactly one env (no duplicates hiding a mismatch).
+    let mut sorted = RUN_IMAGE_OVERRIDE_ENVS.to_vec();
+    sorted.sort_unstable();
+    let with_dups = sorted.len();
+    sorted.dedup();
+    assert_eq!(
+        with_dups,
+        sorted.len(),
+        "RUN_IMAGE_OVERRIDE_ENVS contains duplicate entries"
+    );
+}

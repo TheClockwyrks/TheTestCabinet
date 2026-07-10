@@ -369,6 +369,20 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         )
         .await?;
         self.require("git", &["add", "--all"], Some(dir)).await?;
+        // A `packages`-declaring case vendors its runtime libraries under
+        // `.tcab/packages/`, whose `dist/` subtrees the case's own `.gitignore`
+        // excludes; force them in (as seeding's initial commit does) so a published
+        // repo that the publisher re-inits, or whose vendored tree is otherwise
+        // untracked, is still self-contained and installable. Already-tracked files
+        // make this a no-op.
+        if dir.join(crate::test_case::TCAB_VENDOR_DIR).is_dir() {
+            self.require(
+                "git",
+                &["add", "--force", crate::test_case::TCAB_VENDOR_DIR],
+                Some(dir),
+            )
+            .await?;
+        }
         // Redact any leaked API key from the staged tree before it is committed
         // and pushed to the run's public repository: a model that dumped its
         // environment can have written its provider key into a source file.
@@ -574,43 +588,91 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         let Some(build_dir) = request.build_dir else {
             return Ok(None);
         };
-        // Redact any leaked API key from the built static output before it is
-        // deployed to the public Cloudflare Pages site, mirroring the GitHub
-        // seam: a key the model wrote into a source file can have been carried
-        // through the build into an emitted asset.
-        scrub_build_dir(build_dir)?;
-        let dir = build_dir
-            .to_str()
-            .ok_or_else(|| Error::Publish("build directory path is not valid UTF-8".to_string()))?;
         // Deploy the already-built static output to Cloudflare Pages under a
-        // per-run branch alias. Do NOT construct `https://<run-id>.<project>.pages.dev`:
-        // Cloudflare sanitizes/truncates long branch-alias subdomains, so a 36-char
-        // UUID branch will not map to that literal host. Capture the URL wrangler
-        // reports and use THAT as the playable-build link.
-        let branch = format!("--branch={}", request.record.id);
-        let output = self
-            .require(
-                "wrangler",
-                &[
-                    "pages",
-                    "deploy",
-                    dir,
-                    "--project-name",
-                    &self.config.pages_project,
-                    &branch,
-                ],
-                None,
-            )
-            .await?;
-        let url = parse_wrangler_url(&output.stdout)
-            .or_else(|| parse_wrangler_url(&output.stderr))
-            .ok_or_else(|| {
-                Error::Publish(
-                    "could not find a deployment URL in `wrangler pages deploy` output".to_string(),
-                )
-            })?;
+        // per-run branch alias, redacting any leaked API key from the built tree
+        // first (a key the model wrote into a source file can have been carried
+        // through the build into an emitted asset). The branch alias is the run
+        // id; the served URL is read back from wrangler's output rather than
+        // constructed, because Cloudflare sanitizes/truncates long branch-alias
+        // subdomains. This is the exact same Cloudflare-egress step a case
+        // variant's reference implementation deploys through — see
+        // [`deploy_pages_build`], which both paths share.
+        let url = deploy_pages_build(
+            &self.runner,
+            build_dir,
+            &self.config.pages_project,
+            &request.record.id,
+        )
+        .await?;
         Ok(Some(url))
     }
+}
+
+/// Deploy an already-built static `build_dir` to a Cloudflare Pages `project`
+/// under `branch`, returning the served URL `wrangler` reports.
+///
+/// This is the shared Cloudflare-egress step behind two very different callers:
+/// a finished run's *playable build* ([`BackendPublisher::release_playable_build`],
+/// branch = the run id) and a case variant's authored *reference implementation*
+/// (`tcab publish-reference`, branch = `<slug>-<version>-<variant>`). Both build a
+/// static site into a `dist/`|`build/`|`out/` tree, both must scrub secrets before
+/// the tree leaves the operator's host, and both must learn the deployed URL the
+/// same way. Factoring the step here keeps the wrangler invocation, the
+/// redaction, and the URL read-back defined once.
+///
+/// The steps, in order:
+///
+/// 1. **Redact.** [`scrub_build_dir`] rewrites any leaked provider API key out of
+///    every text file under `build_dir` in place, so a key the model (or an
+///    author) left in a source file cannot ship to the public site through a
+///    built asset.
+/// 2. **Deploy.** `wrangler pages deploy <build_dir> --project-name <project>
+///    --branch <branch>` is run through `runner` (a [`SystemCommandRunner`] in
+///    production, a mock in tests). A non-zero exit is surfaced with whatever
+///    wrangler wrote to *either* stream, since it prints most diagnostics to
+///    stdout.
+/// 3. **Read the URL back.** The deployed host is parsed out of wrangler's output
+///    ([`parse_wrangler_url`]) rather than constructed: Cloudflare sanitizes and
+///    truncates long branch-alias subdomains, so `https://<branch>.<project>.pages.dev`
+///    is *not* a reliable address. The URL wrangler reports is the only truth.
+pub async fn deploy_pages_build(
+    runner: &impl CommandRunner,
+    build_dir: &Path,
+    pages_project: &str,
+    branch: &str,
+) -> Result<String> {
+    scrub_build_dir(build_dir)?;
+    let dir = build_dir
+        .to_str()
+        .ok_or_else(|| Error::Publish("build directory path is not valid UTF-8".to_string()))?;
+    let branch_arg = format!("--branch={branch}");
+    let output = runner
+        .run(
+            "wrangler",
+            &[
+                "pages",
+                "deploy",
+                dir,
+                "--project-name",
+                pages_project,
+                &branch_arg,
+            ],
+            None,
+        )
+        .await?;
+    if !output.success {
+        return Err(Error::Publish(format!(
+            "`wrangler pages deploy` failed: {}",
+            output.failure_details()
+        )));
+    }
+    parse_wrangler_url(&output.stdout)
+        .or_else(|| parse_wrangler_url(&output.stderr))
+        .ok_or_else(|| {
+            Error::Publish(
+                "could not find a deployment URL in `wrangler pages deploy` output".to_string(),
+            )
+        })
 }
 
 /// Extract the deployment URL `wrangler pages deploy` reports from its output.

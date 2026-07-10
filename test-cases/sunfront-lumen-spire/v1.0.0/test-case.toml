@@ -1,4 +1,5 @@
 slug = "sunfront-lumen-spire"
+experimental = true
 name = "Sunfront Lumen Spire"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]

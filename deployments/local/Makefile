@@ -45,7 +45,10 @@
 #   local-up        create the cluster, build+import service AND run images, apply, ingest catalog
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import the SERVICE images, re-apply the overlay, restart the services (after a service code OR manifest change)
-#   run-images      rebuild+import the RUN-CONTAINER images (after changing baked-in tooling: voxel-anim/draw/core modeling)
+#   run-images      rebuild+import ALL the RUN-CONTAINER images (after changing baked-in tooling: voxel-anim/draw/core modeling) — the heavy path
+#   run-images-e2e / -full-stack / -asset / -adversarial / -performance
+#                   rebuild+import ONLY one test type's run image(s) — the fast path when you touched just that type's tooling
+#   run-image-<name>  rebuild+import a SINGLE run image by short name (e.g. run-image-voxel-animation) — the finest grain, for one asset kind
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
 #   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
@@ -90,6 +93,15 @@ CONTAINER_TOOL ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || ec
 # overlay's `tcab-<svc>:local` image names resolve to, so the manifests match.
 REGISTRY_PREFIX ?= docker.io/library
 
+# The provenance commit stamped into the service binaries (crates/core/build.rs →
+# the run record's testCabinetCommit). The build context omits `.git` — the
+# repo-root .dockerignore is an allowlist that never re-includes it — so the
+# Dockerfiles can't resolve the commit from git themselves; we resolve it here on
+# the host and pass it in as the TCAB_BUILD_COMMIT build arg. Mirrors build.rs: the
+# HEAD hash, suffixed `-dirty` when the working tree has uncommitted changes. Empty
+# when git can't resolve one (no repo), which simply stamps a null commit.
+TCAB_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(REPO)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(REPO)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
+
 BACKEND_IMG    := $(REGISTRY_PREFIX)/tcab-backend:local
 AUTH_IMG       := $(REGISTRY_PREFIX)/tcab-auth-service:local
 DISPATCHER_IMG := $(REGISTRY_PREFIX)/tcab-dispatcher:local
@@ -118,8 +130,43 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 # IMAGE_NAME_PREFIX/IMAGE_TAG knobs, so RUN_IMGS mirrors the set it builds.
 RUN_IMAGE_PREFIX := $(REGISTRY_PREFIX)/test-cabinet-
 RUN_IMAGE_TAG    := local
-RUN_IMAGE_NAMES  := base sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned particle-2d particle-3d sfx-synth sfx-sample music adversarial performance
-RUN_IMGS         := $(foreach n,$(RUN_IMAGE_NAMES),$(RUN_IMAGE_PREFIX)$(n):$(RUN_IMAGE_TAG))
+
+# The run images grouped by TEST TYPE, so a `run-images-<type>` target (and, for
+# asset generation, a per-kind `run-image-<kind>`) can rebuild just one type / one
+# asset kind instead of the whole set — the full rebuild recompiles ~20 images from
+# scratch (minutes each) and is rarely what an iteration on one tool needs.
+#
+#   - end-to-end runs execute in the `base` image (which is ALSO the FROM every
+#     other image builds on; build.sh (re)builds it as needed);
+#   - full-stack runs execute in the `full-stack-2d` image (the base plus the six 2D
+#     asset-generation binaries and the two audio packs they need — so building it
+#     needs the R2 PRESIGN credentials in .env, like the sfx-sample/music images);
+#   - asset-generation runs each execute in their own per-kind image;
+#   - adversarial and performance runs each execute in their own image.
+#
+# `blender` (the `blender-character` asset kind) is a full member of the asset group:
+# core's resolve_run_image maps that kind to `test-cabinet-blender`, the local overlay
+# composes `docker.io/library/test-cabinet-blender:local` for it, and this imports that
+# ref — so a blender-character run schedules against the locally-built image. Note it
+# bakes headless Blender (a large third-party download), so it is the slowest asset
+# image to build; rebuild it alone with `make run-image-blender` when iterating on the
+# `tcab-blend` runner rather than paying for the whole `run-images-asset` group.
+E2E_IMAGE_NAMES         := base
+FULL_STACK_IMAGE_NAMES  := full-stack-2d
+ASSET_IMAGE_NAMES       := sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned blender particle-2d particle-3d sfx-synth sfx-sample music
+ADVERSARIAL_IMAGE_NAMES := adversarial
+PERFORMANCE_IMAGE_NAMES := performance
+
+# Every run image this Makefile builds + imports locally: the union of the per-type
+# groups above (so it stays in lockstep with them). Order matches build.sh's
+# dependency order (base first, then full-stack-2d which is FROM it).
+RUN_IMAGE_NAMES  := $(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES)
+
+# Map a space-separated list of image NAMES to their fully-qualified `:local` refs
+# (what `$(CONTAINER_TOOL) save` / `k3d image import` and the manifests resolve).
+run_image_refs = $(foreach n,$(1),$(RUN_IMAGE_PREFIX)$(n):$(RUN_IMAGE_TAG))
+
+RUN_IMGS         := $(call run_image_refs,$(RUN_IMAGE_NAMES))
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
@@ -152,7 +199,7 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images apply
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-asset run-images-adversarial run-images-performance apply
 
 local-up: cluster images run-images apply local-ingest
 	@echo ""
@@ -236,12 +283,12 @@ kubeconfig:
 images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images:
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
-	$(CONTAINER_TOOL) build -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
-	$(CONTAINER_TOOL) build -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
 	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
 	  i=0; tars=""; \
 	  for img in $(ALL_IMGS); do \
@@ -269,24 +316,90 @@ images:
 # run image fresh each run, so no service restart is needed to pick the new image
 # up).
 #
-# `build.sh` builds every image from the repo root; its IMAGE_NAME_PREFIX/IMAGE_TAG
+# Because a full rebuild is ~20 images at minutes each, the target is SPLIT so a
+# change to one test type's tooling only rebuilds that type. Reach for the narrowest
+# target that covers what you changed:
+#   - `run-images`               everything (what local-up runs; the heavy path)
+#   - `run-images-e2e`           just the base image (an end-to-end / base-layer change)
+#   - `run-images-asset`         every asset-generation kind
+#   - `run-image-<kind>`         one asset kind, e.g. `run-image-voxel-animation`
+#                                (you changed only `voxel-anim` → rebuild only that image)
+#   - `run-images-adversarial`   the adversarial image (a Foray change)
+#   - `run-images-performance`   the performance image (a Lattice change)
+# Every variant builds the FROM base first when it is missing (build.sh handles this),
+# so a narrow target works even on a cluster that has never built base — though normal
+# use is after `local-up` has already imported the full set once.
+#
+# `build.sh` builds each named image from the repo root; its IMAGE_NAME_PREFIX/IMAGE_TAG
 # name them to match RUN_IMGS, and DOCKER selects the same runtime the service images
 # use. The BuildKit-vs-credsStore DOCKER_CONFIG pin from `images` applies here too
 # (these Dockerfiles also pull only public base images).
-run-images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
-run-images:
+#
+# `build_import_run_images` is the shared body every run-image target uses: build the
+# named images with build.sh (which (re)builds the FROM base as needed), then save
+# each and import it into the k3d cluster. $(1) is the space-separated list of image
+# NAMES to pass to build.sh; $(2) is the matching list of fully-qualified refs to
+# save + import (normally `$(call run_image_refs,$(1))`). Since an asset/adversarial/
+# performance image bakes its base's layers in, importing just those refs is enough
+# for their run pods — the standalone `base` image is only imported for end-to-end
+# runs (the `run-images-e2e` group and the full `run-images`).
+define build_import_run_images
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
-	  bash '$(REPO)/containers/build.sh'
+	  bash '$(REPO)/containers/build.sh' $(1)
 	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
 	  i=0; tars=""; \
-	  for img in $(RUN_IMGS); do \
+	  for img in $(2); do \
 	    i=$$((i+1)); \
 	    echo "Saving $$img …"; \
 	    $(CONTAINER_TOOL) save -o "$$tmp/run-$$i.tar" "$$img"; \
 	    tars="$$tars $$tmp/run-$$i.tar"; \
 	  done; \
 	  k3d image import $$tars -c '$(CLUSTER)'
+endef
+
+# Rebuild + import EVERY run image (what `local-up` runs). The heavy path — prefer a
+# narrower target below when iterating on one test type or one asset kind. Passes the
+# explicit RUN_IMAGE_NAMES set to build.sh (rather than letting it build all) so it
+# builds exactly what it imports.
+run-images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images:
+	$(call build_import_run_images,$(RUN_IMAGE_NAMES),$(RUN_IMGS))
+
+# Per-test-type rebuilds — the fast paths after changing one type's baked-in tooling.
+# `-e2e` rebuilds only the base image (also the FROM every other image builds on);
+# `-asset` rebuilds all asset-generation kinds; `-adversarial` / `-performance` each
+# rebuild their one image. build.sh auto-(re)builds the base when a group needs it.
+run-images-e2e: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images-e2e:
+	$(call build_import_run_images,$(E2E_IMAGE_NAMES),$(call run_image_refs,$(E2E_IMAGE_NAMES)))
+
+# `-full-stack` rebuilds the full-stack-2d image (the base plus the six 2D asset
+# binaries + the two audio packs). Building it presigns the packs from R2, so it needs
+# the PRESIGN credentials in .env (as the sfx-sample/music asset images do).
+run-images-full-stack: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images-full-stack:
+	$(call build_import_run_images,$(FULL_STACK_IMAGE_NAMES),$(call run_image_refs,$(FULL_STACK_IMAGE_NAMES)))
+
+run-images-asset: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images-asset:
+	$(call build_import_run_images,$(ASSET_IMAGE_NAMES),$(call run_image_refs,$(ASSET_IMAGE_NAMES)))
+
+run-images-adversarial: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images-adversarial:
+	$(call build_import_run_images,$(ADVERSARIAL_IMAGE_NAMES),$(call run_image_refs,$(ADVERSARIAL_IMAGE_NAMES)))
+
+run-images-performance: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images-performance:
+	$(call build_import_run_images,$(PERFORMANCE_IMAGE_NAMES),$(call run_image_refs,$(PERFORMANCE_IMAGE_NAMES)))
+
+# Rebuild + import a SINGLE run image by its short name — the finest grain, for
+# iterating on one asset-generation kind (`make run-image-voxel-animation`,
+# `make run-image-blender`, …). Works for any image build.sh knows. build.sh
+# validates `$*` and auto-builds the FROM base if it is missing.
+run-image-%: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-image-%:
+	$(call build_import_run_images,$*,$(call run_image_refs,$*))
 
 # Create the cluster Secrets from the host ENVIRONMENT and signed-in CLI files, so
 # no API key or token is ever written to a tracked file (the local overlay

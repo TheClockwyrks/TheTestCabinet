@@ -22,7 +22,10 @@ import type {
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
+  LogoFetchResult,
   Model,
+  ModelInput,
+  ModelSeed,
   ProgressCallback,
   PublishProgress,
   PublishResult,
@@ -32,8 +35,10 @@ import type {
   RunJob,
   RunNotification,
   RunPage,
+  RunSummaryPage,
   Specification,
   SpecDocument,
+  SpecRole,
   StoredReview,
   StoredRun,
   TestCase,
@@ -46,13 +51,16 @@ import type {
   ModelSpec,
   RunRecord,
 } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   delJson,
+  delVoid,
   getJson,
   getJsonStreamed,
   getText,
   joinUrl,
   postJson,
+  putJson,
 } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
@@ -89,6 +97,16 @@ interface SpecDescriptor {
   source: string;
   dest: string;
   template?: boolean;
+  // The seeded file's role (`spec`/`script`), so the Inputs tab can tag it. Absent
+  // on a backend that predates the field; treated as "spec".
+  kind?: SpecRole;
+}
+
+// A runtime package the case ships into its runs, as the version endpoint reports
+// it: its npm name and the UI-only description of what it provides.
+interface PackageDescriptor {
+  name: string;
+  description: string;
 }
 
 // A reference in a resolved version: the view it depicts, how it is produced
@@ -117,6 +135,9 @@ interface ResolvedVersion {
   // carried through verbatim so the catalog can split Sprite vs Voxel tabs.
   assetKind?: AssetKind | null;
   commonSpecs?: SpecDescriptor[];
+  // The runtime packages this case ships into every run (case-level), each with a
+  // UI-only description. Absent on a backend that predates the field.
+  packages?: PackageDescriptor[];
   commonReviewItems?: ReviewItem[];
   // References every variant shares (rendered from the `_common` scope).
   commonReferences?: ReferenceDescriptor[];
@@ -143,6 +164,10 @@ interface ResolvedVersion {
     // The variant's own additive scoring domains (rated only when this variant is
     // selected, on top of the case's common ones).
     domains?: Domain[];
+    // The absolute URL of this variant's reference implementation, recorded in the
+    // backend's `case_reference_build` table. Null when the variant declares none;
+    // absent on a backend that predates the field.
+    referenceBuild?: string | null;
   }[];
 }
 
@@ -174,6 +199,18 @@ interface StoredRunResponse {
 interface RunPageResponse {
   runs: StoredRunResponse[];
   nextBefore?: string | null;
+}
+
+// `GET /runs?fields=summary`: a page of bounded run summary cards plus the same
+// `nextBefore` cursor as `RunPageResponse`. The cards are the backend's
+// `RunSummary` contract shape verbatim (camelCase), so they pass through
+// unmapped; only the cursor is renamed to the transport-neutral `nextCursor`.
+// `total` is present only on the numbered-pager (offset) path — the count of all
+// matching rows ignoring the page window; the cursor path omits it.
+interface RunSummaryPageResponse {
+  runs: RunSummary[];
+  nextBefore?: string | null;
+  total?: number | null;
 }
 
 // The backend serves the record with its links already populated, so the run's
@@ -240,6 +277,9 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
         assetKind: r.assetKind ?? null,
+        // Case-level runtime packages (shared by every variant), each with a
+        // UI-only description. Absent on a backend that predates the field.
+        packages: r.packages ?? [],
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
         model: r.model ?? null,
@@ -271,6 +311,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
           domains: [...(r.domains ?? []), ...(v.domains ?? [])],
+          // The variant's reference-implementation build URL, carried through
+          // verbatim (already an absolute Cloudflare Pages URL — the backend
+          // records exactly what `tcab publish-reference` deployed). Null when the
+          // variant declares none.
+          referenceBuild: v.referenceBuild ?? null,
         })),
       };
     },
@@ -295,6 +340,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             baseUrl,
             `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/artifacts/${d.source}`,
           ),
+          kind: (d.kind ?? "spec") as SpecRole,
         })),
       );
       return {
@@ -322,10 +368,42 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async listModels(): Promise<Model[]> {
-      // The backend HTTP contract defines no model catalog endpoint; the run
-      // screen treats the model id as free text, so report none. The gallery's
-      // rich model metadata comes from the bundled curated catalog instead.
-      return [];
+      // The merged model catalog: curated configs ⋃ models derived from recorded
+      // runs, each with its observed price history.
+      const body = await getJson<{ models: Model[] }>(baseUrl, "/models");
+      return body.models;
+    },
+
+    async createModel(input: ModelInput, token: string): Promise<Model> {
+      return postJson<Model>(baseUrl, "/models", input, token);
+    },
+
+    async updateModel(
+      slug: string,
+      input: ModelInput,
+      token: string,
+    ): Promise<Model> {
+      return putJson<Model>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteModel(slug: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/models/${encodeURIComponent(slug)}`, token);
+    },
+
+    async fetchModelLogo(url: string, token: string): Promise<LogoFetchResult> {
+      return postJson<LogoFetchResult>(baseUrl, "/models/logo", { url }, token);
+    },
+
+    async seedModelFromRun(runId: string): Promise<ModelSeed> {
+      return getJson<ModelSeed>(
+        baseUrl,
+        `/models/seed?runId=${encodeURIComponent(runId)}`,
+      );
     },
 
     async listRuns(opts): Promise<RunPage> {
@@ -340,6 +418,32 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return {
         runs: body.runs.map(toStoredRun),
         nextCursor: body.nextBefore ?? null,
+      };
+    },
+
+    async listRunSummaries(opts): Promise<RunSummaryPage> {
+      // Always the summary projection. Every provided param is forwarded (omitting
+      // the undefined ones); an `offset` (even 0) selects the backend's
+      // numbered-pager path, which is the only one that returns `total`.
+      const params = new URLSearchParams({ fields: "summary" });
+      if (opts?.before) params.set("before", opts.before);
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      if (opts?.state) params.set("state", opts.state);
+      if (opts?.testCase) params.set("testCase", opts.testCase);
+      if (opts?.model) params.set("model", opts.model);
+      if (opts?.harness) params.set("harness", opts.harness);
+      if (opts?.q) params.set("q", opts.q);
+      if (opts?.sort) params.set("sort", opts.sort);
+      if (opts?.dir) params.set("dir", opts.dir);
+      const body = await getJson<RunSummaryPageResponse>(
+        baseUrl,
+        `/runs?${params.toString()}`,
+      );
+      return {
+        summaries: body.runs,
+        nextCursor: body.nextBefore ?? null,
+        total: body.total ?? null,
       };
     },
 
@@ -572,6 +676,7 @@ export function createBackendExec(
         ...(config.maxRuntimeOverride != null
           ? { maxRuntimeSeconds: config.maxRuntimeOverride }
           : {}),
+        ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
       };
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,

@@ -2,7 +2,10 @@
 
 use std::fs;
 
-use super::{AssetKind, BuildCommands, TestCaseCatalog, TestType};
+use super::{
+    AssetKind, BuildCommands, SpecKind, TestCaseCatalog, TestType, is_shippable_package,
+    shippable_package_description,
+};
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
 /// fresh catalog and return both the temp dir (kept alive) and the catalog rooted
@@ -95,6 +98,27 @@ fn build_table_sets_the_commands() {
         })
     );
     assert_eq!(version.test_type, TestType::EndToEnd);
+}
+
+#[test]
+fn experimental_defaults_to_false_when_omitted() {
+    // A manifest that declares no `experimental` key resolves as non-experimental,
+    // so every existing case stays offered by default.
+    let (_dir, catalog) =
+        catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(!version.experimental);
+}
+
+#[test]
+fn experimental_flag_is_carried_onto_the_resolved_version() {
+    // `experimental` is a root key, so it precedes the `[build]` table header. When
+    // declared `true` it is carried verbatim onto the resolved version.
+    let (_dir, catalog) = catalog_with_manifest(
+        "experimental = true\n[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"",
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.experimental);
 }
 
 #[test]
@@ -1336,6 +1360,47 @@ fn a_spec_dest_defaults_to_its_source() {
     assert!(dests.contains(&"specs/final.md".to_string()), "{dests:?}");
 }
 
+#[test]
+fn a_spec_kind_defaults_to_spec_and_can_be_a_script() {
+    // A `[[spec]]` with no `kind` resolves to `SpecKind::Spec`; `kind = "script"`
+    // marks it a script (the Blender `build.py` starter). Presentation only — both
+    // are seeded identically, but the resolved `kind` drives the Inputs tag.
+    let (_dir, catalog) = catalog_with_files(
+        &manifest_with(
+            "",
+            "[[spec]]\nsource = \"specs/brief.md\"\n\
+             [[spec]]\nsource = \"specs/build.py\"\ndest = \"build.py\"\nkind = \"script\"\n",
+        ),
+        &[("specs/brief.md", "# brief"), ("specs/build.py", "# build")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let kind_of = |dest: &str| {
+        version
+            .common_specs
+            .iter()
+            .find(|s| s.dest.display().to_string() == dest)
+            .unwrap_or_else(|| panic!("no spec seeded to {dest}"))
+            .kind
+    };
+    assert_eq!(kind_of("specs/brief.md"), SpecKind::Spec);
+    assert_eq!(kind_of("build.py"), SpecKind::Script);
+}
+
+#[test]
+fn every_shippable_package_carries_a_ui_description() {
+    // Every shippable package a case may declare has a non-empty UI-only
+    // description (the single source of truth the Inputs surfaces read), and an
+    // unknown name resolves to `None`.
+    assert!(is_shippable_package("@test-cabinet/particle-runtime"));
+    assert!(
+        shippable_package_description("@test-cabinet/particle-runtime")
+            .is_some_and(|d| !d.is_empty()),
+        "particle-runtime should carry a non-empty description"
+    );
+    assert!(!is_shippable_package("@test-cabinet/not-a-real-package"));
+    assert!(shippable_package_description("@test-cabinet/not-a-real-package").is_none());
+}
+
 /// Write a `demo/v1.0.0` version with the given manifest and supporting files
 /// (relative path -> contents), returning the temp dir (kept alive) and a
 /// catalog rooted at it. Unlike [`catalog_with_manifest`], the caller supplies
@@ -1421,14 +1486,19 @@ fn workspace_files_resolve_with_run_relative_dests_and_init() {
 }
 
 #[test]
-fn packages_resolve_when_shippable_and_workspace_ships_a_package_json() {
+fn packages_resolve_when_the_workspace_package_json_declares_the_file_dependency() {
     let manifest = manifest_with(
         "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
         "",
     );
+    // The case's own `package.json` already declares the package as its baked-in
+    // `file:` dependency; the harness validates that and does not modify the file.
     let (_dir, catalog) = catalog_with_files(
         &manifest,
-        &[("workspaces/base/package.json", "{\"name\":\"demo\"}")],
+        &[(
+            "workspaces/base/package.json",
+            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:./.tcab/packages/@test-cabinet/particle-runtime"}}"#,
+        )],
     );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(
@@ -1448,6 +1518,51 @@ fn packages_reject_an_unknown_name() {
         .resolve("demo", "v1.0.0")
         .expect_err("an unknown package name is rejected");
     assert!(format!("{err}").contains("not a shippable"), "got: {err}");
+}
+
+#[test]
+fn packages_reject_a_workspace_package_json_that_does_not_declare_the_dependency() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "",
+    );
+    // Shippable name, ships a package.json — but it does not depend on the package.
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("workspaces/base/package.json", "{\"name\":\"demo\"}")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a package.json missing the dependency is rejected");
+    assert!(
+        format!("{err}").contains("is not a dependency of the workspace"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn packages_reject_a_wrong_file_dependency_spec() {
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "",
+    );
+    // Declares the package, but points somewhere other than the baked-in copy.
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[(
+            "workspaces/base/package.json",
+            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"^1.0.0"}}"#,
+        )],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a wrong dependency spec is rejected");
+    let msg = format!("{err}");
+    assert!(msg.contains("must be"), "got: {err}");
+    assert!(
+        msg.contains("file:./.tcab/packages/@test-cabinet/particle-runtime"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -1474,7 +1589,7 @@ fn packages_are_end_to_end_only() {
         .resolve("sprite", "v1.0.0")
         .expect_err("`packages` on an asset-generation case is rejected");
     assert!(
-        format!("{err}").contains("only valid for an end-to-end case"),
+        format!("{err}").contains("only valid for an end-to-end or full-stack case"),
         "got: {err}"
     );
 }
@@ -2015,4 +2130,142 @@ fn audio_rejects_zero_duration() {
         .resolve("sprite", "v1.0.0")
         .expect_err("a zero max_duration_ms is rejected");
     assert!(format!("{err}").contains("greater than zero"), "got: {err}");
+}
+
+#[test]
+fn variant_reference_implementation_round_trips_to_a_resolved_host_path() {
+    // A variant that declares a `reference_implementation` gets that directory
+    // resolved onto its `reference_impl` as an absolute host path inside the
+    // version folder (the same convention specs and reference sources use), while
+    // the same case with the key omitted resolves to `None` — so the field is
+    // strictly opt-in.
+    let (dir, catalog) =
+        catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
+    let version_dir = dir.path().join("demo/v1.0.0");
+    // The reference implementation is a buildable directory; its contents are
+    // never read here (the deploy is out-of-band), only its existence is checked.
+    fs::create_dir_all(version_dir.join("reference-impl/base")).expect("create reference impl dir");
+    fs::write(
+        version_dir.join("reference-impl/base/index.html"),
+        "<!doctype html><title>correct</title>",
+    )
+    .expect("write reference impl file");
+    fs::write(
+        version_dir.join("variants/base.toml"),
+        "slug = \"base\"\nreference_implementation = \"reference-impl/base\"\n",
+    )
+    .expect("write base variant");
+
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    assert_eq!(
+        base.reference_impl.as_deref(),
+        Some(version_dir.join("reference-impl/base").as_path()),
+        "the reference implementation resolves to an absolute path inside the version folder",
+    );
+
+    // A second case whose `base` variant omits the key resolves with no reference
+    // implementation, proving the field is optional.
+    let (_bare_dir, bare_catalog) =
+        catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
+    let bare_version = bare_catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let bare = bare_version.variant("base").expect("base variant");
+    assert!(
+        bare.reference_impl.is_none(),
+        "a variant that declares no reference_implementation has none",
+    );
+}
+
+#[test]
+fn a_missing_reference_implementation_directory_is_rejected() {
+    // Like every other declared path, the reference implementation is validated to
+    // exist at resolution so a typo fails fast rather than surfacing as a broken
+    // out-of-band deploy. A path that names no directory is rejected.
+    let (dir, catalog) =
+        catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
+    fs::write(
+        dir.path().join("demo/v1.0.0/variants/base.toml"),
+        "slug = \"base\"\nreference_implementation = \"reference-impl/gone\"\n",
+    )
+    .expect("write base variant");
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a reference_implementation naming no directory is rejected");
+    assert!(
+        format!("{err}").contains("reference implementation")
+            && format!("{err}").contains("is not a directory"),
+        "unexpected error: {err}",
+    );
+}
+
+#[test]
+fn a_reference_implementation_is_never_seeded_into_the_run() {
+    // The reference implementation is the authored *answer*: seeding it would hand
+    // a model the finished game. Prove it takes no part in the seed by declaring a
+    // real workspace alongside it and asserting nothing under the reference-impl
+    // directory appears in any seeded set (common or variant specs/workspace).
+    let (dir, catalog) = catalog_with_manifest(
+        "workspace = \"workspace\"\n[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"",
+    );
+    let version_dir = dir.path().join("demo/v1.0.0");
+    // A starter workspace that IS seeded, so the assertion below is meaningful:
+    // there is real seeded content to distinguish the reference impl from.
+    fs::create_dir_all(version_dir.join("workspace")).expect("create workspace dir");
+    fs::write(
+        version_dir.join("workspace/package.json"),
+        "{\"name\":\"demo\"}",
+    )
+    .expect("write workspace file");
+    // The reference implementation lives beside the workspace but must never leak
+    // into the run tree.
+    fs::create_dir_all(version_dir.join("reference-impl/base")).expect("create reference impl dir");
+    fs::write(
+        version_dir.join("reference-impl/base/index.html"),
+        "<!doctype html><title>correct</title>",
+    )
+    .expect("write reference impl file");
+    fs::write(
+        version_dir.join("variants/base.toml"),
+        "slug = \"base\"\nreference_implementation = \"reference-impl/base\"\n",
+    )
+    .expect("write base variant");
+
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    let reference_dir = version_dir.join("reference-impl");
+
+    // The workspace was seeded (proof there is real content), and the reference
+    // implementation was resolved onto the variant.
+    assert!(
+        !version.common_workspace.is_empty(),
+        "the declared workspace is seeded",
+    );
+    assert!(base.reference_impl.is_some(), "the reference impl resolved");
+
+    // Every seeded source — common and variant specs, common and variant
+    // workspace files — must live outside the reference-impl directory.
+    let seeded_sources = version
+        .common_specs
+        .iter()
+        .map(|spec| &spec.source_path)
+        .chain(base.specs.iter().map(|spec| &spec.source_path))
+        .chain(
+            version
+                .common_workspace
+                .iter()
+                .map(|file| &file.source_path),
+        )
+        .chain(
+            base.workspace
+                .iter()
+                .flatten()
+                .map(|file| &file.source_path),
+        );
+    for source in seeded_sources {
+        assert!(
+            !source.starts_with(&reference_dir),
+            "no seeded source may come from the reference implementation, got `{}`",
+            source.display(),
+        );
+    }
 }

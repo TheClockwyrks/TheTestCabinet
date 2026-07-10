@@ -7,6 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { ModelOut } from "./backend-api";
 import type {
   AssetKind,
   HarnessSlug,
@@ -30,6 +31,10 @@ export type SnapshotIndex = {
   runsKey: string;
   runsPrefix: string;
   casesPrefix: string;
+  /**
+   * Where this snapshot's model catalog lives (`<prefix>/models.json`).
+   */
+  modelsKey: string;
 };
 
 /**
@@ -38,6 +43,11 @@ export type SnapshotIndex = {
 export type SubjectOut = {
   testCaseSlug: string;
   testCaseVersion: string;
+  /**
+   * The test type this run's case belongs to. The UI run-log branches on this
+   * to render the category column.
+   */
+  testType: TestType;
   variant: string;
   harnessSlug: HarnessSlug;
   harnessVersion: string | null;
@@ -67,14 +77,47 @@ export type RunSummary = {
   state: RunState;
   /**
    * The run's overall rating: the worst rating any reviewer gave any domain.
+   * `None` when the run carries no reviews yet (an unrated console run); the
+   * snapshot only contains reviewed runs, so it is always `Some` there.
    */
-  rating: Rating;
+  rating: Rating | null;
   /**
    * How many reviews the run carries. The site averages their scores; the
    * aggregate sits between the harshest and most generous review.
    */
   reviewCount: number;
+  /**
+   * The run's aggregate reviewer score: the mean earned checklist weight across
+   * its reviews. `None` when the run has no reviews (or its case's checklist
+   * weights can't be resolved). Like `case_name`, this is enriched by the
+   * callers that hold the case catalog (the console listing and the snapshot
+   * builder); [`RunSummary::from_stored`] leaves it `None` as it is
+   * catalog-free.
+   */
+  score: RunScoreOut | null;
   links: LinksOut;
+};
+
+/**
+ * A run's aggregate reviewer score: mean earned checklist weight across its
+ * reviews, over the shared total available. `None` when the run has no reviews
+ * (or its case's checklist weights can't be resolved). The item weights live
+ * only in the case catalog, so this is computed by callers that hold both the
+ * reviews and the catalog (see [`run_summary_score`]).
+ */
+export type RunScoreOut = {
+  /**
+   * The mean weight earned across the run's reviews.
+   */
+  earned: number;
+  /**
+   * The total weight available — identical across the run's reviews.
+   */
+  total: number;
+  /**
+   * How many reviews the average is taken over.
+   */
+  reviews: number;
 };
 
 /**
@@ -132,6 +175,18 @@ export type PerRun = {
  * How a reference view's source is turned into the seeded/served artifact.
  */
 export type ReferenceKind = "rendered" | "image" | "video";
+
+/**
+ * What role a seeded spec file plays, so a reader can tell an instruction the
+ * model reads from an executable starter it edits and runs.
+ *
+ * This is a **presentation** distinction only — every kind is seeded identically
+ * (copied to its `dest`) and the harness treats them the same. It exists so the
+ * Inputs surfaces can tag a starter script (for example the Blender case's
+ * `build.py`, whose `dest` deliberately coincides with `[output].actions`)
+ * distinctly from a prose spec.
+ */
+export type SpecKind = "spec" | "script";
 
 /**
  * A declared validation check exposed in case metadata.
@@ -192,6 +247,28 @@ export type CaseSeededInputOut = {
    * The spec's inlined text body.
    */
   text: string;
+  /**
+   * The seeded file's role (`spec`/`script`), so the static gallery's Inputs
+   * tab can tag it. Presentation only.
+   */
+  kind: SpecKind;
+};
+
+/**
+ * A runtime package a case ships into its runs, exposed in case metadata for the
+ * static gallery's Inputs tab: its npm name and the UI-only description of what it
+ * provides. The description is never seeded into a run — it exists only to
+ * explain, on the site, what a declared package is for.
+ */
+export type CasePackageOut = {
+  /**
+   * The npm package name the case declares in `packages`.
+   */
+  name: string;
+  /**
+   * The UI-only description of what the package provides.
+   */
+  description: string;
 };
 
 /**
@@ -223,6 +300,19 @@ export type CaseVariantOut = {
    * domains plus its variant's own.
    */
   domains: Array<CaseDomainOut>;
+  /**
+   * The absolute Cloudflare Pages URL of this variant's **reference
+   * implementation** — the authored, in-repo, versioned static build that is the
+   * *correct* implementation of the variant, deployed out-of-band by
+   * `tcab publish-reference` just as a published run's `playableBuild` is. `None`
+   * when the variant declares no `reference_implementation`, which is the common
+   * case. This is never a seeded input and never produced by a run; it is the
+   * case-variant analogue of [`LinksOut::playableBuild`]. The site iframes it
+   * as-is on the case's Reference tab (no scrubbing at view time — the build was
+   * already redacted at publish), so the value must be a fully-qualified `https`
+   * URL and never a snapshot-relative key.
+   */
+  referenceBuild: string | null;
 };
 
 /**
@@ -268,6 +358,12 @@ export type CaseMetadata = {
    * site concatenates the two (common first) exactly as a run is seeded.
    */
   commonSeededInputs: Array<CaseSeededInputOut>;
+  /**
+   * The Test Cabinet runtime packages this case ships into every run, each with
+   * its UI-only description, so the static gallery's Inputs tab can show them.
+   * Empty for a case that declares none.
+   */
+  packages: Array<CasePackageOut>;
   checks: Array<CaseCheckOut>;
   /**
    * Rendered reference baselines, named by snapshot-relative key. The site
@@ -285,4 +381,13 @@ export type CaseMetadata = {
    * worst across them.
    */
   domains: Array<CaseDomainOut>;
+};
+
+/**
+ * The model catalog file (`models.json`): the composed catalog the public site
+ * renders the Models section from.
+ */
+export type ModelCatalogFile = {
+  schemaVersion: number;
+  models: Array<ModelOut>;
 };

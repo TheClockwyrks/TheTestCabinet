@@ -12,6 +12,30 @@
       },
       "type": "object"
     },
+    "RunScoreOut": {
+      "description": "A run's aggregate reviewer score: mean earned checklist weight across its\nreviews, over the shared total available. `None` when the run has no reviews\n(or its case's checklist weights can't be resolved). The item weights live\nonly in the case catalog, so this is computed by callers that hold both the\nreviews and the catalog (see [`run_summary_score`]).",
+      "properties": {
+        "earned": {
+          "description": "The mean weight earned across the run's reviews.",
+          "format": "double",
+          "type": "number"
+        },
+        "reviews": {
+          "description": "How many reviews the average is taken over.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "description": "The total weight available — identical across the run's reviews.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["earned", "total", "reviews"],
+      "type": "object"
+    },
     "RunSummary": {
       "description": "The denormalized summary card for one published run.",
       "properties": {
@@ -34,14 +58,32 @@
           "type": "string"
         },
         "rating": {
-          "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/Rating",
-          "description": "The run's overall rating: the worst rating any reviewer gave any domain."
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/Rating"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run's overall rating: the worst rating any reviewer gave any domain.\n`None` when the run carries no reviews yet (an unrated console run); the\nsnapshot only contains reviewed runs, so it is always `Some` there."
         },
         "reviewCount": {
           "description": "How many reviews the run carries. The site averages their scores; the\naggregate sits between the harshest and most generous review.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunScoreOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run's aggregate reviewer score: the mean earned checklist weight across\nits reviews. `None` when the run has no reviews (or its case's checklist\nweights can't be resolved). Like `case_name`, this is enriched by the\ncallers that hold the case catalog (the console listing and the snapshot\nbuilder); [`RunSummary::from_stored`] leaves it `None` as it is\ncatalog-free."
         },
         "startedAt": {
           "type": "string"
@@ -66,7 +108,6 @@
         "metrics",
         "validationLoaded",
         "state",
-        "rating",
         "reviewCount",
         "links"
       ],
@@ -90,6 +131,10 @@
         "testCaseVersion": {
           "type": "string"
         },
+        "testType": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TestType",
+          "description": "The test type this run's case belongs to. The UI run-log branches on this\nto render the category column."
+        },
         "variant": {
           "type": "string"
         }
@@ -97,6 +142,7 @@
       "required": [
         "testCaseSlug",
         "testCaseVersion",
+        "testType",
         "variant",
         "harnessSlug",
         "modelId"

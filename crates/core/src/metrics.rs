@@ -63,6 +63,15 @@ impl TokenCounts {
     pub fn total_output(&self) -> Option<u64> {
         sum_reported(self.output, self.reasoning)
     }
+
+    /// The headline token figure: the sum across every class (input + output).
+    /// Mirrors the UI's `totalTokens(metrics)` — an unreported class folds into
+    /// the class it is accounted under, so it counts as zero, and the total is
+    /// `None` only when **no** class is reported at all (a run with no token usage
+    /// recorded). Used by the lifted `run.total_tokens` sort column.
+    pub fn total(&self) -> Option<u64> {
+        sum_reported(self.total_input(), self.total_output())
+    }
 }
 
 /// Sum two optional token counts, treating an unreported (`None`) class as zero,

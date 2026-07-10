@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# tcab-blend — The Test Cabinet Blender character runner.
+#
+# It executes the model's `build.py` under HEADLESS Blender, which builds the character
+# (mesh + armature + skin weights + one Action per required animation) and then calls the
+# bundled `tcab_blend_export.export(config)` helper to emit `character.glb` (a skinned,
+# animated glTF 2.0) and render the preview `model.png`.
+#
+# It is the ONLY sanctioned build path for a `blender-character` run: the emitted
+# `character.glb` is what the validator decodes and a reviewer judges, and the validator
+# re-runs this same command on `build.py` for provenance. Anything produced outside it is
+# discarded.
+#
+# Usage:
+#   tcab-blend [CONFIG]     run build.py; CONFIG defaults to ./blender.config.json
+#   tcab-blend --help       show this help
+#
+# It runs, verbatim:
+#   blender --background --factory-startup --python-use-system-env \
+#           --python build.py -- <CONFIG>
+set -euo pipefail
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+	sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
+	exit 0
+fi
+
+CONFIG="${1:-blender.config.json}"
+SCRIPT="build.py"
+
+if [[ ! -f "$SCRIPT" ]]; then
+	echo "tcab-blend: no build.py in $(pwd) — write your build script there first" >&2
+	exit 1
+fi
+if [[ ! -f "$CONFIG" ]]; then
+	echo "tcab-blend: config '$CONFIG' not found (the run seeds blender.config.json)" >&2
+	exit 1
+fi
+
+# `--factory-startup` gives a clean, reproducible Blender (no user prefs), and
+# `--python-use-system-env` lets the bundled Python resolve `tcab_blend_export` from the
+# image's PYTHONPATH. The config path is passed after `--` so `build.py` reads it from
+# `sys.argv`.
+exec blender \
+	--background \
+	--factory-startup \
+	--python-use-system-env \
+	--python "$SCRIPT" \
+	-- "$CONFIG"

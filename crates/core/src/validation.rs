@@ -194,6 +194,14 @@ pub struct VoxelGenResult {
     /// meshes. `false` for every non-skinned voxel-family run.
     #[serde(default)]
     pub skinned: bool,
+    /// Whether this is a **Blender character** run (`blender-character`): the emitted
+    /// mesh is a self-contained skinned + animated glTF whose animations are baked
+    /// into the file itself (glTF animation channels), not authored as `rig.json`
+    /// F-curves. A Blender run is also `skinned`, but the marker tells the 3D viewer
+    /// to load the glTF with a native glTF player (skeleton + baked clips) rather than
+    /// posing the mesh from an inline rig. `false` for every non-Blender run.
+    #[serde(default)]
+    pub blender: bool,
     /// Detail about anything that could not be evaluated at the run level, or
     /// `None`. Per-part detail lives on each [`VoxelPartResult`].
     #[serde(default)]

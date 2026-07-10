@@ -1,0 +1,18 @@
+# The standard frontier colony plus Siegeworks, a harder threat opening: raids come
+# larger and include sappers that break through walls, so static defenses are not
+# enough on their own. Its review item rolls up to the common `simulation` domain,
+# since Siegeworks presses the same threat and combat systems harder rather than
+# adding a new axis of judgement.
+slug = "siegeworks"
+name = "Siegeworks"
+description = "The standard colony, under heavier siege: raids arrive larger and include sappers that break through walls, so the colony must layer defenses and fight, not just wall itself in."
+
+spec = [{ source = "specs/modes/siegeworks.md" }]
+reference = [{ view = "title", path = "reference/menu-siegeworks.html" }]
+
+[[review_item]]
+id = "siegeworks-assault"
+title = "Siegeworks assault"
+text = "In Siegeworks the raids are markedly larger and include sappers that damage and break through walls to reach the colony, so a single wall ring is not a safe answer — the colony must layer walls, turrets, and armed settlers and actually win the fight. The heavier siege is real, not cosmetic: a build that plays identically to the standard start has not implemented it."
+weight = 1
+domain = "simulation"

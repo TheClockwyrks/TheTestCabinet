@@ -1,4 +1,5 @@
 slug = "spectra-fighter"
+experimental = true
 name = "Spectra Fighter"
 difficulty = "medium"
 tags = ["sprite", "ship"]

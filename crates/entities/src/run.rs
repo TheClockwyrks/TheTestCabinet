@@ -4,7 +4,9 @@
 
 use sea_orm::entity::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+// `Eq` is intentionally omitted: `run_time_seconds`/`cost_comparable` are `f64`,
+// which is `PartialEq` but not `Eq`.
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "run")]
 pub struct Model {
     /// The run id (`RunRecord.id`); the primary key, assigned by the caller.
@@ -23,7 +25,34 @@ pub struct Model {
     pub harness_slug: String,
     pub harness_version: Option<String>,
     pub model_id: String,
+    /// The run's test type, lifted from `record.subject.test_type` as its
+    /// kebab-case wire token (`end-to-end`, `asset-generation`, …). Lets the
+    /// console listing filter/sort by category without parsing the record blob.
+    /// Carries a `""` default for rows written before this column existed; the
+    /// startup backfill fills them in.
+    pub test_type: String,
     pub run_state: String,
+    /// The run's end-to-end wall-clock time in seconds, lifted from
+    /// `record.metrics.run_time_seconds` so the console can sort by run time.
+    pub run_time_seconds: f64,
+    /// The run's total token count across every class, lifted from
+    /// `record.metrics.tokens` (the same sum the UI's `totalTokens` shows). An
+    /// unreported class folds into the class it is accounted under; a run with no
+    /// tokens recorded stores `0`.
+    pub total_tokens: i64,
+    /// The run's comparable cost (USD) from `record.metrics.cost.comparable`, or
+    /// `NULL` when the cost is unknown (its per-token prices could not be
+    /// resolved). Distinct from a genuine `0.0` (a free run).
+    #[sea_orm(nullable)]
+    pub cost_comparable: Option<f64>,
+    /// The run's aggregate rating — the worst rating any reviewer gave any domain
+    /// — as its lowercase wire token (`flawless`/`great`/`scuffed`/`broken`), or
+    /// `NULL` when the run carries no reviews yet. Maintained on review-add.
+    #[sea_orm(nullable)]
+    pub rating: Option<String>,
+    /// How many reviews the run carries. Maintained alongside `rating` on
+    /// review-add; `0` for a pushed-but-unreviewed run.
+    pub review_count: i64,
     /// Whether the produced build loaded (lifted from the validation summary).
     pub loaded: bool,
     /// Whether the run has been published. A pushed run starts unpublished

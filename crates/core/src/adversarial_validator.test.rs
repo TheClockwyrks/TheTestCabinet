@@ -34,6 +34,7 @@ fn base_variant() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     }
 }
 
@@ -71,6 +72,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
+        experimental: false,
         name: "Foray".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),

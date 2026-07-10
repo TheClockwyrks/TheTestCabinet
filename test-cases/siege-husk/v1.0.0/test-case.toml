@@ -1,4 +1,5 @@
 slug = "siege-husk"
+experimental = true
 name = "Siege Husk"
 difficulty = "medium"
 tags = ["skinned", "character"]

@@ -102,6 +102,11 @@
           "const": "music",
           "description": "A short piece of music authored with the `music` sequencer binary. Declares an\n`[audio]` table (naming its `instrument_bank`). Judged on the emitted\n`clip.wav` (and portable `clip.mid`).",
           "type": "string"
+        },
+        {
+          "const": "blender-character",
+          "description": "A rigged, animated **skinned character** authored by driving **headless Blender**\nthrough its Python API — the first Blender-based asset kind. The model writes a\n`build.py` (a `bpy` script) that builds the character mesh, an armature, skin\nweights, and one Action per required animation, then runs the `tcab-blend` runner\nto export a single **`character.glb`** (a standard skinned + animated glTF 2.0)\nplus a `model.png` preview. Unlike the CSG skinned kinds (`mc-skinned` …), there\nis **no operation log**: `build.py` is the recorded authoring trace, re-run for\nprovenance. Declares a `[voxel]` table (reused as the character's bounding box)\nand a `[model]` table (the required animations); judged on the emitted glTF, never\nan op-log replay.",
+          "type": "string"
         }
       ]
     },
@@ -334,6 +339,19 @@
       "required": ["actions"],
       "type": "object"
     },
+    "PackageOut": {
+      "description": "A runtime package a case ships into its runs, exposed for the console's Inputs\ntab: its npm name and the UI-only description of what it provides (never seeded\ninto a run).",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "description"],
+      "type": "object"
+    },
     "ParticleSpec": {
       "description": "The resolved `[particle]` of a particle asset-generation case: the field the\neffect plays in and its playback timing. [`Self::depth`] is `Some` for\n`particle-3d` (a volume) and `None` for `particle-2d` (a planar field).",
       "properties": {
@@ -469,10 +487,29 @@
       "required": ["id", "title", "text", "weight"],
       "type": "object"
     },
+    "SpecKind": {
+      "description": "What role a seeded spec file plays, so a reader can tell an instruction the\nmodel reads from an executable starter it edits and runs.\n\nThis is a **presentation** distinction only — every kind is seeded identically\n(copied to its `dest`) and the harness treats them the same. It exists so the\nInputs surfaces can tag a starter script (for example the Blender case's\n`build.py`, whose `dest` deliberately coincides with `[output].actions`)\ndistinctly from a prose spec.",
+      "oneOf": [
+        {
+          "const": "spec",
+          "description": "A specification the model reads — prose (a brief) or any other guidance.\nThe default when a `[[spec]]` entry declares no `kind`.",
+          "type": "string"
+        },
+        {
+          "const": "script",
+          "description": "An executable starter file the model edits in place and runs, seeded as the\ncase's own trace (for example a `bpy` `build.py`). Surfaced as \"Script\".",
+          "type": "string"
+        }
+      ]
+    },
     "SpecOut": {
       "properties": {
         "dest": {
           "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/SpecKind",
+          "description": "The seeded file's role (`spec`/`script`), so the console's Inputs tab can\ntag it. Presentation only."
         },
         "source": {
           "type": "string"
@@ -481,7 +518,7 @@
           "type": "boolean"
         }
       },
-      "required": ["source", "dest", "template"],
+      "required": ["source", "dest", "template", "kind"],
       "type": "object"
     },
     "StoredContract": {
@@ -917,6 +954,13 @@
         }
       ]
     },
+    "packages": {
+      "description": "The Test Cabinet runtime packages this case ships into every run, each with\na UI-only description. Shown on the console's Inputs tab; empty for a case\nthat declares none.",
+      "items": {
+        "$ref": "#/$defs/PackageOut"
+      },
+      "type": "array"
+    },
     "particle": {
       "anyOf": [
         {
@@ -1043,6 +1087,7 @@
     "assetKind",
     "promptTemplate",
     "commonSpecs",
+    "packages",
     "workspace",
     "assets",
     "variants",
