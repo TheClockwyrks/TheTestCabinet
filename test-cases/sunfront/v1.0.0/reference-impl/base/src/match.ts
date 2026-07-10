@@ -7,11 +7,13 @@
  * a `VoxelRig` singleton for each base, Reliquary, build structure, and Aegis. The
  * renderer reads only this handoff; it never touches simulation state.
  *
- * Phase 4 has no player building UI (phase 6) and no AI opponent (phase 5) yet, so the
- * driver SEEDS both sides with a mirrored spawner loadout and fires an opening wave, so
- * units actually spawn, march, fight, and die on screen and the front line drifts. That
- * seed is TEMPORARY: phase 5 gives the enemy a real economy/AI and phase 6 gives the
- * player the build palette; both replace `seedDemoArmies` with live control of `World`.
+ * The **enemy side is driven by the reactive {@link EnemyAI}** (specs/flow.md): it runs
+ * the same economy on its own hidden grid with no cheating. The **player** side is still
+ * a TEMPORARY scripted loadout (phase 6 replaces it with the build palette) so there is a
+ * live player army to see through the fog and for the AI to react to. Fog of war
+ * (specs/playfield.md) is applied here on the render handoff: enemy units, base, and
+ * Reliquary are drawn ONLY while inside the player's current vision, and the ground fog
+ * overlay is refreshed each frame from the player's vision discs.
  */
 
 import type { LoadedAssets, RenderEntity, UnitType } from "./types";
@@ -24,29 +26,40 @@ import {
 } from "./constants";
 import { facingYaw, advanceDir } from "./mathutil";
 import { gridCellCenter } from "./render/terrain";
+import { EnemyAI } from "./ai";
+import { collectVision, pointVisible, type VisionSource } from "./vision";
 
 /** How long a destroyed entity flashes; mirrors the sim's cull window. */
 const DEATH_FLASH_MS = 450;
 
-/** A TEMPORARY mirrored loadout so both sides field an army in phase 4. */
-const DEMO_LOADOUT: readonly UnitType[] = [
+/** A TEMPORARY scripted player loadout so the human corner fields an army (phase 6 UI). */
+const PLAYER_DEMO_LOADOUT: readonly UnitType[] = [
   "scarab", "trooper", "sentinel", "bulwark", "lancer", "flakhound", "sunhawk", "bombard",
 ];
 
 export class Match {
   readonly world: World = new SimWorld();
+  /** The reactive enemy opponent — runs the enemy economy on its own hidden grid. */
+  private readonly ai = new EnemyAI(this.world, "enemy");
 
   private readonly typeById = new Map<number, UnitType>();
   private readonly aegisActors = new Map<number, SingletonActor>();
   private readonly structureActors = new Map<number, SingletonActor>();
-  private readonly fixedActors: SingletonActor[] = [];
+  /** The four fixed singletons, kept individually so enemy ones can be fog-gated. */
+  private playerBaseActor!: SingletonActor;
+  private enemyBaseActor!: SingletonActor;
+  private playerReliquaryActor!: SingletonActor;
+  private enemyReliquaryActor!: SingletonActor;
+
+  /** The player's current vision discs, recomputed each frame (fog of war). */
+  private playerVision: VisionSource[] = [];
 
   constructor(
     private readonly render: RenderWorld,
     private readonly assets: LoadedAssets,
   ) {
     this.placeFixed();
-    this.seedDemoArmies();
+    this.seedScriptedPlayer();
   }
 
   /** Bases and Reliquaries — pre-placed, permanent singletons (specs/playfield.md). */
@@ -55,50 +68,54 @@ export class Match {
     const reliquary = this.assets.structures.get("reliquary")!;
     const yawP = facingYaw(advanceDir("player"));
     const yawE = facingYaw(advanceDir("enemy"));
-    this.fixedActors.push(
-      new SingletonActor(this.render.scene, base, "player", this.render.registry)
-        .place(PLAYER_BASE.x, PLAYER_BASE.z, yawP).setRole("idle"),
-      new SingletonActor(this.render.scene, base, "enemy", this.render.registry)
-        .place(ENEMY_BASE.x, ENEMY_BASE.z, yawE).setRole("idle"),
-      new SingletonActor(this.render.scene, reliquary, "neutral", this.render.registry)
-        .place(PLAYER_RELIQUARY.x, PLAYER_RELIQUARY.z, yawP).setRole("idle"),
-      new SingletonActor(this.render.scene, reliquary, "neutral", this.render.registry)
-        .place(ENEMY_RELIQUARY.x, ENEMY_RELIQUARY.z, yawE).setRole("idle"),
-    );
+    this.playerBaseActor = new SingletonActor(this.render.scene, base, "player", this.render.registry)
+      .place(PLAYER_BASE.x, PLAYER_BASE.z, yawP).setRole("idle");
+    this.enemyBaseActor = new SingletonActor(this.render.scene, base, "enemy", this.render.registry)
+      .place(ENEMY_BASE.x, ENEMY_BASE.z, yawE).setRole("idle");
+    this.playerReliquaryActor = new SingletonActor(this.render.scene, reliquary, "neutral", this.render.registry)
+      .place(PLAYER_RELIQUARY.x, PLAYER_RELIQUARY.z, yawP).setRole("idle");
+    this.enemyReliquaryActor = new SingletonActor(this.render.scene, reliquary, "neutral", this.render.registry)
+      .place(ENEMY_RELIQUARY.x, ENEMY_RELIQUARY.z, yawE).setRole("idle");
   }
 
-  /** TEMPORARY: give both sides a mirrored spawner set and fire an opening wave. */
-  private seedDemoArmies(): void {
+  /**
+   * TEMPORARY: give only the PLAYER a scripted spawner set (phase 6 replaces this with
+   * the build palette). The enemy starts empty at {@link START_SOL} — the {@link EnemyAI}
+   * builds its economy live — so this is a real AI-vs-scripted match, not a mirror.
+   */
+  private seedScriptedPlayer(): void {
     const w = this.world;
-    // Top up so the seed can place regardless of the 200-sol opening (phase-4 only).
-    w.sol.player = 1e6;
-    w.sol.enemy = 1e6;
-    for (const team of ["player", "enemy"] as const) {
-      DEMO_LOADOUT.forEach((type, i) => w.place(team, type, i, 0));
-      w.place(team, "solar-extractor", 0, 1);
-    }
-    w.sol.player = START_SOL;
-    w.sol.enemy = START_SOL;
-    // Stamp an opening wave so the field is populated immediately, and quicken the
-    // demo cadence a little so the fight is visible without a 20-second wait.
+    const restore = w.sol.player;
+    w.sol.player = 1e6; // top up so the scripted loadout places; the live balance is reset below
+    PLAYER_DEMO_LOADOUT.forEach((type, i) => w.place("player", type, i, 0));
+    w.place("player", "solar-extractor", 0, 1);
+    w.sol.player = restore; // back to the real 200-sol opening; enemy was never touched
+    // Fire an opening wave so the field populates and shorten the first countdown a little.
     w.fireWave();
     w.waveTimer = 12;
   }
 
-  /** Step the sim and push this frame's render state to the world. */
+  /** Step the AI + sim and push this frame's fog-gated render state to the world. */
   update(dtSeconds: number): void {
+    this.ai.step(dtSeconds);
     this.world.step(dtSeconds);
+    this.playerVision = collectVision(this.world, "player");
+    this.render.updateFog(this.playerVision);
     this.syncUnits();
     this.syncStructures();
     this.syncAegis(dtSeconds);
-    for (const a of this.fixedActors) a.update(dtSeconds);
+    this.syncFixed(dtSeconds);
   }
 
-  /** Build the instanced-unit render list from the live roster. */
+  /**
+   * Build the instanced-unit render list from the live roster, applying fog: player
+   * units always draw; enemy units draw only while inside the player's current vision.
+   */
   private syncUnits(): void {
     this.typeById.clear();
     const entities: RenderEntity[] = [];
     for (const u of this.world.units) {
+      if (u.team === "enemy" && !pointVisible(this.playerVision, u.x, u.z)) continue;
       this.typeById.set(u.id, u.type);
       entities.push({
         id: u.id,
@@ -116,10 +133,14 @@ export class Match {
     this.render.syncUnits(entities, (e) => this.typeById.get(e.id)!);
   }
 
-  /** Create/place/remove a singleton per build-grid structure (spawner/extractor). */
+  /**
+   * Create/place/remove a singleton per PLAYER build-grid structure. The enemy's
+   * structures sit in its fogged staging yard and are never drawn (specs/playfield.md).
+   */
   private syncStructures(): void {
     const live = new Set<number>();
     for (const s of this.world.structures) {
+      if (s.team !== "player") continue;
       live.add(s.id);
       let actor = this.structureActors.get(s.id);
       if (!actor) {
@@ -159,6 +180,8 @@ export class Match {
       actor.setRole(a.firing ? "attack" : "move");
       actor.poseCaller(aegisCaller(a));
       actor.update(dt);
+      // Fog: a player Aegis is always shown; an enemy Aegis only while in vision.
+      actor.rig.root.visible = a.team === "player" || pointVisible(this.playerVision, a.x, a.z);
     }
     for (const [id, actor] of this.aegisActors) {
       if (!live.has(id)) {
@@ -166,6 +189,21 @@ export class Match {
         this.aegisActors.delete(id);
       }
     }
+  }
+
+  /**
+   * Animate the fixed singletons and fog-gate the enemy ones: the player's base and
+   * Reliquary always draw; the enemy's base and Reliquary draw only while a player disc
+   * currently sees them (never as stale ghosts), and a razed Reliquary is hidden.
+   */
+  private syncFixed(dt: number): void {
+    for (const a of [this.playerBaseActor, this.enemyBaseActor, this.playerReliquaryActor, this.enemyReliquaryActor]) {
+      a.update(dt);
+    }
+    this.enemyBaseActor.rig.root.visible = pointVisible(this.playerVision, ENEMY_BASE.x, ENEMY_BASE.z);
+    const enemyRel = this.world.reliquaries.enemy;
+    this.enemyReliquaryActor.rig.root.visible =
+      !enemyRel.dead && enemyRel.hp > 0 && pointVisible(this.playerVision, ENEMY_RELIQUARY.x, ENEMY_RELIQUARY.z);
   }
 }
 

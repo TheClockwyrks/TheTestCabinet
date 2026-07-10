@@ -16,10 +16,12 @@
 import * as THREE from "three";
 import { PALETTE, ASPECT_RATIO, MONO_FONT_STACK } from "../constants";
 import type { LoadedAssets, RenderEntity, UnitType } from "../types";
+import type { VisionSource } from "../vision";
 import { MaterialRegistry, createUnitMaterial } from "./materials";
 import { CommandCamera, PAN_SPEED } from "./camera";
 import { buildTerrain } from "./terrain";
 import { InstancedUnitRenderer } from "./instanced";
+import { FogOverlay } from "./fog";
 
 const EDGE_SCROLL_PX = 24;
 
@@ -28,6 +30,7 @@ export class World {
   readonly registry = new MaterialRegistry();
   readonly camera = new CommandCamera();
   readonly units: InstancedUnitRenderer;
+  readonly fog: FogOverlay;
 
   private readonly renderer: THREE.WebGLRenderer;
   private readonly unitTypes: ReadonlySet<string>;
@@ -56,6 +59,9 @@ export class World {
 
     this.units = new InstancedUnitRenderer(this.scene, assets.units, createUnitMaterial(this.registry));
 
+    // Fog of war (specs/playfield.md): a ground overlay driven by the player's vision.
+    this.fog = new FogOverlay(this.scene);
+
     this.fpsEl = this.createFpsOverlay(container);
 
     this.fit();
@@ -78,6 +84,11 @@ export class World {
       const t = typeOf(e);
       return this.unitTypes.has(t) ? t : null;
     });
+  }
+
+  /** Update the fog overlay from the player's vision discs for this frame. */
+  updateFog(sources: readonly VisionSource[]): void {
+    this.fog.update(sources);
   }
 
   /** Advance input-driven panning and render one frame. Call every rAF with real dt. */

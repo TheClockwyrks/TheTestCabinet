@@ -22,6 +22,9 @@ import {
   MIDLINE_SUM,
 } from "../src/constants";
 import { facingYaw, advanceDir } from "../src/mathutil";
+import { EnemyAI } from "../src/ai";
+import { collectVision, pointVisible } from "../src/vision";
+import { PLAYER_BASE, ENEMY_RELIQUARY } from "../src/constants";
 
 // --- Tiny assertion harness -------------------------------------------------
 
@@ -222,6 +225,92 @@ section("razing a base ends the match with the right winner", () => {
   run(w, 20);
   check(w.result === "player", `enemy base razed -> player victory (result=${w.result})`);
   check(w.bases.enemy.hp <= 0, "enemy base is at 0 HP");
+});
+
+// --- 8. Fog of war: enemy entities are hidden outside player vision ----------
+
+section("fog hides an enemy unit outside vision, and reveals it when a unit approaches", () => {
+  const w = new World();
+  // An enemy Scarab deep in the enemy backfield, far from the player's base vision.
+  const foe = w.spawnUnit("enemy", "scarab", 1, { x: 800, z: 800 }, yawFor("enemy"));
+
+  let vis = collectVision(w, "player");
+  check(!pointVisible(vis, foe.x, foe.z), "enemy unit far from any player disc is under fog (hidden)");
+  // The player's own base still reveals its corner (radius 180 around (130,130)).
+  check(pointVisible(vis, PLAYER_BASE.x + 20, PLAYER_BASE.z + 20), "the player's base reveals its own corner");
+  // The far enemy corner (the fogged staging yard) is never in the player's opening vision.
+  check(!pointVisible(vis, 1160, 1160), "the enemy staging-yard corner is under fog");
+
+  // Bring a player Scarab within its 140 vision of the enemy unit — it is revealed.
+  const scout = w.spawnUnit("player", "scarab", 1, { x: foe.x - 100, z: foe.z }, yawFor("player"));
+  check(!scout.dead, "scout spawned");
+  vis = collectVision(w, "player");
+  check(pointVisible(vis, foe.x, foe.z), "the enemy unit inside a player unit's 140 vision is revealed");
+});
+
+// --- 9. The AI runs a legal economy and finishes a match (specs/flow.md) -----
+
+section("the AI spends only earned sol, builds an economy, and defeats an idle player", () => {
+  const w = new World();
+  const ai = new EnemyAI(w, "enemy");
+  const dt = 1 / 60;
+  const maxSteps = Math.round(600 / dt); // cap the headless match at 600 sim-seconds
+
+  let minEnemySol = Infinity;
+  let maxEnemyStructures = 0;
+  let steps = 0;
+  // The player is fully idle (no spawners); only the AI acts.
+  while (w.result === null && steps < maxSteps) {
+    ai.step(dt);
+    w.step(dt);
+    minEnemySol = Math.min(minEnemySol, w.sol.enemy);
+    const enemyStructures = w.structures.filter((s) => s.team === "enemy").length;
+    maxEnemyStructures = Math.max(maxEnemyStructures, enemyStructures);
+    steps++;
+  }
+
+  check(minEnemySol >= -1e-6, `AI never overspent (min enemy sol ${minEnemySol.toFixed(2)} ≥ 0)`);
+  check(maxEnemyStructures > 0, `AI built structures on its own grid (peak ${maxEnemyStructures})`);
+  check(w.result === "enemy", `the idle player is eventually defeated (result=${w.result})`);
+  // The idle player never built anything, so its balance is exactly opening sol + passive income.
+  check(w.sol.player >= START_SOL, "the idle player only accrued passive income (never spent)");
+});
+
+// --- 10. The AI adapts its composition to what it sees (specs/flow.md) -------
+
+section("the AI answers visible air with Flak and visible heavies with Piercing", () => {
+  const dt = 1 / 60;
+
+  // Air: keep a few player Sunhawks in the enemy's backfield vision; the AI builds Flak.
+  const wAir = new World();
+  const aiAir = new EnemyAI(wAir, "enemy");
+  let builtFlak = false;
+  for (let i = 0; i < Math.round(45 / dt) && !builtFlak; i++) {
+    const hawks = wAir.units.filter((u) => u.team === "player" && u.type === "sunhawk" && !u.dead);
+    if (hawks.length < 3) {
+      wAir.spawnUnit("player", "sunhawk", 1, { x: ENEMY_RELIQUARY.x + 10, z: ENEMY_RELIQUARY.z + 10 }, yawFor("player"));
+    }
+    aiAir.step(dt);
+    wAir.step(dt);
+    builtFlak = wAir.structures.some((s) => s.team === "enemy" && s.kind === "flakhound");
+    check(wAir.sol.enemy >= -1e-6, "AI never overspent while adapting to air");
+  }
+  check(builtFlak, "AI built a Flakhound in response to seen Air units");
+
+  // Heavies: keep player Bulwarks in the enemy's vision; the AI builds a Lancer.
+  const wHvy = new World();
+  const aiHvy = new EnemyAI(wHvy, "enemy");
+  let builtLancer = false;
+  for (let i = 0; i < Math.round(45 / dt) && !builtLancer; i++) {
+    const heavies = wHvy.units.filter((u) => u.team === "player" && u.type === "bulwark" && !u.dead);
+    if (heavies.length < 3) {
+      wHvy.spawnUnit("player", "bulwark", 1, { x: ENEMY_RELIQUARY.x + 10, z: ENEMY_RELIQUARY.z + 10 }, yawFor("player"));
+    }
+    aiHvy.step(dt);
+    wHvy.step(dt);
+    builtLancer = wHvy.structures.some((s) => s.team === "enemy" && s.kind === "lancer");
+  }
+  check(builtLancer, "AI built a Lancer in response to seen Heavy units");
 });
 
 // --- Report -----------------------------------------------------------------
