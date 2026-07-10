@@ -1,0 +1,520 @@
+{
+  "parts": [
+    {
+      "name": "torso",
+      "pivot": [
+        25,
+        47,
+        25
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "torso",
+      "pivot": [
+        25,
+        73,
+        28
+      ]
+    },
+    {
+      "name": "left_thigh",
+      "parent": "torso",
+      "pivot": [
+        16,
+        47,
+        25
+      ]
+    },
+    {
+      "name": "left_shin",
+      "parent": "left_thigh",
+      "pivot": [
+        16,
+        29,
+        25
+      ]
+    },
+    {
+      "name": "left_foot",
+      "parent": "left_shin",
+      "pivot": [
+        16,
+        8,
+        25
+      ]
+    },
+    {
+      "name": "right_thigh",
+      "parent": "torso",
+      "pivot": [
+        33,
+        47,
+        25
+      ]
+    },
+    {
+      "name": "right_shin",
+      "parent": "right_thigh",
+      "pivot": [
+        33,
+        29,
+        25
+      ]
+    },
+    {
+      "name": "right_foot",
+      "parent": "right_shin",
+      "pivot": [
+        33,
+        8,
+        25
+      ]
+    },
+    {
+      "name": "cannon",
+      "parent": "torso",
+      "pivot": [
+        37,
+        63,
+        22
+      ]
+    },
+    {
+      "name": "barrel",
+      "parent": "cannon",
+      "pivot": [
+        38,
+        62,
+        44
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "knee_left",
+      "part": "left_shin",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        16,
+        29,
+        25
+      ],
+      "min": 0.0,
+      "max": 1.2,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "knee_right",
+      "part": "right_shin",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        33,
+        29,
+        25
+      ],
+      "min": 0.0,
+      "max": 1.2,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "hip_left",
+      "part": "left_thigh",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        16,
+        47,
+        25
+      ],
+      "min": -0.6,
+      "max": 0.6,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "ankle_left",
+      "part": "left_foot",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        16,
+        8,
+        25
+      ],
+      "min": -0.5,
+      "max": 0.5,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "hip_right",
+      "part": "right_thigh",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        33,
+        47,
+        25
+      ],
+      "min": -0.6,
+      "max": 0.6,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "ankle_right",
+      "part": "right_foot",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        33,
+        8,
+        25
+      ],
+      "min": -0.5,
+      "max": 0.5,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "body_roll",
+      "part": "torso",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        25,
+        47,
+        25
+      ],
+      "min": -0.2,
+      "max": 0.2,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cannon_pitch",
+      "part": "cannon",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        37,
+        63,
+        22
+      ],
+      "min": -0.5,
+      "max": 0.6,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "barrel_recoil",
+      "part": "barrel",
+      "kind": "translation",
+      "axis": "z",
+      "pivot": [
+        38,
+        62,
+        44
+      ],
+      "min": -8.0,
+      "max": 0.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "head_yaw",
+      "part": "head",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        25,
+        73,
+        28
+      ],
+      "min": -0.6,
+      "max": 0.6,
+      "rest": 0.0,
+      "drive": "caller"
+    }
+  ],
+  "animations": [
+    {
+      "name": "walk",
+      "periodMs": 2000,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "hip_left",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.18,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1000,
+              "value": -0.16,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2000,
+              "value": 0.18,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "hip_right",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.16,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.18,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2000,
+              "value": -0.16,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "knee_left",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.12,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 950,
+              "value": 0.15,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": 0.78,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1750,
+              "value": 0.3,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 2000,
+              "value": 0.12,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "knee_right",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.22,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 400,
+              "value": 0.78,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 750,
+              "value": 0.3,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.12,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1450,
+              "value": 0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2000,
+              "value": 0.22,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "ankle_left",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.03,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 950,
+              "value": -0.15,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1400,
+              "value": 0.2,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1750,
+              "value": 0.06,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 2000,
+              "value": 0.03,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "ankle_right",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.11,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 400,
+              "value": 0.2,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 750,
+              "value": 0.06,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.03,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1450,
+              "value": -0.05,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 2000,
+              "value": -0.11,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "body_roll",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.05,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1000,
+              "value": -0.05,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2000,
+              "value": 0.05,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fire",
+      "periodMs": 800,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "cannon_pitch",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 90,
+              "value": 0.32,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 260,
+              "value": -0.1,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 460,
+              "value": 0.05,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 660,
+              "value": -0.02,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "barrel_recoil",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 90,
+              "value": -7.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 380,
+              "value": -1.5,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 620,
+              "value": -0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

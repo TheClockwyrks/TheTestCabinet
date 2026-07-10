@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "_note": "Provided-model manifest for the Sunfront build (specs/assets.md). 'dimensions' are the model extents [width, height, depth] and are the on-field relative-scale contract. 'kind' is 'rigid' (parts on named joints) or 'skinned' (linear-blend skinning). 'clips' maps a game role to the animation clip name to play. A destroyed unit is not animated — it flashes white a few times and is removed (specs/units.md), so there is no death clip. A unit's 'muzzle' names which provided muzzle-flash effect (see 'effects') the build plays once per shot while it fires, or null for melee and support units that fire no weapon. Per-model 'parts'/'joints' lists (including each firing unit's muzzle joint) are added with each model.",
+  "effects": {
+    "_note": "Provided muzzle-flash particle systems, authored by the sunfront-muzzle-* particle cases and played via @test-cabinet/particle-runtime (its 'three' binding) once per shot, in sync with the unit's firing cadence (specs/assets.md). Each is a one-shot system.json the build simulates live per shot, anchored to the firing unit's muzzle joint and oriented along the barrel. A unit's 'muzzle' key selects one of these; melee and support units have muzzle: null.",
+    "small-arms": "effects/muzzle-small-arms.json",
+    "cannon": "effects/muzzle-cannon.json",
+    "lance": "effects/muzzle-lance.json"
+  },
+  "units": {
+    "scarab":    { "model": "scarab/rig.json",    "kind": "rigid",   "dimensions": [26, 12, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": null },
+    "sentinel":  { "model": "sentinel/rig.json",  "kind": "rigid",   "dimensions": [20, 40, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "small-arms" },
+    "trooper":   { "model": "trooper/mesh.glb",   "kind": "skinned", "dimensions": [24, 48, 20], "clips": { "idle": "idle", "move": "march", "attack": "fire", "brace": "brace" }, "muzzle": "small-arms" },
+    "bulwark":   { "model": "bulwark/rig.json",   "kind": "rigid",   "dimensions": [40, 60, 30], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": null },
+    "lancer":    { "model": "lancer/rig.json",    "kind": "rigid",   "dimensions": [32, 50, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "lance" },
+    "bombard":   { "model": "bombard/rig.json",   "kind": "rigid",   "dimensions": [40, 40, 60], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "cannon" },
+    "flakhound": { "model": "flakhound/rig.json", "kind": "rigid",   "dimensions": [36, 32, 46], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "small-arms" },
+    "sunhawk":   { "model": "sunhawk/rig.json",   "kind": "rigid",   "dimensions": [74, 28, 76], "clips": { "idle": "idle", "move": "fly", "attack": "fire" }, "muzzle": "small-arms" },
+    "lumen":     { "model": "lumen/rig.json",     "kind": "rigid",   "dimensions": [20, 26, 20], "clips": { "idle": "idle", "move": "march", "attack": "heal" }, "muzzle": null },
+    "monolith":  { "model": "monolith/rig.json",  "kind": "rigid",   "dimensions": [50, 80, 50], "clips": { "idle": "idle", "move": "march", "attack": "fire" }, "muzzle": "cannon" }
+  },
+  "special": {
+    "aegis": { "model": "aegis/rig.json", "kind": "rigid", "dimensions": [120, 110, 150], "clips": { "move": "march", "attack": "bombardment", "idle_auto": "radar_spin" }, "muzzle": "cannon" }
+  },
+  "structures": {
+    "base":      { "model": "bastion/rig.json",   "kind": "rigid", "dimensions": [90, 120, 90], "clips": { "idle": "idle" } },
+    "reliquary": { "model": "reliquary/rig.json", "kind": "rigid", "dimensions": [60, 100, 60], "clips": { "idle": "idle" } },
+    "solar-extractor": { "model": "solar-extractor/rig.json", "kind": "rigid", "dimensions": [84, 72, 72], "clips": { "idle": "idle" } }
+  },
+  "spawners": {
+    "scarab":    { "model": "scarab-hatchery/rig.json",  "kind": "rigid", "dimensions": [60, 40, 60], "clips": { "idle": "idle", "emit": "emit" } },
+    "sentinel":  { "model": "sentinel-foundry/rig.json", "kind": "rigid", "dimensions": [56, 76, 56], "clips": { "idle": "idle", "emit": "emit" } },
+    "trooper":   { "model": "garrison/rig.json",         "kind": "rigid", "dimensions": [60, 64, 60], "clips": { "idle": "idle", "emit": "emit" } },
+    "bulwark":   { "model": "bulwark-foundry/rig.json",  "kind": "rigid", "dimensions": [66, 56, 66], "clips": { "idle": "idle", "emit": "emit" } },
+    "lancer":    { "model": "lancer-foundry/rig.json",   "kind": "rigid", "dimensions": [46, 86, 46], "clips": { "idle": "idle", "emit": "emit" } },
+    "bombard":   { "model": "bombard-foundry/rig.json",  "kind": "rigid", "dimensions": [60, 70, 60], "clips": { "idle": "idle", "emit": "emit" } },
+    "flakhound": { "model": "flak-foundry/rig.json",     "kind": "rigid", "dimensions": [56, 80, 56], "clips": { "idle": "idle", "emit": "emit" } },
+    "sunhawk":   { "model": "skyworks/rig.json",         "kind": "rigid", "dimensions": [70, 60, 70], "clips": { "idle": "idle", "emit": "emit" } },
+    "lumen":     { "model": "lumen-spire/rig.json",      "kind": "rigid", "dimensions": [46, 90, 46], "clips": { "idle": "idle", "emit": "emit" } },
+    "monolith":  { "model": "monolith-forge/rig.json",   "kind": "rigid", "dimensions": [90, 110, 90], "clips": { "idle": "idle", "emit": "emit" } }
+  }
+}

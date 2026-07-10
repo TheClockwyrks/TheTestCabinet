@@ -47,9 +47,10 @@ body {
 /* The fixed logical stage the mockups are authored on, and the neutral dark
  * viewport the HUD/menu chrome sits over. The mockups pin the HUD layout,
  * palette, and type at a 1280x720 viewport; the game's 3D world (the sand
- * battlefield, both bases and Reliquaries, the armies, the staging yard, and the
- * fog) is rendered by the build in WebGL/WebGPU (see ../specs/overview.md), not
- * faked here in flat CSS. */
+ * battlefield with its bases, Reliquaries, armies, and staging yards, and the fog)
+ * is rendered by the build in WebGL/WebGPU through a low oblique camera the player
+ * scrolls across the field — a portion in view at a time — not faked here in flat
+ * CSS (see ../specs/overview.md). */
 .stage {
   position: relative;
   width: 1280px;
@@ -185,7 +186,7 @@ body {
   border-radius: 3px;
 }
 
-/* selected-spawner panel */
+/* selected-structure panel */
 .inspect {
   position: absolute;
   left: 272px;

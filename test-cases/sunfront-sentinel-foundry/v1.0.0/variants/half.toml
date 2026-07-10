@@ -1,11 +1,11 @@
 # The half-size variant: the same foundry sculpted in a volume with each extent
-# ~halved (rounded) from the case's base 56x76x56. Its `[voxel]` OVERRIDES the case
+# ~halved (rounded) from the case's base 72x56x72. Its `[voxel]` OVERRIDES the case
 # volume for runs of this variant, and the brief is rendered at these dimensions.
 slug = "half"
 name = "Half Size"
 
 [voxel]
-width = 28
-height = 38
-depth = 28
+width = 36
+height = 28
+depth = 36
 background = "transparent"

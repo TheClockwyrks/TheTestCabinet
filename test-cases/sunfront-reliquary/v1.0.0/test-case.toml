@@ -125,7 +125,10 @@ revolution about the vertical axis, `core_pulse` lifts the solar core up and set
 it back in a breathing rise and fall, and `fins_spin` turns the guardian fins a full \
 revolution the opposite way, so the ring and fins visibly counter-rotate. Across each \
 cycle no voxel of the ring, core, or fins tears away from its mount or clips the \
-monument — each moves as one solid piece about a clean, sensible axis. The model had \
+monument — each moves as one solid piece about a clean, sensible axis. The orbital ring \
+in particular stays fully encased within the monument as it turns: its whole circle \
+clears the surrounding cradle and plinth walls with a gap and never passes through, \
+protrudes from, or clips any wall. The model had \
 to work out where to split the monument into a fixed body and these three independently \
 moving pieces for this to read at all."""
 weight = 3

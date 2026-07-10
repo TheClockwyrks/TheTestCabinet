@@ -48,8 +48,13 @@ The mech must read unmistakably as all of these:
 - An upright bipedal body with a head on top — the fixed core of the machine, not
   carried along by anything else.
 - Two legs that carry it and walk (see the animations).
-- A rifle carried on the right arm that projects forward and aims up and down about
-  its shoulder mount.
+- A rifle held on a distinct right arm — a clear arm appendage that reaches out from the
+  right shoulder and carries the rifle (the arm may terminate in the rifle, an arm that
+  *is* the weapon) — that projects forward and aims up and down at the shoulder joint.
+  The rifle and its arm must read as a **held, wielded weapon out on a limb**: set clearly
+  apart from the shoulder and body by a visible arm or joint, so the mech reads as holding
+  its rifle out on an arm rather than wearing a barrel bolted flush to the shoulder or
+  fused into the body.
 - A clear solar-amber visor across the head, and the palette below.
 
 Everything else is yours to invent — the exact silhouette, proportions, how the
@@ -103,7 +108,8 @@ Define your parts with `define-part`, sculpt each with `--part <name>`, set pivo
 with `set-pivot`, place joints with `define-joint`, and author the two animations'
 keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
 `scene/*.png` previews between calls to confirm the parts fit, the legs seat under
-the body and reach the ground, the rifle meets the right shoulder, and the animations
+the body and reach the ground, the arm reaches out from the right shoulder and holds the
+rifle clear of it, and the animations
 read with weight. Run `voxel-anim render` before you finish so it emits the per-part
 `.glb` geometry your result is built from — an unrendered part scores as empty
 (`voxel-anim render --component <part>` renders one part; `voxel-anim render --time

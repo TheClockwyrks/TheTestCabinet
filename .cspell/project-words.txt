@@ -152,6 +152,9 @@ Skyworks
 hatchery
 Flak
 hitscan
+autocannon
+crenellated
+mechs
 prowed
 sponsons
 

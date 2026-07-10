@@ -1,0 +1,180 @@
+{
+  "parts": [
+    {
+      "name": "keep",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "crown",
+      "parent": "keep",
+      "pivot": [
+        45,
+        72,
+        45
+      ]
+    },
+    {
+      "name": "gate",
+      "parent": "keep",
+      "pivot": [
+        45,
+        24,
+        84
+      ]
+    },
+    {
+      "name": "beacon",
+      "parent": "keep",
+      "pivot": [
+        45,
+        107,
+        45
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "gate_lift",
+      "part": "gate",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        45,
+        24,
+        84
+      ],
+      "min": 0.0,
+      "max": 34.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "crown_yaw",
+      "part": "crown",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        45,
+        72,
+        45
+      ],
+      "min": -0.2,
+      "max": 6.5,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "beacon_yaw",
+      "part": "beacon",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        45,
+        107,
+        45
+      ],
+      "min": -0.2,
+      "max": 6.5,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "crown_spin",
+      "periodMs": 12000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "crown_yaw",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 6000,
+              "value": 3.14159,
+              "interp": "linear"
+            },
+            {
+              "tMs": 12000,
+              "value": 6.28319,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "gate_raise",
+      "periodMs": 8000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "gate_lift",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2500,
+              "value": 34.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 5500,
+              "value": 34.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 8000,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "beacon_spin",
+      "periodMs": 20000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "beacon_yaw",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 10000,
+              "value": 3.14159,
+              "interp": "linear"
+            },
+            {
+              "tMs": 20000,
+              "value": 6.28319,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

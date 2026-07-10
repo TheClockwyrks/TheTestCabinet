@@ -1,13 +1,14 @@
-Sculpt and rig the **Sunfront Sentinel Foundry**, a tall assembly tower whose
-stamping press hammers down and back up while its drive gear spins — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}
-opaque-voxel model using only the `voxel-anim` tool. You build it by **painting
-discrete opaque cells** — one recorded operation at a time — and you **author its
-stamp and spin animations** as F-curves.
+Sculpt and rig the **Sunfront Sentinel Foundry**, a wide, open-fronted casting works
+whose gantry crucible tips and pours molten metal into a casting bed while great
+bellows breathe beside it — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the
+`voxel-anim` tool. You build it by **painting discrete opaque cells** — one recorded
+operation at a time — and you **author its pour and bellows animations** as F-curves. It
+melts and pours metal; it does not hammer or stamp.
 
 This test measures **creativity and craft**, not instruction-following: the brief
 tells you *what the Foundry is* and *how it must move*, but the parts you build, how
-you break the tower into moving pieces, where you place the joints, and how you shape
-every form are **entirely yours to invent**. Work out the pieces a hammering, spinning
+you break the hall into moving pieces, where you place the joints, and how you shape
+every form are **entirely yours to invent**. Work out the pieces a pouring, breathing
 foundry needs.
 
 ## How sculpting and rigging works
@@ -34,8 +35,8 @@ shared coordinates. The field starts **empty**.
 Each operation is an ordinary subcommand with flags, naming its part, for example:
 
 ```
-voxel-anim define-part --name tower
-voxel-anim fill-box --part tower --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
+voxel-anim define-part --name hall
+voxel-anim fill-box --part hall --x0 1 --y0 0 --z0 1 --x1 5 --y1 5 --z1 5 --color "#c69a4b"
 ```
 
 (The part names above are just an example — name your own parts however you like.) Run
@@ -47,9 +48,9 @@ operation's exact flags — that help text is the authoritative contract. **Run
 the assembled-scene previews under `scene/` (`scene/iso.png`, `scene/front.png`,
 `scene/side.png`, `scene/top.png`)** — the whole foundry composed from all your parts,
 drawn when you run `voxel-anim render`. The scene views are how you confirm the parts
-actually fit together: that the press rides centered in the tower's throat and the gear
-seats on its flank. Because each part is sculpted in the shared volume's coordinates,
-position each part where it belongs on the finished tower; the scene simply composes
+actually fit together: that the crucible hangs over the casting bed and the bellows
+seat on the flank. Because each part is sculpted in the shared volume's coordinates,
+position each part where it belongs on the finished hall; the scene simply composes
 them there.
 
 ## What to read first
@@ -62,26 +63,28 @@ start:
 {{/each}}
 
 `specs/brief.md` describes the volume and its coordinate system, the palette, the form
-of the tower, and — the fixed contract — the two self-playing animations you must
-author: **`piston_stamp`** (the hammering press) and **`gear_spin`** (the turning
-gear). It does **not** hand you a parts list or joint pivots; that is the point. Run
-`voxel-anim --help` for the exact operation, rig, and animation subcommands.
+of the casting hall, and — the fixed contract — the two self-playing animations you must
+author: **`crucible_pour`** (the tipping, pouring crucible) and **`bellows_breathe`**
+(the breathing bellows). It does **not** hand you a parts list or joint pivots; that is
+the point. Run `voxel-anim --help` for the exact operation, rig, and animation
+subcommands.
 
 ## What to deliver
 
 Build and rig the foundry up operation by operation until each `parts/<part>.png`
 matches the brief, the assembled `scene/` previews show the parts fitting together
-correctly, and the rig is complete: a tall masonry tower with a throat up its center,
-a stamping press riding in that throat, and a toothed drive gear on its flank. **Author
-the two required animations** as F-curves with the `voxel-anim` animation subcommands:
-`piston_stamp` (a weighty hammer that drives the press straight down to the bottom of
-its stroke and eases back up, with weight — not a weightless linear slide) and
-`gear_spin` (a steady full revolution that loops seamlessly). Both are self-playing and
-looping, so the foundry runs on its own with no caller. The animations are the fixed
-contract — produce both, by those names; the parts and joints that realize them are
-yours. Before you finish, run `voxel-anim render` so it emits the per-part `.glb`
-geometry your result is built from — an unrendered part is scored as empty
-(`voxel-anim render --component <part>` redraws one part; `voxel-anim render --time
-<ms> --animation <name>` renders the model posed at that instant of an animation to
-check the motion). When you are satisfied, stop: the recorded per-part logs and
-`rig.json` are your finished submission.
+correctly, and the rig is complete: a wide, low, open-fronted masonry casting hall, a
+gantry-slung crucible brimming with molten metal over a casting bed, and great bellows
+on the flank. **Author the two required animations** as F-curves with the `voxel-anim`
+animation subcommands: `crucible_pour` (a full crucible that tips forward on its
+trunnions, pours a stream of molten metal into the casting bed, holds, and eases back
+level — with weight, not a weightless linear slide) and `bellows_breathe` (a slow,
+weighted squeeze-shut and draw-open that loops seamlessly). Both are self-playing and
+looping, so the foundry runs on its own with no caller, and nothing hammers or stamps.
+The animations are the fixed contract — produce both, by those names; the parts and
+joints that realize them are yours. Before you finish, run `voxel-anim render` so it
+emits the per-part `.glb` geometry your result is built from — an unrendered part is
+scored as empty (`voxel-anim render --component <part>` redraws one part; `voxel-anim
+render --time <ms> --animation <name>` renders the model posed at that instant of an
+animation to check the motion). When you are satisfied, stop: the recorded per-part logs
+and `rig.json` are your finished submission.

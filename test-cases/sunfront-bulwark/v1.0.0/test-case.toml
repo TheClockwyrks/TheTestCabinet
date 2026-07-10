@@ -145,7 +145,11 @@ text = """
 Playing `smash` winds the heavy siege maul up over the head and slams the whole right \
 arm-and-maul down and forward in a smash about its shoulder mount, then recovers to a \
 ready pose — with no voxel of the arm or maul tearing away from its mount or clipping \
-into the body across the full swing. The arm swings as one solid piece."""
+into the body across the full swing. The arm swings as one solid piece. The maul reads \
+as a weapon HELD OUT in the fist, not an apparatus on the body: the arm, haft, and maul \
+head stand clear of the torso with a plain gap of air between them at the ready pose, \
+and the arm carries the maul out away from the body through the wind-up and recovery \
+rather than sweeping it tucked against or sunk into the torso."""
 weight = 3
 domain = "fidelity"
 

@@ -3,10 +3,12 @@
   Sunfront — in-match HUD (common across variants).
   Rendered by the harness at 1280x720 as the `gameplay` view target. This mockup is
   HUD-ONLY: it pins the HUD overlay's layout, palette, and type over a neutral dark
-  viewport. The real build renders the WebGL/WebGPU 3D battlefield (the sand lane,
-  both bases and Reliquaries, the two armies, the staging yard with placed spawners,
-  air units above the line, and the fog blacking out the enemy yard and far lane)
-  behind this HUD itself — flat CSS cannot depict that usefully, so it is
+  viewport. The real build renders the WebGL/WebGPU 3D battlefield behind this HUD
+  through a low oblique command camera that shows only a SCROLLED PORTION of the arena
+  — the full width of the sand lane but just the stretch the player has panned to (the
+  armies at the front, air units above the line, the staging yard with placed spawners
+  when scrolled to the player's corner), with the fog hiding the far lane and the enemy
+  yard where the player has no presence. Flat CSS cannot depict that usefully, so it is
   deliberately not faked here. One example moment mid-match. Values are illustrative.
 -->
 <html lang="en">
@@ -55,9 +57,10 @@
         <div class="item"><span>7 Bombard</span><span class="cost">280</span></div>
         <div class="item dim"><span>8 Lumen</span><span class="cost">160</span></div>
         <div class="item dim"><span>9 Monolith</span><span class="cost">900</span></div>
+        <div class="item"><span>E Solar Extractor</span><span class="cost">180</span></div>
       </div>
 
-      <!-- selected-spawner panel -->
+      <!-- selected-structure panel -->
       <div class="inspect">
         <div class="name">SENTINEL FOUNDRY</div>
         <div class="row">Level 2 &middot; +30%</div>

@@ -10,7 +10,7 @@ so holding the floor is about pacing heat as much as shaping the maze.
 tower-defense cases, and the game's in-fiction title. The case is
 inspired by classic open-field tower-defense games but is not a clone of any of
 them — the name, look, the heat-as-power emitters and redline trip, the
-Forge/Vent thermal coupling, the heat-averse cryo Rime, and the surge are
+Forge/Sink thermal coupling, the heat-averse cryo Rime, and the surge are
 original to The Test Cabinet. It keeps the genre's defining hook — **towers are
 walls and you build the maze the creeps must walk** — and layers its own
 signature, heat-as-power, on top of it.
@@ -21,7 +21,7 @@ Meltdown raises the bar above the catalog's arcade cases with a different shape
 of problem: a slower, building game rather than a twitch one. It asks for
 grid-based tower placement with **live maze re-pathing**, eight tower types each
 with a distinct **thermal personality**, a **heat-to-damage** model whose only
-failure is the **redline trip**, Forge/Vent heat coupling between neighbors, a
+failure is the **redline trip**, Forge/Sink heat coupling between neighbors, a
 heat-averse cryo tower, several surge types including **flyers that ignore the
 maze**, an economy with upgrades and interest, a **20-wave** progression with
 Core bosses and a win and a loss, and multiple states and a HUD — a genuinely

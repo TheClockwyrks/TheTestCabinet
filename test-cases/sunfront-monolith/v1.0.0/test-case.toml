@@ -137,11 +137,15 @@ domain = "fidelity"
 id = "cannon-aims-and-fires"
 title = "Cannon aims cleanly and recoils under fire"
 text = """
-The giant cannon carried on the mech's right arm reads as an aimable weapon: it \
-tilts up and down as one solid piece about its shoulder mount. Playing `fire` works \
-it convincingly — the cannon snaps into a recoil nod through that hinge, overshoots \
-back, and settles — with no geometry tearing away from the arm or clipping into the \
-torso as it moves, while the legs hold still."""
+The giant cannon is borne on a distinct right arm and reads as a held, wielded weapon \
+out on a limb — the arm reaches from the shoulder and carries the cannon, set clearly \
+apart from the shoulder and torso by a visible arm or joint rather than bolted flush to \
+the shoulder or fused into the torso (an arm that terminates in the cannon is fine, as \
+long as it still reads as a held weapon on an appendage). It tilts up and down as one \
+solid piece at the shoulder joint. Playing `fire` works it convincingly — the cannon \
+snaps into a recoil nod through that hinge, overshoots back, and settles — with no \
+geometry tearing away from the arm or clipping into the torso as it moves, while the \
+legs hold still."""
 weight = 3
 domain = "fidelity"
 

@@ -113,9 +113,10 @@ id = "reads-as-gunship"
 title = "Reads as a wide, flat gunship aircraft"
 text = """
 From more than one angle the model reads unmistakably as a low, wide gunship: a flat \
-armored fuselage, a rotor out on each side, and an underslung cannon projecting \
-forward beneath the nose. It is a purpose-built war machine with real character, not \
-an abstract stack of boxes."""
+armored fuselage, a large, prominent rotor out on each side, and an underslung cannon \
+projecting forward beneath the nose. The rotors read at a glance as a major feature of \
+the aircraft — a broad spread of blades, not a small disc or gear on the hull. It is a \
+purpose-built war machine with real character, not an abstract stack of boxes."""
 weight = 3
 domain = "fidelity"
 

@@ -1,0 +1,502 @@
+{
+  "parts": [
+    {
+      "name": "pelvis",
+      "pivot": [
+        10,
+        24,
+        10
+      ]
+    },
+    {
+      "name": "torso",
+      "parent": "pelvis",
+      "pivot": [
+        10,
+        28,
+        10
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "torso",
+      "pivot": [
+        10,
+        34,
+        10
+      ]
+    },
+    {
+      "name": "left_pauldron",
+      "parent": "torso",
+      "pivot": [
+        4,
+        32,
+        10
+      ]
+    },
+    {
+      "name": "right_pauldron",
+      "parent": "torso",
+      "pivot": [
+        15,
+        32,
+        10
+      ]
+    },
+    {
+      "name": "left_arm",
+      "parent": "torso",
+      "pivot": [
+        3,
+        31,
+        10
+      ]
+    },
+    {
+      "name": "rifle",
+      "parent": "torso",
+      "pivot": [
+        16,
+        31,
+        10
+      ]
+    },
+    {
+      "name": "left_thigh",
+      "parent": "pelvis",
+      "pivot": [
+        7,
+        23,
+        10
+      ]
+    },
+    {
+      "name": "left_shin",
+      "parent": "left_thigh",
+      "pivot": [
+        7,
+        14,
+        10
+      ]
+    },
+    {
+      "name": "left_foot",
+      "parent": "left_shin",
+      "pivot": [
+        7,
+        3,
+        10
+      ]
+    },
+    {
+      "name": "right_thigh",
+      "parent": "pelvis",
+      "pivot": [
+        12,
+        23,
+        10
+      ]
+    },
+    {
+      "name": "right_shin",
+      "parent": "right_thigh",
+      "pivot": [
+        12,
+        14,
+        10
+      ]
+    },
+    {
+      "name": "right_foot",
+      "parent": "right_shin",
+      "pivot": [
+        12,
+        3,
+        10
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "pelvis_bob",
+      "part": "pelvis",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        10,
+        24,
+        10
+      ],
+      "min": -1.2,
+      "max": 0.5,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "rifle_pitch",
+      "part": "rifle",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        16,
+        31,
+        10
+      ],
+      "min": -0.6,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "hip_left",
+      "part": "left_thigh",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        7,
+        23,
+        10
+      ],
+      "min": -0.8,
+      "max": 0.8,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "knee_left",
+      "part": "left_shin",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        7,
+        14,
+        10
+      ],
+      "min": -0.2,
+      "max": 1.3,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "ankle_left",
+      "part": "left_foot",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        7,
+        3,
+        10
+      ],
+      "min": -0.6,
+      "max": 0.6,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "hip_right",
+      "part": "right_thigh",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        12,
+        23,
+        10
+      ],
+      "min": -0.8,
+      "max": 0.8,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "knee_right",
+      "part": "right_shin",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        12,
+        14,
+        10
+      ],
+      "min": -0.2,
+      "max": 1.3,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "ankle_right",
+      "part": "right_foot",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        12,
+        3,
+        10
+      ],
+      "min": -0.6,
+      "max": 0.6,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "walk",
+      "periodMs": 1000,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "hip_left",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.35,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 250,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 500,
+              "value": 0.35,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 750,
+              "value": -0.05,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 1000,
+              "value": -0.35,
+              "interp": "ease-out"
+            }
+          ]
+        },
+        {
+          "joint": "knee_left",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.12,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 250,
+              "value": 0.05,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 500,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 750,
+              "value": 0.9,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.12,
+              "interp": "ease-out"
+            }
+          ]
+        },
+        {
+          "joint": "ankle_left",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.05,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 250,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 500,
+              "value": -0.25,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 750,
+              "value": 0.25,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.05,
+              "interp": "ease-out"
+            }
+          ]
+        },
+        {
+          "joint": "hip_right",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.35,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 250,
+              "value": -0.05,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 500,
+              "value": -0.35,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 750,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.35,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "knee_right",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 250,
+              "value": 0.9,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 500,
+              "value": 0.12,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 750,
+              "value": 0.05,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "ankle_right",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.25,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 250,
+              "value": 0.25,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 500,
+              "value": 0.05,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 750,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1000,
+              "value": -0.25,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "pelvis_bob",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.8,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 250,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 500,
+              "value": -0.8,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 750,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 1000,
+              "value": -0.8,
+              "interp": "ease-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fire",
+      "periodMs": 500,
+      "looping": false,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "rifle_pitch",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 70,
+              "value": 0.42,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 200,
+              "value": -0.1,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 320,
+              "value": 0.05,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 500,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

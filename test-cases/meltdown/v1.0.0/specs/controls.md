@@ -28,7 +28,7 @@ of the simulation, only how fast it plays.
    footprint**. The preview shows the tower's **range** ring from that center
    and a **valid/invalid** footprint highlight (`#46d07a` valid, `#ff4d4d`
    invalid). A footprint is invalid if any tile in it is outside the floor, an
-   intake/exhaust, already occupied, under a surge unit, unaffordable, or would
+   vent/exhaust, already occupied, under a surge unit, unaffordable, or would
    seal the floor (`specs/playfield.md`).
 3. **Place** — left-click a valid footprint while in placement mode to build
    there, deducting the tower cost from the current money. With a modifier or a
@@ -59,7 +59,10 @@ a live wave (`specs/flow.md`) — subject to affordability and the mazing rules.
 - **Send next wave** — click the 'Send Next Wave' button in the wave controls
   (or press `Space`) to release the next wave early during a build phase,
   claiming the **early-send bonus** (`specs/flow.md`). When a build phase's
-  timer runs out, the next wave starts on its own.
+  timer runs out, the next wave starts on its own. **Before Wave 1 the opening
+  build phase is untimed:** the same control reads **'Start'** and begins Wave 1
+  only when pressed — nothing auto-starts and there is no early-send bonus
+  (`specs/flow.md`).
 - **Game speed** — a `1x` and `2x` toggle in the wave controls (or `F`) sets
   the simulation speed. It applies to the whole simulation and persists until
   changed.

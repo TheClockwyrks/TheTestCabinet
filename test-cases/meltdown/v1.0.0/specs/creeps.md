@@ -15,8 +15,8 @@ flight, and slow-immunity.
 
 ## Shared Rules
 
-- Every unit spawns at an **intake**, follows the rules in `specs/playfield.md`
-  (ground units walk the maze to that intake's opposite exhaust; flyers fly
+- Every unit spawns at a **vent**, follows the rules in `specs/playfield.md`
+  (ground units walk the maze to that vent's opposite exhaust; flyers fly
   straight to that same assigned exhaust), and is removed when it dies or
   reaches an exhaust.
 - A unit that reaches an exhaust **leaks**: it costs the player its leak value
@@ -34,12 +34,12 @@ flight, and slow-immunity.
 
 | Type | Trait | HP | Speed | Slowable? | Flies? | Bounty | Leak |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Mote** | Baseline intruder | 40 | 60 | yes | no | 4 | 1 |
-| **Sprint** | Fast, fragile | 24 | 120 | yes | no | 4 | 1 |
-| **Hulk** | Slow, heavily armored | 220 | 38 | yes | no | 10 | 2 |
+| **Mote** | Baseline intruder | 40 | 60 | yes | no | 3 | 1 |
+| **Sprint** | Fast, fragile | 24 | 120 | yes | no | 3 | 1 |
+| **Hulk** | Slow, heavily armored | 220 | 38 | yes | no | 7 | 2 |
 | **Swarm** | Tiny, arrives in dense packs | 12 | 70 | yes | no | 2 | 1 |
-| **Drift** | **Flyer** — ignores the maze | 60 | 80 | yes | yes | 8 | 1 |
-| **Core** | **Boss** — immune to slowing | 1600 | 30 | no | no | 120 | 5 |
+| **Drift** | **Flyer** — ignores the maze | 60 | 80 | yes | yes | 6 | 1 |
+| **Core** | **Boss** — immune to slowing | 1600 | 30 | no | no | 90 | 5 |
 
 - **Mote** — the standard unit; everything else is a variation on it. The bulk
   of the early waves.
@@ -54,7 +54,7 @@ flight, and slow-immunity.
   is the natural answer, and a packed Swarm is exactly what heats a kill-box
   toward the redline.
 - **Drift** — the **flyer**. It does **not** walk the maze: it flies in a
-  straight line from its intake to that intake's opposite exhaust, over every
+  straight line from its vent to that vent's opposite exhaust, over every
   tower and wall (`specs/playfield.md`). The maze cannot slow or redirect it,
   but any emitter can shoot it if it is in range. **Flak** (`specs/towers.md`)
   is the dedicated answer because it targets only flyers, so Drifts still force
@@ -68,9 +68,13 @@ flight, and slow-immunity.
 
 ## Wave Composition
 
-A wave is a timed sequence of units released from the intakes (the exact spawn
-timing and intake split per wave is yours to design, within
-`specs/flow.md`'s progression):
+A wave is a timed sequence of units released from the vents (the exact spawn
+timing and vent split per wave is yours to design, within
+`specs/flow.md`'s progression). Because the player fields **many** cheap towers —
+a real maze is a dozen-plus structures from the opening build (`specs/towers.md`)
+— waves are **large and dense**: field enough units per wave, growing across the
+20 waves, that a thin or short maze is overrun. A packed wave crawling a long maze
+is the whole point, and it is also what runs the guns on it hot.
 
 - Early waves are mostly Motes and Sprints, light enough to teach the
   maze and the heat curve.

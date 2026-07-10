@@ -176,7 +176,7 @@ actions = []
 [[domain]]
 id = "heat"
 name = "Heat & Thermal Play"
-description = "The signature: heat as power and the accelerating damage curve, the redline trip as the sole failure, the Forge/Vent coupling, the heat-averse Rime, and how the maze paces each tower's heat."
+description = "The signature: heat as power and the accelerating damage curve, the redline trip as the sole failure, the Forge/Sink coupling, the heat-averse Rime, and how the maze paces each tower's heat."
 
 [[domain]]
 id = "defense"
@@ -223,23 +223,23 @@ weight = 1
 domain = "heat"
 
 [[review_item]]
-id = "vent-sink"
-title = "The Vent (heat sink)"
-text = "The Vent does not fire; it removes heat from each orthogonally adjacent emitter continuously, letting a redline-prone tower (e.g. a Stutter) run flat out without tripping, or holding a packed core just under the redline at maximum damage. Coupling is orthogonal-neighbors only."
+id = "heat-sink"
+title = "The Sink (heat sink)"
+text = "The Sink does not fire; it removes heat from each orthogonally adjacent emitter continuously, letting a redline-prone tower (e.g. a Stutter) run flat out without tripping, or holding a packed core just under the redline at maximum damage. Coupling is orthogonal-neighbors only."
 weight = 1
 domain = "heat"
 
 [[review_item]]
 id = "rime-averse"
 title = "The heat-averse Rime"
-text = "The cryo Rime runs the rule backward: it slows the surge hardest when COLD and its slow degrades as it heats (to nothing at the redline), so it wants isolation or a Vent and is ruined by an adjacent Forge or a hot core. Some surge (the Core boss) is immune to slowing entirely."
+text = "The cryo Rime runs the rule backward: it slows the surge hardest when COLD and its slow degrades as it heats (to nothing at the redline), so it wants isolation or a Sink and is ruined by an adjacent Forge or a hot core. Some surge (the Core boss) is immune to slowing entirely."
 weight = 1
 domain = "heat"
 
 [[review_item]]
 id = "upgrades-hotter"
 title = "Upgrades and selling"
-text = "A tower upgrades through three levels, each making an emitter stronger AND hotter-running (a maxed emitter is a glass cannon that needs thermal support); the Forge/Vent grow their output. Selling refunds 70% of total spend and reopens the tile."
+text = "A tower upgrades through three levels, each making an emitter stronger AND hotter-running (a maxed emitter is a glass cannon that needs thermal support); the Forge/Sink grow their output. Selling refunds 70% of total spend and reopens the tile."
 weight = 1
 domain = "heat"
 
@@ -255,21 +255,29 @@ proof = "siege"
 [[review_item]]
 id = "cant-seal"
 title = "You can never seal the floor"
-text = "A placement that would leave any intake with no route to any exhaust (or trap a unit already walking) is refused and shown invalid — there is always at least one open path from each intake to an exhaust."
+text = "A placement that would leave any vent with no route to any exhaust (or trap a unit already walking) is refused and shown invalid — there is always at least one open path from each vent to an exhaust."
 weight = 1
 domain = "defense"
 
 [[review_item]]
 id = "opposite-exhaust"
-title = "Two intakes, two exhausts"
-text = "The surge enters at the mid-left and mid-top intakes and leaves at the mid-right and mid-bottom exhausts, each unit routing to its fixed opposite exhaust (left→right, top→bottom) and never the nearer one — so the maze must lengthen that crossing to be effective."
+title = "Two vents, two exhausts"
+text = "The surge enters at the mid-left and mid-top vents and leaves at the mid-right and mid-bottom exhausts — the only four openings in the casing wall that encloses the floor — each unit routing to its fixed opposite exhaust (left→right, top→bottom) and never the nearer one, so the maze must lengthen that crossing to be effective."
 weight = 1
 domain = "defense"
 
 [[review_item]]
+id = "casing-wall"
+title = "The floor is a walled reactor"
+text = "The reactor floor is enclosed by an impassable casing wall, and the surge can enter or leave only through the four openings in it — the two vents and two exhausts. No tower is ever built on the casing; the wall and its four openings are visible around the floor. The 50x36 tile grid and 1280x720 resolution are unchanged — the floor is simply inset within the casing, so tiles are slightly smaller."
+weight = 1
+domain = "defense"
+reference = "gameplay"
+
+[[review_item]]
 id = "flyers-and-flak"
 title = "Flyers ignore the maze"
-text = "Flyers (Drift) fly in a straight line from intake to the opposite exhaust, over every tower and wall, and any emitter can hit them while they are in range (the Flak is the dedicated air specialist, but not the only counter). Because the maze cannot stop them, a defense that leaves the flight line uncovered leaks flyers regardless of how good the maze is."
+text = "Flyers (Drift) fly in a straight line from vent to the opposite exhaust, over every tower and wall, and any emitter can hit them while they are in range (the Flak is the dedicated air specialist, but not the only counter). Because the maze cannot stop them, a defense that leaves the flight line uncovered leaks flyers regardless of how good the maze is."
 weight = 1
 domain = "defense"
 proof = "siege"
@@ -284,14 +292,21 @@ domain = "defense"
 [[review_item]]
 id = "surge-and-waves"
 title = "Surge, waves, and the economy"
-text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on waves 10 and 20), each with its trait; a leak costs lives, 0 lives ends the game, and clearing wave 20 wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus."
+text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on waves 10 and 20), each with its trait, in large, dense waves; a leak costs lives, 0 lives ends the game, and clearing wave 20 wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus — and starting money (250) affords an opening maze of about 16 basic Arc towers, so building and re-shaping a large maze is central to the game."
+weight = 1
+domain = "defense"
+
+[[review_item]]
+id = "opening-build"
+title = "Untimed opening build phase"
+text = "Before Wave 1 the opening build phase is untimed: it shows no countdown and never auto-starts, so the player can lay a full opening maze at leisure and presses Start (the wave control) to begin Wave 1 when ready. The between-wave build phases keep the up-to-15-second countdown, auto-start, and early-send bonus; the opening phase pays no early-send bonus."
 weight = 1
 domain = "defense"
 
 [[review_item]]
 id = "states-complete"
 title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu, how-to-play, in-match (the build phase between waves and the live wave), pause (resume/restart/quit), Victory, and Game over (reactor breached), each with the right screen and actions."
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, in-match (the untimed opening build phase, the timed build phases between waves, and the live wave), pause (resume/restart/quit), Victory, and Game over (reactor breached), each with the right screen and actions."
 weight = 1
 reference = "title"
 proof = "title"
@@ -299,5 +314,5 @@ proof = "title"
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
-text = "The entire 1280x720 stage — the full reactor floor, the build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+text = "The entire 1280x720 stage — the full reactor floor with its enclosing casing wall, the build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
 weight = 1

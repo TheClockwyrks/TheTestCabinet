@@ -2,13 +2,15 @@
 
 ## Overview
 
-**Sunfront** is a real-time **tug-of-war** for the browser, fought across a **3D**
-desert battlefield seen through a tilted overhead command camera. Two rival
-legions of solar-powered war automatons — the **Duneforged** — face each other
-across a stretch of sand. You never command a single unit. Instead you spend a
-steadily ticking income on **spawner structures** in your walled staging yard;
-every **wave**, each spawner you own stamps out its unit, and those units march
-across the sand toward the enemy base, fighting whatever they meet on the way.
+**Sunfront** is a real-time **tug-of-war** for the browser, rendered in **3D** through
+a low oblique command camera you scroll across the field. Two rival legions of
+solar-powered war automatons — the **Duneforged** — face each other across a
+diagonal stretch of desert, their bases
+in opposite corners. You never command a single unit. Instead you spend a steadily
+ticking income on **spawner structures** and **Solar Extractors** in your walled
+staging yard; every **wave**, each spawner you own stamps out its unit, and those
+units march across the sand toward the enemy base, fighting whatever they meet on the
+way.
 Win by grinding a hole through the enemy line and levelling their base; lose if
 they level yours.
 
@@ -33,10 +35,13 @@ start; they cross-reference each other **by name** and form a single spec.
 - `specs/overview.md` — this file: goals, hard requirements, free choices, the
   coordinate system, the palette and type, the game states, the **rendering,
   camera, and performance** requirements, and the reference index.
-- `specs/playfield.md` — the battlefield geometry: the lane, the two bases, the
-  Reliquaries, the staging yard and its build grid, and the **fog of war**.
+- `specs/playfield.md` — the battlefield geometry: the diagonal lane, the two
+  corner bases, the Reliquaries, the staging yards and their build grid, and the
+  **fog of war**.
+- `specs/assets.md` — the **provided models**: every unit and structure is given to
+  you as a 3D model file to load, scale, tint, and animate (the only art you get).
 - `specs/economy.md` — income, the resource economy, and placing and upgrading
-  spawner structures.
+  spawner structures and Solar Extractors.
 - `specs/units.md` — the **unit roster**: every unit's stats, the armor/attack
   **counter system** that makes composition matter, and how combat resolves.
 - `specs/waves.md` — the wave clock, how spawners emit units each wave, unit
@@ -51,20 +56,19 @@ The main menu lists the playable mode, then `HOW TO PLAY`.
 
 Produce a complete, polished, **playable** game that runs entirely in a browser.
 This is a substantial front-end task: a real-time **3D** simulation of dozens of
-units, a resource economy, a placement UI, fog of war, an AI opponent, several
-unit types with a rock-paper-scissors combat model, a mid-map objective, and
-multiple game states and menus. Aim for a build a person would actually enjoy
-playing, not a tech demo.
+units, a resource economy, a placement UI, fog of war, an AI opponent, several unit
+types with a rock-paper-scissors combat model, a mid-map objective, and multiple game
+states and menus. Aim for a build a person would actually enjoy playing, not a tech
+demo.
 
 ### Hard requirements
 
-- **Renders real 3D graphics.** Draw the world with **WebGL or WebGPU** (a helper
-  library such as a scene-graph or math library is fine). A text-only, ASCII, or
-  purely-2D rendering does not satisfy this test case. Every unit, structure, and
-  piece of terrain is **blocky voxel/box geometry you generate in code** — you are
-  given **no** model, mesh, or texture files and must not fetch any at runtime.
-  Flat or simply-shaded faces in the palette below are expected and acceptable;
-  the Duneforged read as blocky solar automatons and siege engines.
+- **Renders real 3D graphics.** Render the battlefield with **WebGL or WebGPU** (a
+  helper library such as a scene-graph or math library is fine). A **Canvas 2D**,
+  positioned-DOM, text-only, or ASCII battlefield does **not** satisfy this test
+  case — the field, its units, and its structures are a real 3D scene viewed through
+  a camera. (The **HUD and menus** may be a 2D overlay — HTML/DOM or 2D canvas — laid
+  over the 3D view; only the battlefield must be 3D.)
 - **Runs in the browser with no backend.** No server, accounts, database, or
   network calls at runtime. Everything needed to play must be self-contained.
 - **No API keys or credentials** of any kind to build, run, or play.
@@ -76,13 +80,21 @@ playing, not a tech demo.
   static site, with no further manual step, into one of `dist/`, `build/`, or
   `out/` at the project root, with an `index.html` at the root of that directory
   as the entry point. That output directory must run correctly when served as-is
-  at the root of any static file server, since it is deployed to static hosting
-  exactly that way. You choose the language, framework, bundler, and rendering
-  approach behind this interface; only the `npm ci` and `npm run build` commands
-  and where the build output lands are fixed.
-- **Self-contained rendering.** The game builds every mesh — terrain, structures,
-  units, effects — itself, in code, in the palette below. It is **not** given art
-  files and must not fetch any at runtime.
+  from a static file server, and **at any base path** — it is played back from a
+  per-run sub-path, not only a server root, so any URL the build constructs at
+  runtime (including every URL it uses to **load the provided model files** and
+  `assets/models.json`) must be **page-relative**: never begin with a leading `/`;
+  for a bundler, set a relative base such as `base: './'` (`specs/assets.md`). You
+  choose the language, framework, bundler, and rendering approach behind this
+  interface; only the `npm ci` and `npm run build` commands and where the build
+  output lands are fixed.
+- **Provided models, world in code.** Every **unit and structure** is **provided**
+  to you as a 3D model file that you must **load and render** — you must **not**
+  replace them with primitives of your own (`specs/assets.md`). Everything else — the
+  sand arena, the staging yards, the fog, projectiles and effects, and all HUD/menu
+  furniture — the game **generates in code**, in the palette below. Apart from the
+  provided models, the game fetches **no** art, fonts, data, or code from the network
+  at runtime.
 - **Documentation.** Include a `README.md` in the produced repository explaining
   what the game is, how to install dependencies, how to run it in development,
   how to produce the static production build, and the controls.
@@ -92,36 +104,69 @@ playing, not a tech demo.
 You choose the language, framework, bundler, and rendering approach, subject to
 the requirements above. TypeScript with a thin WebGL layer or a lightweight 3D
 library is entirely sufficient; a heavy engine is not required. Favor a clean,
-well-structured codebase and a renderer that holds the required frame rate (below)
-over any particular technology. Exact unit designs are yours as long as each unit
-reads as the silhouette its entry in `specs/units.md` describes, in its team
-color.
+well-structured codebase over any particular technology. The **units and structures
+are provided** as models, so their form is fixed (`specs/assets.md`); how you camera,
+light, pose, animate, and tint them, and how you generate the arena, fog, and effects
+around them, is yours — as long as it reads as the world these specs describe.
 
-## Coordinate system and units
+## Coordinate system and presentation
 
-The battle is fought on a horizontal **ground plane**. All positions, sizes,
-speeds, and ranges in this specification are given in **world units** unless
-stated otherwise; speeds are world units per second (`u/s`), times are in seconds,
-and angles in degrees.
+The **simulation runs on a logical horizontal ground plane** — a flat arena the
+units move and fight across. All positions, sizes, speeds, and ranges in this
+document are **logical units** on that plane (`specs/playfield.md` fixes its extent
+and the two corner bases); speeds are logical units per second, times in seconds. The
+plane is **rendered in 3D**: the provided models stand up off it, and a camera
+views it at a low angle. Keeping the gameplay on a 2D ground plane while
+rendering it in 3D is deliberate — the combat numbers are planar; the third dimension
+is presentation (model height, the camera, the Sunhawk's flight altitude).
 
-- **Axes.** The battlefield is an axis-aligned footprint on the ground plane.
-  **`+X` is the advance axis**: the player holds **low `X`** and pushes toward
-  **high `X`**, the AI holds high `X` and pushes toward low `X`. **`Z` is the
-  lateral (width) axis**, across which the lane and its ranks spread. **`+Y` is
-  up** — units and structures have real height and stand on the ground plane. The
-  origin `(0, 0)` on the ground plane is a corner; the intended footprint is
-  **`1280` along `X`** by **`720` along `Z`**, and the exact zones, bases, lane,
-  and staging yards are laid out on it in `specs/playfield.md`.
-- The simulation must be **frame-rate independent**, as a modern game is:
-  movement, combat cadence, income, and the wave clock advance in real time
-  (scaled by the elapsed time between frames), never per rendered frame, so
-  behavior is the same whether a machine draws fast or slow. The game plays the
-  same at 30 FPS and at 120.
-- Gameplay logic operates in world space, independent of the rendered camera and
-  window scale.
-- **The two sides mirror.** The player holds the **low-`X`** side; the AI holds
-  the **high-`X`** side. Every position given for the player's side has a
-  mirror-image counterpart on the AI's about the centerline `x = 640`.
+- **The presentation is a fixed 16:9 view.** The rendered view preserves a **16:9**
+  aspect ratio, scaled uniformly to fit the browser window and letterboxed with the
+  background color on the remaining space. It must remain correct and centered at any
+  window size and pixel density.
+- Gameplay logic operates in logical ground-plane units, independent of the rendered
+  scale or camera.
+- The simulation must be **frame-rate independent**, as a modern game is: movement,
+  combat cadence, income, and the wave clock advance in real time (scaled by elapsed
+  time between frames), never per rendered frame, so behavior is the same whether a
+  machine draws fast or slow.
+- **The viewport fits the window; the world does not.** At every window size and pixel
+  density the rendered **16:9** view fills the browser window (letterboxed on the
+  remainder) and every HUD element stays on screen — fitted, centered, and correct on
+  load before any input. But the camera frames only a **portion** of the arena at a
+  time (see the camera section): the complete arena is deliberately **not** on screen
+  at once — the player pans to see the rest.
+- **The two sides mirror.** The player holds **one corner**; the AI holds the
+  **opposite** corner. The layout has **180° rotational symmetry about the arena
+  center**: every position and distance given for the player's side has a mirror-image
+  counterpart on the enemy's side through the center point (`specs/playfield.md`).
+
+## Rendering, Camera, and Performance
+
+This is a 3D battlefield, and it must run at an **interactive frame rate**, not
+just render a still. These are hard requirements:
+
+- **Low oblique command camera.** Show the battlefield through a **perspective** camera
+  at a fixed steep-but-angled pitch and a fixed yaw and zoom — a low overhead command
+  view, not a flat top-down map — so model height, formation depth, and the front read,
+  with the ground receding into the distance.
+- **A limited, scrolling view.** The camera frames only a **portion** of the arena; the
+  player **pans** it across the ground plane to reach other areas (`specs/flow.md`), and
+  the whole arena is never in frame at once. Panning is the only required navigation —
+  **no zoom control is required**, and none is needed to see the play described below.
+- **The full lane width is always framed.** By default, and at every window size, the
+  view spans the **entire width of the ~480-unit combat corridor** (`specs/playfield.md`)
+  — the player never zooms out or pans sideways to see the whole width of the lane.
+  Panning runs **along the corridor's length** (the diagonal, toward or away from the
+  enemy), and the default view on load is centered on the **player's own corner**.
+- **Frame rate.** On a mid-range laptop the game must sustain a **playable frame rate
+  (target 30 FPS or better)** during a heavy late-match battle — dozens of units, both
+  Reliquaries and an Aegis, and effects on screen at once. The **performance overlay**
+  (`specs/flow.md`) must display the live FPS so this is observable.
+- **Wireframe mode.** A toggle (`specs/flow.md`) must switch rendering to
+  **wireframe** for units, structures, terrain, and generated effects, so the
+  underlying 3D geometry is inspectable. Provided models may use a mesh wireframe
+  material or an equivalent inspection material.
 
 ## Visual design
 
@@ -152,42 +197,18 @@ cool **Azure**. The canonical palette and type are defined below; match them.
 - Use a **monospace** type family for all text (resource counts, menus, labels,
   timers). Do not depend on a web font that must be downloaded; a system
   monospace stack is required so the game renders identically offline.
-- Units and structures are modelled in their owner's team color (Ember for the
-  player, Azure for the enemy), with **dark rock-colored edges or trim** so they
-  read against the sand. A unit's amber/azure **energy accent** (a core, visor,
-  or eye) is in the team's *light* shade.
+- Units and structures use their **provided models** (`specs/assets.md`), **tinted
+  to their owner's team color** (Ember for the player, Azure for the enemy) so the two
+  legions read apart at a glance, with the team **energy accent** (a core, visor, or
+  eye) in the team's *light* shade. Light the scene and keep enough contrast against
+  the sand that the models read clearly; the neutral Reliquary keeps its own color
+  with the owner's accent.
 - Bases, Reliquaries, and structures each carry a **health bar** when damaged
-  (healthy → critical color by fraction remaining), drawn just above them in the
-  world.
+  (healthy → critical color by fraction remaining), drawn as a **billboard just above
+  them** that faces the camera.
 - The three canonical menu screens — the title screen, the in-match view, and the
   match-over screen — are described in full under **Game states** in
   `specs/flow.md`. Implement each as described, in this palette and type.
-
-## Rendering, camera, and performance
-
-This is a 3D battlefield, and it must run at an **interactive frame rate**, not
-just render a still. These are hard requirements:
-
-- **Tilted overhead command camera.** The match is played through an elevated,
-  **tilted overhead** camera that frames the whole front — both bases, the full
-  lane, and the player's staging yard — at once, so the tug-of-war reads at a
-  glance (controls in `specs/flow.md`). It must clearly convey a **3D** world: the
-  height of the bases, Reliquaries, and structures, units standing on the ground,
-  and air units flying above the line. A straight flat top-down projection does
-  **not** satisfy this case.
-- **The whole front stays framed.** At every window size the camera keeps the
-  complete battlefield in view — both bases, the full lane, the staging yard, and
-  every HUD element — fitted and legible, with nothing important pushed off
-  screen, on load before any input and at any pixel density.
-- **Frame rate.** On a mid-range laptop the game must sustain a **playable frame
-  rate (target 30 FPS or better)** during a heavy late-match battle — dozens of
-  units, both Reliquaries and an Aegis, and effects on screen at once. This is a
-  hard requirement on the finished build; how you organize the renderer to meet it
-  is your choice. The **performance overlay** (`specs/flow.md`) must display the
-  live FPS so this is observable.
-- **Wireframe mode.** A toggle (`specs/flow.md`) must switch rendering to
-  **wireframe** for the units, structures, and terrain, so the underlying
-  generated geometry is inspectable.
 
 ## Game states
 
@@ -200,14 +221,14 @@ and behave as `specs/flow.md` describes.
 
 The `reference/` folder holds screenshots showing how key screens should look. The
 in-match reference is **HUD-only** — a flat mockup cannot fake the 3D battlefield
-convincingly, so the gameplay reference shows only the HUD overlay (its layout,
-palette, and type) over a neutral viewport; you render the 3D world itself from
-this specification.
+convincingly, so the gameplay reference shows the HUD overlay (its layout, palette,
+and type) over a neutral viewport; you render the 3D world itself from this
+specification.
 
 - `reference/title.png` — the title screen and main menu.
 - `reference/gameplay.png` — the in-match **HUD** over a neutral viewport: the sol
-  and income readout, the wave number and countdown, both base health bars, the
-  build palette, a selected-spawner panel, and the performance overlay.
+  and income readout, the wave number and countdown, both base health bars, the build
+  palette, a selected-structure panel, and the performance overlay.
 - `reference/game-over.png` — the match-over screen.
 
 Treat them as visual targets: match their layout, palette, and type. They are

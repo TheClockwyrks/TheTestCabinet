@@ -19,9 +19,10 @@ The main menu lists this mode first, as:
 - One **human** commands the **left** legion; the **AI** (`specs/flow.md`)
   commands the **right**. The field, both bases, and both Reliquaries are the
   standard layout in `specs/playfield.md`.
-- Both sides start with `250` sol and the standard income schedule
-  (`specs/economy.md`), and share the **full nine-unit roster** in
-  `specs/units.md` — every spawner type is buildable from the first second.
+- Both sides start with `200` sol and the standard fixed base income rate
+  (`specs/economy.md`), and share the **full ten-unit roster** in
+  `specs/units.md` plus the **Solar Extractor** economy structure — every spawner
+  type and the Extractor are buildable from the first second.
 - The **wave clock** runs as in `specs/waves.md` (first wave at `20 s`, then every
   `45 s`), and the match ends when a base is razed (`specs/flow.md`).
 

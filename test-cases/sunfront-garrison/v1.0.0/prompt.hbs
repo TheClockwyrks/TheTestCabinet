@@ -1,0 +1,86 @@
+Sculpt and rig the **Sunfront Garrison**, a low, wide Duneforged fortified infantry
+barracks whose front deployment ramp lowers from its muster gate and whose belfry bell
+swings, as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the `voxel-anim` tool. You build it by
+**painting discrete opaque cells** one recorded operation at a time, and you **author
+its two decorative animations** as F-curves.
+
+This test measures **creativity and craft**, not instruction-following: the brief tells
+you *what the garrison is* and *how it must move*, but the parts you build, how you break
+the building into moving pieces, where you place the joints, and how you shape every form
+are **entirely yours to invent**. Work out the pieces a fortified barracks needs.
+
+## How sculpting and rigging works
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on
+your `PATH`. You build the model by calling it **one operation at a time**, and the
+ordered operations you issue — recorded per part to `parts/<part>.actions.json` —
+together with the rig you define are your submission.
+
+Every voxel operation targets a **part** with `--part <name>`; each part is sculpted
+**separately** in its own preview and log. The volume starts **empty**. Voxels are
+**opaque** `#rrggbb` colors — there is no transparency. Each call **records only** — it
+appends the operation to that part's log and renders nothing; run `voxel-anim render`
+when you want to (re)draw the per-part previews (`parts/<part>.png`) and the assembled
+scene.
+
+**You invent the rig.** Define whatever parts you need with `define-part` (giving each a
+parent and a pivot), place joints on them with `define-joint`, and author the required
+animations with `define-animation`/`add-keyframe`. Every voxel operation targets a
+**part** with `--part <name>`, so define a part before you sculpt into it; each part is
+sculpted separately in the shared volume's coordinates.
+
+Each operation is an ordinary subcommand with flags, naming its part, for example:
+
+```
+voxel-anim define-part --name blockhouse
+voxel-anim fill-box --part blockhouse --x0 6 --y0 0 --z0 6 --x1 53 --y1 22 --z1 53 --color "#c69a4b"
+voxel-anim add-sphere --part bell --cx 30 --cy 44 --cz 50 --r 3 --color "#565c64"
+```
+
+(The part names above are just an example — name your own parts however you like.) Run
+`voxel-anim --help` to list every operation **and** the rig subcommands (defining parts,
+setting pivots, defining joints, and defining animations and adding keyframes), and
+`voxel-anim <operation> --help` for one operation's exact flags — that help text is the
+authoritative contract. **Run `voxel-anim render`, then read `parts/<part>.png`** to see
+that part's progress **and the assembled-scene previews under `scene/`
+(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole
+garrison composed from all your parts, drawn when you run `voxel-anim render`. The scene
+views are how you confirm the parts actually fit together: that the ramp seats into the
+muster gate's sill and the bell hangs in the belfry. Because each part is sculpted in the
+shared volume's coordinates, position each part where it belongs on the finished building;
+the scene simply composes them there.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you
+start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the volume and its coordinate system, the palette, the form
+of the garrison, and — the fixed contract — the two self-playing animations you must
+author: **`muster_ramp_drop`** (the front deployment ramp's fall) and
+**`muster_bell_swing`** (the belfry bell's swing). It does **not** hand you a parts list
+or joint angles; that is the point. Run `voxel-anim --help` for the exact operation, rig,
+and animation subcommands.
+
+## What to deliver
+
+Build and rig the garrison up operation by operation until each `parts/<part>.png`
+matches the brief, the assembled `scene/` previews show the parts fitting together
+correctly, and the rig is complete: a low, wide fortified blockhouse with a crenellated
+parapet and amber-glowing firing ports (the fixed body), a front muster gate with a
+hinged deployment ramp, and a belfry over the gate holding a swinging bell. **Author the
+two required animations** as F-curves with the `voxel-anim` animation subcommands:
+`muster_ramp_drop` (the ramp hinging down from the gate's sill toward the ground and
+lifting back, eased so it carries weight rather than sliding linearly) and
+`muster_bell_swing` (the bell swinging side to side about its yoke like a pendulum). The
+animations are the fixed contract — produce both, by those names, both self-playing and
+looping; the parts and joints that realize them are yours. Before you finish, run
+`voxel-anim render` so it emits the per-part `.glb` geometry your result is built from —
+an unrendered part is scored as empty (`voxel-anim render --component <part>` redraws one
+part; `voxel-anim render --time <ms> --animation <name>` renders the model posed at that
+instant of an animation to check the motion). When you are satisfied, stop: the recorded
+per-part logs and `rig.json` are your finished submission.

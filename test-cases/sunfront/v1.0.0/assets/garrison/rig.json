@@ -1,0 +1,259 @@
+{
+  "parts": [
+    {
+      "name": "blockhouse",
+      "pivot": [
+        30,
+        0,
+        22
+      ]
+    },
+    {
+      "name": "gatehouse",
+      "parent": "blockhouse",
+      "pivot": [
+        30,
+        0,
+        45
+      ]
+    },
+    {
+      "name": "belfry",
+      "parent": "gatehouse",
+      "pivot": [
+        30,
+        35,
+        45
+      ]
+    },
+    {
+      "name": "bell",
+      "parent": "belfry",
+      "pivot": [
+        29,
+        45,
+        43
+      ]
+    },
+    {
+      "name": "clapper",
+      "parent": "bell",
+      "pivot": [
+        29,
+        41,
+        43
+      ]
+    },
+    {
+      "name": "ramp",
+      "parent": "gatehouse",
+      "pivot": [
+        30,
+        5,
+        51
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "ramp_hinge",
+      "part": "ramp",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        30,
+        5,
+        51
+      ],
+      "min": -2.1,
+      "max": 0.05,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "bell_swing",
+      "part": "bell",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        29,
+        45,
+        43
+      ],
+      "min": -0.32,
+      "max": 0.32,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "clapper_swing",
+      "part": "clapper",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        29,
+        41,
+        43
+      ],
+      "min": -0.36,
+      "max": 0.36,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "muster_ramp_drop",
+      "periodMs": 6000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "ramp_hinge",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 250,
+              "value": -0.03,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 1350,
+              "value": -1.88,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1500,
+              "value": -2.04,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1660,
+              "value": -1.9,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 1800,
+              "value": -2.0,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1920,
+              "value": -1.965,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2050,
+              "value": -1.98,
+              "interp": "linear"
+            },
+            {
+              "tMs": 3900,
+              "value": -1.98,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 5450,
+              "value": -0.1,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 5620,
+              "value": 0.02,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 5760,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 6000,
+              "value": 0.0,
+              "interp": "ease-in"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "muster_bell_swing",
+      "periodMs": 2400,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "bell_swing",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 600,
+              "value": 0.32,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1200,
+              "value": 0.0,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1800,
+              "value": -0.32,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 2400,
+              "value": 0.0,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "clapper_swing",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.2495,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 351,
+              "value": 0.0,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 951,
+              "value": 0.3138,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1551,
+              "value": 0.0,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 2151,
+              "value": -0.3138,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 2400,
+              "value": -0.2495,
+              "interp": "bezier"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

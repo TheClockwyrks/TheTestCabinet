@@ -136,11 +136,15 @@ domain = "fidelity"
 id = "rifle-aims"
 title = "Right-arm rifle aims and recoils on a clean hinge"
 text = """
-The rifle is carried on the mech's right arm and points FORWARD when level. \
-Playing `fire` works it convincingly: it snaps into a quick recoil nod — tilting \
-up and down about its shoulder mount — and settles, aiming cleanly up and down \
-across its range rather than spinning or sliding, with no part of the weapon \
-tearing away from the arm or clipping into the body as it moves."""
+The rifle is held on a distinct right arm and points FORWARD when level, reading as a \
+held, wielded weapon out on a limb — the arm reaches from the shoulder and carries the \
+rifle, set clearly apart from the shoulder and body by a visible arm or joint rather \
+than bolted flush to the shoulder or fused into the body (an arm that terminates in the \
+rifle is fine, as long as it still reads as a held weapon on an appendage). Playing \
+`fire` works it convincingly: it snaps into a quick recoil nod — tilting up and down at \
+the shoulder joint — and settles, aiming cleanly up and down across its range rather \
+than spinning or sliding, with no part of the weapon tearing away from the arm or \
+clipping into the body as it moves."""
 weight = 2
 domain = "fidelity"
 

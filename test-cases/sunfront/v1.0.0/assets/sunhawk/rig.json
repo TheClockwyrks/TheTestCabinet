@@ -1,0 +1,493 @@
+{
+  "parts": [
+    {
+      "name": "hull",
+      "pivot": [
+        36,
+        12,
+        38
+      ]
+    },
+    {
+      "name": "nacelle_l",
+      "parent": "hull",
+      "pivot": [
+        15,
+        14,
+        41
+      ]
+    },
+    {
+      "name": "nacelle_r",
+      "parent": "hull",
+      "pivot": [
+        58,
+        14,
+        41
+      ]
+    },
+    {
+      "name": "rotor_l",
+      "parent": "nacelle_l",
+      "pivot": [
+        15,
+        23,
+        41
+      ]
+    },
+    {
+      "name": "rotor_r",
+      "parent": "nacelle_r",
+      "pivot": [
+        58,
+        23,
+        41
+      ]
+    },
+    {
+      "name": "cannon_yoke",
+      "parent": "hull",
+      "pivot": [
+        36,
+        6,
+        58
+      ]
+    },
+    {
+      "name": "cannon",
+      "parent": "cannon_yoke",
+      "pivot": [
+        36,
+        5,
+        58
+      ]
+    },
+    {
+      "name": "barrel",
+      "parent": "cannon",
+      "pivot": [
+        36,
+        5,
+        68
+      ]
+    },
+    {
+      "name": "tailfin",
+      "parent": "hull",
+      "pivot": [
+        36,
+        19,
+        8
+      ]
+    },
+    {
+      "name": "skids",
+      "parent": "hull",
+      "pivot": [
+        36,
+        3,
+        36
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "hull_bob",
+      "part": "hull",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        36,
+        12,
+        38
+      ],
+      "min": -3.2,
+      "max": 3.2,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "rotor_l_spin",
+      "part": "rotor_l",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        15,
+        23,
+        41
+      ],
+      "min": -6.2832,
+      "max": 6.2832,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "rotor_r_spin",
+      "part": "rotor_r",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        58,
+        23,
+        41
+      ],
+      "min": -6.2832,
+      "max": 6.2832,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cannon_pitch",
+      "part": "cannon",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        36,
+        5,
+        58
+      ],
+      "min": -0.72,
+      "max": 0.3,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "gun_recoil",
+      "part": "barrel",
+      "kind": "translation",
+      "axis": "z",
+      "pivot": [
+        36,
+        5,
+        68
+      ],
+      "min": -3.0,
+      "max": 0.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "tail_yaw",
+      "part": "tailfin",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        36,
+        19,
+        8
+      ],
+      "min": -0.35,
+      "max": 0.35,
+      "rest": 0.0,
+      "drive": "caller"
+    }
+  ],
+  "animations": [
+    {
+      "name": "rotor_spin",
+      "periodMs": 640,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "rotor_l_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 160,
+              "value": 1.570796,
+              "interp": "linear"
+            },
+            {
+              "tMs": 320,
+              "value": 3.141592,
+              "interp": "linear"
+            },
+            {
+              "tMs": 480,
+              "value": 4.712389,
+              "interp": "linear"
+            },
+            {
+              "tMs": 640,
+              "value": 6.283185,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "rotor_r_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 160,
+              "value": -1.570796,
+              "interp": "linear"
+            },
+            {
+              "tMs": 320,
+              "value": -3.141592,
+              "interp": "linear"
+            },
+            {
+              "tMs": 480,
+              "value": -4.712389,
+              "interp": "linear"
+            },
+            {
+              "tMs": 640,
+              "value": -6.283185,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "hover",
+      "periodMs": 3200,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "hull_bob",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -1.8,
+              "interp": "ease-in-out",
+              "inHandle": [
+                -240.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 520,
+              "value": -0.1,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1150,
+              "value": 2.0,
+              "interp": "bezier",
+              "outHandle": [
+                300.0,
+                0.0
+              ],
+              "inHandle": [
+                -280.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 1760,
+              "value": 2.0,
+              "interp": "ease-in-out",
+              "inHandle": [
+                -260.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 2320,
+              "value": 0.2,
+              "interp": "linear"
+            },
+            {
+              "tMs": 2740,
+              "value": -2.1,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 2980,
+              "value": -1.8,
+              "interp": "bezier",
+              "outHandle": [
+                220.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 3200,
+              "value": -1.8,
+              "interp": "bezier",
+              "inHandle": [
+                -220.0,
+                0.0
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "strafe",
+      "periodMs": 2600,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "cannon_pitch",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.1,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 300,
+              "value": -0.22,
+              "interp": "linear"
+            },
+            {
+              "tMs": 620,
+              "value": -0.585,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 730,
+              "value": -0.495,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 870,
+              "value": -0.56,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1000,
+              "value": -0.545,
+              "interp": "bezier",
+              "outHandle": [
+                260.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 1520,
+              "value": -0.545,
+              "interp": "ease-in-out",
+              "inHandle": [
+                -300.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 2080,
+              "value": 0.2,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 2350,
+              "value": 0.055,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 2600,
+              "value": 0.1,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "gun_recoil",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                500.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 1040,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1060,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1080,
+              "value": -2.7,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1160,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1180,
+              "value": -2.7,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1260,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1280,
+              "value": -2.7,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1360,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1380,
+              "value": -2.7,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1460,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1480,
+              "value": -2.7,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1560,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                400.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 2600,
+              "value": 0.0,
+              "interp": "bezier",
+              "inHandle": [
+                -400.0,
+                0.0
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
