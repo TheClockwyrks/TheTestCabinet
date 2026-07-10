@@ -5,7 +5,7 @@
 This file defines the game's states and screens, the controls, the on-table HUD,
 and what is out of scope. It refers to the layout in `specs/layout.md`, the rules
 in `specs/rules.md`, the win animation in `specs/cascade.md`, and the turn count
-defined in the mode spec under `specs/modes/`.
+defined in `specs/deal-mode.md`.
 
 ## Game states
 
@@ -13,8 +13,8 @@ The game is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `CASCADE`, a short tagline (for example
    `KLONDIKE SOLITAIRE`), and a vertical menu listing **`NEW GAME`**, **`HOW TO
-   PLAY`**, and, next to or beneath the title, a small label naming the active
-   deal mode (see the mode spec under `specs/modes/`). The felt table may show
+   PLAY`**, and, next to or beneath the title, a small label naming the
+   deal mode (see `specs/deal-mode.md`). The felt table may show
    dimmed behind the menu. The selected item is highlighted in the accent color.
 2. **How to play.** A simple screen describing the goal (build the four
    foundations Ace-to-King by suit), the mouse controls below, and the deal mode.
@@ -70,9 +70,8 @@ The HUD is deliberately minimal (there is no score or clock):
 - A small **`NEW GAME`** control, and a small **`MENU`** control, placed clear of
   the piles (for example along the bottom edge of the table). `NEW GAME` deals a
   fresh game immediately; `MENU` returns to the title.
-- A small, dim **mode label** (for example `DRAW THREE`) so the active deal mode
-  is always visible during play. Its text comes from the mode spec under
-  `specs/modes/`.
+- A small, dim **mode label** (for example `DRAW THREE`) so the deal mode
+  is always visible during play. Its text comes from `specs/deal-mode.md`.
 - If you implement undo, an **`UNDO`** control may sit alongside these.
 
 ## Key Behaviors
@@ -95,8 +94,8 @@ The game must exhibit these behaviors:
 
 ## Out of scope
 
-- Multiple deals or solitaire variants other than the one deal mode this version
-  ships (FreeCell, Spider, Pyramid, and the like are not part of this case).
+- Other solitaire games — FreeCell, Spider, Pyramid, and the like are not part of
+  this case. Build only the Klondike solitaire this specification describes.
 - Scoring, timers, statistics, or a move counter — this build tracks none of them.
 - Hints, an auto-solver, or an auto-complete button that finishes the game for the
   player.

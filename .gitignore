@@ -258,8 +258,8 @@ test-cases/**/reference/screenshots/
 # playable reference-impl builds (captured with Playwright), not from HTML
 # mockups, so those images ARE the committed source of truth — the `[[reference]]`
 # entries point at them as `media`. Keep them tracked.
-!test-cases/cascade/v1.0.0/reference/screenshots/
-!test-cases/cascade/v1.0.0/reference/screenshots/**
+!test-cases/cascade/v1.0.1/reference/screenshots/
+!test-cases/cascade/v1.0.1/reference/screenshots/**
 !test-cases/fathom/v1.1.0/reference/screenshots/
 !test-cases/fathom/v1.1.0/reference/screenshots/**
 

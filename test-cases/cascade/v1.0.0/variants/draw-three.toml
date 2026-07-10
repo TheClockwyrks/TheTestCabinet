@@ -6,20 +6,8 @@ slug = "draw-three"
 name = "Draw Three"
 description = "The classic Klondike deal — the stock turns three cards at a time, top playable, with unlimited passes."
 
-# The deal-mode spec is the only variant-specific spec. It seeds to a flat
-# `specs/deal-mode.md` (not under a `modes/` folder) so the run only ever sees
-# the single deal mode that is actually present — there is no `modes/` directory
-# implying other modes exist. Draw One seeds its own file to the same dest.
-spec = [{ source = "specs/modes/draw-three.md", dest = "specs/deal-mode.md" }]
-reference = [{ view = "title", media = "reference/screenshots/draw-three/title.png" }, { view = "gameplay", media = "reference/screenshots/draw-three/gameplay.png" }]
-
-# The authored, *correct* static build of this variant — the case-variant
-# analogue of a run's playable build. A bare directory path (resolved against
-# the version folder) holding a buildable web project, built with this case's
-# `[build]` install/build commands and deployed like a published run build via
-# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
-# **never seeded into a run**.
-reference_implementation = "reference-impl/draw-three"
+spec = [{ source = "specs/modes/draw-three.md" }]
+reference = [{ view = "title", path = "reference/menu-draw-three.html" }, { view = "gameplay", path = "reference/gameplay-draw-three.html" }]
 
 [[review_item]]
 id = "draw-three-count"

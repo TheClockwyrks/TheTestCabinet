@@ -2,9 +2,9 @@
 
 ## Overview
 
-This mode spec defines the one setting that varies by mode: the stock's **turn
-count**. It builds on the stock and waste rules in `specs/rules.md` and the layout
-in `specs/layout.md`.
+This spec defines this build's **deal mode**: the stock's **turn count** and its
+menu label. It builds on the stock and waste rules in `specs/rules.md` and the
+layout in `specs/layout.md`.
 
 ## Deal mode
 
