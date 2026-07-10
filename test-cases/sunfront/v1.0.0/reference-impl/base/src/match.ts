@@ -8,12 +8,16 @@
  * renderer reads only this handoff; it never touches simulation state.
  *
  * The **enemy side is driven by the reactive {@link EnemyAI}** (specs/flow.md): it runs
- * the same economy on its own hidden grid with no cheating. The **player** side is still
- * a TEMPORARY scripted loadout (phase 6 replaces it with the build palette) so there is a
- * live player army to see through the fog and for the AI to react to. Fog of war
- * (specs/playfield.md) is applied here on the render handoff: enemy units, base, and
- * Reliquary are drawn ONLY while inside the player's current vision, and the ground fog
- * overlay is refreshed each frame from the player's vision discs.
+ * the same economy on its own hidden grid with no cheating. The **player** side is
+ * commanded live through the HUD build palette and structure panel (`Game`), which call
+ * the same `World` economy API the AI uses. Fog of war (specs/playfield.md) is applied
+ * here on the render handoff: enemy units, base, and Reliquary are drawn ONLY while
+ * inside the player's current vision, and the ground fog overlay is refreshed each frame
+ * from the player's vision discs.
+ *
+ * A `Match` owns the scene subtrees it adds (the fixed base/Reliquary singletons and the
+ * per-structure / Aegis actors); {@link dispose} tears them all down and clears the
+ * renderer so `Game` can start a fresh match (Restart / Play Again).
  */
 
 import type { LoadedAssets, RenderEntity, UnitType } from "./types";
@@ -22,7 +26,7 @@ import { World as SimWorld } from "./sim/world";
 import { SingletonActor } from "./render/singletons";
 import type { World as RenderWorld } from "./render/world";
 import {
-  PLAYER_BASE, ENEMY_BASE, PLAYER_RELIQUARY, ENEMY_RELIQUARY, START_SOL,
+  PLAYER_BASE, ENEMY_BASE, PLAYER_RELIQUARY, ENEMY_RELIQUARY,
 } from "./constants";
 import { facingYaw, advanceDir } from "./mathutil";
 import { gridCellCenter } from "./render/terrain";
@@ -31,11 +35,6 @@ import { collectVision, pointVisible, type VisionSource } from "./vision";
 
 /** How long a destroyed entity flashes; mirrors the sim's cull window. */
 const DEATH_FLASH_MS = 450;
-
-/** A TEMPORARY scripted player loadout so the human corner fields an army (phase 6 UI). */
-const PLAYER_DEMO_LOADOUT: readonly UnitType[] = [
-  "scarab", "trooper", "sentinel", "bulwark", "lancer", "flakhound", "sunhawk", "bombard",
-];
 
 export class Match {
   readonly world: World = new SimWorld();
@@ -59,7 +58,21 @@ export class Match {
     private readonly assets: LoadedAssets,
   ) {
     this.placeFixed();
-    this.seedScriptedPlayer();
+  }
+
+  /** Tear down every scene subtree this match added and clear the renderer. */
+  dispose(): void {
+    for (const a of [
+      this.playerBaseActor, this.enemyBaseActor,
+      this.playerReliquaryActor, this.enemyReliquaryActor,
+    ]) {
+      a.dispose();
+    }
+    for (const a of this.structureActors.values()) a.dispose();
+    for (const a of this.aegisActors.values()) a.dispose();
+    this.structureActors.clear();
+    this.aegisActors.clear();
+    this.render.reset();
   }
 
   /** Bases and Reliquaries — pre-placed, permanent singletons (specs/playfield.md). */
@@ -76,23 +89,6 @@ export class Match {
       .place(PLAYER_RELIQUARY.x, PLAYER_RELIQUARY.z, yawP).setRole("idle");
     this.enemyReliquaryActor = new SingletonActor(this.render.scene, reliquary, "neutral", this.render.registry)
       .place(ENEMY_RELIQUARY.x, ENEMY_RELIQUARY.z, yawE).setRole("idle");
-  }
-
-  /**
-   * TEMPORARY: give only the PLAYER a scripted spawner set (phase 6 replaces this with
-   * the build palette). The enemy starts empty at {@link START_SOL} — the {@link EnemyAI}
-   * builds its economy live — so this is a real AI-vs-scripted match, not a mirror.
-   */
-  private seedScriptedPlayer(): void {
-    const w = this.world;
-    const restore = w.sol.player;
-    w.sol.player = 1e6; // top up so the scripted loadout places; the live balance is reset below
-    PLAYER_DEMO_LOADOUT.forEach((type, i) => w.place("player", type, i, 0));
-    w.place("player", "solar-extractor", 0, 1);
-    w.sol.player = restore; // back to the real 200-sol opening; enemy was never touched
-    // Fire an opening wave so the field populates and shorten the first countdown a little.
-    w.fireWave();
-    w.waveTimer = 12;
   }
 
   /** Step the AI + sim and push this frame's fog-gated render state to the world. */

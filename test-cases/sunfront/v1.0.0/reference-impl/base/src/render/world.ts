@@ -35,13 +35,32 @@ export class World {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly unitTypes: ReadonlySet<string>;
 
-  // Input state for held-key / edge panning.
+  /**
+   * A DOM layer sized and positioned to exactly cover the letterboxed 16:9 canvas
+   * region. The HUD and the menu screens mount here (not on the raw window), so every
+   * overlay element stays inside the fitted view at any window size / DPR and follows
+   * it on resize. It is click-through (`pointer-events: none`); interactive children
+   * opt back in (specs/flow.md HUD, specs/overview.md letterboxing).
+   */
+  readonly overlayRoot: HTMLDivElement;
+  /** The current on-screen rect of the fitted 16:9 view, in CSS pixels. */
+  readonly viewport = { left: 0, top: 0, width: 0, height: 0 };
+  private readonly fitListeners: Array<() => void> = [];
+
+  // Input state for held-key / edge panning. Panning is gated to the live match.
   private readonly held = new Set<string>();
   private pointer = { x: -1, y: -1, inside: false };
+  private panEnabled = false;
+
+  // Screen -> ground-plane picking (build-cell placement, structure selection).
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly pickPoint = new THREE.Vector3();
+  private readonly ndc = new THREE.Vector2();
 
   // FPS overlay (F3).
   private readonly fpsEl: HTMLDivElement;
-  private fpsVisible = true;
+  private fpsVisible = false;
   private fpsAccum = 0;
   private fpsFrames = 0;
 
@@ -62,7 +81,16 @@ export class World {
     // Fog of war (specs/playfield.md): a ground overlay driven by the player's vision.
     this.fog = new FogOverlay(this.scene);
 
-    this.fpsEl = this.createFpsOverlay(container);
+    this.overlayRoot = document.createElement("div");
+    Object.assign(this.overlayRoot.style, {
+      position: "absolute",
+      pointerEvents: "none",
+      overflow: "hidden",
+      zIndex: "5",
+    });
+    container.appendChild(this.overlayRoot);
+
+    this.fpsEl = this.createFpsOverlay(this.overlayRoot);
 
     this.fit();
     window.addEventListener("resize", () => this.fit());
@@ -101,6 +129,7 @@ export class World {
   // --- Panning (specs/overview.md — along the diagonal only) ------------------
 
   private applyPan(dt: number): void {
+    if (!this.panEnabled) return;
     let dir = 0;
     if (this.held.has("ArrowUp") || this.held.has("KeyW")) dir += 1;
     if (this.held.has("ArrowDown") || this.held.has("KeyS")) dir -= 1;
@@ -118,7 +147,7 @@ export class World {
       this.held.add(e.code);
       if (e.code === "F3") { e.preventDefault(); this.toggleFps(); }
       if (e.code === "F4") { e.preventDefault(); this.registry.toggleWireframe(); }
-      if (e.code === "KeyH" || e.code === "Home") this.camera.recenter();
+      if (this.panEnabled && (e.code === "KeyH" || e.code === "Home")) this.camera.recenter();
     });
     window.addEventListener("keyup", (e) => this.held.delete(e.code));
     container.addEventListener("pointermove", (e) => {
@@ -143,13 +172,74 @@ export class World {
       vh = h;
       vw = Math.round(h * ASPECT_RATIO);
     }
+    const left = Math.round((w - vw) / 2);
+    const top = Math.round((h - vh) / 2);
     const el = this.renderer.domElement;
-    el.style.left = `${Math.round((w - vw) / 2)}px`;
-    el.style.top = `${Math.round((h - vh) / 2)}px`;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(vw, vh);
     this.camera.camera.aspect = ASPECT_RATIO;
     this.camera.camera.updateProjectionMatrix();
+
+    // Keep the overlay layer locked to the letterboxed view so the HUD/menus fit it.
+    this.viewport.left = left;
+    this.viewport.top = top;
+    this.viewport.width = vw;
+    this.viewport.height = vh;
+    Object.assign(this.overlayRoot.style, {
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${vw}px`,
+      height: `${vh}px`,
+    });
+    for (const cb of this.fitListeners) cb();
+  }
+
+  /** The WebGL canvas — the picking/click surface the controller listens on. */
+  get domElement(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
+
+  /** Register a listener fired whenever the fitted viewport changes (mount/resize). */
+  onFit(cb: () => void): void {
+    this.fitListeners.push(cb);
+    cb();
+  }
+
+  /** Enable/disable camera panning + recenter (only the live match pans; menus don't). */
+  setPanEnabled(on: boolean): void {
+    this.panEnabled = on;
+    if (!on) this.held.clear();
+  }
+
+  /**
+   * Ray-pick the ground plane (`y = 0`) at a client point, returning the logical
+   * `(x, z)` there or `null` if the ray misses. Drives build-cell placement and
+   * friendly-structure selection (specs/flow.md controls).
+   */
+  pickGround(clientX: number, clientY: number): { x: number; z: number } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return null;
+    this.ndc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -(((clientY - rect.top) / rect.height) * 2 - 1),
+    );
+    this.raycaster.setFromCamera(this.ndc, this.camera.camera);
+    const hit = this.raycaster.ray.intersectPlane(this.groundPlane, this.pickPoint);
+    if (!hit) return null;
+    return { x: hit.x, z: hit.z };
+  }
+
+  /** Recenter the command camera on the player's base (specs/flow.md). */
+  recenter(): void {
+    this.camera.recenter();
+  }
+
+  /** Clear the instanced roster and the fog for a fresh match (specs/flow.md restart). */
+  reset(): void {
+    this.units.sync([], () => null);
+    this.fog.reset();
   }
 
   // --- FPS overlay (F3, specs/overview.md performance) ------------------------
@@ -167,6 +257,7 @@ export class World {
       borderRadius: "3px",
       pointerEvents: "none",
       zIndex: "10",
+      display: "none",
     });
     el.textContent = "-- FPS";
     container.appendChild(el);

@@ -6,16 +6,17 @@
  * GPU-instanced voxel renderer for the rigid unit roster plus the `VoxelRig`
  * singletons for the bases, Reliquaries, extractors, spawners, and the Aegis
  * (specs/assets.md, specs/overview.md). While the asset bundle loads, a title card is
- * shown; once ready, the headless {@link Match} steps the real simulation (economy,
- * waves, movement, combat, the Reliquary and its Aegis — `sim/world.ts`) and feeds this
- * frame's state to the renderer, so units actually spawn, march, fight, and die and the
- * front line drifts. Later phases add fog, the HUD, player building, and the AI.
+ * shown; once ready, the {@link Game} controller takes over: it runs the full state
+ * machine (title / how-to-play / in-match / paused / match-over), draws the HUD overlay,
+ * and wires every control (arm + place from the build palette, structure management, the
+ * camera, pause, and the F3/F4 toggles), stepping the headless {@link Match} simulation
+ * only while a match is live (specs/flow.md).
  */
 
 import { PALETTE, MONO_FONT_STACK } from "./constants";
 import { loadAssets } from "./assets";
 import { World } from "./render/world";
-import { Match } from "./match";
+import { Game } from "./game";
 
 const app = document.getElementById("app")!;
 
@@ -38,22 +39,13 @@ loadAssets()
   .then((assets) => {
     status.remove();
     const world = new World(app, assets);
-    const match = new Match(world, assets);
+    const game = new Game(world, assets);
+    game.start();
 
-    let last = performance.now();
-    function frame(now: number): void {
-      const dt = Math.min(0.1, (now - last) / 1000);
-      last = now;
-      match.update(dt);
-      world.render(dt);
-      requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
-
-    // Expose for the headless render proof (screenshotting a live match frame).
-    (window as unknown as { sunfront?: unknown }).sunfront = { world, match };
+    // Expose for the headless render/state proofs (screenshotting each screen).
+    (window as unknown as { sunfront?: unknown }).sunfront = { world, game };
     console.info(
-      `[sunfront] match up: ${assets.units.size} unit types, ${assets.structures.size} structures, ` +
+      `[sunfront] ready: ${assets.units.size} unit types, ${assets.structures.size} structures, ` +
         `${assets.spawners.size} spawners, ${assets.effects.size} effects, aegis ready`,
     );
   })

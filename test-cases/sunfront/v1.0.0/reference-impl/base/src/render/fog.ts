@@ -90,6 +90,16 @@ export class FogOverlay {
     scene.add(this.mesh);
   }
 
+  /** Wipe both channels back to fully-fogged for a fresh match (specs/flow.md restart). */
+  reset(): void {
+    const d = this.data;
+    for (let i = 0; i < MASK_N * MASK_N; i++) {
+      d[i * 4] = 0;
+      d[i * 4 + 1] = 0;
+    }
+    this.texture.needsUpdate = true;
+  }
+
   /**
    * Rasterize the player's vision discs into the mask for this frame: clear the
    * currently-visible channel, stamp each disc into both the visible and (sticky)
