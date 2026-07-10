@@ -32,11 +32,20 @@ COPY . .
 # (crates/core/build.rs); this `.git`-less context can't resolve it from git, so
 # CI passes the commit (github.sha) in as a build arg. Unset, it stamps null.
 ARG TCAB_BUILD_COMMIT
+# Refresh the COPYed sources' mtimes before building: BuildKit's `COPY . .` stamps
+# every copied file with a FIXED mtime, so cargo's mtime-based freshness check can't
+# tell the source changed relative to artifacts already sitting in the persistent
+# target/ cache mount (left by an earlier build — a different branch, or one that was
+# interrupted) and reuses the STALE .rmeta/.rlib — silently baking a stale binary, or
+# failing with spurious E0599s when the reused crate's API no longer matches. Touching
+# the tree forces cargo's content-hash fallback, so only genuinely-changed crates
+# recompile (target/ is pruned so build outputs keep their real mtimes).
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/local/rustup \
     --mount=type=cache,target=/src/target \
-    TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release -p test-cabinet-backend \
+    find /src -path /src/target -prune -o -type f -exec touch {} + \
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release -p test-cabinet-backend \
     && cp /src/target/release/tcab-backend /tcab-backend
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
