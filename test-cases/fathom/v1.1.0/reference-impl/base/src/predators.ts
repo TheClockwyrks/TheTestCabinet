@@ -59,7 +59,7 @@ export interface World {
   frow: number;
   depthMult: number;
   predators: Predator[];
-  drifter: Drifter | null;
+  drifters: Drifter[];
   rand: () => number;
   inkAt: (x: number, y: number) => boolean;
   inkBetween: (x1: number, y1: number, x2: number, y2: number) => boolean;
@@ -137,8 +137,8 @@ function revealFlareArea(p: Predator, w: World): void {
       w.fog.reveal(c, r); // walls and floor alike; no line-of-sight check
     }
   }
-  // Any predator or the drifter within the disc is shown live (walls ignored).
-  const others: Mover[] = [...w.predators, ...(w.drifter ? [w.drifter] : [])];
+  // Any predator or a drifter within the disc is shown live (walls ignored).
+  const others: Mover[] = [...w.predators, ...w.drifters];
   for (const o of others) {
     if (o === p) continue;
     if (dist(o.x, o.y, p.x, p.y) <= FLARE_RADIUS) o.markT = Math.max(o.markT, 0.12);
@@ -214,7 +214,10 @@ function updateLanternjaw(p: Predator, dt: number, w: World, mult: number): void
 function gloamfinPing(p: Predator, w: World): void {
   w.effects.addRing(p.x, p.y, GLOAMFIN_PING_RANGE * TILE, true);
   w.audio.play("predPulse");
-  p.markT = Math.max(p.markT, 0.6); // you see the Gloamfin at the ring's center
+  // The ping is a warning you can SEE (the ring) but it does NOT give away the
+  // Gloamfin itself — the source stays hidden in the dark (specs/predators.md), so
+  // we do not mark it here. It is revealed only by your light, your sonar, or the
+  // detection alert when a ping actually catches you.
   // Every ping (periodic or the guaranteed "lost you" one) restarts the standard
   // cadence AND arms a minimum spacing, so re-acquiring you at close range cannot
   // spin the search→ping→re-acquire loop into a rapid-fire burst (specs/predators.md).

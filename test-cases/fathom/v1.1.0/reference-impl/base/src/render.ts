@@ -331,13 +331,12 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   ctx.drawImage(assets.glimmerfin[spriteFrame(f)], f.x - 16, f.y - 16, TILE, TILE);
   ctx.restore();
 
-  // The two always-visible amber lights (additive), drawn on top so they read at
-  // any distance and look almost identical: the bonus drifter and every out-of-den
+  // The always-visible amber lights (additive), drawn on top so they read at any
+  // distance and look almost identical: the bonus drifters and every out-of-den
   // Lanternjaw's bulb (specs/predators.md, specs/sensing.md).
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  const d = game.drifter;
-  if (d) drawAmberOrb(ctx, d.x, d.y);
+  for (const d of game.drifters) drawAmberOrb(ctx, d.x, d.y);
   for (const p of game.predators) {
     if (p.kind === PredKind.Lanternjaw && p.state !== PredState.Den)
       drawAmberOrb(ctx, p.x, p.y);

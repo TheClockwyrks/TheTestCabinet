@@ -85,28 +85,36 @@ left-right mirror.
 - Clearing **every** plankton in the maze completes the trench and descends to the
   next, deeper trench (see `specs/flow.md`).
 
-## The bonus drifter
+## The bonus drifters
 
-Periodically a **bonus drifter** — a glowing amber mote worth a burst of points —
-appears and wanders the corridors:
+**Bonus drifters** — glowing amber motes worth a burst of points — appear over time
+and wander the corridors:
 
-- It spawns at the den gate at a fixed cadence (for example, once about every
-  `25 s` while plankton remain) and drifts slowly (about `64 px/s`, half the
-  forager's speed) along the corridors, choosing a new direction at each junction,
-  for about `12 s` before leaving through a wrap tunnel or fading out. **A wandering
-  Lanternjaw copies this drift exactly** — the same `64 px/s` speed and the same
-  wander — so an undetected Lanternjaw's bulb does not merely *look* like a drifter,
-  it *moves* like one (see `specs/predators.md`).
-- Eating it scores the bonus (see `specs/flow.md`). At most one drifter exists at
-  a time.
-- **It is always visible, at any distance.** Unlike almost everything else in the
-  trench, the drifter is **never hidden by the dark** — you always see it drifting,
-  a single glowing amber point, wherever it is (`specs/sensing.md`). And it is drawn
-  to look **almost identical to the Lanternjaw's always-visible bulb-light**
-  (`specs/predators.md`): the whole point is that, at a brief glance, you cannot tell
-  a harmless drifter from a lurking Lanternjaw, so chasing an amber glimmer for
-  points is always a gamble. Draw it in code as a soft amber mote with a bright core
-  (the amber palette color `#ffd166`), matching the Lanternjaw's bulb.
+- They spawn at the den gate at a fixed cadence (for example, once about every
+  `25 s` while plankton remain) and drift slowly (about `64 px/s`, half the
+  forager's speed) along the corridors, choosing a new direction at each junction.
+  **A wandering Lanternjaw copies this drift exactly** — the same `64 px/s` speed and
+  the same wander — so an undetected Lanternjaw's bulb does not merely *look* like a
+  drifter, it *moves* like one (see `specs/predators.md`).
+- **A drifter is permanent once it spawns.** It does **not** time out, fade, or leave
+  through a tunnel — it keeps wandering until the **forager eats it** (the only way it
+  leaves the trench, short of losing a life or clearing the trench, which reset the
+  board). So an amber glimmer you spot in the dark stays out there to be caught.
+- **Up to two drifters exist at once.** The spawn cadence tops the trench up to
+  **two** drifters (never more); when you eat one, another can spawn after the next
+  interval. Two roaming amber motes — plus the Lanternjaw's identical bulb — make it
+  genuinely hard to keep track of which glimmer is bait and which is jaws.
+- Eating one scores the bonus (see `specs/flow.md`).
+- **They are drawn as always-visible amber lights** (subject to each dive's rules).
+  A drifter is **never hidden by the dark the way a predator's body is** — it is a
+  single glowing amber point (`specs/sensing.md`) drawn to look **almost identical to
+  the Lanternjaw's always-visible bulb-light** (`specs/predators.md`): the whole point
+  is that, at a brief glance, you cannot tell a harmless drifter from a lurking
+  Lanternjaw, so chasing an amber glimmer for points is always a gamble. Draw each in
+  code as a soft amber mote with a bright core (the amber palette color `#ffd166`),
+  matching the Lanternjaw's bulb. **How far you can see them depends on the dive:** in
+  the Trench dive they show at any distance, while in the Kindle dive they show only
+  within your vision circle — see `specs/sensing.md` for each.
 
 ## HUD
 

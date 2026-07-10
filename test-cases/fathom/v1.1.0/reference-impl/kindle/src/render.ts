@@ -34,9 +34,10 @@ const MAZE_H = ROWS * TILE;
 // already-revealed trench. It paints everything beyond radius `R` of the forager
 // back to pitch-black fog, cutting the circle at the pixel (not the tile), so
 // terrain and pellets show only within it (specs/sensing.md). It is NOT vision
-// for predators — that is the smaller, per-tile light circle — so predators, the
-// always-visible amber lights, and the enemy effects are all drawn AFTER this
-// mask and can appear beyond the circle.
+// for predators — that is the smaller, per-tile light circle. Predators and the
+// enemy effects (the flare, the Gloamfin's ping ring) are drawn AFTER this mask
+// and can appear beyond the circle; the amber lights (drifters, Lanternjaw bulb),
+// unlike in Base, are clipped to the vision circle and do NOT show beyond it.
 function drawVisionMask(ctx: CanvasRenderingContext2D, game: Game): void {
   const f = game.forager;
   const R = game.visionCircle;
@@ -182,9 +183,9 @@ function drawTrench(ctx: CanvasRenderingContext2D, game: Game): void {
   }
 
   // The pixel-perfect vision-circle mask: paint everything beyond the circle back
-  // to pitch-black fog. This clips ONLY the terrain and pellets above — it runs
-  // before predators, effects, and the always-visible amber lights, which are
-  // drawn next and so can show beyond the circle.
+  // to pitch-black fog. This clips the terrain and pellets above — predators and
+  // enemy effects are drawn next and can show beyond the circle, while the amber
+  // lights are clipped to the circle in drawEffectsAndCreatures.
   drawVisionMask(ctx, game);
 
   // A Flarefish's flare is a SECOND vision circle: a full-vision disc that shows
@@ -357,15 +358,25 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   ctx.drawImage(assets.glimmerfin[spriteFrame(f)], f.x - 16, f.y - 16, TILE, TILE);
   ctx.restore();
 
-  // The two always-visible amber lights (additive), drawn on top so they read at
-  // any distance and look almost identical: the bonus drifter and every out-of-den
-  // Lanternjaw's bulb (specs/predators.md, specs/sensing.md).
+  // The amber lights (additive): the bonus drifters and every out-of-den
+  // Lanternjaw's bulb, drawn to look almost identical. In Kindle — unlike Base and
+  // unlike the enemy effects — these are clipped to your **vision circle**: an amber
+  // glimmer only shows once it is inside the window you carry, so a distant drifter
+  // (or a lurking Lanternjaw) is not visible until you close in, and even then you
+  // still cannot tell which is which (specs/sensing.md).
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  const d = game.drifter;
-  if (d) drawAmberOrb(ctx, d.x, d.y);
+  const R = game.visionCircle;
+  const inView = (x: number, y: number) => Math.hypot(x - f.x, y - f.y) <= R;
+  for (const d of game.drifters) {
+    if (inView(d.x, d.y)) drawAmberOrb(ctx, d.x, d.y);
+  }
   for (const p of game.predators) {
-    if (p.kind === PredKind.Lanternjaw && p.state !== PredState.Den)
+    if (
+      p.kind === PredKind.Lanternjaw &&
+      p.state !== PredState.Den &&
+      inView(p.x, p.y)
+    )
       drawAmberOrb(ctx, p.x, p.y);
   }
   ctx.restore();

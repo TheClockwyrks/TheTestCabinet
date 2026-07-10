@@ -165,12 +165,16 @@ sonar. It is the predator your **sonar** is waiting for.
   pulse uses (the provided `assets/sonar-pulse/` sheet, here tinted to the
   Gloamfin's violet rather than the forager's cyan — see `specs/sensing.md` and
   `specs/assets.md`), spreading well beyond the Gloamfin's own sprite. You **see the
-  ring**, and it shows the Gloamfin's own position for that moment — so its hunting
-  gives it away. But **its ping reveals nothing else to you**: unlike your sonar,
-  the Gloamfin's ping does **not** light the maze or mark anything for you (see
-  `specs/sensing.md`) — it is a warning you can see, not a map. And when a Gloamfin
-  ping *catches you*, the **detection alert** (above) fires so you know you have
-  been heard.
+  ring** — so you know a Gloamfin is near and hunting — but the **ping does not draw
+  the Gloamfin itself**: unlike an earlier build, its own ping no longer shows its
+  body, so you get the warning without a clean fix on where the source is. (It is
+  still revealed the normal ways — by your light, by *your* sonar mark, or by the
+  detection alert when a ping catches you.) And **its ping reveals nothing else to
+  you** either: unlike your sonar, the Gloamfin's ping does **not** light the maze or
+  mark anything for you (see `specs/sensing.md`) — it is a warning you can see, not a
+  map. When a Gloamfin ping *catches you*, the **detection alert** (above) fires —
+  and that alert *does* show it lit for its half-second, so you always learn which
+  hunter found you the moment you are actually spotted.
 - **Counter — break the fix and run.** The Gloamfin is a touch faster than you in a
   straight chase, so simply sprinting away down a long, straight corridor still
   slowly loses ground — you cannot just outrun it in the open. You beat it by **using

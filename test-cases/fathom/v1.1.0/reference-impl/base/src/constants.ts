@@ -98,7 +98,7 @@ export const VISION_MIN = 96; // px at rest (3 tiles)
 export const VISION_GAIN = 64; // V = 96 + 64*G  -> up to 160
 
 // ---- Sonar (specs/sensing.md) ------------------------------------------
-export const SONAR_COOLDOWN = 3.5; // s
+export const SONAR_COOLDOWN = 1.75; // s (halved: sonar's real cost is attracting the Gloamfin)
 export const SONAR_RANGE_BASE = 9; // corridor tiles (E), shrinks with depth
 export const SONAR_MARK_TIME = 1.5; // s predators stay marked after a pulse
 export const SONAR_RING_TIME = 0.7; // s visible travel of the drawn ring
@@ -164,9 +164,9 @@ export const SCORE_CLEAR = 500;
 export const START_LIVES = 3;
 
 // ---- Bonus drifter (specs/playfield.md) --------------------------------
-export const DRIFTER_INTERVAL = 25; // s cadence while plankton remain
+export const DRIFTER_INTERVAL = 25; // s between spawns, while under the cap and plankton remain
 export const DRIFTER_SPEED = 64; // px/s (half the forager)
-export const DRIFTER_LIFE = 12; // s before it leaves
+export const MAX_DRIFTERS = 2; // at most this many drifters exist at once; each is permanent until eaten
 
 // ---- Dive countdown ----------------------------------------------------
 export const DIVE_COUNT = 3; // "DIVE" 3..2..1

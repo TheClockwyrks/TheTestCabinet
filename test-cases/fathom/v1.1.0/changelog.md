@@ -31,7 +31,10 @@ The predators were also revised for clarity and fairness:
   down from a full sprint because it often fixes on you at close range off its
   short-range hearing, where a big speed jump was an unfair blindside. Its pings are
   now **floored at ~`3 s` apart**, so re-finding you up close can no longer make it
-  rapid-fire its ping.
+  rapid-fire its ping. Its own ping **no longer draws the Gloamfin itself** — you see
+  the ring (the warning) but not the source, so a ping is not a free fix on where it
+  is; it is still revealed by your light, your sonar, or the detection alert when a
+  ping actually catches you.
 - The **Flarefish** now gives off **no tell of its own but its flare** — no bulb, no
   ping. Your light and sonar reveal it like any other predator; it simply does not
   advertise itself between flares (which ignore walls and reveal tiles for you), and
@@ -44,11 +47,22 @@ The predators were also revised for clarity and fairness:
   the end — and in **Kindle** the flare acts as a **second vision circle** that
   reveals the trench inside it in full, then vanishes when the flare dies, leaving
   only the window you carry.
-- The **bonus drifter** and the **Lanternjaw's bulb-light** are now always visible
-  at any distance and drawn to look almost identical, so the drifter reads as bait —
-  and a **wandering Lanternjaw now copies the drifter's AI exactly** (its `64 px/s`
-  speed and its wander), so until it detects you its bulb is indistinguishable from a
-  real drifter in both look *and* motion. On a fix it drops the disguise and hunts.
+- The **bonus drifters** and the **Lanternjaw's bulb-light** are drawn to look
+  almost identical, so the drifters read as bait — and a **wandering Lanternjaw now
+  copies the drifter's AI exactly** (its `64 px/s` speed and its wander), so until it
+  detects you its bulb is indistinguishable from a real drifter in both look *and*
+  motion. On a fix it drops the disguise and hunts.
+- **Drifters are now permanent and there can be two.** A drifter no longer times out
+  or fades — it wanders until you eat it — and the trench tops up to **two** at once,
+  making the amber motes genuinely hard to tell from the Lanternjaw's bulb.
+- **Kindle clips the amber lights to your vision circle.** In the Kindle dive the
+  drifters and the Lanternjaw's bulb are no longer drawn across the blacked-out fog;
+  they show **only inside your vision circle**, so a distant amber glimmer is hidden
+  until it drifts into your window (in Trench they still show at any distance). The
+  enemy effects — the flare and the Gloamfin's ping ring — still show beyond it.
+- **The sonar cooldown is halved** (from `3.5 s` to `1.75 s`). The pulse's real cost
+  is being *heard*, not the wait, so you can ping a little more freely — just not near
+  a Gloamfin.
 - Brightness now **holds for a short delay** after your last pellet (resetting each
   time you eat) before decaying, rather than draining constantly; walls are revealed
   by your light, sonar, and the flare (but never the Gloamfin's ping).

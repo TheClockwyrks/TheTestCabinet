@@ -14,7 +14,6 @@ import {
   DIVE_COUNT,
   DIVE_STEP,
   DRIFTER_INTERVAL,
-  DRIFTER_LIFE,
   DRIFTER_SPEED,
   FLARE_INTERVAL,
   FORAGER_SPEED,
@@ -24,6 +23,7 @@ import {
   INK_COOLDOWN,
   INK_LIFE,
   INK_RADIUS,
+  MAX_DRIFTERS,
   predatorSpeedMult,
   RELEASE_FLAREFISH,
   RELEASE_GLOAMFIN,
@@ -78,7 +78,7 @@ export class Game {
 
   forager = new Forager(START_COL, START_ROW, FORAGER_SPEED);
   predators: Predator[] = [];
-  drifter: Drifter | null = null;
+  drifters: Drifter[] = [];
   clouds: Ink[] = [];
 
   // plankton[key] = present
@@ -168,7 +168,7 @@ export class Game {
       p.flareT = FLARE_INTERVAL;
       p.flaring = false;
     }
-    this.drifter = null;
+    this.drifters = [];
     this.clouds = [];
     this.effects.clear();
     this.sonarCd = 0;
@@ -293,8 +293,10 @@ export class Game {
       if (p.state !== PredState.Den && set.has(tileKey(p.col, p.row)))
         p.markT = Math.max(p.markT, SONAR_MARK_TIME);
     }
-    if (this.drifter && set.has(tileKey(this.drifter.col, this.drifter.row)))
-      this.drifter.markT = Math.max(this.drifter.markT, SONAR_MARK_TIME);
+    for (const d of this.drifters) {
+      if (set.has(tileKey(d.col, d.row)))
+        d.markT = Math.max(d.markT, SONAR_MARK_TIME);
+    }
     // The Gloamfin hears the pulse: if the flood reaches it, it takes a fix on
     // you and gives chase — and the detection alert fires (specs/predators.md).
     for (const p of this.predators) {
@@ -412,15 +414,15 @@ export class Game {
       frow: this.forager.row,
       depthMult: predatorSpeedMult(this.depth),
       predators: this.predators,
-      drifter: this.drifter,
+      drifters: this.drifters,
       rand: Math.random,
       inkAt: this.inkAt,
       inkBetween: this.inkBetween,
     };
     for (const p of this.predators) updatePredator(p, dt, world);
 
-    // Bonus drifter.
-    this.updateDrifter(dt);
+    // Bonus drifters.
+    this.updateDrifters(dt);
 
     // Effects (rings/bursts) + fog. The Lanternjaw's always-visible bulb and the
     // always-visible drifter are drawn by render.ts, not marked here.
@@ -440,36 +442,39 @@ export class Game {
     if (this.planktonLeft <= 0) this.clearTrench();
   }
 
-  private updateDrifter(dt: number): void {
-    if (this.drifter) {
-      this.drifter.markT = Math.max(0, this.drifter.markT - dt);
-      this.drifter.life -= dt;
+  private updateDrifters(dt: number): void {
+    // Existing drifters wander until eaten — a drifter is permanent, no fade-out
+    // (specs/playfield.md), so an amber glimmer you spot stays out there.
+    for (const d of this.drifters) {
+      d.markT = Math.max(0, d.markT - dt);
       advance(
-        this.drifter,
+        d,
         dt,
         this.maze,
-        () => wanderDir(this.drifter!, this.maze, Math.random),
+        () => wanderDir(d, this.maze, Math.random),
         (c, r) => this.maze.foragerOpen(c, r) && !this.maze.isWrapEdge(c, r),
         () => true,
       );
-      // Eat the drifter.
-      if (
-        this.drifter.col === this.forager.col &&
-        this.drifter.row === this.forager.row
-      ) {
-        this.score += SCORE_DRIFTER;
-        this.audio.play("eat");
-        this.drifter = null;
-        return;
-      }
-      if (this.drifter.life <= 0) this.drifter = null;
-      return;
     }
-    // Spawn cadence (only while plankton remain).
-    this.driftT -= dt;
-    if (this.driftT <= 0 && this.planktonLeft > 0) {
-      this.driftT = DRIFTER_INTERVAL;
-      this.drifter = new Drifter(GATE_COL, GATE_ROW - 1, DRIFTER_SPEED, DRIFTER_LIFE);
+    // Eat any drifter the forager is on (score each).
+    const before = this.drifters.length;
+    this.drifters = this.drifters.filter(
+      (d) => !(d.col === this.forager.col && d.row === this.forager.row),
+    );
+    const eaten = before - this.drifters.length;
+    if (eaten > 0) {
+      this.score += SCORE_DRIFTER * eaten;
+      this.audio.play("eat");
+    }
+    // Spawn cadence: up to MAX_DRIFTERS at once, one every DRIFTER_INTERVAL, only
+    // while plankton remain. The timer only advances while there is room, so a
+    // freed slot refills after a fresh interval rather than instantly.
+    if (this.drifters.length < MAX_DRIFTERS) {
+      this.driftT -= dt;
+      if (this.driftT <= 0 && this.planktonLeft > 0) {
+        this.driftT = DRIFTER_INTERVAL;
+        this.drifters.push(new Drifter(GATE_COL, GATE_ROW - 1, DRIFTER_SPEED));
+      }
     }
   }
 

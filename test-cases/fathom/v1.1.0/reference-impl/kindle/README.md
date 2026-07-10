@@ -21,9 +21,11 @@ different signal you give off:
 
 - **The Lanternjaw** (amber) tracks your **light** — the brighter you glow from
   eating, the farther it finds you. Go dim, or drop ink, to lose it. Its bulb-light
-  is always visible and, while it wanders, it copies the bonus drifter exactly (same
-  `64 px/s` drift and wander), so an undetected Lanternjaw is indistinguishable from
-  a drifter in look *and* motion — every amber glimmer in the dark is a gamble.
+  shows (in Kindle) only inside your vision circle, and while it wanders it copies the
+  bonus drifter exactly (same `64 px/s` drift and wander), so an undetected Lanternjaw
+  is indistinguishable from a drifter in look *and* motion — every amber glimmer that
+  drifts into your window is a gamble. Up to two real drifters roam alongside it, each
+  permanent until eaten, so the amber motes are genuinely hard to tell apart.
 - **The Gloamfin** (violet) tracks your **sound**. It wanders at ordinary speed, but
   when a ping (yours or its own) catches you it chases — just a touch (~5%) faster
   than you — to that spot, then casts about and re-pings after a short delay (its

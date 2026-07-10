@@ -212,11 +212,11 @@ export class Predator extends Mover {
 }
 
 // ---- Bonus drifter -----------------------------------------------------
+// A drifter is permanent once it spawns: it wanders until the forager eats it
+// (specs/playfield.md), so it carries no lifetime.
 export class Drifter extends Mover {
-  life: number;
-  constructor(col: number, row: number, speed: number, life: number) {
+  constructor(col: number, row: number, speed: number) {
     super(col, row, speed);
-    this.life = life;
   }
 }
 

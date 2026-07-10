@@ -110,8 +110,11 @@ You can emit a **sonar pulse**: an active ability that reveals the maze ahead an
 finds predators, at the cost of being heard. (The control is in
 `specs/movement.md`.)
 
-- **Cooldown.** A pulse is available on a **`3.5 s`** cooldown; the HUD shows a
-  readiness gauge (see `specs/playfield.md`).
+- **Cooldown.** A pulse is available on a **`1.75 s`** cooldown; the HUD shows a
+  readiness gauge (see `specs/playfield.md`). The pulse recharges fairly quickly —
+  its real cost is not the cooldown but that it is **heard** (it can hand the
+  Gloamfin a fix), so you can afford to ping fairly often, just never carelessly near
+  a Gloamfin.
 - **Reveal (flood through corridors).** A pulse floods outward from the forager's
   tile **through open tiles only**, following the corridors like sound, out to a
   path range of **`E` = 9 tiles**. Every open tile within `E` corridor-steps
@@ -166,9 +169,10 @@ distinction matters:
   fade — the tiles stay revealed, they just drop from lit back to normal remembered
   brightness. It is a gift of vision (`specs/predators.md`).
 - **The Gloamfin's ping reveals nothing.** Its violet sonar ring is **visible to
-  you** — you see the ring and, for that moment, the Gloamfin at its center — but it
-  does **not** light the maze, reveal or remember any tile, or mark any other
-  predator or the drifter. It is a warning you can see, not a map (`specs/predators.md`).
+  you** — you see the ring spread across the trench — but it does **not** draw the
+  Gloamfin itself, light the maze, reveal or remember any tile, or mark any other
+  predator or a drifter. It is a warning you can see, not a map, and not even a fix on
+  the hunter that cast it (`specs/predators.md`).
 
 ## How predators reveal themselves
 
