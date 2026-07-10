@@ -1,0 +1,20 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`. Anchored to the project
+# root so the committed, vendored `vendor/*/dist` copies are NOT ignored.
+/dist/
+/build/
+/out/
+
+# The repo-root .gitignore ignores any dir named `dist` anywhere; re-include the
+# vendored, prebuilt runtime output for BOTH runtimes so `npm ci` can resolve them
+# on a fresh checkout (they are the libraries' committed dist, not build output of
+# this project).
+!vendor/voxel-runtime/dist/
+!vendor/voxel-runtime/dist/**
+!vendor/particle-runtime/dist/
+!vendor/particle-runtime/dist/**
+
+# Logs.
+*.log

@@ -1,0 +1,27 @@
+{
+  "name": "@test-cabinet/particle-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Vendored, prebuilt copy of @test-cabinet/particle-runtime — the framework-agnostic particle simulator plus its 2D-canvas and three.js bindings — so this reference implementation installs and builds with a plain `npm ci` outside the monorepo. Byte-for-byte the library's compiled output (the one type-only `@test-cabinet/run-record` import, erased at build, is inlined in contract.d.ts); the game plays assets/effects/*.json muzzle flashes through its public `/three` API exactly as a real run does.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./three": {
+      "types": "./dist/three/index.d.ts",
+      "default": "./dist/three/index.js"
+    },
+    "./canvas": {
+      "types": "./dist/canvas/index.d.ts",
+      "default": "./dist/canvas/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}

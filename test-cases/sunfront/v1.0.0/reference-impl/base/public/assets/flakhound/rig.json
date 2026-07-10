@@ -1,0 +1,544 @@
+{
+  "parts": [
+    {
+      "name": "body",
+      "pivot": [
+        17,
+        20,
+        24
+      ]
+    },
+    {
+      "name": "turret",
+      "parent": "body",
+      "pivot": [
+        17,
+        24,
+        21
+      ]
+    },
+    {
+      "name": "barrels",
+      "parent": "turret",
+      "pivot": [
+        17,
+        27,
+        25
+      ]
+    },
+    {
+      "name": "leg_fl_thigh",
+      "parent": "body",
+      "pivot": [
+        8,
+        16,
+        31
+      ]
+    },
+    {
+      "name": "leg_fl_shin",
+      "parent": "leg_fl_thigh",
+      "pivot": [
+        8,
+        8,
+        31
+      ]
+    },
+    {
+      "name": "leg_fr_thigh",
+      "parent": "body",
+      "pivot": [
+        27,
+        16,
+        31
+      ]
+    },
+    {
+      "name": "leg_fr_shin",
+      "parent": "leg_fr_thigh",
+      "pivot": [
+        27,
+        8,
+        31
+      ]
+    },
+    {
+      "name": "leg_bl_thigh",
+      "parent": "body",
+      "pivot": [
+        8,
+        16,
+        18
+      ]
+    },
+    {
+      "name": "leg_bl_shin",
+      "parent": "leg_bl_thigh",
+      "pivot": [
+        8,
+        8,
+        18
+      ]
+    },
+    {
+      "name": "leg_br_thigh",
+      "parent": "body",
+      "pivot": [
+        27,
+        16,
+        18
+      ]
+    },
+    {
+      "name": "leg_br_shin",
+      "parent": "leg_br_thigh",
+      "pivot": [
+        27,
+        8,
+        18
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "turret_yaw",
+      "part": "turret",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        17,
+        24,
+        21
+      ],
+      "min": -1.6,
+      "max": 1.6,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "barrel_pitch",
+      "part": "barrels",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        17,
+        27,
+        25
+      ],
+      "min": -0.35,
+      "max": 1.1,
+      "rest": 0.5,
+      "drive": "caller"
+    },
+    {
+      "name": "hip_fl",
+      "part": "leg_fl_thigh",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        8,
+        16,
+        31
+      ],
+      "min": -0.7,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "knee_fl",
+      "part": "leg_fl_shin",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        8,
+        8,
+        31
+      ],
+      "min": -0.2,
+      "max": 1.1,
+      "rest": 0.05,
+      "drive": "caller"
+    },
+    {
+      "name": "hip_fr",
+      "part": "leg_fr_thigh",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        27,
+        16,
+        31
+      ],
+      "min": -0.7,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "knee_fr",
+      "part": "leg_fr_shin",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        27,
+        8,
+        31
+      ],
+      "min": -0.2,
+      "max": 1.1,
+      "rest": 0.05,
+      "drive": "caller"
+    },
+    {
+      "name": "hip_bl",
+      "part": "leg_bl_thigh",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        8,
+        16,
+        18
+      ],
+      "min": -0.7,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "knee_bl",
+      "part": "leg_bl_shin",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        8,
+        8,
+        18
+      ],
+      "min": -0.2,
+      "max": 1.1,
+      "rest": 0.05,
+      "drive": "caller"
+    },
+    {
+      "name": "hip_br",
+      "part": "leg_br_thigh",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        27,
+        16,
+        18
+      ],
+      "min": -0.7,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "knee_br",
+      "part": "leg_br_shin",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        27,
+        8,
+        18
+      ],
+      "min": -0.2,
+      "max": 1.1,
+      "rest": 0.05,
+      "drive": "caller"
+    }
+  ],
+  "animations": [
+    {
+      "name": "walk",
+      "periodMs": 1200,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "hip_fl",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.3,
+              "interp": "linear"
+            },
+            {
+              "tMs": 720,
+              "value": 0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1200,
+              "value": -0.3,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "hip_br",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.3,
+              "interp": "linear"
+            },
+            {
+              "tMs": 720,
+              "value": 0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1200,
+              "value": -0.3,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "knee_fl",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.05,
+              "interp": "linear"
+            },
+            {
+              "tMs": 720,
+              "value": 0.05,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 960,
+              "value": 0.7,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1200,
+              "value": 0.05,
+              "interp": "ease-in"
+            }
+          ]
+        },
+        {
+          "joint": "knee_br",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.05,
+              "interp": "linear"
+            },
+            {
+              "tMs": 720,
+              "value": 0.05,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 960,
+              "value": 0.7,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1200,
+              "value": 0.05,
+              "interp": "ease-in"
+            }
+          ]
+        },
+        {
+          "joint": "hip_fr",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.2,
+              "interp": "linear"
+            },
+            {
+              "tMs": 120,
+              "value": 0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 600,
+              "value": -0.3,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1200,
+              "value": 0.2,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "hip_bl",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.2,
+              "interp": "linear"
+            },
+            {
+              "tMs": 120,
+              "value": 0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 600,
+              "value": -0.3,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1200,
+              "value": 0.2,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "knee_fr",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.05,
+              "interp": "linear"
+            },
+            {
+              "tMs": 120,
+              "value": 0.05,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 360,
+              "value": 0.7,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 600,
+              "value": 0.05,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1200,
+              "value": 0.05,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "knee_bl",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.05,
+              "interp": "linear"
+            },
+            {
+              "tMs": 120,
+              "value": 0.05,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 360,
+              "value": 0.7,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 600,
+              "value": 0.05,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1200,
+              "value": 0.05,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "flak_track",
+      "periodMs": 4000,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "turret_yaw",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1200,
+              "value": 1.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2400,
+              "value": -0.8,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3400,
+              "value": 0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 4000,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "barrel_pitch",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.35,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 600,
+              "value": 1.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": 0.45,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2200,
+              "value": 1.05,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3000,
+              "value": 0.4,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3600,
+              "value": 0.8,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 4000,
+              "value": 0.35,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
