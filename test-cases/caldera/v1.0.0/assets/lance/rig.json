@@ -1,0 +1,335 @@
+{
+  "parts": [
+    {
+      "name": "base",
+      "pivot": [
+        12,
+        0,
+        8
+      ]
+    },
+    {
+      "name": "mast",
+      "parent": "base",
+      "pivot": [
+        12,
+        7,
+        8
+      ]
+    },
+    {
+      "name": "yoke",
+      "parent": "mast",
+      "pivot": [
+        12,
+        63,
+        9
+      ]
+    },
+    {
+      "name": "rail",
+      "parent": "yoke",
+      "pivot": [
+        12,
+        63,
+        9
+      ]
+    },
+    {
+      "name": "sight",
+      "parent": "yoke",
+      "pivot": [
+        12,
+        69,
+        8
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "rail_traverse",
+      "part": "yoke",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        12,
+        63,
+        9
+      ],
+      "min": -0.24,
+      "max": 0.24,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "rail_recoil",
+      "part": "rail",
+      "kind": "translation",
+      "axis": "z",
+      "pivot": [
+        12,
+        63,
+        9
+      ],
+      "min": -6.5,
+      "max": 2.6,
+      "rest": 0.0,
+      "drive": "caller"
+    }
+  ],
+  "animations": [
+    {
+      "name": "idle",
+      "periodMs": 7200,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "rail_traverse",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                600.0,
+                0.075
+              ],
+              "inHandle": [
+                -600.0,
+                -0.075
+              ]
+            },
+            {
+              "tMs": 1800,
+              "value": 0.2,
+              "interp": "bezier",
+              "outHandle": [
+                650.0,
+                0.0
+              ],
+              "inHandle": [
+                -650.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 3600,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                600.0,
+                -0.075
+              ],
+              "inHandle": [
+                -600.0,
+                0.075
+              ]
+            },
+            {
+              "tMs": 5400,
+              "value": -0.2,
+              "interp": "bezier",
+              "outHandle": [
+                650.0,
+                0.0
+              ],
+              "inHandle": [
+                -650.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 7200,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                600.0,
+                0.075
+              ],
+              "inHandle": [
+                -600.0,
+                -0.075
+              ]
+            }
+          ]
+        },
+        {
+          "joint": "rail_recoil",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 7200,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fire",
+      "periodMs": 2400,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "rail_recoil",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                260.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 500,
+              "value": -1.6,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 980,
+              "value": -5.4,
+              "interp": "bezier",
+              "outHandle": [
+                180.0,
+                0.0
+              ],
+              "inHandle": [
+                -300.0,
+                -1.5
+              ]
+            },
+            {
+              "tMs": 1160,
+              "value": -6.0,
+              "interp": "bezier",
+              "outHandle": [
+                70.0,
+                0.0
+              ],
+              "inHandle": [
+                -120.0,
+                -0.05
+              ]
+            },
+            {
+              "tMs": 1250,
+              "value": 1.5,
+              "interp": "bezier",
+              "outHandle": [
+                45.0,
+                0.35
+              ],
+              "inHandle": [
+                -30.0,
+                -4.6
+              ]
+            },
+            {
+              "tMs": 1370,
+              "value": -1.3,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1520,
+              "value": 0.55,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1690,
+              "value": -0.28,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1870,
+              "value": 0.1,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 2060,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                200.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 2400,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "rail_traverse",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1160,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                45.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 1250,
+              "value": 0.0,
+              "interp": "bezier",
+              "outHandle": [
+                20.0,
+                0.014
+              ]
+            },
+            {
+              "tMs": 1300,
+              "value": 0.03,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1390,
+              "value": -0.02,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1490,
+              "value": 0.011,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1610,
+              "value": -0.004,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 1750,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 2400,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

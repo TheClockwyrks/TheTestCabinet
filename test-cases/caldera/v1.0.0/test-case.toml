@@ -84,24 +84,22 @@ variants = ["variants/base.toml"]
 # build what they are, how to found/pose/animate/RECOLOR them, and to load them by
 # page-relative URL.
 #
-# The `assets` key is COMMENTED OUT until the model files exist: the harness rejects a
-# manifest whose `assets` paths do not exist (`core`'s test-case resolution), so
-# listing the entity directories before they are populated would fail resolution. This
-# case is NOT run until then. `assets/models.json` already carries every entry — it is
-# the record of what is owed — so landing an asset case is just uncommenting its line
-# once its directory exists. When every directory below exists, UNCOMMENT the block:
-#
-# assets = [
-#   "assets/models.json",
-#   # The Slag (one model per archetype; tiers are a recolor, not new geometry)
-#   "assets/runner", "assets/breaker", "assets/sapper", "assets/colossus",
-#   # The Holdfast towers (upgrade levels are a recolor)
-#   "assets/repeater", "assets/mortar", "assets/lance", "assets/scald",
-#   # The Core and the fluid structures
-#   "assets/core", "assets/boiler", "assets/pump", "assets/river-tap",
-#   # The static pipe kit, recolored per network (water / steam)
-#   "assets/pipe-span", "assets/pipe-hub",
-# ]
+# Each model directory holds the produced asset seeded from its asset-generation case:
+# an animated entity is a `rig.json` plus its `meshes/*.glb` parts; the static pipe kit
+# is a single `mesh.glb`. `assets/models.json` names each entity's entry file
+# accordingly and carries the accent-recolor tables. All 14 entity directories exist,
+# so the block is live. This is a root key, so it must precede the first table header.
+assets = [
+  "assets/models.json",
+  # The Slag (one model per archetype; tiers are a recolor, not new geometry)
+  "assets/runner", "assets/breaker", "assets/sapper", "assets/colossus",
+  # The Holdfast towers (upgrade levels are a recolor)
+  "assets/repeater", "assets/mortar", "assets/lance", "assets/scald",
+  # The Core and the fluid structures
+  "assets/core", "assets/boiler", "assets/pump", "assets/river-tap",
+  # The static pipe kit, recolored per network (water / steam)
+  "assets/pipe-span", "assets/pipe-hub",
+]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
