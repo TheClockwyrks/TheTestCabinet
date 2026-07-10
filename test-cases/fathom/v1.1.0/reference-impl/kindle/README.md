@@ -27,10 +27,13 @@ different signal you give off:
   drifts into your window is a gamble. Up to two real drifters roam alongside it, each
   permanent until eaten, so the amber motes are genuinely hard to tell apart.
 - **The Gloamfin** (violet) tracks your **sound**. It wanders at ordinary speed, but
-  when a ping (yours or its own) catches you it chases — just a touch (~5%) faster
-  than you — to that spot, then casts about and re-pings after a short delay (its
-  pings floored at ~3 s apart, so it can't rapid-fire up close). Break away in that
-  window; ink does nothing to it.
+  when a ping (yours or its own) catches you it **pathfinds** to that spot — just a
+  touch (~5%) faster than you on a straight run, but **~10% slower each time it
+  corners** (then ramping back up), so you shake it by cutting corners rather than
+  sprinting straight. It then casts about and re-pings after a short delay, its pings
+  floored at ~3 s apart and fully **silenced while it is right on top of you** (within
+  hearing range), so it can't rapid-fire up close. Break away in that window; ink does
+  nothing to it.
 - **The Flarefish** (orange) gives off no tell of its own but its **flares** — your
   light and sonar reveal it like any predator, it just doesn't announce itself
   between flares. Its flare is a persistent, moving light for the whole bloom: it

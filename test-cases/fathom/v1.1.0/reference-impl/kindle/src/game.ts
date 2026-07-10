@@ -19,6 +19,7 @@ import {
   FORAGER_SPEED,
   GATE_COL,
   GATE_ROW,
+  GLOAMFIN_CHASE_SPEED,
   GLOAMFIN_PING_INTERVAL,
   KINDLE_VISION_GAIN,
   KINDLE_VISION_MIN,
@@ -173,6 +174,7 @@ export class Game {
       p.searching = false;
       p.searchT = 0;
       p.searchPingT = 0;
+      p.chaseSpeed = GLOAMFIN_CHASE_SPEED;
       p.flareT = FLARE_INTERVAL;
       p.flaring = false;
     }
@@ -326,6 +328,7 @@ export class Game {
     p.searching = false;
     p.state = PredState.Hunt;
     if (!alreadyChasing) {
+      p.chaseSpeed = GLOAMFIN_CHASE_SPEED; // fresh chase opens at the +5% cap
       p.alertT = DETECT_FLASH_TIME;
       this.effects.addBurst(p.x, p.y, COLOR.gloamfin);
       this.audio.play("alert");

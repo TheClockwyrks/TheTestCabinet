@@ -19,7 +19,9 @@ import {
   FLAREFISH_SPEED,
   GATE_COL,
   GATE_ROW,
+  GLOAMFIN_CHASE_RECOVER,
   GLOAMFIN_CHASE_SPEED,
+  GLOAMFIN_CORNER_SPEED,
   GLOAMFIN_HEAR_RANGE,
   GLOAMFIN_PATROL_SPEED,
   GLOAMFIN_PING_INTERVAL,
@@ -76,9 +78,11 @@ function manhattan(ac: number, ar: number, bc: number, br: number): number {
 }
 
 // Greedy: the open direction that most reduces grid distance to the target.
-// Reversing IS allowed here (unlike patrol) so a hunter that acquires you behind
-// it turns around immediately (specs/predators.md); a small bias to the current
-// heading avoids jitter on ties.
+// This alone can wedge a hunter in an L-corner (it walks into the corner nearest
+// the target and can go no closer), so it is used only for the short den exit and
+// as a fallback; the real chase steers by pathDir below. Reversing IS allowed here
+// (unlike patrol) so a hunter that acquires you behind it turns around immediately
+// (specs/predators.md); a small bias to the current heading avoids jitter on ties.
 function greedyDir(
   p: Mover,
   tc: number,
@@ -99,6 +103,21 @@ function greedyDir(
     }
   }
   return best === Dir.None ? p.dir : best;
+}
+
+// Pathfinding chase: the first step of the shortest corridor path to the target,
+// so a hunter rounds walls to its fix (and to your last-known tile once it loses
+// line of sight) instead of stalling in an L-corner (specs/predators.md). Falls
+// back to the greedy step only if no path exists (e.g. the target is walled off).
+function pathDir(
+  p: Mover,
+  tc: number,
+  tr: number,
+  canEnter: CanEnter,
+  maze: Maze,
+): Dir {
+  const d = maze.firstStepToward(p.col, p.row, tc, tr, canEnter);
+  return d !== Dir.None ? d : greedyDir(p, tc, tr, canEnter, maze);
 }
 
 // Random wander: an open direction, avoiding an immediate reverse when possible.
@@ -156,6 +175,9 @@ export function acquire(p: Predator, w: World, col: number, row: number): boolea
   p.searching = false;
   p.state = PredState.Hunt;
   if (!alreadyChasing) {
+    // A fresh chase opens at the Gloamfin's full +5% cap (a corner will trim it
+    // later); harmless for the Flarefish, which does not read chaseSpeed.
+    p.chaseSpeed = GLOAMFIN_CHASE_SPEED;
     p.alertT = DETECT_FLASH_TIME;
     const color = p.kind === PredKind.Gloamfin ? COLOR.gloamfin : COLOR.flarefish;
     w.effects.addBurst(p.x, p.y, color);
@@ -234,22 +256,37 @@ function gloamfinPing(p: Predator, w: World): void {
 function updateGloamfin(p: Predator, dt: number, w: World): void {
   if (p.pingLock > 0) p.pingLock = Math.max(0, p.pingLock - dt);
 
-  // Very-close hearing: it always knows your tile within ~2 tiles.
-  if (dist(p.x, p.y, w.forager.x, w.forager.y) <= GLOAMFIN_HEAR_RANGE) {
+  // Very-close hearing: it always knows your tile within ~2 tiles. While you are
+  // in that range it has a *continuous* lock straight off its hearing, so it does
+  // NOT ping — an earlier build kept firing pings on top of you as it closed in,
+  // and up close (chase → arrive → guaranteed "lost you" ping → re-acquire → ...)
+  // that spun into a near-continuous stutter of pings. Suppressing the ping inside
+  // hearing range keeps it silent right when it is already on you (specs/predators.md).
+  const closeLock = dist(p.x, p.y, w.forager.x, w.forager.y) <= GLOAMFIN_HEAR_RANGE;
+  if (closeLock) {
     acquire(p, w, w.fcol, w.frow);
   }
 
   // Periodic ping (its tell + sense). Fires in every state, but never sooner than
-  // the minimum ping spacing (gloamfinPing resets both timers).
+  // the minimum ping spacing (gloamfinPing resets both timers), and never while it
+  // already holds a close-range hearing lock. (pulseT keeps counting down through
+  // the lock, so the instant you slip back out of hearing range it pings to re-find
+  // you.)
   p.pulseT -= dt;
-  if (p.pulseT <= 0 && p.pingLock <= 0) {
+  if (p.pulseT <= 0 && p.pingLock <= 0 && !closeLock) {
     gloamfinPing(p, w);
   }
 
   const mult = w.depthMult;
   if (p.hasFix && !p.searching) {
-    // Chase: sprint to the tile the ping caught you on.
-    p.speed = GLOAMFIN_CHASE_SPEED * mult;
+    // Chase: drive to the tile the ping caught you on, ramping the chase speed back
+    // up to its cap. A corner turn (detected after the move in updatePredator) will
+    // have knocked chaseSpeed down to the corner floor.
+    p.chaseSpeed = Math.min(
+      GLOAMFIN_CHASE_SPEED,
+      p.chaseSpeed + GLOAMFIN_CHASE_RECOVER * dt,
+    );
+    p.speed = p.chaseSpeed * mult;
     if (p.col === p.fixCol && p.row === p.fixRow) {
       // Reached it and you are gone — start casting about.
       p.searching = true;
@@ -266,7 +303,7 @@ function updateGloamfin(p: Predator, dt: number, w: World): void {
     // top of the ping that just caught you.
     if (p.searchPingT !== Infinity) {
       p.searchPingT -= dt;
-      if (p.searchPingT <= 0 && p.pingLock <= 0) {
+      if (p.searchPingT <= 0 && p.pingLock <= 0 && !closeLock) {
         gloamfinPing(p, w);
         p.searchPingT = Infinity;
       }
@@ -415,17 +452,19 @@ export function updatePredator(p: Predator, dt: number, w: World): void {
       break;
   }
 
-  // Movement: chase the fix greedily; a searching Gloamfin casts around the fix;
-  // otherwise wander. (No cornering speed cap — every predator can turn freely.)
+  // Movement: chase by pathfinding to the fix (so it rounds walls to you, and to
+  // your last-known tile once it loses sight, instead of wedging in an L-corner);
+  // a searching Gloamfin paths back to the fix then casts around it; otherwise
+  // wander.
   let wantFn: () => Dir;
   let moveCanEnter: CanEnter = canPatrol;
   if (p.kind === PredKind.Gloamfin && p.searching) {
     wantFn = () =>
       manhattan(p.col, p.row, p.fixCol, p.fixRow) > 2
-        ? greedyDir(p, p.fixCol, p.fixRow, canPatrol, w.maze)
+        ? pathDir(p, p.fixCol, p.fixRow, canPatrol, w.maze)
         : patrolDir(p, canPatrol, w.maze, w.rand);
   } else if (p.state === PredState.Hunt && p.hasFix) {
-    wantFn = () => greedyDir(p, p.fixCol, p.fixRow, canPatrol, w.maze);
+    wantFn = () => pathDir(p, p.fixCol, p.fixRow, canPatrol, w.maze);
   } else if (p.kind === PredKind.Lanternjaw) {
     // Undetected: wander EXACTLY like the bonus drifter (same routing here, same
     // speed set in updateLanternjaw) so the bulb is indistinguishable from one.
@@ -435,5 +474,23 @@ export function updatePredator(p: Predator, dt: number, w: World): void {
     wantFn = () => patrolDir(p, canPatrol, w.maze, w.rand);
   }
 
+  const prevDir = p.dir;
   advance(p, dt, w.maze, wantFn, moveCanEnter, () => true);
+
+  // Gloamfin corner brake: turning a corner mid-chase (a perpendicular turn — not
+  // a straight run and not a free reversal) drops it below the forager's speed for
+  // a beat before it ramps back to the +5% cap, so a player who keeps cornering can
+  // pull away and escape rather than being reeled in on a straight line
+  // (specs/predators.md).
+  if (
+    p.kind === PredKind.Gloamfin &&
+    p.hasFix &&
+    !p.searching &&
+    p.dir !== Dir.None &&
+    prevDir !== Dir.None &&
+    p.dir !== prevDir &&
+    p.dir !== opposite(prevDir)
+  ) {
+    p.chaseSpeed = GLOAMFIN_CORNER_SPEED;
+  }
 }

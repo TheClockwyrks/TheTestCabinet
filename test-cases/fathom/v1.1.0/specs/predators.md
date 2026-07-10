@@ -26,8 +26,14 @@ Two shared ideas run under the per-predator behavior:
   open direction at random, preferring not to immediately reverse, so its path is
   unpredictable. It moves at its patrol speed (below).
 - **A fix** — a tile it believes you are at, set by its sense (below). While it
-  holds a fix it **pursues**: at each junction it takes the open direction that
-  most reduces the grid distance to the fix — a steady, greedy chase.
+  holds a fix it **pursues**: it follows the **shortest corridor path** to the
+  fixed tile, rounding walls to reach it. It must genuinely **path around
+  obstacles** — a hunter that only ever steps in the direction that shortens the
+  straight-line distance will **wedge in an L-corner** (it walks into the corner
+  nearest you and can get no closer), which it must not do. When a predator loses
+  track of you (see each one below), the fix holds at your **last-known tile** and
+  it paths there — so it rounds the corner you slipped behind rather than pressing
+  into the wall between you.
 
 Predators move through wrap tunnels like the forager. **Contact** — a predator's
 body overlapping the forager — costs a life (see `specs/flow.md`). Predators get
@@ -81,9 +87,11 @@ farther it finds you.
   **detection range** scales with your brightness `G` (see Brightness in
   `specs/sensing.md`): `R = 128 + 192 * G` — about **4 tiles** when you are dim, up
   to about **10 tiles** when you are fully lit from eating. While it senses you,
-  its fix is your current tile; **linger** after losing you is **`2 s`**, after
-  which it returns to wandering. It may turn back toward you the instant it senses
-  you.
+  its fix is your current tile; when it loses sight of you (you round a corner or a
+  wall breaks its line) it keeps the fix on your **last-known tile and paths to
+  it** — following you around the corner rather than pressing into the wall between
+  you — for a **linger** of **`2 s`**, after which it gives up and returns to
+  wandering. It may turn back toward you the instant it senses you.
 - **Tell — the always-visible bulb (anti-blindside).** The Lanternjaw carries a
   small dangling **bulb** (it is on the Lanternjaw's sprite; its **bulb-bob** frames
   are the beckoning animation — see `assets/lanternjaw/` in `specs/assets.md`). Its
@@ -135,13 +143,23 @@ sonar. It is the predator your **sonar** is waiting for.
   by sound). The instant it takes a fix it may **turn around immediately** to face
   you.
 - **Chase — a touch faster than you, to where the ping found you.** On a fix the
-  Gloamfin **chases**: it drives toward the fixed tile at **`134 px/s` — only about
-  **5%** faster than the forager's `128`** — so it **slowly gains** along the line the
-  ping drew rather than blowing past you. (This deliberately stays gentle because the
-  Gloamfin often fixes on you at **close range** off its short-range hearing; a big
-  speed jump there would be an unfair blindside.) It heads for the tile the ping
-  actually found you on, not wherever you have since slipped away to. This chase pace
-  is its **only** speed change — its wander stays the ordinary `116 px/s`.
+  Gloamfin **chases**: it drives toward the fixed tile at up to **`134 px/s` — only
+  about **5%** faster than the forager's `128`** — so on a straight run it **slowly
+  gains** along the line the ping drew rather than blowing past you. (This
+  deliberately stays gentle because the Gloamfin often fixes on you at **close
+  range** off its short-range hearing; a big speed jump there would be an unfair
+  blindside.) It heads for the tile the ping actually found you on, not wherever you
+  have since slipped away to.
+  - **Cornering costs it speed (your way out).** `134 px/s` is only a **cap**,
+    reached on straight runs. The instant the Gloamfin **turns a corner** to keep
+    following you (any perpendicular turn — not a straight run, and not a free
+    reversal to face someone behind it), it **drops to about `115 px/s` — roughly
+    **10%** *slower* than you** — and then **ramps back up to the `134` cap over
+    about `2 s`**. So a straight sprint alone won't shake it (it out-paces you on
+    the straight), but a player who **keeps cutting corners** gains a little ground
+    at each turn and can gradually open the gap and **escape** — without this the
+    Gloamfin was inescapable once it drew close. Its **wander** stays the ordinary
+    `116 px/s` throughout; the chase ramp is the only speed change.
 - **Search — a delayed, guaranteed ping (your escape window).** When the Gloamfin
   **reaches that tile and you are not there**, it does not re-ping at once. It slows
   back to `116 px/s` and **casts back and forth around the spot**, and only after a
@@ -156,12 +174,23 @@ sonar. It is the predator your **sonar** is waiting for.
     floor holds the next ping back until the gap has passed, so it **cannot
     rapid-fire its ping**. An earlier build let this loop spin and the Gloamfin
     stuttered pings on top of each other whenever it got close.
+  - **Silent while it already has you (required, anti-spam).** More strongly: while
+    you are **inside its hearing range** (about **2 tiles**), the Gloamfin already
+    holds a **continuous lock** straight off its hearing and does **not ping at
+    all** — no periodic ping, no "lost you" ping. Pinging there tells it nothing it
+    does not already know and only floods you with rings and pulses; an earlier
+    build did exactly that, firing pings near-continuously the moment it closed
+    within a couple of tiles down a straight corridor. It **stays silent as long as
+    it is on you**, and the moment you slip back **out** of hearing range it pings
+    again to re-find you (subject to the `3 s` floor above).
   - If the "lost you" ping (or any later ping) catches you, the Gloamfin takes a
     fresh fix and chases again.
   - If the search turns up nothing, it gives up after a handful of seconds — about
     **`5 s`** from reaching the empty tile — and returns to wandering.
 - **Tell (anti-blindside).** The Gloamfin emits **its own sonar pulses** about
-  every **`4 s`** — the **same large expanding sonar-ring effect** the forager's
+  every **`4 s`** (except when it already holds a close-range hearing lock, when it
+  goes silent — see the anti-spam rules under Search above) — the **same large
+  expanding sonar-ring effect** the forager's
   pulse uses (the provided `assets/sonar-pulse/` sheet, here tinted to the
   Gloamfin's violet rather than the forager's cyan — see `specs/sensing.md` and
   `specs/assets.md`), spreading well beyond the Gloamfin's own sprite. You **see the
@@ -175,14 +204,16 @@ sonar. It is the predator your **sonar** is waiting for.
   map. When a Gloamfin ping *catches you*, the **detection alert** (above) fires —
   and that alert *does* show it lit for its half-second, so you always learn which
   hunter found you the moment you are actually spotted.
-- **Counter — break the fix and run.** The Gloamfin is a touch faster than you in a
-  straight chase, so simply sprinting away down a long, straight corridor still
-  slowly loses ground — you cannot just outrun it in the open. You beat it by **using
-  the escape window**: when it reaches where it last heard you and begins casting
-  about, put distance and corners between you before its delayed "lost you" ping
-  fires, so the ping comes up empty and it gives up. Keep **your own** sonar for
-  when you truly need it — pinging near the Gloamfin hands it a fresh fix and feeds
-  the chase. Ink is useless against it.
+- **Counter — corner it and break the fix.** The Gloamfin is a touch faster than
+  you on a **straight** run, so simply sprinting away down a long, straight corridor
+  slowly loses ground — you cannot just outrun it in the open. Instead **keep cutting
+  corners**: every turn it makes to follow you costs it speed (above), so a cornered,
+  weaving route gradually opens the gap. Combine that with the **escape window** —
+  when it reaches where it last heard you and begins casting about, put more distance
+  and corners between you before its delayed "lost you" ping fires, so the ping comes
+  up empty and it gives up. Keep **your own** sonar for when you truly need it —
+  pinging near the Gloamfin hands it a fresh fix and feeds the chase. Ink is useless
+  against it.
 
 ## The Flarefish — hunts in its flare's light (orange)
 
@@ -238,8 +269,9 @@ flare** it casts. Once it has you it hunts just like the Lanternjaw — but it h
 - **Chase — exactly like the Lanternjaw.** Once it has a fix the Flarefish **stops
   flaring** and pursues you **just as the Lanternjaw does**: it senses you within a
   light-range that grows with your brightness (`R = 128 + 192 * G`) in line of
-  sight, keeps its fix on your current tile while it can see you, and **lingers
-  `2 s`** on your last tile when it loses you. It is drawn wherever your light, a
+  sight, keeps its fix on your current tile while it can see you, and when it loses
+  sight of you (you round a corner) it **paths to your last-known tile** and
+  **lingers `2 s`** there before giving up. It is drawn wherever your light, a
   sonar mark, or a flare reaches it — exactly as at any other time — and while
   chasing it **stops flaring**, so during the chase it gives off no tell at all.
 - **Losing you — and re-arming the flare.** If the Flarefish loses you (you break

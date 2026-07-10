@@ -149,4 +149,48 @@ export class Maze {
     }
     return out;
   }
+
+  // ---- corridor pathfinding (predator chase) ---------------------------
+  // Breadth-first shortest corridor path from (sc,sr) to (tc,tr) through tiles
+  // the `canEnter` predicate accepts (wrap-aware, bending around corners), and
+  // return the FIRST step direction along it. This is what a hunting predator
+  // steers by so it actually rounds walls to its fix instead of stalling in an
+  // L-corner the way a greedy "reduce the straight-line distance" step does
+  // (specs/predators.md). Returns Dir.None if already there or no path exists.
+  firstStepToward(
+    sc: number,
+    sr: number,
+    tc: number,
+    tr: number,
+    canEnter: (c: number, r: number) => boolean,
+  ): Dir {
+    if (sc === tc && sr === tr) return Dir.None;
+    const key = (c: number, r: number) => r * COLS + c;
+    const seen = new Set<number>();
+    const firstDir = new Map<number, Dir>();
+    seen.add(key(sc, sr));
+    let frontier: Cell[] = [{ col: sc, row: sr }];
+    while (frontier.length) {
+      const next: Cell[] = [];
+      for (const cell of frontier) {
+        const from = firstDir.get(key(cell.col, cell.row));
+        for (const d of [Dir.Up, Dir.Down, Dir.Left, Dir.Right]) {
+          const n = this.step(cell.col, cell.row, d);
+          if (!this.inBounds(n.col, n.row)) continue;
+          if (!canEnter(n.col, n.row)) continue;
+          const k = key(n.col, n.row);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          // The first move on the path: the source's own neighbours seed it
+          // with `d`; every deeper cell inherits the neighbour it came from.
+          const fd = from ?? d;
+          if (n.col === tc && n.row === tr) return fd;
+          firstDir.set(k, fd);
+          next.push(n);
+        }
+      }
+      frontier = next;
+    }
+    return Dir.None;
+  }
 }

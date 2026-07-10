@@ -126,7 +126,13 @@ export const LANTERNJAW_LINGER = 2; // s
 // The Gloamfin — hunts your sound. Wanders at the ordinary speed (no wind-up),
 // then chases just a touch faster than the forager to where a ping caught you.
 export const GLOAMFIN_PATROL_SPEED = PREDATOR_SPEED;
-export const GLOAMFIN_CHASE_SPEED = 134; // only ~5% faster than the forager's 128
+export const GLOAMFIN_CHASE_SPEED = 134; // cap: only ~5% faster than the forager's 128
+// Rounding a corner in a chase costs the Gloamfin speed: it drops to CORNER_SPEED
+// (~10% BELOW the forager) the moment it turns, then ramps back to the cap at
+// CHASE_RECOVER px/s each second — so a player who keeps cornering can gain ground
+// and slip away instead of being reeled in on a straight line (specs/predators.md).
+export const GLOAMFIN_CORNER_SPEED = 115; // px/s (~10% below the forager's 128)
+export const GLOAMFIN_CHASE_RECOVER = 10; // px/s regained per second after a corner (~1.9 s back to the cap)
 export const GLOAMFIN_HEAR_RANGE = 64; // ~2 tiles, in or out of LOS
 export const GLOAMFIN_PING_INTERVAL = 4; // s, its own periodic ping (tell + sense)
 export const GLOAMFIN_PING_RANGE = 9; // corridor tiles its ping floods

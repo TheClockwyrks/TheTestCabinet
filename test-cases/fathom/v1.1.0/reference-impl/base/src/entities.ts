@@ -196,6 +196,7 @@ export class Predator extends Mover {
   searching = false; // Gloamfin: casting about an empty fix
   searchT = 0; // Gloamfin: time left casting before giving up
   searchPingT = 0; // Gloamfin: delay before the guaranteed "lost you" ping
+  chaseSpeed = 0; // Gloamfin: current chase speed (px/s), ramping to the cap; a corner knocks it to the floor
   flareT = 0; // Flarefish: time to next flare
   flaring = false; // Flarefish: a flare is currently playing
   flarePhaseT = 0; // Flarefish: time since the current flare started
