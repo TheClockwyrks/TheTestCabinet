@@ -21,10 +21,11 @@ by a different signal you give off:
   when a ping (yours or its own) catches you it sprints — faster than you — to that
   spot, then casts about and re-pings after a short delay. Break away in that window;
   ink does nothing to it.
-- **The Flarefish** (orange) is invisible between **flares** — it only learns where
-  you are if its own flare (which ignores walls and lights the maze for you) catches
-  you at the bloom, and then it chases just like the Lanternjaw. Leave the flare's
-  radius, or ink it.
+- **The Flarefish** (orange) gives off no tell of its own but its **flares** — your
+  light and sonar reveal it like any predator, it just doesn't announce itself
+  between flares. It only learns where you are if its own flare (which ignores walls
+  and lights the maze for you) catches you at the bloom, and then it chases just like
+  the Lanternjaw. Leave the flare's radius, or ink it.
 
 When the Gloamfin's ping or the Flarefish's flare catches you, a bright **detection
 alert** flashes so you always know you have been spotted.

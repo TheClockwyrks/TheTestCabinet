@@ -158,14 +158,17 @@ sonar. It is the predator your **sonar** is waiting for.
 
 ## The Flarefish — hunts in its flare's light (orange)
 
-The Flarefish is an unseen hunter: **invisible in the dark**, betrayed only by the
-flare it casts. Once it has you it hunts just like the Lanternjaw — but it has to
+The Flarefish is a silent hunter: it gives off **no tell of its own except the
+flare** it casts. Once it has you it hunts just like the Lanternjaw — but it has to
 *find* you first, in a single flash.
 
-- **Invisible by default.** While wandering, the Flarefish's body is **not revealed
-  by your light or your sonar** — you do not see it at all. The only sign of it is
-  its **flare** (below). (This is unlike the other predators, which your light and
-  sonar can catch.)
+- **No tell but the flare.** Unlike the Lanternjaw (its always-visible bulb) and the
+  Gloamfin (its periodic ping), the Flarefish makes **nothing that betrays its
+  position on its own** — its only signal is its **flare** (below), which is **rarer
+  than the Gloamfin's ping**, so it warns you less often. It is **not literally
+  unseeable**, though: like every other predator its body is **revealed wherever your
+  light falls on it or a sonar pulse catches it** (`specs/sensing.md`). It simply
+  does not advertise itself between flares.
 - **Flare.** About every **`7 s`** the Flarefish emits a **flare**: a bright bloom
   lighting a radius of about **`192 px`** (6 tiles) around itself for **`1 s`**,
   preceded by a roughly **`0.5 s`** charge-up glow that telegraphs it and reveals
@@ -192,12 +195,13 @@ flare it casts. Once it has you it hunts just like the Lanternjaw — but it has
   flaring** and pursues you **just as the Lanternjaw does**: it senses you within a
   light-range that grows with your brightness (`R = 128 + 192 * G`) in line of
   sight, keeps its fix on your current tile while it can see you, and **lingers
-  `2 s`** on your last tile when it loses you. While chasing it is an ordinary
-  visible predator — drawn wherever your light, a sonar mark, or a flare reaches it,
-  no longer invisible.
+  `2 s`** on your last tile when it loses you. It is drawn wherever your light, a
+  sonar mark, or a flare reaches it — exactly as at any other time — and while
+  chasing it **stops flaring**, so during the chase it gives off no tell at all.
 - **Losing you — and re-arming the flare.** If the Flarefish loses you (you break
   its line of sight, go dim out of range, or ink it) and its linger runs out, it
-  **returns to wandering and invisibility, and begins flaring again** — but the
+  **returns to wandering — silent again but for its flare — and begins flaring
+  again** — but the
   flare does **not** fire instantly: on re-entering the wander state its flare is
   put on a fresh timer (a full **`7 s`** before the next flare), giving you a chance
   to get clear before it can catch you again.

@@ -244,9 +244,9 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
-  // Predator bodies, only where visible. The Flarefish is invisible while
-  // wandering; the Lanternjaw's body is fog-gated (its bulb is drawn separately,
-  // always, below).
+  // Predator bodies, only where visible. The Lanternjaw's body is fog-gated like
+  // the rest (its bulb is drawn separately, always, below); the Flarefish shows the
+  // same way but makes no tell of its own except its flare.
   for (const p of game.predators) {
     if (p.state === PredState.Den) continue;
     if (!predatorBodyVisible(game, p)) continue;
@@ -275,16 +275,13 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   ctx.restore();
 }
 
-// Whether a predator's body is currently drawn. The Flarefish is invisible while
-// wandering (seen only by its flare); otherwise a predator shows where it is lit,
-// marked by sonar, or during its detection alert.
+// Whether a predator's body is currently drawn. Every predator — the Flarefish
+// included — shows wherever your light falls on it, a sonar mark catches it, or its
+// detection alert fires. The Flarefish simply makes no tell of its own but the
+// flare (no bulb, no ping); it is also lit by its own flare while it charges/blooms.
 function predatorBodyVisible(game: Game, p: Predator): boolean {
   if (p.alertT > 0) return true;
-  if (p.kind === PredKind.Flarefish) {
-    if (p.flaring) return true; // visible in its own flare
-    if (p.hasFix && (game.fog.isLit(p.col, p.row) || p.markT > 0)) return true; // chasing + lit
-    return false; // wandering: invisible
-  }
+  if (p.kind === PredKind.Flarefish && p.flaring) return true; // lit by its own flare
   return game.entityVisible(p.col, p.row, p.markT);
 }
 
@@ -494,7 +491,7 @@ function drawHowTo(ctx: CanvasRenderingContext2D): void {
     ["", ""],
     ["THE LANTERNJAW", "hunts your LIGHT — go dim, or ink it"],
     ["THE GLOAMFIN", "hunts your SOUND — outruns you, so break its fix; ink is useless"],
-    ["THE FLAREFISH", "unseen until its FLARE finds you — leave the light, or ink it"],
+    ["THE FLAREFISH", "no sign but its FLARE — leave its light, or ink it"],
     ["", ""],
     ["LIGHT travels straight; SOUND bends around corners.", ""],
     ["Graze every plankton to descend. Contact costs a life.", ""],

@@ -133,8 +133,8 @@ export const GLOAMFIN_PING_RANGE = 9; // corridor tiles its ping floods
 export const GLOAMFIN_SEARCH_PING_DELAY = 1.2; // s at an empty fix before the guaranteed "lost you" ping
 export const GLOAMFIN_SEARCH_TIME = 5; // s casting about an empty fix before giving up
 
-// The Flarefish — invisible until its flare catches you, then chases like the
-// Lanternjaw.
+// The Flarefish — gives off no tell but its flare (revealed by your light/sonar
+// like the others), then chases like the Lanternjaw once its flare catches you.
 export const FLAREFISH_SPEED = PREDATOR_SPEED;
 export const FLARE_INTERVAL = 7; // s between flares while wandering
 export const FLARE_REARM = 7; // s before the first flare after losing you

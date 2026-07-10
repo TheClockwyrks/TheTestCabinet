@@ -262,7 +262,7 @@ function updateFlarefish(p: Predator, dt: number, w: World, mult: number): void 
   const chasing = p.hasFix;
 
   if (!chasing) {
-    // Wander (invisible), running the flare cycle.
+    // Wander (no tell but the flare), running the flare cycle.
     if (!p.flaring) {
       p.flareT -= dt;
       if (p.flareT <= 0) {

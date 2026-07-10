@@ -28,9 +28,12 @@ The predators were also revised for clarity and fairness:
   speed and, when a ping (yours or its own) catches you, sprints faster than the
   forager to that tile, then casts about and re-pings after a short, deliberate
   delay — giving you a window to break away.
-- The **Flarefish** is now invisible while wandering (seen only by its flare, which
-  ignores walls and reveals tiles for you) and, once its flare catches you, chases
-  exactly like the Lanternjaw before re-arming its flare on a timer.
+- The **Flarefish** now gives off **no tell of its own but its flare** — no bulb, no
+  ping. Your light and sonar reveal it like any other predator; it simply does not
+  advertise itself between flares (which ignore walls and reveal tiles for you), and
+  its flare is rarer than the Gloamfin's ping so it warns you less often. Once its
+  flare catches you it chases exactly like the Lanternjaw before re-arming its flare
+  on a timer.
 - The **bonus drifter** and the **Lanternjaw's bulb-light** are now always visible
   at any distance and drawn to look almost identical, so the drifter reads as bait.
 - Brightness now **holds for a short delay** after your last pellet (resetting each

@@ -106,7 +106,8 @@ targets:
 - The **Lanternjaw** is lost by dimming or by ink. The **Gloamfin** ignores ink and
   **outruns you** once it has a fix, but when it reaches where it last heard you it
   casts about and re-pings only after a delay — so you lose it by breaking away in
-  that window. The **Flarefish** is invisible until its flare catches you, then
+  that window. The **Flarefish** makes no tell of its own but its flare — your light
+  and sonar reveal it like any predator — and once its flare catches you it
   **chases exactly like the Lanternjaw** (and stops flaring); ink breaks its
   acquisition, and losing it re-arms its flare on a timer.
 - **Ink** blinds the Lanternjaw and the Flarefish but not the Gloamfin.
