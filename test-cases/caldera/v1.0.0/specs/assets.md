@@ -22,8 +22,22 @@ per-run sub-path (`specs/overview.md`).
 A `rig.json` names the model's parts, its joints and their hierarchy, and its
 animations as F-curves keyed on joint values. Each part's `.glb` is a standard glTF
 2.0 binary whose geometry decodes to plain typed arrays — `positions`, `normals`,
-`colors`, `indices`. Decoding the `.glb`, composing the joint hierarchy, and sampling
-the F-curves are yours to implement.
+`colors`, `indices`.
+
+Load and pose the models with `@test-cabinet/voxel-runtime`, the same library these
+models were authored against. It is injected into your `package.json`, so import it by
+bare name:
+
+- its root `parseGlb(bytes)` decodes a part's `.glb` into a `PartMesh`
+  (`{ positions, normals, colors, indices }`), the shape the recolor below walks;
+- its `@test-cabinet/voxel-runtime/three` binding's `VoxelRig` takes a model's parsed
+  parts and its `rig.json`, poses the parts on their joints under a `three` group, and
+  plays the authored animations **by name** — the names in `models.json`'s `clips`.
+  A `VoxelRigOptions.material` lets you supply your own material (used for the
+  whole-model state tint below).
+
+The runtime is a code-sharing library — the same one the review viewer uses — so the
+joint interface and animation names you drive are exactly what the models declare.
 
 ## The manifest
 
@@ -124,8 +138,9 @@ is what the accent region exists to avoid.
 
 A **dark** tower (brownout or severed steam, `specs/fluids.md`), a **starved** pipe,
 and a structure flashing on damage are whole-model state changes, not region swaps.
-Do those with a material color multiply over the baked vertex colors, which is cheap
-and leaves the cached geometry untouched.
+Do those with a material color multiply over the baked vertex colors — pass a material
+to `VoxelRig` via `VoxelRigOptions.material` and drive its color — which is cheap and
+leaves the cached geometry untouched.
 
 ## The pipe kit
 
