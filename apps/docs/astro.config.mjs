@@ -341,6 +341,11 @@ export default defineConfig({
               items: ["components/voxel-runtime/overview"],
             },
             {
+              label: "Particle Runtime",
+              collapsed: true,
+              items: ["components/particle-runtime/overview"],
+            },
+            {
               label: "Documentation",
               collapsed: true,
               items: ["components/docs/overview"],
