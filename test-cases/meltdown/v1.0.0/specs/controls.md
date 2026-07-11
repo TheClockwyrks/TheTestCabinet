@@ -22,23 +22,26 @@ of the simulation, only how fast it plays.
 
 1. **Arm placement** — click a tower in the shop (`specs/playfield.md`), or
    press its hotkey (below). The cursor enters placement mode for that type.
-2. **Preview** — as the cursor moves over the floor in placement mode, it snaps
-   to the nearest interior grid intersection. That intersection is the center
-   of the tower and the shared corner of the four tiles in its **2 x 2
-   footprint**. The preview shows the tower's **range** ring from that center
-   and a **valid/invalid** footprint highlight (`#46d07a` valid, `#ff4d4d`
-   invalid). A footprint is invalid if any tile in it is outside the floor,
-   already occupied, under a surge unit, unaffordable, or would seal the floor
-   (`specs/playfield.md`). Building right up against a vent or exhaust — even
+2. **Preview** — as the cursor moves over the floor in placement mode, the
+   tower's **`size x size` footprint** (`specs/towers.md`) centers on the cursor,
+   kept fully on the grid. The preview shows the tower's **range** ring from the
+   footprint center, its **radiator faces** at the currently-held rotation
+   (`specs/heat.md`), and a **valid/invalid** footprint highlight (`#46d07a`
+   valid, `#ff4d4d` invalid). A footprint is invalid if any tile in it is outside
+   the floor, already occupied, under a surge unit, unaffordable, or would seal the
+   floor (`specs/playfield.md`). Building right up against a vent or exhaust — even
    partly over its opening tiles — is *valid*, as long as it does not fully seal
    that opening or the floor.
-3. **Place** — left-click a valid footprint while in placement mode to build
+3. **Rotate** — while a tower is held (or one is selected), the **rotate** control
+   (below) turns it `90°`, turning its radiator faces so the player can aim them at
+   the open lane (`specs/heat.md`). Movers have no faces and do not rotate.
+4. **Place** — left-click a valid footprint while in placement mode to build
    there, deducting the tower cost from the current money. **Placement stays
-   armed after each build** — the tower remains "held" on the cursor so you can
-   immediately drop another copy of the same type. It disarms on its own only
-   when you can no longer afford one; otherwise it stays armed until you cancel
-   it (Step 4).
-4. **Cancel** — right-click or press `Esc` to leave placement mode without
+   armed after each build** — the tower remains "held" on the cursor (at the held
+   rotation) so you can immediately drop another copy of the same type. It disarms
+   on its own only when you can no longer afford one; otherwise it stays armed
+   until you cancel it (Step 5).
+5. **Cancel** — right-click or press `Esc` to leave placement mode without
    building.
 
 You may build at any time — during the build phase between waves **and** during
@@ -49,6 +52,9 @@ a live wave (`specs/flow.md`) — subject to affordability and the mazing rules.
 - **Select** — left-click a placed tower (when not in placement mode) to select
   it. Its range ring shows on the floor and the **inspector** opens in the build
   panel (`specs/playfield.md`) with its stats, **live heat read**, and actions.
+- **Rotate** — click the **Rotate faces** action in the inspector (or press the
+  rotate hotkey) to turn the selected emitter `90°`, re-aiming its radiator faces
+  (`specs/heat.md`, `specs/towers.md`).
 - **Upgrade** — click the **Upgrade** action in the inspector (or press the
   upgrade hotkey) to raise the selected tower a level if you can currently
   afford it (`specs/towers.md`).
@@ -81,6 +87,8 @@ below are **required** alongside it.
 
 - **Arm a shop tower:** number keys `1`–`8` arm the eight tower types in shop
   order (top to bottom, left to right).
+- **Rotate faces:** a key (for example `R`) turns the held or selected emitter
+  `90°`; state it in the in-game how-to and the produced `README.md`.
 - **Cancel placement / deselect / back:** `Esc`.
 - **Send next wave:** `Space`.
 - **Game speed toggle:** `F`.

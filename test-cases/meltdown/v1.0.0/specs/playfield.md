@@ -37,19 +37,20 @@ The reactor floor is a grid of **19 x 19** logical-pixel tiles, **50 columns**
 (`c = 0..49`) by **36 rows** (`r = 0..35`), forming the `950 x 684` play area
 whose top-left corner sits at the floor origin `(18, 18)`, just inside the casing.
 Tile `(c, r)` spans `x` in `[18 + 19c, 18 + 19(c + 1)]` and `y` in `[18 + 19r,
-18 + 19(r + 1)]`; its **center** is at `(18 + 19c + 9.5, 18 + 19r + 9.5)`. Every
-tower occupies a snapped **2 x 2 tile footprint** centered on a grid intersection,
-so the player's cursor feels like it is placing the center of the tower. A tower
-centered on intersection `(i, j)` occupies the four tiles that meet there:
-`(i - 1, j - 1)`, `(i, j - 1)`, `(i - 1, j)`, and `(i, j)`, with `i = 1..49` and
-`j = 1..35`; its tower center is at `(18 + 19i, 18 + 19j)`. The surge walks between
+18 + 19(r + 1)]`; its **center** is at `(18 + 19c + 9.5, 18 + 19r + 9.5)`. Towers
+come in three **sizes** — `2 x 2`, `3 x 3`, and `4 x 4` tiles (`specs/towers.md`) —
+and a tower occupies a snapped **`size x size` tile footprint** anchored by its
+**top-left tile** `(col, row)`, covering tiles `col..col + size - 1` by
+`row..row + size - 1`. The placement preview centers that block on the cursor. A
+tower's center — used for its range, targeting, and drawing — is at
+`(18 + 19 * (col + size/2), 18 + 19 * (row + size/2))`. The surge walks between
 tile centers. The faint grid (`#23272e`) is drawn over the floor (`#15181d`) at all
 times so the player can read tiles.
 
 Each tile is in one of these states:
 
 - **Open** — empty floor the surge can walk on. A tower can be built only where
-  all four tiles in its 2 x 2 footprint are open.
+  **every** tile in its `size x size` footprint is open.
 - **Blocked** — occupied by part of a tower footprint (it is now a wall; see
   Mazing below).
 
@@ -90,15 +91,17 @@ Vents glow cool blue (`#5f9bd6`); exhausts are hazard-striped and read as danger
 ## Tower Construction and Mazing
 
 There is no fixed path. The surge pathfinds across the open floor, and
-every tower is *also* a wall: building one blocks its 2 x 2 footprint, so you
-lengthen the surge's route by building structures it must walk around. This is
-the core of the game — you build the maze.
+every tower is *also* a wall: building one blocks its `size x size` footprint, so
+you lengthen the surge's route by building structures it must walk around. This is
+the core of the game — you build the maze. Larger towers wall off more floor at
+once (`specs/towers.md`).
 
-- A tower may be built only where its full **2 x 2 footprint** is open. No tile
-  in that footprint may be already occupied by another tower or currently occupied
-  by a surge unit; the casing wall is off-grid and can never be built on. The
-  placement preview snaps the cursor to the nearest valid interior grid
-  intersection and shows the four tiles surrounding that intersection.
+- A tower may be built only where its full **`size x size` footprint** is open. No
+  tile in that footprint may be already occupied by another tower or currently
+  occupied by a surge unit; the casing wall is off-grid and can never be built on.
+  The placement preview centers the `size x size` block on the cursor (kept fully
+  on the grid) and shows those tiles, the tower's radiator faces at the held
+  rotation (`specs/heat.md`), and its range ring.
 - **The openings are ordinary floor you may build against.** A tower may be
   placed **right next to a vent or exhaust**, and its footprint may even cover
   **some** of an opening's edge tiles — the opening tiles are ordinary Open
@@ -116,8 +119,8 @@ the core of the game — you build the maze.
   the right exhaust and from the top vent to the bottom exhaust — but a route
   through **any one** of an opening's tiles is enough; the player may wall off
   the rest.
-- Selling a tower (see `specs/towers.md`) reopens all four tiles in its
-  footprint immediately and the surge re-paths.
+- Selling a tower (see `specs/towers.md`) reopens every tile in its footprint
+  immediately and the surge re-paths.
 
 ## Surge Movement
 
@@ -158,11 +161,13 @@ by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
   name, and cost. A type the player cannot currently afford is shown disabled.
   Selecting a shop entry arms placement (see `specs/controls.md`).
 - **The selected-tower inspector** — when a placed tower is selected, this area
-  shows its type and level, its current stats (range, damage or effect, fire
-  rate), its live heat read (the same heat value drawn on the tower footprint,
-  shown here as a labeled bar from `0%` to redline), and **Upgrade** (with its
-  cost) and **Sell** (with its refund) actions. When nothing is selected it
-  shows a brief hint or the next-wave preview.
+  shows its type and level, its current stats (size, range, damage or effect, fire
+  rate, mass, and radiator faces), its live heat read (the same heat value drawn on
+  the tower footprint, shown here as a labeled bar from `0%` to `100%` with the
+  tower's **redline marker** at its max-efficiency point, `specs/heat.md`), a
+  **Rotate faces** action (emitters), and **Upgrade** (with its cost) and **Sell**
+  (with its refund) actions. When nothing is selected it shows a brief hint or the
+  next-wave preview.
 - **Wave controls** — a **Send next wave** action (with its early-send bonus;
   see `specs/flow.md`) that reads **Start** in the untimed opening build phase
   before Wave 1, a game-speed toggle (`1x` / `2x`), and **Pause**.

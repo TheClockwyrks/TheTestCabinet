@@ -3,159 +3,155 @@
 ## Overview
 
 This file defines the eight towers — six **emitters** that fire and the two
-**movers** (Forge and Sink) that only shift heat — their stats and thermal
-personalities, and how you build, upgrade, and sell them. It builds on the
-floor in `specs/playfield.md`, the heat system in `specs/heat.md`, the controls
-in `specs/controls.md`, and the economy in `specs/flow.md`. Ranges are
-expressed in tiles (one tile = `20 px`, `specs/playfield.md`); heat figures use
-the `0..100` scale of `specs/heat.md`. A tower's `coolRate` is its cooling rate
-*at the redline* (`H = 100`); cooling is proportional to heat, so the effective
-cooling is `coolRate * (H / 100)` per second (`specs/heat.md`).
+**movers** (Forge and Sink) that only shift heat — their stats, footprint sizes,
+radiator layouts, and thermal personalities, and how you build, rotate, upgrade,
+and sell them. It builds on the floor in `specs/playfield.md`, the heat system in
+`specs/heat.md`, the controls in `specs/controls.md`, and the economy in
+`specs/flow.md`. Ranges are in tiles (one tile = `19 px`, `specs/playfield.md`);
+heat figures use the `0..100` scale of `specs/heat.md`.
 
 The stat numbers below are **fixed** for this version; implement them exactly as
-written. Equally important is the **behavior**:
-the heat-to-damage curve, the redline trip, the coupling, and each tower's
-stance.
+written. Equally important is the **behavior**: the heat-to-damage plateau, the
+per-tower redline, the trip, surface cooling through radiator faces, conduction,
+and each tower's stance.
+
+## Footprints, Sizes, and Radiator Faces
+
+Towers come in three **sizes** — `2 x 2`, `3 x 3`, and `4 x 4` tiles — and a tower
+occupies a snapped footprint of its size (`specs/playfield.md`). A bigger tower
+hits harder but, because it sheds heat only through its perimeter while it
+generates heat across its whole body, **runs hotter for the same firing** and wants
+open air, corner placement, or Sinks (`specs/heat.md`).
+
+Each emitter designates some faces as **radiator faces** (cyan fins, `specs/heat.md`)
+that shed heat far better than plain faces. Radiators are given in the tower's
+**local** (un-rotated) orientation and turn with the tower when it is rotated
+(`specs/controls.md`). Movers have no radiator faces.
 
 ## Shared Targeting Rules
 
 - An emitter automatically fires at surge units in range — there is no manual
-  trigger. A tower's Range is the radius in tiles measured from the center of
-  the tower's 2 x 2 footprint; a unit within that radius is targetable.
-- By default an emitter targets the in-range unit **furthest along its path** to
-  an exhaust (the standard "first" target), whether that unit is ground or
-  flying. Splash and anti-air differ as noted.
-- Each emitter fires at its fire rate (shots/second) whenever it has a
-  target, adding `heatPerShot` per shot and dealing `baseDamage *
-  heatMultiplier(H)` per shot (`specs/heat.md`). With no target it only cools.
+  trigger. A tower's Range is the radius in tiles measured from the **center of its
+  footprint**; a unit within that radius is targetable.
+- By default an emitter targets the in-range unit **furthest along its path** to an
+  exhaust (the standard "first" target), ground or flying. Splash and anti-air
+  differ as noted.
+- Each emitter fires at its fire rate (shots/second) whenever it has a target,
+  adding `heatPerShot / mass` per shot and dealing `baseDamage *
+  heatMultiplier(H, redline)` per shot (`specs/heat.md`). With no target it only
+  cools.
 - The **Arc**, **Stutter**, **Lance**, **Bloom**, and **Rime** can target both
-  ground units and flyers. The **Flak** is the exception: it is **air-only** and
-  can target flyers but never ground units. The Forge and Sink never target
-  anything.
+  ground units and flyers. The **Flak** is **air-only**. The Forge and Sink never
+  target anything.
 
 ## Emitters
 
-| Tower | Role / stance | Cost | Range | Fire rate | Base dmg | heatPerShot | coolRate |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **Arc** | Basic, balanced — heat-hungry, wide sweet spot; the cheap maze/chip tower | 15 | 6.0 | 2.0 /s | 6 | 8 | 14 /s |
-| **Stutter** | Rapid fire, low per-shot — heat-hungry, trips easily | 40 | 5.0 | 7.0 /s | 2.0 | 3.0 | 13 /s |
-| **Lance** | Long-range sniper, slow heavy shot — heat-hungry, runs cold | 150 | 12.0 | 0.8 /s | 43 | 15 | 19 /s |
-| **Bloom** | Area splash — heat-hungry, heavy heat per shot | 150 | 6.0 | 1.2 /s | 10 | 14 | 14 /s |
-| **Rime** | Cryo slow — heat-averse | 45 | 5.5 | 2.4 /s | 4 | 6.5 | 15 /s |
-| **Flak** | Anti-air only — heat-hungry, dedicated flyer counter | 60 | 8.0 | 2.6 /s | 6 | 5.5 | 13 /s |
+| Tower | Size | Role / stance | Cost | Range | Fire rate | Base dmg | heatPerShot | Redline | Mass | Radiators (local) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Arc** | 2x2 | Basic, balanced — the cheap maze/chip tower | 15 | 6.0 | 2.0 /s | 6 | 7.9 | 80 | 1.0 | N, S |
+| **Stutter** | 2x2 | Rapid fire — twitchy, low redline, trips easily | 40 | 5.0 | 7.0 /s | 2.0 | 3.2 | 60 | 0.5 | N, E |
+| **Rime** | 2x2 | Cryo slow — heat-averse | 45 | 5.5 | 2.4 /s | 4 | 5.4 | 100* | 1.1 | N, S, E |
+| **Flak** | 2x2 | Anti-air only — dedicated flyer counter | 60 | 8.0 | 2.6 /s | 6 | 7.4 | 78 | 0.9 | N, S |
+| **Bloom** | 3x3 | Area splash — big, heavy, runs hot | 150 | 6.0 | 1.2 /s | 10 | 21.0 | 82 | 1.8 | N, E |
+| **Lance** | 4x4 | Long-range sniper — heavy, high redline, wants feeding | 150 | 12.0 | 0.8 /s | 43 | 37.6 | 92 | 2.8 | N, E |
+
+`*` The Rime is heat-averse and has **no damage plateau** — its redline is the
+`100` trip; it slows best cold (below).
 
 Notes on the ones with special behavior:
 
 - **Arc** is the workhorse and the **cheapest tower** — at `15` it is the one you
-  lay down in numbers to shape the maze and chip the surge (you can afford about
-  **16** on the opening build), the way the maze is meant to be built. Its firing
-  heat (`2.0 * 8 = 16`/s) against its
-  cooling coefficient (`14`/s at the redline) gives it a ceiling of `H* ≈ 114`,
-  so a lone Arc jammed into a saturated lane and firing flat-out climbs past the
-  redline and trips; give it breathing room between targets and it settles hot
-  but safely short of it. Forgiving, the tower to learn on.
-- **Stutter** pours on heat fast (`7 * 3.0 = 21`/s against a `13`/s cooling
-  coefficient) for a very high ceiling (`H* ≈ 162`) — it trips the quickest of
-  any emitter, redlining even on a moderately busy lane. On its own it is a
-  stuttering gun that keeps cutting out; beside a Sink it holds a continuous
-  stream of fire. It is the clearest "wants a Sink" tower.
-- **Lance** fires about every `1.25 s` (`0.8`/s) for a huge hit, but its firing
-  heat is low (`0.8 * 15 = 12`/s against a `19`/s cooling coefficient) for a
-  ceiling of only `H* ≈ 63` — so, alone among the emitters, a lone Lance **cannot
-  reach the redline on its own**. Its targets are sparse at its long range too,
-  so it tends to run cold and hit near its `0.5x` floor — barely half its base
-  damage. Beside a Forge it warms up and lands far harder, and a Forge plus
-  steady firing is the only thing that can push it past the redline (add a Sink
-  to keep it there). It is the clearest "wants a Forge" tower.
-- **Bloom** damages **all** surge units within `2.4` tiles of its shot's
-  impact (it targets the in-range unit furthest along, and splashes around it).
-  Its heavy `heatPerShot` means a Bloom in a packed chokepoint heats quickly.
-- **Flak** is the dedicated anti-air tower (`specs/creeps.md`): it can target
-  flyers only and ignores ground units entirely. Other emitters can still shoot
-  flyers, but they split attention between air and ground by their normal
-  targeting rules. Flak is how the player buys reliable air coverage without
-  pulling ground damage off the maze.
+  lay down in numbers to shape the maze and chip the surge, the way the maze is
+  meant to be built. With `2` radiator faces (N/S) and a redline of `80`, a
+  well-placed Arc — two or more faces on the open lane, radiators aimed there —
+  settles right in its `80..100` plateau, hot but online. Box it in and it trips.
+  Forgiving; the tower to learn on.
+- **Stutter** pours on heat fast and has a **low mass (`0.5`)**, so it is the
+  twitchiest emitter — it spikes to the trip on any busy lane. Its **low redline
+  (`60`)** is the mercy: it reaches full power early and has a wide, forgiving
+  plateau to spike around in. It is the clearest "wants a Sink" tower — beside one
+  it holds a continuous stream of fire.
+- **Lance** is a `4 x 4` sniper: a huge hit at long range, but a **low firing heat**
+  for its bulk, so on an open lane it runs **cold** and hits near its `0.5x` floor.
+  Its **high redline (`92`)** means it only reaches full power run very hot, and a
+  `4 x 4` cannot shed much heat once its faces are covered — so the way to arm it is
+  to **feed it**: tuck it so its faces are blocked, or park a **Forge** on it (only
+  a maxed Forge, setpoint `96`, drives it into its `92+` plateau). Its high mass
+  (`2.8`) then holds it steady up there. The clearest "wants a Forge / wants
+  tucking" tower.
+- **Bloom** is a `3 x 3` splash tower: it damages **all** surge within `2.4` tiles
+  of its shot's impact (targets the in-range unit furthest along, and splashes
+  around it). Its heavy `heatPerShot` and `3 x 3` body mean it **runs hot** in a
+  packed chokepoint and wants a corner (three open faces) or a Sink to stay in its
+  `82..100` plateau without tripping.
+- **Flak** is the dedicated anti-air tower (`specs/creeps.md`): it targets flyers
+  only. Flak is how the player buys reliable air coverage without pulling ground
+  damage off the maze.
 
 ### Rime
 
-The **Rime** does not deal meaningful damage; it **slows** the surge, and —
-unlike every other emitter — it works best cold. Its slow strength falls as
-it heats:
+The **Rime** does not deal meaningful damage; it **slows** the surge, and — unlike
+every other emitter — it works best cold. Its slow strength falls as it heats:
 
 ```
-slowFactor(H) = 0.55 * (1 - H / 100)
+slowFactor(H) = slowCeil * (1 - H / 100)
 ```
 
 A hit applies a movement slow of `slowFactor(H)` (a fraction of normal speed
-removed) for `1.5 s`, refreshed by further hits, and slows do not stack
-beyond the strongest currently applied. So a cold Rime (`H ≈ 0`) cuts a
-unit's speed by up to `55%`; a Rime run hot does almost nothing — at `H =
-100` its slow is `0`. Its own firing warms it (`2.4 * 6.5 = 15.6`/s against a
-`15`/s cooling coefficient → a continuous-fire ceiling `H* ≈ 104`), so a Rime
-worked flat-out in a packed lane cooks itself: its slow fades to almost nothing
-and it can even climb to the redline and trip. Keep a Rime cold: give it
-breathing room, isolate it, or place a Sink beside it, and keep Forges and hot
-cores away — a Rime sitting next to a Forge is a Rime that has stopped slowing.
-Some surge units are immune to slowing entirely (`specs/creeps.md`); a Rime
-does nothing to those regardless of its heat.
-
-A Rime still trips at the redline like any emitter (`specs/heat.md`), but a
-Rime hot enough to be near the redline already has negligible slowing.
+removed) for `1.5 s`, refreshed by further hits; slows do not stack beyond the
+strongest currently applied. So a cold Rime (`H ≈ 0`) cuts a unit's speed by up to
+`slowCeil` (`55%` at level I); a Rime run hot does almost nothing. It has `3`
+radiator faces (N/S/E) so it is easy to keep cold in open air, but its own firing
+warms it, and **conduction** from hot neighbors or a Forge cooks it
+(`specs/heat.md`). Keep a Rime in open air or beside a Sink, away from Forges and
+hot cores. Some surge units are immune to slowing entirely (`specs/creeps.md`).
 
 ## Forge and Sink
 
-The **Forge** and **Sink** never fire and have no heat of their own; they shift
-heat to and from orthogonally neighboring emitter footprints every second (see
-Thermal coupling in `specs/heat.md`).
+The **Forge** and **Sink** are `2 x 2`, never fire, and have no heat of their own;
+they shift heat to and from the emitter faces that touch them (see `specs/heat.md`).
 
-| Tower | Effect on each fully aligned orthogonal emitter | Cost |
+| Tower | Effect on each touching emitter | Cost |
 | --- | --- | --- |
-| **Forge** | `+12` heat/second (fixed source, continuous) | 20 |
-| **Sink** | `+14` to that emitter's `coolRate` (extra cooling, proportional to heat) | 20 |
+| **Forge** | Thermostat: warms toward a **setpoint** (`72` at level I), never past it | 20 |
+| **Sink** | Coolant loop: adds `12` (level I) cooling per shared edge, proportional to heat | 20 |
 
-- A **Forge** adds up to `12`/s of heat to each adjacent emitter — a fixed
-  source that raises the emitter's ceiling. Enough to keep a Lance warm in a
-  lull, or enough to push a Stutter that is already firing into the redline. Use
-  it to wake cold guns; keep it away from anything you need to stay cool.
-- A **Sink** adds up to `14` to each adjacent emitter's `coolRate`, so that
-  emitter cools by `(coolRate + 14) * (H / 100)` per second — proportional to
-  heat, so it bites hardest near the redline and barely touches a cool gun. It
-  **lowers the ceiling** (never chills to dead-cold): enough to keep a Stutter
-  firing continuously without tripping, or to hold a packed core just under the
-  redline at maximum damage. Use it to brake your hot guns and to shield a Rime
-  from stray heat. A single Sink is a lever, not immunity — stack a second, or
-  upgrade it, to hold a gun that runs hotter (upgraded, or Forge-fed).
+- The **Forge** adds `0.9 * sharedEdgeTiles * max(0, setpoint - H)` heat per second
+  — it only ever pushes an emitter *up to* its setpoint, so it cannot trip a firing
+  gun on its own. It wakes cold guns and feeds the Lance; keep it off anything you
+  want cold.
+- The **Sink** adds `sinkOutput * sharedEdgeTiles * (H / 100)` cooling per second —
+  the **only way to cool a boxed-in tower**, since it cools through a face that
+  would otherwise be blocked. Sinks stack. Use them to brake hot guns, hold a dense
+  core in its plateau, and shield a Rime.
 
-Both are still walls like any tower (`specs/playfield.md`), so they also
-shape the maze. Multiple Forges/Sinks adjacent to one emitter stack their
-effect. Apply the alignment scaling from `specs/heat.md`: full edge alignment
-uses the table value, and one-tile staggered edge contact uses half the value.
+Both are walls (`specs/playfield.md`) and a face touching a mover sheds no heat to
+air. Multiple movers touching one emitter stack their effect.
 
-## Building, Upgrading, and Selling
+## Building, Rotating, Upgrading, and Selling
 
-- **Build.** Buy a tower from the shop and place it on an open 2 x 2 footprint
-  (`specs/controls.md`). Its cost is deducted from your money
-  (`specs/flow.md`); you cannot build what you cannot afford. Placement obeys
-  the mazing rules in `specs/playfield.md` (never seal the floor).
-- **Upgrade.** A selected tower can be upgraded through three levels — I (base
-  level, as built), II, and III. Each upgrade improves the tower and, for
-  emitters, makes it run hotter — a maxed emitter is a glass cannon that needs
-  thermal support. Each level applies, on top of the previous level's stats:
-  - **Emitters:** `baseDamage * 1.6`, `range + 1.0` tiles, `fireRate * 1.15`,
-    and `heatPerShot * 1.3` (it heats faster; `coolRate` is unchanged). The
-    **Rime** instead raises its cold-slow ceiling — `0.55 → 0.68 → 0.80` at
-    levels I/II/III — and its range and `heatPerShot` like the others; its
-    heat-averse curve is otherwise unchanged.
-  - **Movers:** the **Forge**'s output and the **Sink**'s draw grow by `×1.5`
-    per level, on top of the previous level (Forge `12 → 18 → 27`/s; Sink `14 →
-    21 → 31.5`/s); range/footprint are unchanged.
-  - **Cost.** Upgrading to II costs `1.0x` the tower's build cost; to
-    III, `1.8x` the build cost. (For an Arc: `15` to reach II, `27` to
-    reach III.)
-- **Sell.** A selected tower can be sold for a `70%` refund of everything
-  spent on it (build plus upgrades), rounded down. Selling reopens all four
-  tiles in its footprint immediately and the surge re-paths
-  (`specs/playfield.md`). Selling is how you re-shape the maze between waves.
+- **Build.** Buy a tower from the shop and place its `size x size` footprint on
+  open floor (`specs/controls.md`). Its cost is deducted from your money
+  (`specs/flow.md`); you cannot build what you cannot afford. Placement obeys the
+  mazing rules in `specs/playfield.md` (never seal the floor).
+- **Rotate.** An emitter can be **rotated** in `90°` steps — before placing (the
+  held preview rotates) or after, on the selected tower — turning its radiator
+  faces (`specs/heat.md`, `specs/controls.md`). Movers have no faces and do not
+  rotate. Rotating a placed tower re-derives its cooling immediately.
+- **Upgrade.** A selected tower can be upgraded through three levels — I, II, III.
+  Each level applies, on top of the previous:
+  - **Emitters:** `baseDamage * 1.6`, `range + 1.0` tiles, `fireRate * 1.15`, and
+    `heatPerShot * 1.3` (it heats faster — a maxed emitter is a glass cannon that
+    needs more thermal support). Size, redline, mass, and radiator layout are
+    **unchanged**. The **Rime** instead raises its cold-slow ceiling
+    (`0.55 → 0.68 → 0.80`) along with range and `heatPerShot`.
+  - **Movers:** the **Forge**'s setpoint rises `72 → 84 → 96`; the **Sink**'s
+    per-edge cooling rises `12 → 18 → 27`. Size/footprint unchanged.
+  - **Cost.** Upgrading to II costs `1.0x` the build cost; to III, `1.8x`. (For an
+    Arc: `15` to reach II, `27` to reach III.)
+- **Sell.** A selected tower sells for a `70%` refund of everything spent on it
+  (build plus upgrades), rounded down. Selling reopens every tile in its footprint
+  immediately and the surge re-paths (`specs/playfield.md`).
 
-Upgrading and selling happen through the selected-tower inspector in the build
-panel (`specs/playfield.md`, `specs/controls.md`).
+Rotating, upgrading, and selling happen through the selected-tower inspector in the
+build panel (`specs/playfield.md`, `specs/controls.md`).

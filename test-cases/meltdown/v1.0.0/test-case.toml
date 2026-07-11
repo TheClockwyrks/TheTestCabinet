@@ -10,13 +10,15 @@ experimental = true
 name = "Meltdown"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Meltdown asks
-# for grid-based tower placement with live maze re-pathing, eight tower types each
-# with distinct thermal behavior, a heat-to-damage model with a redline trip,
-# upgrade and economy systems, several surge types including maze-ignoring flyers,
-# a 20-wave progression with win and loss, and multiple states. Those are several
-# systems that want to be split out behind interfaces — real planning — but it is
-# still a bounded, single-screen 2D build, so it sits at easy.
-difficulty = "easy"
+# for multi-size, rotatable grid tower placement with live maze re-pathing, eight
+# tower types each with distinct thermal behavior, a heat-to-damage plateau with a
+# per-tower redline and a trip, a surface-cooling ("thermal blanket") model with
+# radiator faces and conduction between neighbours, a thermostatic Forge and coolant
+# Sink, upgrade and economy systems, several surge types including maze-ignoring
+# flyers, a 20-wave progression with win and loss, and multiple states. The thermal
+# simulation and the spatial heat-management it demands push it past the arcade
+# cases; it is still a bounded, single-screen 2D build, so it sits at medium.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["strategy", "2d", "tower-defense"]
@@ -26,8 +28,9 @@ tags = ["strategy", "2d", "tower-defense"]
 summary = """
 An open-field tower-defense game where your towers are also the walls, so you \
 build the maze the surge must walk — and every emitter fires harder the hotter it \
-runs, but trips offline at the redline. Pace heat across the floor: run a core \
-white-hot, keep a sniper fed, hold the cryo line cold."""
+runs, up to its redline, then trips if it overheats. Towers shed heat only through \
+faces on open air, so pace heat across the floor: space and rotate your guns, run a \
+core in its plateau, feed a sniper, hold the cryo line cold."""
 
 # Site-facing prose describing the case, relative to this version folder. NOT
 # seeded into a run; it exists only to introduce the case on the site.
@@ -170,7 +173,7 @@ dest = "proof/siege.webm"
 [[domain]]
 id = "heat"
 name = "Heat & Thermal Play"
-description = "The signature: heat as power and the accelerating damage curve, the redline trip as the sole failure, the Forge/Sink coupling, the heat-averse Rime, and how the maze paces each tower's heat."
+description = "The signature: heat as power up to each tower's redline plateau, the trip as the sole failure, surface cooling through radiator faces (a boxed-in core bakes) with rotation and conduction, the thermostatic Forge and coolant Sink, the heat-averse Rime, and how spacing and orientation pace each tower's heat."
 
 [[domain]]
 id = "defense"
@@ -187,8 +190,8 @@ description = "The TD core: towers-as-walls mazing and live re-pathing to the fi
 
 [[review_item]]
 id = "heat-is-power"
-title = "Heat is power"
-text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 0.5x base), roughly 3x just under the redline — and its glow tracks heat from cold blue to white-hot. A tower fed a steady stream of targets visibly hits harder than an idle one."
+title = "Heat is power, up to the redline"
+text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 0.5x base) — to 3x at its per-tower REDLINE (its max-efficiency mark), then holds flat at 3x from the redline up to the 100 trip. Its glow tracks heat from cold blue to white-hot, and the heat read shows the redline marker. A tower fed a steady stream of targets visibly hits harder than an idle one."
 weight = 1
 domain = "heat"
 reference = "gameplay"
@@ -196,30 +199,37 @@ proof = "heat"
 
 [[review_item]]
 id = "redline-trip"
-title = "The redline trip"
-text = "Pushing a tower's heat to 100 trips it offline for about 3 seconds (strobing red, dealing no damage), then it returns cold — and this is the ONLY way a tower fails (towers are never destroyed or damaged by the surge). A redlined kill-box visibly gaps the defense for those seconds."
+title = "The trip"
+text = "Pushing a tower's heat to 100 trips it offline for about 3 seconds (strobing red, dealing no damage), then it returns cold — and this is the ONLY way a tower fails (towers are never destroyed or damaged by the surge). The redline (max-efficiency mark) is below 100 for most towers, so running in the plateau is deliberately close to the trip. A tripped kill-box visibly gaps the defense for those seconds."
 weight = 1
 domain = "heat"
 proof = "heat"
 
 [[review_item]]
-id = "maze-paces-heat"
-title = "The maze paces heat"
-text = "A tight, packed kill-box runs its towers hot (high damage, but climbing toward a trip) while an open, spread layout runs them cool (online but weak), so the maze shape is what sets each tower's heat baseline — concentration buys power and fragility at once."
+id = "surface-cooling"
+title = "Surface cooling — the thermal blanket"
+text = "A tower sheds heat only through footprint faces that touch OPEN AIR (or the casing); a face against another tower sheds none. So a firing tower boxed in by neighbours cannot dump its heat and bakes itself to the trip, while an open or lightly-mazed tower cools freely. Packing towers tight (short paths, lined-up Forges) therefore carries a real heat cost, and a dense core needs Sinks threaded through it to survive."
+weight = 1
+domain = "heat"
+
+[[review_item]]
+id = "radiator-rotation"
+title = "Radiator faces and rotation"
+text = "Each emitter has designated radiator faces (drawn as cyan fins) that shed heat far better than plain faces, and the player can rotate a tower in 90-degree steps to aim those faces at the open lane. The same tower in the same spot can sit safely in its plateau or trip depending purely on which way it faces — rotation is a real cooling lever, and the preview and inspector both show the faces."
 weight = 1
 domain = "heat"
 
 [[review_item]]
 id = "forge-source"
-title = "The Forge (heat source)"
-text = "The Forge does not fire; it adds heat to each orthogonally adjacent emitter continuously. In a lull it keeps a cold gun (e.g. a Lance) strong; in a heavy push it stacks heat onto an already-hot neighbor and can shove it over the redline. The same property is its upside and its downside."
+title = "The Forge (thermostat)"
+text = "The Forge does not fire; it warms each touching emitter TOWARD a setpoint and only while the emitter is below it, so it can never shove a gun past that setpoint on its own. It wakes a cold gun to a strong, safe heat (e.g. the Lance) and gets out of the way. Its setpoint rises with its level, and only a maxed Forge can drive a high-redline tower into its top plateau."
 weight = 1
 domain = "heat"
 
 [[review_item]]
 id = "heat-sink"
-title = "The Sink (heat sink)"
-text = "The Sink does not fire; it removes heat from each orthogonally adjacent emitter continuously, letting a redline-prone tower (e.g. a Stutter) run flat out without tripping, or holding a packed core just under the redline at maximum damage. Coupling is orthogonal-neighbors only."
+title = "The Sink (coolant loop)"
+text = "The Sink does not fire; it draws heat from each touching emitter's faces, proportional to heat (biting hardest near the trip). Because it cools through a face that would otherwise be blocked, it is the ONLY way to cool a boxed-in tower — thread Sinks through a dense core and it holds instead of baking. It lets a redline-prone tower (e.g. a Stutter) run flat out without tripping; its output rises with level, and Sinks stack."
 weight = 1
 domain = "heat"
 
@@ -279,7 +289,14 @@ proof = "siege"
 [[review_item]]
 id = "tower-roster"
 title = "The six emitters"
-text = "All six emitters behave per their roles: the balanced Arc, the rapid low-damage Stutter, the long-range heavy-hitting Lance, the area-splash Bloom, the slowing Rime, and the anti-air Flak — each targeting and firing as specified."
+text = "All six emitters behave per their roles and thermal identities: the balanced 2x2 Arc, the twitchy rapid-fire 2x2 Stutter that wants a Sink, the huge 4x4 long-range Lance that runs cold until tucked or forge-fed, the area-splash 3x3 Bloom that runs hot, the slowing 2x2 Rime, and the anti-air 2x2 Flak — each targeting and firing as specified."
+weight = 1
+domain = "defense"
+
+[[review_item]]
+id = "tower-sizes"
+title = "Tower sizes"
+text = "Towers come in 2x2, 3x3, and 4x4 footprints (Arc/Stutter/Rime/Flak are 2x2, Bloom is 3x3, Lance is 4x4). A larger tower walls off more floor and — because it generates heat across its body but sheds it only through its perimeter — runs hotter for the same firing, wanting open air, corner placement, or Sinks. Placement centers the size-appropriate block on the cursor."
 weight = 1
 domain = "defense"
 

@@ -3,18 +3,21 @@
 // the *behaviour* built on them (heat curve, redline trip, coupling, stances)
 // is implemented in towers.ts / surge.ts / game.ts.
 
-import type { SurgeType, TowerType } from "./types";
+import type { Side, SurgeType, TowerType } from "./types";
 
 export interface EmitterDef {
   kind: "emitter";
   name: string;
   glyph: string;
   cost: number;
+  size: number; // footprint side in tiles (2, 3, or 4) — specs/towers.md
+  radiators: Side[]; // local radiator faces (rot = 0); the rest are plain faces
   range: number; // tiles, level I
   fireRate: number; // shots/sec, level I
   baseDamage: number; // level I
   heatPerShot: number; // level I
-  coolRate: number; // cooling at the redline (unchanged by level)
+  redline: number; // heat at max efficiency (plateau start); trip is always 100
+  mass: number; // thermal mass: response speed only, not the equilibrium
   airOnly?: boolean; // Flak: flyers only
   splash?: number; // Bloom: splash radius in tiles
   rimeSlow?: number[]; // Rime: cold-slow ceiling by level [I, II, III]
@@ -25,7 +28,10 @@ export interface MoverDef {
   name: string;
   glyph: string;
   cost: number;
-  output: number[]; // heat/s (forge) or +coolRate (sink) by level [I, II, III]
+  size: number; // movers are 2x2
+  // Forge: setpoint (target heat) by level [I, II, III].
+  // Sink: per-edge cooling added by level [I, II, III].
+  output: number[];
 }
 
 export type TowerDef = EmitterDef | MoverDef;
@@ -34,85 +40,105 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
   arc: {
     kind: "emitter",
     name: "ARC",
-    glyph: "◆", // ◆
+    glyph: "◆",
     cost: 15,
+    size: 2,
+    radiators: ["N", "S"],
     range: 6.0,
     fireRate: 2.0,
     baseDamage: 6,
-    heatPerShot: 8,
-    coolRate: 14,
+    heatPerShot: 7.9,
+    redline: 80,
+    mass: 1.0,
   },
   stutter: {
     kind: "emitter",
     name: "STUTTER",
-    glyph: "▪", // ▪
+    glyph: "▪",
     cost: 40,
+    size: 2,
+    radiators: ["N", "E"],
     range: 5.0,
     fireRate: 7.0,
     baseDamage: 2.0,
-    heatPerShot: 3.0,
-    coolRate: 13,
+    heatPerShot: 3.2,
+    redline: 60,
+    mass: 0.5,
   },
   lance: {
     kind: "emitter",
     name: "LANCE",
-    glyph: "▲", // ▲
+    glyph: "▲",
     cost: 150,
+    size: 4,
+    radiators: ["N", "E"],
     range: 12.0,
     fireRate: 0.8,
     baseDamage: 43,
-    heatPerShot: 15,
-    coolRate: 19,
+    heatPerShot: 37.6,
+    redline: 92,
+    mass: 2.8,
   },
   bloom: {
     kind: "emitter",
     name: "BLOOM",
-    glyph: "✿", // ✿
+    glyph: "✿",
     cost: 150,
+    size: 3,
+    radiators: ["N", "E"],
     range: 6.0,
     fireRate: 1.2,
     baseDamage: 10,
-    heatPerShot: 14,
-    coolRate: 14,
+    heatPerShot: 21.0,
+    redline: 82,
+    mass: 1.8,
     splash: 2.4,
   },
   rime: {
     kind: "emitter",
     name: "RIME",
-    glyph: "❄", // ❄
+    glyph: "❄",
     cost: 45,
+    size: 2,
+    radiators: ["N", "S", "E"],
     range: 5.5,
     fireRate: 2.4,
     baseDamage: 4,
-    heatPerShot: 6.5,
-    coolRate: 15,
+    heatPerShot: 5.4,
+    redline: 100, // heat-averse: no damage plateau; still trips at 100
+    mass: 1.1,
     rimeSlow: [0.55, 0.68, 0.8],
   },
   flak: {
     kind: "emitter",
     name: "FLAK",
-    glyph: "△", // △
+    glyph: "△",
     cost: 60,
+    size: 2,
+    radiators: ["N", "S"],
     range: 8.0,
     fireRate: 2.6,
     baseDamage: 6,
-    heatPerShot: 5.5,
-    coolRate: 13,
+    heatPerShot: 7.4,
+    redline: 78,
+    mass: 0.9,
     airOnly: true,
   },
   forge: {
     kind: "forge",
     name: "FORGE",
-    glyph: "█", // █
+    glyph: "█",
     cost: 20,
-    output: [12, 18, 27],
+    size: 2,
+    output: [72, 84, 96], // thermostat setpoint by level
   },
   sink: {
     kind: "sink",
     name: "SINK",
-    glyph: "▽", // ▽
+    glyph: "▽",
     cost: 20,
-    output: [14, 21, 31.5],
+    size: 2,
+    output: [12, 18, 27], // per-edge cooling added by level
   },
 };
 
@@ -120,13 +146,15 @@ export function isEmitterDef(d: TowerDef): d is EmitterDef {
   return d.kind === "emitter";
 }
 
-// Per-level emitter stats, applied cumulatively (specs/towers.md).
+// Per-level emitter stats, applied cumulatively (specs/towers.md). Size, redline,
+// mass, and the radiator layout do not change with level; a maxed emitter simply
+// heats faster (heatPerShot grows), a glass cannon that needs thermal support.
 export interface EmitterStats {
   range: number;
   fireRate: number;
   baseDamage: number;
   heatPerShot: number;
-  coolRate: number;
+  redline: number;
   slowCeil: number; // Rime only; 0 for other emitters
 }
 
@@ -137,11 +165,12 @@ export function emitterStats(def: EmitterDef, level: number): EmitterStats {
     fireRate: def.fireRate * Math.pow(1.15, n),
     baseDamage: def.baseDamage * Math.pow(1.6, n),
     heatPerShot: def.heatPerShot * Math.pow(1.3, n),
-    coolRate: def.coolRate,
+    redline: def.redline,
     slowCeil: def.rimeSlow ? def.rimeSlow[n] : 0,
   };
 }
 
+// Forge setpoint / Sink per-edge cooling at a given level.
 export function moverOutput(def: MoverDef, level: number): number {
   return def.output[level - 1];
 }

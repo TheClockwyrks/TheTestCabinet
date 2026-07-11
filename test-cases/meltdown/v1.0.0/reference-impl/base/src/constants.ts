@@ -81,13 +81,35 @@ export const MONO =
 
 // ---- Heat model (specs/heat.md) ------------------------------------------
 
-export const REDLINE = 100;
+export const REDLINE = 100; // heat at which any emitter TRIPS offline
 export const TRIP_TIME = 3.0; // seconds a tripped tower stays offline
 
-// damage = baseDamage * heatMultiplier(H): 0.5x cold, ~3.0x near the redline.
-export function heatMultiplier(h: number): number {
-  const x = h / 100;
-  return 0.5 + 2.5 * x * x;
+// Surface-cooling ("thermal blanket"): an emitter sheds heat only through its
+// perimeter tile-edges that face open air (or the casing). A radiator face
+// sheds RAD_K per edge-tile; a plain face only BASE_K. Cooling is proportional
+// to heat, so `coeff * (H / REDLINE)` per second (specs/heat.md).
+export const RAD_K = 3.6; // air cooling per edge-tile through a radiator face
+export const BASE_K = 1.1; // air cooling per edge-tile through a plain face
+
+// Conduction between two touching emitter footprints: heat equalises across the
+// shared edge at COND_K per shared edge-tile per degree of difference. Movers
+// (Forge/Sink) have no heat of their own and do not conduct.
+export const COND_K = 3.5;
+
+// The thermostatic Forge warms each adjacent emitter *toward* its setpoint only:
+// it adds FORGE_K * max(0, setpoint - H) per adjacent edge-tile per second, so it
+// can never push a gun past its setpoint on its own (specs/heat.md). Setpoint and
+// the Sink's per-edge cooling both grow with the mover's level (defs.ts).
+export const FORGE_K = 0.9;
+
+// Damage plateau: a shot does `baseDamage * heatMultiplier(H, redline)`. Damage
+// ramps on an accelerating curve from 0.5x cold to 3.0x at the tower's redline R,
+// then holds flat at 3.0x from R up to the 100 trip — R is the max-efficiency
+// mark (it varies per tower; specs/heat.md, specs/towers.md).
+export const MAX_HEAT_MULT = 3.0;
+export function heatMultiplier(h: number, redline: number): number {
+  const x = Math.min(h, redline) / redline;
+  return 0.5 + (MAX_HEAT_MULT - 0.5) * x * x;
 }
 
 // ---- Economy & flow (specs/flow.md) --------------------------------------

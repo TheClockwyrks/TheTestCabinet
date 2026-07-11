@@ -6,15 +6,19 @@
 
 import { heatColor } from "./colors";
 import {
+  BASE_K,
   BUILD_PHASE_TIME,
   COLS,
+  COND_K,
   FLOOR_X0,
   FLOOR_Y0,
+  FORGE_K,
   heatMultiplier,
   hpScale,
   INTEREST_CAP,
   INTEREST_RATE,
   PANEL_X,
+  RAD_K,
   REDLINE,
   ROWS,
   START_LIVES,
@@ -29,11 +33,12 @@ import { Grid, idx, tileAtPixel } from "./grid";
 import type { Input } from "./input";
 import { Surge, type Goal } from "./surge";
 import { Tower } from "./towers";
-import type { AppState, Phase, SurgeType, TowerType, Vent } from "./types";
+import type { AppState, Phase, Rotation, SurgeType, TowerType, Vent } from "./types";
 import { TOWER_ORDER } from "./types";
 import {
   ctlRect,
   inRect,
+  rotateBtnRect,
   sellBtnRect,
   sendBtnRect,
   shopItemRect,
@@ -56,8 +61,8 @@ export interface Shot {
 }
 
 export interface Preview {
-  i: number;
-  j: number;
+  col: number;
+  row: number;
   valid: boolean;
 }
 
@@ -108,8 +113,12 @@ export class Game {
 
   speed: 1 | 2 = 1;
   armed: TowerType | null = null;
+  armedRot: Rotation = 0; // rotation applied to the held tower before it is placed
   selected: Tower | null = null;
   preview: Preview | null = null;
+
+  // Tile -> occupying tower, rebuilt on any layout change for thermal adjacency.
+  private owner = new Map<number, Tower>();
 
   simTime = 0;
   reachedWave = 1; // for the end screen
@@ -145,6 +154,7 @@ export class Game {
     this.reachedWave = 1;
     this.openingPhase = false;
     this.armed = null;
+    this.armedRot = 0;
     this.selected = null;
     this.preview = null;
     this.speed = 1;
@@ -152,23 +162,24 @@ export class Game {
     this.recomputePaths();
   }
 
-  // A dim slice of reactor floor with a few glowing towers behind the menu.
+  // A dim slice of reactor floor with a few glowing towers behind the menu — a
+  // mix of sizes running hot, a Forge feeding a Lance, and a tripped Stutter.
   private buildTitleScene(): void {
-    const add = (type: TowerType, i: number, j: number, heat: number) => {
-      const t = new Tower(type, i, j);
+    const add = (type: TowerType, col: number, row: number, heat: number, rot: Rotation = 0) => {
+      const t = new Tower(type, col, row, rot);
       t.heat = heat;
-      for (const tile of this.grid.footprintTiles(i, j)) this.grid.blocked[tile] = 1;
+      for (const tile of this.grid.footprintTiles(col, row, t.size)) this.grid.blocked[tile] = 1;
       this.towers.push(t);
     };
-    add("lance", 7, 7, 12);
-    add("forge", 9, 7, 0);
-    add("arc", 11, 24, 96);
-    add("bloom", 13, 24, 70);
-    add("rime", 33, 27, 6);
+    add("lance", 6, 6, 90); // 4x4 sniper, forge-fed and white-hot
+    add("forge", 10, 7, 0);
+    add("arc", 10, 24, 78);
+    add("bloom", 12, 23, 84); // 3x3 splash
+    add("rime", 33, 27, 8);
     add("stutter", 41, 9, 100);
     this.towers[5].tripped = true;
     this.towers[5].tripTimer = TRIP_TIME;
-    this.recomputeCoupling();
+    this.recomputeAdjacency();
   }
 
   private startMatch(): void {
@@ -244,7 +255,7 @@ export class Game {
   private recomputePaths(): void {
     this.fieldRight = this.grid.distanceField(this.grid.rightExhaust.tiles);
     this.fieldBottom = this.grid.distanceField(this.grid.bottomExhaust.tiles);
-    this.recomputeCoupling();
+    this.recomputeAdjacency();
   }
 
   private fieldFor(goal: Goal): Float64Array {
@@ -254,34 +265,48 @@ export class Game {
     return goal === "right" ? this.grid.rightExhaust.tiles : this.grid.bottomExhaust.tiles;
   }
 
-  // Orthogonal-footprint edge coupling factor (specs/heat.md): full edge = 1,
-  // one-tile staggered = 0.5, otherwise 0.
-  private couplingFactor(a: Tower, b: Tower): number {
-    const di = Math.abs(a.i - b.i);
-    const dj = Math.abs(a.j - b.j);
-    if (di === 2 && dj === 0) return 1;
-    if (di === 0 && dj === 2) return 1;
-    if (di === 2 && dj === 1) return 0.5;
-    if (di === 1 && dj === 2) return 0.5;
-    return 0;
-  }
-
-  // Recompute each emitter's forge-heat-in and sink-cool-added from its movers.
-  private recomputeCoupling(): void {
+  // Recompute each emitter's thermal geometry (specs/heat.md): the perimeter
+  // edge-tiles that shed heat to open air, and the links to adjacent Sinks (extra
+  // cooling), Forges (thermostatic heating), and other emitters (conduction).
+  // Rebuilt on every layout/rotation change, not per-step.
+  private recomputeAdjacency(): void {
+    // Rebuild the tile -> owner index.
+    this.owner.clear();
     for (const t of this.towers) {
-      t.forgeHeat = 0;
-      t.sinkCool = 0;
+      for (const tile of this.grid.footprintTiles(t.col, t.row, t.size)) this.owner.set(tile, t);
     }
-    for (const mover of this.towers) {
-      if (mover.type !== "forge" && mover.type !== "sink") continue;
-      const out = mover.moverOutput();
-      for (const e of this.towers) {
-        if (!e.isEmitter) continue;
-        const f = this.couplingFactor(mover, e);
-        if (f === 0) continue;
-        if (mover.type === "forge") e.forgeHeat += out * f;
-        else e.sinkCool += out * f;
+
+    for (const e of this.towers) {
+      e.airRadEdges = 0;
+      e.airBaseEdges = 0;
+      e.sinkLinks = [];
+      e.forgeLinks = [];
+      e.condLinks = [];
+      if (!e.isEmitter) continue;
+
+      const rad = e.worldRadiators();
+      // Accumulate per-neighbour shared edge counts.
+      const sinkE = new Map<Tower, number>();
+      const forgeE = new Map<Tower, number>();
+      const condE = new Map<Tower, number>();
+      for (const edge of this.grid.perimeterEdges(e.col, e.row, e.size)) {
+        const onGrid = this.grid.inBounds(edge.oc, edge.or);
+        const neighbour = onGrid ? this.owner.get(idx(edge.oc, edge.or)) : undefined;
+        if (!neighbour) {
+          // Open floor or the casing wall beyond the grid: sheds heat to air.
+          if (rad.has(edge.side)) e.airRadEdges++;
+          else e.airBaseEdges++;
+        } else if (neighbour.type === "sink") {
+          sinkE.set(neighbour, (sinkE.get(neighbour) ?? 0) + 1);
+        } else if (neighbour.type === "forge") {
+          forgeE.set(neighbour, (forgeE.get(neighbour) ?? 0) + 1);
+        } else {
+          condE.set(neighbour, (condE.get(neighbour) ?? 0) + 1);
+        }
       }
+      for (const [other, edges] of sinkE) e.sinkLinks.push({ other, edges });
+      for (const [other, edges] of forgeE) e.forgeLinks.push({ other, edges });
+      for (const [other, edges] of condE) e.condLinks.push({ other, edges });
     }
   }
 
@@ -345,6 +370,7 @@ export class Game {
   }
 
   private updateTowers(dt: number): void {
+    // Pass 1 — trip timers and firing (each shot adds heatPerShot / mass).
     for (const t of this.towers) {
       if (!t.isEmitter) continue;
       t.firedThisStep = false;
@@ -373,10 +399,31 @@ export class Game {
       } else {
         t.fireCooldown = Math.max(0, t.fireCooldown - dt);
       }
+    }
 
-      // Forge pours in heat; cooling (own + sink) scales with heat.
-      t.heat += t.forgeHeat * dt;
-      t.heat -= (t.stats().coolRate + t.sinkCool) * (t.heat / REDLINE) * dt;
+    // Pass 2 — surface cooling, Sink draw, thermostatic Forge, and conduction
+    // (specs/heat.md). Conduction reads a snapshot so the result is independent
+    // of tower order; all flows are divided by the tower's thermal mass.
+    const snapshot = new Map<Tower, number>();
+    for (const t of this.towers) if (t.isEmitter) snapshot.set(t, t.heat);
+
+    for (const t of this.towers) {
+      if (!t.isEmitter || t.tripped) continue;
+      const H = t.heat;
+      const hf = H / REDLINE;
+
+      let cool = (RAD_K * t.airRadEdges + BASE_K * t.airBaseEdges) * hf;
+      for (const link of t.sinkLinks) cool += link.other.moverOutput() * link.edges * hf;
+
+      let inflow = 0;
+      for (const link of t.forgeLinks) {
+        inflow += FORGE_K * link.edges * Math.max(0, link.other.moverOutput() - H);
+      }
+      for (const link of t.condLinks) {
+        inflow += COND_K * link.edges * ((snapshot.get(link.other) ?? 0) - H);
+      }
+
+      t.heat += ((inflow - cool) * dt) / t.mass;
       if (t.heat < 0) t.heat = 0;
       if (t.heat >= REDLINE) {
         t.heat = REDLINE;
@@ -411,7 +458,7 @@ export class Game {
   private fire(t: Tower, target: Surge): void {
     const def = t.def as EmitterDef;
     const stats = t.stats();
-    const dmg = stats.baseDamage * heatMultiplier(t.heat);
+    const dmg = stats.baseDamage * heatMultiplier(t.heat, stats.redline);
 
     if (t.isRime) {
       // Cryo: slows hardest when cold; still lands a little damage.
@@ -432,7 +479,7 @@ export class Game {
       target.damage(dmg);
     }
 
-    t.heat += stats.heatPerShot;
+    t.heat += stats.heatPerShot / t.mass;
     t.firedThisStep = true;
     this.shots.push({
       x1: t.cx,
@@ -487,16 +534,21 @@ export class Game {
 
   // ---- Building / selling / upgrading ------------------------------------
 
-  private snapIntersection(x: number, y: number): { i: number; j: number } {
-    // Intersections are grid-relative to the floor origin (specs/playfield.md).
-    const i = Math.max(1, Math.min(COLS - 1, Math.round((x - FLOOR_X0) / TILE)));
-    const j = Math.max(1, Math.min(ROWS - 1, Math.round((y - FLOOR_Y0) / TILE)));
-    return { i, j };
+  // Snap the top-left of a size x size footprint so the block centres on the
+  // cursor, kept fully on the grid (specs/playfield.md).
+  private snapTopLeft(x: number, y: number, size: number): { col: number; row: number } {
+    const col = Math.round((x - FLOOR_X0) / TILE - size / 2);
+    const row = Math.round((y - FLOOR_Y0) / TILE - size / 2);
+    return {
+      col: Math.max(0, Math.min(COLS - size, col)),
+      row: Math.max(0, Math.min(ROWS - size, row)),
+    };
   }
 
   // Full placement validity, including the can't-seal rule (specs/playfield.md).
-  canPlaceAt(type: TowerType, i: number, j: number): boolean {
-    const footprint = this.grid.footprintTiles(i, j);
+  canPlaceAt(type: TowerType, col: number, row: number): boolean {
+    const size = TOWER_DEFS[type].size;
+    const footprint = this.grid.footprintTiles(col, row, size);
     for (const tile of footprint) {
       const c = tile % COLS;
       const r = Math.floor(tile / COLS);
@@ -534,10 +586,10 @@ export class Game {
     return true;
   }
 
-  private placeTower(type: TowerType, i: number, j: number): void {
-    if (!this.canPlaceAt(type, i, j)) return;
-    const t = new Tower(type, i, j);
-    for (const tile of this.grid.footprintTiles(i, j)) this.grid.blocked[tile] = 1;
+  private placeTower(type: TowerType, col: number, row: number): void {
+    if (!this.canPlaceAt(type, col, row)) return;
+    const t = new Tower(type, col, row, this.armedRot);
+    for (const tile of this.grid.footprintTiles(col, row, t.size)) this.grid.blocked[tile] = 1;
     this.towers.push(t);
     this.money -= TOWER_DEFS[type].cost;
     this.recomputePaths();
@@ -554,7 +606,7 @@ export class Game {
     const t = this.selected;
     if (!t) return;
     this.money += Math.floor(t.totalSpend * 0.7);
-    for (const tile of this.grid.footprintTiles(t.i, t.j)) this.grid.blocked[tile] = 0;
+    for (const tile of this.grid.footprintTiles(t.col, t.row, t.size)) this.grid.blocked[tile] = 0;
     this.towers = this.towers.filter((x) => x !== t);
     this.selected = null;
     this.recomputePaths();
@@ -568,7 +620,16 @@ export class Game {
     this.money -= cost;
     t.totalSpend += cost;
     t.level += 1;
-    this.recomputeCoupling();
+    this.recomputeAdjacency();
+  }
+
+  // Rotate a placed emitter's radiator faces (specs/heat.md). Movers have no
+  // faces to rotate. Re-derives thermal adjacency for the new orientation.
+  private rotateSelected(): void {
+    const t = this.selected;
+    if (!t || !t.isEmitter) return;
+    t.rot = ((t.rot + 1) % 4) as Rotation;
+    this.recomputeAdjacency();
   }
 
   upgradeCostOf(t: Tower): number {
@@ -581,7 +642,10 @@ export class Game {
 
   private towerAt(x: number, y: number): Tower | null {
     for (const t of this.towers) {
-      if (x >= t.cx - TILE && x <= t.cx + TILE && y >= t.cy - TILE && y <= t.cy + TILE) return t;
+      const x0 = FLOOR_X0 + t.col * TILE;
+      const y0 = FLOOR_Y0 + t.row * TILE;
+      const s = t.size * TILE;
+      if (x >= x0 && x <= x0 + s && y >= y0 && y <= y0 + s) return t;
     }
     return null;
   }
@@ -594,8 +658,9 @@ export class Game {
       const mx = this.input.mouseX;
       const my = this.input.mouseY;
       if (mx < PANEL_X && mx >= 0 && my >= 0 && my <= 720) {
-        const { i, j } = this.snapIntersection(mx, my);
-        this.preview = { i, j, valid: this.canPlaceAt(this.armed, i, j) };
+        const size = TOWER_DEFS[this.armed].size;
+        const { col, row } = this.snapTopLeft(mx, my, size);
+        this.preview = { col, row, valid: this.canPlaceAt(this.armed, col, row) };
       } else {
         this.preview = null;
       }
@@ -678,6 +743,11 @@ export class Game {
       case "KeyF":
         this.speed = this.speed === 1 ? 2 : 1;
         break;
+      case "KeyR":
+        // Rotate the held tower's radiator faces, or the selected emitter's.
+        if (this.armed) this.armedRot = ((this.armedRot + 1) % 4) as Rotation;
+        else this.rotateSelected();
+        break;
       case "KeyU":
         this.upgradeSelected();
         break;
@@ -741,7 +811,7 @@ export class Game {
     }
     if (this.armed) {
       if (this.preview && this.preview.valid) {
-        this.placeTower(this.armed, this.preview.i, this.preview.j);
+        this.placeTower(this.armed, this.preview.col, this.preview.row);
       }
       return;
     }
@@ -763,6 +833,10 @@ export class Game {
     }
     // Inspector actions.
     if (this.selected) {
+      if (this.selected.isEmitter && inRect(rotateBtnRect(), x, y)) {
+        this.rotateSelected();
+        return;
+      }
       if (inRect(upgradeBtnRect(), x, y)) {
         this.upgradeSelected();
         return;
@@ -799,12 +873,13 @@ export class Game {
 
   // Live-fire damage/heat multiplier for a tower (for the inspector).
   damageMultiplier(t: Tower): number {
-    return heatMultiplier(t.heat);
+    return heatMultiplier(t.heat, t.redline);
   }
 
   // A live damage value for the inspector (emitters only).
   liveDamage(t: Tower): number {
     if (!isEmitterDef(t.def)) return 0;
-    return t.stats().baseDamage * heatMultiplier(t.heat);
+    const s = t.stats();
+    return s.baseDamage * heatMultiplier(t.heat, s.redline);
   }
 }

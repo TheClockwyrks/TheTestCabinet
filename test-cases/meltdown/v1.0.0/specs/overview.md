@@ -10,15 +10,19 @@ you *build the maze* the surge must walk, winding it the long way around so your
 emitters have time to burn it down.
 
 Meltdown's defining idea is **heat as power**. Every emitter fires harder the
-hotter it runs — its damage climbs the more it shoots — but push it past the
-redline and it trips offline to cool, leaving a hole in your defense. So laying
-out the floor is a thermal problem as much as a spatial one: you want your guns
-hot, but not so hot they cut out. Two support structures let you sculpt that
-heat — a **Forge** that pours heat into its neighbors and a **Sink** that draws
-it away — and one emitter, the cryo **Rime**, runs the rule *backward*: it
-slows the surge best when it stays cold. Skilled play is about pacing heat
-across the floor — running a tight core white-hot, keeping a sniper fed,
-holding the cryo line cold — not just walling a path.
+hotter it runs — climbing to full power at its own **redline** and holding it
+there — but run all the way to `100` and it **trips** offline to cool, leaving a
+hole in your defense. So laying out the floor is a thermal problem as much as a
+spatial one. And a tower only sheds heat through the faces that touch **open air**:
+pack your guns tight and their cores bake and trip, so you must space and orient
+them — each tower has cyan **radiator faces** you rotate toward the open lane, and
+they come in `2 x 2`, `3 x 3`, and `4 x 4` sizes, the big ones hitting harder but
+running hotter. Two support structures sculpt the heat — a thermostatic **Forge**
+that warms its neighbors toward a setpoint and a **Sink** that draws heat out (the
+only way to cool a boxed-in core) — and one emitter, the cryo **Rime**, runs the
+rule *backward*: it slows the surge best when it stays cold. Skilled play is pacing
+heat across the floor — running a core in its plateau, keeping a sniper fed, holding
+the cryo line cold — not just walling a path.
 
 Meltdown is inspired by classic open-field "maze" tower-defense games but is its
 own game, with an original name, look, the heat-as-power emitters, and its own
@@ -121,9 +125,10 @@ px wide), full height. The reactor is a `950 x 684` **reactor floor** ringed by 
 **tile grid**: tiles are **19 x 19** logical pixels, and the grid is **50 columns
 x 36 rows** (`950 x 684`), its top-left corner at `(18, 18)` just inside the
 casing. Column `c` (`0..49`) spans `x` in `[18 + 19c, 18 + 19(c + 1)]`; row `r`
-(`0..35`) spans `y` in `[18 + 19r, 18 + 19(r + 1)]`. Towers occupy snapped **2 x
-2** tile footprints, so tower placement and range use the center of that
-footprint; surge movement still uses individual tile centers. The casing wall, the
+(`0..35`) spans `y` in `[18 + 19r, 18 + 19(r + 1)]`. Towers occupy snapped
+**`size x size`** tile footprints (`2 x 2`, `3 x 3`, or `4 x 4`; `specs/towers.md`),
+so tower placement and range use the center of that footprint; surge movement still
+uses individual tile centers. The casing wall, the
 grid geometry, the vents and exhausts, and the build panel are defined in full in
 `specs/playfield.md`.
 
@@ -173,14 +178,15 @@ canonical palette and type are below; match them.
   surge escaping there is what costs you).
 - **Heat must be readable at a glance, and by more than color alone.** An
   emitter's glow color tracks its heat along the ramp above — cold blue →
-  warm amber → hot orange → white-hot just under the redline — and a tripped
-  emitter is unmistakable (strobing red, visibly offline). Because heat is the
-  heart of the game, also give each tower a small heat read (for example a
-  short bar or ring segment on its 2 x 2 footprint) so a player can tell a
-  tower at `90%` heat from one at `30%` without guessing from glow alone. Pick
-  one convention and use it consistently. The cryo Rime is the exception that
-  proves the rule: it reads cold/cyan and you *want* it cold (see
-  `specs/heat.md`).
+  warm amber → hot orange → white-hot near the trip — and a tripped emitter is
+  unmistakable (strobing red, visibly offline). Because heat is the heart of the
+  game, also give each tower a small heat read (for example a short bar on its
+  footprint) with its **redline (max-efficiency) marker** shown, so a player can
+  tell a tower sitting in its plateau from one that is cold or about to trip. Draw
+  each tower's **radiator faces** distinctly (cool cyan fins) so the player can see
+  which sides shed heat and aim them at open air. Pick one convention per read and
+  use it consistently. The cryo Rime is the exception that proves the rule: it
+  reads cold/cyan and you *want* it cold (see `specs/heat.md`).
 - Keep the surge **off the temperature axis** so it never reads as "heat":
   ground intruders are acid green, flyers violet, the boss a deep violet — never
   the blue→red of the emitter ramp.

@@ -9,22 +9,25 @@ so holding the floor is about pacing heat as much as shaping the maze.
 `meltdown` is the catalog slug for this lineage of open-field/"maze"
 tower-defense cases, and the game's in-fiction title. The case is
 inspired by classic open-field tower-defense games but is not a clone of any of
-them — the name, look, the heat-as-power emitters and redline trip, the
-Forge/Sink thermal coupling, the heat-averse cryo Rime, and the surge are
-original to The Test Cabinet. It keeps the genre's defining hook — **towers are
-walls and you build the maze the creeps must walk** — and layers its own
-signature, heat-as-power, on top of it.
+them — the name, look, the heat-as-power emitters with their per-tower redline
+plateau and trip, the surface-cooling "thermal blanket" (towers shed heat only
+through radiator faces on open air, so packed cores bake), variable tower sizes,
+the thermostatic Forge and coolant Sink, the heat-averse cryo Rime, and the surge
+are original to The Test Cabinet. It keeps the genre's defining hook — **towers are
+walls and you build the maze the creeps must walk** — and layers its own signature,
+heat-as-power, on top of it.
 
 ## Why this case
 
 Meltdown raises the bar above the catalog's arcade cases with a different shape
 of problem: a slower, building game rather than a twitch one. It asks for
-grid-based tower placement with **live maze re-pathing**, eight tower types each
-with a distinct **thermal personality**, a **heat-to-damage** model whose only
-failure is the **redline trip**, Forge/Sink heat coupling between neighbors, a
-heat-averse cryo tower, several surge types including **flyers that ignore the
-maze**, an economy with upgrades and interest, a **20-wave** progression with
-Core bosses and a win and a loss, and multiple states and a HUD — a genuinely
+grid-based, multi-size, **rotatable** tower placement with **live maze
+re-pathing**, eight tower types each with a distinct **thermal personality**, a
+**heat-to-damage** plateau whose only failure is the **trip**, a surface-cooling
+model with radiator faces and conduction between neighbors, a thermostatic Forge and
+coolant Sink, a heat-averse cryo tower, several surge types including **flyers that
+ignore the maze**, an economy with upgrades and interest, a **20-wave** progression
+with Core bosses and a win and a loss, and multiple states and a HUD — a genuinely
 harder front-end task that should separate stronger builds from weaker ones.
 
 ## Contents

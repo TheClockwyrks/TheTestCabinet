@@ -6,19 +6,22 @@ must walk, winding it the long way around so your guns have time to burn it
 down.
 
 Its defining idea is **heat as power**. Every emitter fires harder the hotter it
-runs — damage climbs on an accelerating curve the more it shoots — but push it
-past the **redline** and it **trips offline** to cool, leaving a hole in your
-line. So laying out the floor is a thermal problem as much as a spatial one: you
-want your guns hot, but not so hot they cut out. The maze sets each tower's heat
-baseline — a packed kill-box runs white-hot and risks a trip, an open lane runs
-cold and weak — and two support structures let you override it tile by tile: a
-**Forge** that pours heat into its neighbors and a **Sink** that draws it away.
+runs — climbing to full power at its own **redline** and holding it there — but run
+it to `100` and it **trips offline** to cool, leaving a hole in your line. The
+catch is that a tower sheds heat only through the faces that touch **open air**, so
+packing your guns tight bakes their cores until they trip: you space them, and turn
+each tower's cyan **radiator faces** toward the open lane. Towers come in `2 x 2`,
+`3 x 3`, and `4 x 4` sizes — the big ones hit harder but run hotter and want room.
+Two support structures sculpt the heat: a thermostatic **Forge** that warms its
+neighbors toward a setpoint, and a **Sink** that draws heat out — the only way to
+cool a boxed-in core.
 
-Six emitters test that single idea different ways — the balanced Arc, the
-fast-tripping Stutter that begs for a Sink, the long-range Lance that runs cold
-and wants a Forge, the splashing Bloom, the anti-air Flak that alone can down
-the maze-ignoring flyers, and the cryo **Rime**, which runs the rule *backward*:
-it slows the surge best when it stays **cold**. Meltdown is inspired by classic
-open-field "maze" tower-defense games but is entirely its own: original name,
-look, the heat-as-power emitters, and its own surge — defense here is about
-pacing heat across the floor, not just walling a path.
+Six emitters test that single idea different ways — the balanced Arc, the twitchy
+fast-tripping Stutter that begs for a Sink, the huge `4 x 4` Lance that runs cold
+until you tuck it or feed it a Forge, the splashing `3 x 3` Bloom that runs hot in
+a chokepoint, the anti-air Flak that alone can down the maze-ignoring flyers, and
+the cryo **Rime**, which runs the rule *backward*: it slows the surge best when it
+stays **cold**. Meltdown is inspired by classic open-field "maze" tower-defense
+games but is entirely its own: original name, look, the heat-as-power emitters, and
+its own surge — defense here is about pacing heat across the floor, not just walling
+a path.

@@ -137,12 +137,14 @@ targets:
   open route from each vent to its **opposite exhaust** (left to right, top to
   bottom), re-paths live when a tower is built or sold, and a placement that
   would seal either required route is **refused** (`specs/playfield.md`).
-- **Heat is power:** an emitter's damage climbs with its heat on the
-  accelerating curve, and a tower that reaches the redline trips offline for `3
-  s` (`specs/heat.md`).
-- The **Forge** pours heat into adjacent emitters (asset in a lull, liability in
-  a push) and the **Sink** draws it out, both only across orthogonal footprint
-  edge contact, scaled by tower alignment (`specs/heat.md`).
+- **Heat is power:** an emitter's damage climbs with its heat to full power at its
+  per-tower **redline** and holds it to the `100` **trip**, where it goes offline
+  for `3 s`; a tower sheds heat only through faces on open air, so a boxed-in core
+  bakes and trips (`specs/heat.md`).
+- The thermostatic **Forge** warms touching emitters toward its setpoint (never
+  past it) and the coolant **Sink** draws heat out (the only way to cool a boxed-in
+  tower), both across shared footprint faces; touching emitters also **conduct**
+  heat between themselves (`specs/heat.md`).
 - The **Rime** is **heat-averse** — it slows hardest when cold and degrades as
   it heats (`specs/towers.md`).
 - **Flyers ignore the maze**; every emitter can hit them in range, while

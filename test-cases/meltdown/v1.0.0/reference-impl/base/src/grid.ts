@@ -140,9 +140,31 @@ export class Grid {
     return true;
   }
 
-  // The four tiles of a 2x2 footprint centred on intersection (i, j).
-  footprintTiles(i: number, j: number): number[] {
-    return [idx(i - 1, j - 1), idx(i, j - 1), idx(i - 1, j), idx(i, j)];
+  // The tiles of a size x size footprint whose top-left tile is (col, row).
+  footprintTiles(col: number, row: number, size: number): number[] {
+    const out: number[] = [];
+    for (let dr = 0; dr < size; dr++) {
+      for (let dc = 0; dc < size; dc++) out.push(idx(col + dc, row + dr));
+    }
+    return out;
+  }
+
+  // The outward perimeter edge-tiles of a footprint, each tagged with the world
+  // side it lies on and the tile just outside it (which may be off-grid = the
+  // casing wall). Used to account a tower's thermal faces (specs/heat.md).
+  perimeterEdges(
+    col: number,
+    row: number,
+    size: number,
+  ): Array<{ side: "N" | "E" | "S" | "W"; oc: number; or: number }> {
+    const out: Array<{ side: "N" | "E" | "S" | "W"; oc: number; or: number }> = [];
+    for (let k = 0; k < size; k++) {
+      out.push({ side: "N", oc: col + k, or: row - 1 });
+      out.push({ side: "S", oc: col + k, or: row + size });
+      out.push({ side: "W", oc: col - 1, or: row + k });
+      out.push({ side: "E", oc: col + size, or: row + k });
+    }
+    return out;
   }
 
   // Dijkstra distance field to a set of goal tiles, honouring corner rules.

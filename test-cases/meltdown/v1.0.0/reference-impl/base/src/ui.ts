@@ -54,6 +54,10 @@ export function sellBtnRect(): Rect {
   const w = (PANEL_INNER_W - SHOP_GAP) / 2;
   return { x: INSPECTOR.x + w + SHOP_GAP, y: INSPECTOR.y + INSPECTOR.h - 44, w, h: 32 };
 }
+// Rotate button, sitting just above the upgrade/sell row (emitters only).
+export function rotateBtnRect(): Rect {
+  return { x: INSPECTOR.x, y: INSPECTOR.y + INSPECTOR.h - 84, w: PANEL_INNER_W, h: 30 };
+}
 
 // Wave controls, pinned to the bottom.
 const BOTTOM_PAD = 18;

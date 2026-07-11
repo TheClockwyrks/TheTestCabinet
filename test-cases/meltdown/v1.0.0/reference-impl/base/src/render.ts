@@ -30,8 +30,8 @@ import { isEmitterDef, SURGE_DEFS, TOWER_DEFS, type EmitterDef } from "./defs";
 import type { Game, MenuHit } from "./game";
 import { END_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./game";
 import type { Tower } from "./towers";
-import type { SurgeType, TowerType } from "./types";
-import { TOWER_ORDER } from "./types";
+import type { Side, SurgeType, TowerType } from "./types";
+import { rotateSide, TOWER_ORDER } from "./types";
 import {
   ctlRect,
   INSPECTOR,
@@ -39,6 +39,7 @@ import {
   PANEL_INNER_W,
   PANEL_INNER_X,
   READOUTS_Y,
+  rotateBtnRect,
   sellBtnRect,
   sendBtnRect,
   SHOP_TITLE_Y,
@@ -265,10 +266,42 @@ function towerFill(game: Game, t: Tower): string {
   return heatColor(t.heat);
 }
 
+// Draw the radiator "fin" markers along a tower's world radiator faces — the
+// cool edges through which it sheds heat (specs/heat.md). Aiming these at open
+// air is how the player controls cooling.
+function drawRadiatorFaces(ctx: Ctx, rad: Set<Side>, x0: number, y0: number, S: number): void {
+  if (rad.size === 0) return;
+  ctx.save();
+  ctx.strokeStyle = C.rime;
+  ctx.lineWidth = 2;
+  const inset = 3.5;
+  const fin = (a: number, b: number, horiz: boolean, at: number) => {
+    // Short perpendicular ticks along the face to read as a heatsink.
+    const n = Math.max(2, Math.round((b - a) / 7));
+    ctx.beginPath();
+    for (let k = 0; k <= n; k++) {
+      const p = a + ((b - a) * k) / n;
+      if (horiz) {
+        ctx.moveTo(p, at);
+        ctx.lineTo(p, at + (at < y0 + S / 2 ? 4 : -4));
+      } else {
+        ctx.moveTo(at, p);
+        ctx.lineTo(at + (at < x0 + S / 2 ? 4 : -4), p);
+      }
+    }
+    ctx.stroke();
+  };
+  if (rad.has("N")) fin(x0 + 4, x0 + S - 4, true, y0 + inset);
+  if (rad.has("S")) fin(x0 + 4, x0 + S - 4, true, y0 + S - inset);
+  if (rad.has("W")) fin(y0 + 4, y0 + S - 4, false, x0 + inset);
+  if (rad.has("E")) fin(y0 + 4, y0 + S - 4, false, x0 + S - inset);
+  ctx.restore();
+}
+
 function drawTower(ctx: Ctx, game: Game, t: Tower): void {
-  const S = 2 * TILE; // 2 x 2 footprint (px)
-  const x0 = t.cx - TILE;
-  const y0 = t.cy - TILE;
+  const S = t.size * TILE; // footprint side (px)
+  const x0 = FLOOR_X0 + t.col * TILE;
+  const y0 = FLOOR_Y0 + t.row * TILE;
   const bx0 = x0 + 2;
   const by0 = y0 + 2;
   const bs = S - 4;
@@ -284,7 +317,7 @@ function drawTower(ctx: Ctx, game: Game, t: Tower): void {
   ctx.restore();
 
   // Lit highlight for a 3-D read.
-  const grad = ctx.createRadialGradient(t.cx, t.cy - 6, 2, t.cx, t.cy + 4, 24);
+  const grad = ctx.createRadialGradient(t.cx, t.cy - 6, 2, t.cx, t.cy + 4, S);
   grad.addColorStop(0, rgba("#ffffff", 0.32));
   grad.addColorStop(1, rgba("#ffffff", 0));
   ctx.fillStyle = grad;
@@ -296,11 +329,15 @@ function drawTower(ctx: Ctx, game: Game, t: Tower): void {
   rr(ctx, bx0, by0, bs, bs, 6);
   ctx.stroke();
 
-  // Glyph.
-  const glyphColor = t.type === "sink" ? C.sink : "#15181d";
-  text(ctx, t.def.glyph, t.cx, t.cy + 6, 16, glyphColor, "center", 700);
+  // Radiator faces (emitters).
+  if (t.isEmitter) drawRadiatorFaces(ctx, t.worldRadiators(), x0, y0, S);
 
-  // Heat read on the footprint (emitters, incl. Rime) — a short bar.
+  // Glyph, scaled up a touch for bigger footprints.
+  const glyphColor = t.type === "sink" ? C.sink : "#15181d";
+  text(ctx, t.def.glyph, t.cx, t.cy + 6, 14 + (t.size - 2) * 5, glyphColor, "center", 700);
+
+  // Heat read on the footprint (emitters, incl. Rime) — a short bar with the
+  // per-tower redline marker at its max-efficiency point.
   if (t.isEmitter) {
     const bx = x0 + 5;
     const by = y0 + S - 8;
@@ -312,6 +349,16 @@ function drawTower(ctx: Ctx, game: Game, t: Tower): void {
     ctx.fillStyle = t.tripped ? C.trip : t.type === "rime" ? C.rime : heatColor(t.heat);
     rr(ctx, bx, by, Math.max(1, bw * frac), 4, 2);
     ctx.fill();
+    // Redline marker (skip for the heat-averse Rime, whose redline is the trip).
+    if (t.redline < 100) {
+      const rx = bx + bw * (t.redline / 100);
+      ctx.strokeStyle = C.trip;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(rx, by - 2);
+      ctx.lineTo(rx, by + 6);
+      ctx.stroke();
+    }
   }
 
   if (t.tripped) {
@@ -339,18 +386,24 @@ function drawPreview(ctx: Ctx, game: Game): void {
   const p = game.preview;
   if (!p || !game.armed) return;
   const def = TOWER_DEFS[game.armed];
-  const S = 2 * TILE;
-  const cx = FLOOR_X0 + p.i * TILE;
-  const cy = FLOOR_Y0 + p.j * TILE;
+  const size = def.size;
+  const S = size * TILE;
+  const x0 = FLOOR_X0 + p.col * TILE;
+  const y0 = FLOOR_Y0 + p.row * TILE;
+  const cx = x0 + S / 2;
+  const cy = y0 + S / 2;
   const col = p.valid ? C.ok : C.bad;
   // Footprint highlight.
   ctx.fillStyle = rgba(col, 0.25);
-  ctx.fillRect(cx - TILE, cy - TILE, S, S);
+  ctx.fillRect(x0, y0, S, S);
   ctx.strokeStyle = col;
   ctx.lineWidth = 2;
-  ctx.strokeRect(cx - TILE + 1, cy - TILE + 1, S - 2, S - 2);
-  // Range ring (emitters).
+  ctx.strokeRect(x0 + 1, y0 + 1, S - 2, S - 2);
+  // Radiator faces at the held rotation, so the player can aim them before placing.
   if (isEmitterDef(def)) {
+    const rad = new Set<Side>(def.radiators.map((s) => rotateSide(s, game.armedRot)));
+    drawRadiatorFaces(ctx, rad, x0, y0, S);
+    // Range ring (emitters).
     ctx.save();
     ctx.setLineDash([6, 6]);
     ctx.strokeStyle = rgba(col, 0.7);
@@ -550,11 +603,14 @@ function drawShop(ctx: Ctx, game: Game): void {
     ctx.stroke();
     if (armed) ctx.restore();
 
-    // Icon.
+    // Icon, sized to the footprint so 2/3/4 read at a glance.
+    const iw = 12 + (def.size - 2) * 5;
     ctx.fillStyle = TYPE_COLOR[type];
-    rr(ctx, r.x + r.w / 2 - 11, r.y + 6, 22, 16, 4);
+    rr(ctx, r.x + r.w / 2 - iw / 2, r.y + 6, iw, 16, 4);
     ctx.fill();
     text(ctx, def.glyph, r.x + r.w / 2, r.y + 19, 12, "#15181d", "center", 700);
+    // Size badge (top-left).
+    text(ctx, `${def.size}x${def.size}`, r.x + 4, r.y + 11, 7, C.textFaint, "left", 700);
     text(ctx, def.name, r.x + r.w / 2, r.y + 36, 7.5, C.textDim, "center", 400);
     text(ctx, String(def.cost), r.x + r.w / 2, r.y + 48, 9, C.money, "center", 700);
     ctx.globalAlpha = 1;
@@ -582,6 +638,8 @@ function drawInspector(ctx: Ctx, game: Game, t: Tower): void {
   let y = INSPECTOR.y + 52;
   if (isEmitterDef(t.def)) {
     const s = t.stats();
+    statRow(ctx, "SIZE", `${t.size}x${t.size}`, y);
+    y += 20;
     statRow(ctx, "RANGE", `${s.range.toFixed(1)} tiles`, y);
     y += 20;
     if (t.isRime) {
@@ -596,46 +654,65 @@ function drawInspector(ctx: Ctx, game: Game, t: Tower): void {
     y += 20;
     if ((t.def as EmitterDef).airOnly) {
       statRow(ctx, "TARGETS", "AIR ONLY", y);
-      y += 20;
     } else if ((t.def as EmitterDef).splash) {
       statRow(ctx, "SPLASH", `${(t.def as EmitterDef).splash!.toFixed(1)} tiles`, y);
-      y += 20;
+    } else {
+      statRow(ctx, "MASS", `${(t.def as EmitterDef).mass.toFixed(1)}`, y);
     }
+    y += 20;
+    // Radiator faces at the current orientation.
+    const rad = [...t.worldRadiators()];
+    const order = ["N", "E", "S", "W"].filter((sd) => rad.includes(sd as Side));
+    statRow(ctx, "RADIATORS", order.join(" · ") || "—", y);
+    y += 20;
 
-    // Heat meter.
+    // Heat meter, with the per-tower redline (max-efficiency) marker.
     const hy = y + 8;
-    text(ctx, `HEAT — ${Math.round(t.heat)}%`, ix, hy, 10, C.textFaint, "left", 400);
+    const effLabel = t.isRime ? "" : t.heat >= t.redline ? "  ▲ MAX" : "";
+    text(ctx, `HEAT — ${Math.round(t.heat)}%${effLabel}`, ix, hy, 10, C.textFaint, "left", 400);
+    const mw = INSPECTOR.w - 24;
     const my = hy + 6;
     ctx.fillStyle = rgba("#ffffff", 0.1);
-    rr(ctx, ix, my, INSPECTOR.w - 24, 9, 5);
+    rr(ctx, ix, my, mw, 9, 5);
     ctx.fill();
-    const g = ctx.createLinearGradient(ix, 0, ix + INSPECTOR.w - 24, 0);
+    const g = ctx.createLinearGradient(ix, 0, ix + mw, 0);
     g.addColorStop(0, C.cold);
     g.addColorStop(0.5, C.warm);
     g.addColorStop(0.8, C.hot);
     g.addColorStop(1, C.white);
     ctx.fillStyle = t.tripped ? C.trip : g;
-    rr(ctx, ix, my, (INSPECTOR.w - 24) * Math.max(0, Math.min(1, t.heatFrac())), 9, 5);
+    rr(ctx, ix, my, mw * Math.max(0, Math.min(1, t.heatFrac())), 9, 5);
     ctx.fill();
-    // Redline marker.
+    // Redline (max-efficiency) marker at the tower's own redline.
+    const rx = ix + mw * (t.redline / 100);
     ctx.strokeStyle = C.trip;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(ix + INSPECTOR.w - 24 - 1, my - 2);
-    ctx.lineTo(ix + INSPECTOR.w - 24 - 1, my + 11);
+    ctx.moveTo(rx, my - 2);
+    ctx.lineTo(rx, my + 11);
     ctx.stroke();
-    if (t.tripped) text(ctx, "OFFLINE — REDLINE TRIP", ix, my + 26, 10, C.trip, "left", 700);
+    text(ctx, t.isRime ? "TRIP" : "REDLINE", rx, my + 22, 8, C.trip, "center", 700);
+    if (t.tripped) text(ctx, "OFFLINE — TRIPPED", ix, my + 22, 9, C.trip, "left", 700);
   } else {
     // Mover.
     const out = t.moverOutput();
-    if (t.type === "forge") statRow(ctx, "OUTPUT", `+${out} heat/s`, y);
-    else statRow(ctx, "OUTPUT", `+${out} cool`, y);
+    if (t.type === "forge") {
+      statRow(ctx, "SETPOINT", `${out}% heat`, y);
+      y += 20;
+      statRow(ctx, "MODE", "thermostat", y);
+    } else {
+      statRow(ctx, "COOLING", `+${out} / edge`, y);
+      y += 20;
+      statRow(ctx, "MODE", "coolant loop", y);
+    }
     y += 20;
-    statRow(ctx, "COUPLING", "orthogonal", y);
+    statRow(ctx, "CONTACT", "shared faces", y);
     y += 20;
     text(
       ctx,
-      t.type === "forge" ? "Warms adjacent emitters." : "Cools adjacent emitters.",
+      t.type === "forge"
+        ? "Warms touching emitters toward its setpoint — never past it."
+        : "Draws heat from touching emitters. The only way to cool a boxed-in core.",
       ix,
       y + 14,
       10,
@@ -643,6 +720,19 @@ function drawInspector(ctx: Ctx, game: Game, t: Tower): void {
       "left",
       400,
     );
+  }
+
+  // Rotate action (emitters only — movers have no faces).
+  if (isEmitterDef(t.def)) {
+    const rotR = rotateBtnRect();
+    ctx.fillStyle = "#232a33";
+    rr(ctx, rotR.x, rotR.y, rotR.w, rotR.h, 7);
+    ctx.fill();
+    ctx.strokeStyle = rgba(C.rime, 0.6);
+    ctx.lineWidth = 1;
+    rr(ctx, rotR.x, rotR.y, rotR.w, rotR.h, 7);
+    ctx.stroke();
+    text(ctx, "⟳ ROTATE FACES  (R)", rotR.x + rotR.w / 2, rotR.y + 20, 11, C.rime, "center", 700);
   }
 
   // Actions.
@@ -817,28 +907,29 @@ function drawHowTo(ctx: Ctx): void {
   spaced(ctx, "HOW TO PLAY", cx, 90, 34, C.text, 8, 700);
   const lines: Array<[string, string]> = [
     ["GOAL", "Stop the surge from reaching the exhausts. Lose all 20 lives and the reactor breaches; clear wave 20 to win."],
-    ["TOWERS ARE WALLS", "Every tower is also a wall — you build the maze the surge must walk. It always keeps a path; you can never seal the floor."],
-    ["WALLED REACTOR", "The floor is a walled reactor. Surge enters at the LEFT and TOP vents and must cross to its OPPOSITE exhaust (left→right, top→bottom) — the only openings in the casing."],
-    ["HEAT IS POWER", "Emitters fire harder the hotter they run (up to 3x near the redline) — but hit 100 heat and they TRIP offline for 3s."],
-    ["FORGE & SINK", "The Forge pours heat into orthogonal neighbours (an asset in a lull, a liability in a push); the Sink draws it out."],
-    ["THE RIME", "The cryo Rime runs backward — it slows hardest when COLD and fades as it heats. Keep it isolated or beside a Sink."],
+    ["TOWERS ARE WALLS", "Every tower is also a wall — you build the maze the surge must walk. Towers come in 2x2, 3x3, and 4x4 sizes. You can never seal the floor."],
+    ["WALLED REACTOR", "Surge enters at the LEFT and TOP vents and must cross to its OPPOSITE exhaust (left→right, top→bottom) — the only openings in the casing."],
+    ["HEAT IS POWER", "Emitters fire harder the hotter they run — full power once they reach their REDLINE mark, then hold it up to the 100 trip. Cold guns are feeble; hit 100 and they TRIP offline for 3s."],
+    ["RUN IT HOT", "A tower only sheds heat through faces that touch OPEN AIR — its cyan RADIATOR faces cool best. Rotate (R) to aim them at the open lane. Pack towers tight and their cores bake and trip."],
+    ["SIZE & REDLINE", "Bigger towers hit harder but run hotter — they want corners and open air. Each tower has its own redline: light guns reach max power early with room to spare; heavy guns want to sit right near the top."],
+    ["FORGE & SINK", "The Forge warms touching emitters toward its setpoint (never past it) — wake cold guns, feed a Lance. The Sink draws heat out — the only way to cool a boxed-in core."],
+    ["THE RIME", "The cryo Rime runs backward — it slows hardest when COLD and fades as it heats. Give it open air or a Sink; keep it away from Forges and hot cores."],
     ["FLYERS", "Drift flyers ignore the maze and fly straight across. Any emitter can hit them; Flak is dedicated air-only coverage."],
-    ["ECONOMY", "Start with 250 — about 16 Arcs for an opening maze. Earn kill bounties, wave bonuses, interest, and an early-send bonus. Sell for a 70% refund."],
-    ["BUILD & START", "The opening build phase is untimed — lay your maze, then press START. Between waves you get up to 15s (send early for a bonus)."],
-    ["CONTROLS", "Mouse to build/select. 1–8 arm shop towers, U upgrade, S sell, Space send/start wave, F speed, Esc/P pause."],
+    ["ECONOMY", "Start with 250. Earn kill bounties, wave bonuses, interest, and an early-send bonus. Sell for a 70% refund. Opening build is untimed — press START; between waves you get 15s."],
+    ["CONTROLS", "Mouse to build/select. 1–8 arm shop towers, R rotate faces, U upgrade, S sell, Space send/start wave, F speed, Esc/P pause."],
   ];
-  const bodyX = 400;
-  const bodyMaxW = 1060 - bodyX;
-  let y = 132;
+  const bodyX = 372;
+  const bodyMaxW = 1096 - bodyX;
+  let y = 124;
   for (const [head, body] of lines) {
-    text(ctx, head, 180, y, 14, C.hot, "left", 700);
-    const wrapped = wrapLines(ctx, body, 13, bodyMaxW);
+    text(ctx, head, 176, y, 12.5, C.hot, "left", 700);
+    const wrapped = wrapLines(ctx, body, 12, bodyMaxW);
     let ly = y;
     for (const line of wrapped) {
-      text(ctx, line, bodyX, ly, 13, C.textDim, "left", 400);
-      ly += 17;
+      text(ctx, line, bodyX, ly, 12, C.textDim, "left", 400);
+      ly += 15;
     }
-    y += Math.max(46, wrapped.length * 17 + 20);
+    y += Math.max(34, wrapped.length * 15 + 13);
   }
   spaced(ctx, "CLICK OR PRESS ESC TO GO BACK", cx, 700, 14, C.textFaint, 6, 400);
 }
