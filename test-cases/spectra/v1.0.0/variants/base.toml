@@ -22,3 +22,15 @@ reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
 # `tcab publish-reference`, then shown on the case's "Reference" tab. It is
 # **never seeded into a run**.
 reference_implementation = "reference-impl/base"
+
+# ADDITIVE review item for the base Sortie mode. The common `match-destroys` item
+# only asserts that a mismatched shot never destroys the drone and defers what
+# ELSE it does to the mode; Sortie's rule is that a mismatch is simply wasted, so
+# this item (mirroring Overload's `overload-feeds`) checks that base-mode
+# behavior. Rolls up to the common `polarity` domain.
+[[review_item]]
+id = "mismatch-wasted"
+title = "Mismatch is wasted"
+text = "In Sortie, a mismatched (wrong-band) shot is simply wasted: the bullet is absorbed and consumed, dealing no damage and having no other effect on the drone. You cannot harm a drone of the band you are not tuned to, and a wrong-band shot never charges, redirects, or otherwise changes it."
+weight = 1
+domain = "polarity"

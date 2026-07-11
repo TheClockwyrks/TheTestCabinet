@@ -190,12 +190,22 @@ id = "inertial-flight"
 title = "Inertial flight"
 text = "Thrust accelerates the ship along its facing and it coasts afterward under momentum (no instant stop, no reverse/brake); turning changes only the facing, not the velocity. Motion reads at the spec's pace — 300 deg/s turn, 480 px/s^2 thrust, ~680 px/s cap — not noticeably fast or sluggish."
 weight = 1
+# Independently graded points: the item's weight splits evenly across them.
+sub_items = [
+  { id = "thrust-coast", title = "Thrust accelerates along the facing, then coasts under momentum — no reverse or brake" },
+  { id = "turn-facing", title = "Turning changes only the facing, not the velocity" },
+  { id = "pace", title = "Motion reads at the spec's pace — not noticeably fast or sluggish" },
+]
 
 [[review_item]]
 id = "screen-wrap"
 title = "Screen wrap"
-text = "The ship, bullets, and rocks that cross any edge reappear at the opposite edge carrying the same velocity, and a shape straddling an edge is drawn on both sides rather than popping."
+text = "The ship, bullets, rocks, and the saucer that cross any edge reappear at the opposite edge carrying the same velocity, and a shape straddling an edge is drawn on both sides rather than popping."
 weight = 1
+sub_items = [
+  { id = "wraps", title = "Ship, bullets, rocks, and the saucer wrap to the opposite edge with the same velocity" },
+  { id = "both-sides", title = "A shape straddling an edge is drawn on both sides rather than popping" },
+]
 
 [[review_item]]
 id = "gravity-well"
@@ -204,12 +214,21 @@ text = "The star pulls bullets and rocks toward the center: a bullet fired past 
 weight = 1
 reference = "gameplay"
 proof = "gravity"
+sub_items = [
+  { id = "bodies-curve", title = "Bullets visibly curve and rocks travel on curved paths toward the star" },
+  { id = "powered-free", title = "The ship and the saucer are never pulled" },
+]
 
 [[review_item]]
 id = "star-core"
 title = "Solid star core"
 text = "The star's core is solid but not lethal to the ship: flying into it costs no life and does not destroy the ship — the ship slides along the core rather than through it. A bullet that reaches the core is absorbed and removed, and a rock is destroyed and recycled, rather than passing through."
 weight = 1
+sub_items = [
+  { id = "ship-slides", title = "Flying into the core costs no life; the ship slides along it rather than through it" },
+  { id = "bullet-absorbed", title = "A bullet that reaches the core is absorbed and removed" },
+  { id = "rock-destroyed", title = "A rock that reaches the core is destroyed and recycled rather than passing through" },
+]
 
 [[review_item]]
 id = "rock-recycle"
@@ -224,6 +243,10 @@ text = "Shooting a Large rock yields two Medium, a Medium yields two Small, and 
 weight = 1
 reference = "gameplay"
 proof = "gameplay"
+sub_items = [
+  { id = "cascade", title = "Large yields two Medium, Medium yields two Small, Small is destroyed outright" },
+  { id = "fan", title = "Fragments fan apart to opposite sides by the shot direction and inherit the parent's motion" },
+]
 
 [[review_item]]
 id = "bullet-trail"
@@ -232,36 +255,77 @@ text = "Every moving bullet leaves a continuous, tapering motion trail (a smooth
 weight = 1
 reference = "gameplay"
 proof = "gameplay"
+sub_items = [
+  { id = "continuous", title = "A continuous, tapering comet in the bullet color — not discrete dots" },
+  { id = "length-scales", title = "Trail length scales with the bullet's speed" },
+  { id = "no-smear", title = "The trail follows the bullet across a wrap without smearing across the field" },
+]
 
 [[review_item]]
 id = "bullet-limits"
 title = "Bullet limits"
 text = "Bullets have a limited lifetime/range, at most four of the ship's bullets exist at once, fire is rate-limited, and a bullet's velocity carries the ship's own motion (a shot fired while moving is faster)."
 weight = 1
+sub_items = [
+  { id = "lifetime", title = "Bullets expire after a limited lifetime/range" },
+  { id = "max-four", title = "At most four of the ship's bullets exist at once" },
+  { id = "rate", title = "Fire is rate-limited" },
+  { id = "inherits-motion", title = "A bullet carries the ship's motion — a shot fired while moving is faster" },
+]
 
 [[review_item]]
 id = "waves"
 title = "Wave progression"
 text = "Clearing every rock advances to a new wave with more (and faster) rocks, shown by a brief wave banner, and continues endlessly."
 weight = 1
+sub_items = [
+  { id = "more-each-wave", title = "Clearing every rock advances to a new wave with more rocks, endlessly" },
+  { id = "faster", title = "Later waves' rocks drift faster" },
+  { id = "banner", title = "A brief WAVE N banner shows at the start of each wave" },
+]
 
 [[review_item]]
 id = "saucer"
 title = "Enemy saucer"
 text = "A saucer appears on a cadence, weaves across the field and wraps, fires bullets aimed at the ship, steers clear of the star (never pulled into it), and can be destroyed with a bullet for points."
 weight = 1
+sub_items = [
+  { id = "cadence", title = "A saucer appears on a cadence, at most one at a time" },
+  { id = "weaves", title = "It weaves across the field, wraps, and steers clear of the star" },
+  { id = "fires", title = "It fires bullets aimed at the ship" },
+  { id = "destroyable", title = "It can be shot down for points" },
+]
 
 [[review_item]]
 id = "lives-respawn"
 title = "Lives and respawn"
 text = "The game starts with 3 ships; losing one respawns the next at the safe point below the star with a brief invulnerability (during which it ignores all collisions), an extra ship is granted at each 10,000-point threshold, and the game ends at zero lives."
 weight = 1
+sub_items = [
+  { id = "three-lives", title = "Starts with 3 ships and ends at zero lives" },
+  { id = "respawn-invuln", title = "Respawn at the safe point below the star with a brief invulnerability that ignores all collisions" },
+  { id = "extra-life", title = "An extra ship is granted at each 10,000-point threshold" },
+]
 
 [[review_item]]
 id = "scoring"
 title = "Scoring"
 text = "Destroying rocks scores by size (Large 20, Medium 50, Small 100) and the saucer 200; the HUD score increments correctly and only ever rises within a game."
 weight = 1
+sub_items = [
+  { id = "values", title = "Rocks score by size (Large 20, Medium 50, Small 100) and the saucer 200" },
+  { id = "monotonic", title = "The HUD score increments correctly and only ever rises within a game" },
+]
+
+[[review_item]]
+id = "audio"
+title = "Synthesized audio"
+text = "Audio is required and synthesized with the Web Audio API (no audio files): distinct short sounds for firing, a rock shattering, the ship's thrust, the saucer's presence, and the ship being destroyed. It stays fully playable muted (a mute toggle is provided), never fails to run or load if audio cannot start, and does not begin until the player first interacts."
+weight = 1
+sub_items = [
+  { id = "cues", title = "Distinct synthesized cues for firing, a rock shattering, thrust, the saucer's presence, and the ship being destroyed" },
+  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+]
 
 [[review_item]]
 id = "states-complete"
@@ -270,6 +334,12 @@ text = "Every game state is reachable and behaves correctly: title menu, how-to-
 weight = 1
 reference = "title"
 proof = "title"
+sub_items = [
+  { id = "title", title = "Title / main menu is reachable and behaves correctly" },
+  { id = "how-to-play", title = "How-to-play screen is reachable and returns to the menu" },
+  { id = "pause", title = "Pause offers resume, restart, and quit to menu" },
+  { id = "game-over", title = "Game over offers play again and menu" },
+]
 
 [[review_item]]
 id = "game-over-screen"
@@ -278,18 +348,31 @@ text = "Losing the last life shows the game-over screen with GAME OVER, the corr
 weight = 1
 reference = "game-over"
 proof = "game-over"
+sub_items = [
+  { id = "content", title = "Shows GAME OVER, the correct final score, and the wave reached" },
+  { id = "options", title = "Offers the PLAY AGAIN and MENU options" },
+]
 
 [[review_item]]
 id = "controls"
 title = "Controls"
 text = "Rotate with Left/Right or A/D, thrust with Up or W, fire with Space, and pause with Esc or P; menu navigation with Up/Down (or W/S), Enter/Space to confirm, Esc to go back."
 weight = 1
+sub_items = [
+  { id = "flying", title = "Rotate with Left/Right or A/D, thrust with Up or W, fire with Space" },
+  { id = "pause", title = "Pause with Esc or P" },
+  { id = "menus", title = "Menu navigation: Up/Down or W/S, Enter/Space to confirm, Esc to go back" },
+]
 
 [[review_item]]
 id = "hud-rendering"
 title = "HUD and menu rendering"
-text = "The score and remaining-lives glyphs render clearly, and every menu renders cleanly, is present and navigable, and is free of visual bugs — with the selection indicator oriented correctly and no visual bugs obscuring options."
+text = "The score and remaining-lives glyphs render clearly, and every menu renders cleanly, is present and navigable, with the selection indicator oriented correctly and no visual bugs obscuring options."
 weight = 1
+sub_items = [
+  { id = "hud", title = "The score and remaining-lives glyphs render clearly" },
+  { id = "menus", title = "Every menu renders cleanly and is navigable, with the selection indicator correct and no visual bugs obscuring options" },
+]
 
 [[review_item]]
 id = "fits-window"

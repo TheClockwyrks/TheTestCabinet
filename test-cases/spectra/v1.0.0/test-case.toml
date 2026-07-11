@@ -236,11 +236,15 @@ description = "The choreographed entrances and swaying formation, the dive attac
 [[review_item]]
 id = "match-destroys"
 title = "Match to destroy"
-text = "A shot destroys a drone only when the bullet's band matches the drone's current band; a mismatched (opposite-band) shot is wasted, harming nothing. Because the formation always holds both bands, clearing it forces constant flipping."
+text = "A shot destroys a drone only when the bullet's band matches the drone's current band; a mismatched (opposite-band) shot never destroys it — what else a mismatch does is defined by the active mode (`specs/mode.md`). Because the formation always holds both bands, clearing it forces constant flipping."
 weight = 1
 domain = "polarity"
 reference = "gameplay"
 proof = "polarity"
+sub_items = [
+  { id = "match", title = "Matching-band shot destroys the drone" },
+  { id = "mismatch", title = "Opposite-band shot never destroys it" },
+]
 
 [[review_item]]
 id = "dual-use-shield"
@@ -249,6 +253,11 @@ text = "Your current band is also your shield: a same-band enemy bullet is absor
 weight = 1
 domain = "polarity"
 proof = "polarity"
+sub_items = [
+  { id = "same-band", title = "Same-band bullet is absorbed harmlessly" },
+  { id = "opposite-band", title = "Opposite-band bullet costs a life" },
+  { id = "drone-body", title = "A drone body always costs a life on contact" },
+]
 
 [[review_item]]
 id = "flip-lockout"
@@ -256,6 +265,10 @@ title = "Flip and its lockout"
 text = "Flipping bands is instant — the ship core and polarity indicator change immediately — but imposes a roughly 0.30s fire lockout, so you cannot flip and fire in the same instant."
 weight = 1
 domain = "polarity"
+sub_items = [
+  { id = "instant", title = "Flip is instant — core and indicator update immediately" },
+  { id = "lockout", title = "Flip imposes a ~0.30s fire lockout" },
+]
 
 [[review_item]]
 id = "resonance-discharge"
@@ -263,6 +276,11 @@ title = "Resonance and discharge"
 text = "The resonance meter fills from absorbed same-band bullets and matching kills; at full, a discharge wipes every entering and diving drone and clears all enemy bullets (band-blind) but spares the formation, and spends the whole meter."
 weight = 1
 domain = "polarity"
+sub_items = [
+  { id = "fills", title = "Meter fills from absorbed same-band bullets and matching kills" },
+  { id = "discharge", title = "At full, discharge wipes entering/diving drones and all bullets, sparing the formation" },
+  { id = "spends", title = "A discharge spends the whole meter" },
+]
 
 [[review_item]]
 id = "entrance-and-formation"
@@ -272,6 +290,11 @@ weight = 1
 domain = "swarm"
 reference = "gameplay"
 proof = "assault"
+sub_items = [
+  { id = "fly-in", title = "Drones fly in on choreographed paths, absent at wave start" },
+  { id = "both-bands", title = "Formation mixes both bands" },
+  { id = "sways", title = "Formation drifts side to side as one rigid body" },
+]
 
 [[review_item]]
 id = "dive-attacks"
@@ -280,6 +303,11 @@ text = "From the formation, drones peel off on swooping dive runs that bend towa
 weight = 1
 domain = "swarm"
 proof = "assault"
+sub_items = [
+  { id = "bend-and-fire", title = "Divers bend toward the player and fire" },
+  { id = "return", title = "Divers loop back or wrap bottom-to-top to their slots" },
+  { id = "only-divers", title = "Only divers fire — drones in formation do not" },
+]
 
 [[review_item]]
 id = "shard-fixed-band"
@@ -294,6 +322,10 @@ title = "The Flux"
 text = "The Flux alternates its band on a telegraphed rhythm: a held window, then a brief shimmer (settled on neither band), then the other band. It can be destroyed only by a matching shot during a held window — never mid-shimmer."
 weight = 1
 domain = "swarm"
+sub_items = [
+  { id = "oscillates", title = "Alternates band: held window, brief shimmer, then the other band" },
+  { id = "shimmer-immune", title = "Killable only during a held window, never mid-shimmer" },
+]
 
 [[review_item]]
 id = "prism-sequence"
@@ -301,6 +333,11 @@ title = "The Prism"
 text = "The Prism is a two-band boss: destroy the outer shell with the shell's band, then the exposed core with the opposite band. It enters escorted by two Shards and fires a two-band (one cyan, one magenta) burst while diving."
 weight = 1
 domain = "swarm"
+sub_items = [
+  { id = "shell-then-core", title = "Shell destroyed with its band, then the exposed core with the opposite band" },
+  { id = "escort", title = "Enters escorted by two Shards" },
+  { id = "two-band-burst", title = "Fires a two-band (one cyan, one magenta) burst while diving" },
+]
 
 [[review_item]]
 id = "spectral-inversion"
@@ -309,6 +346,10 @@ text = "A diving Prism that reaches the bottom of the field without being broken
 weight = 1
 domain = "swarm"
 proof = "assault"
+sub_items = [
+  { id = "trigger", title = "A diving Prism reaching the bottom unbroken triggers it" },
+  { id = "swap", title = "Both bands swap field-wide for a few seconds, with a clear overlay" },
+]
 
 [[review_item]]
 id = "challenge-stage"
@@ -316,12 +357,22 @@ title = "Challenge stages"
 text = "Every third stage is a challenge stage: a non-firing flyover of single-band groups that alternate bands and never cost a life, with points per drone and a perfect bonus for destroying them all."
 weight = 1
 domain = "swarm"
+sub_items = [
+  { id = "non-firing", title = "Non-firing flyover that never costs a life" },
+  { id = "alternating", title = "Single-band groups that alternate bands" },
+  { id = "perfect-bonus", title = "Points per drone plus a perfect bonus for clearing all" },
+]
 
 [[review_item]]
 id = "lives-and-scaling"
 title = "Lives and stage scaling"
 text = "A hit costs a life while the wave persists (the ship respawns and the wave continues, keeping the resonance meter); clearing a wave advances a stage; deeper stages are faster, dive harder, and flip the Flux quicker as specified."
 weight = 1
+sub_items = [
+  { id = "wave-persists", title = "A hit costs a life but the wave persists (respawn, resonance kept)" },
+  { id = "advance", title = "Clearing a wave advances a stage" },
+  { id = "scaling", title = "Deeper stages are faster, dive harder, and flip the Flux quicker" },
+]
 
 [[review_item]]
 id = "uses-provided-art"
@@ -330,6 +381,11 @@ text = "The ship and all three drones are drawn from the seeded `assets/` sprite
 weight = 1
 reference = "gameplay"
 proof = "gameplay"
+sub_items = [
+  { id = "from-sprites", title = "Ship and all three drones drawn from the seeded sprites, not redrawn" },
+  { id = "reband", title = "Other band is the same sprite re-tinted with glyph swapped — never a cyan diamond or magenta ring" },
+  { id = "code-drawn", title = "Bullets, effects, and the HUD are drawn in code" },
+]
 
 [[review_item]]
 id = "uses-provided-burst"
@@ -338,6 +394,21 @@ text = "When a drone is destroyed, the build plays the provided `assets/drone-bu
 weight = 1
 domain = "swarm"
 proof = "assault"
+sub_items = [
+  { id = "plays-provided", title = "Plays the provided system via the seeded runtime, not hand-coded or substituted" },
+  { id = "varies", title = "Live-simulated: scatter varies pop to pop, character stays the same" },
+  { id = "prism-twice", title = "A Prism detonates twice — once for the shell, once for the core" },
+]
+
+[[review_item]]
+id = "audio"
+title = "Synthesized audio"
+text = "Audio is required and synthesized with the Web Audio API (no audio files): distinct short cues for firing, flipping bands, absorbing a same-band bullet, a matching kill, a discharge, a spectral inversion, getting hit, and clearing a stage. It stays fully playable muted (a mute toggle is provided), never fails to run or load if audio cannot start, and does not begin until the player first interacts."
+weight = 1
+sub_items = [
+  { id = "cues", title = "Distinct synthesized cues for firing, flipping bands, absorbing a same-band bullet, a matching kill, a discharge, an inversion, getting hit, and clearing a stage" },
+  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+]
 
 [[review_item]]
 id = "states-complete"

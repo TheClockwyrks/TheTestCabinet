@@ -203,6 +203,10 @@ weight = 1
 domain = "charge"
 reference = "gameplay"
 proof = "discharge"
+sub_items = [
+  { id = "charges-on-turn", title = "A node the worm is turned by gains one charge; repeated bumps climb it to critical" },
+  { id = "glow-ramp", title = "A node's glow tracks its charge, the critical node unmistakable and pulsing" },
+]
 
 [[review_item]]
 id = "shot-into-node"
@@ -210,15 +214,25 @@ title = "Shooting a node: clear, de-energize, or detonate"
 text = "A bolt into an INERT node (charge 0) destroys it; a bolt into a charge-1 or charge-2 node knocks its charge down one level without removing it (so a charged node resists clearing); and a bolt into a CRITICAL node detonates it. Your shots only ever lower a node's charge, never raise it."
 weight = 1
 domain = "charge"
+sub_items = [
+  { id = "inert-destroyed", title = "A bolt into an inert node destroys it" },
+  { id = "charged-deenergized", title = "A bolt into a charge-1/2 node knocks it down one level without removing it" },
+  { id = "critical-detonates", title = "A bolt into a critical node detonates it" },
+]
 
 [[review_item]]
 id = "chain-arc-discharge"
 title = "The chain-arc discharge"
-text = "Shooting a critical node sets off a chain-arc: it clears itself and arcs to charged nodes within 2 tiles, which detonate and chain onward through the connected charged cluster, clearing the whole swath in one shot. Worm segments caught in the arc are fried and leave NO nodes. A dense charged cluster clears wide from a single well-placed shot."
+text = "Shooting a critical node sets off a chain-arc: it clears itself and arcs to charged nodes within 2 tiles, which detonate and chain onward through the connected charged cluster, clearing the whole swath in one shot. Inert nodes do not conduct, so the arcs leap over them. Worm segments caught in the arc are fried and leave NO nodes. A dense charged cluster clears wide from a single well-placed shot."
 weight = 1
 domain = "charge"
 reference = "gameplay"
 proof = "discharge"
+sub_items = [
+  { id = "chains", title = "Arcs to charged nodes within 2 tiles and chains onward through the connected cluster" },
+  { id = "inert-insulates", title = "Inert nodes do not conduct — the arcs leap over them" },
+  { id = "fries-clean", title = "Worm segments caught in the arc are fried and leave no nodes" },
+]
 
 [[review_item]]
 id = "critical-dive"
@@ -234,6 +248,10 @@ title = "Shooting grows the field; discharges thin it"
 text = "Every worm segment killed by a bolt leaves a fresh inert node where it died, so the field visibly thickens as you fight — and a denser field drops the worm down faster. Segments killed by a discharge leave no node, so a discharge is the way to thin the board."
 weight = 1
 domain = "charge"
+sub_items = [
+  { id = "shot-thickens", title = "A shot-killed segment leaves a fresh inert node, thickening the field" },
+  { id = "discharge-thins", title = "A discharge-killed segment leaves no node, thinning the field" },
+]
 
 [[review_item]]
 id = "worm-winds"
@@ -243,6 +261,11 @@ weight = 1
 domain = "arcade"
 reference = "gameplay"
 proof = "worm"
+sub_items = [
+  { id = "drop-reverse", title = "Blocked by a node, segment, or side edge, it drops a row and reverses" },
+  { id = "oscillates", title = "It descends to the floor, then oscillates up and down across the lower board" },
+  { id = "stays-on-board", title = "It never leaves the board through an edge" },
+]
 
 [[review_item]]
 id = "split-and-shorten"
@@ -251,13 +274,22 @@ text = "A bolt into a MIDDLE segment splits the worm into two independent worms 
 weight = 1
 domain = "arcade"
 proof = "worm"
+sub_items = [
+  { id = "split", title = "A middle-segment hit splits the worm into two, the trailing part growing a new head" },
+  { id = "shorten", title = "A head or tail hit shortens the worm by one" },
+]
 
 [[review_item]]
 id = "band-bound-cursor"
 title = "Band-bound cursor firing up"
-text = "The cursor moves freely but is clamped to the bottom player band (it can never leave those rows or the board), and fires bolts straight up that stop at the first node or segment in the column. A worm segment or a foe reaching the cursor costs a life."
+text = "The cursor moves freely but is clamped to the bottom player band (it can never leave those rows or the board), and fires bolts straight up that stop at the first node, worm segment, or foe in the column. A worm segment or a foe reaching the cursor costs a life."
 weight = 1
 domain = "arcade"
+sub_items = [
+  { id = "clamped", title = "The cursor moves freely but is clamped to the bottom band, never leaving it" },
+  { id = "fires-up", title = "It fires bolts straight up that stop at the first node, segment, or foe" },
+  { id = "costs-life", title = "A worm segment or foe reaching the cursor costs a life" },
+]
 
 [[review_item]]
 id = "foe-glitch"
@@ -265,6 +297,11 @@ title = "The glitch eats the field"
 text = "The glitch skitters through the lower board in a restless zig-zag, removing any node it passes over (of any charge, defusing charge you were building), is deadly on contact, and dies to a single bolt."
 weight = 1
 domain = "arcade"
+sub_items = [
+  { id = "zigzag", title = "It skitters through the lower board in a restless zig-zag" },
+  { id = "eats-nodes", title = "It removes any node it passes over, of any charge" },
+  { id = "one-bolt", title = "It is deadly on contact and dies to a single bolt" },
+]
 
 [[review_item]]
 id = "foe-dropper"
@@ -272,6 +309,11 @@ title = "The packet-dropper reseeds"
 text = "When the field grows too sparse a dropper falls straight down a column, laying fresh inert nodes in empty tiles it passes; it takes two bolts to kill (the first only speeds it up) and is deadly on contact."
 weight = 1
 domain = "arcade"
+sub_items = [
+  { id = "sparse-trigger", title = "It appears when the field grows too sparse" },
+  { id = "reseeds", title = "It falls down a column, laying fresh inert nodes in the empty tiles it passes" },
+  { id = "two-bolts", title = "It takes two bolts to kill — the first only speeds it up" },
+]
 
 [[review_item]]
 id = "foe-corruptor"
@@ -279,6 +321,11 @@ title = "The corruptor slams a critical line"
 text = "The corruptor crawls horizontally across an upper row, slamming every node it passes straight to critical (setting both a detonation cluster and a worm dive-lane), pays the largest bounty, and dies to a single bolt."
 weight = 1
 domain = "arcade"
+sub_items = [
+  { id = "crawls-top", title = "It crawls horizontally across an upper row without descending" },
+  { id = "slams-critical", title = "It slams every node it passes straight to critical, leaving a dive-lane cluster" },
+  { id = "one-bolt", title = "It dies to a single bolt and pays the largest bounty" },
+]
 
 [[review_item]]
 id = "levels-and-victory"
@@ -286,6 +333,11 @@ title = "Levels, persistence, and victory"
 text = "The game is a run of 12 levels with the worm lengthening and quickening each level and the node field PERSISTING between levels (so the board only gets denser); clearing every worm segment advances the level, 0 lives ends the game, and clearing level 12 wins it."
 weight = 1
 domain = "arcade"
+sub_items = [
+  { id = "progression", title = "A run of 12 levels, the worm lengthening and quickening each level" },
+  { id = "field-persists", title = "The node field persists between levels, so the board only gets denser" },
+  { id = "win-lose", title = "Clearing every segment advances, 0 lives ends the game, and clearing level 12 wins" },
+]
 
 [[review_item]]
 id = "uses-assets"
@@ -307,3 +359,13 @@ id = "fits-window"
 title = "Window fit"
 text = "The entire 1280x720 stage — the full HUD bar, the whole board, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
 weight = 1
+
+[[review_item]]
+id = "audio"
+title = "Synthesized audio"
+text = "Audio is required, synthesized with the Web Audio API (no audio files): distinct short cues for firing a bolt, cutting a worm segment, a chain-arc discharge, a node reaching critical, killing a foe, losing a life, clearing a level, and the Victory/Game-over stings. It must stay fully playable muted, never block loading if audio cannot start, and not begin until the player interacts; a mute toggle is provided."
+weight = 1
+sub_items = [
+  { id = "cues", title = "Distinct synthesized cues for firing, cutting a segment, discharge, critical, foe kill, life loss, level clear, and the end stings" },
+  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+]

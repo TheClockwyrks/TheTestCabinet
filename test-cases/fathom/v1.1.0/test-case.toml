@@ -245,43 +245,56 @@ weight = 1
 [[review_item]]
 id = "lanternjaw-behavior"
 title = "The Lanternjaw hunts light"
-text = "The Lanternjaw's detection range grows with your brightness, and it is shaken by going dim or by ink. Its bulb-light is always visible at any distance — drawn to look almost identical to the bonus drifter, so you cannot tell the two apart at a glance — while its body stays hidden by the dark. Eating a streak near it pulls it straight to you."
+text = "The Lanternjaw's detection range grows with your brightness, and it is shaken by going dim or by ink. Its bulb-light is always visible at any distance — drawn to look almost identical to the bonus drifter, so you cannot tell the two apart at a glance — while its body stays hidden by the dark. Until it senses you it also *moves* exactly like a drifter — the same slow drift and wander at half the forager's speed (about 64 px/s), not the ordinary predator pace — so it is indistinguishable from a real drifter; the instant it fixes on you it drops the disguise and hunts at its chase speed. Eating a streak near it pulls it straight to you."
 weight = 1
 sub_items = [
   { id = "brightness-range", title = "Detection range grows with your brightness" },
   { id = "shaken", title = "Going dim or ink shakes it" },
   { id = "bulb-lookalike", title = "Bulb-light always visible, near-identical to the drifter" },
+  { id = "wander-disguise", title = "While undetected it drifts exactly like a drifter (same slow 64 px/s wander)" },
 ]
 
 [[review_item]]
 id = "gloamfin-hunt"
 title = "The Gloamfin hunts sound"
-text = "The Gloamfin wanders at ordinary speed (no speed wind-up over time). When one of its pings, or yours, catches you it turns and sprints — faster than the forager — to that tile; finding you gone, it casts about and, after a short delay, fires a guaranteed 'lost you' ping. You lose it by breaking away in that delay window; ink does nothing to it."
+text = "The Gloamfin wanders at the ordinary predator speed with no speed wind-up over time, emitting its own violet pings. A ping — one of its own or yours — that catches you, or hearing you within about two tiles, hands it a fix and it chases the tile the ping found you on: it out-paces you slightly on a straight run (only about 5% faster), but every corner it turns to follow you drops it below your speed before it ramps back up, so cutting corners is how you open a gap and escape (a straight sprint alone won't). Reaching where it last heard you and finding you gone, it casts about and, after a short delay, fires a guaranteed 'lost you' ping — break away during that window to lose it. While it holds you at close range (within hearing) it goes silent instead of spamming pings. Ink does nothing to it."
 weight = 1
 proof = "hunt"
 sub_items = [
-  { id = "steady-wander", title = "Wanders at steady speed, no wind-up" },
-  { id = "sprints-to-ping", title = "A ping catching you sets it sprinting to that tile" },
+  { id = "steady-wander", title = "Wanders at steady ordinary speed, no wind-up" },
+  { id = "sprints-to-ping", title = "A ping (its or yours) or close hearing sets it chasing to that tile" },
+  { id = "corners-slow-it", title = "Cornering drops it below your speed (then it ramps back) — cut corners to escape" },
   { id = "lost-you-window", title = "Fires a guaranteed 'lost you' ping you can break away during" },
+  { id = "silent-when-close", title = "Goes silent while holding you at close range, not spamming pings" },
 ]
 
 [[review_item]]
 id = "flarefish-flare"
 title = "The Flarefish's flare"
-text = "The Flarefish is invisible while wandering, seen only by its flare — which ignores walls and reveals that radial area to you. If its flare catches you at the bloom it acquires you and then chases exactly like the Lanternjaw, no longer flaring; lose it and its flare re-arms on a timer. Staying out of the flare's radius, or dropping ink, prevents it acquiring you."
+text = "The Flarefish makes no tell of its own but its flare — though your light or a sonar pulse still reveals its body like any predator, so it is not literally unseeable. It finds you two ways: by drifting up on you and catching your light exactly as the Lanternjaw does (a range that grows with your brightness, in line of sight), which runs even while it wanders — so it does not sit idle waiting to flare — or by its flare, a wall-ignoring bloom that locks on if you are anywhere in its radius at any moment while it burns (the disc moves with the Flarefish and can sweep over you). On either acquisition the detection alert fires and it chases exactly like the Lanternjaw, no longer flaring; lose it and its flare re-arms on a fresh timer. Staying outside the flare and out of light range, or dropping ink, prevents it acquiring you."
 weight = 1
+sub_items = [
+  { id = "light-sense", title = "Also senses your light like the Lanternjaw — drifting into your glow fixes it on you, no flare needed" },
+  { id = "flare-lock", title = "Its flare locks on if you're in the bloom at any moment (ignores walls, disc moves with it)" },
+  { id = "chase-like-lanternjaw", title = "On acquiring you it stops flaring and chases like the Lanternjaw; lose it and the flare re-arms" },
+]
 
 [[review_item]]
 id = "detection-alert"
 title = "Detection alert"
-text = "When the Gloamfin's ping or the Flarefish's flare acquires you, a clear, unmistakable alert (a bright flash in the predator's color, the predator shown lit) fires so you know at a glance you have been detected."
+text = "When the Gloamfin's ping, the Flarefish's flare, or the Flarefish's ordinary light-sense (it drifts up unseen and fixes on your glow) acquires you, a clear, unmistakable alert (a bright flash in the predator's color, the predator shown lit) fires so you know at a glance you have been detected. The Lanternjaw has no such alert — its always-visible bulb is its standing tell."
 weight = 1
 
 [[review_item]]
 id = "enemy-effects-reveal"
 title = "Enemy effects and the amber look-alikes"
-text = "The Flarefish's flare reveals tiles for you (a radial disc, floor and wall, through walls); the Gloamfin's ping reveals nothing (only its violet wavefront, sweeping out through the corridors, is visible). The bonus drifter and the Lanternjaw's bulb-light are both always visible and drawn to look almost identical."
+text = "The Flarefish's flare reveals tiles for you (a radial disc, floor and wall, through walls); the Gloamfin's ping reveals nothing (only its violet wavefront, sweeping out through the corridors, is visible). The bonus drifter and the Lanternjaw's bulb-light are both drawn as near-identical amber look-alikes (shown at any distance in the Trench dive, only within your vision circle in Kindle)."
 weight = 1
+sub_items = [
+  { id = "flare-reveals", title = "The Flarefish's flare reveals a radial disc of tiles (floor and wall, through walls)" },
+  { id = "ping-reveals-nothing", title = "The Gloamfin's ping reveals nothing — only its violet wavefront is visible" },
+  { id = "amber-lookalikes", title = "The drifter and the Lanternjaw's bulb are near-identical amber look-alikes" },
+]
 
 [[review_item]]
 id = "ink-blinds-sight"
@@ -299,6 +312,16 @@ proof = "game-over"
 sub_items = [
   { id = "caught", title = "Contact costs a life and resets the trench, eaten plankton stay eaten" },
   { id = "descend", title = "Clearing every plankton descends to a deeper, harder trench" },
+]
+
+[[review_item]]
+id = "audio"
+title = "Synthesized audio"
+text = "Audio is required and synthesized with the Web Audio API (no audio files): distinct short cues for eating a plankton, emitting a sonar pulse, releasing ink, a predator's own pulse or flare, getting caught, and descending. It stays fully playable muted (a mute toggle is provided), never fails to run or load if audio cannot start, and does not begin until the player first interacts."
+weight = 1
+sub_items = [
+  { id = "cues", title = "Distinct synthesized cues for eating, sonar, ink, a predator's pulse/flare, being caught, and descending" },
+  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
 ]
 
 [[review_item]]

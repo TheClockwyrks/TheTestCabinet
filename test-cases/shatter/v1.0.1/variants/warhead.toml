@@ -54,6 +54,12 @@ text = "Rocks have health by size — a Large takes 3 bullet hits, a Medium 2, a
 weight = 1
 reference = "warhead"
 proof = "warhead"
+# Independently graded points: the item's weight splits evenly across them.
+sub_items = [
+  { id = "health-by-size", title = "Health by size — a Large takes 3 bullet hits, a Medium 2, a Small 1" },
+  { id = "damage-feedback", title = "A non-fatal hit flashes and shows progressive damage without splitting the rock" },
+  { id = "split-on-kill", title = "The rock only splits and scores on the destroying hit; split fragments re-enter at full health" },
+]
 
 [[review_item]]
 id = "warhead-recycle-damage"
@@ -61,6 +67,10 @@ title = "Star recycling preserves damage"
 text = "A damaged rock pulled into the star and recycled re-enters from the edge with the SAME remaining health it had — the star relocates the rock, it does not repair it (a Large already chipped to 1 HP comes back at 1 HP, not 3). Its move speed is still reset to a fresh base drift for its size, so rocks slung through the star and recycled repeatedly do not keep getting faster."
 weight = 1
 reference = "warhead"
+sub_items = [
+  { id = "preserves-health", title = "A recycled damaged rock re-enters with the same remaining health — the star relocates it, not repairs it" },
+  { id = "resets-speed", title = "Its move speed is still reset to a fresh base drift, so repeated recycling does not keep it accelerating" },
+]
 
 [[review_item]]
 id = "warhead-torpedo"
@@ -68,6 +78,11 @@ title = "Homing torpedo"
 text = "Secondary fire (F) launches a single torpedo on a 10-second recharge (at most one stored, one in flight; the recharge shows in the HUD and persists across respawn). The torpedo flies straight from the nose, then homes onto the nearest rock or saucer within a ±15° forward cone at a limited turn rate, and — being self-propelled — flies true through the gravity well instead of curving like a bullet."
 weight = 1
 proof = "torpedo"
+sub_items = [
+  { id = "one-charge", title = "Secondary fire (F) launches a single torpedo on a 10-second recharge (one stored, one in flight); the recharge shows in the HUD and persists across respawn" },
+  { id = "homing", title = "It flies straight from the nose, then homes onto the nearest rock or saucer within a ±15° forward cone at a limited turn rate" },
+  { id = "flies-true", title = "Being self-propelled, it flies true through the gravity well instead of curving like a bullet" },
+]
 
 [[review_item]]
 id = "warhead-torpedo-kill"
@@ -75,3 +90,8 @@ title = "Torpedo detonation"
 text = "A torpedo destroys any rock instantly regardless of its armor and blasts the fragments outward with clearly more force than a bullet shatter; it also destroys the saucer for points, and is absorbed by the star core."
 weight = 1
 proof = "torpedo"
+sub_items = [
+  { id = "one-hit-rock", title = "It destroys any rock instantly regardless of its armor" },
+  { id = "harder-scatter", title = "It blasts the fragments outward with clearly more force than a bullet shatter" },
+  { id = "saucer-and-core", title = "It also destroys the saucer for points and is absorbed by the star core" },
+]

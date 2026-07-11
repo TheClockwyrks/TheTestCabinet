@@ -208,6 +208,11 @@ weight = 1
 domain = "heat"
 reference = "gameplay"
 proof = "heat"
+sub_items = [
+  { id = "climbs", title = "Cold gun is feeble (~0.35x); damage climbs to 3.5x at the redline" },
+  { id = "plateau", title = "Holds flat at max power from the redline up to the trip" },
+  { id = "read", title = "Glow tracks heat cold->white-hot and the heat read shows the redline marker" },
+]
 
 [[review_item]]
 id = "redline-trip"
@@ -216,6 +221,10 @@ text = "Pushing a tower's heat to 100 trips it offline for about 5 seconds (stro
 weight = 1
 domain = "heat"
 proof = "heat"
+sub_items = [
+  { id = "trips", title = "Reaching 100 trips it offline ~5s (strobing red, no damage), then it returns cold" },
+  { id = "only-failure", title = "The trip is the ONLY way a tower fails — never destroyed or damaged by the surge" },
+]
 
 [[review_item]]
 id = "surface-cooling"
@@ -223,13 +232,22 @@ title = "Surface cooling — the thermal blanket"
 text = "A tower sheds heat only through footprint faces that touch OPEN AIR (or the casing); a face against another tower sheds none. So a firing tower boxed in by neighbours cannot dump its heat and bakes itself to the trip, while an open or lightly-mazed tower cools freely. Packing towers tight (short paths, lined-up Forges) therefore carries a real heat cost, and a dense core needs Sinks threaded through it to survive."
 weight = 1
 domain = "heat"
+sub_items = [
+  { id = "open-faces-only", title = "Sheds heat only through faces on open air; a face against another tower sheds none" },
+  { id = "boxed-bakes", title = "A firing tower boxed in by neighbours bakes itself to the trip" },
+]
 
 [[review_item]]
 id = "radiator-rotation"
 title = "Radiator faces and rotation"
-text = "Each emitter has designated radiator faces (drawn as cyan fins) that shed heat far better than plain faces, and the player can rotate a tower in 90-degree steps to aim those faces at the open lane. The same tower in the same spot can sit safely in its plateau or trip depending purely on which way it faces — rotation is a real cooling lever, and the preview and inspector both show the faces."
+text = "Each emitter has designated radiator faces (drawn as cyan fins) that shed heat far better than plain faces, and the player can rotate a tower in 90-degree steps WHILE IT IS HELD to aim those faces at the open lane — but its orientation is LOCKED IN at placement and a placed tower can no longer be rotated (re-aiming a built tower means selling it and building a fresh one). The same tower in the same spot can sit safely in its plateau or trip depending purely on which way it was faced when placed, so rotation is a real cooling lever; the held preview and the inspector both show the faces."
 weight = 1
 domain = "heat"
+sub_items = [
+  { id = "faces", title = "Radiator faces (cyan fins) shed far better than plain faces" },
+  { id = "aim", title = "Rotating the held preview 90 degrees aims those faces at open air before placing" },
+  { id = "locked", title = "Orientation is locked at placement — a placed tower cannot be rotated" },
+]
 
 [[review_item]]
 id = "forge-source"
@@ -253,11 +271,29 @@ weight = 1
 domain = "heat"
 
 [[review_item]]
-id = "upgrades-hotter"
-title = "Upgrades and selling"
-text = "A tower upgrades through three levels, each making an emitter stronger AND hotter-running (a maxed emitter is a glass cannon that needs thermal support); the Forge/Sink grow their output. Selling refunds 70% of total spend and reopens the tile."
+id = "conduction"
+title = "Conduction between neighbours"
+text = "Two emitter footprints that touch along an edge conduct heat across it toward a common temperature — the hotter bleeds into the cooler — so a dense block trends to one temperature (you cannot hold a white-hot core hard against a cold cryo pocket). It is a tool (a boxed-in tower can drain into a deliberately-cooler neighbour) and a hazard (a Rime touching hot guns is conducted UP toward their heat and stops slowing). The movers (Forge/Sink) have no heat of their own and do not conduct."
 weight = 1
 domain = "heat"
+
+[[review_item]]
+id = "upgrades-hotter"
+title = "Upgrades run hotter"
+text = "A tower upgrades through three levels (I, II, III), each making an emitter stronger AND hotter-running — a maxed emitter is a glass cannon that needs thermal support to hold its plateau — while its size, redline, mass, and radiator layout stay unchanged. The movers upgrade differently: the Forge's setpoint and the Sink's output grow with their level, and the Rime raises its cold-slow ceiling rather than its damage."
+weight = 1
+domain = "heat"
+
+[[review_item]]
+id = "sell-refund"
+title = "Selling and refunds"
+text = "Selling a tower reopens every tile in its footprint immediately (the surge re-paths) and refunds 70% of everything spent on it (build plus upgrades) — EXCEPT a tower sold during the same build phase it was placed on, before that wave has started, which refunds its FULL spend (100%). A tower that has never fought a wave is fully refundable, so the untimed opening build phase can be laid out and re-shaped without penalty; once the wave it was placed on has run, its refund drops to 70%."
+weight = 1
+domain = "defense"
+sub_items = [
+  { id = "partial", title = "70% refund once the tower has fought a wave" },
+  { id = "full", title = "Full refund if sold before its placement wave starts" },
+]
 
 [[review_item]]
 id = "mazing"
@@ -267,6 +303,10 @@ weight = 1
 domain = "defense"
 reference = "gameplay"
 proof = "siege"
+sub_items = [
+  { id = "towers-are-walls", title = "No fixed path — every tower is a wall and the player builds the maze" },
+  { id = "live-repath", title = "Placing or selling a tower re-paths every unit live, with no teleporting" },
+]
 
 [[review_item]]
 id = "cant-seal"
@@ -274,6 +314,10 @@ title = "You can never seal the floor"
 text = "A placement that would leave any vent with no route to any exhaust (or trap a unit already walking) is refused and shown invalid — there is always at least one open path from each vent to an exhaust."
 weight = 1
 domain = "defense"
+sub_items = [
+  { id = "no-seal", title = "A placement leaving any vent no route to an exhaust is refused and shown invalid" },
+  { id = "no-trap", title = "A placement that would trap a unit already walking is likewise refused" },
+]
 
 [[review_item]]
 id = "opposite-exhaust"
@@ -297,6 +341,10 @@ text = "Flyers (Drift) fly in a straight line from vent to the opposite exhaust,
 weight = 1
 domain = "defense"
 proof = "siege"
+sub_items = [
+  { id = "straight-line", title = "Flyers fly straight from vent to opposite exhaust, over every tower and wall" },
+  { id = "any-emitter-hits", title = "Any emitter can hit a flyer in range; the Flak is the dedicated air specialist" },
+]
 
 [[review_item]]
 id = "tower-roster"
@@ -313,6 +361,20 @@ weight = 1
 domain = "defense"
 
 [[review_item]]
+id = "tower-info"
+title = "Shop-hover info, targeting, and per-tower counts"
+text = "Hovering a shop tower shows that type's info panel in the inspector area (in place of the next-wave preview): its type, size, range, damage or effect, fire rate, targeting, mass, and radiator faces at base (level I) values, plus a short description of what it does — returning to its prior contents when the cursor leaves. A selected placed tower's inspector additionally shows its live heat read (with the redline marker) and its per-instance lifetime kill count and total damage dealt (runtime tallies, so they appear only on a placed tower). Targeting reads ground-and-air for every emitter but the air-only Flak; the Forge and Sink never fire (targeting none, damage 0)."
+weight = 1
+domain = "defense"
+reference = "gameplay"
+proof = "gameplay"
+sub_items = [
+  { id = "shop-hover", title = "Hovering a shop tower shows its stats and a description at base (level I) values" },
+  { id = "targeting", title = "Targeting read shows ground-and-air, or air-only for the Flak" },
+  { id = "counts", title = "A selected placed tower shows its lifetime kills and total damage dealt" },
+]
+
+[[review_item]]
 id = "surge-and-waves"
 title = "Surge, waves, and the economy"
 text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on the milestone waves — the midpoint and the finale), each with its trait, in large, dense waves; a leak costs lives, 0 lives ends the game, and clearing the final wave wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus — and the standard Medium start (250) affords an opening maze of about 16 basic Arc towers, so building and re-shaping a large maze is central to the game."
@@ -325,6 +387,10 @@ title = "Untimed opening build phase"
 text = "Before Wave 1 the opening build phase is untimed: it shows no countdown and never auto-starts, so the player can lay a full opening maze at leisure and presses Start (the wave control) to begin Wave 1 when ready. The between-wave build phases keep the up-to-15-second countdown, auto-start, and early-send bonus; the opening phase pays no early-send bonus."
 weight = 1
 domain = "defense"
+sub_items = [
+  { id = "opening-untimed", title = "The opening phase is untimed: no countdown, never auto-starts, begins on Start" },
+  { id = "between-waves-timed", title = "Between-wave phases keep the ~15s countdown, auto-start, and early-send bonus" },
+]
 
 [[review_item]]
 id = "states-complete"
@@ -341,6 +407,12 @@ text = "PLAY opens a mode-select menu listing the standard Containment mode and 
 weight = 1
 reference = "mode-select"
 proof = "mode-select"
+sub_items = [
+  { id = "mode-descriptions", title = "Mode select shows each mode's description before it is chosen" },
+  { id = "difficulty", title = "Containment opens difficulty select; Easy/Medium/Hard change starting money and wave count" },
+  { id = "special-modes", title = "Each special mode plays by its own overrides (The Hundred, Deep Pockets, Bottleneck, Sudden Death)" },
+  { id = "replay", title = "RESTART / PLAY AGAIN replay the chosen mode and difficulty" },
+]
 
 [[review_item]]
 id = "fits-window"

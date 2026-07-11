@@ -31,6 +31,11 @@ text = "Unrevealed trench is solid black fog. Walls and plankton you have reveal
 weight = 1
 reference = "gameplay"
 proof = "gameplay"
+sub_items = [
+  { id = "unrevealed-black", title = "Unrevealed trench is solid black fog (wall and open water indistinguishable)" },
+  { id = "remembered-dim", title = "Revealed walls and plankton stay visible, drawn dim, for the rest of the trench" },
+  { id = "predators-not-remembered", title = "Predators' bodies show only while lit; only the drifter and Lanternjaw's bulb stay always-visible" },
+]
 
 [[review_item]]
 id = "light-line-of-sight"

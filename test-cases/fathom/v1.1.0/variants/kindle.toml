@@ -50,5 +50,9 @@ weight = 1
 [[review_item]]
 id = "kindle-outside-circle"
 title = "What shows beyond the circle"
-text = "The vision circle governs terrain and plankton only — not predators, which follow the smaller line-of-sight light circle (and sonar/flare marks). Beyond the vision circle only the always-visible amber lights (the bonus drifter and the Lanternjaw's bulb) and the enemy effects (the Flarefish's flare, the Gloamfin's ping ring) remain visible."
+text = "The vision circle governs terrain and plankton only — not predators, which follow the smaller line-of-sight light circle (and sonar/flare marks), so a predator is seen only where your light or a mark reaches it, never merely because it is inside the vision circle. Beyond the vision circle only the enemy effects are drawn on top of the blackout: the Flarefish's flare, your own sonar wavefront, and the Gloamfin's ping wavefront. The amber lights (the bonus drifter and the Lanternjaw's bulb) are clipped to the circle and do NOT show beyond it — in Kindle an amber mote out in the dark is invisible until it drifts into your window."
 weight = 1
+sub_items = [
+  { id = "predators-by-light", title = "Predators follow the light circle and sonar/flare marks, not the vision circle" },
+  { id = "beyond-circle", title = "Beyond the circle only enemy effects show (flare, your sonar, the Gloamfin's ping); amber lights are clipped to the circle" },
+]

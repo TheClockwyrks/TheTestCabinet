@@ -309,6 +309,16 @@ weight = 1
 domain = "single-player"
 
 [[review_item]]
+id = "audio"
+title = "Synthesized audio"
+text = "Audio is required and synthesized with the Web Audio API (no audio files): distinct short blips for a paddle hit, a wall or obstacle bounce, and a scored point. It stays fully playable muted (a mute toggle is provided), never fails to run or load if audio cannot start, and does not begin until the player first interacts."
+weight = 1
+sub_items = [
+  { id = "cues", title = "Distinct synthesized cues for a paddle hit, a wall/obstacle bounce, and a scored point" },
+  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+]
+
+[[review_item]]
 id = "states-complete"
 title = "Game states"
 text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the pre-serve countdown, pause (resume/restart/quit), and match-over (play again/menu)."

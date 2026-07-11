@@ -201,6 +201,10 @@ weight = 1
 domain = "hunter"
 reference = "gameplay"
 proof = "hunt"
+sub_items = [
+  { id = "continuous", title = "Glides continuously pacman-style, turning only at tile centers (never a hop or a diagonal)" },
+  { id = "closes-on-mistakes", title = "Steady forward hopping stays ahead, but it visibly closes on any hesitation, backtrack, or stall" },
+]
 
 [[review_item]]
 id = "bear-navigates"
@@ -209,6 +213,10 @@ text = "The bear is not immune to the world: it avoids the sliding vehicles and 
 weight = 1
 domain = "hunter"
 proof = "hunt"
+sub_items = [
+  { id = "routes-around", title = "Routes around the sliding vehicles; a hazard-choked lane delays and detours it" },
+  { id = "reset-on-hit", title = "A vehicle sliding into either tile it straddles resets it (removed, re-emerges) — not merely staggered or dropped a row" },
+]
 
 [[review_item]]
 id = "bear-swims-visible"
@@ -217,6 +225,10 @@ text = "The bear follows the critter out onto the floes and swims through the op
 weight = 1
 domain = "hunter"
 proof = "hunt"
+sub_items = [
+  { id = "swims-out", title = "Follows onto the floes and swims the open water after the critter — slower, but never walled out" },
+  { id = "stays-visible", title = "Submerged it stays trackable as a silhouette with a wake — never invisible, even under a floe" },
+]
 
 [[review_item]]
 id = "bear-fair-reset"
@@ -224,6 +236,10 @@ title = "Fair pursuit reset and safe bays"
 text = "When a crossing ends (death or a filled bay), the bear is removed and re-emerges only after the fresh critter has advanced a few tiles — it is never sitting on a just-respawned critter. A critter safe in a FILLED bay is safe from the bear (it cannot enter the far-shore wall or a filled bay)."
 weight = 1
 domain = "hunter"
+sub_items = [
+  { id = "fair-respawn", title = "After a crossing ends, the bear re-emerges only once the fresh critter has advanced a few tiles" },
+  { id = "safe-bays", title = "A critter in a filled bay is safe — the bear cannot enter the far-shore wall or a filled bay" },
+]
 
 [[review_item]]
 id = "one-tile-hops"
@@ -232,6 +248,10 @@ text = "The critter moves by discrete one-tile hops in four directions, one tile
 weight = 1
 domain = "crossing"
 proof = "cross"
+sub_items = [
+  { id = "discrete-hops", title = "Discrete one-tile hops, four directions, one per press — no charged, multi-tile, or diagonal jump" },
+  { id = "refused-blocked", title = "A hop off the strait or into the far-shore wall / a filled bay is refused (no move, no death)" },
+]
 
 [[review_item]]
 id = "ice-hazards"
@@ -240,6 +260,11 @@ text = "The ice band is solid lanes the critter hops freely on, each carrying sl
 weight = 1
 domain = "crossing"
 reference = "gameplay"
+sub_items = [
+  { id = "lanes", title = "Solid lanes carry sliding multi-tile vehicles (3-tile plow, 2-tile dogsled, 2-tile car) at set speeds in alternating directions" },
+  { id = "block-not-death", title = "Stepping into a vehicle-occupied tile is refused like a wall — no death" },
+  { id = "crush-death", title = "A vehicle sliding into the critter's own tile is death" },
+]
 
 [[review_item]]
 id = "water-floes-drift"
@@ -248,6 +273,12 @@ text = "The water band is deadly: standing on a water tile with no floe is death
 weight = 1
 domain = "crossing"
 proof = "cross"
+sub_items = [
+  { id = "deadly-water", title = "Open water is deadly — hopping onto (or standing on) a floe-less water tile is death" },
+  { id = "carry", title = "A floe carries the critter sideways as it stands on it" },
+  { id = "off-edge", title = "Riding a floe off the side edge is death" },
+  { id = "floe-mix", title = "Floes are a mix of 1-tile pans and solid 3-/4-tile rafts (one continuous piece, not tiled pans) at varied speeds" },
+]
 
 [[review_item]]
 id = "bays-goal"
@@ -256,6 +287,11 @@ text = "The critter completes a crossing by hopping up into an open bay in the f
 weight = 1
 domain = "crossing"
 reference = "gameplay"
+sub_items = [
+  { id = "fill-bay", title = "Hopping up into an open bay completes the crossing and fills it" },
+  { id = "blocked-shore", title = "A filled bay and the solid shore between bays cannot be entered (the hop is refused)" },
+  { id = "clear-level", title = "Filling all 5 bays clears the level" },
+]
 
 [[review_item]]
 id = "timer-lives-levels"
@@ -263,6 +299,23 @@ title = "Timer, lives, and the 8-level run"
 text = "Each crossing is under a timer that costs a life if it expires; the critter has 3 lives, lost to the bear, a hazard, drowning/off-edge, or the timer; 0 lives ends the game. The game is a run of 8 levels that speed up (and add a second bear from level 5), and clearing level 8 wins it."
 weight = 1
 domain = "crossing"
+sub_items = [
+  { id = "timer", title = "Each crossing is under a timer; letting it expire costs a life" },
+  { id = "lives", title = "3 lives, lost to the bear, a hazard, drowning/off-edge, or the timer; 0 lives ends the game" },
+  { id = "progression", title = "A run of 8 levels that speed up (a second bear from level 5); clearing level 8 wins" },
+]
+
+[[review_item]]
+id = "scoring"
+title = "Scoring, bonus life, and the bonus catch"
+text = "A score accumulates across the run and shows in the HUD and end screens: +10 per row advanced, +50 for reaching a bay plus a per-second time bonus, +100*level for clearing a level, and +250 per remaining life at Victory. A bonus life is awarded at every 10,000 points. A bonus catch — a fish — appears in one randomly chosen open bay, lingering about 5 s before moving to another open bay (at most one at a time, a new one about every 8 s); completing a crossing into the bay holding the fish scores +200."
+weight = 1
+domain = "crossing"
+sub_items = [
+  { id = "score-accrues", title = "Score accrues from advancing, reaching bays (with a time bonus), clearing levels, and Victory, shown in the HUD and end screens" },
+  { id = "bonus-life", title = "A bonus life is awarded at every 10,000 points" },
+  { id = "bonus-catch", title = "A fish appears in a random open bay (~8 s cadence, ~5 s linger); crossing into its bay scores +200" },
+]
 
 [[review_item]]
 id = "uses-assets"
@@ -270,6 +323,20 @@ title = "Renders with the provided sprites"
 text = "The game renders the critter (4-dir hop) and bear (4-dir run, submerged swim, lunge) at 32x32, the 3-tile snow plow, 2-tile dogsled, and 2-tile car hazards at their wider native sizes, and the floes (the 1-tile pan and the solid 3-tile/4-tile rafts) — all using the provided assets/ sprites with nearest-neighbor scaling — while the strait (water, ice, bays), the HUD, and the splash/wake VFX are drawn in code."
 weight = 1
 domain = "crossing"
+sub_items = [
+  { id = "provided-sprites", title = "The critter, bear, plow, dogsled, car, and floes render from the provided assets/ sprites at native size, nearest-neighbor (crisp, not restyled or substituted)" },
+  { id = "code-drawn", title = "The strait (water, ice, bays), the HUD, and the splash/wake VFX are drawn in code" },
+]
+
+[[review_item]]
+id = "audio"
+title = "Synthesized audio"
+text = "Audio is required and synthesized with the Web Audio API (no audio files): distinct short cues for a hop, splashing into the water, being crushed by a hazard, the bear catching you, filling a bay, clearing a level, and the Victory/Game-over stings. It stays fully playable muted (a mute toggle is provided), never fails to run or load if audio cannot start, and does not begin until the player first interacts."
+weight = 1
+sub_items = [
+  { id = "cues", title = "Distinct synthesized cues for a hop, water splash, hazard crush, the bear catching you, filling a bay, level clear, and the end stings" },
+  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+]
 
 [[review_item]]
 id = "states-complete"
