@@ -40,7 +40,7 @@ export interface Rock {
   angle: number; // current cosmetic spin
   spin: number; // cosmetic angular velocity (rad/s)
   verts: number[]; // per-vertex outline radii
-  hp: number; // remaining health (Warhead armor); split/recycled rocks re-enter full
+  hp: number; // remaining health (Warhead armor); a split rock enters full, a star-recycled rock keeps its damage
   hitFlash: number; // seconds of bright hit-flash remaining after a non-fatal hit
 }
 

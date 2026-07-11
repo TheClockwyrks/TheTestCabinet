@@ -37,10 +37,19 @@ Every rock has **health** determined by its size (`specs/playfield.md`):
   progressively more **damaged** as its health falls — for example a brighter,
   more jagged or visibly cracked outline — so a player can judge how many hits a
   rock has left. A full-health rock looks normal.
-- A rock created by a **split**, and a rock that re-enters the field after being
-  **recycled by the star** (`specs/playfield.md`), enters at **full health** for
-  its size (a Medium fragment starts at 2, a recycled Large at 3, and so on).
-- Health never regenerates.
+- A rock created by a **split** enters at **full health** for its size (a Medium
+  fragment starts at 2, a Small at 1).
+- **Star recycling preserves damage.** A rock **recycled by the star**
+  (`specs/playfield.md`) is *the same rock relocated*, not a fresh one: it
+  re-enters from off-screen carrying **exactly the remaining health it had** when
+  the star took it — a Large you had already chipped to 1 HP comes back at 1 HP,
+  a full-health rock comes back full. The star only moves a damaged rock to the
+  edge; it never repairs it. Its **move speed is still reset** to a fresh base
+  drift speed for its size, exactly as recycling resets speed in the common spec
+  (`specs/playfield.md`) — so a rock repeatedly slung through the star and
+  recycled does **not** keep getting faster each time.
+- Health never regenerates. (Recycling is not regeneration: it carries damage
+  across unchanged rather than restoring it.)
 - Because a Large now takes three bullets to break and each fragment is armored in
   turn, clearing a single Large with the primary gun alone costs
   `3 + (2 x 2) + (4 x 1) = 11` hits — which is why the torpedo below matters.

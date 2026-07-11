@@ -75,17 +75,22 @@ collides as a circle of the radius below.
   a **Small** is removed entirely. Splitting is the only way to reduce the number
   of rocks on the field.
 - **Health.** Whether a rock takes a single bullet hit or several before it is
-  destroyed is set by the mode spec `specs/mode.md`. Splitting, scoring, and
-  star-recycling are unchanged by that rule, and a rock created by a split or a
-  recycle enters at full health for its size.
+  destroyed is set by the mode spec `specs/mode.md`. Splitting and scoring are
+  unchanged by that rule, and a rock created by a **split** enters at full health
+  for its size. What health a **star-recycled** rock carries is likewise set by
+  the mode spec (a mode with armor may preserve the recycled rock's damage rather
+  than restore it).
 - **Star recycling.** When a rock is pulled into the star and its circle reaches
-  the core, that rock is **destroyed and immediately replaced** by a new rock of
-  the **same size**. The replacement enters from **off-screen**: pick a random
-  point just outside one of the four edges and place the rock there, moving
-  **inward** into the field at that size's base drift speed (a fresh speed within
-  the size's range). No points are scored, and the field's rock count is
-  unchanged — the star churns the board but never empties it. (Contrast splitting,
-  which is scored and does change the count.)
+  the core, that rock is **removed from the core and immediately re-placed** at the
+  same size. The replacement enters from **off-screen**: pick a random point just
+  outside one of the four edges and place the rock there, moving **inward** into
+  the field at that size's base drift speed (a fresh speed within the size's
+  range) — so its **move speed is always reset** and a rock recycled again and
+  again never keeps accelerating. No points are scored, and the field's rock count
+  is unchanged — the star churns the board but never empties it. (Contrast
+  splitting, which is scored and does change the count.) What state beyond size and
+  speed the replacement carries — in particular its health in an armored mode — is
+  set by the mode spec `specs/mode.md`.
 
 ## The bullets
 

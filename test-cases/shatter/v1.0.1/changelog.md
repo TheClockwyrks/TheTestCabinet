@@ -1,5 +1,14 @@
-Adds a required bullet motion trail; otherwise prompt wording only.
+Adds a required bullet motion trail and makes Warhead star-recycling preserve a
+rock's damage; otherwise prompt wording only.
 
+- **Warhead: star-recycling now preserves a rock's damage.** When an armored rock
+  is pulled into the star and recycled, it re-enters from the edge carrying the
+  **same remaining health** it had, instead of returning to full health — the star
+  relocates the rock rather than replacing it. Its move speed is still reset to a
+  fresh base drift (as recycling always did), so rocks slung through the star
+  repeatedly do not keep accelerating. Updated `specs/mode-warhead.md` and
+  `specs/playfield.md`, a new `warhead-recycle-damage` review item, and the warhead
+  reference implementation.
 - **Bullets now must leave a motion trail.** The specs (`specs/playfield.md`,
   `specs/overview.md`, `specs/proof.md`) and a new `bullet-trail` review item
   require each moving bullet to draw a continuous, tapering comet along its recent

@@ -641,11 +641,14 @@ export class Game {
       }
     }
 
-    // Rocks pulled into the core are recycled to the edge (no score).
+    // Rocks pulled into the core are recycled to the edge (no score). The
+    // recycle carries the rock's remaining health across — a damaged rock
+    // re-enters just as damaged (specs/mode-warhead.md) — while resetting its
+    // move speed to a fresh base drift so it doesn't keep accelerating.
     for (let i = 0; i < this.rocks.length; i++) {
       const r = this.rocks[i];
       if (this.bodyHitsCore(r.x, r.y, r.vx, r.vy, r.radius, dt)) {
-        this.rocks[i] = recycleRock(r.size);
+        this.rocks[i] = recycleRock(r.size, r.hp);
       }
     }
 

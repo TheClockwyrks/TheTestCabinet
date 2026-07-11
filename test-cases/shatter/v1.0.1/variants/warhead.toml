@@ -49,10 +49,17 @@ dest = "proof/torpedo.webm"
 [[review_item]]
 id = "warhead-armored-rocks"
 title = "Armored rocks"
-text = "Rocks have health by size — a Large takes 3 bullet hits, a Medium 2, a Small 1 — and a non-fatal hit shows visible damage (a flash and a progressively cracked/brighter rock) without splitting it; the rock only splits and scores on the hit that destroys it. Split fragments and star-recycled rocks re-enter at full health. A torpedo ignores armor and destroys any rock in one hit."
+text = "Rocks have health by size — a Large takes 3 bullet hits, a Medium 2, a Small 1 — and a non-fatal hit shows visible damage (a flash and a progressively cracked/brighter rock) without splitting it; the rock only splits and scores on the hit that destroys it. Split fragments re-enter at full health for their size. A torpedo ignores armor and destroys any rock in one hit."
 weight = 1
 reference = "warhead"
 proof = "warhead"
+
+[[review_item]]
+id = "warhead-recycle-damage"
+title = "Star recycling preserves damage"
+text = "A damaged rock pulled into the star and recycled re-enters from the edge with the SAME remaining health it had — the star relocates the rock, it does not repair it (a Large already chipped to 1 HP comes back at 1 HP, not 3). Its move speed is still reset to a fresh base drift for its size, so rocks slung through the star and recycled repeatedly do not keep getting faster."
+weight = 1
+reference = "warhead"
 
 [[review_item]]
 id = "warhead-torpedo"

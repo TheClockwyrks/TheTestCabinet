@@ -90,8 +90,9 @@ export function makeRock(
     angle: rand(0, TAU),
     spin: rand(-1, 1),
     verts: makeOutline(spec.radius),
-    // Warhead: every rock — freshly spawned, split, or star-recycled — enters at
-    // full health for its size.
+    // Warhead: a freshly spawned or split rock enters at full health for its
+    // size. A star-recycled rock instead keeps its accumulated damage — see
+    // recycleRock, which overrides this hp after construction.
     hp: ROCK_HEALTH[size],
     hitFlash: 0,
   };
@@ -117,10 +118,16 @@ export function driftRock(
   );
 }
 
-// A replacement rock re-entering from just outside a random edge, moving
-// inward at its size's base drift speed — the star's recycle (no wave scaling;
-// recycling is not a wave spawn). See specs/playfield.md (Star recycling).
-export function recycleRock(size: RockSize): Rock {
+// A recycled rock re-entering from just outside a random edge, moving inward at
+// its size's base drift speed — the star's recycle (no wave scaling; recycling
+// is not a wave spawn). See specs/playfield.md (Star recycling).
+//
+// Warhead: the recycle carries the rock's remaining health across, so a rock the
+// player had already damaged re-enters just as damaged — the star only relocates
+// it to the edge, it does not repair it. Its move speed is still reset to a fresh
+// base drift speed (as for any recycle), so rocks don't keep accelerating each
+// time they are slung through the star and recycled.
+export function recycleRock(size: RockSize, hp: number): Rock {
   const spec = ROCK[size];
   const speed = rand(spec.speedMin, spec.speedMax);
   const margin = spec.radius + 4;
@@ -155,7 +162,10 @@ export function recycleRock(size: RockSize): Rock {
     vx = Math.sin(a) * speed;
     vy = -Math.cos(a) * speed;
   }
-  return makeRock(size, x, y, vx, vy);
+  const rock = makeRock(size, x, y, vx, vy);
+  // Preserve the damage the rock had taken; only its position and speed reset.
+  rock.hp = hp;
+  return rock;
 }
 
 // ---- The saucer --------------------------------------------------------
