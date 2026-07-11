@@ -350,17 +350,17 @@ export class Game {
         if (p.state === PredState.Den || wave.hitPreds.has(p)) continue;
         if (!wave.reached(p.col, p.row)) continue;
         wave.hitPreds.add(p);
-        p.markT = Math.max(p.markT, SONAR_MARK_TIME);
+        // A pulse marks the Gloamfin and Flarefish, but NOT the Lanternjaw: like the
+        // bonus drifter it is an amber-light entity whose always-visible bulb is its
+        // only tell, so sonar never reveals its body (specs/sensing.md).
+        if (p.kind !== PredKind.Lanternjaw)
+          p.markT = Math.max(p.markT, SONAR_MARK_TIME);
         // The Gloamfin hears the pulse and takes a fix on you (specs/predators.md).
         if (p.kind === PredKind.Gloamfin)
           this.alertAcquire(p, this.forager.col, this.forager.row);
       }
-      for (const d of this.drifters) {
-        if (wave.hitDrifters.has(d)) continue;
-        if (!wave.reached(d.col, d.row)) continue;
-        wave.hitDrifters.add(d);
-        d.markT = Math.max(d.markT, SONAR_MARK_TIME);
-      }
+      // The bonus drifters are amber-light entities too: a pulse does not reveal
+      // them, so there is nothing to mark here (specs/sensing.md).
     } else if (
       !wave.playerHit &&
       wave.emitter &&
@@ -517,7 +517,6 @@ export class Game {
     // Existing drifters wander until eaten — a drifter is permanent, no fade-out
     // (specs/playfield.md), so an amber glimmer you spot stays out there.
     for (const d of this.drifters) {
-      d.markT = Math.max(0, d.markT - dt);
       advance(
         d,
         dt,
@@ -554,8 +553,10 @@ export class Game {
   pauseItems = PAUSE_ITEMS;
   overItems = OVER_ITEMS;
 
-  // Whether a mover (predator/drifter) is currently visible: lit by passive
-  // light, inside its sonar/flare reveal window, or in an active flare bloom.
+  // Whether a mover is currently revealed: lit by your passive light, or inside its
+  // sonar-mark window. Used for the Gloamfin and Flarefish, which a pulse marks; the
+  // amber-light drifter and Lanternjaw are excluded (sonar does not reveal them —
+  // they show only their always-visible bulb; see render.ts and specs/sensing.md).
   entityVisible(col: number, row: number, markT: number): boolean {
     if (markT > 0) return true;
     if (this.fog.isLit(col, row)) return true;

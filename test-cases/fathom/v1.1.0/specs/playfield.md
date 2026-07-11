@@ -136,9 +136,14 @@ and wander the corridors:
   is that, at a brief glance, you cannot tell a harmless drifter from a lurking
   Lanternjaw, so chasing an amber glimmer for points is always a gamble. Draw each in
   code as a soft amber mote with a bright core (the amber palette color `#ffd166`),
-  matching the Lanternjaw's bulb. **How far you can see them depends on the dive:** in
-  the Trench dive they show at any distance, while in the Kindle dive they show only
-  within your vision circle — see `specs/sensing.md` for each.
+  matching the Lanternjaw's bulb. Like the Lanternjaw, a drifter is an **amber-light**
+  entity: a **sonar pulse does not reveal it** — a ping leaves the amber mote
+  unchanged and never draws its jellyfish body, so you can never tell a drifter from a
+  Lanternjaw by pinging (`specs/sensing.md`). Its jellyfish body appears only up
+  close, where your light (or a flare) falls on it (`specs/assets.md`). **How far you
+  can see them depends on the dive:** in the Trench dive they show at any distance,
+  while in the Kindle dive they show only within your vision circle — see
+  `specs/sensing.md` for each.
 
 ## HUD
 

@@ -99,10 +99,26 @@ anglerfish/jaws body while hunting, and a **jellyfish disguise** while wandering
 and a new `assets/drifter/` sprite sheet is added for the harmless jelly. The
 Lanternjaw's frames `8`–`15` are the jellyfish disguise and must be
 **pixel-identical to the drifter sheet's frames `0`–`7`** (the old lure-bob and idle
-frames are gone). The always-visible amber **bulb** is no longer part of either
-sprite; it is a **runtime amber glow** (`#ffd166`) drawn at the creature's center,
-identical for the drifter and the Lanternjaw, shown even across unlit fog while the
-bodies stay fog-gated.
+frames are gone). Both forms carry the **same amber bulb** — an amber **bell** at the
+top of the sprite, drawn **pixel-identical to the drifter's bell** — so revealing a
+body is **purely additive**: the bulb sits in the same place and looks the same, and
+only what hangs beneath it differs (the drifter's tendrils, or the hunting
+Lanternjaw's jaws below the very same bell). The Lanternjaw's hunting frames
+(`0`–`7`) are redrawn to carry that shared bell over their jaws — previously they wore
+a different, dangling lure that made the bulb jump the instant a lunging Lanternjaw
+was revealed. On top of that baked bell, the always-visible **bulb-light** is also a
+**runtime amber glow** (`#ffd166`) at the creature's center, identical for the drifter
+and the Lanternjaw, shown even across unlit fog while the bodies stay fog-gated.
+
+**Sonar no longer gives the deception away.** A sonar pulse marks the Gloamfin and
+the Flarefish, but it **never reveals the drifter or the Lanternjaw** — the two
+amber-light entities. A ping sweeping over an amber mote leaves it exactly as it was,
+drawing neither the drifter's jellyfish nor the Lanternjaw's body, so it can neither
+be mistaken for a confirmed-harmless drifter nor given away as the jaws behind the
+light; the amber lights are read from their bulb alone, and only your own **light**
+(or a flare) ever reveals a body up close. Previously a pulse drew a wandering
+Lanternjaw as its jellyfish disguise, falsely reassuring you the amber mote bearing
+down on you was a harmless drifter.
 
 **Drifters are now permanent and there can be two.** A drifter no longer times out or
 fades — it wanders until you eat it — and the trench tops up to **two** at once,

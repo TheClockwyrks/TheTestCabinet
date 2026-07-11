@@ -412,13 +412,15 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   }
 
   // Bonus drifter bodies — the jellyfish, drawn only where the drifter is currently
-  // visible (in your light, or freshly caught by a sonar mark), exactly like a
-  // predator body. Its swaying tendrils reveal it up close as a harmless jelly; its
-  // always-visible amber bulb is the orb drawn below. A wandering Lanternjaw wears
-  // these very frames, so at a glance the two are one and the same (specs/predators.md).
+  // lit by your passive light (or a flare), exactly like a predator body. A sonar
+  // pulse does NOT reveal it: the drifter is an amber-light entity shown only by its
+  // always-visible bulb (the orb below), so a ping can never resolve whether an amber
+  // mote is a harmless drifter or a lurking Lanternjaw (specs/sensing.md). Its swaying
+  // tendrils reveal it up close as a harmless jelly; a wandering Lanternjaw wears these
+  // very frames, so at a glance the two are one and the same (specs/predators.md).
   for (const d of game.drifters) {
-    if (!game.entityVisible(d.col, d.row, d.markT)) continue;
-    ctx.globalAlpha = game.fog.isLit(d.col, d.row) ? 1 : 0.6;
+    if (!game.fog.isLit(d.col, d.row)) continue;
+    ctx.globalAlpha = 1;
     ctx.drawImage(
       assets.drifter[Math.floor(d.animT * 8) % 8],
       d.x - 16,
@@ -458,13 +460,17 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   ctx.restore();
 }
 
-// Whether a predator's body is currently drawn. Every predator — the Flarefish
-// included — shows wherever your light falls on it, a sonar mark catches it, or its
-// detection alert fires. The Flarefish simply makes no tell of its own but the
-// flare (no bulb, no ping); it is also lit by its own flare while it charges/blooms.
+// Whether a predator's body is currently drawn. Every predator shows wherever your
+// light falls on it or its detection alert fires; a sonar mark also catches the
+// Gloamfin and Flarefish. The Lanternjaw is the exception: like the bonus drifter it
+// is an amber-light entity whose always-visible bulb is its only tell, so a sonar
+// pulse does NOT reveal its body — only your passive light does (specs/sensing.md).
+// The Flarefish makes no tell of its own but the flare (no bulb, no ping); it is also
+// lit by its own flare while it charges/blooms.
 function predatorBodyVisible(game: Game, p: Predator): boolean {
   if (p.alertT > 0) return true;
   if (p.kind === PredKind.Flarefish && p.flaring) return true; // lit by its own flare
+  if (p.kind === PredKind.Lanternjaw) return game.fog.isLit(p.col, p.row);
   return game.entityVisible(p.col, p.row, p.markT);
 }
 

@@ -126,10 +126,19 @@ finds predators, at the cost of being heard. (The control is in
   pulse **reveals around corners and bends through junctions** — unlike your
   straight-line light — but it does not pass through walls, so a chamber sealed off
   by rock is not revealed unless a corridor reaches it within range.
-- **Find predators.** Any predator or the drifter standing on a tile in the
-  flooded set is **marked**: shown at its position for **`1.5 s`** after the
-  pulse, as a fading glimpse, even where your light does not reach. This is how
-  you locate a hunter around a corner before committing to a route.
+- **Find predators — but not the amber lights.** A predator standing on a tile in
+  the flooded set is **marked**: shown at its position for **`1.5 s`** after the
+  pulse, as a fading glimpse, even where your light does not reach. This is how you
+  locate a hunter around a corner before committing to a route. **Two things a pulse
+  never reveals, though: the bonus drifter and the Lanternjaw.** They are the
+  trench's **amber-light** entities (`specs/playfield.md`, `specs/predators.md`) —
+  each shown in the dark only by its always-visible **bulb** — and a sonar pulse
+  leaves that bulb exactly as it is: it does **not** draw the drifter's jellyfish or
+  the Lanternjaw's body, and it does **not** change the amber mote's appearance. So
+  a ping can never resolve which glimmer is a harmless drifter and which is a lurking
+  Lanternjaw — pinging neither gives the Lanternjaw away nor mistakenly paints it as
+  a drifter. (The pulse still marks the other two hunters — the **Gloamfin** and the
+  **Flarefish**.)
 - **You are heard.** Emitting a pulse makes noise: if the wavefront reaches the
   **Gloamfin** it hands the Gloamfin a **fix on you** and sets it chasing (see
   `specs/predators.md`) — and, like the reveal, this lands **when the front arrives**

@@ -226,14 +226,14 @@ description = "The whole dive: reading the pitch-dark trench through your light 
 [[review_item]]
 id = "sonar-flood"
 title = "Sonar travels through corridors as a wavefront"
-text = "A sonar pulse is a travelling wavefront (drawn procedurally, not a sprite ring): it flows outward through the open corridors — bending around corners and reflecting off walls, not expanding as a circle — out to its range, revealing near tiles before far ones and their walls, and marking any predator it reaches for a brief window beyond the bend, as the front arrives. The drawn crest should read as arcs that bulge the way the sound is moving, brightest at the leading edge."
+text = "A sonar pulse is a travelling wavefront (drawn procedurally, not a sprite ring): it flows outward through the open corridors — bending around corners and reflecting off walls, not expanding as a circle — out to its range, revealing near tiles before far ones and their walls, and marking any predator it reaches for a brief window beyond the bend, as the front arrives. It marks the Gloamfin and Flarefish, but never the amber-light bonus drifter or Lanternjaw — a pulse leaves those showing only their unchanged amber bulb, so a ping can't tell drifter from Lanternjaw. The drawn crest should read as arcs that bulge the way the sound is moving, brightest at the leading edge."
 weight = 1
 reference = "sonar"
 proof = "sonar"
 sub_items = [
   { id = "wavefront", title = "Travels as a wavefront through corridors, bending and reflecting" },
   { id = "near-before-far", title = "Reveals near tiles before far ones" },
-  { id = "marks-predators", title = "Marks any predator it reaches" },
+  { id = "marks-predators", title = "Marks the Gloamfin and Flarefish it reaches, but never the amber-light drifter or Lanternjaw (those stay showing only their bulb, unchanged)" },
 ]
 
 [[review_item]]
@@ -288,12 +288,14 @@ weight = 1
 [[review_item]]
 id = "enemy-effects-reveal"
 title = "Enemy effects and the amber look-alikes"
-text = "The Flarefish's flare reveals tiles for you (a radial disc, floor and wall, through walls); the Gloamfin's ping reveals nothing (only its violet wavefront, sweeping out through the corridors, is visible). The bonus drifter and the Lanternjaw's bulb-light are both drawn as near-identical amber look-alikes (shown at any distance in the Trench dive, only within your vision circle in Kindle)."
+text = "The Flarefish's flare reveals tiles for you (a radial disc, floor and wall, through walls); the Gloamfin's ping reveals nothing (only its violet wavefront, sweeping out through the corridors, is visible). The bonus drifter and the Lanternjaw's bulb-light are both drawn as near-identical amber look-alikes (shown at any distance in the Trench dive, only within your vision circle in Kindle). A sonar pulse never reveals either of them — it leaves the amber mote unchanged, drawing neither the drifter's jellyfish nor the Lanternjaw's body — so a ping can never tell the two apart. Their bulb is drawn identically (the same amber bell), so when your light does reveal a body the bulb is unchanged and only the rest appears around it (the drifter's tendrils, or the Lanternjaw's jaws) — an additive reveal."
 weight = 1
 sub_items = [
   { id = "flare-reveals", title = "The Flarefish's flare reveals a radial disc of tiles (floor and wall, through walls)" },
   { id = "ping-reveals-nothing", title = "The Gloamfin's ping reveals nothing — only its violet wavefront is visible" },
   { id = "amber-lookalikes", title = "The drifter and the Lanternjaw's bulb are near-identical amber look-alikes" },
+  { id = "sonar-not-reveal-amber", title = "A sonar pulse never reveals the drifter or the Lanternjaw — a ping leaves the amber mote unchanged (no jellyfish, no body drawn)" },
+  { id = "additive-bulb", title = "The drifter and Lanternjaw share the same bulb; a light-reveal is additive — the bulb is unchanged and only tendrils (drifter) or jaws (Lanternjaw) appear around it" },
 ]
 
 [[review_item]]

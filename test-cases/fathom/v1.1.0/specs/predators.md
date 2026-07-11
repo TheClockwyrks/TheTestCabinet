@@ -97,16 +97,23 @@ farther it finds you.
   you — for a **linger** of **`2 s`**, after which it gives up and returns to
   wandering. It may turn back toward you the instant it senses you.
 - **Tell — the always-visible bulb (anti-blindside).** The Lanternjaw carries a
-  small dangling **bulb** (it is on the Lanternjaw's sprite; its **bulb-bob** frames
-  are the beckoning animation — see `assets/lanternjaw/` in `specs/assets.md`). Its
-  **bulb-light is always visible to you, at any distance and even through walls** —
-  a single glowing amber point drifting in the dark — even though the Lanternjaw's
-  **body** stays hidden by the dark like any predator (drawn only where your light,
-  a sonar mark, or a flare reveals it). So you can always see the light coming, but
-  not the jaws behind it. Crucially, **the bulb looks almost identical to the bonus
-  drifter** (`specs/playfield.md`): at a glance you cannot tell a harmless drifter
-  from a lurking Lanternjaw, so every amber glimmer in the dark is a gamble — and
-  the drifter is effectively bait.
+  small **bulb** — a glowing amber point (drawn as a runtime glow, and, on the body
+  sprite, as an amber bell; see `specs/assets.md`). Its **bulb-light is always
+  visible to you, at any distance and even through walls** — a single glowing amber
+  point drifting in the dark — even though the Lanternjaw's **body** stays hidden by
+  the dark like any predator, **drawn only where your light (or a flare) falls on
+  it**. A **sonar pulse does not reveal it**: the Lanternjaw is an amber-light entity,
+  so a ping leaves only its bulb, unchanged, and never paints in its body — neither
+  giving it away as the Lanternjaw nor mistaking it for a drifter (see
+  `specs/sensing.md`). So you can always see the light coming, but not the jaws behind
+  it. Crucially, **the bulb is drawn identically to the bonus drifter's**
+  (`specs/playfield.md`): the same amber glow, and — up close, where your light
+  reveals the body — the very **same amber bell**, in the same place. At a glance you
+  cannot tell a harmless drifter from a lurking Lanternjaw, so every amber glimmer in
+  the dark is a gamble, and the drifter is effectively bait. When your light does fall
+  on it, the reveal is **purely additive**: the shared bulb does not move or change —
+  only the rest of the body appears around it (the drifter's tendrils, or, once the
+  Lanternjaw lunges, its jaws; see `specs/assets.md`).
 - **Patrol — indistinguishable from the drifter (required).** Until it senses you,
   the Lanternjaw's wandering AI is **identical to the bonus drifter's**
   (`specs/playfield.md`): it drifts the corridors at the **drifter's speed** (about

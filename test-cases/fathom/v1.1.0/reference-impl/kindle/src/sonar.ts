@@ -7,7 +7,7 @@
 
 import { COLS, SONAR_WAVE_BAND, SONAR_WAVE_SPEED } from "./constants";
 import type { Cell } from "./maze";
-import type { Drifter, Predator } from "./entities";
+import type { Predator } from "./entities";
 import { tileKey } from "./sensing";
 
 export class SonarWave {
@@ -32,7 +32,6 @@ export class SonarWave {
   emitter: Predator | null = null; // the Gloamfin whose ping this is (violet only)
   playerHit = false; // violet: has the front reached the forager yet?
   readonly hitPreds = new Set<Predator>();
-  readonly hitDrifters = new Set<Drifter>();
 
   constructor(
     ox: number,
