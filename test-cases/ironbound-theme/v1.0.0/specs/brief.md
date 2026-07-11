@@ -41,7 +41,8 @@ delivers that heavy, grinding, industrial march.
 
 ## Instrumentation
 
-Voice the cue from the **`gm-lite` instrument bank** (named `gm-lite@0.1.0` here) — a general-MIDI-flavoured palette with orchestral strings, brass, and
+Voice the cue from the **`gm-lite` instrument bank** (named `gm-lite@0.1.0`
+here) — a general-MIDI-flavoured palette with orchestral strings, brass, and
 woodwinds, keys, mallets and bells, synths, and a drum kit. **Which** voices you
 use, and how you combine them to conjure a heavy industrial march, is entirely
 your choice. Because you **cannot hear** the clip, inspect the bank's instrument

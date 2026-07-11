@@ -94,8 +94,8 @@ you implement the build behind them. Plain TypeScript with Canvas 2D is entirely
 sufficient; a framework is not required. Favor a clean, well-structured codebase
 over any particular technology. The surge's exact spawn timing and
 per-wave composition are **specified** in `specs/creeps.md` and
-`specs/flow.md`; implement them as written. The player designs their own maze at runtime — there is no
-fixed maze, and you must not ship one.
+`specs/flow.md`; implement them as written. The player designs their own maze
+at runtime — there is no fixed maze, and you must not ship one.
 
 ## Coordinate system and presentation
 

@@ -32,7 +32,8 @@ it overwhelmingly, and one that does not has a bug.
 Sends **every** agent to forage: each one beelines (shortest path) to the
 **nearest enemy seed cache**, eats whatever it reaches, and only heads home when
 it can carry no more or is boxed out. It **never defends** and **ignores carry
-weight** — it over-loads and crawls home. Its two weaknesses are the two lessons here: leaving your own caches completely undefended, and turning heavy
+weight** — it over-loads and crawls home. Its two weaknesses are the two
+lessons here: leaving your own caches completely undefended, and turning heavy
 raiders into easy tags. A competent defender shreds it.
 
 ### `border-soldier` — a token balance
