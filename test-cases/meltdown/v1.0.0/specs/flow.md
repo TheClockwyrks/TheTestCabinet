@@ -31,8 +31,10 @@ against a defense that is still being built up.
   bonus of `1` per whole second left on the build-phase timer when you send
   it, rewarding an aggressive player who is ready before the timer.
 - You spend money to **build** and **upgrade** towers and recover `70%` of a
-  tower's total spend by **selling** it (`specs/towers.md`). You can never spend
-  below `0`.
+  tower's total spend by **selling** it — or its **full** spend if you sell it
+  during the same build phase you placed it on, before that wave starts, so a
+  tower that never fought is fully refundable (`specs/towers.md`). You can never
+  spend below `0`.
 
 ## Lives and Leaks
 
@@ -58,8 +60,10 @@ against a defense that is still being built up.
   leisure and presses **Start** (the same wave control, `specs/controls.md`) to
   begin Wave 1 when they are ready. Because there is no timer, the opening phase
   pays no early-send bonus, and interest (paid only at the start of the
-  between-wave build phases) does not apply to it. Only the phases *between* waves
-  carry the `15 s` countdown and auto-start.
+  between-wave build phases) does not apply to it. Because nothing has fought yet,
+  every tower placed in the opening phase is **fully refundable** while it lasts
+  (`specs/towers.md`) — the whole opening layout can be re-shaped without penalty.
+  Only the phases *between* waves carry the `15 s` countdown and auto-start.
 - During a wave, the surge spawns from the vents over time (the exact
   timing and vent split are specified in `specs/creeps.md`). A wave is **cleared** when
   every unit it released has either died or leaked. Clearing a wave pays its

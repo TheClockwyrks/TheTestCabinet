@@ -1043,7 +1043,7 @@ function drawHowTo(ctx: Ctx): void {
     ["FORGE & SINK", "The Forge warms touching emitters toward its setpoint (never past it) — wake cold guns, feed a Lance. The Sink draws heat out — the only way to cool a boxed-in core."],
     ["THE RIME", "The cryo Rime runs backward — it slows hardest when COLD and fades as it heats. Give it open air or a Sink; keep it away from Forges and hot cores."],
     ["FLYERS", "Drift flyers ignore the maze and fly straight across. Any emitter can hit them; Flak is dedicated air-only coverage."],
-    ["ECONOMY", "Start with 250. Earn kill bounties, wave bonuses, interest, and an early-send bonus. Sell for a 70% refund. Opening build is untimed — press START; between waves you get 15s."],
+    ["ECONOMY", "Start with 250. Earn kill bounties, wave bonuses, interest, and an early-send bonus. Sell for a 70% refund — but a tower sold before the wave it was placed on starts refunds in full. Opening build is untimed — press START; between waves you get 15s."],
     ["CONTROLS", "Mouse to build/select. 1–8 arm shop towers, R rotate faces, U upgrade, S sell, Space send/start wave, F speed, Esc/P pause."],
   ];
   const bodyX = 372;

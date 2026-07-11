@@ -40,7 +40,11 @@ export class Tower {
   rot: Rotation = 0; // 0..3 clockwise quarter-turns of the radiator faces
 
   level = 1;
-  totalSpend: number; // build + upgrades, for the 70% sell refund
+  totalSpend: number; // build + upgrades, for the sell refund
+  // The wave this tower was placed on (game.waveNumber at placement). While that
+  // wave's build phase is still going (it hasn't started), selling refunds the
+  // full spend; once the wave runs it drops to the 70% refund (specs/towers.md).
+  placedWave = 1;
 
   // Emitter thermal state.
   heat = 0; // H in [0, 100]

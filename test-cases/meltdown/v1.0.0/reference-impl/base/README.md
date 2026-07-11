@@ -47,7 +47,9 @@ Six emitters and two heat-movers:
 | **Sink** | Adds cooling to each orthogonal emitter; holds a hot gun under the redline. |
 
 Each tower upgrades through three levels (stronger **and** hotter-running for
-emitters) and sells back for a `70%` refund.
+emitters) and sells back for a `70%` refund — or a **full** refund if you sell it
+during the same build phase you placed it on, before that wave starts (so the
+opening pre–Wave 1 layout is fully undoable).
 
 ## The surge
 

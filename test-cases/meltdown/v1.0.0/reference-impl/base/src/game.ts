@@ -630,6 +630,7 @@ export class Game {
   private placeTower(type: TowerType, col: number, row: number, rot: Rotation): Tower | null {
     if (!this.canPlaceAt(type, col, row)) return null;
     const t = new Tower(type, col, row, rot);
+    t.placedWave = this.waveNumber;
     for (const tile of this.grid.footprintTiles(col, row, t.size)) this.grid.blocked[tile] = 1;
     this.towers.push(t);
     this.money -= TOWER_DEFS[type].cost;
@@ -658,9 +659,12 @@ export class Game {
     if (this.selected) this.rotate(this.selected);
   }
 
-  // Sell any tower: 70% refund of total spend, reopen its tiles, re-path.
+  // Sell any tower, reopen its tiles, re-path. A tower sold during the same build
+  // phase it was placed on — before that wave has started, so it never fired a
+  // shot — refunds its full spend; otherwise the standard 70% refund applies
+  // (specs/towers.md).
   sell(t: Tower): void {
-    this.money += Math.floor(t.totalSpend * 0.7);
+    this.money += this.sellRefundOf(t);
     for (const tile of this.grid.footprintTiles(t.col, t.row, t.size)) this.grid.blocked[tile] = 0;
     this.towers = this.towers.filter((x) => x !== t);
     if (this.selected === t) this.selected = null;
@@ -692,6 +696,11 @@ export class Game {
     return t.level === 1 ? Math.round(t.def.cost) : Math.round(t.def.cost * 1.8);
   }
   sellRefundOf(t: Tower): number {
+    // Full refund while this tower's placement wave is still in its build phase
+    // (it hasn't started, so the tower never participated in a wave); otherwise
+    // the 70% refund. Before Wave 1 this makes the opening build phase fully
+    // undoable (specs/towers.md).
+    if (this.phase === "build" && t.placedWave === this.waveNumber) return t.totalSpend;
     return Math.floor(t.totalSpend * 0.7);
   }
 

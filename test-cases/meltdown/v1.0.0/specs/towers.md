@@ -150,8 +150,16 @@ air. Multiple movers touching one emitter stack their effect.
   - **Cost.** Upgrading to II costs `1.0x` the build cost; to III, `1.8x`. (For an
     Arc: `15` to reach II, `27` to reach III.)
 - **Sell.** A selected tower sells for a `70%` refund of everything spent on it
-  (build plus upgrades), rounded down. Selling reopens every tile in its footprint
-  immediately and the surge re-paths (`specs/playfield.md`).
+  (build plus upgrades), rounded down — **except** a tower sold during the same
+  build phase it was placed on, before that wave has started, refunds its
+  **full** spend (`100%`, no rounding loss). A tower that has never participated
+  in a wave can always be undone for a full refund; the `70%` refund only applies
+  once the wave it was placed on has run. This matters most during the untimed
+  opening build phase before Wave 1 (`specs/flow.md`): freely place, re-shape, and
+  sell back your opening layout without penalty. (A tower placed on an earlier
+  wave and merely upgraded this build phase has already fought, so it — upgrades
+  included — is back to the `70%` refund.) Selling reopens every tile in its
+  footprint immediately and the surge re-paths (`specs/playfield.md`).
 
 Rotating, upgrading, and selling happen through the selected-tower inspector in the
 build panel (`specs/playfield.md`, `specs/controls.md`).
