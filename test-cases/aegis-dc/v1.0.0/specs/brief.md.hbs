@@ -23,7 +23,7 @@ per-primitive `--sharp`/`--smooth` tag holds or rounds an edge. Each call only
 records to the log and renders nothing; run `dc render` (it extracts the surface to
 `mesh.glb` and draws `model.png`) to read your progress between edits and once more
 before you finish so the geometry is emitted, and run `dc --help` for the operations
-contract. The recorded operations are the submission.
+contract. The recorded operations are the authoritative output.
 
 ## The field bounds and coordinate system
 
@@ -44,7 +44,7 @@ main cannon on the centerplane; a secondary turret out on each side, mounted low
 the flank; and a sensor / radar vane up top.
 
 That is the identity — what the Aegis is. The forms, proportions, surface detailing,
-and exactly how each element is realized are yours to invent. This test measures
+and exactly how each element is realized are yours to invent. This brief rewards
 creativity, so there is no prescribed silhouette — shape it however reads best,
 provided it stays unmistakably the Aegis (colossal, six-legged, multi-gun, symmetric,
 forward-firing).
@@ -69,4 +69,4 @@ muzzle glow, or a running-light stripe — so it shows from many angles.
 `dc` is the only channel. Build the hull, legs, turrets, cannon, and vane as one
 symmetric half `mirror`-ed across the centerplane, holding armor edges with `--sharp`
 and using `--blend`/`--smooth` where you want rounding. Stop when `model.png` reads as
-the Aegis — the recorded operations are your submission.
+the Aegis — the recorded operations are the authoritative output.

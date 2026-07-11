@@ -53,7 +53,7 @@ right before anything else:
 
 ## What goes in each frame
 
-The sheet is **one swing cycle** — a single named sequence the reviewer plays back
+The sheet is **one swing cycle** — a single named sequence the viewer plays back
 as a loop. Over the twelve frames the arm sweeps from the left pickup, in an arc
 across the floor through the far side of the centre tile, to the right drop, then
 back:

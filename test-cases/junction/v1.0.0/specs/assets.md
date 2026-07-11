@@ -218,7 +218,7 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   haze system from the tile pollution field (the *system* is produced; deciding where
   and how strongly to play it is code).
 
-## Genuinely produce the assets — this is the point of the case
+## Genuinely produce the assets — this is the point here
 
 The assets must be **genuinely produced with these tools**. A build that ships
 **placeholder rectangles**, **ad-hoc canvas drawing in place of a produced sprite**, a

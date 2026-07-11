@@ -24,7 +24,7 @@ dark field, with **no depth**.
 ## Palette
 
 Author the effect in only these colors — the Spectra neon two-band palette. A
-reviewer judges the effect against this list, so keep every emitter, gradient,
+viewer judges the effect against this list, so keep every emitter, gradient,
 and flash inside it:
 
 | Role | Hex |

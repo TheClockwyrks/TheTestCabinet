@@ -9,8 +9,8 @@ template. (`$FORAY_HOME` is `/opt/foray`; the `foray` CLI is on your `PATH`.)
 
 Every baseline is **deliberately mediocre**. Each has an obvious, exploitable
 weakness, and none of them accounts properly for Foray's twist (carry weight and
-royal jelly). The point of the case is to write a controller that beats these
-comfortably and then beats other models. A submission that merely matches a
+royal jelly). The point here is to write a controller that beats these
+comfortably and then beats the field. A controller that merely matches a
 baseline has not done the work. You may read their source freely; you are expected
 **not** to copy it.
 
@@ -32,8 +32,7 @@ it overwhelmingly, and one that does not has a bug.
 Sends **every** agent to forage: each one beelines (shortest path) to the
 **nearest enemy seed cache**, eats whatever it reaches, and only heads home when
 it can carry no more or is boxed out. It **never defends** and **ignores carry
-weight** — it over-loads and crawls home. Its two weaknesses are the two lessons
-of the case: leaving your own caches completely undefended, and turning heavy
+weight** — it over-loads and crawls home. Its two weaknesses are the two lessons here: leaving your own caches completely undefended, and turning heavy
 raiders into easy tags. A competent defender shreds it.
 
 ### `border-soldier` — a token balance
@@ -46,8 +45,8 @@ raider to bank before it is caught, reason about jelly, or weigh load against th
 distance home. It rewards a controller that reads the match state and reallocates
 its three agents dynamically.
 
-**`border-soldier` is the canonical scoring opponent.** When the harness scores
-your submission it runs **one** match: your controller as Red against
+**`border-soldier` is the canonical benchmark opponent.** The benchmark runs
+**one** match: your controller as Red against
 `border-soldier` as Blue, on the shipped `mirror-32x16` map. Beating
 `border-soldier` decisively is the bar to clear; the interesting margin is *how*
 you beat it.
@@ -64,7 +63,7 @@ timing a bank against carry weight, and spending jelly to run a heavy load home
 ## Iterating locally
 
 The `foray` CLI is preinstalled on your `PATH` (it hosts the same engine the
-harness scores with). Build your controller, then run a match against any baseline:
+harness runs with). Build your controller, then run a match against any baseline:
 
 ```bash
 # build your controller to wasm
@@ -87,4 +86,4 @@ and why** (out of fuel, over the memory cap, a trap, or a contract-invalid actio
 it broke. Swap `--blue` for `$FORAY_HOME/references/random.wasm` or
 `$FORAY_HOME/references/greedy-raider.wasm` to test against the other baselines,
 and try a few `--seed` values to make sure you are not overfitting one maze. The
-canonical scoring match uses `--seed 0xC0FFEE` against `border-soldier`.
+canonical benchmark match uses `--seed 0xC0FFEE` against `border-soldier`.

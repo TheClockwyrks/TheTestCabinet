@@ -23,7 +23,7 @@ file refers to it as the **turn count**.
 - The remaining 24 cards form the **stock**, face-down, in dealing order. The
   **waste** and all four **foundations** start empty.
 
-A fresh, correct deal is the first thing a reviewer checks, so it must be exact:
+A fresh, correct deal is the first thing a viewer checks, so it must be exact:
 seven columns of `1..7` cards, one face-up card atop each, 24 in the stock, waste
 and foundations empty.
 

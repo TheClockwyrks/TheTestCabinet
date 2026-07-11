@@ -1,6 +1,6 @@
 # Midway — The economy: prices, budget, upkeep, and bankruptcy
 
-This file defines the money loop that the whole game is scored against: where cash
+This file defines the money loop the whole game runs on: where cash
 comes from, the prices the player sets, what everything costs to build and run, the
 budget, and how the park goes bankrupt. It builds on the park grid in
 `specs/park.md` (build costs), the attractions in `specs/rides.md` (tickets and

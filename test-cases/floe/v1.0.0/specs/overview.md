@@ -66,7 +66,7 @@ demo.
 - **Renders real graphics.** Draw the game with Canvas 2D, WebGL/WebGPU, or
   positioned DOM elements, using the provided sprite assets (`specs/assets.md`).
   A
-  text-only or ASCII rendering does not satisfy this test case.
+  text-only or ASCII rendering does not satisfy this requirement.
 - **Runs in the browser with no backend.** No server, accounts, database, or
   network calls at runtime. Everything needed to play must be self-contained.
 - **No API keys or credentials** of any kind to build, run, or play.

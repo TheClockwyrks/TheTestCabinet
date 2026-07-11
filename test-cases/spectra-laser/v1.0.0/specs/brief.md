@@ -67,7 +67,7 @@ reaching for one complex one:
   the tonal voice for a metallic, more synthetic timbre, or a touch of **distortion
   or bitcrush** for arcade grit. Use these to sharpen the character, not to bury it.
 
-The reasoning under test is choosing and stacking these voices so the result reads
+The reasoning that matters here is choosing and stacking these voices so the result reads
 as a laser; the brief names the ingredients, not exact numbers — pick the
 frequencies, envelope times, and levels that make the best-sounding shot.
 

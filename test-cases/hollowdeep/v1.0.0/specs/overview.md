@@ -72,7 +72,7 @@ actually want to play — tense, legible, and alive — not a tech demo.
 
 - **Renders real graphics.** Draw the game with Canvas 2D, WebGL/WebGPU, or
   positioned DOM elements. A text-only or ASCII rendering does not satisfy this
-  test case.
+  requirement.
 - **Produces its own assets.** Every sprite, animation, particle effect, and sound
   the game plays must be **produced during this build with the six tools on your
   `PATH`** (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`,

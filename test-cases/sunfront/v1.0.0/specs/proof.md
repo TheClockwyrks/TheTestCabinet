@@ -2,7 +2,7 @@
 
 As part of the finished build, capture **proof of implementation**: a small set
 of screenshots and one short clip that evidence the game runs and the called-out
-features work. A reviewer compares each against the reference mockup for the same
+features work. A viewer compares each against the reference mockup for the same
 screen, so frame each capture the way the references do: the game as it renders through
 the low oblique command camera at a 16:9 window, fitted and centered. The in-match
 views show the camera's **scrolled, limited view** — the full lane width but only part
@@ -30,4 +30,4 @@ Notes:
 - These files are **outputs** committed alongside the implementation — they are
   not part of the playable build and need not be served by it.
 - Producing them is part of finishing the task: a missing proof is recorded
-  against the run for the reviewer to see.
+  against the run for the viewer to see.

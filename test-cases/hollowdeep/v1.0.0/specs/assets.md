@@ -197,13 +197,13 @@ drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   and plume systems from tile concentrations (the *systems* are produced; deciding
   where and how strongly to play them is code).
 
-## Genuinely produce the assets — this is the point of the case
+## Genuinely produce the assets — this is the point here
 
 The assets must be **genuinely produced with these tools**. A build that ships
 **placeholder rectangles**, **ad-hoc canvas drawing in place of a produced sprite**, a
 **flat colored fill in place of the produced gas particles**, **downloaded or bundled
 art**, or **silence in place of produced audio** has not done the task, no matter how
-good the simulation is — the produced assets are half of what this case scores
+good the simulation is — the produced assets are half of what this build is about
 (`specs/overview.md`, the Presentation & Assets domain). Produce real pixel-art
 sprites, real animated delver sheets, real simulated particle overlays, and real sound
 and music with the six tools, and wire those produced files into the game. Everything

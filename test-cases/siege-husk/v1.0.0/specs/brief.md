@@ -9,7 +9,7 @@ shambling husk and satisfy the animation contract below.
 This brief fixes what the husk is and how it must move. It deliberately does not give
 you a skeleton, joint placements, or pose angles — working out the bones a walking,
 lunging, collapsing humanoid needs, where they pivot, and how the skin binds to them is
-the test. Invent the skeleton.
+the challenge. Invent the skeleton.
 
 ## How the tool works
 
@@ -63,9 +63,9 @@ Fixed — the character must read unmistakably as all of these:
 
 Everything else is yours to invent — the exact silhouette and proportions, how gaunt or
 bloated the frame is, how the cloth hangs and where the bone shows through, and — the
-whole point of the test — the entire **skeleton**: which bones the body needs, where
+whole point of the brief — the entire **skeleton**: which bones the body needs, where
 each pivots, and how the skin binds to them. Nothing here prescribes a shape or a
-skeleton; the test rewards a bold, characterful husk that is unmistakably a shambling
+skeleton; the brief rewards a bold, characterful husk that is unmistakably a shambling
 enemy and deforms convincingly.
 
 ## Palette
@@ -127,4 +127,4 @@ the body reads as a husk, and running a posed `mc-skin render --time <ms> --anim
 derived automatically at render by bone-heat diffusion (capped at four bone influences
 per vertex), so you do not paint them by hand — you may use the optional `paint-weight`
 override only for a region the automatic weighting gets wrong. The recorded operation
-log and `rig.json` are your submission.
+log and `rig.json` are the authoritative output.

@@ -160,5 +160,5 @@ You may write the controller in **any language that compiles to a
 `wasm32-unknown-unknown` core module** exporting `memory`, `alloc`, and `tick` with
 this ABI — Rust with the SDK is the supported, batteries-included path, and the
 engine the run environment provides (`foray-core`, under `$FORAY_HOME/buildkit`)
-is the same one the harness scores you against, so its `World`/`Action` types are
+is the same one the harness runs you against, so its `World`/`Action` types are
 exactly right.

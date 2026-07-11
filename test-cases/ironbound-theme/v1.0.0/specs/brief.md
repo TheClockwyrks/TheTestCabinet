@@ -41,8 +41,7 @@ delivers that heavy, grinding, industrial march.
 
 ## Instrumentation
 
-Voice the cue from the **`gm-lite` instrument bank** (named `gm-lite@0.1.0` in
-this case) — a general-MIDI-flavoured palette with orchestral strings, brass, and
+Voice the cue from the **`gm-lite` instrument bank** (named `gm-lite@0.1.0` here) — a general-MIDI-flavoured palette with orchestral strings, brass, and
 woodwinds, keys, mallets and bells, synths, and a drum kit. **Which** voices you
 use, and how you combine them to conjure a heavy industrial march, is entirely
 your choice. Because you **cannot hear** the clip, inspect the bank's instrument
@@ -56,7 +55,7 @@ plays at its native pitch.
 The only way to make sound is the `music` binary already on your `PATH`. It is
 the sole channel: you build the cue by calling it **one operation at a time**, and
 the ordered list of operations you issue — recorded to `actions.json` — is the
-**authoritative output that is scored**, not any file you write by hand. Anything
+**authoritative output**, not any file you write by hand. Anything
 produced another way is discarded.
 
 Unlike a drawing tool, `music` does **not** re-render after every call — rendering
@@ -71,4 +70,4 @@ and decide what to add next. You must call `render` yourself to see anything.
 Run `music --help` to list every operation and `music <operation> --help` for one
 operation's exact flags — that help text is the authoritative contract. Keep the
 rendered clip within the 30000 ms cap. When the cue captures the Ironbound's heavy,
-grinding identity, stop: the recorded `actions.json` is your finished submission.
+grinding identity, stop: the recorded `actions.json` is the finished output.

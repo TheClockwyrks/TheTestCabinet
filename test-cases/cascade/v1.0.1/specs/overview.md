@@ -56,7 +56,7 @@ a person would actually enjoy playing, not a tech demo.
 
 - **Renders real graphics.** Draw the table and the cards with Canvas 2D,
   WebGL/WebGPU, or positioned DOM elements. A text-only or ASCII rendering does
-  not satisfy this test case. Every card is drawn in code — there are no image
+  not satisfy this requirement. Every card is drawn in code — there are no image
   assets to load.
 - **Runs in the browser with no backend.** No server, accounts, database, or
   network calls at runtime. Everything needed to play must be self-contained.

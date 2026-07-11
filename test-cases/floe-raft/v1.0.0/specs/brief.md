@@ -55,7 +55,7 @@ same style as a single small pan, just longer:
   design at two lengths** — same height, same snow top, same edge and waterline,
   just longer.
 
-The key point: each is **one solid long floe**, so a reviewer (and the game)
+The key point: each is **one solid long floe**, so a viewer (and the game)
 sees a
 single continuous raft, not several small pans lined up.
 

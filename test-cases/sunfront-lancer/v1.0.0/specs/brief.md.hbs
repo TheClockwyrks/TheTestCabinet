@@ -8,7 +8,7 @@ satisfy the animation contract below.
 
 This brief fixes what the Lancer is and how it must move. It does not give you a
 parts list, joint placements, or pose angles — working out the pieces a walking,
-aiming marksman-mech needs, where they attach, and how they articulate is the test.
+aiming marksman-mech needs, where they attach, and how they articulate is the challenge.
 Invent the rig.
 
 ## How the tool works
@@ -70,7 +70,7 @@ The mech must read unmistakably as all of these:
 Everything else is yours to invent — the exact silhouette, proportions, how the
 body and head are massed, how the legs are shaped and fold, how the cannon is built,
 which shoulder it is mounted on, and how its trunnion mount is shaped — and how you
-break the mech into rig parts and place its joints. Nothing here prescribes a shape; the test
+break the mech into rig parts and place its joints. Nothing here prescribes a shape; the brief
 rewards a bold, characterful design that is unmistakably the Lancer and animates
 convincingly.
 
@@ -105,7 +105,7 @@ weapon recoil a sharp `ease-in` for a satisfying thump.
   centered in the volume and the clip must not translate the whole model across the
   scene; the leg cycle alone carries the stride, and a consuming game supplies the
   real forward travel. The legs move; the shoulder-mounted cannon holds steady.
-- **`fire`** — a game-triggered playable, a viewer play button so a reviewer can
+- **`fire`** — a game-triggered playable, a play button so a viewer can
   watch the weapon work without dragging a slider. The **whole cannon recoils straight
   back along its own axis** in its shoulder mount: a sharp kick back, an overshoot, and
   a settle, with the mount and frame taking the shock. Only the cannon and its recoiling
@@ -123,4 +123,4 @@ keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
 `scene/*.png` previews between calls to confirm the parts fit, the legs seat under
 the body and reach the ground, the cannon seats on its shoulder mount and its barrel
 clears the hull through the full elevation, and the animations read with weight. The
-recorded per-part logs and `rig.json` are your submission.
+recorded per-part logs and `rig.json` are the authoritative output.

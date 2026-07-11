@@ -2,9 +2,9 @@
 
 The `lattice` binary is **preinstalled on your `PATH`** in the run container. It
 is your iteration tool — both the **oracle** that produces expected outputs and
-the **same host** the validator scores you with, so a local result means what
-the scored result means. It is a development tool, not a runtime dependency:
-your scored engine is pure sandboxed wasm with no host access — it cannot shell
+the **same host** the validator uses, so a local result means what
+the real result means. It is a development tool, not a runtime dependency:
+your final engine is pure sandboxed wasm with no host access — it cannot shell
 out to `lattice`, read the reference engine, or reach any expected output. There
 is no path for your engine to obtain an answer it did not compute itself.
 
@@ -15,7 +15,7 @@ is no path for your engine to obtain an answer it did not compute itself.
 # (the JSON array of canonical snapshots). Omit --out to write to stdout.
 lattice solve --scenario scenario.json --out expected.json
 
-# Local scoring: load your engine module, run it on a scenario via the SAME host
+# Local check: load your engine module, run it on a scenario via the SAME host
 # the validator uses, diff its per-snapshot checksums against the reference, and
 # report correct/incorrect plus the fuel it consumed. Exits non-zero on incorrect.
 lattice run --module target/wasm32-unknown-unknown/release/engine.wasm \
@@ -34,7 +34,7 @@ lattice schema scenario   # | state
 `lattice run` accepts optional `--fuel-limit`, `--max-memory-bytes`, and
 `--entry` (default `simulate`) flags; their defaults are the manifest's
 `[sandbox]` limits (5,000,000,000 fuel, 256 MiB memory) and the contract entry
-(`simulate`), so a bare `lattice run` scores exactly as the validator will.
+(`simulate`), so a bare `lattice run` behaves exactly as the validator will.
 
 `lattice run` prints `correct` and the fuel on success, or
 `INCORRECT at snapshot tick N (expected fnv1a64:… got fnv1a64:…)` on a mismatch
@@ -53,12 +53,12 @@ saturated splitter with both round-robin cursors active, an assembler starved
 then flooded, the multi-input `circuit` recipe — so you can confirm your engine
 is bit-exact against the exact behaviors `specs/rules.md` describes.
 
-These are **practice, not the scored set.** The scenarios the validator grades
+These are **practice, not the final set.** The scenarios the validator runs
 you on are **held out** — committed with the case, never in this image,
 deliberately larger and longer (big grids, long runs, dense belt networks) so
 the efficiency gap between a naive and a transport-line engine dominates the
 fuel total. Use the training set and your own `lattice gen` scenarios to build
-and validate the engine; your grade is on scenarios you have never seen, so
+and validate the engine; the validator runs on scenarios you have never seen, so
 there is no shortcut around actually simulating.
 
 ## The iteration loop
@@ -74,4 +74,4 @@ there is no shortcut around actually simulating.
    correct engine into a low-fuel one.
 
 When your engine is correct on the training set for a low fuel number, you are
-done; `engine.wasm` is your submission.
+done; `engine.wasm` is the authoritative output.

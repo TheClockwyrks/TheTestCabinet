@@ -65,7 +65,7 @@ person would actually want to play, not a tech demo.
 
 - **Renders real 3D graphics.** Draw the world with **WebGL or WebGPU** (a helper
   library such as a scene-graph or math library is fine). A text-only, ASCII, or
-  purely-2D rendering does not satisfy this test case. Every hex tile, structure,
+  purely-2D rendering does not satisfy this requirement. Every hex tile, structure,
   pipe, tower, and Slag unit is **geometry you generate in code** — you are given
   **no** model, mesh, or texture files and must not fetch any at runtime. The
   terrain is a generated **triangle mesh**, not a flat image. Flat or
@@ -221,7 +221,7 @@ render a still. These are hard requirements:
   must clearly show that the world is **3D** — terraces stepping up, cliff faces,
   the depth of carved river channels, and the height of vents, towers, and units —
   and never flatten it into a top-down map. A straight top-down projection does
-  **not** satisfy this case.
+  **not** satisfy this requirement.
 - **Frame rate.** On a mid-range laptop the game must sustain a **playable frame
   rate (target 30 FPS or better)** during a live late-wave assault — dozens of
   Slag pathing across the terrain, the full defense firing, steam and water flow,

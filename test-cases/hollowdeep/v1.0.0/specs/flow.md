@@ -99,7 +99,7 @@ crew is doing.
 ## Audio
 
 Audio is recommended and, unlike an ordinary end-to-end case, its **assets are part
-of what this case tests** (`specs/assets.md`): the sound effects and the music bed are
+of what this build is about** (`specs/assets.md`): the sound effects and the music bed are
 **produced with the on-`PATH` audio tools**, not synthesized ad hoc or downloaded. It
 must still never be required for the game to run or load, must **not** autostart before
 the player interacts (browsers block autoplay), and must offer a **mute** toggle. Play

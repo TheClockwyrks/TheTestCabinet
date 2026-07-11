@@ -76,7 +76,7 @@ Two consequences fall straight out, and they are the entire compaction story:
 - Belt movement **can never create** a gap smaller than `SPACING`, and once a
   run of items is packed at `SPACING` it moves forward as a rigid block. _Once a
   belt compresses, it stays that way_ — and that is exactly the property an
-  efficient engine exploits (see `specs/contract.md` and the case overview).
+  efficient engine exploits (see `specs/contract.md` and the overview).
 
 A gap **smaller** than `SPACING` can only ever appear when something **forces**
 an item in — an inserter dropping, a source emitting, or a belt

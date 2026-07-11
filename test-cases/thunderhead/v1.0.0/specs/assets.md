@@ -60,4 +60,4 @@ uses to load a model (and its manifest) must be **page-relative**: it must **nev
 begin with a leading `/`, and for a bundler you must set a **relative base** (such as
 Vite's `base: './'`) so the built site resolves its assets relative to wherever it is
 served. A model that loads under a server root but 404s its models under a sub-path
-does not satisfy this case.
+does not satisfy this requirement.

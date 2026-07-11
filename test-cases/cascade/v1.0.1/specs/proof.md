@@ -2,7 +2,7 @@
 
 As part of the finished build, capture **proof of implementation**: a small set
 of screenshots and one short clip that demonstrate the game runs and the
-called-out features work. A reviewer compares each against the reference mockup
+called-out features work. A viewer compares each against the reference mockup
 for the same screen, so frame each capture the way the references do (the full
 `1280 x 720` table, fitted and centered).
 
@@ -27,7 +27,7 @@ Notes:
 - These files are **outputs** committed alongside the implementation — they are
   not part of the playable build and need not be served by it.
 - Producing them is part of finishing the task: a missing proof is recorded
-  against the run for the reviewer to see. The `cascade.webm` in particular is the
+  against the run for the viewer to see. The `cascade.webm` in particular is the
   evidence for the signature animation — do not skip it.
 - To reach a winnable state quickly for the win captures, you may drive the built
   game with Playwright rather than playing by hand; capture from the real built

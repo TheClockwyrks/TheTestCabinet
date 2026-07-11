@@ -61,7 +61,7 @@ Work exists as a **queue of jobs** the colony needs done, and delvers pull from 
   queue for the next. A job that no delver can currently reach waits until the colony
   opens a path to it. Two delvers do not both claim the same job.
 
-The observable behavior the reviewer looks for: queue several digs and a couple of
+The observable behavior the viewer looks for: queue several digs and a couple of
 builds and the delvers **divide the work sensibly and get it done**, tending their
 own needs when those get critical — not standing idle with work available, and not
 all piling onto one tile.

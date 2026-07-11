@@ -6,7 +6,7 @@ model with a small rig a game can pose at runtime. There is no target model to c
 build something that reads unmistakably as this hovering beacon and moves the way the
 animation contract below demands.
 
-This test measures creativity and craft, not instruction-following: the brief tells you
+This brief rewards creativity and craft, not instruction-following: it tells you
 what the Lumen is and how it must move, but the parts you build, how you break the drone
 into moving pieces, where you place the joints, and how you shape every form are yours
 to invent. Work out the pieces a hovering, ring-spinning, beam-nodding drone needs.
@@ -65,7 +65,7 @@ Fixed — the drone must read unmistakably as all of these:
 
 Everything else is yours to invent — the exact silhouette and proportions of the core,
 how you shape the rings and the emitter, and how you break the drone into rig parts and
-place its joints. Nothing here prescribes a shape or a joint; the test rewards a bold,
+place its joints. Nothing here prescribes a shape or a joint; the brief rewards a bold,
 characterful design that is unmistakably the Lumen and animates convincingly.
 
 ## The required animations — the fixed contract
@@ -84,7 +84,7 @@ linearly. Each of the three loops:
 - **`hover`** — the movement state a game triggers (a game-triggered playable, the
   drone's equivalent of a walker's `walk`). The whole legless craft bobs gently up and
   down so it reads as floating in place — never a straight saw-tooth slide.
-- **`pulse`** — the emitter showcase a reviewer triggers (a game-triggered playable).
+- **`pulse`** — the emitter showcase a viewer triggers (a game-triggered playable).
   The front beam emitter nods up, back to level, down, and level again about its mount,
   each turn eased so the beam settles rather than snapping.
 
@@ -110,4 +110,4 @@ flags. Call `voxel-anim` once per operation. Run `voxel-anim render` before you 
 so it emits the per-part `.glb` geometry your result is built from — an unrendered part
 scores as empty (`voxel-anim render --component <part>` renders one part; `voxel-anim
 render --time <ms> --animation <name>` renders the model posed at that instant to check
-the motion). The recorded per-part logs and `rig.json` are your submission.
+the motion). The recorded per-part logs and `rig.json` are the authoritative output.

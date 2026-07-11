@@ -63,7 +63,7 @@ flight, and slow-immunity.
 - **Core** — the **boss**: a massive HP pool that is immune to slowing
   entirely (a Rime does nothing to it, regardless of the Rime's heat),
   leaking **5** lives if it escapes through an exhaust. A Core appears on the
-  milestone waves of `specs/flow.md` and is the test of whether your hot core
+  milestone waves of `specs/flow.md` and is the trial of whether your hot core
   can actually output the damage to break it before it crosses the floor.
 
 ## Wave Composition

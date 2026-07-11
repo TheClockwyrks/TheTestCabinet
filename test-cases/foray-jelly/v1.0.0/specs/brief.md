@@ -23,7 +23,7 @@ it is *not* recolored (see **Palette**).
   | 1 | **spent** — the dimmed husk left after it is eaten |
 
 - The two frames are the **same node** in two states: frame 1 is what frame 0
-  becomes once consumed — same size and place, drained of its glow. A reviewer
+  becomes once consumed — same size and place, drained of its glow. A viewer
   plays 0→1 to see it deplete, so they must read as before/after of one node.
 - The node is seen from directly above (top-down): draw it **centered and roughly
   symmetric**, filling most of the cell with about a pixel of margin.

@@ -67,7 +67,7 @@ action** from its desires and what the park offers:
   looks elsewhere), and once in line an overlong wait bleeds its happiness and it may
   give up and leave the queue. Guests are not infinitely patient.
 
-The observable behavior the reviewer looks for: guests **spread across the park**
+The observable behavior the viewer looks for: guests **spread across the park**
 acting on plausibly different desires — some queuing for rides, some eating, some at
 the restroom, some resting or leaving — not all walking to one tile or standing idle
 with attractions available.

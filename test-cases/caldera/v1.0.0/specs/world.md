@@ -10,7 +10,7 @@ build on this world is in `specs/build.md`; the fluids that flow across it are i
 
 The **quality of the terrain you generate — how natural, varied, legible, and
 watertight the caldera is, and how correctly the terraces, cliffs, rivers, and
-water read** — is a central thing this case evaluates. There is deliberately
+water read** — is central to what this build is about. There is deliberately
 little steering on the *shape*; there is exact steering on the *rules*.
 
 ## The hex grid

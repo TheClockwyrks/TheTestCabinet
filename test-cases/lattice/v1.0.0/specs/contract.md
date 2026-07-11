@@ -106,13 +106,13 @@ of one snapshot is:
   you the first mismatching snapshot tick, and the full state lets you find the
   offending item, lane, or buffer.
 
-### The checksum is what is scored
+### The checksum is what matters
 
 The `checksum` is a hash of a **canonical byte serialization** of the snapshot,
 not of the JSON text — so JSON formatting can never affect correctness. You must
 compute it exactly as `specs/canonical-state.md` specifies (and the SDK's
 `Snapshot::new` does it for you if you build snapshots through the re-exported
-`lattice_core` types). A submission matches iff its checksum equals the
+`lattice_core` types). An engine matches iff its checksum equals the
 reference's at **every** snapshot; a single mismatch fails the scenario.
 
 ## Sandbox and limits
@@ -130,14 +130,14 @@ manifest's `[sandbox]` table):
   call and the amount consumed is your performance result. It is a **hard
   ceiling**: a scenario whose simulation exhausts the fuel ceiling fails (it is
   recorded as incorrect and earns no fuel result), so an inefficient engine that
-  overruns the budget on a large scenario scores nothing on it. **Lower fuel is
+  overruns the budget on a large scenario produces no result on it. **Lower fuel is
   better.**
 - **Memory** caps your module's linear memory for the whole call. The efficient
   transport-line representation is also the memory-frugal one.
 
-A submission that fails to build, does not export the contract entry, traps,
+An engine that fails to build, does not export the contract entry, traps,
 exceeds either limit, returns the wrong number of snapshots, or produces a wrong
-checksum on any scored scenario is **incorrect** and earns no performance score
+checksum on any scenario is **incorrect** and earns no performance result
 — correctness is the gate the engine must pass before its fuel means anything.
 
 ## The ABI (what the SDK does for you)
@@ -195,7 +195,7 @@ simulation you _may_ call to get a correct answer — but it is the **naive**
 engine, the move-every-item-every-tick loop, and it spends far more fuel than it
 needs to (the starter's floor `run` delegates to it). Calling it makes you
 _correct_ but not _fast_, and **fast is the whole contest** — correctness is
-only the gate. The work of this case is to rewrite the _simulation_ (belt
+only the gate. The work here is to rewrite the _simulation_ (belt
 compaction, side-loading, splitter balancing, inserter swings, assembler
 crafting, source/sink bookkeeping, the tick order from `specs/rules.md`) with an
 efficient representation so the same checksums come out for a fraction of the

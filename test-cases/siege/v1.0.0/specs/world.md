@@ -32,7 +32,7 @@ and the same three-redoubt retreat is acceptable. Height stays `64`.
 
 You must **procedurally generate** the terrain each match. There is deliberately
 **little steering** here: the quality of the world you invent — how natural,
-varied, and playable it is — is part of what this case evaluates. Requirements:
+varied, and playable it is — is part of what matters here. Requirements:
 
 - The terrain is a solid voxel landform: a heightfield of grass over dirt over
   rock is the baseline, and you may add variety (hills, ridges, plateaus, gullies,

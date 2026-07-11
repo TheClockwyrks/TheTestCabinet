@@ -36,7 +36,7 @@ Rail moves people only through **stations**:
   travels road → origin station → along the rail → destination station → road.
 - Riding rail is **faster and higher-capacity** than the equivalent road trip and does
   **not** load the roads along the rail corridor, so a well-placed line **relieves**
-  the roads it parallels. The observable payoff the reviewer looks for: a congested
+  the roads it parallels. The observable payoff the viewer looks for: a congested
   road corridor **eases** when a rail line with stations is built along it and citizens
   shift onto it.
 - Keep the rail model as simple as it needs to be — you need not simulate individual

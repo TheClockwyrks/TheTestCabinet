@@ -56,7 +56,7 @@ The two gases are **not** the same weight, and the cross-section shows it:
   breathable longer. Pumps and diffusers (`specs/power.md`) exist to fight this.
 
 Keep buoyancy gentle relative to diffusion — it biases where gas settles, it does not
-teleport it. The observable result the reviewer looks for is that CO2 visibly
+teleport it. The observable result the viewer looks for is that CO2 visibly
 **collects low** and oxygen **sits higher**, not a specific transfer rate.
 
 ## The delvers breathe

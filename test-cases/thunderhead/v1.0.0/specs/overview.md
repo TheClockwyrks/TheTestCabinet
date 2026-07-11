@@ -84,7 +84,7 @@ person would actually want to play, not a tech demo.
 
 - **Renders real 3D graphics.** Draw the world with **WebGL or WebGPU** (a helper
   library such as a scene-graph or math library is fine). A text-only, ASCII, or
-  purely-2D rendering does not satisfy this test case. The **world** — the terrain,
+  purely-2D rendering does not satisfy this requirement. The **world** — the terrain,
   the floating islands, the cloud sea and murk, water, projectiles, tracer, and
   effects — is **geometry you generate in code**, using **procedural noise
   generated in code** for terrain surface variation; you are given **no** terrain
@@ -249,8 +249,7 @@ render a still. These are hard requirements:
   commander's view from a bridge; `specs/command.md`). Both must clearly convey a
   **3D** world — the relief of the islands, the depth of the cloud sea, the
   altitude of ships and aircraft. The tactical camera is a tilted overhead view,
-  **not** a flat top-down map; a straight top-down projection does not satisfy this
-  case.
+  **not** a flat top-down map; a straight top-down projection does not satisfy this requirement.
 - **Frame rate.** On a mid-range laptop the game must sustain a **playable frame
   rate (target 30 FPS or better)** during a **large engagement** — both fleets in
   action, aircraft aloft, gunfire and ordnance in the air, the cloud sea and

@@ -68,7 +68,7 @@ want to play, not a tech demo.
 
 - **Renders real 3D graphics.** Draw the world with **WebGL or WebGPU** (a
   helper library such as a scene-graph or math library is fine). A text-only,
-  ASCII, or purely-2D rendering does not satisfy this test case. Every block,
+  ASCII, or purely-2D rendering does not satisfy this requirement. Every block,
   structure, weapon, and character is **blocky voxel/box geometry you generate in
   code** — you are given **no** model, mesh, or texture files and must not fetch
   any at runtime. Flat or simply-shaded faces in the palette below are expected

@@ -8,7 +8,7 @@ unmistakably as the Sunfront Trooper and satisfy the animation contract below.
 This brief fixes what the trooper is and how it must move. It deliberately does not
 give you a bone list, joint placements, or pose angles — working out the skeleton an
 armored, marching, firing soldier needs, where the joints go, and how the skin binds to
-it is the test. Invent the rig.
+it is the challenge. Invent the rig.
 
 ## How the tool works
 
@@ -69,7 +69,7 @@ Fixed — the character must read unmistakably as all of these:
 Everything else is yours to invent — the exact silhouette and proportions, how the
 plate is shaped and layered, how the helmet and rifle are formed, how the canvas is
 draped, and how you break the body into a skeleton and place its joints. Nothing here
-prescribes a shape; the test rewards a bold, characterful design that is unmistakably
+prescribes a shape; the brief rewards a bold, characterful design that is unmistakably
 the Sunfront Trooper and deforms convincingly.
 
 ## Palette
@@ -136,4 +136,4 @@ trooper, the skin folds cleanly across the joints, and each animation reads with
 The per-vertex weights are derived automatically at render; `paint-weight` is there only
 to fix a region the automatic result gets wrong. Run `dc-skin render` before you finish
 so the skinned `mesh.glb` and `rig.json` are emitted. The recorded operation log and
-`rig.json` are your submission.
+`rig.json` are the authoritative output.

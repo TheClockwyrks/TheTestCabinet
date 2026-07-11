@@ -80,7 +80,7 @@ When **C falls**, the siege ends → the **defeat** state (`specs/flow.md`).
 
 Because the redoubt always falls, **every siege progresses through the phases in a
 single run** regardless of skill — a strong defender simply reaches each phase
-later, with a longer survival time. A reviewer can also **start a siege at any
+later, with a longer survival time. A viewer can also **start a siege at any
 phase** (via **PLAY** on the title screen, below) to see that phase directly.
 
 ### Escalation — tiers driven by your kill count
@@ -185,6 +185,6 @@ the class is chosen separately, on the in-game spawn UI):
   survival clock still starts at `0:00`, and the displayed kill counter still
   starts at `0` (only the tier schedule's escalation count carries the offset).
 
-This lets a player — or a reviewer — jump directly to the tougher, later content
+This lets a player — or a viewer — jump directly to the tougher, later content
 without first surviving the earlier phases. Whichever phase you start in, the
 siege still runs from there to the fall of C.

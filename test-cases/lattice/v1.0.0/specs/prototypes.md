@@ -4,7 +4,7 @@ These are the fixed constants of the Lattice world. A scenario _refers_ to
 prototypes by name (`"tier": "fast"`, `"recipe": "iron-gear"`,
 `"item": "iron-plate"`); it never redefines them. Your engine must use these
 exact integers — they are part of the contract, and the reference engine the
-harness scores you against reads the same table. **Everything here is an
+harness runs you against reads the same table. **Everything here is an
 integer.** There is no floating-point arithmetic anywhere in the model; that is
 what makes the state after _N_ ticks a single bit-exact value.
 

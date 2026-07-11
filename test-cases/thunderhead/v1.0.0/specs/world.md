@@ -11,7 +11,7 @@ over this world are in `specs/units.md`; how they move across it is in
 
 The **quality of the world you generate — how natural, varied, legible, and
 watertight the islands are, how the cloud sea reads, and how sight and movement are
-shaped by the relief** — is a central thing this case evaluates. There is
+shaped by the relief** — is central to what this build is about. There is
 deliberately little steering on the *shape*; there is exact steering on the *rules*.
 
 ## The battlespace

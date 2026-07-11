@@ -10,7 +10,7 @@ satisfy the animation contract below.
 This brief fixes what the Aegis is and how it must move. It deliberately does not
 give you a parts list, joint placements, or pose angles — working out the pieces a
 walking, firing fortress needs, where they attach, and how they articulate is the
-test. Invent the rig.
+challenge. Invent the rig.
 
 ## How the tool works
 
@@ -31,7 +31,7 @@ Build one operation at a time; each call only records to that part's log and
 meshes/renders nothing. Run `mc-anim render` to extract the geometry and (re)draw
 `parts/<part>.png` and the assembled `scene/*.png` — read them between calls — and
 run it once more before you finish so every part's `.glb` is emitted (an unrendered
-part is scored as empty); `--time`/`--animation` previews an animation and
+part reads as empty); `--time`/`--animation` previews an animation and
 `--component` renders one part. `mc-anim --help` is the contract.
 
 ## The volume and coordinate system
@@ -63,7 +63,7 @@ Fixed — the fortress must read unmistakably as all of these:
 Everything else is yours to invent — the exact silhouette, proportions, number
 and design of the legs, how the hull is tiered and prowed, how the turrets and
 vane are shaped, and how you break the fortress into rig parts and place its
-joints. Nothing here prescribes a shape; the test rewards a bold, characterful
+joints. Nothing here prescribes a shape; the brief rewards a bold, characterful
 design that is unmistakably the Aegis and animates convincingly.
 
 ## Palette
@@ -111,5 +111,4 @@ animations with `define-animation`/`add-keyframe` — running `mc-anim render` a
 reading `parts/<part>.png` and the `scene/*.png` previews between calls to confirm
 the parts fit, the legs reach the ground, and the animations read with weight, and
 running `mc-anim render` once more before you finish so every part's `.glb` is
-emitted. The recorded operations, the per-part `.glb`, and `rig.json` are your
-submission.
+emitted. The recorded operations, the per-part `.glb`, and `rig.json` are the authoritative output.

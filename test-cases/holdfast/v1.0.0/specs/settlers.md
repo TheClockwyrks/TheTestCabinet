@@ -77,7 +77,7 @@ Work exists as a **queue of jobs** the colony needs done, and settlers pull from
   returns to the queue for the next. A job no settler can currently reach or is allowed
   to do waits until that changes. Two settlers do not both claim the same job.
 
-The observable behavior the reviewer looks for: designate several chops, a couple of
+The observable behavior the viewer looks for: designate several chops, a couple of
 builds, and a cook, set the work grid, and the settlers **divide the work sensibly and
 get it done** — the miner mining, the builder building — tending their own needs when
 those get critical and dropping everything to fight when raided, not standing idle with

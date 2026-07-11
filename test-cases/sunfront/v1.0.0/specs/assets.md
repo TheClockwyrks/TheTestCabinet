@@ -176,4 +176,4 @@ load a model, an effect system under `assets/effects/`, or `assets/models.json` 
 be **page-relative**: it must **never** begin with a leading `/`, and for a bundler
 you must set a **relative base** (such as Vite's `base: './'`) so the built site
 resolves its assets relative to wherever it is served. A model or effect that loads
-under a server root but 404s under a sub-path does not satisfy this case.
+under a server root but 404s under a sub-path does not satisfy this requirement.

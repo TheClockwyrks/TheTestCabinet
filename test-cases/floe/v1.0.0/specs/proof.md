@@ -3,7 +3,7 @@
 As part of the finished build, capture **proof of implementation**: a small set
 of
 screenshots and two short clips that evidence the game runs and the called-out
-features work. A reviewer compares each against the reference mockup for the same
+features work. A viewer compares each against the reference mockup for the same
 screen, so frame each capture the way the references do (the full `1280 x 720`
 stage, fitted and centered).
 
@@ -32,4 +32,4 @@ Notes:
   not
   part of the playable build and need not be served by it.
 - Producing them is part of finishing the task: a missing proof is recorded against
-  the run for the reviewer to see.
+  the run for the viewer to see.

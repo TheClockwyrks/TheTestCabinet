@@ -65,8 +65,7 @@ demo.
 
 - **Renders real 3D graphics.** Render the battlefield with **WebGL or WebGPU** (a
   helper library such as a scene-graph or math library is fine). A **Canvas 2D**,
-  positioned-DOM, text-only, or ASCII battlefield does **not** satisfy this test
-  case — the field, its units, and its structures are a real 3D scene viewed through
+  positioned-DOM, text-only, or ASCII battlefield does **not** satisfy this requirement — the field, its units, and its structures are a real 3D scene viewed through
   a camera. (The **HUD and menus** may be a 2D overlay — HTML/DOM or 2D canvas — laid
   over the 3D view; only the battlefield must be 3D.)
 - **Runs in the browser with no backend.** No server, accounts, database, or

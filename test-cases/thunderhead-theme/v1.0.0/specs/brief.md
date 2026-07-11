@@ -53,8 +53,7 @@ breathes** over three-to-five minutes rather than vamping on a single loop.
 
 ## Instrumentation
 
-Voice the piece from the **`gm-lite` instrument bank** (named `gm-lite@0.1.0` in
-this case) — a general-MIDI-flavoured palette with orchestral strings, brass, and
+Voice the piece from the **`gm-lite` instrument bank** (named `gm-lite@0.1.0` here) — a general-MIDI-flavoured palette with orchestral strings, brass, and
 woodwinds, keys, mallets and bells, synths, and a drum kit. **Which** voices you
 use, and how you combine them, is entirely your choice: build whatever ensemble
 best realizes a grand cinematic main-menu overture. Because you **cannot hear**
@@ -75,7 +74,7 @@ dynamic arc: no clipping at the climaxes, and no single voice swamping the rest.
 The only way to make sound is the `music` binary already on your `PATH`. It is
 the sole channel: you build the piece by calling it **one operation at a time**,
 and the ordered list of operations you issue — recorded to `actions.json` — is the
-**authoritative output that is scored**, not any file you write by hand. Anything
+**authoritative output**, not any file you write by hand. Anything
 produced another way is discarded.
 
 Unlike a drawing tool, `music` does **not** re-render after every call — rendering
@@ -91,4 +90,4 @@ piece this long, render often and check the whole arc.
 Run `music --help` to list every operation and `music <operation> --help` for one
 operation's exact flags — that help text is the authoritative contract. Keep the
 rendered clip within the 300000 ms cap. When the overture matches this brief and
-loops cleanly, stop: the recorded `actions.json` is your finished submission.
+loops cleanly, stop: the recorded `actions.json` is the finished output.

@@ -121,6 +121,6 @@ late wave) to face the harder compositions directly. Starting at a later wave:
   and fair*, not that it reproduces an exact economy.)
 
 The survival clock and the displayed kill counter still start at `0`. This lets a
-player — or a reviewer — jump straight to the tougher late content without first
+player — or a viewer — jump straight to the tougher late content without first
 playing the openers. Whichever wave you start on, the run still ends at the fall of the
 Core (overrun) or the clearing of wave `N` (held).

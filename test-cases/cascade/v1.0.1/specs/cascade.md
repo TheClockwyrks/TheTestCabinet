@@ -5,8 +5,8 @@
 This file defines the **victory cascade**, the animation that plays when the game
 is won and the feature the game is named for. It builds on the layout in
 `specs/layout.md`, the win condition in `specs/rules.md`, and the coordinate
-system in `specs/overview.md`. Implement it exactly — a reviewer watches a clip
-of it, and it is the case's signature mechanic.
+system in `specs/overview.md`. Implement it exactly — a viewer watches a clip
+of it, and it is the game's signature mechanic.
 
 ## Trigger Condition
 

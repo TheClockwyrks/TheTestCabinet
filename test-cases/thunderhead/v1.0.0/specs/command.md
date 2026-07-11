@@ -119,7 +119,7 @@ Each scale has its own view; all must clearly convey a **3D** world
 - **Tactical command camera** — an elevated, orbiting view the player can **pan**,
   **rotate** around vertical, and **zoom**. It is a tilted overhead view that keeps
   the relief of the islands and the depth of the cloud sea legible; a straight
-  top-down projection does **not** satisfy this case (`specs/overview.md`).
+  top-down projection does **not** satisfy this requirement (`specs/overview.md`).
 - **Steering view (no station manned)** — a chase/free-look view from the possessed
   unit that shows the unit and its surroundings as you drive it.
 - **Gunnery view (a ship weapon class)** — an aimed view along the class's crosshair,

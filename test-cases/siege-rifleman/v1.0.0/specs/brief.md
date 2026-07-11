@@ -14,7 +14,7 @@ squad follows from it.
 This brief fixes what the Rifleman is and how it must move. It deliberately does
 **not** give you a bone list, joint placements, weight maps, or pose angles —
 working out the skeleton an upright, running, firing soldier needs, where the
-joints go, and how the skin binds to it is the test. Invent the rig.
+joints go, and how the skin binds to it is the challenge. Invent the rig.
 
 ## What you are building
 
@@ -78,7 +78,7 @@ Fixed — the character must read unmistakably as all of these:
 Everything else is yours to invent — the exact silhouette and proportions, how the
 armor plates and the vest are shaped, how the helmet and visor are formed, how the
 pouches sit, where you break the body into a skeleton, and where the joints go.
-Nothing here prescribes topology; the test rewards a clean, convincing soldier that
+Nothing here prescribes topology; the brief rewards a clean, convincing soldier that
 is unmistakably a Warden Rifleman and deforms believably.
 
 ## Palette
@@ -172,7 +172,7 @@ Inside `build.py`, using Blender's `bpy` module, you:
    +Y-up/+Z-forward orientation and **frames and renders `model.png` for you** from a
    fixed front view, lighting your materials — you do **not** need to add a camera or
    lights or fight the preview framing. Spend your effort on the mesh, rig, and
-   animations; the preview is a convenience for the reviewer, and the `character.glb`
+   animations; the preview is a convenience for the viewer, and the `character.glb`
    is what is judged.
 
 A starter `build.py` is seeded for you with the pipeline stubbed out and the config
