@@ -110,8 +110,8 @@ You choose the language, framework, bundler, and rendering approach, subject to 
 requirements above. Plain TypeScript with Canvas 2D is entirely sufficient; a
 framework is not required. Favor a clean, well-structured codebase over any particular
 technology. **You design the exact layout of the starting map and its terrain, the
-full set of buildable things beyond the ones the specs require, the demand and budget
-tuning, and how the city reads on screen** (within the constraints in the specs) —
+full set of buildable things beyond the ones the specs require, and how the city
+reads on screen** (within the constraints in the specs) —
 there is no fixed map to reproduce.
 
 ## Coordinate system and presentation

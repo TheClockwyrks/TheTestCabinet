@@ -6,8 +6,8 @@ This file defines the three support foes that harass you and reshape the field
 alongside the worm: the **glitch**, the **packet-dropper**, and the
 **corruptor**. Each is rendered from its provided sprite (`specs/assets.md`) and
 each interacts with the charge field (`specs/charge.md`) or the player band
-(`specs/playfield.md`) in its own way. Bounties and the exact spawn pacing are a
-**starting balance** you tune (`specs/flow.md`); the behaviors here are fixed.
+(`specs/playfield.md`) in its own way. Bounties and spawn pacing are
+**specified** (`specs/flow.md`); the behaviors here are fixed.
 
 All three are **hostile to the cursor**: contact with the cursor costs a life
 (`specs/flow.md`), the same as a worm segment reaching you. You destroy them by
@@ -32,7 +32,7 @@ The glitch is a corrupted sprite that skitters through the lower board and
   **single bolt** and pays a bounty when killed. Because it both threatens you and
   eats your arsenal, it is usually worth shooting on sight.
 - **Spawning.** Glitches begin appearing from **level 2** onward, at most one or
-  two on the board at once; you design the exact cadence.
+  two on the board at once.
 
 ## The Packet-Dropper (field-refiller)
 
@@ -75,8 +75,7 @@ dive-lane.
 - **Threat and reward.** It is deadly on contact with the cursor (though it stays
   high, so contact is rare). It dies to a **single bolt** and pays the largest
   bounty of the three. Killing it early cuts its critical line short.
-- **Spawning.** Corruptors begin from **level 5** onward, crossing occasionally;
-  you design the cadence.
+- **Spawning.** Corruptors begin from **level 5** onward, crossing occasionally.
 
 ## Summary
 
@@ -87,5 +86,5 @@ dive-lane.
 | Corruptor | Slams a row of nodes to critical across the top | 1 | Contact; sets a worm dive-lane |
 
 All three cost a life on contact with the cursor and are destroyed by your bolts.
-Their bounties and how often they appear are part of the balance you design
+Their bounties and how often they appear are **specified**
 (`specs/flow.md`).

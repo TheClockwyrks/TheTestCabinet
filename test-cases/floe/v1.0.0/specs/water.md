@@ -7,7 +7,8 @@ lanes
 of deadly sea crossed only by riding drifting **floes**, and how the critter reaches
 the far-shore bays. It uses the grid and palette from `specs/overview.md`. The bear
 swims this band too (`specs/hunter.md`). The exact floe speeds, sizes, and spacing
-are a **starting balance** you design; the behavior here is fixed.
+are **specified** (see *Numbers* below and `specs/flow.md`); implement them as
+written.
 
 The water band is the **riskier** of the two crossing zones: its floes move **faster**
 and in a **wider speed range** (with a higher top speed) than the ice band's vehicles
@@ -83,7 +84,7 @@ row 1 to complete the crossing:
   bay
   and hop in.
 
-## Numbers (starting balance)
+## Numbers
 
 | Quantity | Value |
 | --- | --- |

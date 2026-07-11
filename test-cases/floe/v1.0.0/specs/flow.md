@@ -9,8 +9,7 @@ strait in `specs/playfield.md`, the hunter in `specs/hunter.md`, the hazards in
 `specs/hazards.md`, the water in `specs/water.md`, the controls in
 `specs/controls.md`, and the playable mode in `specs/standard.md`.
 
-The numeric values here are a **starting balance**, meant to be tuned by play;
-implement them as written but keep them easy to adjust.
+The numeric values here are **fixed**; implement them exactly as written.
 
 ## Lives and death
 
@@ -46,8 +45,8 @@ second pressure alongside the bear — but the bear is the immediate one.
   by about `+6%` (`specs/hazards.md`, `specs/water.md`), the **bear** speeds up
   by
   about `+6%` (`specs/hunter.md`), and the crossing **timer** shortens. From
-  **level 5** a **second bear** hunts (`specs/hunter.md`). You design the exact
-  per-level lane composition within these guides.
+  **level 5** a **second bear** hunts (`specs/hunter.md`). The per-level lane
+  composition follows the rules in these specs.
 - **Victory.** Clearing **level 8** — filling its last bay — **wins** the game (the
   Victory state, below).
 

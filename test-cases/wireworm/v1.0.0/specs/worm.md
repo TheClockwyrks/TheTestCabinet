@@ -5,9 +5,8 @@
 This file defines the data-worm: how it is built from segments, how it winds down
 the board, how your shots split and shorten it, and how it grows the field. It
 builds on the tile grid in `specs/playfield.md` and the charge rules in
-`specs/charge.md`. The numeric values here are a **starting balance**,
-meant to be
-tuned by play; implement them as written but keep them easy to adjust.
+`specs/charge.md`. The numeric values here are **fixed**; implement them exactly
+as written.
 
 ## Structure
 

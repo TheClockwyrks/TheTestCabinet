@@ -9,8 +9,7 @@ board in
 `specs/worm.md`, the foes in `specs/foes.md`, the controls in `specs/controls.md`,
 and the playable mode in `specs/standard.md`.
 
-The numeric values here are a **starting balance**, meant to be tuned by play;
-implement them as written but keep them easy to adjust.
+The numeric values here are **fixed**; implement them exactly as written.
 
 ## Lives
 
@@ -31,8 +30,8 @@ implement them as written but keep them easy to adjust.
 - A game is a fixed run of **12 levels** through the **persistent** node field
   (`specs/playfield.md`), numbered `LEVEL 1` … `LEVEL 12`.
 - Each level descends one worm of the length in `specs/worm.md`, quickening per
-  level, with foes appearing per their level gates (`specs/foes.md`). You design
-  the exact spawn timing and any per-level foe cadence.
+  level, with foes appearing per their level gates (`specs/foes.md`). The spawn
+  timing and per-level foe cadence follow the rules in these specs.
 - A level is **cleared** when every worm segment is gone (`specs/worm.md`).
   Clearing a level pays its clear bonus and advances to the next level; the node
   field standing at that moment carries into the next level, so the board only ever

@@ -7,7 +7,8 @@ lanes of solid pack ice, each with **sliding vehicles** the critter must dodge.
 It
 uses the grid and palette from `specs/overview.md`. The bear navigates these hazards
 too, and is reset by them (`specs/hunter.md`). The exact speeds, directions, and
-spacing are a **starting balance** you design; the behavior here is fixed.
+spacing are **specified** (see *Numbers* below and `specs/flow.md`); implement
+them as written.
 
 The ice band is the **easier, gentler** of the two crossing zones: its vehicles
 move
@@ -29,7 +30,7 @@ horizontally, and touching one is death.
 - Vehicles enter from one side edge, slide straight across their lane, and leave
   at
   the far edge, respawning so each lane stays populated with gaps the critter can
-  time. You design the spacing (the gaps) so every lane is crossable but pressured.
+  time. The spacing (the gaps) must keep every lane crossable but pressured.
 - **Contact is death.** A vehicle is **more than one tile long** (below), and
   touching **any** tile it covers crushes the critter and **loses a life**
   (`specs/flow.md`). The critter is safe only in the **gaps** between vehicles,
@@ -61,7 +62,7 @@ leaves a smaller gap behind it than a two-tile car or dogsled at the same spacin
 so the vehicle length is part of the timing. Mix the two-tile vehicles (car and
 dogsled) so the quicker lanes are not all the same sprite.
 
-## Numbers (starting balance)
+## Numbers
 
 | Quantity | Value |
 | --- | --- |

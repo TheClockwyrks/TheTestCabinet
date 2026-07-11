@@ -94,9 +94,10 @@ You choose the language, framework, bundler, and rendering approach, subject to
 the
 requirements above. Plain TypeScript with Canvas 2D is entirely sufficient; a
 framework is not required. Favor a clean, well-structured codebase over any
-particular technology. **You design the exact lane speeds, spawn timing, floe
-sizes and spacing, and per-level pacing** within the constraints in
-`specs/hazards.md`, `specs/water.md`, `specs/hunter.md`, and `specs/flow.md`.
+particular technology. The exact lane speeds, spawn timing, floe
+sizes and spacing, and per-level pacing are **specified** in
+`specs/hazards.md`, `specs/water.md`, `specs/hunter.md`, and `specs/flow.md`;
+implement them as written.
 
 ## Coordinate system and presentation
 

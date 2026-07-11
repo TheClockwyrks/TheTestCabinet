@@ -15,9 +15,9 @@ position in the park snaps to this grid; the simulation reasons in tile coordina
 and only renders in pixels.
 
 - A tile is **24 x 24** logical pixels.
-- The plot is a bounded rectangle of tiles — about **64 columns wide** and **44
-  rows deep** is a good size (you may tune it, but it must be **larger than the park
-  view** so there is room to grow and a park to pan across). Tile `(0, 0)` is the
+- The plot is a bounded rectangle of tiles — **64 columns wide** and **44
+  rows deep**, **larger than the park
+  view** so there is room to grow and a park to pan across. Tile `(0, 0)` is the
   top-left of the plot.
 - The plot's outer edge is a **fence** (a border the player cannot build on or
   remove) with a single fixed **entrance gate** in it, where guests enter and leave

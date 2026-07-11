@@ -33,7 +33,7 @@ The cursor fires **bolts straight up** (`specs/charge.md`, `specs/worm.md`).
   fires). A held fire key auto-repeats at the fire cadence.
 - **Fire cadence.** A bolt may be fired at most every **0.15 s**; at most **3
   bolts** may be in flight at once. (These keep firing deliberate rather than a
-  continuous beam; tune them to taste but keep a cap.)
+  continuous beam.)
 - **Bolt travel.** A bolt spawns at the cursor's muzzle and travels straight
   up at
   about **900 px/s**, stopping at the **first** node, worm segment, or foe in its column

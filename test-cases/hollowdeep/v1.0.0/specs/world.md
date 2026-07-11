@@ -15,9 +15,9 @@ position in the world snaps to this grid; the simulation reasons in tile
 coordinates and only renders in pixels.
 
 - A tile is **24 x 24** logical pixels.
-- The world is a bounded rectangle of tiles — about **64 columns wide** and **44
-  rows deep** is a good size (you may tune it, but it must be **larger than the
-  colony view** so there is a world to explore and dig into). Tile `(0, 0)` is the
+- The world is a bounded rectangle of tiles — **64 columns wide** and **44
+  rows deep**, **larger than the colony view** so there is a world to explore and
+  dig into. Tile `(0, 0)` is the
   top-left of the world.
 - The world's outer border — its bottom and side edges, and a cap row or two at the
   very top — is **bedrock** (below) and **cannot be dug**, so the colony is sealed:

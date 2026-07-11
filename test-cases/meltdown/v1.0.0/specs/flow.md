@@ -8,8 +8,7 @@ refers to the floor in `specs/playfield.md`, the heat system in `specs/heat.md`,
 the towers in `specs/towers.md`, the surge in `specs/creeps.md`, the controls in
 `specs/controls.md`, and the playable mode in `specs/standard.md`.
 
-The numeric values here are the **starting balance**, meant to be tuned by play;
-implement them as written but keep them easy to adjust.
+The numeric values here are **fixed**; implement them exactly as written.
 
 ## Money and Economy
 
@@ -59,8 +58,8 @@ against a defense that is still being built up.
   pays no early-send bonus, and interest (paid only at the start of the
   between-wave build phases) does not apply to it. Only the phases *between* waves
   carry the `15 s` countdown and auto-start.
-- During a wave, the surge spawns from the vents over time (you design the
-  exact timing and vent split, `specs/creeps.md`). A wave is **cleared** when
+- During a wave, the surge spawns from the vents over time (the exact
+  timing and vent split are specified in `specs/creeps.md`). A wave is **cleared** when
   every unit it released has either died or leaked. Clearing a wave pays its
   bonus and begins the next build phase.
 - **Milestone waves.** Wave 10 and Wave 20 each include a **Core** boss

@@ -12,9 +12,8 @@ the `0..100` scale of `specs/heat.md`. A tower's `coolRate` is its cooling rate
 *at the redline* (`H = 100`); cooling is proportional to heat, so the effective
 cooling is `coolRate * (H / 100)` per second (`specs/heat.md`).
 
-The stat numbers below are the starting balance for this version. They are
-meant to be tuned by play; implement them as written, but structure the code so
-the values are easy to adjust. What must be exactly right is the **behavior**:
+The stat numbers below are **fixed** for this version; implement them exactly as
+written. Equally important is the **behavior**:
 the heat-to-damage curve, the redline trip, the coupling, and each tower's
 stance.
 

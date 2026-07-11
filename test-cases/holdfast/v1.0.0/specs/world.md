@@ -15,9 +15,9 @@ position in the world snaps to this grid; the simulation reasons in tile coordin
 and only renders in pixels.
 
 - A tile is **24 x 24** logical pixels.
-- The world is a bounded rectangle of tiles — about **60 columns wide** and **44
-  rows tall** is a good size (you may tune it, but it must be **larger than the
-  colony view** so there is a map to explore, gather, and defend). Tile `(0, 0)` is
+- The world is a bounded rectangle of tiles — **60 columns wide** and **44
+  rows tall**, **larger than the colony view** so there is a map to explore,
+  gather, and defend. Tile `(0, 0)` is
   the top-left of the world.
 - The world's outer border is **impassable rock** (below) that seals the play area —
   settlers and raiders cannot leave the map through it. Raiders instead enter from

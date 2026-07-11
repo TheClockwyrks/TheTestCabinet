@@ -6,8 +6,7 @@ This file defines the signature system of Floe: the **bear** that hunts the crit
 across the whole strait. **Read this file carefully.** It builds on the bands in
 `specs/playfield.md`, the hazards in `specs/hazards.md`, and the water in
 `specs/water.md`, and it is the thing that makes Floe more than a lane-crossing
-game. The numeric values here are a **starting balance**, meant to be tuned by play;
-implement them as written but keep them easy to adjust.
+game. The numeric values here are **fixed**; implement them exactly as written.
 
 ## What the bear is
 

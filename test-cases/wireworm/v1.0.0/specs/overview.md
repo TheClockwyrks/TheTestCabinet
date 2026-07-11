@@ -89,9 +89,9 @@ the requirements above — including the npm-driven static build, which fixes th
 `npm ci` and `npm run build` commands and where the output lands, but not how you
 implement the build behind them. Plain TypeScript with Canvas 2D is entirely
 sufficient; a framework is not required. Favor a clean, well-structured codebase
-over any particular technology. **You design the exact spawn timing, level pacing,
-and per-level composition** of the worm and foes within the constraints in
-`specs/worm.md`, `specs/foes.md`, and `specs/flow.md`.
+over any particular technology. The exact spawn timing, level pacing,
+and per-level composition of the worm and foes are **specified** in
+`specs/worm.md`, `specs/foes.md`, and `specs/flow.md`; implement them as written.
 
 ## Coordinate system and presentation
 

@@ -8,9 +8,8 @@ and pathing in `specs/playfield.md`, the towers in `specs/towers.md`, and the
 wave progression in `specs/flow.md`. Speeds are in logical pixels/second; HP and
 bounty are unitless game values.
 
-The stat numbers below are the **starting balance** and are meant to be tuned by
-play; implement them as written but keep them easy to adjust. What must be right
-is the **behavior**: each type's defining trait, the flyer's maze-bypassing
+The stat numbers below are **fixed**; implement them exactly as written. Equally
+important is the **behavior**: each type's defining trait, the flyer's maze-bypassing
 flight, and slow-immunity.
 
 ## Shared Rules

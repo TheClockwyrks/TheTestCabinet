@@ -16,9 +16,9 @@ position in the world snaps to this grid; the simulation reasons in tile coordin
 and only renders in pixels.
 
 - A tile is **24 x 24** logical pixels.
-- The map is a bounded rectangle of tiles — about **96 columns wide** and **72 rows
-  deep** is a good size (you may tune it, but it must be **larger than the city view**
-  so there is a map to grow across and pan over). Tile `(0, 0)` is the top-left of the
+- The map is a bounded rectangle of tiles — **96 columns wide** and **72 rows
+  deep**, **larger than the city view**
+  so there is a map to grow across and pan over. Tile `(0, 0)` is the top-left of the
   map.
 - The map's outer edge is a hard border the city cannot build past; there is no
   building or scrolling out of the map.

@@ -122,7 +122,7 @@ play:
 ## Health of what you build
 
 Every built structure and pipe has a **health pool** and shows a health bar when
-damaged (`specs/overview.md`). Suggested values (tunable):
+damaged (`specs/overview.md`). Health pools:
 
 | Structure | HP |
 | --- | --- |
