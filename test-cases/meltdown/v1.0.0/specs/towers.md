@@ -48,12 +48,12 @@ that shed heat far better than plain faces. Radiators are given in the tower's
 
 | Tower | Size | Role / stance | Cost | Range | Fire rate | Base dmg | heatPerShot | Redline | Mass | Radiators (local) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Arc** | 2x2 | Basic, balanced — the cheap maze/chip tower | 15 | 6.0 | 2.0 /s | 6 | 7.9 | 80 | 1.0 | N, S |
-| **Stutter** | 2x2 | Rapid fire — twitchy, low redline, trips easily | 40 | 5.0 | 7.0 /s | 2.0 | 3.2 | 60 | 0.5 | N, E |
-| **Rime** | 2x2 | Cryo slow — heat-averse | 45 | 5.5 | 2.4 /s | 4 | 5.4 | 100* | 1.1 | N, S, E |
-| **Flak** | 2x2 | Anti-air only — dedicated flyer counter | 60 | 8.0 | 2.6 /s | 6 | 7.4 | 78 | 0.9 | N, S |
-| **Bloom** | 3x3 | Area splash — big, heavy, runs hot | 150 | 6.0 | 1.2 /s | 10 | 21.0 | 82 | 1.8 | N, E |
-| **Lance** | 4x4 | Long-range sniper — heavy, high redline, wants feeding | 150 | 12.0 | 0.8 /s | 43 | 37.6 | 92 | 2.8 | N, E |
+| **Arc** | 2x2 | Basic, balanced — the cheap maze/chip tower | 15 | 6.0 | 2.0 /s | 6 | 10.3 | 80 | 1.0 | N, S |
+| **Stutter** | 2x2 | Rapid fire — twitchy, low redline, trips easily | 40 | 5.0 | 7.0 /s | 2.0 | 4.2 | 60 | 0.5 | N, E |
+| **Rime** | 2x2 | Cryo slow — heat-averse | 45 | 5.5 | 2.4 /s | 4 | 7.0 | 100* | 1.1 | N, S, E |
+| **Flak** | 2x2 | Anti-air only — dedicated flyer counter | 60 | 8.0 | 2.6 /s | 6 | 9.6 | 78 | 0.9 | N, S |
+| **Bloom** | 3x3 | Area splash — big, heavy, runs hot | 150 | 6.0 | 1.2 /s | 10 | 27.3 | 82 | 1.8 | N, E |
+| **Lance** | 4x4 | Long-range sniper — heavy, high redline, wants feeding | 150 | 12.0 | 0.8 /s | 43 | 48.9 | 92 | 2.8 | N, E |
 
 `*` The Rime is heat-averse and has **no damage plateau** — its redline is the
 `100` trip; it slows best cold (below).
@@ -72,7 +72,7 @@ Notes on the ones with special behavior:
   plateau to spike around in. It is the clearest "wants a Sink" tower — beside one
   it holds a continuous stream of fire.
 - **Lance** is a `4 x 4` sniper: a huge hit at long range, but a **low firing heat**
-  for its bulk, so on an open lane it runs **cold** and hits near its `0.5x` floor.
+  for its bulk, so on an open lane it runs **cold** and hits near its `0.35x` floor.
   Its **high redline (`92`)** means it only reaches full power run very hot, and a
   `4 x 4` cannot shed much heat once its faces are covered — so the way to arm it is
   to **feed it**: tuck it so its faces are blocked, or park a **Forge** on it (only
@@ -114,7 +114,7 @@ they shift heat to and from the emitter faces that touch them (see `specs/heat.m
 | Tower | Effect on each touching emitter | Cost |
 | --- | --- | --- |
 | **Forge** | Thermostat: warms toward a **setpoint** (`72` at level I), never past it | 20 |
-| **Sink** | Coolant loop: adds `12` (level I) cooling per shared edge, proportional to heat | 20 |
+| **Sink** | Coolant loop: adds `16` (level I) cooling per shared edge, proportional to heat | 20 |
 
 - The **Forge** adds `0.9 * sharedEdgeTiles * max(0, setpoint - H)` heat per second
   — it only ever pushes an emitter *up to* its setpoint, so it cannot trip a firing
@@ -146,7 +146,7 @@ air. Multiple movers touching one emitter stack their effect.
     **unchanged**. The **Rime** instead raises its cold-slow ceiling
     (`0.55 → 0.68 → 0.80`) along with range and `heatPerShot`.
   - **Movers:** the **Forge**'s setpoint rises `72 → 84 → 96`; the **Sink**'s
-    per-edge cooling rises `12 → 18 → 27`. Size/footprint unchanged.
+    per-edge cooling rises `16 → 24 → 36`. Size/footprint unchanged.
   - **Cost.** Upgrading to II costs `1.0x` the build cost; to III, `1.8x`. (For an
     Arc: `15` to reach II, `27` to reach III.)
 - **Sell.** A selected tower sells for a `70%` refund of everything spent on it

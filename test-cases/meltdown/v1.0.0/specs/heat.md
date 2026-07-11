@@ -56,13 +56,16 @@ to the tower's **redline** `R`, then **holds flat at maximum** from `R` up to th
 
 ```
 damage = baseDamage * heatMultiplier(H, R)
-heatMultiplier(H, R) = 0.5 + 2.5 * (min(H, R) / R)^2      (flat 3.0x for H >= R)
+heatMultiplier(H, R) = 0.35 + 3.15 * (min(H, R) / R)^2    (flat 3.5x for H >= R)
 ```
 
-So at `H = 0` a shot does only **0.5x** base damage; the multiplier climbs
-quadratically to **3.0x** at `H = R`, and **stays at 3.0x** for all `H` from `R`
-to `100`. A cold tower is genuinely **feeble** — barely half its base damage — and
-a tower at or above its redline is three times the base value.
+So at `H = 0` a shot does only **0.35x** base damage; the multiplier climbs
+quadratically to **3.5x** at `H = R`, and **stays at 3.5x** for all `H` from `R`
+to `100`. A cold tower is genuinely **feeble** — barely a third of its base
+damage — and a tower at or above its redline is three-and-a-half times the base
+value. A wall of never-firing cold towers is therefore not a defence: heat is
+where nearly all of a tower's damage lives, so you must funnel the surge past
+your guns (a maze) to keep them hot.
 
 - **The redline `R` is per-tower and is the max-efficiency mark** — the point where
   the tower reaches full power. It is **not** always `100`. A light, twitchy gun
@@ -85,13 +88,13 @@ which means shaping the floor so each gun runs hot without tipping over.
 
 If a tower's heat reaches `100`, it **trips**:
 
-- The tower goes offline for a trip cooldown of `3.0 s` — it stops firing and
+- The tower goes offline for a trip cooldown of `5.0 s` — it stops firing and
   deals no damage at all during that window.
 - It is drawn unmistakably tripped: strobing red (`#ff3030`), visibly dead.
-- Its heat bleeds off to `0` over the cooldown, and when the `3.0 s` elapse it
+- Its heat bleeds off to `0` over the cooldown, and when the `5.0 s` elapse it
   comes back online cold (`H = 0`) and begins heating from scratch.
 
-A tripped tower is a hole in your defense: for three seconds the surge walks past
+A tripped tower is a hole in your defense: for five seconds the surge walks past
 it untouched. Tripping is the **only** way an emitter fails — towers are never
 destroyed, never damaged by the surge, and have no ammo. The whole risk of running
 hot is the trip, and the whole skill is riding the `[R, 100]` band for full damage
@@ -179,7 +182,7 @@ the emitter must touch the mover's footprint.
   a Sink cools **through a face that would otherwise be blocked**, so it is the
   **only way to cool a boxed-in tower**: thread Sinks through a dense core and the
   core holds instead of baking. Its output **rises with its level**
-  (`12 → 18 → 27` per edge, `specs/towers.md`). Sinks stack, and shield a Rime from
+  (`16 → 24 → 36` per edge, `specs/towers.md`). Sinks stack, and shield a Rime from
   stray heat.
 
 Both are still **walls** like any tower (`specs/playfield.md`), so they also shape

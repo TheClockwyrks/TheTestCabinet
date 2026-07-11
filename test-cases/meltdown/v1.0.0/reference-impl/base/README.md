@@ -7,9 +7,9 @@ also **walls**, so there is no fixed path — you *build the maze* the surge mus
 walk, winding it the long way around so your guns have time to burn it down.
 
 Meltdown's defining idea is **heat as power**. Every emitter fires harder the
-hotter it runs, on an accelerating curve — feeble when cold (about `0.5x`),
-roughly `3x` just under the redline — but push it to `100` heat and it **trips**
-offline for three seconds, leaving a hole in your defense. Laying out the floor
+hotter it runs, on an accelerating curve — feeble when cold (about `0.35x`),
+`3.5x` from the redline up — but push it to `100` heat and it **trips**
+offline for five seconds, leaving a hole in your defense. Laying out the floor
 is a thermal problem as much as a spatial one: keep your guns hot, but not so hot
 they cut out. Two support structures sculpt that heat — a **Forge** that pours
 heat into its orthogonal neighbours and a **Sink** that draws it away — and the

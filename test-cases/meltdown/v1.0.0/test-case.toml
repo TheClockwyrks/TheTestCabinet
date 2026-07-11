@@ -191,7 +191,7 @@ description = "The TD core: towers-as-walls mazing and live re-pathing to the fi
 [[review_item]]
 id = "heat-is-power"
 title = "Heat is power, up to the redline"
-text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 0.5x base) — to 3x at its per-tower REDLINE (its max-efficiency mark), then holds flat at 3x from the redline up to the 100 trip. Its glow tracks heat from cold blue to white-hot, and the heat read shows the redline marker. A tower fed a steady stream of targets visibly hits harder than an idle one."
+text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 0.35x base) — to 3.5x at its per-tower REDLINE (its max-efficiency mark), then holds flat at 3.5x from the redline up to the 100 trip. Its glow tracks heat from cold blue to white-hot, and the heat read shows the redline marker. Because a cold gun is so weak, a tower fed a steady stream of targets hits dramatically harder than an idle one — heat is where nearly all the damage lives."
 weight = 1
 domain = "heat"
 reference = "gameplay"
@@ -200,7 +200,7 @@ proof = "heat"
 [[review_item]]
 id = "redline-trip"
 title = "The trip"
-text = "Pushing a tower's heat to 100 trips it offline for about 3 seconds (strobing red, dealing no damage), then it returns cold — and this is the ONLY way a tower fails (towers are never destroyed or damaged by the surge). The redline (max-efficiency mark) is below 100 for most towers, so running in the plateau is deliberately close to the trip. A tripped kill-box visibly gaps the defense for those seconds."
+text = "Pushing a tower's heat to 100 trips it offline for about 5 seconds (strobing red, dealing no damage), then it returns cold — and this is the ONLY way a tower fails (towers are never destroyed or damaged by the surge). The redline (max-efficiency mark) is below 100 for most towers, so running in the plateau is deliberately close to the trip. A tripped kill-box visibly gaps the defense for those seconds, so pacing heat to avoid the trip is essential to hold a dense wave."
 weight = 1
 domain = "heat"
 proof = "heat"

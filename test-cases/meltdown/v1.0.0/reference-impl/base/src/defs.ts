@@ -47,7 +47,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     range: 6.0,
     fireRate: 2.0,
     baseDamage: 6,
-    heatPerShot: 7.9,
+    heatPerShot: 10.3,
     redline: 80,
     mass: 1.0,
   },
@@ -61,7 +61,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     range: 5.0,
     fireRate: 7.0,
     baseDamage: 2.0,
-    heatPerShot: 3.2,
+    heatPerShot: 4.2,
     redline: 60,
     mass: 0.5,
   },
@@ -75,7 +75,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     range: 12.0,
     fireRate: 0.8,
     baseDamage: 43,
-    heatPerShot: 37.6,
+    heatPerShot: 48.9,
     redline: 92,
     mass: 2.8,
   },
@@ -89,7 +89,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     range: 6.0,
     fireRate: 1.2,
     baseDamage: 10,
-    heatPerShot: 21.0,
+    heatPerShot: 27.3,
     redline: 82,
     mass: 1.8,
     splash: 2.4,
@@ -104,7 +104,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     range: 5.5,
     fireRate: 2.4,
     baseDamage: 4,
-    heatPerShot: 5.4,
+    heatPerShot: 7.0,
     redline: 100, // heat-averse: no damage plateau; still trips at 100
     mass: 1.1,
     rimeSlow: [0.55, 0.68, 0.8],
@@ -119,7 +119,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     range: 8.0,
     fireRate: 2.6,
     baseDamage: 6,
-    heatPerShot: 7.4,
+    heatPerShot: 9.6,
     redline: 78,
     mass: 0.9,
     airOnly: true,
@@ -138,7 +138,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     glyph: "▽",
     cost: 20,
     size: 2,
-    output: [12, 18, 27], // per-edge cooling added by level
+    output: [16, 24, 36], // per-edge cooling added by level
   },
 };
 

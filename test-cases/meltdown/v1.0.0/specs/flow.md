@@ -139,7 +139,7 @@ targets:
   would seal either required route is **refused** (`specs/playfield.md`).
 - **Heat is power:** an emitter's damage climbs with its heat to full power at its
   per-tower **redline** and holds it to the `100` **trip**, where it goes offline
-  for `3 s`; a tower sheds heat only through faces on open air, so a boxed-in core
+  for `5 s`; a tower sheds heat only through faces on open air, so a boxed-in core
   bakes and trips (`specs/heat.md`).
 - The thermostatic **Forge** warms touching emitters toward its setpoint (never
   past it) and the coolant **Sink** draws heat out (the only way to cool a boxed-in

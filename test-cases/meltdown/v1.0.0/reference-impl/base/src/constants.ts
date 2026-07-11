@@ -82,7 +82,7 @@ export const MONO =
 // ---- Heat model (specs/heat.md) ------------------------------------------
 
 export const REDLINE = 100; // heat at which any emitter TRIPS offline
-export const TRIP_TIME = 3.0; // seconds a tripped tower stays offline
+export const TRIP_TIME = 5.0; // seconds a tripped tower stays offline
 
 // Surface-cooling ("thermal blanket"): an emitter sheds heat only through its
 // perimeter tile-edges that face open air (or the casing). A radiator face
@@ -103,13 +103,17 @@ export const COND_K = 3.5;
 export const FORGE_K = 0.9;
 
 // Damage plateau: a shot does `baseDamage * heatMultiplier(H, redline)`. Damage
-// ramps on an accelerating curve from 0.5x cold to 3.0x at the tower's redline R,
-// then holds flat at 3.0x from R up to the 100 trip — R is the max-efficiency
-// mark (it varies per tower; specs/heat.md, specs/towers.md).
-export const MAX_HEAT_MULT = 3.0;
+// ramps on an accelerating curve from MIN_HEAT_MULT cold to MAX_HEAT_MULT at the
+// tower's redline R, then holds flat at max from R up to the 100 trip — R is the
+// max-efficiency mark (it varies per tower; specs/heat.md, specs/towers.md). The
+// cold floor is deliberately LOW: a cold gun is nearly useless, so fielding a
+// swarm of never-firing cold towers is not a defence — you must run guns hot,
+// which means funnelling the surge past them (a maze) and pacing their heat.
+export const MIN_HEAT_MULT = 0.35;
+export const MAX_HEAT_MULT = 3.5;
 export function heatMultiplier(h: number, redline: number): number {
   const x = Math.min(h, redline) / redline;
-  return 0.5 + (MAX_HEAT_MULT - 0.5) * x * x;
+  return MIN_HEAT_MULT + (MAX_HEAT_MULT - MIN_HEAT_MULT) * x * x;
 }
 
 // ---- Economy & flow (specs/flow.md) --------------------------------------

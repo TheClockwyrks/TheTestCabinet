@@ -123,6 +123,10 @@ export class Game {
   simTime = 0;
   reachedWave = 1; // for the end screen
 
+  // Lifetime tallies (headless instrumentation; harmless for normal play).
+  kills = 0;
+  leakCount = 0;
+
   // Menu-overlay item rects, laid out by the renderer for click hit-testing.
   menuHits: MenuHit[] = [];
 
@@ -152,6 +156,8 @@ export class Game {
     this.score = 0;
     this.waveNumber = 1;
     this.reachedWave = 1;
+    this.kills = 0;
+    this.leakCount = 0;
     this.openingPhase = false;
     this.armed = null;
     this.armedRot = 0;
@@ -509,6 +515,7 @@ export class Game {
         // Killed — pay bounty and score.
         this.money += u.def.bounty;
         this.score += u.def.bounty;
+        this.kills++;
       } else {
         survivors.push(u);
       }
@@ -521,6 +528,7 @@ export class Game {
     for (const u of this.surge) {
       if (u.leaked) {
         this.lives -= u.def.leak;
+        this.leakCount++;
       } else {
         survivors.push(u);
       }
@@ -586,9 +594,9 @@ export class Game {
     return true;
   }
 
-  private placeTower(type: TowerType, col: number, row: number): void {
-    if (!this.canPlaceAt(type, col, row)) return;
-    const t = new Tower(type, col, row, this.armedRot);
+  private placeTower(type: TowerType, col: number, row: number, rot: Rotation): Tower | null {
+    if (!this.canPlaceAt(type, col, row)) return null;
+    const t = new Tower(type, col, row, rot);
     for (const tile of this.grid.footprintTiles(col, row, t.size)) this.grid.blocked[tile] = 1;
     this.towers.push(t);
     this.money -= TOWER_DEFS[type].cost;
@@ -600,34 +608,48 @@ export class Game {
     if (this.money < TOWER_DEFS[type].cost) {
       this.armed = null;
     }
+    return t;
   }
 
   private sellSelected(): void {
-    const t = this.selected;
-    if (!t) return;
-    this.money += Math.floor(t.totalSpend * 0.7);
-    for (const tile of this.grid.footprintTiles(t.col, t.row, t.size)) this.grid.blocked[tile] = 0;
-    this.towers = this.towers.filter((x) => x !== t);
-    this.selected = null;
-    this.recomputePaths();
+    if (this.selected) this.sell(this.selected);
   }
 
   private upgradeSelected(): void {
-    const t = this.selected;
-    if (!t || t.level >= 3) return;
+    if (this.selected) this.upgrade(this.selected);
+  }
+
+  // Rotate the selected emitter's radiator faces (specs/heat.md). Movers have no
+  // faces to rotate.
+  private rotateSelected(): void {
+    if (this.selected) this.rotate(this.selected);
+  }
+
+  // Sell any tower: 70% refund of total spend, reopen its tiles, re-path.
+  sell(t: Tower): void {
+    this.money += Math.floor(t.totalSpend * 0.7);
+    for (const tile of this.grid.footprintTiles(t.col, t.row, t.size)) this.grid.blocked[tile] = 0;
+    this.towers = this.towers.filter((x) => x !== t);
+    if (this.selected === t) this.selected = null;
+    this.recomputePaths();
+  }
+
+  // Upgrade any tower one level (I -> II -> III). Returns whether it happened.
+  upgrade(t: Tower): boolean {
+    if (t.level >= 3) return false;
     const cost = t.level === 1 ? Math.round(t.def.cost) : Math.round(t.def.cost * 1.8);
-    if (this.money < cost) return;
+    if (this.money < cost) return false;
     this.money -= cost;
     t.totalSpend += cost;
     t.level += 1;
     this.recomputeAdjacency();
+    return true;
   }
 
-  // Rotate a placed emitter's radiator faces (specs/heat.md). Movers have no
-  // faces to rotate. Re-derives thermal adjacency for the new orientation.
-  private rotateSelected(): void {
-    const t = this.selected;
-    if (!t || !t.isEmitter) return;
+  // Rotate any placed emitter's radiator faces one quarter-turn. Re-derives the
+  // tower's cooling for the new orientation.
+  rotate(t: Tower): void {
+    if (!t.isEmitter) return;
     t.rot = ((t.rot + 1) % 4) as Rotation;
     this.recomputeAdjacency();
   }
@@ -811,7 +833,7 @@ export class Game {
     }
     if (this.armed) {
       if (this.preview && this.preview.valid) {
-        this.placeTower(this.armed, this.preview.col, this.preview.row);
+        this.placeTower(this.armed, this.preview.col, this.preview.row, this.armedRot);
       }
       return;
     }
@@ -863,6 +885,33 @@ export class Game {
       this.pause();
       return;
     }
+  }
+
+  // ---- Programmatic control (headless simulation & automated tests) ------
+  // A thin, input-free surface over the exact simulation the UI drives, so a
+  // headless harness (sim/) can script a full match deterministically —
+  // begin a match, build/upgrade/sell/rotate by coordinate or reference, launch
+  // a wave — and step fixedStep() as fast as the host allows (no rAF, no render).
+  // These call the same private code paths the mouse/keyboard handlers do, so a
+  // simulated game is identical to a played one.
+
+  // Enter a fresh match at the untimed opening build phase (Wave 1).
+  beginMatch(): void {
+    this.startMatch();
+  }
+
+  // Build `type` with its top-left footprint tile at (col, row), rotated `rot`
+  // quarter-turns. Returns the placed Tower, or null if the placement was
+  // rejected (unaffordable, overlapping, off-grid, or sealing a required route).
+  build(type: TowerType, col: number, row: number, rot: Rotation = 0): Tower | null {
+    if (this.state !== "playing") return null;
+    return this.placeTower(type, col, row, rot);
+  }
+
+  // Send the current wave. `early` pays the early-send bonus (specs/flow.md);
+  // pass false to model letting the build-phase timer expire (no bonus).
+  launchWave(early = false): void {
+    this.sendWave(early);
   }
 
   // ---- Read-only helpers for the renderer --------------------------------
