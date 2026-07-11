@@ -24,11 +24,11 @@ import {
   STAGE_H,
   STAGE_W,
   TILE,
-  TOTAL_WAVES,
 } from "./constants";
 import { isEmitterDef, SURGE_DEFS, TOWER_DEFS, type EmitterDef } from "./defs";
 import type { Game, MenuHit } from "./game";
 import { END_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./game";
+import { DIFFICULTIES, MODE_ENTRIES, type MenuEntry } from "./modes";
 import type { Tower } from "./towers";
 import type { Side, SurgeType, TowerType } from "./types";
 import { rotateSide, TOWER_ORDER } from "./types";
@@ -47,7 +47,7 @@ import {
   upgradeBtnRect,
   type Rect,
 } from "./ui";
-import { wavePreview } from "./waves";
+import { isBossWave, onslaughtPreview, wavePreview } from "./waves";
 
 const TYPE_COLOR: Record<TowerType, string> = {
   arc: C.warm,
@@ -127,24 +127,32 @@ export function render(ctx: Ctx, game: Game): void {
 
   game.menuHits = [];
 
-  if (game.state === "title" || game.state === "howto") {
-    // The menu has no build panel, so extend the reactor field across the whole
-    // stage — a full-screen field reads as one continuous floor behind the menu
-    // instead of stopping short where the (absent) HUD would sit.
+  const menuScreen =
+    game.state === "title" ||
+    game.state === "howto" ||
+    game.state === "modeselect" ||
+    game.state === "difficulty";
+  if (menuScreen) {
+    // The menu screens have no build panel, so extend the reactor field across
+    // the whole stage — a full-screen field reads as one continuous floor behind
+    // the menu instead of stopping short where the (absent) HUD would sit.
     drawFloorBase(ctx, true);
     // The title shows a dim slice of reactor floor with glowing towers behind
-    // the menu; the how-to keeps a clean floor so the text stays legible.
+    // the menu; the other menus keep a clean floor so the text stays legible.
     if (game.state === "title") for (const t of game.towers) drawTower(ctx, game, t);
     ctx.fillStyle = rgba(C.steel, game.state === "title" ? 0.6 : 0.82);
     ctx.fillRect(0, 0, STAGE_W, STAGE_H);
     if (game.state === "title") drawTitle(ctx, game);
-    else drawHowTo(ctx);
+    else if (game.state === "howto") drawHowTo(ctx);
+    else if (game.state === "modeselect") drawModeSelect(ctx, game);
+    else drawDifficulty(ctx, game);
     return;
   }
 
   // In-match (also frozen behind pause / end overlays).
   drawFloorBase(ctx);
   drawOpenings(ctx, game);
+  drawBuildZone(ctx, game);
   for (const t of game.towers) drawTower(ctx, game, t);
   drawRangeRings(ctx, game);
   drawPreview(ctx, game);
@@ -251,6 +259,36 @@ function drawOpenings(ctx: Ctx, game: Game): void {
   vent(FLOOR_X0 + colOf(g.topVent.tiles[0]) * TILE, 0, spanOf(g.topVent.tiles), CASING);
   exhaust(FLOOR_X1, FLOOR_Y0 + rowOf(g.rightExhaust.tiles[0]) * TILE, CASING, spanOf(g.rightExhaust.tiles));
   exhaust(FLOOR_X0 + colOf(g.bottomExhaust.tiles[0]) * TILE, FLOOR_Y1, spanOf(g.bottomExhaust.tiles), CASING);
+}
+
+// Bottleneck (specs/modes.md): only the marked core zone is buildable. Dim the
+// off-limits floor and outline the zone with a hazard-dashed border so the player
+// can read where they may build.
+function drawBuildZone(ctx: Ctx, game: Game): void {
+  const z = game.cfg.buildZone;
+  if (!z) return;
+  const zx = FLOOR_X0 + z.c0 * TILE;
+  const zy = FLOOR_Y0 + z.r0 * TILE;
+  const zw = (z.c1 - z.c0 + 1) * TILE;
+  const zh = (z.r1 - z.r0 + 1) * TILE;
+
+  // Dim the off-limits area (the whole floor minus the zone), via even-odd fill.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(FLOOR_X0, FLOOR_Y0, FLOOR_W, FLOOR_H);
+  ctx.rect(zx, zy, zw, zh);
+  ctx.fillStyle = rgba("#0a0c10", 0.5);
+  ctx.fill("evenodd");
+  ctx.restore();
+
+  // Zone border.
+  ctx.save();
+  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = rgba(C.ok, 0.7);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(zx + 1, zy + 1, zw - 2, zh - 2);
+  ctx.restore();
+  text(ctx, "BUILD ZONE", zx + 6, zy + 15, 10, rgba(C.ok, 0.85), "left", 700);
 }
 
 // ---- Towers ---------------------------------------------------------------
@@ -535,7 +573,12 @@ function readout(ctx: Ctx, label: string, value: string, x: number, valueColor: 
 function drawReadouts(ctx: Ctx, game: Game): void {
   readout(ctx, "MONEY", String(game.money), PANEL_INNER_X, C.money, "left");
   readout(ctx, "LIVES", String(game.lives), (PANEL_INNER_X + PANEL_INNER_R) / 2, C.text, "center");
-  readout(ctx, "WAVE", `${game.waveNumber} / ${TOTAL_WAVES}`, PANEL_INNER_R, C.text, "right");
+  if (game.cfg.onslaught) {
+    const remaining = Math.max(0, 100 - game.kills - game.leakCount);
+    readout(ctx, "SURGE", `${remaining} left`, PANEL_INNER_R, C.text, "right");
+  } else {
+    readout(ctx, "WAVE", `${game.waveNumber} / ${game.totalWaves}`, PANEL_INNER_R, C.text, "right");
+  }
 
   // Divider + a phase progress read.
   const dy = READOUTS_Y + 46;
@@ -770,14 +813,17 @@ function drawNextWave(ctx: Ctx, game: Game): void {
   ctx.stroke();
 
   const ix = INSPECTOR.x + 12;
-  const previewWave = game.phase === "build" ? game.waveNumber : Math.min(TOTAL_WAVES, game.waveNumber + 1);
+  const onslaught = game.cfg.onslaught;
+  const previewWave = game.phase === "build" ? game.waveNumber : Math.min(game.totalWaves, game.waveNumber + 1);
   text(ctx, game.phase === "build" ? "NEXT WAVE" : "CURRENT WAVE", ix, INSPECTOR.y + 24, 12, C.textDim, "left", 700);
-  text(ctx, `WAVE ${previewWave}`, ix, INSPECTOR.y + 46, 16, C.text, "left", 700);
-  if (previewWave === 10 || previewWave === 20) {
+  text(ctx, onslaught ? "THE HUNDRED" : `WAVE ${previewWave}`, ix, INSPECTOR.y + 46, 16, C.text, "left", 700);
+  if (onslaught) {
+    text(ctx, "⚠ 100 UNITS", INSPECTOR.x + INSPECTOR.w - 12, INSPECTOR.y + 46, 11, C.exhaust, "right", 700);
+  } else if (isBossWave(previewWave, game.totalWaves)) {
     text(ctx, "⚠ CORE BOSS", INSPECTOR.x + INSPECTOR.w - 12, INSPECTOR.y + 46, 11, C.exhaust, "right", 700);
   }
 
-  const list = wavePreview(previewWave);
+  const list = onslaught ? onslaughtPreview() : wavePreview(previewWave, game.totalWaves);
   let y = INSPECTOR.y + 78;
   for (const item of list) {
     const d = SURGE_DEFS[item.type];
@@ -902,6 +948,88 @@ function drawTitle(ctx: Ctx, game: Game): void {
   spaced(ctx, "CLICK OR ↑ ↓ + ENTER", cx, 686, 15, C.textFaint, 8, 400);
 }
 
+// A left-aligned vertical menu column (mode / difficulty screens): the focused
+// row carries a pointer and records a hit rect for the mouse.
+function drawMenuColumn(ctx: Ctx, game: Game, names: string[], x: number, y0: number, gap: number, size: number): void {
+  for (let i = 0; i < names.length; i++) {
+    const y = y0 + i * gap;
+    const selected = game.menuIndex === i;
+    setFont(ctx, size, selected ? 700 : 400);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    if (selected) {
+      ctx.fillStyle = C.hot;
+      ctx.fillText("▸", x - 30, y);
+    }
+    ctx.fillStyle = selected ? C.text : C.textDim;
+    ctx.fillText(names[i], x, y);
+    const w = ctx.measureText(names[i]).width;
+    const rect: Rect = { x: x - 38, y: y - size, w: Math.max(w + 54, 300), h: size + 16 };
+    game.menuHits.push({ index: i, rect });
+  }
+}
+
+// The info card shown beside a menu column — the focused entry's name, optional
+// stat rows, and its description. This is what the player reads on hover before
+// choosing (specs/modes.md, specs/flow.md).
+function drawInfoPanel(ctx: Ctx, title: string, lines: string[], stats?: Array<[string, string]>): void {
+  const x = 616;
+  const y = 196;
+  const w = 528;
+  const h = 356;
+  ctx.fillStyle = "#20262e";
+  rr(ctx, x, y, w, h, 12);
+  ctx.fill();
+  ctx.strokeStyle = C.edge;
+  ctx.lineWidth = 1;
+  rr(ctx, x, y, w, h, 12);
+  ctx.stroke();
+
+  text(ctx, title, x + 28, y + 56, 26, C.hot, "left", 700);
+  let ly = y + 96;
+  if (stats) {
+    for (const [label, value] of stats) {
+      text(ctx, label, x + 28, ly, 12, C.textFaint, "left", 400);
+      text(ctx, value, x + w - 28, ly, 13, C.money, "right", 700);
+      ly += 24;
+    }
+    ly += 10;
+  }
+  for (const line of lines) {
+    for (const wl of wrapLines(ctx, line, 14, w - 56)) {
+      text(ctx, wl, x + 28, ly, 14, C.textDim, "left", 400);
+      ly += 22;
+    }
+    ly += 4;
+  }
+}
+
+function drawModeSelect(ctx: Ctx, game: Game): void {
+  const cx = STAGE_W / 2;
+  spaced(ctx, "SELECT A MODE", cx, 98, 30, C.text, 8, 700);
+  const names = [...MODE_ENTRIES.map((m) => m.name), "BACK"];
+  drawMenuColumn(ctx, game, names, 150, 214, 58, 24);
+  const focus: MenuEntry | null = game.menuIndex < MODE_ENTRIES.length ? MODE_ENTRIES[game.menuIndex] : null;
+  drawInfoPanel(ctx, focus ? focus.name : "BACK", focus ? focus.blurb : ["Return to the main menu."]);
+  spaced(ctx, "CLICK OR ↑ ↓ + ENTER   ·   ESC BACK", cx, 692, 13, C.textFaint, 6, 400);
+}
+
+function drawDifficulty(ctx: Ctx, game: Game): void {
+  const cx = STAGE_W / 2;
+  spaced(ctx, "SELECT DIFFICULTY", cx, 92, 30, C.text, 8, 700);
+  spaced(ctx, "CONTAINMENT", cx, 128, 13, C.textFaint, 6, 400);
+  const names = [...DIFFICULTIES.map((d) => d.name), "BACK"];
+  drawMenuColumn(ctx, game, names, 150, 244, 66, 26);
+  const d = game.menuIndex < DIFFICULTIES.length ? DIFFICULTIES[game.menuIndex] : null;
+  drawInfoPanel(
+    ctx,
+    d ? d.name : "BACK",
+    d ? d.blurb : ["Return to mode select."],
+    d ? [["STARTING FUNDS", String(d.startMoney)], ["WAVES", String(d.totalWaves)], ["LIVES", "20"]] : undefined,
+  );
+  spaced(ctx, "CLICK OR ↑ ↓ + ENTER   ·   ESC BACK", cx, 692, 13, C.textFaint, 6, 400);
+}
+
 function drawHowTo(ctx: Ctx): void {
   const cx = STAGE_W / 2;
   spaced(ctx, "HOW TO PLAY", cx, 90, 34, C.text, 8, 700);
@@ -995,7 +1123,8 @@ function drawEndCard(ctx: Ctx, game: Game, victory: boolean): void {
   const { y } = card(ctx, w, h);
   const cx = STAGE_W / 2;
 
-  text(ctx, victory ? "CONTAINMENT HELD" : "REACTOR BREACHED", cx, y + 46, 18, victory ? C.ok : C.exhaust, "center", 700);
+  text(ctx, game.cfg.label, cx, y + 26, 11, C.textFaint, "center", 700);
+  text(ctx, victory ? "CONTAINMENT HELD" : "REACTOR BREACHED", cx, y + 52, 18, victory ? C.ok : C.exhaust, "center", 700);
   // Title with a warm→hot gradient.
   setFont(ctx, 50, 700);
   const label = victory ? "VICTORY" : "MELTDOWN";
@@ -1017,10 +1146,10 @@ function drawEndCard(ctx: Ctx, game: Game, victory: boolean): void {
 
   spaced(ctx, `SCORE ${game.score.toLocaleString()}`, cx, y + 158, 34, C.text, 6, 700);
   if (victory) {
-    spaced(ctx, `WAVES SURVIVED ${TOTAL_WAVES} / ${TOTAL_WAVES}`, cx, y + 196, 17, C.textDim, 5, 400);
+    spaced(ctx, game.cfg.onslaught ? "SURGE CLEARED — 100 / 100" : `WAVES SURVIVED ${game.totalWaves} / ${game.totalWaves}`, cx, y + 196, 17, C.textDim, 5, 400);
     spaced(ctx, `LIVES REMAINING ${game.lives}`, cx, y + 224, 17, C.textDim, 5, 400);
   } else {
-    spaced(ctx, `REACHED WAVE ${game.reachedWave} / ${TOTAL_WAVES}`, cx, y + 200, 18, C.textDim, 6, 400);
+    spaced(ctx, game.cfg.onslaught ? "THE HUNDRED — SURGE BREACHED" : `REACHED WAVE ${game.reachedWave} / ${game.totalWaves}`, cx, y + 200, 18, C.textDim, 6, 400);
   }
 
   for (let i = 0; i < END_ITEMS.length; i++) {

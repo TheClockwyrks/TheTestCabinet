@@ -2,6 +2,8 @@
 
 export type AppState =
   | "title"
+  | "modeselect"
+  | "difficulty"
   | "howto"
   | "playing"
   | "paused"

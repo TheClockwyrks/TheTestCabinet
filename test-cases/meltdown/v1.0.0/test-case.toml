@@ -107,7 +107,7 @@ source = "specs/controls.md"
 source = "specs/flow.md"
 
 [[spec]]
-source = "specs/standard.md"
+source = "specs/modes.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact
 # paths the `[[proof]]` entries below declare. The paths in this spec and in the
@@ -117,8 +117,12 @@ source = "specs/proof.md"
 
 # Common reference views, seeded for EVERY variant. Each `path` is a static HTML
 # mockup the harness renders to a screenshot and seeds as a visual target. The
-# `title` view is variant-specific (declared per variant above); `gameplay` and
-# `game-over` look the same in every variant.
+# `title` view is variant-specific (declared per variant above); `mode-select`,
+# `gameplay`, and `game-over` look the same in every variant.
+[[reference]]
+view = "mode-select"
+path = "reference/mode-select.html"
+
 [[reference]]
 view = "gameplay"
 path = "reference/gameplay.html"
@@ -138,6 +142,11 @@ path = "reference/game-over.html"
 id = "title"
 name = "Title menu"
 dest = "proof/title.png"
+
+[[proof]]
+id = "mode-select"
+name = "Mode select"
+dest = "proof/mode-select.png"
 
 [[proof]]
 id = "gameplay"
@@ -303,7 +312,7 @@ domain = "defense"
 [[review_item]]
 id = "surge-and-waves"
 title = "Surge, waves, and the economy"
-text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on waves 10 and 20), each with its trait, in large, dense waves; a leak costs lives, 0 lives ends the game, and clearing wave 20 wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus — and starting money (250) affords an opening maze of about 16 basic Arc towers, so building and re-shaping a large maze is central to the game."
+text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on the milestone waves — the midpoint and the finale), each with its trait, in large, dense waves; a leak costs lives, 0 lives ends the game, and clearing the final wave wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus — and the standard Medium start (250) affords an opening maze of about 16 basic Arc towers, so building and re-shaping a large maze is central to the game."
 weight = 1
 domain = "defense"
 
@@ -317,10 +326,18 @@ domain = "defense"
 [[review_item]]
 id = "states-complete"
 title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu, how-to-play, in-match (the untimed opening build phase, the timed build phases between waves, and the live wave), pause (resume/restart/quit), Victory, and Game over (reactor breached), each with the right screen and actions."
+text = "Every game state is reachable and behaves correctly: title menu (PLAY, HOW TO PLAY), mode select, difficulty select, how-to-play, in-match (the untimed opening build phase, the timed build phases between waves, and the live wave), pause (resume/restart/quit), Victory, and Game over (reactor breached), each with the right screen and actions."
 weight = 1
 reference = "title"
 proof = "title"
+
+[[review_item]]
+id = "modes-and-difficulty"
+title = "Modes and difficulty"
+text = "PLAY opens a mode-select menu listing the standard Containment mode and the special modes, and mousing over (or focusing) a mode shows its description BEFORE it is chosen. Selecting Containment opens a difficulty select — Easy, Medium, Hard — whose choice changes the starting money and the wave count (Easy: more money, fewer waves; Hard: less money, more waves). Each special mode plays by its own overrides — e.g. The Hundred's single 100-unit onslaught, Deep Pockets' 10,000 start with no interest, Bottleneck's restricted central build zone, Sudden Death's one life — and RESTART / PLAY AGAIN replay the chosen mode and difficulty."
+weight = 1
+reference = "mode-select"
+proof = "mode-select"
 
 [[review_item]]
 id = "fits-window"

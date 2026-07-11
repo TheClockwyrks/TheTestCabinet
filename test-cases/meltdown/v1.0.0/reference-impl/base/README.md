@@ -52,8 +52,24 @@ emitters) and sells back for a `70%` refund.
 ## The surge
 
 Motes, fast Sprints, armoured Hulks, Swarm packs, maze-ignoring **Drift** flyers,
-and the slow-immune **Core** boss on waves 10 and 20. Twenty waves; a leak costs
-lives, `0` lives breaches the reactor, and clearing wave 20 wins.
+and the slow-immune **Core** boss on the milestone waves (the mid-run wave and the
+finale). A leak costs lives, `0` lives breaches the reactor, and clearing the final
+wave wins.
+
+## Modes
+
+The main menu's **PLAY** opens a **mode select** screen; hovering a mode shows
+what it changes before you pick it.
+
+- **Containment** — the standard defense, played at a **difficulty**:
+  - **Easy** — 350 starting funds, 15 waves.
+  - **Medium** — 250 starting funds, 20 waves (the reference balance).
+  - **Hard** — 200 starting funds, 26 waves.
+- **The Hundred** — one hundred intruders in a single unbroken surge; build during
+  an untimed opening, then hold. Clear all 100 to win.
+- **Deep Pockets** — open with 10,000 funds and no interest; the full 20 waves.
+- **Bottleneck** — build only inside the marked core zone; 20 waves.
+- **Sudden Death** — one life; a single leak breaches the reactor; 20 waves.
 
 ## Controls
 
@@ -119,7 +135,8 @@ src/
   grid.ts             Floor grid, Dijkstra pathing, the can't-seal rule
   towers.ts           Tower entity: heat state, derived stats, coupling caches
   surge.ts            Surge unit: maze steering, flyer flight, slows
-  waves.ts            The 20-wave composition
+  waves.ts            Wave composition (scaling waves + The Hundred onslaught)
+  modes.ts            Game modes + difficulty presets (Play → mode select)
   input.ts            Mouse + keyboard, mapped to logical space
   ui.ts               Build-panel layout (shared by render + hit-testing)
   game.ts             State machine, economy, the fixed-step simulation, input

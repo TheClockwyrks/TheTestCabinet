@@ -25,3 +25,9 @@ stays **cold**. Meltdown is inspired by classic open-field "maze" tower-defense
 games but is entirely its own: original name, look, the heat-as-power emitters, and
 its own surge — defense here is about pacing heat across the floor, not just walling
 a path.
+
+From the menu, **PLAY** opens a mode select: the standard **Containment** defense
+at three **difficulties** (Easy, Medium, Hard — which set the starting money and
+the number of waves), plus special modes — a single hundred-strong onslaught, a
+10,000-money flush start, a restricted central build zone, and a one-life sudden
+death — each read before it is chosen.

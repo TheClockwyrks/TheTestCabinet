@@ -18,20 +18,25 @@ the target without giving away the implementation.
 
 ## Views
 
-Each file corresponds to a canonical view slug. The `gameplay` and `game-over`
-views are **common** — the same mockup is rendered and seeded for every variant.
-The `title` view is **variant-specific**: the main menu lists a different set of
-modes per variant, so each variant declares its own menu mockup (see the
-`[[variant]]` `reference` entries in `../test-case.toml`).
+Each file corresponds to a canonical view slug. The `mode-select`, `gameplay`,
+and `game-over` views are **common** — the same mockup is rendered and seeded for
+every variant. The `title` view is **variant-specific**: the main menu may differ
+per variant, so each variant declares its own menu mockup (see the `[[variant]]`
+`reference` entries in `../test-case.toml`).
 
-| View slug   | Mockup source         | Description                              |
-| ----------- | --------------------- | ---------------------------------------- |
-| `title`     | `menu-<variant>.html` | Title screen and menu, per variant.      |
-| `gameplay`  | `gameplay.html`       | In-match frame, mid-wave (common).       |
-| `game-over` | `game-over.html`      | Game-over / end card (common).           |
+| View slug     | Mockup source         | Description                                |
+| ------------- | --------------------- | ------------------------------------------ |
+| `title`       | `menu-<variant>.html` | Title screen and menu, per variant.        |
+| `mode-select` | `mode-select.html`    | Mode-select menu, a mode focused (common). |
+| `gameplay`    | `gameplay.html`       | In-match frame, mid-wave (common).         |
+| `game-over`   | `game-over.html`      | Game-over / end card (common).             |
 
 The `title` view has one mockup per variant: this version declares the single
-`base` variant, whose menu (`menu-base.html`) lists `DEFEND` then `HOW TO PLAY`.
+`base` variant, whose menu (`menu-base.html`) lists `PLAY` (which opens mode
+select) then `HOW TO PLAY`. The `mode-select.html` mockup illustrates the
+mode-select menu — the mode list beside the focused mode's description — one way
+the content of `../specs/modes.md` can be laid out; only its content and
+navigation are required, not its layout.
 
 The `gameplay.html` frame shows the intended look of a live match: a maze of
 player-built towers at a range of heats (a cold Lance warmed by a Forge, a

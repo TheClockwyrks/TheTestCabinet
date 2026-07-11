@@ -72,7 +72,7 @@ timing and vent split per wave is yours to design, within
 `specs/flow.md`'s progression). Because the player fields **many** cheap towers —
 a real maze is a dozen-plus structures from the opening build (`specs/towers.md`)
 — waves are **large and dense**: field enough units per wave, growing across the
-20 waves, that a thin or short maze is overrun. A packed wave crawling a long maze
+run's waves, that a thin or short maze is overrun. A packed wave crawling a long maze
 is the whole point, and it is also what runs the guns on it hot.
 
 - Early waves are mostly Motes and Sprints, light enough to teach the

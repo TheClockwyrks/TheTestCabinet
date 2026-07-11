@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<!--
+  Meltdown — mode-select menu reference mockup (common to every variant).
+  Canonical view slug: mode-select
+  Reached from the main menu's PLAY entry. Lists the standard CONTAINMENT mode
+  and the special modes; the focused mode's description is shown beside the list
+  so the player can read a mode before choosing it. CONTAINMENT leads to a
+  difficulty select; a special mode starts directly. Render at a 1280x720
+  viewport. See ../specs/flow.md (Game states: Mode select; Required menus) and
+  ../specs/modes.md (the modes and their descriptions). Illustrative only, not a
+  layout to copy — only the content and navigation are required.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Meltdown — Mode Select</title>
+    <link rel="stylesheet" href="theme.css" />
+    <style>
+      .ms {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding-top: 72px;
+      }
+      .ms-h {
+        font-size: 30px;
+        letter-spacing: 8px;
+        font-weight: 700;
+        color: var(--text);
+        margin: 0;
+      }
+      .ms-sub {
+        font-size: 12px;
+        letter-spacing: 6px;
+        color: var(--text-faint);
+        margin: 10px 0 0;
+      }
+      .ms-body {
+        display: flex;
+        gap: 64px;
+        margin-top: 56px;
+        width: 1000px;
+        justify-content: center;
+      }
+      .ms-list {
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+        min-width: 340px;
+        padding-top: 8px;
+      }
+      .ms-row {
+        font-size: 24px;
+        letter-spacing: 5px;
+        color: var(--text-dim);
+        font-weight: 400;
+      }
+      .ms-row.sel {
+        color: var(--text);
+        font-weight: 700;
+      }
+      .ms-row.sel::before {
+        content: "\25B8  ";
+        color: var(--hot);
+      }
+      .ms-row.back {
+        margin-top: 14px;
+        font-size: 20px;
+        color: var(--text-faint);
+        letter-spacing: 5px;
+      }
+      .ms-info {
+        width: 528px;
+        background: #20262e;
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        padding: 34px 28px;
+      }
+      .ms-info h2 {
+        font-size: 26px;
+        letter-spacing: 3px;
+        color: var(--hot);
+        margin: 0 0 22px;
+      }
+      .ms-info p {
+        font-size: 14px;
+        line-height: 22px;
+        letter-spacing: 1px;
+        color: var(--text-dim);
+        margin: 0 0 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim slice of reactor floor behind the menu for atmosphere. -->
+      <div class="floor"></div>
+      <div class="overlay" style="background: rgba(21, 24, 29, 0.82)"></div>
+
+      <div class="ms">
+        <h1 class="ms-h">SELECT A MODE</h1>
+        <p class="ms-sub">HOVER A MODE TO READ IT &middot; CLICK OR ENTER TO CHOOSE</p>
+        <div class="ms-body">
+          <nav class="ms-list">
+            <div class="ms-row sel">CONTAINMENT</div>
+            <div class="ms-row">THE HUNDRED</div>
+            <div class="ms-row">DEEP POCKETS</div>
+            <div class="ms-row">BOTTLENECK</div>
+            <div class="ms-row">SUDDEN DEATH</div>
+            <div class="ms-row back">BACK</div>
+          </nav>
+          <section class="ms-info">
+            <h2>CONTAINMENT</h2>
+            <p>The standard defense on the open reactor floor.</p>
+            <p>Hold every wave to the last, pacing your heat across the maze.</p>
+            <p>Choose a difficulty next: Easy, Medium, or Hard.</p>
+          </section>
+        </div>
+      </div>
+
+      <div class="hint">&#9650; &#9660; MOVE &nbsp;&nbsp; ENTER SELECT &nbsp;&nbsp; ESC BACK</div>
+    </div>
+  </body>
+</html>

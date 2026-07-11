@@ -50,9 +50,11 @@ you start; they cross-reference each other by name and form one specification.
 - `specs/controls.md` — the mouse and keyboard controls: placing, selecting,
   upgrading and selling towers, sending waves, game speed, and pause.
 - `specs/flow.md` — the economy, lives, the wave progression and victory,
-  scoring, the game states, the HUD, and what is out of scope.
-- the `standard` spec — the playable mode and its main-menu entry. The main
-  menu lists that mode, then `HOW TO PLAY`.
+  scoring, the game states, the required menus, the HUD, and what is out of scope.
+- `specs/modes.md` — the modes reachable from the menu: the standard **Containment**
+  mode and its Easy / Medium / Hard difficulties, and the special modes, plus the
+  content of the mode-select and difficulty-select menus. The main menu's `PLAY`
+  opens mode select; `HOW TO PLAY` is shown after it.
 
 ## Goal of this build
 
@@ -190,15 +192,18 @@ canonical palette and type are below; match them.
 - Keep the surge **off the temperature axis** so it never reads as "heat":
   ground intruders are acid green, flyers violet, the boss a deep violet — never
   the blue→red of the emitter ramp.
-- The three canonical screens — the title screen, the in-match view, and the
-  game-over screen — are described in full under Game states in `specs/flow.md`.
-  Implement each as described, in this palette and type.
+- The canonical screens and menus — the title / main menu, the mode-select and
+  difficulty-select menus, the in-match view, and the game-over screen — are
+  described in full under Game states and Required menus in `specs/flow.md` (and
+  the mode content in `specs/modes.md`). Implement each as described, in this
+  palette and type.
 
 ## Reference images
 
 The `reference/` folder holds screenshots showing how key screens should look:
 
 - `reference/title.png` — the title screen and main menu.
+- `reference/mode-select.png` — the mode-select menu, with a mode's info shown.
 - `reference/gameplay.png` — a representative in-match frame, mid-wave.
 - `reference/game-over.png` — the game-over screen.
 

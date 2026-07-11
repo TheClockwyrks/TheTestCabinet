@@ -21,16 +21,23 @@ import {
   RAD_K,
   REDLINE,
   ROWS,
-  START_LIVES,
-  START_MONEY,
   TILE,
-  TOTAL_WAVES,
   TRIP_TIME,
   waveClearBonus,
 } from "./constants";
 import { isEmitterDef, SURGE_DEFS, TOWER_DEFS, type EmitterDef } from "./defs";
 import { Grid, idx, tileAtPixel } from "./grid";
 import type { Input } from "./input";
+import {
+  containmentConfig,
+  DEFAULT_CONFIG,
+  DIFFICULTIES,
+  MODE_ENTRIES,
+  specialConfig,
+  type DifficultyId,
+  type ModeConfig,
+  type ModeId,
+} from "./modes";
 import { Surge, type Goal } from "./surge";
 import { Tower } from "./towers";
 import type { AppState, Phase, Rotation, SurgeType, TowerType, Vent } from "./types";
@@ -45,11 +52,16 @@ import {
   upgradeBtnRect,
   type Rect,
 } from "./ui";
-import { generateWave } from "./waves";
+import { generateOnslaught, generateWave } from "./waves";
 
-export const TITLE_ITEMS = ["DEFEND", "HOW TO PLAY"];
+export const TITLE_ITEMS = ["PLAY", "HOW TO PLAY"];
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"];
 export const END_ITEMS = ["PLAY AGAIN", "MENU"];
+
+// Mode-select and difficulty menus: the mode/difficulty entries followed by a
+// BACK item. The renderer draws these; the counts here drive keyboard nav.
+export const MODE_SELECT_COUNT = MODE_ENTRIES.length + 1; // + BACK
+export const DIFFICULTY_COUNT = DIFFICULTIES.length + 1; // + BACK
 
 export interface Shot {
   x1: number;
@@ -97,8 +109,13 @@ export class Game {
   private fieldRight: Float64Array;
   private fieldBottom: Float64Array;
 
-  money = START_MONEY;
-  lives = START_LIVES;
+  // The active match configuration — the mode and (for Containment) difficulty
+  // chosen from the menus (specs/modes.md). Defaults to Medium Containment so the
+  // title reset and the headless sim harness have a valid config.
+  cfg: ModeConfig = DEFAULT_CONFIG;
+
+  money = DEFAULT_CONFIG.startMoney;
+  lives = DEFAULT_CONFIG.startLives;
   score = 0;
   waveNumber = 1;
 
@@ -130,6 +147,11 @@ export class Game {
   // Menu-overlay item rects, laid out by the renderer for click hit-testing.
   menuHits: MenuHit[] = [];
 
+  // The number of waves in this run (mode/difficulty dependent, specs/modes.md).
+  get totalWaves(): number {
+    return this.cfg.totalWaves;
+  }
+
   constructor(input: Input) {
     this.input = input;
     this.fieldRight = this.grid.distanceField(this.grid.rightExhaust.tiles);
@@ -151,8 +173,8 @@ export class Game {
     this.towers = [];
     this.surge = [];
     this.shots = [];
-    this.money = START_MONEY;
-    this.lives = START_LIVES;
+    this.money = this.cfg.startMoney;
+    this.lives = this.cfg.startLives;
     this.score = 0;
     this.waveNumber = 1;
     this.reachedWave = 1;
@@ -188,7 +210,11 @@ export class Game {
     this.recomputeAdjacency();
   }
 
-  private startMatch(): void {
+  // Start a match under `cfg` (defaults to the currently-selected config, so
+  // RESTART and PLAY AGAIN replay the same mode/difficulty). Mode and difficulty
+  // selection pass the freshly-chosen config (specs/modes.md).
+  private startMatch(cfg: ModeConfig = this.cfg): void {
+    this.cfg = cfg;
     this.resetMatch();
     this.state = "playing";
     this.enterBuildPhase(1, false);
@@ -202,7 +228,8 @@ export class Game {
     // carry the countdown and auto-start (specs/flow.md).
     this.openingPhase = wave === 1;
     this.buildTimer = BUILD_PHASE_TIME;
-    if (payInterest) {
+    // Interest is paid only in modes that grant it (specs/modes.md).
+    if (payInterest && this.cfg.interest) {
       const interest = Math.min(INTEREST_CAP, Math.floor(this.money * INTEREST_RATE));
       this.money += interest;
     }
@@ -210,7 +237,9 @@ export class Game {
 
   private beginWave(): void {
     this.phase = "wave";
-    this.waveEvents = generateWave(this.waveNumber);
+    // The Hundred runs one continuous 100-unit onslaught instead of a scaling
+    // per-wave schedule (specs/modes.md).
+    this.waveEvents = this.cfg.onslaught ? generateOnslaught() : generateWave(this.waveNumber, this.cfg.totalWaves);
     this.spawnCursor = 0;
     this.waveElapsed = 0;
   }
@@ -240,7 +269,7 @@ export class Game {
   private clearWave(): void {
     this.money += waveClearBonus(this.waveNumber);
     this.score += 100 * this.waveNumber;
-    if (this.waveNumber >= TOTAL_WAVES) {
+    if (this.waveNumber >= this.cfg.totalWaves) {
       this.score += 250 * this.lives;
       this.state = "victory";
       this.menuIndex = 0;
@@ -371,7 +400,7 @@ export class Game {
     const tiles = usable.length > 0 ? usable : portal;
     const slot = this.spawnCounter[vent]++ % tiles.length;
     const tile = tiles[slot];
-    const hp = SURGE_DEFS[type].hp * hpScale(this.waveNumber);
+    const hp = SURGE_DEFS[type].hp * hpScale(this.waveNumber) * this.cfg.hpMult;
     this.surge.push(new Surge(type, vent, tile, hp));
   }
 
@@ -565,6 +594,10 @@ export class Game {
       // rule below keeps the four openings passable.
       if (!this.grid.inBounds(c, r)) return false;
       if (this.grid.blocked[tile]) return false;
+      // Bottleneck: every footprint tile must lie inside the build zone
+      // (specs/modes.md).
+      const z = this.cfg.buildZone;
+      if (z && (c < z.c0 || c > z.c1 || r < z.r0 || r > z.r1)) return false;
     }
     // No tile in the footprint may be under a surge unit currently on the floor.
     for (const u of this.surge) {
@@ -704,6 +737,8 @@ export class Game {
   private isMenuState(): boolean {
     return (
       this.state === "title" ||
+      this.state === "modeselect" ||
+      this.state === "difficulty" ||
       this.state === "paused" ||
       this.state === "victory" ||
       this.state === "gameover"
@@ -723,6 +758,14 @@ export class Game {
     switch (this.state) {
       case "title":
         this.menuNav(code, TITLE_ITEMS.length, (i) => this.selectTitle(i));
+        break;
+      case "modeselect":
+        if (code === "Escape") this.toTitleMenu();
+        else this.menuNav(code, MODE_SELECT_COUNT, (i) => this.selectMode(i));
+        break;
+      case "difficulty":
+        if (code === "Escape") this.toModeSelect();
+        else this.menuNav(code, DIFFICULTY_COUNT, (i) => this.selectDifficulty(i));
         break;
       case "howto":
         if (code === "Escape" || code === "Enter" || code === "Space") this.state = "title";
@@ -789,9 +832,41 @@ export class Game {
     }
   }
 
+  // Navigating the menu tree: PLAY opens mode select; CONTAINMENT opens the
+  // difficulty screen; the special modes and each difficulty start a match
+  // (specs/modes.md, specs/flow.md).
+  private toTitleMenu(): void {
+    this.state = "title";
+    this.menuIndex = 0;
+  }
+  private toModeSelect(): void {
+    this.state = "modeselect";
+    this.menuIndex = 0;
+  }
+
   private selectTitle(i: number): void {
-    if (i === 0) this.startMatch();
+    if (i === 0) this.toModeSelect();
     else this.state = "howto";
+  }
+  private selectMode(i: number): void {
+    if (i >= MODE_ENTRIES.length) {
+      this.toTitleMenu(); // BACK
+      return;
+    }
+    const id = MODE_ENTRIES[i].id as ModeId;
+    if (id === "containment") {
+      this.state = "difficulty";
+      this.menuIndex = 1; // focus Medium by default
+    } else {
+      this.startMatch(specialConfig(id));
+    }
+  }
+  private selectDifficulty(i: number): void {
+    if (i >= DIFFICULTIES.length) {
+      this.toModeSelect(); // BACK
+      return;
+    }
+    this.startMatch(containmentConfig(DIFFICULTIES[i].id as DifficultyId));
   }
   private selectPause(i: number): void {
     if (i === 0) this.resume();
@@ -809,6 +884,8 @@ export class Game {
       for (const hit of this.menuHits) {
         if (inRect(hit.rect, x, y)) {
           if (this.state === "title") this.selectTitle(hit.index);
+          else if (this.state === "modeselect") this.selectMode(hit.index);
+          else if (this.state === "difficulty") this.selectDifficulty(hit.index);
           else if (this.state === "paused") this.selectPause(hit.index);
           else this.selectEnd(hit.index);
           return;
@@ -895,9 +972,10 @@ export class Game {
   // These call the same private code paths the mouse/keyboard handlers do, so a
   // simulated game is identical to a played one.
 
-  // Enter a fresh match at the untimed opening build phase (Wave 1).
-  beginMatch(): void {
-    this.startMatch();
+  // Enter a fresh match at the untimed opening build phase (Wave 1). The sim
+  // harness runs the default Medium Containment config unless a mode is supplied.
+  beginMatch(cfg: ModeConfig = DEFAULT_CONFIG): void {
+    this.startMatch(cfg);
   }
 
   // Build `type` with its top-left footprint tile at (col, row), rotated `rot`
