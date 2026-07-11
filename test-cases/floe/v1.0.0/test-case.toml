@@ -238,7 +238,7 @@ weight = 1
 domain = "hunter"
 sub_items = [
   { id = "fair-respawn", title = "After a crossing ends, the bear re-emerges only once the fresh critter has advanced a few tiles" },
-  { id = "safe-bays", title = "A critter in a filled bay is safe — the bear cannot enter the far-shore wall or a filled bay" },
+  { id = "safe-bays", title = "The bear never enters the far-shore wall or a filled bay — it stays off the far shore, so a filled bay is permanently safe" },
 ]
 
 [[review_item]]
@@ -313,8 +313,8 @@ weight = 1
 domain = "crossing"
 sub_items = [
   { id = "score-accrues", title = "Score accrues from advancing, reaching bays (with a time bonus), clearing levels, and Victory, shown in the HUD and end screens" },
-  { id = "bonus-life", title = "A bonus life is awarded at every 10,000 points" },
-  { id = "bonus-catch", title = "A fish appears in a random open bay (~8 s cadence, ~5 s linger); crossing into its bay scores +200" },
+  { id = "bonus-life", title = "An extra life is awarded on reaching a score milestone — the lives counter ticks up as the score climbs" },
+  { id = "bonus-catch", title = "A fish periodically appears in an open bay and moves between bays; crossing into the fish's bay awards a visible bonus (a larger score jump than a normal bay)" },
 ]
 
 [[review_item]]
@@ -335,7 +335,7 @@ text = "Audio is required and synthesized with the Web Audio API (no audio files
 weight = 1
 sub_items = [
   { id = "cues", title = "Distinct synthesized cues for a hop, water splash, hazard crush, the bear catching you, filling a bay, level clear, and the end stings" },
-  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+  { id = "graceful", title = "Plays fully muted with a working mute toggle, and no sound plays until the player first interacts" },
 ]
 
 [[review_item]]

@@ -45,11 +45,11 @@ weight = 1
 [[review_item]]
 id = "multi-random-launch"
 title = "Random launch angle"
-text = "Every launch — the first serve and every relaunch — sends the ball out at a random angle over the full 360 degrees, independent of which side scored or where the ball was."
+text = "Every launch — the first serve and every relaunch — sends the ball out in a randomly varying direction (clearly not a fixed or toward-opponent-only serve), independent of which side scored or where the ball was."
 weight = 1
 
 [[review_item]]
 id = "multi-ball-collision"
 title = "Ball-to-ball collision"
-text = "The balls collide with one another as elastic circles, and a moving ball bounces off a ball that is held at its home point during its countdown; collisions never tunnel."
+text = "The balls collide with one another and deflect as elastic circles — they do not pass through or merge — and never tunnel through each other even at speed."
 weight = 1

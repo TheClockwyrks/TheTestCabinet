@@ -186,11 +186,11 @@ description = "The full game: dealing, legal moves across the tableau and founda
 [[review_item]]
 id = "correct-deal"
 title = "Correct deal"
-text = "A new game deals seven tableau columns of 1..7 cards with exactly one face-up card on top of each, 24 cards in the stock, and the waste and all four foundations empty; the deal is reshuffled and different every new game."
+text = "A new game deals seven tableau columns of 1..7 cards with exactly one face-up card on top of each, the remaining cards stacked face-down in the stock, and the waste and all four foundations empty; the deal is reshuffled and different every new game."
 weight = 1
 sub_items = [
   { id = "tableau", title = "Seven columns of 1..7, one face-up on top" },
-  { id = "stock-and-empties", title = "24 in stock, waste and foundations empty" },
+  { id = "stock-and-empties", title = "The remaining cards fill the stock; waste and all four foundations empty" },
   { id = "reshuffled", title = "Reshuffled and different every new game" },
 ]
 reference = "gameplay"

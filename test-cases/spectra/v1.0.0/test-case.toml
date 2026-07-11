@@ -371,7 +371,7 @@ weight = 1
 sub_items = [
   { id = "wave-persists", title = "A hit costs a life but the wave persists (respawn, resonance kept)" },
   { id = "advance", title = "Clearing a wave advances a stage" },
-  { id = "scaling", title = "Deeper stages are faster, dive harder, and flip the Flux quicker" },
+  { id = "scaling", title = "By a late stage the assault is visibly faster and dives more frequent than stage 1" },
 ]
 
 [[review_item]]
@@ -395,7 +395,7 @@ weight = 1
 domain = "swarm"
 proof = "assault"
 sub_items = [
-  { id = "plays-provided", title = "Plays the provided system via the seeded runtime, not hand-coded or substituted" },
+  { id = "plays-provided", title = "The drone-pop reads as the neon white-flash / cyan-ring / two-band-spark detonation the provided system describes" },
   { id = "varies", title = "Live-simulated: scatter varies pop to pop, character stays the same" },
   { id = "prism-twice", title = "A Prism detonates twice — once for the shell, once for the core" },
 ]
@@ -407,7 +407,7 @@ text = "Audio is required and synthesized with the Web Audio API (no audio files
 weight = 1
 sub_items = [
   { id = "cues", title = "Distinct synthesized cues for firing, flipping bands, absorbing a same-band bullet, a matching kill, a discharge, an inversion, getting hit, and clearing a stage" },
-  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+  { id = "graceful", title = "Plays fully muted with a working mute toggle, and no sound plays until the player first interacts" },
 ]
 
 [[review_item]]

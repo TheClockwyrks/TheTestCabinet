@@ -244,7 +244,7 @@ sub_items = [
 [[review_item]]
 id = "paddle-speed"
 title = "Rally acceleration"
-text = "A normal paddle hit speeds the ball up only slightly (about 1.04x) up to a ceiling, so rallies accelerate gradually rather than jumping to full speed; ball and paddle motion read at the spec's pace, not noticeably fast or sluggish."
+text = "A normal paddle hit speeds the ball up only slightly (about 1.04x) up to a ceiling, so rallies accelerate gradually over several hits rather than jumping to full speed, and eventually stop getting faster once they reach the ceiling."
 weight = 1
 # A video proof with no still that meaningfully depicts the expected pace, so the
 # rally clip stands alone — the reviewer judges it against the spec, not a
@@ -315,7 +315,7 @@ text = "Audio is required and synthesized with the Web Audio API (no audio files
 weight = 1
 sub_items = [
   { id = "cues", title = "Distinct synthesized cues for a paddle hit, a wall/obstacle bounce, and a scored point" },
-  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+  { id = "graceful", title = "Plays fully muted with a working mute toggle, and no sound plays until the player first interacts" },
 ]
 
 [[review_item]]
@@ -329,7 +329,7 @@ proof = "title"
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
-text = "The entire 1280x720 field — both paddles, both scores, every menu item, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+text = "The entire 1280x720 field — both paddles, both scores, every menu item, and all four edges — stays visible, fitted, and centered at any window size, including on load before any input."
 weight = 1
 
 [[review_item]]

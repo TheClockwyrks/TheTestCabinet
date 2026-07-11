@@ -276,11 +276,10 @@ sub_items = [
 [[review_item]]
 id = "waves"
 title = "Wave progression"
-text = "Clearing every rock advances to a new wave with more (and faster) rocks, shown by a brief wave banner, and continues endlessly."
+text = "Clearing every rock advances to a new wave with more rocks, shown by a brief wave banner, and continues endlessly."
 weight = 1
 sub_items = [
   { id = "more-each-wave", title = "Clearing every rock advances to a new wave with more rocks, endlessly" },
-  { id = "faster", title = "Later waves' rocks drift faster" },
   { id = "banner", title = "A brief WAVE N banner shows at the start of each wave" },
 ]
 
@@ -324,7 +323,7 @@ text = "Audio is required and synthesized with the Web Audio API (no audio files
 weight = 1
 sub_items = [
   { id = "cues", title = "Distinct synthesized cues for firing, a rock shattering, thrust, the saucer's presence, and the ship being destroyed" },
-  { id = "graceful", title = "Plays fully muted with a mute toggle, never blocks running or loading if audio can't start, and waits for the player to interact first" },
+  { id = "graceful", title = "Plays fully muted with a working mute toggle, and no sound plays until the player first interacts" },
 ]
 
 [[review_item]]
