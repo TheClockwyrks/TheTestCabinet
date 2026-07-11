@@ -83,7 +83,7 @@ export class Game {
   predators: Predator[] = [];
   drifters: Drifter[] = [];
   clouds: Ink[] = [];
-  // Sonar pulses currently travelling out through the trench (forager + Gloamfin).
+  // Sonar pulses currently traveling out through the trench (forager + Gloamfin).
   waves: SonarWave[] = [];
 
   // plankton[key] = present
@@ -490,9 +490,9 @@ export class Game {
     // Bonus drifters.
     this.updateDrifters(dt);
 
-    // Advance every travelling sonar pulse: reveal the tiles its front reaches
+    // Advance every traveling sonar pulse: reveal the tiles its front reaches
     // this step and sense any mover it sweeps over (a ping cast this tick by the
-    // forager or the Gloamfin starts travelling out on the next).
+    // forager or the Gloamfin starts traveling out on the next).
     this.stepWaves(dt);
 
     // Effects (bursts) + fog. The Lanternjaw's always-visible bulb and the

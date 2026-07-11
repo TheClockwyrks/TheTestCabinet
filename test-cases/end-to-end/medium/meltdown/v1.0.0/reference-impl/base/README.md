@@ -12,7 +12,7 @@ hotter it runs, on an accelerating curve — feeble when cold (about `0.35x`),
 offline for five seconds, leaving a hole in your defense. Laying out the floor
 is a thermal problem as much as a spatial one: keep your guns hot, but not so hot
 they cut out. Two support structures sculpt that heat — a **Forge** that pours
-heat into its orthogonal neighbours and a **Sink** that draws it away — and the
+heat into its orthogonal neighbors and a **Sink** that draws it away — and the
 cryo **Rime** runs the rule *backward*: it slows the surge best while it stays
 cold.
 
@@ -134,7 +134,7 @@ src/
   constants.ts        Geometry, palette, heat/economy constants (logical 1280x720)
   types.ts            Shared types
   defs.ts             Tower & surge definitions + per-level derived stats
-  colors.ts           The heat-ramp colour helpers
+  colors.ts           The heat-ramp color helpers
   grid.ts             Floor grid, Dijkstra pathing, the can't-seal rule
   towers.ts           Tower entity: heat state, derived stats, coupling caches
   surge.ts            Surge unit: maze steering, flyer flight, slows

@@ -29,7 +29,7 @@ function pathLen(orders: BuildOrder[]): { lr: number; tb: number; built: number;
 // Continuous-fire steady-state heat for each emitter: solve gain = loss.
 // gain = heatPerShot * fireRate  (per second, before /mass — mass cancels at
 // equilibrium). loss(H) = (RAD_K*airRad + BASE_K*airBase + sum sinkOut)* H/100
-// plus conduction toward neighbours (approximated as 0 at equilibrium when the
+// plus conduction toward neighbors (approximated as 0 at equilibrium when the
 // block is uniform). We ignore Forge here (thermostat) for a floor read.
 function steadyHeat(orders: BuildOrder[]): void {
   const g = newGame();

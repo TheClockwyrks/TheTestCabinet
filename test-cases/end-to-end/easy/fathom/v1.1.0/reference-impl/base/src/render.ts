@@ -271,7 +271,7 @@ function spriteFrame(m: { facing: Dir; animT: number; dir: Dir }): number {
   return base + alt;
 }
 
-// Draw every live sonar pulse as travelling wavefront arcs — the crest at each
+// Draw every live sonar pulse as traveling wavefront arcs — the crest at each
 // corridor tile is a short arc that BULGES the way the sound is moving (a "(" when
 // it travels left, a ")" when it travels right), swinging round as the pulse rounds
 // a corner and reflects off walls. Consecutive tiles along a run give a marching

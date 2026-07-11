@@ -1,6 +1,6 @@
 // Fathom — transient visual effects: the detection-alert bursts (the bright flash
 // fired when the Gloamfin's ping or the Flarefish's flare acquires you —
-// specs/predators.md). The travelling sonar wavefront lives in sonar.ts (it is
+// specs/predators.md). The traveling sonar wavefront lives in sonar.ts (it is
 // simulation, not just presentation); the flare bloom is rendered from the
 // Flarefish's own flare state (see predators.ts / render.ts); ink clouds are owned
 // by the game. These effects are presentation only.

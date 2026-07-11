@@ -51,7 +51,7 @@ reference/screenshots/kindle/vision-circle.png   # Kindle only — the outer vis
 - **`gameplay`** shows the intended look of the dark trench: a lit pocket of
   revealed corridors fading into black fog around the forager, plankton in the
   corridors, an amber light glimpsed in the dark, and the HUD.
-- **`sonar`** captures a sonar pulse mid-flight — the travelling wavefront flooding
+- **`sonar`** captures a sonar pulse mid-flight — the traveling wavefront flooding
   the corridors as glowing arcs, reaching past the light to reveal terrain beyond
   the line-of-sight pocket. (It is the still counterpart to the `proof/sonar.webm`
   clip the build submits.)
@@ -82,7 +82,7 @@ a build's look changes:
    - **gameplay** — after the dive, hold arrow keys to open a lit pocket and eat a
      few plankton, then capture.
    - **sonar** — from a revealed gameplay frame, press `Space` and capture ~0.38 s
-     later, while the wavefront (≈14 tiles/s, range ≈9) is still travelling out.
+     later, while the wavefront (≈14 tiles/s, range ≈9) is still traveling out.
    - **game-over** — render the real end panel: set `g.score`, `g.depth`, and
      `g.state = 6` (`GameState.GameOver`), then capture.
    - **vision-circle** (kindle build) — explore broadly to reveal a wide region,

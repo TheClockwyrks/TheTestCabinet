@@ -158,7 +158,7 @@ media = "reference/screenshots/gameplay.png"
 view = "game-over"
 media = "reference/screenshots/game-over.png"
 
-# The sonar pulse mid-flight: the travelling wavefront flooding the corridors and
+# The sonar pulse mid-flight: the traveling wavefront flooding the corridors and
 # reaching past the light. Common to both variants (both dives have sonar).
 [[reference]]
 view = "sonar"
@@ -226,7 +226,7 @@ description = "The whole dive: reading the pitch-dark trench through your light 
 [[review_item]]
 id = "sonar-flood"
 title = "Sonar travels through corridors as a wavefront"
-text = "A sonar pulse is a travelling wavefront (drawn procedurally, not a sprite ring): it flows outward through the open corridors — bending around corners and reflecting off walls, not expanding as a circle — out to its range, revealing near tiles before far ones and their walls, and marking any predator it reaches for a brief window beyond the bend, as the front arrives. It marks the Gloamfin and Flarefish, but never the amber-light bonus drifter or Lanternjaw — a pulse leaves those showing only their unchanged amber bulb, so a ping can't tell drifter from Lanternjaw. The drawn crest should read as arcs that bulge the way the sound is moving, brightest at the leading edge."
+text = "A sonar pulse is a traveling wavefront (drawn procedurally, not a sprite ring): it flows outward through the open corridors — bending around corners and reflecting off walls, not expanding as a circle — out to its range, revealing near tiles before far ones and their walls, and marking any predator it reaches for a brief window beyond the bend, as the front arrives. It marks the Gloamfin and Flarefish, but never the amber-light bonus drifter or Lanternjaw — a pulse leaves those showing only their unchanged amber bulb, so a ping can't tell drifter from Lanternjaw. The drawn crest should read as arcs that bulge the way the sound is moving, brightest at the leading edge."
 weight = 1
 reference = "sonar"
 proof = "sonar"

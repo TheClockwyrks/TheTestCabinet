@@ -200,7 +200,7 @@ moves.
 
 ## The sonar pulse has no sprite — it is drawn in code
 
-There is **no sonar sprite sheet**. The sonar pulse is a **travelling wavefront**
+There is **no sonar sprite sheet**. The sonar pulse is a **traveling wavefront**
 that flows outward through the corridors — bending around bends and reflecting off
 walls — so it cannot be a fixed expanding circle; it must be **rendered
 procedurally** (see "What has no asset" below and `specs/sensing.md`). This is used
@@ -288,7 +288,7 @@ These are **not** provided and you render them yourself, exactly as the other
 specs describe (using the palette in `specs/overview.md`):
 
 - **Plankton** (`#b8f5c8` motes) (`specs/playfield.md`).
-- The **sonar pulse** — a travelling wavefront that flows outward through the
+- The **sonar pulse** — a traveling wavefront that flows outward through the
   corridors (bending around bends, reflecting off walls), drawn as a glowing crest
   of short arcs that bulge in the direction the sound is moving, brightest at the
   leading edge. Tinted `#5ef2ff` for the forager and `#c46bff` for the Gloamfin's

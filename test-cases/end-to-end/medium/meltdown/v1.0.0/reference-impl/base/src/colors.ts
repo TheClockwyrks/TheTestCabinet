@@ -1,4 +1,4 @@
-// Meltdown — colour helpers. The heat ramp (cold blue -> warm amber -> hot
+// Meltdown — color helpers. The heat ramp (cold blue -> warm amber -> hot
 // orange -> white-hot) is the visual language of the whole game (specs/heat.md).
 
 import { C } from "./constants";

@@ -12,7 +12,7 @@ const MAZE_W = COLS * TILE;
 const EPS = 0.001;
 
 export type CanEnter = (col: number, row: number) => boolean;
-// Whether a mover currently travelling `from` may turn to `to` at a center.
+// Whether a mover currently traveling `from` may turn to `to` at a center.
 export type CanTurn = (from: Dir, to: Dir) => boolean;
 // The desired direction, queried fresh at each decision point (tile center) so
 // random patrol re-picks exactly at junctions.

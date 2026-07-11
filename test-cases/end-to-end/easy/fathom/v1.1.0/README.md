@@ -36,7 +36,7 @@ harder front-end task that should separate stronger builds from weaker ones.
 | `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.                      |
 | `reference/` (source) | No             | Canonical visual mockups; rendered to screenshots.                 |
 | reference screenshots | **Yes**        | Rendered from `reference/`; seeded as targets.                     |
-| `test-case.toml`      | No             | Manifest: common specs, references, checks, domain, review items. |
+| `test-case.toml`      | No             | Manifest: common specs, references, checks, domain, review items.  |
 | `variants/`           | No             | One TOML file per variant (listed in `variants`).                  |
 | `README.md`           | No             | This overview.                                                     |
 

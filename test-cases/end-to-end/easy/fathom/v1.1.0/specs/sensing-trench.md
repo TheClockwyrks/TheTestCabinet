@@ -144,12 +144,12 @@ finds predators, at the cost of being heard. (The control is in
   `specs/predators.md`) — and, like the reveal, this lands **when the front arrives**
   at the Gloamfin, not the instant you ping. A pulse is never free — ping when you
   need to know, not constantly, and not when a Gloamfin is close.
-- **Presentation — a travelling wavefront, not a sprite.** Draw the pulse as a
+- **Presentation — a traveling wavefront, not a sprite.** Draw the pulse as a
   glowing crest that **flows outward through the corridors** — bending around bends
   and reflecting off the walls exactly as the reveal does — so it is never a
   misleading expanding circle. There is **no sonar sprite**; render the wavefront
   procedurally. At each corridor tile the front has reached, draw the crest as a
-  short **arc that bulges in the direction the sound is travelling** — a `(` heading
+  short **arc that bulges in the direction the sound is traveling** — a `(` heading
   left, a `)` heading right — swinging round as the pulse turns a corner and
   reflects, so a run of tiles reads as a marching train of expanding ripples. The
   crest is **brightest right at the leading edge** and fades behind it; the origin,

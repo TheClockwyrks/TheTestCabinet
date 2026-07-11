@@ -39,7 +39,7 @@ as `media` are stills of the real game. Each variant also declares a
 `reference_implementation` build (`reference-impl/base`, `reference-impl/kindle`)
 — the authored, correct static build shown on the case's "Reference" tab and never
 seeded into a run. Two new reference views come with the change: a common `sonar`
-view (the travelling wavefront mid-flight) and a Kindle-only `vision-circle` view
+view (the traveling wavefront mid-flight) and a Kindle-only `vision-circle` view
 (the outer window at full glow). See `reference/README.md`.
 
 ## References are examples now, not targets to match
@@ -163,7 +163,7 @@ range off its short-range hearing:
   earlier build fired pings near-continuously the moment it closed within a couple of
   tiles down a straight corridor.
 - **Its ping neither draws itself nor reveals the maze.** Its ordinary ping cadence is
-  now about `4 s`, and the effect is the travelling wavefront (see below) tinted to its
+  now about `4 s`, and the effect is the traveling wavefront (see below) tinted to its
   violet `#c46bff`. You see the ring — the warning — but the ping **no longer draws the
   Gloamfin itself** (so a ping is not a free fix on where it is) and reveals nothing
   else: unlike your sonar it does not light the maze or mark anything. The Gloamfin is
@@ -194,7 +194,7 @@ flare.)
 ## The sonar pulse is now drawn in code
 
 The provided `assets/sonar-pulse/` sprite sheet is removed. The sonar pulse is no
-longer an expanding circle: it is a **travelling wavefront** that flows outward
+longer an expanding circle: it is a **traveling wavefront** that flows outward
 through the corridors — bending around bends, reflecting off walls, revealing near
 tiles before far ones — so it must be **rendered procedurally**, drawn as a glowing
 crest of arcs that bulge the way the sound is moving, brightest at the leading edge.

@@ -123,7 +123,7 @@ src/
   input.ts            Keyboard: held movement + edge events
   audio.ts            Web Audio cues (muteable)
   effects.ts          Transient detection-alert bursts
-  sonar.ts            The travelling sonar wavefront (corridor-following, bounces off walls)
+  sonar.ts            The traveling sonar wavefront (corridor-following, bounces off walls)
   sensing.ts          Fog memory, line-of-sight light, brightness (same as base)
   entities.ts         Movers + the tile-locked movement stepping
   predators.ts        The three predators: den release, sensing, tells, AI

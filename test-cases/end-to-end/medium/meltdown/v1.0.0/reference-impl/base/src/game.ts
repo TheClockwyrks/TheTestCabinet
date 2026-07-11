@@ -323,23 +323,23 @@ export class Game {
       if (!e.isEmitter) continue;
 
       const rad = e.worldRadiators();
-      // Accumulate per-neighbour shared edge counts.
+      // Accumulate per-neighbor shared edge counts.
       const sinkE = new Map<Tower, number>();
       const forgeE = new Map<Tower, number>();
       const condE = new Map<Tower, number>();
       for (const edge of this.grid.perimeterEdges(e.col, e.row, e.size)) {
         const onGrid = this.grid.inBounds(edge.oc, edge.or);
-        const neighbour = onGrid ? this.owner.get(idx(edge.oc, edge.or)) : undefined;
-        if (!neighbour) {
+        const neighbor = onGrid ? this.owner.get(idx(edge.oc, edge.or)) : undefined;
+        if (!neighbor) {
           // Open floor or the casing wall beyond the grid: sheds heat to air.
           if (rad.has(edge.side)) e.airRadEdges++;
           else e.airBaseEdges++;
-        } else if (neighbour.type === "sink") {
-          sinkE.set(neighbour, (sinkE.get(neighbour) ?? 0) + 1);
-        } else if (neighbour.type === "forge") {
-          forgeE.set(neighbour, (forgeE.get(neighbour) ?? 0) + 1);
+        } else if (neighbor.type === "sink") {
+          sinkE.set(neighbor, (sinkE.get(neighbor) ?? 0) + 1);
+        } else if (neighbor.type === "forge") {
+          forgeE.set(neighbor, (forgeE.get(neighbor) ?? 0) + 1);
         } else {
-          condE.set(neighbour, (condE.get(neighbour) ?? 0) + 1);
+          condE.set(neighbor, (condE.get(neighbor) ?? 0) + 1);
         }
       }
       for (const [other, edges] of sinkE) e.sinkLinks.push({ other, edges });

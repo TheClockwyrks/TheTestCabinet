@@ -97,7 +97,7 @@ targets:
   pulse **floods through corridors** and reveals corridors and their walls and marks
   predators around corners, out to range `E`; emitting a pulse **draws the
   Gloamfin**. The **Flarefish's flare reveals tiles** (a radial disc, through walls);
-  the **Gloamfin's ping reveals nothing** (only its travelling wavefront is visible).
+  the **Gloamfin's ping reveals nothing** (only its traveling wavefront is visible).
 - Eating raises brightness `G`, which **widens what you can see** and **widens the
   Lanternjaw's detection range**; `G` **holds for a short delay after your last
   pellet** (resetting each time you eat) and only then decays back toward dark.

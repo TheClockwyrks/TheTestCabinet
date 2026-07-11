@@ -65,7 +65,7 @@ export interface World {
   rand: () => number;
   inkAt: (x: number, y: number) => boolean;
   inkBetween: (x1: number, y1: number, x2: number, y2: number) => boolean;
-  // Cast a travelling sonar pulse from a source tile (owned by the game, which
+  // Cast a traveling sonar pulse from a source tile (owned by the game, which
   // advances it and applies its reveal/sense as the front sweeps out).
   spawnWave: (
     ox: number,
@@ -241,7 +241,7 @@ function updateLanternjaw(p: Predator, dt: number, w: World, mult: number): void
   p.speed = p.state === PredState.Hunt ? LANTERNJAW_SPEED * mult : DRIFTER_SPEED;
 }
 
-// Emit a Gloamfin sonar ping: a travelling violet wavefront (a visible tell) plus
+// Emit a Gloamfin sonar ping: a traveling violet wavefront (a visible tell) plus
 // its sense. The wave reveals NOTHING of the maze (specs/sensing.md) — it only
 // carries the sound outward through the corridors, and when its front reaches the
 // forager the game hands the Gloamfin a fix and fires the alert. Because the pulse

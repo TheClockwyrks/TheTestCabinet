@@ -48,8 +48,9 @@ Every rock has **health** determined by its size (`specs/playfield.md`):
   re-enters **still rendering its damaged state** — the same brighter, more
   jagged or cracked look it had when the star took it (per the damage-feedback
   rule above), so a recycled damaged rock is visibly damaged the moment it
-  re-appears, never redrawn as a pristine full-health rock. Its **move speed is still reset** to a fresh base
-  drift speed for its size, exactly as recycling resets speed in the common spec
+  re-appears, never redrawn as a pristine full-health rock. Its **move speed is
+  still reset** to a fresh base drift speed for its size, exactly as recycling
+  resets speed in the common spec
   (`specs/playfield.md`) — so a rock repeatedly slung through the star and
   recycled does **not** keep getting faster each time.
 - Health never regenerates. (Recycling is not regeneration: it carries damage

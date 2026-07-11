@@ -298,7 +298,7 @@ function spriteFrame(m: { facing: Dir; animT: number; dir: Dir }): number {
   return base + alt;
 }
 
-// Draw every live sonar pulse as travelling wavefront arcs — the crest at each
+// Draw every live sonar pulse as traveling wavefront arcs — the crest at each
 // corridor tile is a short arc that BULGES the way the sound is moving (a "(" when
 // it travels left, a ")" when it travels right), swinging round as the pulse rounds
 // a corner and reflects off walls. Consecutive tiles along a run give a marching
@@ -360,7 +360,7 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   const { assets } = game;
 
   // Sonar wavefronts: the forager's cyan pulse and the Gloamfin's violet ping,
-  // drawn as travelling arcs that flow OUT through the corridors — bending round
+  // drawn as traveling arcs that flow OUT through the corridors — bending round
   // bends and reflecting off walls exactly where the pulse reaches (self-contained).
   // Drawn after the vision-circle mask, so a pulse sweeps out past the little
   // window you carry — that is the whole point of sonar (specs/sensing.md).

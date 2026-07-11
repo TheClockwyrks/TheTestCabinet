@@ -235,7 +235,7 @@ export class Grid {
   }
 
   // The best next tile from `from` following a distance field down its gradient
-  // (min dist[neighbour] + edge cost). Returns null if no downhill step exists.
+  // (min dist[neighbor] + edge cost). Returns null if no downhill step exists.
   bestNext(fromC: number, fromR: number, field: Float64Array): { c: number; r: number } | null {
     let best: { c: number; r: number } | null = null;
     let bestScore = Infinity;

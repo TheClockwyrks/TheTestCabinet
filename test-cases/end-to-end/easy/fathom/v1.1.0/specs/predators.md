@@ -182,7 +182,7 @@ sonar. It is the predator your **sonar** is waiting for.
   **resets** the standard ping timer. The delay is deliberate — it is your chance
   to break away before the ping lands.
   - **The "lost you" ping is drawn ORANGE (required, a distinct tell).** So you can
-    *see* your escape window, the guaranteed "lost you" ping renders its travelling
+    *see* your escape window, the guaranteed "lost you" ping renders its traveling
     wavefront in **orange**, plainly **distinct from the ordinary violet ping** — the
     same procedural wavefront, only tinted orange. When an orange crest sweeps out
     of the Gloamfin, you know it has reached where it last heard you, found you gone,
@@ -211,13 +211,14 @@ sonar. It is the predator your **sonar** is waiting for.
     **`5 s`** from reaching the empty tile — and returns to wandering.
 - **Tell (anti-blindside).** The Gloamfin emits **its own sonar pings** about
   every **`4 s`** (except when it already holds a close-range hearing lock, when it
-  goes silent — see the anti-spam rules under Search above) — the **same travelling
+  goes silent — see the anti-spam rules under Search above) — the **same traveling
   sonar wavefront** the forager's pulse uses (rendered procedurally, here tinted to
   the Gloamfin's violet rather than the forager's cyan — except the guaranteed "lost
   you" ping, which is tinted **orange** to set it apart, see the Search rules above
   and `specs/sensing.md` and `specs/assets.md`), sweeping outward through the
-  corridors well beyond the Gloamfin's own sprite. You **see the wavefront** flow toward you — so you know a
-  Gloamfin is near and hunting, and you can watch how far its hearing reaches — but
+  corridors well beyond the Gloamfin's own sprite. You **see the wavefront** flow
+  toward you — so you know a Gloamfin is near and hunting, and you can watch how
+  far its hearing reaches — but
   the **ping does not draw the Gloamfin itself**: unlike an earlier build, its own
   ping no longer shows its body, so you get the warning without a clean fix on where
   the source is. (It is still revealed the normal ways — by your light, by *your*

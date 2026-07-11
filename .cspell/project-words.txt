@@ -282,3 +282,28 @@ needbar
 
 # Standard input-device term (siege-rifleman brief).
 numpad
+
+# Spec, changelog, and reference-impl vocabulary: coined game terms, audio
+# controls, code identifiers in mockups, and common dev abbreviations.
+unmute
+muteable
+undoable
+unseeable
+wavefronts
+alikes
+invuln
+deenergized
+repath
+reband
+retunes
+retuned
+rebalances
+playtesting
+impls
+inlines
+rects
+CSPRNG
+serp
+modeselect
+gameover
+Vite

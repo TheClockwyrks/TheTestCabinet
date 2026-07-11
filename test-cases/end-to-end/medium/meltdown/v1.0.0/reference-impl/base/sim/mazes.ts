@@ -191,7 +191,7 @@ export function tightCombCells(opts: CombOpts & { c0?: number; c1?: number }): B
 
 // ---- SERP_SOLID: a real maze, but heat ignored ---------------------------
 // Solid Arc walls at default rotation (radiators N/S). In a vertical wall the
-// N/S faces touch neighbours, so the radiators are blanketed and interior guns
+// N/S faces touch neighbors, so the radiators are blanketed and interior guns
 // bake to the trip — the "mazed but ignored the heat" defence.
 export function serpSolidLayout(): BuildOrder[] {
   return combCells({ rot: 0, sinkEvery: 0 });

@@ -48,7 +48,7 @@ export interface Assets {
   drifter: HTMLImageElement[]; // 8 — the bonus drifter (jellyfish; the very frames a wandering Lanternjaw wears as its disguise)
   trench: HTMLImageElement[]; // 19 — wall autotile + floor + fog + gate
   flareBloom: HTMLImageElement[]; // 8 — the flare (additive, no tint)
-  // The sonar pulse is drawn procedurally as a travelling wavefront (render.ts),
+  // The sonar pulse is drawn procedurally as a traveling wavefront (render.ts),
   // not from a sprite sheet — a sprite can only ever be a circle, and the pulse
   // reflects along the corridors (specs/sensing.md).
 }
