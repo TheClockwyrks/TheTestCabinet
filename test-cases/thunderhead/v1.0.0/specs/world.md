@@ -18,10 +18,9 @@ deliberately little steering on the *shape*; there is exact steering on the *rul
 
 The playable world is a fixed axis-aligned box:
 
-- **Ground plane (`X`, `Z`): about `2048 × 2048`** (tunable — a larger or smaller
-  footprint that keeps the proportions and the two-fleet engagement below is
-  acceptable). The four vertical sides are **hard boundaries**.
-- **Height (`Y`): `512`** (tunable). The floor (`Y = 0`) and a ceiling at the top
+- **Ground plane (`X`, `Z`): `2048 × 2048`** — a footprint large enough to hold the
+  two-fleet engagement below. The four vertical sides are **hard boundaries**.
+- **Height (`Y`): `512`**. The floor (`Y = 0`) and a ceiling at the top
   are hard boundaries. Terrain occupies the lower part; the cloud sea sits across
   the middle; open sky fills the top.
 

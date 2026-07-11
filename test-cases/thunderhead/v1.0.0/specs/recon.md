@@ -4,8 +4,8 @@ This file defines what a fleet can **see**: detection by sight and by sensors, t
 **fog of war** over the undetected enemy, and how the **murk** and the **terrain**
 conceal. Detection decides what the tactical view shows (`specs/command.md`), what
 weapons can engage (`specs/combat.md`), and it is the whole game of the **submarine**
-(`specs/units.md`). Ranges are in world units (`specs/overview.md`) and are **tunable
-defaults**.
+(`specs/units.md`). Ranges are in world units (`specs/overview.md`) and are
+**fixed** — implement them as written.
 
 ## The fog of war
 

@@ -5,7 +5,7 @@ This file defines the shape of a match: how the two fleets **deploy**, how a fle
 lost**. The deploy screen that sets a battle up is in `specs/flow.md`; the world the
 battle is fought over is in `specs/world.md`; the units and their costs are in
 `specs/units.md` and `specs/combat.md`; the enemy is run by the AI (`specs/command.md`).
-All numbers are **tunable defaults**.
+The numbers here are **fixed**; implement them as written.
 
 ## Setup
 
@@ -24,9 +24,8 @@ including a **mirror** of their own), and the match is generated:
 
 A fleet grows over the battle by spending **requisition**, its single resource:
 
-- **Income.** Requisition accrues at a steady **income rate** over time (a baseline,
-  tunable — for example `+10` per second). Income is the clock the battle escalates
-  on (below).
+- **Income.** Requisition accrues at a steady **income rate** over time (`+10` per
+  second). Income is the clock the battle escalates on (below).
 - **Reinforcements.** The player spends requisition to **call reinforcements** — new
   units from `specs/units.md`, each with a **cost** — which arrive at the fleet's own
   **deployment-zone edge** after a **build/arrival delay** and then take orders like

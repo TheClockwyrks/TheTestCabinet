@@ -9,8 +9,8 @@ units and their stations are in `specs/units.md`; who controls them is in
 `specs/command.md`; each power's identity is in `specs/factions.md`; what a unit can
 see to shoot at is in `specs/recon.md`. All quantities are in the units of
 `specs/overview.md` (world units, `u/s`, degrees, seconds); the numbers here are
-**tunable defaults** — the exact balance is validated against a built game, not
-fixed by this file.
+**fixed** — implement them as written, and the built game is validated against
+them.
 
 ## Ship gunnery — the shared model
 
@@ -134,7 +134,7 @@ How damage reaches the hull differs by power (`specs/factions.md`).
 - **Meridian — shields.** A separate **shield** pool sits over the hull: damage
   depletes the **shield** first, and while the shield holds the **hull is untouched**.
   Once the shield **collapses**, the **thin** hull takes fire directly until the
-  shield **regenerates** — which begins only after a short spell (`~4 s`, tunable)
+  shield **regenerates** — which begins only after a short spell (`~4 s`)
   **without being hit**, then refills over time. A Meridian unit caught with its shield
   down is fragile.
 - **Geode — resonance regeneration.** No shield; the crystalline hull **regenerates**
@@ -172,7 +172,7 @@ How battle damage is **recovered** is itself part of the asymmetry:
 
 ## Signature-mechanic numbers
 
-These pin the mechanics defined in `specs/factions.md` (all tunable):
+These pin the mechanics defined in `specs/factions.md`:
 
 - **Meridian shields.** Each unit carries a shield pool (see the stat table);
   regeneration begins `~4 s` after the last hit and refills the pool over `~8 s`. A
@@ -194,7 +194,7 @@ These pin the mechanics defined in `specs/factions.md` (all tunable):
 Baseline stats **by archetype** are below; each power then modifies them to its
 identity (following the table). Health is hull HP; "defense" is the power's paradigm;
 speed is top speed in `u/s`; primary range is the main weapon's max range in world
-units. All values are **tunable defaults**.
+units. All values are **fixed** — implement them as written.
 
 | Archetype | Hull HP | Top speed (`u/s`) | Primary range | Notes |
 | --- | --- | --- | --- | --- |
@@ -207,7 +207,7 @@ units. All values are **tunable defaults**.
 | Bomber | `400`–`800` | `150`–`190` | ordnance | Heavier and slower the more turrets |
 | Support | `2000` | `36` | self-defense only | Tender / carrier-station / lodestar |
 
-Per-power modifiers (applied to the baseline, tunable):
+Per-power modifiers (applied to the baseline):
 
 - **Ironbound** — **+armor** and **+hull**, **−speed**; artillery + rapid-fire; the
   battleship is its flagship and its most armored ship.

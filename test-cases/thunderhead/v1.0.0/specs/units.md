@@ -42,8 +42,8 @@ the flagship:
 For each archetype below: its role, its domain, and its **stations**. Every listed
 station is **directly possessable** and, when not possessed, is run by the unit's AI
 (`specs/command.md`). The **kinds** of station are fixed; where a bomber's turret
-**count** is given as a range it is tunable, and the number of physical turrets and
-mounts a ship carries is set in `specs/combat.md`.
+**count** is given as a range, any value in that range is acceptable, and the number
+of physical turrets and mounts a ship carries is set in `specs/combat.md`.
 
 **Steering is not a station.** Possessing a unit **always** gives you its
 **movement** — `A`/`D` steer, `W`/`S` set speed, and a submarine also sets **depth**

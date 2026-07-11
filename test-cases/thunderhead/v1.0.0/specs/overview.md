@@ -143,10 +143,10 @@ rates in degrees per second, times in seconds, and angles in degrees.
 
 - **Axes.** The battlespace is an axis-aligned box. **`X` and `Z` span the
   horizontal ground plane**; **`+Y` is up** (altitude). The origin `(0, 0, 0)` is a
-  bottom corner. Exact extents are in `specs/world.md`; the intended footprint is
-  **`2048 × 2048`** across the ground plane and **`512`** tall, all tunable.
+  bottom corner. Exact extents are in `specs/world.md`; the footprint is
+  **`2048 × 2048`** across the ground plane and **`512`** tall.
 - **The cloud line.** A single reference altitude — the **cloud line**, at
-  **`Y ≈ 200`** (tunable) — is the surface of the cloud sea, the world's "sea
+  **`Y ≈ 200`** — is the surface of the cloud sea, the world's "sea
   level." The full battlespace divides into three **altitude bands** around it,
   defined in `specs/world.md`:
   - the **open sky** above the cloud line — clear air where aircraft fly and
