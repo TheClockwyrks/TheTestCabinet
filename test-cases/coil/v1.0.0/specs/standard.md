@@ -1,13 +1,13 @@
 # Coil — Classic mode
 
-This file defines the standard game mode. It builds on the board in
+This file defines the Classic mode. It builds on the board in
 `specs/playfield.md`, the simulation in `specs/mechanics.md`, and the scoring and
 flow in `specs/flow.md`.
 
 ## Menu entry
 
-This mode spec adds the following entry to the main menu (see Game states in
-`specs/flow.md`), as the **first** menu item:
+This mode spec adds the `CLASSIC` entry to the main menu (see Game states in
+`specs/flow.md`), at the top — above `HOW TO PLAY`:
 
 - `CLASSIC`
 

@@ -43,14 +43,15 @@ right, without the scale of the harder cases.
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `mechanics.md`, `flow.md`, `assets.md` (the production contract
-for the assets the model must make), and the mode specs under `specs/modes/`.
-The common specs (overview, playfield, mechanics, flow, assets, and
-`modes/standard.md` — the Classic mode) are seeded for every variant and describe
-only the shared base game, so a variant's seeded set stays self-contained. This
-version offers two variants: `base` (Classic on the open board) and `maze`, which
-seeds `modes/maze.md` to add the Maze mode and declares its own scoring domain,
-rated independently of the common gameplay and presentation domains. Each variant
-is a standalone TOML file under `variants/`, listed in the manifest's `variants`
+for the assets the model must make), and the mode specs (`standard.md`, and a
+variant may add more). The common specs (overview, playfield, mechanics, flow,
+assets, and `standard.md` — the Classic mode) are seeded for every variant and
+describe only the shared base game, so a variant's seeded set stays
+self-contained. This version offers two variants: `base` (Classic on the open
+board) and `maze`, which seeds `maze.md` to add the Maze mode and declares its own
+scoring domain, rated independently of the common gameplay and presentation
+domains. Each variant is a standalone TOML file under `variants/`, listed in the
+manifest's `variants`
 key.
 
 This version ships **no pre-made assets**: as a full-stack case, the run image

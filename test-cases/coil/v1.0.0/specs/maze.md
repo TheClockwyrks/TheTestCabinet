@@ -3,12 +3,12 @@
 This file defines the **Maze** mode. It builds on the board in
 `specs/playfield.md`, the simulation in `specs/mechanics.md`, and the scoring and
 flow in `specs/flow.md`. Maze adds a fixed course of interior obstacles to the
-Classic game (`specs/modes/standard.md`); every Classic rule still applies.
+Classic game (`specs/standard.md`); every Classic rule still applies.
 
 ## Menu entry
 
 This mode spec adds the following entry to the main menu (see Game states in
-`specs/flow.md`), directly **after** `CLASSIC`:
+`specs/flow.md`), directly **after** `CLASSIC` and **before** `HOW TO PLAY`:
 
 - `MAZE`
 

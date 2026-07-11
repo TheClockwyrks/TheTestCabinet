@@ -6,7 +6,7 @@ slug = "maze"
 name = "Maze"
 description = "Classic plus Maze mode, with fixed fatal interior obstacles."
 
-spec = [{ source = "specs/modes/maze.md" }]
+spec = [{ source = "specs/maze.md" }]
 reference = [{ view = "title", path = "reference/menu-maze.html" }]
 
 [[domain]]

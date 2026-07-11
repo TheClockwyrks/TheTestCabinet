@@ -2,8 +2,8 @@
 
 This file defines scoring, the game's state machine, controls, audio, the HUD,
 and the behaviors that make good test targets. It refers to the geometry in
-`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the game's
-mode(s) in `specs/modes/`.
+`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the Classic mode
+in `specs/standard.md`.
 
 ## Scoring
 
@@ -23,8 +23,9 @@ mode(s) in `specs/modes/`.
 The game is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `COIL`, the tagline `GRID SERPENT`,
-   the current `BEST` score, and a vertical menu of the game's mode entries in
-   order, followed by `HOW TO PLAY`. The selected item is highlighted. The board
+   the current `BEST` score, and a vertical menu. `HOW TO PLAY` is a menu item,
+   always shown last; the play entries above it are the ones the mode spec adds
+   (see `specs/standard.md`). The selected item is highlighted. The board
    furniture (walls, a coiled snake, a pellet) may show dimmed behind the menu.
 2. **How to play.** A simple screen describing the controls and the combo
    mechanic. Returns to the menu.
@@ -84,8 +85,8 @@ The HUD occupies the band above the board (`y` in `[0, 120)`; see
   with a thin **window bar** beneath it that drains from full to empty over the
   2.4 s combo window, in the combo accent color. The combo readout and bar are
   shown only while `M` is at least `2`; at `M = 1` the combo area is empty.
-- A small, dim **mode label** (e.g. `CLASSIC`) sits in the HUD so the active
-  mode is always visible.
+- A small, dim label showing the current mode's name (e.g. `CLASSIC`) sits in the
+  HUD.
 
 ## Key behaviors
 
