@@ -25,7 +25,7 @@ import {
   STAGE_W,
   TILE,
 } from "./constants";
-import { isEmitterDef, SURGE_DEFS, TOWER_DEFS, type EmitterDef } from "./defs";
+import { isEmitterDef, SURGE_DEFS, TOWER_DEFS, type EmitterDef, type TowerDef } from "./defs";
 import type { Game, MenuHit } from "./game";
 import { END_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./game";
 import { DIFFICULTIES, MODE_ENTRIES, type MenuEntry } from "./modes";
@@ -559,9 +559,20 @@ function drawPanel(ctx: Ctx, game: Game): void {
 
   drawReadouts(ctx, game);
   drawShop(ctx, game);
-  if (game.selected) drawInspector(ctx, game, game.selected);
+  // Inspector area precedence (specs/playfield.md): hovering a shop tower shows
+  // that type's info; otherwise a selected tower's inspector; otherwise the
+  // next-wave preview.
+  if (game.hoveredShop) drawShopInfo(ctx, game, game.hoveredShop);
+  else if (game.selected) drawInspector(ctx, game, game.selected);
   else drawNextWave(ctx, game);
   drawWaveControls(ctx, game);
+}
+
+// The targeting read shown for every tower (specs/towers.md): all emitters hit
+// ground and air, except the air-only Flak; the Forge and Sink never fire.
+function targetsLabel(def: TowerDef): string {
+  if (!isEmitterDef(def)) return "NONE";
+  return (def as EmitterDef).airOnly ? "AIR ONLY" : "AIR + GROUND";
 }
 
 function readout(ctx: Ctx, label: string, value: string, x: number, valueColor: string, align: CanvasTextAlign): void {
@@ -694,9 +705,11 @@ function drawInspector(ctx: Ctx, game: Game, t: Tower): void {
     y += 20;
     statRow(ctx, "RATE", `${s.fireRate.toFixed(1)} / s`, y);
     y += 20;
-    if ((t.def as EmitterDef).airOnly) {
-      statRow(ctx, "TARGETS", "AIR ONLY", y);
-    } else if ((t.def as EmitterDef).splash) {
+    // Targeting: every emitter hits ground and air, except the air-only Flak
+    // (specs/towers.md).
+    statRow(ctx, "TARGETS", targetsLabel(t.def), y);
+    y += 20;
+    if ((t.def as EmitterDef).splash) {
       statRow(ctx, "SPLASH", `${(t.def as EmitterDef).splash!.toFixed(1)} tiles`, y);
     } else {
       statRow(ctx, "MASS", `${(t.def as EmitterDef).mass.toFixed(1)}`, y);
@@ -706,6 +719,12 @@ function drawInspector(ctx: Ctx, game: Game, t: Tower): void {
     const rad = [...t.worldRadiators()];
     const order = ["N", "E", "S", "W"].filter((sd) => rad.includes(sd as Side));
     statRow(ctx, "RADIATORS", order.join(" · ") || "—", y);
+    y += 20;
+
+    // Instance tallies (specs/playfield.md): this tower's kills and total damage.
+    statRow(ctx, "KILLS", String(t.kills), y);
+    y += 20;
+    statRow(ctx, "DMG DEALT", String(Math.round(t.damageDealt)), y);
     y += 20;
 
     // Heat meter, with the per-tower redline (max-efficiency) marker.
@@ -750,18 +769,19 @@ function drawInspector(ctx: Ctx, game: Game, t: Tower): void {
     y += 20;
     statRow(ctx, "CONTACT", "shared faces", y);
     y += 20;
-    text(
-      ctx,
-      t.type === "forge"
-        ? "Warms touching emitters toward its setpoint — never past it."
-        : "Draws heat from touching emitters. The only way to cool a boxed-in core.",
-      ix,
-      y + 14,
-      10,
-      C.textFaint,
-      "left",
-      400,
-    );
+    // Movers never fire (specs/towers.md), so their targeting and tallies read as
+    // none — shown for parity with the emitter inspector (specs/playfield.md).
+    statRow(ctx, "TARGETS", targetsLabel(t.def), y);
+    y += 20;
+    statRow(ctx, "KILLS", String(t.kills), y);
+    y += 20;
+    statRow(ctx, "DMG DEALT", String(Math.round(t.damageDealt)), y);
+    y += 20;
+    let dy = y + 14;
+    for (const wl of wrapLines(ctx, t.def.desc, 10, INSPECTOR.w - 24)) {
+      text(ctx, wl, ix, dy, 10, C.textFaint, "left", 400);
+      dy += 15;
+    }
   }
 
   // Actions. (A placed tower cannot be rotated — orientation is chosen on the
@@ -824,6 +844,79 @@ function drawNextWave(ctx: Ctx, game: Game): void {
   }
 
   text(ctx, "Select a tower to inspect", ix, INSPECTOR.y + INSPECTOR.h - 18, 10, C.textFaint, "left", 400);
+}
+
+// Shop-hover info panel (specs/playfield.md): the hovered tower's static stats —
+// the same data the selected-tower inspector shows minus the runtime-only heat
+// read and instance tallies — plus a plain-language description of what the tower
+// does and how it works. Stats are the base (level I) values, since nothing is
+// placed yet.
+function drawShopInfo(ctx: Ctx, game: Game, type: TowerType): void {
+  ctx.fillStyle = "#20262e";
+  rr(ctx, INSPECTOR.x, INSPECTOR.y, INSPECTOR.w, INSPECTOR.h, 10);
+  ctx.fill();
+  ctx.strokeStyle = C.edge;
+  ctx.lineWidth = 1;
+  rr(ctx, INSPECTOR.x, INSPECTOR.y, INSPECTOR.w, INSPECTOR.h, 10);
+  ctx.stroke();
+
+  const def = TOWER_DEFS[type];
+  const ix = INSPECTOR.x + 12;
+  const rightX = INSPECTOR.x + INSPECTOR.w - 12;
+  text(ctx, def.name, ix, INSPECTOR.y + 24, 14, C.text, "left", 700);
+  const afford = game.money >= def.cost;
+  text(ctx, `$${def.cost}`, rightX, INSPECTOR.y + 24, 13, afford ? C.money : C.bad, "right", 700);
+
+  let y = INSPECTOR.y + 52;
+  if (isEmitterDef(def)) {
+    statRow(ctx, "SIZE", `${def.size}x${def.size}`, y);
+    y += 20;
+    statRow(ctx, "RANGE", `${def.range.toFixed(1)} tiles`, y);
+    y += 20;
+    if (type === "rime") {
+      statRow(ctx, "SLOW", `up to ${Math.round((def.rimeSlow?.[0] ?? 0) * 100)}% (cold)`, y);
+    } else {
+      statRow(ctx, "DAMAGE", `${def.baseDamage}`, y);
+    }
+    y += 20;
+    statRow(ctx, "RATE", `${def.fireRate.toFixed(1)} / s`, y);
+    y += 20;
+    statRow(ctx, "TARGETS", targetsLabel(def), y);
+    y += 20;
+    if (def.splash) {
+      statRow(ctx, "SPLASH", `${def.splash.toFixed(1)} tiles`, y);
+    } else {
+      statRow(ctx, "MASS", `${def.mass.toFixed(1)}`, y);
+    }
+    y += 20;
+    const order = ["N", "E", "S", "W"].filter((sd) => def.radiators.includes(sd as Side));
+    statRow(ctx, "RADIATORS", order.join(" · ") || "—", y);
+    y += 20;
+  } else {
+    statRow(ctx, "SIZE", `${def.size}x${def.size}`, y);
+    y += 20;
+    if (type === "forge") {
+      statRow(ctx, "SETPOINT", `${def.output[0]}% heat`, y);
+      y += 20;
+      statRow(ctx, "MODE", "thermostat", y);
+    } else {
+      statRow(ctx, "COOLING", `+${def.output[0]} / edge`, y);
+      y += 20;
+      statRow(ctx, "MODE", "coolant loop", y);
+    }
+    y += 20;
+    statRow(ctx, "TARGETS", targetsLabel(def), y);
+    y += 20;
+  }
+
+  // Description (what it does / how it works).
+  y += 6;
+  for (const wl of wrapLines(ctx, def.desc, 11, INSPECTOR.w - 24)) {
+    text(ctx, wl, ix, y, 11, C.textDim, "left", 400);
+    y += 16;
+  }
+
+  text(ctx, "Click or hotkey to build", ix, INSPECTOR.y + INSPECTOR.h - 16, 10, C.textFaint, "left", 400);
 }
 
 function surgeSwatch(type: SurgeType): string {

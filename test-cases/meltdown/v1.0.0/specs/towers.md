@@ -44,6 +44,10 @@ which is chosen while the tower is held and **fixed once it is placed**
 - The **Arc**, **Stutter**, **Lance**, **Bloom**, and **Rime** can target both
   ground units and flyers. The **Flak** is **air-only**. The Forge and Sink never
   target anything.
+- This **targeting** must be shown in each tower's info — both the shop-hover info
+  panel and the selected-tower inspector (`specs/playfield.md`): every emitter but
+  the Flak reads as hitting **ground and air**, the Flak reads **air-only**, and
+  the movers read as never firing.
 
 ## Emitters
 

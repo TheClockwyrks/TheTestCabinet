@@ -132,6 +132,10 @@ export class Game {
   armedRot: Rotation = 0; // rotation applied to the held tower before it is placed
   selected: Tower | null = null;
   preview: Preview | null = null;
+  // The shop tower the cursor is currently over, if any. While set, the inspector
+  // area shows that type's info in place of the next-wave preview / selected
+  // inspector (specs/playfield.md). Recomputed each frame in updatePointer().
+  hoveredShop: TowerType | null = null;
 
   // Tile -> occupying tower, rebuilt on any layout change for thermal adjacency.
   private owner = new Map<number, Tower>();
@@ -494,11 +498,19 @@ export class Game {
     const stats = t.stats();
     const dmg = stats.baseDamage * heatMultiplier(t.heat, stats.redline);
 
+    // Credit the tower's instance tallies (specs/playfield.md): count the damage
+    // it actually deals and any unit whose killing blow it lands.
+    const hit = (u: Surge): void => {
+      const wasAlive = u.alive;
+      t.damageDealt += u.damage(dmg);
+      if (wasAlive && !u.alive) t.kills++;
+    };
+
     if (t.isRime) {
       // Cryo: slows hardest when cold; still lands a little damage.
       const slow = stats.slowCeil * (1 - t.heat / REDLINE);
       target.applySlow(slow, this.simTime);
-      target.damage(dmg);
+      hit(target);
     } else if (def.splash) {
       // Bloom: splash all surge within the splash radius of the impact.
       const sr = def.splash * TILE;
@@ -507,10 +519,10 @@ export class Game {
         if (!u.alive) continue;
         const dx = u.x - target.x;
         const dy = u.y - target.y;
-        if (dx * dx + dy * dy <= sr2) u.damage(dmg);
+        if (dx * dx + dy * dy <= sr2) hit(u);
       }
     } else {
-      target.damage(dmg);
+      hit(target);
     }
 
     t.heat += stats.heatPerShot / t.mass;
@@ -702,6 +714,18 @@ export class Game {
   // ---- Pointer & preview (per frame, before render) ----------------------
 
   updatePointer(): void {
+    // Shop hover: which shop tower (if any) the cursor is over. Its info panel
+    // replaces the next-wave / selected inspector while hovered (specs/playfield.md).
+    this.hoveredShop = null;
+    if (this.state === "playing") {
+      for (let k = 0; k < TOWER_ORDER.length; k++) {
+        if (inRect(shopItemRect(k), this.input.mouseX, this.input.mouseY)) {
+          this.hoveredShop = TOWER_ORDER[k];
+          break;
+        }
+      }
+    }
+
     // Placement preview.
     if (this.state === "playing" && this.armed) {
       const mx = this.input.mouseX;

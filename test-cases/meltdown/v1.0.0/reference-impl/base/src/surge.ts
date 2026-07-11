@@ -75,12 +75,17 @@ export class Surge {
     this.slowExpire = now + SLOW_DURATION;
   }
 
-  damage(amount: number): void {
+  // Apply `amount` damage and return how much was actually dealt (clamped to the
+  // remaining hp, so overkill on the killing blow isn't over-counted). The caller
+  // credits the firing tower's instance tallies (game.fire, specs/playfield.md).
+  damage(amount: number): number {
+    const dealt = Math.min(amount, this.hp);
     this.hp -= amount;
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;
     }
+    return dealt;
   }
 
   private speed(now: number): number {

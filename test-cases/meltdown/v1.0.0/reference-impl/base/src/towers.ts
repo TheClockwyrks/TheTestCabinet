@@ -53,6 +53,12 @@ export class Tower {
   fireCooldown = 0; // seconds until the next shot
   firedThisStep = false; // for a brief muzzle flash in the renderer
 
+  // Lifetime instance tallies, shown in the selected-tower inspector
+  // (specs/playfield.md): units this tower has killed and total damage it has
+  // dealt. Accumulated by game.fire(); movers never fire and stay at 0.
+  kills = 0;
+  damageDealt = 0;
+
   // Cached thermal geometry, recomputed on any layout/rotation change
   // (game.recomputeAdjacency). Air cooling comes from perimeter edge-tiles that
   // face open air (or the casing); the links carry Sink cooling, Forge heating,

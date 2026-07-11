@@ -169,8 +169,10 @@ The HUD lives in the build panel (`specs/playfield.md`): **money**, **lives**,
 and the **wave indicator** (`WAVE n / N` — the current wave over the run's total,
 `specs/modes.md` — with a read of the current wave's progress or the build-phase
 countdown; a mode with a single onslaught reads that instead) as status
-readouts; the **shop**; the
-**selected-tower inspector** with the selected tower's live **heat read**; and
+readouts; the **shop** (whose entries, on **hover**, show that tower's info in the
+inspector area, `specs/playfield.md`); the **selected-tower inspector** with the
+selected tower's live **heat read**, its **targeting**, and its **kill and damage
+counts** (`specs/playfield.md`); and
 the **wave controls** (send next wave with its bonus, the `1x`/`2x` speed
 toggle, and pause). The build panel must always be fully visible
 (`specs/overview.md`). On the floor, towers carry their own at-a-glance **heat
@@ -179,7 +181,8 @@ read** (`specs/overview.md`, `specs/heat.md`) and surge units carry health bars
 
 A **next-wave preview** — what types the coming wave contains — should be shown
 during the build phase (in the panel or as a banner) so the player can re-shape
-the maze for it.
+the maze for it. In the panel it occupies the inspector area when no tower is
+selected and no shop tower is hovered (`specs/playfield.md`).
 
 ## Key Behaviors
 

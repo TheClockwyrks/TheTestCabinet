@@ -80,7 +80,8 @@ Mouse-driven, with keyboard accelerators.
 | Action | Input |
 | --- | --- |
 | Arm a shop tower | Click the shop button, or `1`–`8` (shop order) |
-| Place / select | Left-click the floor |
+| Preview a tower's stats | Hover its shop button — its info replaces the next-wave panel |
+| Place / select | Left-click the floor (a selected tower's inspector shows its stats, targeting, heat, and kill / damage counts) |
 | Keep placing the same type | Automatic — the tower stays held after each build until you run out of money or cancel |
 | Cancel placement / deselect / pause | Right-click, or `Esc` |
 | Upgrade selected | Inspector **Upgrade** button, or `U` |

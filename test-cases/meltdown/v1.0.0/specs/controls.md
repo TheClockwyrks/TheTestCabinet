@@ -54,7 +54,12 @@ a live wave (`specs/flow.md`) — subject to affordability and the mazing rules.
 
 - **Select** — left-click a placed tower (when not in placement mode) to select
   it. Its range ring shows on the floor and the **inspector** opens in the build
-  panel (`specs/playfield.md`) with its stats, **live heat read**, and actions.
+  panel (`specs/playfield.md`) with its stats, **targeting**, **live heat read**,
+  its **kill and damage counts**, and actions.
+- **Preview from the shop** — mousing over a shop tower shows that type's info
+  (its stats, targeting, and a description) in the inspector area without arming or
+  selecting anything, so the player can compare towers before buying
+  (`specs/playfield.md`).
 - **Upgrade** — click the **Upgrade** action in the inspector (or press the
   upgrade hotkey) to raise the selected tower a level if you can currently
   afford it (`specs/towers.md`).

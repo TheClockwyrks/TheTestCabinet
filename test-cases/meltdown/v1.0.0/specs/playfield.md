@@ -160,16 +160,38 @@ by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
   plus the Forge and Sink of `specs/towers.md`), each showing the tower's icon,
   name, and cost. A type the player cannot currently afford is shown disabled.
   Selecting a shop entry arms placement (see `specs/controls.md`).
+  **Hovering a shop tower** (mousing over its button) shows that type's **info
+  panel** in the inspector area, in place of the next-wave preview (below): the
+  same fields the selected-tower inspector shows for a placed tower — type,
+  **size**, **range**, **damage or effect**, **fire rate**, **targeting** (below),
+  **mass** (or splash), and **radiator faces** — at the tower's **base (level I)**
+  values, **minus** the runtime-only reads that only a placed instance has (its
+  live heat bar and its instance kill/damage tallies), **plus** a short
+  **description** of what the tower does and how it works. The panel returns to
+  its prior contents when the cursor leaves the shop.
 - **The selected-tower inspector** — when a placed tower is selected, this area
   shows its type and level, its current stats (size, range, damage or effect, fire
-  rate, mass, and radiator faces), its live heat read (the same heat value drawn on
-  the tower footprint, shown here as a labeled bar from `0%` to `100%` with the
-  tower's **redline marker** at its max-efficiency point, `specs/heat.md`), and
-  **Upgrade** (with its cost) and **Sell** (with its refund) actions. (A placed
-  tower cannot be rotated, so the inspector has no rotate action; orientation is
-  chosen on the held preview before placing, `specs/controls.md`.) When nothing is
-  selected it shows a brief hint or the
-  next-wave preview.
+  rate, **targeting**, mass, and radiator faces), its **targeting** read (which it
+  fires on — ground and air, or air-only; see below and `specs/towers.md`), its
+  live heat read (the same heat value drawn on the tower footprint, shown here as a
+  labeled bar from `0%` to `100%` with the tower's **redline marker** at its
+  max-efficiency point, `specs/heat.md`), its instance **kill count** and total
+  **damage dealt** (below), and **Upgrade** (with its cost) and **Sell** (with its
+  refund) actions. (A placed tower cannot be rotated, so the inspector has no
+  rotate action; orientation is chosen on the held preview before placing,
+  `specs/controls.md`.) When nothing is selected and no shop tower is hovered, it
+  shows a brief hint or the next-wave preview.
+
+  - **Targeting read.** Both the shop-hover info panel and the selected-tower
+    inspector must show what the tower fires on. Every emitter except the Flak
+    targets **ground and air**; the Flak is **air-only** (`specs/towers.md`). The
+    Forge and Sink never fire, so their targeting reads as none.
+  - **Kill and damage counts.** The selected-tower inspector must show the
+    selected tower's lifetime **kills** (surge units it has destroyed — the unit
+    whose killing blow it landed) and total **damage dealt**. These are
+    per-instance runtime tallies, so they appear only on a placed, selected tower —
+    not on the shop-hover info panel. (The Forge and Sink deal no damage, so both
+    read `0`.)
 - **Wave controls** — a **Send next wave** action (with its early-send bonus;
   see `specs/flow.md`) that reads **Start** in the untimed opening build phase
   before Wave 1, a game-speed toggle (`1x` / `2x`), and **Pause**.
