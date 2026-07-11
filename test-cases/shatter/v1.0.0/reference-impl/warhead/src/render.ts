@@ -715,7 +715,8 @@ function drawHowTo(ctx: Ctx): void {
     ["PAUSE", "Esc or P.    Mute with M."],
   ];
   let y = 150;
-  for (const [label, text] of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const [label, text] = rows[i];
     if (label) {
       drawText(ctx, label, 360, y, {
         size: 22,
@@ -728,12 +729,15 @@ function drawHowTo(ctx: Ctx): void {
     }
     drawText(ctx, text, 400, y, {
       size: 21,
-      color: label ? COLOR.text : COLOR.textDim,
+      color: COLOR.text,
       spacing: 1,
       align: "left",
       baseline: "middle",
     });
-    y += label ? 48 : 36;
+    // A wrapped continuation line (the next row has no label) hugs the line
+    // above it; a new entry gets the larger gap before it.
+    const nextIsWrap = i + 1 < rows.length && !rows[i + 1][0];
+    y += nextIsWrap ? 36 : 48;
   }
 
   drawText(ctx, "ESC / ENTER  —  BACK", FIELD_W / 2, FIELD_H - 44, {
