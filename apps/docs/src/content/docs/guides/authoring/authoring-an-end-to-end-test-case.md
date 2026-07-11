@@ -16,12 +16,12 @@ different test type with its own manifest; see
 [Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/).
 
 The worked example throughout the project is the **Carom** case
-(`test-cases/carom/v1.0.0/`). Read its files
+(`test-cases/end-to-end/easy/carom/v1.0.0/`). Read its files
 alongside this guide; a new case should look like it.
 
 ## What a case is, and what gets seeded
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen, because a
 run must always reference an exact, reproducible input. Revise a case by adding a
 new version, never by editing a published one. Revisions are expected — both to
@@ -29,7 +29,7 @@ refine a case and to vary details between benchmark sweeps so training-data
 contamination matters less.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # manifest: common specs, references, checks, domains, review items
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)

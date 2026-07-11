@@ -1,5 +1,5 @@
 // The Foray browser replay renderer, vendored into the UI library from the
-// case's replay bundle (`test-cases/foray/v1.0.0/replay/renderer.mjs`).
+// case's replay bundle (`test-cases/adversarial/hard/foray/v1.0.0/replay/renderer.mjs`).
 //
 // This module holds NO game rules. It loads `foray-core` compiled to wasm (the
 // SAME authoritative engine the CLI ran) through the hand-rolled C ABI

@@ -18,11 +18,11 @@ rigged **VOXEL (cube)** model see
 
 ## Layout
 
-A version at `test-cases/<slug>/<version>/` is **immutable** once runs reference it — revise
+A version at `test-cases/<type>/<difficulty>/<slug>/<version>/` is **immutable** once runs reference it — revise
 by adding a new version, not editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # type, asset_kind, [voxel], [tool], [output], [model], domains
   variants/              # one standalone TOML per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction — NOT seeded

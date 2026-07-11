@@ -14,7 +14,8 @@
 # default this only re-ingests the individual test-case VERSIONS whose files changed
 # since the last successful run. We keep a marker file (its mtime is the last-ingest
 # baseline) and, for each candidate case, ask `find` whether any file under a given
-# version folder test-cases/<slug>/<version>/ is newer than that baseline. Only the
+# version folder test-cases/<type>/<difficulty>/<slug>/<version>/ is newer than that
+# baseline. Only the
 # changed versions are re-ingested — sent as `<slug>@<version>` targets — so editing
 # one version no longer re-renders every version the case declares; a case with no
 # newer file in any version is skipped without touching the backend. The baseline is
@@ -87,7 +88,7 @@ if [[ ${#slugs[@]} -gt 0 ]]; then
 else
   while IFS= read -r d; do
     candidates+=("$(basename "$d")")
-  done < <(find "$cases_dir" -mindepth 1 -maxdepth 1 -type d | sort)
+  done < <(find "$cases_dir" -mindepth 3 -maxdepth 3 -type d | sort)
 fi
 
 # Decide what actually gets ingested.
@@ -112,8 +113,12 @@ if [[ ${#slugs[@]} -eq 0 && ( "$force" == true || ! -e "$timestamp" ) ]]; then
 else
   to_ingest=()
   for slug in "${candidates[@]}"; do
-    dir="${cases_dir}/${slug}"
-    if [[ "$force" == true || ! -e "$timestamp" || ! -d "$dir" ]]; then
+    # Cases live at test-cases/<type>/<difficulty>/<slug>/, so resolve the folder by
+    # its final component — the bare slug/folder-name a candidate carries. When it
+    # resolves nowhere (an unknown arg, or a slug that differs from its folder name)
+    # `dir` is empty and the guard below targets the whole case by slug.
+    dir="$(find "$cases_dir" -mindepth 3 -maxdepth 3 -type d -name "$slug" -print -quit 2>/dev/null)"
+    if [[ "$force" == true || ! -e "$timestamp" || -z "$dir" || ! -d "$dir" ]]; then
       # --force / no baseline / a slug with no folder on disk: target the whole case
       # (a bare entry the backend expands to every version) and let it judge.
       to_ingest+=("$slug")

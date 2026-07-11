@@ -14,11 +14,11 @@ instead — it is a different test type with a different manifest.
 
 ## Layout
 
-A version lives at `test-cases/<slug>/<version>/` and is **immutable** once runs
+A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
 reference it — revise by adding a new version, not by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml     # manifest: common specs, references, checks, domains
   variants/          # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs         # rendered into the harness instruction (NOT seeded)
@@ -51,7 +51,7 @@ test-cases/<slug>/<version>/
 
 [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/)
 is the full procedure to follow while doing this; read it before you start. The
-`carom` case (`test-cases/carom/v1.0.0/`) is the worked example a new case should
+`carom` case (`test-cases/end-to-end/easy/carom/v1.0.0/`) is the worked example a new case should
 resemble.
 
 ## Validate

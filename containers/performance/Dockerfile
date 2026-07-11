@@ -147,7 +147,7 @@ COPY crates/lattice-ref-transport/src/lib.rs /opt/lattice/references/transport/l
 # from the case's version folder so they stay in lockstep with the engine the
 # validator scores against; they are deliberately disjoint from the HELD-OUT scored
 # set, which lives only with the case and is never copied here.
-COPY test-cases/lattice/v1.0.0/references/training /opt/lattice/training
+COPY test-cases/performance/hard/lattice/v1.0.0/references/training /opt/lattice/training
 
 # Make everything under /opt/lattice world-readable (and directories traversable)
 # so the unprivileged run user can read the buildkit, references, and training set

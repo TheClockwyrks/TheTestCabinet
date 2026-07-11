@@ -23,13 +23,20 @@ for how a finished run is scored.
 
 ## Catalog Layout
 
-Test cases live in the repository under a top level `test-cases/` folder. Each
-test case has its own folder named with a stable slug, and each slug contains
-one folder per version:
+Test cases live in the repository under a top level `test-cases/` folder,
+organized by two grouping levels — the test **type** and the **difficulty** —
+before the case's own folder. Each test case has its own folder named with a
+stable slug, and each slug contains one folder per version:
 
 ```
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
 ```
+
+`<type>` is one of `end-to-end`, `full-stack`, `asset-generation`,
+`adversarial`, or `performance`, and `<difficulty>` is one of `easy`, `medium`,
+or `hard`. These two levels are purely **organizational**: a case's canonical
+identity, type, and difficulty come from its `test-case.toml` manifest, not from
+its path. The grouping directories just make the tree easier to browse.
 
 Versioning a test case independently allows its design to be revised over time.
 Revisions are expected, both to refine a case and to change details between

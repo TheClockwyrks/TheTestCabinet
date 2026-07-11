@@ -57,12 +57,12 @@ means contributes nothing.
 
 ## What a case is, and what gets seeded
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen. Revise by
 adding a new version, never by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # manifest: type, canvas, ui, tool, output, domains
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
@@ -142,7 +142,7 @@ Author `test-case.toml` per the [schema](/testing/asset-generation/manifests/#ui
 Here is a complete, realistic manifest for the `thunderhead-hud` kit:
 
 ```toml
-# test-cases/thunderhead-hud/v1.0.0/test-case.toml
+# test-cases/asset-generation/medium/thunderhead-hud/v1.0.0/test-case.toml
 slug = "thunderhead-hud"
 name = "Thunderhead HUD"
 difficulty = "hard"
@@ -284,7 +284,7 @@ Key rules the resolver enforces (see [the schema](/testing/asset-generation/mani
   reference. Its file looks like:
 
   ```toml
-  # test-cases/thunderhead-hud/v1.0.0/variants/base.toml
+  # test-cases/asset-generation/medium/thunderhead-hud/v1.0.0/variants/base.toml
   slug = "base"
   name = "Base"
   spec = []                # ADDITIVE specs on top of the common specs

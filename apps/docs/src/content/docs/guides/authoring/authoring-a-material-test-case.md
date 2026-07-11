@@ -41,12 +41,12 @@ a `material.json` that binds them together. A case authors exactly one material,
 way a single sprite is one image — the *variants* vary the brief, not the number of
 materials.
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen. Revise by
 adding a new version, never by editing a published one.
 
 ```text
-test-cases/caldera-basalt/v1.0.0/
+test-cases/asset-generation/medium/caldera-basalt/v1.0.0/
   test-case.toml         # manifest: type, asset_kind, material, tool, output, domains
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
@@ -208,7 +208,7 @@ Author `test-case.toml` per the
 manifest for the worked example:
 
 ```toml
-# test-cases/caldera-basalt/v1.0.0/test-case.toml
+# test-cases/asset-generation/medium/caldera-basalt/v1.0.0/test-case.toml
 slug = "caldera-basalt"
 name = "Caldera Basalt"
 difficulty = "medium"
@@ -297,7 +297,7 @@ domain = "fidelity"
 And the default variant file it lists:
 
 ```toml
-# test-cases/caldera-basalt/v1.0.0/variants/base.toml
+# test-cases/asset-generation/medium/caldera-basalt/v1.0.0/variants/base.toml
 slug = "base"                  # stable slug, recorded in the run record
 name = "Base"                  # display name (optional; default humanizes the slug)
 spec = []                      # ADDITIVE specs on top of the common specs (none here)

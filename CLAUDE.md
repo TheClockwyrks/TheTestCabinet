@@ -112,9 +112,12 @@ Task-oriented walkthroughs:
 
 ## Definitions & assets
 
-- **Test cases:** [`test-cases/`](test-cases/) — each case is versioned
-  (e.g. `test-cases/carom/v1.0.0/`) with its `test-case.toml` manifest, specs,
-  prompt, and reference mockups. The test types and their manifest formats are
+- **Test cases:** [`test-cases/`](test-cases/) — organized by two grouping
+  levels, the test **type** and **difficulty**, then the case slug and version
+  (e.g. `test-cases/end-to-end/easy/carom/v1.0.0/`) with its `test-case.toml`
+  manifest, specs, prompt, and reference mockups. The grouping directories are
+  organizational only; a case's identity, type, and difficulty come from its
+  manifest. The test types and their manifest formats are
   documented under
   [`testing/`](apps/docs/src/content/docs/testing/) — today's cases are the
   [end-to-end](apps/docs/src/content/docs/testing/end-to-end/) type, whose

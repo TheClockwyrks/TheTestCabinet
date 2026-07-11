@@ -14,7 +14,7 @@ use super::{
 /// test can drop in a `[build]` table.
 fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
-    let version = dir.path().join("demo/v1.0.0");
+    let version = dir.path().join("end-to-end/easy/demo/v1.0.0");
     fs::create_dir_all(version.join("variants")).expect("create version dir");
     fs::write(version.join("prompt.hbs"), "Build it.").expect("write prompt");
     fs::write(version.join("changelog.md"), "Introduced.").expect("write changelog");
@@ -160,7 +160,7 @@ variants = [\"variants/base.toml\"]\n\
 /// contract.
 fn asset_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
-    let version = dir.path().join("sprite/v1.0.0");
+    let version = dir.path().join("asset-generation/medium/sprite/v1.0.0");
     fs::create_dir_all(version.join("specs")).expect("specs dir");
     fs::create_dir_all(version.join("variants")).expect("variants dir");
     fs::write(version.join("prompt.hbs"), "Draw it.").expect("prompt");
@@ -650,7 +650,7 @@ fn voxel_variant_overrides_the_base_volume() {
     );
     let (dir, catalog) = asset_catalog(&manifest);
     fs::write(
-        dir.path().join("sprite/v1.0.0/variants/double.toml"),
+        dir.path().join("asset-generation/medium/sprite/v1.0.0/variants/double.toml"),
         "slug = \"double\"\nname = \"Double Size\"\n\
          [voxel]\nwidth = 48\nheight = 32\ndepth = 64\nbackground = \"transparent\"\n",
     )
@@ -683,7 +683,7 @@ fn voxel_variant_rejects_a_zero_extent() {
     );
     let (dir, catalog) = asset_catalog(&manifest);
     fs::write(
-        dir.path().join("sprite/v1.0.0/variants/bad.toml"),
+        dir.path().join("asset-generation/medium/sprite/v1.0.0/variants/bad.toml"),
         "slug = \"bad\"\n[voxel]\nwidth = 0\nheight = 16\ndepth = 32\nbackground = \"transparent\"\n",
     )
     .expect("write bad variant");
@@ -703,7 +703,7 @@ fn non_voxel_variant_rejects_a_voxel_table() {
     );
     let (dir, catalog) = asset_catalog(&manifest);
     fs::write(
-        dir.path().join("sprite/v1.0.0/variants/big.toml"),
+        dir.path().join("asset-generation/medium/sprite/v1.0.0/variants/big.toml"),
         "slug = \"big\"\n[voxel]\nwidth = 8\nheight = 8\ndepth = 8\nbackground = \"transparent\"\n",
     )
     .expect("write big variant");
@@ -877,7 +877,7 @@ variants = [\"variants/base.toml\"]\n\
 /// catalog.
 fn adversarial_catalog(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
-    let version = dir.path().join("foray/v1.0.0");
+    let version = dir.path().join("adversarial/hard/foray/v1.0.0");
     fs::create_dir_all(version.join("schemas")).expect("schemas dir");
     fs::create_dir_all(version.join("replay")).expect("replay dir");
     fs::create_dir_all(version.join("variants")).expect("variants dir");
@@ -1466,7 +1466,7 @@ fn catalog_with_files(
     files: &[(&str, &str)],
 ) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
-    let version = dir.path().join("demo/v1.0.0");
+    let version = dir.path().join("end-to-end/easy/demo/v1.0.0");
     fs::create_dir_all(&version).expect("create version dir");
     fs::write(version.join("prompt.hbs"), "Build it.").expect("write prompt");
     fs::write(version.join("changelog.md"), "Introduced.").expect("write changelog");
@@ -1788,7 +1788,7 @@ fn a_missing_workspace_directory_is_rejected() {
 /// manifest declaring `slug`. Everything else is the least a version needs to
 /// resolve, so these tests isolate the folder-name-vs-slug behavior.
 fn write_slugged_case(root: &std::path::Path, folder: &str, version: &str, slug: &str) {
-    let dir = root.join(folder).join(version);
+    let dir = root.join("end-to-end").join("easy").join(folder).join(version);
     fs::create_dir_all(dir.join("variants")).expect("version dir");
     fs::write(dir.join("prompt.hbs"), "Build it.").expect("prompt");
     fs::write(dir.join("changelog.md"), "Introduced.").expect("changelog");
@@ -2195,7 +2195,7 @@ fn variant_reference_implementation_round_trips_to_a_resolved_host_path() {
     // strictly opt-in.
     let (dir, catalog) =
         catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
-    let version_dir = dir.path().join("demo/v1.0.0");
+    let version_dir = dir.path().join("end-to-end/easy/demo/v1.0.0");
     // The reference implementation is a buildable directory; its contents are
     // never read here (the deploy is out-of-band), only its existence is checked.
     fs::create_dir_all(version_dir.join("reference-impl/base")).expect("create reference impl dir");
@@ -2238,7 +2238,7 @@ fn a_missing_reference_implementation_directory_is_rejected() {
     let (dir, catalog) =
         catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
     fs::write(
-        dir.path().join("demo/v1.0.0/variants/base.toml"),
+        dir.path().join("end-to-end/easy/demo/v1.0.0/variants/base.toml"),
         "slug = \"base\"\nreference_implementation = \"reference-impl/gone\"\n",
     )
     .expect("write base variant");
@@ -2261,7 +2261,7 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
     let (dir, catalog) = catalog_with_manifest(
         "workspace = \"workspace\"\n[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"",
     );
-    let version_dir = dir.path().join("demo/v1.0.0");
+    let version_dir = dir.path().join("end-to-end/easy/demo/v1.0.0");
     // A starter workspace that IS seeded, so the assertion below is meaningful:
     // there is real seeded content to distinguish the reference impl from.
     fs::create_dir_all(version_dir.join("workspace")).expect("create workspace dir");

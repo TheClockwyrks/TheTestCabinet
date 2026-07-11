@@ -18,11 +18,11 @@ Discrete cube voxels rather than a meshed field? See
 
 ## Layout
 
-A version lives at `test-cases/<slug>/<version>/` and is **immutable** once runs
+A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
 reference it — revise by adding a new version.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml   # manifest: type, asset_kind, [voxel], [tool], [output], domains
   variants/        # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs       # rendered into the harness instruction (NOT seeded)
@@ -67,7 +67,7 @@ binary's `--help` is the contract.
    and **no `[[check]]`**. Write `description.md` and `README.md` (both non-seeded).
 
 Worked examples: the **Aegis Bastion** walking fortress, authored once per algorithm
-(`test-cases/aegis-mc/v1.0.0`, `aegis-sn/v1.0.0`, `aegis-dc/v1.0.0`). Read the one
+(`test-cases/asset-generation/medium/aegis-mc/v1.0.0`, `aegis-sn/v1.0.0`, `aegis-dc/v1.0.0`). Read the one
 matching your surface alongside the full guide before you start.
 
 ## Validate

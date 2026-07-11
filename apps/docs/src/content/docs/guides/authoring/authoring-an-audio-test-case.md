@@ -52,12 +52,12 @@ a new case should look like it.
 
 ## What an audio case is, and what gets seeded
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen. Revise by
 adding a new version, never by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # manifest: type, asset_kind, audio, tool, output, domains
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
@@ -211,7 +211,7 @@ Two realistic manifests. First, the `sfx-synth` worked example — a synthesized
 laser blip, no pack:
 
 ```toml
-# test-cases/spectra-laser/v1.0.0/test-case.toml
+# test-cases/asset-generation/medium/spectra-laser/v1.0.0/test-case.toml
 slug       = "spectra-laser"
 name       = "Spectra Laser"
 difficulty = "easy"
@@ -251,7 +251,7 @@ Second, the `sfx-sample` worked example — `thunderhead-broadside`, layered ove
 also carries a piano-roll):
 
 ```toml
-# test-cases/thunderhead-broadside/v1.0.0/test-case.toml
+# test-cases/asset-generation/medium/thunderhead-broadside/v1.0.0/test-case.toml
 slug       = "thunderhead-broadside"
 name       = "Thunderhead Broadside"
 difficulty = "hard"

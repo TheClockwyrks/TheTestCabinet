@@ -65,19 +65,19 @@ do not expose it. The kind is a property of the whole version, not a variant axi
 case is exactly one kind.
 
 The worked examples are the **Aegis Bastion** colossal six-legged walking fortress,
-authored once per algorithm — `test-cases/aegis-mc/v1.0.0` (bold faceted low-poly),
-`test-cases/aegis-sn/v1.0.0` (smooth watertight), and `test-cases/aegis-dc/v1.0.0`
+authored once per algorithm — `test-cases/asset-generation/medium/aegis-mc/v1.0.0` (bold faceted low-poly),
+`test-cases/asset-generation/medium/aegis-sn/v1.0.0` (smooth watertight), and `test-cases/asset-generation/medium/aegis-dc/v1.0.0`
 (crisp hard-surface with `--sharp`). Read the one matching the surface you are
 authoring alongside this guide; a new case should look like it.
 
 ## What a case is, and what gets seeded
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen. Revise by
 adding a new version, never by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], domains, review items
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)

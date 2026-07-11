@@ -33,7 +33,11 @@ The backend serves two kinds of client, as described in
 Concretely, the backend holds:
 
 - **Test case definitions.** Test cases are authored in the repository's
-  `test-cases/` folder; a finished version is published to the backend, which
+  `test-cases/` folder (organized as
+  `test-cases/<type>/<difficulty>/<slug>/<version>/`, where the type and
+  difficulty grouping levels are organizational — a case's identity, type, and
+  difficulty come from its `test-case.toml` manifest); a finished version is
+  published to the backend, which
   then holds the canonical copy a runner resolves at run time. The repository is
   the editing source; the backend is the distribution source. The on-disk format
   is unchanged by this — publishing caches a version, it does not transform it.

@@ -23,11 +23,11 @@ image — if it does not exist yet, publish it first with
 
 ## Layout
 
-A version lives at `test-cases/<slug>/<version>/` and is **immutable** once runs
+A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
 reference it — revise by adding a new version, not by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # manifest: type, asset_kind, audio, tool, output, domains
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)

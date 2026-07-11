@@ -101,8 +101,8 @@ axis — a case is exactly one kind.
 
 The three worked examples authored alongside this guide illustrate the split: the
 **Aegis** colossal six-legged walking fortress, rigged and animated once per algorithm
-— `test-cases/aegis-mc-anim/v1.0.0`, `test-cases/aegis-sn-anim/v1.0.0`, and
-`test-cases/aegis-dc-anim/v1.0.0`. Each `[model]` fixes only three required animations
+— `test-cases/asset-generation/hard/aegis-mc-anim/v1.0.0`, `test-cases/asset-generation/hard/aegis-sn-anim/v1.0.0`, and
+`test-cases/asset-generation/hard/aegis-dc-anim/v1.0.0`. Each `[model]` fixes only three required animations
 — a `march` walk, a `bombardment` weapon showcase, and a self-playing `radar_spin` —
 and the brief describes the fortress's features and how it must move; the model invents
 the legs, turrets, and joints that carry it. Read the one matching your algorithm
@@ -110,12 +110,12 @@ alongside this guide; a new case should look like it.
 
 ## What a case is, and what gets seeded
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen. Revise by adding
 a new version, never by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], [model] (rig), domains
   variants/               # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs              # rendered per run into the model's instruction (NOT seeded)

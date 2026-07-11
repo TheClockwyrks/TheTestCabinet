@@ -1,8 +1,10 @@
 //! Test case catalog: slugs, versions, and resolution.
 //!
 //! See `docs/testing/end-to-end/overview.md`. Test cases live under a top-level `test-cases/`
-//! folder laid out as `test-cases/<slug>/<version>/`. Each version is
-//! self-contained and immutable.
+//! folder laid out as `test-cases/<type>/<difficulty>/<slug>/<version>/` — the
+//! `<type>` and `<difficulty>` levels group the catalog for browsing on disk; a
+//! case's identity, type, and difficulty are declared in its manifest, not
+//! inferred from its location. Each version is self-contained and immutable.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -2556,7 +2558,7 @@ pub struct TestCaseVersion {
     /// entry into a newest-first changelog. This is **not** seeded into runs.
     #[serde(default)]
     pub changelog_path: PathBuf,
-    /// The version folder on the host: `test-cases/<slug>/<version>/`.
+    /// The version folder on the host: `test-cases/<type>/<difficulty>/<slug>/<version>/`.
     pub root: PathBuf,
     /// Host path to the prompt template handed to the harness. Rendered through
     /// Handlebars with the run's workspace and seeded spec paths.
@@ -2809,7 +2811,12 @@ impl TestCaseVersion {
 /// Resolves test case slugs and versions against an on-disk catalog.
 ///
 /// The catalog is the `test-cases/` directory laid out as
-/// `test-cases/<slug>/<version>/`.
+/// `test-cases/<type>/<difficulty>/<slug>/<version>/`. The `<type>` and
+/// `<difficulty>` levels only group the tree for on-disk browsing; discovery
+/// walks their shape but never reads meaning into their names — a case's
+/// identity, type, and difficulty all come from its manifest. Internally a
+/// "folder" is therefore the `<type>/<difficulty>/<slug>` path (relative to the
+/// root) that directly holds a case's version subfolders.
 #[derive(Debug, Clone)]
 pub struct TestCaseCatalog {
     /// Root of the catalog (the `test-cases/` directory).
@@ -2839,7 +2846,7 @@ impl TestCaseCatalog {
         // before it resolves — rather than silently.
         let mut cases: Vec<TestCase> = Vec::new();
         let mut owner: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        for folder in read_dir_names(&self.root)? {
+        for folder in self.case_folders()? {
             let versions = self.version_names(&folder)?;
             if versions.is_empty() {
                 continue;
@@ -2926,24 +2933,50 @@ impl TestCaseCatalog {
         Ok(identity.slug)
     }
 
-    /// Resolve a requested id — the case's slug, or (for operator convenience, e.g.
-    /// targeting a re-ingest) its folder name — to the folder that holds it.
-    ///
-    /// A folder named exactly `id` wins immediately: it covers the common case where
-    /// the slug equals the folder name, and lets a rename's new folder be targeted by
-    /// name, both without scanning. Otherwise the folders are scanned for one whose
-    /// declared slug is `id`. The returned folder's declared slug is the identity,
-    /// regardless of which of the two the caller passed.
-    fn folder_for(&self, id: &str) -> Result<String> {
-        if self.root.join(id).is_dir() {
-            return Ok(id.to_string());
+    /// The relative paths (from the catalog root) of every case folder — the
+    /// `<type>/<difficulty>/<slug>` directories that directly hold a case's version
+    /// subfolders. The two grouping levels are organizational only, so this walk
+    /// cares about the tree's *shape*, not the names' meaning; non-directory and
+    /// hidden entries at any level are ignored, so a stray file (a `.DS_Store`, a
+    /// top-level README) never derails discovery. The returned path uses `/`
+    /// separators and joins onto the root to reach the folder.
+    fn case_folders(&self) -> Result<Vec<String>> {
+        let mut folders = Vec::new();
+        for type_dir in read_dir_names(&self.root)? {
+            let type_path = self.root.join(&type_dir);
+            for difficulty_dir in read_dir_names(&type_path)? {
+                let difficulty_path = type_path.join(&difficulty_dir);
+                for case_dir in read_dir_names(&difficulty_path)? {
+                    folders.push(format!("{type_dir}/{difficulty_dir}/{case_dir}"));
+                }
+            }
         }
-        for folder in read_dir_names(&self.root)? {
-            let versions = self.version_names(&folder)?;
-            if let Some(newest) = versions.first()
-                && self.read_slug(&folder, newest)? == id
+        Ok(folders)
+    }
+
+    /// Resolve a requested id — the case's slug, or (for operator convenience, e.g.
+    /// targeting a re-ingest) its folder name — to the `<type>/<difficulty>/<slug>`
+    /// folder that holds it.
+    ///
+    /// A folder whose full relative path or final `<slug>` component is exactly `id`
+    /// wins immediately: it covers the common case where the slug equals the folder
+    /// name, and lets a rename's new folder be targeted by name, both without parsing
+    /// a manifest. Otherwise the folders are scanned for one whose declared slug is
+    /// `id`. The returned folder's declared slug is the identity, regardless of which
+    /// of the two the caller passed.
+    fn folder_for(&self, id: &str) -> Result<String> {
+        let folders = self.case_folders()?;
+        for folder in &folders {
+            let name = folder.rsplit('/').next().unwrap_or(folder.as_str());
+            if folder == id || name == id {
+                return Ok(folder.clone());
+            }
+        }
+        for folder in &folders {
+            if let Some(newest) = self.version_names(folder)?.first()
+                && self.read_slug(folder, newest)? == id
             {
-                return Ok(folder);
+                return Ok(folder.clone());
             }
         }
         Err(Error::TestCaseNotFound {
@@ -5120,10 +5153,11 @@ impl TestCaseCatalog {
 /// lowercase letters and digits, with single hyphens only *between* segments (no
 /// leading, trailing, or doubled hyphens).
 ///
-/// A slug is used unescaped as a filesystem directory name (both the catalog and
-/// the definition store lay cases out as `test-cases/<slug>/<version>/`) and as a
-/// URL path segment, so it is constrained to a portable, unambiguous charset. Every
-/// existing case's folder name already satisfies this.
+/// A slug is used unescaped as a filesystem directory name (the catalog lays cases
+/// out as `test-cases/<type>/<difficulty>/<slug>/<version>/` and the definition
+/// store as `test-cases/<slug>/<version>/`) and as a URL path segment, so it is
+/// constrained to a portable, unambiguous charset. Every existing case's folder name
+/// already satisfies this.
 pub fn is_valid_slug(slug: &str) -> bool {
     !slug.is_empty()
         && slug.split('-').all(|segment| {

@@ -2,7 +2,7 @@
 title: Manifests
 ---
 
-A performance test case version lives under `test-cases/<slug>/<version>/` and
+A performance test case version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/` and
 declares its contents in a `test-case.toml` manifest, the same versioned,
 immutable [catalog layout](/testing/end-to-end/overview/#catalog-layout) every
 test type uses. Like an [adversarial manifest](/testing/adversarial/manifests/) it
@@ -11,7 +11,7 @@ it scores a single solution against a set of **inputs** under **fuel metering**
 rather than pairing implementations against each other.
 
 ```toml
-# test-cases/<folder>/<version>/test-case.toml
+# test-cases/<type>/<difficulty>/<folder>/<version>/test-case.toml
 slug = "route-finder"        # stable identity (required); the store key + recorded in every run
 name = "Route Finder"        # human-readable display name (site-facing)
 difficulty = "hard"          # relative difficulty: easy | medium | hard (required)
@@ -72,7 +72,7 @@ a TOML document whose top-level keys are the variant's fields, exactly as for an
 the seeded specs — a different problem size or constraint:
 
 ```toml
-# test-cases/<slug>/<version>/variants/base.toml
+# test-cases/<type>/<difficulty>/<slug>/<version>/variants/base.toml
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
 spec = []                    # ADDITIVE specs on top of the common specs

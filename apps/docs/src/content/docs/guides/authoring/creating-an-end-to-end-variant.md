@@ -133,7 +133,7 @@ domain = "gyre"
 ```
 
 ```toml
-# test-cases/carom/v1.0.0/test-case.toml — add the new file to the ordered list
+# test-cases/end-to-end/easy/carom/v1.0.0/test-case.toml — add the new file to the ordered list
 variants = [
   "variants/base.toml",
   "variants/frenzy.toml",

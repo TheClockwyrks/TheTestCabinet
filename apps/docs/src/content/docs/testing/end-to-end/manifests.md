@@ -24,7 +24,7 @@ any a published or pending run still references), so a rename that keeps the slu
 overwrites in place instead of leaving a duplicate.
 
 ```toml
-# test-cases/<folder>/<version>/test-case.toml
+# test-cases/<type>/<difficulty>/<folder>/<version>/test-case.toml
 slug = "pong"                # stable identity (required); the store key + recorded in every run
 name = "Carom"               # human-readable display name (site-facing)
 difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
@@ -133,7 +133,7 @@ supply variant-specific references, review items, and workspace, and may declare
 **additional scoring domains** rated only when it runs:
 
 ```toml
-# test-cases/<slug>/<version>/variants/frenzy.toml
+# test-cases/<type>/<difficulty>/<slug>/<version>/variants/frenzy.toml
 slug = "frenzy"              # stable slug, recorded in the run record
 name = "Frenzy"             # display name (optional; default humanizes the slug)
 description = "..."          # optional inline prose (site-facing)
@@ -366,7 +366,7 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   and versioned with the case. It is declared as a top-level key of a **variant
   file** (not `test-case.toml`), so each variant may point at its own correct build
   and a variant that omits the key simply has none. Its value is a path resolved
-  against the **version folder** (`test-cases/<folder>/<version>/`), by convention
+  against the **version folder** (`test-cases/<type>/<difficulty>/<folder>/<version>/`), by convention
   `reference-impl/<variant>/`. The project is built with the case's existing
   `[build]` commands — the shared `install` then `build`, run from that
   directory — and its static output must land in the same `dist/`, `build/`, or

@@ -74,12 +74,12 @@ like it.
 
 ## What a case is, and what gets seeded
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen. Revise by
 adding a new version, never by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], [model], domains
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
@@ -165,7 +165,7 @@ one crucial exception described below. A full, realistic `dc-skinned` example
 (`sunfront-trooper`):
 
 ```toml
-# test-cases/sunfront-trooper/v1.0.0/test-case.toml
+# test-cases/asset-generation/medium/sunfront-trooper/v1.0.0/test-case.toml
 slug       = "sunfront-trooper"
 name       = "Sunfront Trooper"
 difficulty = "hard"
@@ -248,7 +248,7 @@ what varies from the common set — here nothing beyond identity, since the base
 brief:
 
 ```toml
-# test-cases/sunfront-trooper/v1.0.0/variants/base.toml
+# test-cases/asset-generation/medium/sunfront-trooper/v1.0.0/variants/base.toml
 slug = "base"
 name = "Base"
 spec = []                              # ADDITIVE specs on top of the common specs

@@ -66,12 +66,12 @@ multi-animation reference (a `march` walk, a `bombardment`, and a self-playing
 
 ## What a case is, and what gets seeded
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen. Revise by adding
 a new version, never by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], [model] (required animations), domains, review items
   variants/               # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs              # rendered per run into the model's instruction (NOT seeded)

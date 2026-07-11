@@ -2,7 +2,7 @@
 title: Manifests
 ---
 
-An asset-generation test case version lives under `test-cases/<slug>/<version>/`
+An asset-generation test case version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`
 and declares its contents in a `test-case.toml` manifest, the same versioned,
 immutable [catalog layout](/testing/end-to-end/overview/#catalog-layout) every
 test type uses. Unlike an [end-to-end manifest](/testing/end-to-end/manifests/),
@@ -13,7 +13,7 @@ asset-generation case is human-reviewed against its brief, so it declares **no
 `[[reference]]`** at all.
 
 ```toml
-# test-cases/<folder>/<version>/test-case.toml
+# test-cases/<type>/<difficulty>/<folder>/<version>/test-case.toml
 slug = "imp-sprite"          # stable identity (required); the store key + recorded in every run
 name = "Imp Sprite"          # human-readable display name (site-facing)
 difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
@@ -114,7 +114,7 @@ so the same subject is sculpted at a different size (see [Variants vary the volu
 too](#variants-vary-the-volume-too)):
 
 ```toml
-# test-cases/<slug>/<version>/variants/base.toml
+# test-cases/<type>/<difficulty>/<slug>/<version>/variants/base.toml
 slug = "base"                # stable slug, recorded in the run record
 name = "Base"                # display name (optional; default humanizes the slug)
 spec = []                    # ADDITIVE specs on top of the common specs (dest defaults to source)

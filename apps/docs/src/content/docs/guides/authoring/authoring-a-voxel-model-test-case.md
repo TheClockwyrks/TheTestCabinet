@@ -45,12 +45,12 @@ this guide; a new case should look like it.
 
 ## What a case is, and what gets seeded
 
-A version lives under `test-cases/<slug>/<version>/`. Versioning is per-case and
+A version lives under `test-cases/<type>/<difficulty>/<slug>/<version>/`. Versioning is per-case and
 **immutable**: once a run references a version, that version is frozen. Revise by
 adding a new version, never by editing a published one.
 
 ```text
-test-cases/<slug>/<version>/
+test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], domains, review items
   variants/               # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs              # rendered per run into the model's instruction (NOT seeded)
@@ -124,7 +124,7 @@ Author `test-case.toml` per the
 `voxel-model` example (`skyshard`):
 
 ```toml
-# test-cases/skyshard/v1.0.0/test-case.toml
+# test-cases/asset-generation/easy/skyshard/v1.0.0/test-case.toml
 slug       = "skyshard"
 name       = "Skyshard Interceptor"
 difficulty = "medium"
@@ -176,7 +176,7 @@ only what varies from the common set — here nothing beyond identity, since the
 *is* the brief:
 
 ```toml
-# test-cases/skyshard/v1.0.0/variants/base.toml
+# test-cases/asset-generation/easy/skyshard/v1.0.0/variants/base.toml
 slug = "base"
 name = "Base"
 spec = []                            # ADDITIVE specs on top of the common specs
