@@ -6,4 +6,8 @@
 slug = "base"
 name = "Base"
 description = "Classic mode: grow the snake, thread the open board, and build the decaying combo — the base grid-serpent game."
+
+# This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
+# path the common specs reference). Classic mode; self-contained.
+spec = [{ source = "specs/mode-base.md", dest = "specs/mode.md" }]
 reference = [{ view = "title", path = "reference/menu-base.html" }]

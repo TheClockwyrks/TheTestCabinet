@@ -32,7 +32,7 @@ This specification is split across several files:
 - `specs/assets.md` — the assets you must **produce** during the build (the
   snake's sprite set and the game's sound and music) with the tools on your
   `PATH`, where they land, and how they are wired in.
-- `specs/standard.md` — the Classic mode and its main-menu entry.
+- `specs/mode.md` — the playable mode and its main-menu entry.
 
 Read every spec file and build the game they describe.
 

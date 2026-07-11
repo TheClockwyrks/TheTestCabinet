@@ -31,9 +31,10 @@ the main menu differs per variant.
 | `gameplay`  | `gameplay.html`                    | Representative in-game frame (common).              |
 | `game-over` | `game-over.html`                   | Game-over result panel (common).                    |
 
-`menu-base.html` (the `base` variant) shows the menu list `CLASSIC` / `HOW TO PLAY`.
-`menu-maze.html` (the `maze` variant) shows `CLASSIC` / `MAZE` / `HOW TO PLAY` and
-draws the dimmed interior obstacle bars behind the menu to hint at the Maze mode.
+Each variant is a single mode, so its menu is that one mode plus `HOW TO PLAY`.
+`menu-base.html` (the `base` variant) shows `CLASSIC` / `HOW TO PLAY`.
+`menu-maze.html` (the `maze` variant) shows `MAZE` / `HOW TO PLAY` and draws the
+dimmed interior obstacle bars behind the menu to hint at the Maze mode.
 
 The `gameplay` mockup renders the snake as its **produced sprite set** — a
 biting head, straight-body sprites, corner sprites at each bend, and a tapered

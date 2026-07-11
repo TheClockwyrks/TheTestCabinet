@@ -1,8 +1,9 @@
 # Coil — Classic mode
 
-This file defines the Classic mode. It builds on the board in
-`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the scoring and
-flow in `specs/flow.md`.
+This file defines the game's mode: **Classic**, the grid-serpent run on the open
+board. It builds on the board in `specs/playfield.md`, the simulation in
+`specs/mechanics.md`, the produced assets in `specs/assets.md`, and the scoring
+and flow in `specs/flow.md`.
 
 ## Menu entry
 

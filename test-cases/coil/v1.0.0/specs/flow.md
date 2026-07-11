@@ -2,8 +2,8 @@
 
 This file defines scoring, the game's state machine, controls, audio, the HUD,
 and the behaviors that make good test targets. It refers to the geometry in
-`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the Classic mode
-in `specs/standard.md`.
+`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the playable mode
+in `specs/mode.md`.
 
 ## Scoring
 
@@ -24,8 +24,8 @@ The game is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `COIL`, the tagline `GRID SERPENT`,
    the current `BEST` score, and a vertical menu. `HOW TO PLAY` is a menu item,
-   always shown last; the play entries above it are the ones the mode spec adds
-   (see `specs/standard.md`). The selected item is highlighted. The board
+   always shown last; the play entry above it is the one the mode spec adds
+   (see `specs/mode.md`). The selected item is highlighted. The board
    furniture (walls, a coiled snake, a pellet) may show dimmed behind the menu.
 2. **How to play.** A simple screen describing the controls and the combo
    mechanic. Returns to the menu.

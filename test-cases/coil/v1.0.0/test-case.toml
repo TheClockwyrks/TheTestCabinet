@@ -84,13 +84,13 @@ init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
-# first is the default. Every variant seeds the common specs (which include the
-# Classic mode, `specs/standard.md`) and supplies its own `title` menu mockup;
-# `gameplay` and `game-over` references are common. A variant that adds a mode also
-# seeds that mode's spec and declares the scoring domain and review item for it:
-#   - base — Classic mode on the open board (the base game).
-#   - maze — Classic plus Maze mode, which adds a fixed course of fatal interior
-#            obstacles to thread; seeds `specs/maze.md` and its own `maze` domain.
+# first is the default. Every variant seeds the common specs plus its own single mode
+# spec (to the shared dest `specs/mode.md`) and its own `title` menu mockup; `gameplay`
+# and `game-over` references are common. Each variant is exactly one mode:
+#   - base — Classic mode: the grid-serpent run on the open board (seeds
+#            `specs/mode-base.md`).
+#   - maze — Maze mode: the run on a board laced with fixed fatal interior obstacles to
+#            thread (seeds `specs/mode-maze.md`, and declares its own `maze` domain).
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = [
   "variants/base.toml",
@@ -108,16 +108,15 @@ variants = [
 install = "npm ci"
 build = "npm run build"
 
-# Common specs: seeded for EVERY variant of this case, at the `dest` path within
-# the run workspace. The specification is decomposed by concern; mode-specific
-# material is seeded per variant (see the variant files under `variants/`). Because
-# these files are seeded for every variant, they must describe ONLY what every
-# variant shares — the Classic base game — and must NOT mention a feature or mode
-# that only some variants add (obstacles, for example). Each added mode's spec (e.g.
-# `specs/maze.md`) carries that mode's own material, so a variant's seeded set
-# reads as self-contained. All common specs are plain Markdown, seeded verbatim.
-# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
-# these need only name the source they seed.
+# Common specs: seeded for EVERY variant of this case, at the `dest` path within the
+# run workspace. The specification is decomposed by concern. The playable mode is NOT
+# a common spec: each variant seeds its own single, self-contained mode spec to the
+# shared dest `specs/mode.md` (see the variant files under `variants/`), so a run's
+# seeded set describes exactly one mode and reads as fully self-contained. The common
+# specs describe the universal game and reference the mode through the stable
+# `specs/mode.md` path, which resolves to whichever variant's mode was seeded. All
+# common specs are plain Markdown, seeded verbatim. A spec's `dest` defaults to its
+# `source` (with a trailing `.hbs` stripped), so these need only name the source.
 [[spec]]
 source = "specs/overview.md"
 
@@ -137,9 +136,6 @@ source = "specs/flow.md"
 # spec stay in lockstep. This is the defining spec of a full-stack case.
 [[spec]]
 source = "specs/assets.md"
-
-[[spec]]
-source = "specs/standard.md"
 
 # Proof of implementation: instructs the build to capture evidence (screenshots
 # and a short clip) at the exact paths the `[[proof]]` entries below declare, so a
