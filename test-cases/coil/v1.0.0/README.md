@@ -33,15 +33,19 @@ a meaningful run without the scale of the harder cases.
 | `variants/`           | No             | One TOML file per variant (listed in `variants`).                  |
 | `README.md`           | No             | This overview.                                                     |
 
-The specification is split across `specs/` by concern: `overview.md`,
-`playfield.md`, `mechanics.md`, `flow.md`, and the mode specs under
-`specs/modes/`. The common specs (overview, playfield, mechanics, flow, and
-`modes/standard.md`) are seeded for every variant; each variant adds at most one
-extra mode spec. Each variant is a standalone TOML file under `variants/`, listed
-in order in the manifest's `variants` key. The case offers four variants — `base`
-(Classic mode only), `wrap` (adds Wrap mode), `maze` (adds Maze mode), and `feast`
-(adds Feast mode). The three mode variants each declare their own scoring domain,
-so that mode is rated independently of the common gameplay domain.
+The specification is split across `specs/` by concern: the common `overview.md`,
+`playfield.md`, `mechanics.md`, and `flow.md` are seeded for every variant, and
+each variant seeds exactly one mode spec to the stable path `specs/mode.md` from
+its own flat `specs/mode-<slug>.md` source (`mode-base.md`, `mode-wrap.md`,
+`mode-maze.md`, `mode-feast.md` — the alt sources define Classic *and* their extra
+mode, since each variant's seed must stand alone). The common specs reference
+`specs/mode.md` for any rule a variant changes, so they never name a mode spec a
+variant does not seed. Each variant is a standalone TOML file under `variants/`,
+listed in order in the manifest's `variants` key. The case offers four variants —
+`base` (Classic mode only), `wrap` (Classic plus Wrap mode), `maze` (Classic plus
+Maze mode), and `feast` (Classic plus Feast mode). The three alt variants each
+declare their own scoring domain, so that mode is rated independently of the
+common gameplay domain.
 
 This version has **no assets**: Coil is simple enough to leave all visuals to
 the model, guided by the palette and measurements in the specs and by the seeded

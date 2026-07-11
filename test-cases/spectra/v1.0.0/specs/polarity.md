@@ -21,28 +21,24 @@ instant, but it imposes a brief **fire lockout** (below). The ship's glowing cor
 and the HUD polarity indicator always show the current band (see
 `specs/playfield.md`).
 
-## Your shots — match to destroy, mismatch is wasted
+## Your shots — match to destroy
 
-When one of **your** bullets (`specs/controls.md`) touches a drone, the outcome
-depends only on the two bands:
+When one of **your** bullets (`specs/controls.md`) touches a drone, whether it
+destroys the drone depends only on the two bands:
 
 - **Match** — the bullet's band equals the drone's current band: the drone is
   **destroyed** (for the Prism, the matching **layer** is destroyed; see
   `specs/enemies.md`), it scores (see `specs/flow.md`), and the bullet is
   consumed.
 - **Mismatch** — the bullet's band is the opposite of the drone's current band:
-  **nothing happens to the drone.** The shot is simply **wasted** — it is
-  absorbed and the bullet is consumed, dealing no damage and having no other
-  effect. You cannot harm a drone of the band you are not currently tuned to.
+  the drone is **not destroyed**, and the bullet is consumed. You cannot harm a
+  drone of the band you are not currently tuned to. What **else** a mismatched
+  shot does — whether it simply goes to waste or has a further effect — is defined
+  by the active mode in `specs/mode.md`.
 
 So to destroy a drone you must be tuned to **its** band. Because the formation
 always holds **both** bands (`specs/playfield.md`), clearing a wave means
 constantly flipping to match what you are firing at.
-
-> A mode under `specs/modes/` may change what a mismatched shot does (for example
-> charging the drone toward an overload instead of being wasted). When a mode
-> does, its mode spec states the change; otherwise the wasted-shot rule here
-> applies.
 
 ## Your band is your shield — same harmless, opposite lethal
 
@@ -113,8 +109,8 @@ cannot save you. Spend it well; you must rebuild the meter from `0`.
 
 Spectra's combat is three interlocking band rules:
 
-- **Offense is matched:** you can only destroy a drone of your current band; the
-  wrong band is wasted.
+- **Offense is matched:** you can only destroy a drone of your current band; a
+  wrong-band shot never destroys it (`specs/mode.md` defines what else it does).
 - **Defense is matched:** only opposite-band bullets can kill you; your own band
   is absorbed and feeds the discharge.
 - **The field is mixed:** both bands are always present, so every moment forces

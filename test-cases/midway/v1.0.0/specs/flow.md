@@ -5,8 +5,8 @@ the day clock, scoring, the loss state, the game's state machine, the HUD
 dashboard, audio, the behaviors that make good test targets, and what is out of
 scope. It refers to the park grid (`specs/park.md`), the guests (`specs/guests.md`),
 the rides and stalls (`specs/rides.md`), the economy (`specs/economy.md`), the staff
-(`specs/staff.md`), the controls (`specs/controls.md`), and the modes under
-`specs/modes/`.
+(`specs/staff.md`), the controls (`specs/controls.md`), and the start in
+`specs/mode.md`.
 
 ## The reputation feedback loop
 
@@ -30,8 +30,8 @@ must be a real loop the player can see turning:
   way.
 
 Tune the loop so a competent player can grow a self-sustaining park and a careless or
-greedy one watches it spiral. The **Downpour** start (`specs/modes/downpour.md`) adds
-weather pressure on top.
+greedy one watches it spiral. The active start (`specs/mode.md`) sets the conditions
+the loop runs under.
 
 ## Days and scoring
 
@@ -61,8 +61,8 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `MIDWAY`, a tagline, and a vertical menu
-   listing the playable starts defined by the mode specs (each mode spec declares its
-   own entry), followed by `HOW TO PLAY`. The selected item is highlighted. A dim
+   listing the playable start defined by `specs/mode.md` (it declares its own menu
+   entry), followed by `HOW TO PLAY`. The selected item is highlighted. A dim
    slice of a lively park may show behind the menu for atmosphere.
 2. **How to play.** Describes the controls, the build-paths→place-rides→price→staff
    loop, the guests and their desires, the reputation-and-arrivals feedback, and the
@@ -142,6 +142,6 @@ The game must exhibit these behaviors. They are observable and make good test ta
   `specs/guests.md`, `specs/staff.md`).
 - A full coaster-track construction editor, terrain height/terraforming, or seasons or
   research trees beyond what the specs describe — keep the scope to the park, guests,
-  rides/stalls, economy, staff, and reputation loop specified here, done well. (The
-  **Downpour** start adds only lightweight weather, `specs/modes/downpour.md`.)
+  rides/stalls, economy, staff, and reputation loop specified here, plus whatever the
+  active start (`specs/mode.md`) defines, done well.
 - Persistence of parks, scores, or settings between sessions.

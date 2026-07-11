@@ -28,27 +28,31 @@ to The Test Cabinet.
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `physics.md`, `flow.md`, and `proof.md` (which asks the build to
-capture its proof-of-implementation media). All five are seeded.
+capture its proof-of-implementation media) — all seeded as common specs. Each
+variant additionally seeds exactly one **mode spec** to the stable dest
+`specs/mode.md` (from a flat `specs/mode-<slug>.md` source), which the common specs
+reference by that name.
 
 ## Variants
 
 Shatter ships **two** variants against this same target:
 
 - **`base`** (the default, `variants/base.toml`) — the standard endless arcade
-  game. It seeds only the common specs and is rated on the common `arcade` scoring
-  domain; it adds nothing of its own.
+  game. It seeds the standard mode spec (`specs/mode-standard.md` → `specs/mode.md`,
+  rocks take a single hit and the ship carries only its primary gun) and is rated on
+  the common `arcade` scoring domain; it adds nothing else of its own.
 - **`warhead`** (`variants/warhead.toml`) — the standard game plus **armored
   rocks** (rocks gain health, so a Large takes several bullet hits to break) and a
   **homing torpedo** secondary weapon (`F`, a single guided munition on a 10-second
   recharge that flies true through the gravity well and shatters any rock outright).
-  It adds a mode spec (`specs/modes/warhead.md`), its own in-game reference view
-  (`warhead`), two proofs (`warhead`, `torpedo`), three review items, and its own
-  `warhead` scoring domain.
+  It seeds its own mode spec (`specs/mode-warhead.md` → `specs/mode.md`) and adds an
+  in-game reference view (`warhead`), two proofs (`warhead`, `torpedo`), three review
+  items, and its own `warhead` scoring domain.
 
-The common specs' absolute statements about single-hit rock destruction and which
-bodies gravity pulls are softened to defer to a mode spec under `specs/modes/`, so
-`warhead` can override them while `base` (which seeds no mode spec) reads them at
-their defaults.
+The common specs defer their mode-varying rules — how rocks take damage, and which
+bodies gravity pulls — to the mode spec seeded at the stable dest `specs/mode.md`,
+which is always present, so `warhead` states armor and the torpedo while `base`
+states the single-hit, primary-gun-only ruleset.
 
 This version has **no assets**: Shatter is simple enough to leave all visuals to
 the model, guided by the palette and measurements in the specs and by the seeded

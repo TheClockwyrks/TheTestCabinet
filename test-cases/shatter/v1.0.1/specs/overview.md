@@ -35,6 +35,8 @@ This specification is split across several files:
   (the signature mechanic), and every collision rule.
 - `specs/flow.md` — scoring, lives, waves, the saucer's behavior, the game
   states, controls, audio, the HUD, key behaviors, and what is out of scope.
+- `specs/mode.md` — the mode ruleset for this build: how rocks take damage and
+  which weapons the ship carries.
 
 Read every spec file and implement the single game they describe as one cohesive
 build. The specs cross-reference each other by name; treat them as one document.

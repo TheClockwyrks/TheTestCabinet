@@ -57,9 +57,8 @@ start; they cross-reference each other by name and form one specification.
 - `specs/assets.md` — the **asset-production contract**: every asset you must produce
   with the on-`PATH` tools, where each lands, and how each is wired into the build.
   **Read this carefully.**
-- the mode specs under `specs/modes/` — the playable start(s) and the main-menu entry
-  for each. Read every mode spec present and implement the starts they define. The
-  main menu lists those starts, then `HOW TO PLAY`.
+- `specs/mode.md` — the city's start: the map the city grows on and the main-menu
+  entry that begins a game. The main menu lists that start, then `HOW TO PLAY`.
 
 ## Goal of this build
 

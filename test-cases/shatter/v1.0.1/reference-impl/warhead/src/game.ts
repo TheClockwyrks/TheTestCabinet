@@ -179,7 +179,7 @@ export class Game {
     this.rocks = [];
     this.enemyBullets = [];
     this.saucer = null;
-    // The torpedo begins a new game charged and ready (specs/modes/warhead.md).
+    // The torpedo begins a new game charged and ready (specs/mode-warhead.md).
     this.torpedo = null;
     this.torpedoCharged = true;
     this.torpedoTimer = 0;

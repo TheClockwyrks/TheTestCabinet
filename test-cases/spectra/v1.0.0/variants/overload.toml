@@ -6,7 +6,11 @@ slug = "overload"
 name = "Overload"
 description = "Sortie plus Overload, where mismatched shots feed the drone toward an overload instead of being wasted."
 
-spec = [{ source = "specs/modes/overload.md" }]
+# This variant's mode spec, seeded to the stable path `specs/mode.md` (the same
+# path every variant seeds its mode spec to). It is self-contained: it defines
+# both the standard Sortie mode and the Overload mode, with their menu entries, so
+# this variant offers both.
+spec = [{ source = "specs/mode-overload.md", dest = "specs/mode.md" }]
 reference = [{ view = "title", path = "reference/menu-overload.html" }]
 
 # The authored, *correct* static build of this variant — the case-variant

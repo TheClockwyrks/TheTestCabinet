@@ -26,7 +26,7 @@ targets for
 
 Each file corresponds to a canonical view slug. The `gameplay` and `game-over` views are
 **common** — the same mockup is rendered and seeded for every variant. The `title` view is
-**variant-specific**: the main menu lists a different set of starts per variant, so each
+**variant-specific**: the main menu lists a different start per variant, so each
 variant declares its own menu mockup (see the `[[variant]]` `reference` entries in
 `../test-case.toml`).
 
@@ -37,8 +37,8 @@ variant declares its own menu mockup (see the `[[variant]]` `reference` entries 
 | `game-over` | `game-over.html`      | Colony-lost panel (common).              |
 
 The `title` view has one mockup per variant: `menu-base.html` (`NEW COLONY` / `HOW TO
-PLAY`) and `menu-siegeworks.html`, which inserts the `SIEGEWORKS` start between the two,
-matching each variant's seeded mode spec.
+PLAY`) and `menu-siegeworks.html` (`SIEGEWORKS` / `HOW TO PLAY`), each listing the single
+start that variant's seeded mode spec (`specs/mode.md`) defines.
 
 The `gameplay.html` frame shows the intended look of a live colony under a dusk raid: a
 walled compound with floor, beds, a working stove, farm plots, and a firing turret; tree

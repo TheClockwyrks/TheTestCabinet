@@ -6,11 +6,11 @@ slug = "draw-three"
 name = "Draw Three"
 description = "The classic Klondike deal — the stock turns three cards at a time, top playable, with unlimited passes."
 
-# The deal-mode spec is the only variant-specific spec. It seeds to a flat
-# `specs/deal-mode.md` (not under a `modes/` folder) so the run only ever sees
-# the single deal mode that is actually present — there is no `modes/` directory
-# implying other modes exist. Draw One seeds its own file to the same dest.
-spec = [{ source = "specs/modes/draw-three.md", dest = "specs/deal-mode.md" }]
+# The deal-mode spec is the only variant-specific spec. Its source lives flat in
+# `specs/` and seeds to the stable `specs/deal-mode.md`, so the run only ever sees
+# the single deal mode that is actually present. Draw One seeds its own source
+# file to the same dest, and only the dest is ever seeded.
+spec = [{ source = "specs/deal-mode-draw-three.md", dest = "specs/deal-mode.md" }]
 reference = [{ view = "title", media = "reference/screenshots/draw-three/title.png" }, { view = "gameplay", media = "reference/screenshots/draw-three/gameplay.png" }]
 
 # The authored, *correct* static build of this variant — the case-variant

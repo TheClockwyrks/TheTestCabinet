@@ -25,10 +25,9 @@ and only renders in pixels.
 
 ## Terrain
 
-Under everything is the **terrain**, fixed at the start of a game (the standard start
-is mostly flat and buildable; the `roughterrain` start fragments it —
-`specs/modes/`). Each tile has one terrain kind that governs whether it can be built
-on and what it costs:
+Under everything is the **terrain**, fixed at the start of a game (the starting map is
+defined in `specs/mode.md`). Each tile has one terrain kind that governs whether it can
+be built on and what it costs:
 
 - **Buildable land** — bare earth and grass (`specs/overview.md`), the ordinary ground
   the city zones and builds on.
@@ -42,8 +41,7 @@ on and what it costs:
   connected land.
 
 Terrain is **not** editable by the player in this version (no terraforming) — the
-player works with the land they are given, which is what makes the `roughterrain`
-start a distinct challenge (`specs/modes/`).
+player works with the land they are given (`specs/mode.md`).
 
 ## Zones
 
@@ -126,6 +124,6 @@ The map is larger than the city view (`y` in `[64, 656]`), so the city view is a
   is drawn at a consistent on-screen size (a modest zoom is acceptable but not
   required). The two HUD strips are never covered by the map — only the city view
   region `y` in `[64, 656]` shows tiles.
-- On load, the camera is centered on the **starting area** (the flat land near where
-  the city begins) so the player sees the buildable land and any pre-placed starting
-  road immediately, before any input (`specs/modes/`).
+- On load, the camera is centered on the **starting area** (near where the city
+  begins) so the player sees the buildable land and any pre-placed starting road
+  immediately, before any input (`specs/mode.md`).

@@ -26,7 +26,7 @@ engine and the per-power packages.
   domains, and the reviewer checklist.
 - `specs/` — the **seeded** specification, decomposed by concern (`overview`,
   `world`, `factions`, `units`, `command`, `combat`, `recon`, `battle`, `flow`,
-  `assets`, `proof`, and the mode spec under `modes/`).
+  `assets`, `proof`, and `mode`).
 - `variants/base.toml` — the single **Open Battle** variant (the default).
 - `prompt.hbs` — the instruction rendered per run (not seeded).
 - `reference/` — the mockup **source** (theme + views), rendered to screenshots as

@@ -11,8 +11,8 @@ sales), the guests in `specs/guests.md` (who pay and judge prices), and the staf
 ## The budget
 
 The park runs on a single **cash balance**, shown in the HUD (`specs/flow.md`). It
-starts at a modest opening balance (a starting loan — see the mode specs under
-`specs/modes/`), rises with income, and falls with spending. It can go **negative**
+starts at a modest opening balance (a starting loan — see `specs/mode.md`), rises with
+income, and falls with spending. It can go **negative**
 (into debt); staying too deep in the red ends the park (bankruptcy, below).
 
 - Show the **balance** and the current **income and expense rate** (per day, or a
@@ -77,9 +77,8 @@ restart. Bankruptcy is the only end; a solvent park runs open-ended.
 
 Tune the opening balance, prices, costs, and guest wallets so a competent player can
 build a park that turns a profit and a careless or greedy one bleeds out — the
-pressure should be real but survivable. The **Downpour** start
-(`specs/modes/downpour.md`) tightens the economy with weather that empties the park
-and raises costs.
+pressure should be real but survivable. The active start (`specs/mode.md`) sets the
+opening balance and the conditions the park runs under.
 
 ## The loop, together
 

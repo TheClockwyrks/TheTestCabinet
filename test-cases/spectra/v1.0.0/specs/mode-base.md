@@ -1,13 +1,13 @@
-# Spectra — Sortie (standard mode)
+# Spectra — Sortie
 
-This file defines the standard, always-present mode. It builds on the stage in
-`specs/playfield.md`, polarity in `specs/polarity.md`, the controls in
+This file defines the game's mode and its main-menu entry. It builds on the stage
+in `specs/playfield.md`, polarity in `specs/polarity.md`, the controls in
 `specs/controls.md`, the drones in `specs/enemies.md`, and the wave flow in
 `specs/flow.md`.
 
 ## Menu entry
 
-This mode spec adds the following entry to the main menu (see Game states in
+This mode adds the following entry to the main menu (see Game states in
 `specs/flow.md`), before `HOW TO PLAY`:
 
 - `LAUNCH`
@@ -24,8 +24,12 @@ shown last in the menu.)
 
 Sortie uses every system exactly as the common specs define it, with no overrides:
 
-- the **two bands**, the **match-to-destroy** rule with **mismatched shots
-  wasted**, the **dual-use shield**, and the **resonance meter and discharge** from
+- the **two bands** and the **match-to-destroy** rule from `specs/polarity.md`,
+  with a **mismatched** shot — one opposite the drone's current band —
+  **wasted**: it is absorbed and the bullet consumed, dealing no damage and
+  having no other effect (you cannot harm a drone of the band you are not tuned
+  to);
+- the **dual-use shield** and the **resonance meter and discharge** from
   `specs/polarity.md`;
 - the movement, firing, and flip controls from `specs/controls.md`;
 - the full set of three drones — the Shard, the Flux, and the Prism, including the

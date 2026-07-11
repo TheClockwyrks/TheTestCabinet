@@ -43,7 +43,7 @@ export interface Rock {
 
 // The Warhead secondary weapon: a single self-propelled homing torpedo. It is a
 // powered body, so the star never pulls it; it flies true and homes onto a
-// target within a narrow forward cone. See specs/modes/warhead.md.
+// target within a narrow forward cone. See specs/mode-warhead.md.
 export interface Torpedo {
   x: number;
   y: number;

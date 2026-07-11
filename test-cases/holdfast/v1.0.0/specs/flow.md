@@ -5,7 +5,7 @@ count, scoring, the loss state, the game's state machine, the HUD dashboard, aud
 behaviors that make good test targets, and what is out of scope. It refers to the tile
 world (`specs/world.md`), the settlers (`specs/settlers.md`), the economy
 (`specs/economy.md`), combat (`specs/combat.md`), the day/night cycle (`specs/time.md`),
-the controls (`specs/controls.md`), and the modes under `specs/modes/`.
+the controls (`specs/controls.md`), and the playable start in `specs/mode.md`.
 
 ## Survival pressure
 
@@ -29,8 +29,8 @@ colony endures. The pressure comes from the raids and the needs:
 
 Tune the starting stocks, the needs, and the raid curve so a competent player can meet
 the early raids and build a working colony, and a careless one loses it — the pressure
-should be real but survivable. The **Siegeworks** start (`specs/modes/`) presses the
-threat harder.
+should be real but survivable. The playable start (`specs/mode.md`) sets the exact
+opening stocks and how hard the raids press.
 
 ## Days and scoring
 
@@ -58,8 +58,8 @@ The game is a small state machine. Each state has a clear screen and controls (c
 are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `HOLDFAST`, a tagline, and a vertical menu
-   listing the playable starts defined by the mode specs (each mode spec declares its
-   own entry), followed by `HOW TO PLAY`. The selected item is highlighted. A dim slice
+   listing the playable start defined by `specs/mode.md` (it declares its own entry),
+   followed by `HOW TO PLAY`. The selected item is highlighted. A dim slice
    of a top-down colony may show behind the menu for atmosphere.
 2. **How to play.** Describes the controls, the gather→build→cook→defend loop, the
    settlers and their needs and mood, the work-priority grid, the raids and cover, the

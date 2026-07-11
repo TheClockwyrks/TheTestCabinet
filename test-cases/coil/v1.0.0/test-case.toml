@@ -67,15 +67,16 @@ init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
-# the first is the default. Each seeds the common specs plus its own additive
-# specs, supplies its own `title` menu reference (the main menu lists a different
-# set of modes per variant; `gameplay` and `game-over` are common), and — for the
-# three mode variants — declares its own scoring domain and the review item that
-# rolls up to it:
+# the first is the default. Each seeds the common specs plus its own mode spec at
+# the stable path `specs/mode.md` (so the common specs can reference it freely),
+# supplies its own `title` menu reference (the main menu lists a different set of
+# modes per variant; `gameplay` and `game-over` are common), and — for the three
+# alt variants — declares its own scoring domain and the review item that rolls up
+# to it:
 #   - base  — Classic mode only.
-#   - wrap  — adds Wrap mode, where the board edges become wrapping tunnels (own domain).
-#   - maze  — adds Maze mode, with fixed fatal interior obstacles (own domain).
-#   - feast — adds Feast mode, with a periodic, time-limited bonus orb (own domain).
+#   - wrap  — Classic plus Wrap mode, where the board edges become wrapping tunnels (own domain).
+#   - maze  — Classic plus Maze mode, with fixed fatal interior obstacles (own domain).
+#   - feast — Classic plus Feast mode, with a periodic, time-limited bonus orb (own domain).
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = [
   "variants/base.toml",
@@ -96,12 +97,14 @@ install = "npm ci"
 build = "npm run build"
 
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within
-# the run workspace. The specification is decomposed by concern so that
-# mode-specific material can be seeded per variant (see `[[variant]]` below).
-# These five files are always present, so the mode specs may reference them
-# freely; the common specs, in turn, must never reference a mode spec that a
-# given variant does not seed (only `modes/standard.md` is always present). All
-# common specs are plain Markdown and are seeded verbatim.
+# the run workspace. The specification is decomposed by concern so that the
+# mode-specific material can be seeded per variant to a stable path. Anything a
+# variant changes — the perimeter behavior, obstacles, or a bonus orb — is
+# deferred to `specs/mode.md`, which each variant seeds from its own
+# `specs/mode-<slug>.md` source (see the per-variant files). A common spec
+# therefore never asserts a fact a variant overrides; it points at `specs/mode.md`
+# (always present) for the varying rules. All common specs are plain Markdown and
+# are seeded verbatim.
 # A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
 # these need only name the source they seed.
 [[spec]]
@@ -115,9 +118,6 @@ source = "specs/mechanics.md"
 
 [[spec]]
 source = "specs/flow.md"
-
-[[spec]]
-source = "specs/modes/standard.md"
 
 # Proof of implementation: instructs the build to capture evidence (screenshots
 # and a short clip) at the exact paths the `[[proof]]` entries below declare, so a

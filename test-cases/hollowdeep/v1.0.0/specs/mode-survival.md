@@ -1,13 +1,14 @@
-# Hollowdeep — The standard colony (survival)
+# Hollowdeep — The colony start
 
-This file defines the standard, always-present start. It builds on the tile world in
-`specs/world.md`, the gas in `specs/gas.md`, power in `specs/power.md`, the delvers in
-`specs/delvers.md`, the economy in `specs/economy.md`, the controls in
-`specs/controls.md`, and the survival flow in `specs/flow.md`.
+This file (`specs/mode.md`) defines the playable start and its main-menu entry. It
+builds on the tile world in `specs/world.md`, the gas in `specs/gas.md`, power in
+`specs/power.md`, the delvers in `specs/delvers.md`, the economy in
+`specs/economy.md`, the controls in `specs/controls.md`, and the survival flow in
+`specs/flow.md`.
 
 ## Menu entry
 
-This mode spec adds the following entry to the main menu (see Game states in
+This start adds the following entry to the main menu (see Game states in
 `specs/flow.md`), before `HOW TO PLAY`:
 
 - `NEW COLONY`
@@ -26,8 +27,7 @@ last in the menu.)
   the pocket sours, then hold the colony against its own consumption for as long as you
   can (`specs/flow.md`).
 
-The standard start uses every system exactly as the common specs define it, with no
-overrides:
+This start uses every system exactly as the common specs define it, with no overrides:
 
 - the **tile world** and **digging** from `specs/world.md`;
 - the **oxygen/CO2 gas simulation** — diffusion, buoyancy, breathing, and suffocation

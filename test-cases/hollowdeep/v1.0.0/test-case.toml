@@ -100,14 +100,15 @@ packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
-# first is the default. Each seeds the common specs plus its own additive specs,
-# supplies its own `title` menu reference (the main menu lists a different set of
-# starts per variant; `gameplay` and `game-over` are common), and — for the
-# deepstart variant — the review item for the harder start it introduces (rolling
-# up to the common `simulation` domain, since it presses the same survival systems):
-#   - base      — the standard colony start only.
-#   - deepstart — adds a scarcer start: a smaller starting oxygen pocket and no
-#                 starting refined material.
+# first is the default. Each seeds the common specs plus its own playable start,
+# seeded to the stable path `specs/mode.md` (so a variant REPLACES the start rather
+# than adding one), supplies its own `title` menu reference (the main menu differs by
+# variant; `gameplay` and `game-over` are common), and — for the deepstart variant —
+# the review item for its scarcer start (rolling up to the common `simulation`
+# domain, since it presses the same survival systems):
+#   - base      — the standard colony start.
+#   - deepstart — a scarcer start: a smaller starting oxygen pocket and no starting
+#                 refined material.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
@@ -123,13 +124,13 @@ install = "npm ci"
 build = "npm run build"
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern so mode-specific material
-# can be seeded per variant (see the variant files). These are always present, so
-# the mode specs may reference them freely; the common specs must never reference a
-# mode spec a given variant does not seed (only `modes/survival.md` is always
-# present). All common specs are plain Markdown, seeded verbatim. A spec's `dest`
-# defaults to its `source` (with a trailing `.hbs` stripped), so these need only
-# name the source they seed.
+# workspace. The specification is decomposed by concern; the one part that varies
+# per variant — the playable start — is seeded to a stable path, `specs/mode.md`,
+# by each variant (see the variant files), so it is always present. The common
+# specs reference `specs/mode.md` and each other freely and never name a variant.
+# All common specs are plain Markdown, seeded verbatim. A spec's `dest` defaults to
+# its `source` (with a trailing `.hbs` stripped), so these need only name the source
+# they seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -160,9 +161,6 @@ source = "specs/flow.md"
 # and this spec stay in lockstep. This is the defining spec of a full-stack case.
 [[spec]]
 source = "specs/assets.md"
-
-[[spec]]
-source = "specs/modes/survival.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact
 # paths the `[[proof]]` entries below declare. The paths in this spec and in the

@@ -2,8 +2,8 @@
 
 This file defines scoring, the game's state machine, controls, audio, the HUD,
 and the behaviors that make good test targets. It refers to the geometry in
-`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the modes in
-the mode specs under `specs/modes/`.
+`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the mode(s) in
+`specs/mode.md`.
 
 ## Scoring
 
@@ -17,8 +17,8 @@ the mode specs under `specs/modes/`.
   updates live during play the instant the current score passes it, and is shown
   on the title screen and during play. The high score is the **only** thing that
   persists between sessions; nothing else is saved.
-- Modes that add a bonus orb define that orb's point value in their own mode
-  spec under `specs/modes/`.
+- If the active mode adds a bonus orb, `specs/mode.md` defines that orb's point
+  value.
 
 ## Game states
 
@@ -26,8 +26,8 @@ The game is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `COIL`, the tagline `GRID SERPENT`,
    the current `BEST` score, and a vertical menu. The menu lists the playable
-   modes defined by the mode specs — each mode spec declares its own entry and
-   where it sits in the menu — followed by `HOW TO PLAY`. The selected item is
+   mode(s) defined in `specs/mode.md` — that spec declares each mode's menu entry
+   and where it sits — followed by `HOW TO PLAY`. The selected item is
    highlighted. The board furniture (walls, a coiled snake, a pellet) may show
    dimmed behind the menu.
 2. **How to play.** A simple screen describing the controls and the combo

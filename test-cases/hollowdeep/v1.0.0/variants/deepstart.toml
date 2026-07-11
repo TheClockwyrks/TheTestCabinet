@@ -7,7 +7,9 @@ slug = "deepstart"
 name = "Deepstart"
 description = "The standard colony, started scarce: a smaller pocket of breathable air and no refined material on hand, so oxygen and construction are under pressure from the first cycle."
 
-spec = [{ source = "specs/modes/deepstart.md" }]
+# The playable start is seeded to the stable path `specs/mode.md` that the common
+# specs reference; deepstart seeds the scarce start in place of the standard one.
+spec = [{ source = "specs/mode-deepstart.md", dest = "specs/mode.md" }]
 reference = [{ view = "title", path = "reference/menu-deepstart.html" }]
 
 [[review_item]]

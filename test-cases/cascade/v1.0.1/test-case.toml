@@ -63,8 +63,9 @@ init = "npm install && npx playwright install chromium"
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
 # the first is the default. Each seeds the common specs plus its own deal-mode
-# spec (to the flat `specs/deal-mode.md`, so no `modes/` folder is ever seeded),
-# declares its own `title` menu mockup (the menu shows the deal mode), and the
+# spec (a flat `specs/deal-mode-<slug>.md` source seeding to the stable
+# `specs/deal-mode.md`, the only path ever seeded), declares its own `title` menu
+# mockup (the menu shows the deal mode), and the
 # review item for its turn count. The two differ in the stock's
 # turn count and how the waste is shown, so each also declares its own `gameplay`
 # mockup; only the `victory` view is common to both.
@@ -91,8 +92,8 @@ build = "npm run build"
 # material can be seeded per variant (see `[[variant]]` below). These six files
 # are always present, so the deal-mode spec may reference them freely; the common
 # specs, in turn, refer to the deal-mode spec by its seeded path
-# (`specs/deal-mode.md`) — the flat path every variant's mode spec seeds to, so a
-# run never sees a `modes/` folder implying deal modes other than its own.
+# (`specs/deal-mode.md`) — the stable dest every variant's deal-mode source seeds
+# to, so a run only ever sees the single deal mode that is actually present.
 #
 # Every common spec is plain Markdown, seeded verbatim (no `.hbs` — none of their
 # text varies by variant or version).

@@ -1,13 +1,13 @@
-# Holdfast — The standard frontier (homestead)
+# Holdfast — The standard frontier start
 
-This file defines the standard, always-present start. It builds on the tile world in
+This file defines the playable start. It builds on the tile world in
 `specs/world.md`, the settlers in `specs/settlers.md`, the economy in `specs/economy.md`,
 combat in `specs/combat.md`, the day/night cycle in `specs/time.md`, the controls in
 `specs/controls.md`, and the survival flow in `specs/flow.md`.
 
 ## Menu entry
 
-This mode spec adds the following entry to the main menu (see Game states in
+This start adds the following entry to the main menu (see Game states in
 `specs/flow.md`), before `HOW TO PLAY`:
 
 - `NEW COLONY`
@@ -26,7 +26,7 @@ last in the menu.)
   raids escalate, then hold the colony together against attacks that keep growing, for as
   long as you can (`specs/flow.md`).
 
-The standard start uses every system exactly as the common specs define it, with no
+This start uses every system exactly as the common specs define it, with no
 overrides:
 
 - the **tile world** and **resource nodes** from `specs/world.md`;
@@ -39,3 +39,13 @@ overrides:
   `specs/controls.md`;
 - and the survival pressure, days, scoring, the loss state, the states, and the HUD from
   `specs/flow.md`.
+
+## The threat
+
+The raids follow the standard escalating curve of the threat director
+(`specs/combat.md`): they scale with the colony's age and wealth on a tightening timer,
+each raid announced before it lands. The raiders **shoot from the open** and take cover
+like the settlers do; they come for the settlers and their turrets, but they **do not
+break through the colony's walls** — a well-built wall line, covered by fire, holds them
+off. The challenge is to stand up that defensive ground, and keep the crew fed and
+rested to man it, faster than the raids grow.

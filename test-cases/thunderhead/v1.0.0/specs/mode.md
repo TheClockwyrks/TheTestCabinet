@@ -1,7 +1,7 @@
-# Thunderhead — Mode: Open Battle
+# Thunderhead — Open Battle
 
-**Open Battle** is Thunderhead's standard mode, chosen from the **deploy** screen
-(`specs/flow.md`) and the game's default match.
+Thunderhead is played as an **Open Battle**, set up from the **deploy** screen
+(`specs/flow.md`).
 
 - **The battle.** One fleet against one over a freshly generated world
   (`specs/world.md`): you command your chosen power, the opponent commands its own,
@@ -15,4 +15,4 @@
   the result and the run's stats (`specs/flow.md`).
 - **How you play it.** Command the whole fleet from the tactical view, and **possess**
   any unit — and any station aboard it — to fight it directly, at will
-  (`specs/command.md`). Everything else in the specification applies unchanged.
+  (`specs/command.md`). Everything else in the specification applies.

@@ -44,8 +44,9 @@ Raiders are hostile, autonomous attackers (drawn from their **produced sprite sh
   `specs/assets.md`). When enough of a raid is killed the survivors may **break and
   flee** back off the map (your choice; a raid that fights to the last is also
   acceptable) — either way a **repelled raid ends** and the colony gets its respite.
-- Raiders come for the colony: left unopposed they will kill settlers and (in
-  Siegeworks, `specs/modes/`) break structures. They are the pressure the whole build
+- Raiders come for the colony: left unopposed they will kill settlers. The scale of a
+  raid — and whether raiders also break the colony's walls to reach the settlers — is
+  set by the playable start (`specs/mode.md`). They are the pressure the whole build
   exists to withstand.
 
 ## Ranged combat

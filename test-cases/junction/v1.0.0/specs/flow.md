@@ -4,8 +4,8 @@ This file defines the shape of a game: the pressure that drives it, the clock, s
 the bankruptcy loss state, the game's state machine, the HUD dashboard, audio, the
 behaviors that make good test targets, and what is out of scope. It refers to the map
 (`specs/map.md`), transit (`specs/transit.md`), utilities (`specs/utilities.md`), the
-economy (`specs/economy.md`), the controls (`specs/controls.md`), and the modes under
-`specs/modes/`.
+economy (`specs/economy.md`), the controls (`specs/controls.md`), and the start in
+`specs/mode.md`.
 
 ## The pressure
 
@@ -30,8 +30,7 @@ large and how prosperous a city you can grow and hold. The pressure is the pull 
 
 Tune the demand, costs, and upkeep so a competent player grows a healthy, solvent city
 and a careless one slides toward bankruptcy — the pressure should be real but
-recoverable. The `roughterrain` start (`specs/modes/`) tightens the opening by making
-the land costlier to build across.
+recoverable.
 
 ## Clock and scoring
 
@@ -61,8 +60,8 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `JUNCTION`, a tagline, and a vertical menu
-   listing the playable starts defined by the mode specs (each mode spec declares its
-   own entry), followed by `HOW TO PLAY`. The selected item is highlighted. A dim slice
+   listing the playable start defined in `specs/mode.md` (it declares its own menu
+   entry), followed by `HOW TO PLAY`. The selected item is highlighted. A dim slice
    of a top-down city may show behind the menu for atmosphere.
 2. **How to play.** Describes the controls, the zone→connect→serve→develop loop, the RCI
    demand, the transit-and-congestion flow, power and water, the budget and how a city

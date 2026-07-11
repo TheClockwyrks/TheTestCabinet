@@ -30,9 +30,8 @@ Raw **ore** is not directly buildable; it must be **refined into material**:
   preferred). Define the **ore→material** conversion (for example a few ore per unit
   of material) and show both stocks in the HUD.
 - Refining is the reason ore seams matter: the colony cannot build its way to
-  survival without mining and refining ore first. In the **Deepstart** start
-  (`specs/modes/deepstart.md`) the colony begins with **no** material, so its very
-  first work is digging ore and refining it.
+  survival without mining and refining ore first. How much refined material the colony
+  has on hand at the start is set by `specs/mode.md`.
 
 ## Build orders
 

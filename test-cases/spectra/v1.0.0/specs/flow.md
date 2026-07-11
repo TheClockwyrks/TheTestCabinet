@@ -4,8 +4,8 @@ This file defines the wave/stage progression, the challenge stages, scoring,
 lives, stage scaling, the game's state machine, the HUD, audio, the behaviors
 that make good test targets, and what is out of scope. It refers to the stage in
 `specs/playfield.md`, polarity in `specs/polarity.md`, the controls in
-`specs/controls.md`, the drones in `specs/enemies.md`, and the modes under
-`specs/modes/`.
+`specs/controls.md`, the drones in `specs/enemies.md`, and the mode(s) in
+`specs/mode.md`.
 
 ## Stages and waves
 
@@ -89,8 +89,9 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `SPECTRA`, the tagline `TUNE TO
-   SURVIVE`, and a vertical menu listing the playable modes defined by the mode
-   specs (each mode spec declares its own entry), followed by `HOW TO PLAY`. The
+   SURVIVE`, and a vertical menu listing the playable mode(s) defined in
+   `specs/mode.md` (which declares each mode's menu entry), followed by
+   `HOW TO PLAY`. The
    selected item is highlighted. A dim slice of starfield with a drone or two may
    show behind the menu for atmosphere.
 2. **How to play.** Describes the controls, the two bands and the match-to-destroy

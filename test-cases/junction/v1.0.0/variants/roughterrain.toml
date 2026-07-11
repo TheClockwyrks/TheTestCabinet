@@ -1,13 +1,16 @@
-# The standard city plus Rough Terrain, a harder starting map: water and hills fragment
-# the buildable land and raise the cost of carrying transit and utilities across it, so
-# the city is under layout and budget pressure from the first periods. Its review item
-# rolls up to the common `simulation` domain, since Rough Terrain presses the same city
-# systems harder rather than adding a new axis of judgement.
+# Rough Terrain: a harder starting map where water and hills fragment the buildable land
+# and raise the cost of carrying transit and utilities across it, so the city is under
+# layout and budget pressure from the first periods. It seeds its own start spec to the
+# stable `specs/mode.md` path (the path every common spec references), so the model sees
+# a single, self-contained start spec with no mention of any other start. Its review
+# item rolls up to the common `simulation` domain, since Rough Terrain presses the same
+# city systems harder rather than adding a new axis of judgement.
 slug = "roughterrain"
 name = "Rough Terrain"
-description = "The standard city, started on fragmented land: water and hills break the buildable ground into pockets and force costlier bridge/tunnel spans to connect and serve it, so layout and solvency are under pressure from the first periods."
+description = "A city started on fragmented land: water and hills break the buildable ground into pockets and force costlier bridge/tunnel spans to connect and serve it, so layout and solvency are under pressure from the first periods."
 
-spec = [{ source = "specs/modes/roughterrain.md" }]
+# Seed the Rough Terrain start to the common `specs/mode.md` path.
+spec = [{ source = "specs/mode-roughterrain.md", dest = "specs/mode.md" }]
 reference = [{ view = "title", path = "reference/menu-roughterrain.html" }]
 
 [[review_item]]

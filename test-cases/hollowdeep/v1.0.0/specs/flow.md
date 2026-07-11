@@ -5,7 +5,7 @@ cycle clock, scoring, the loss state, the game's state machine, the HUD dashboar
 audio, the behaviors that make good test targets, and what is out of scope. It refers
 to the tile world (`specs/world.md`), the gas (`specs/gas.md`), power
 (`specs/power.md`), the delvers (`specs/delvers.md`), the economy (`specs/economy.md`),
-the controls (`specs/controls.md`), and the modes under `specs/modes/`.
+the controls (`specs/controls.md`), and the start in `specs/mode.md`.
 
 ## Survival pressure
 
@@ -28,8 +28,8 @@ the colony endures. The pressure comes from the air and the food:
 
 Tune the starting air, consumption, and machine output so a competent player can just
 get life support up in time and a careless one loses the colony — the pressure should
-be real but survivable. The **Deepstart** start (`specs/modes/deepstart.md`) tightens
-the opening.
+be real but survivable. The colony's opening conditions — how much breathable air and
+refined material it starts with — are set by `specs/mode.md`.
 
 ## Cycles and scoring
 
@@ -58,8 +58,8 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `HOLLOWDEEP`, a tagline, and a vertical
-   menu listing the playable starts defined by the mode specs (each mode spec
-   declares its own entry), followed by `HOW TO PLAY`. The selected item is
+   menu listing the playable start defined by `specs/mode.md` (which declares its
+   own entry), followed by `HOW TO PLAY`. The selected item is
    highlighted. A dim slice of a cross-section colony may show behind the menu for
    atmosphere.
 2. **How to play.** Describes the controls, the air/CO2 survival loop, the dig→refine→

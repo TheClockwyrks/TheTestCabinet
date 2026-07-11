@@ -94,13 +94,14 @@ packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
-# the first is the default. Each seeds the common specs plus its own additive
-# specs, supplies its own `title` menu reference (the main menu lists a different
-# set of modes per variant; `gameplay` and `game-over` are common), and — for the
-# overload variant — the review item for the mode it introduces (rolling up to the
+# the first is the default. Each seeds the common specs plus its own mode spec at
+# the stable path `specs/mode.md` (from its `specs/mode-<slug>.md` source),
+# supplies its own `title` menu reference (the main menu lists a different set of
+# modes per variant; `gameplay` and `game-over` are common), and — for the
+# overload variant — the review item for the Overload mode (rolling up to the
 # common `polarity` domain, since Overload extends the band system):
 #   - base     — Sortie only.
-#   - overload — adds Overload, where a mismatched shot no longer wastes but
+#   - overload — Sortie plus Overload, where a mismatched shot no longer wastes but
 #                charges the drone toward a per-type overload.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
@@ -117,11 +118,12 @@ install = "npm ci"
 build = "npm run build"
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern so mode-specific material
-# can be seeded per variant (see `[[variant]]`). These are always present, so the
-# mode specs may reference them freely; the common specs must never reference a
-# mode spec a given variant does not seed (only `modes/standard.md` is always
-# present). All common specs are plain Markdown, seeded verbatim.
+# workspace. The specification is decomposed by concern; the mode-varying material
+# is carried by a per-variant spec file seeded to the stable path `specs/mode.md`
+# (each variant declares its own — see the variant files). Because `specs/mode.md`
+# is always present, the common specs reference it by name and never mention a
+# specific variant or an unseeded mode. All common specs are plain Markdown, seeded
+# verbatim.
 # A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
 # these need only name the source they seed.
 [[spec]]
@@ -148,9 +150,6 @@ source = "specs/flow.md"
 # `assets` (above) and this spec stay in lockstep.
 [[spec]]
 source = "specs/assets.md"
-
-[[spec]]
-source = "specs/modes/standard.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact
 # paths the `[[proof]]` entries below declare. The paths in this spec and in the

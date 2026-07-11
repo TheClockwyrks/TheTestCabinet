@@ -1,11 +1,15 @@
-# The default variant: the standard colony start only, with no extra mode spec on
-# top of the always-present `specs/modes/survival.md`. Listed first in the case
+# The default variant: the standard colony start. Listed first in the case
 # manifest's `variants`, so it is the default. Every path resolves against the
 # version folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
 description = "The standard colony start."
 
-# The main menu lists a different set of starts per variant, so each variant
-# supplies its own `title` reference; `gameplay` and `game-over` are common.
+# The playable start is seeded to the stable path `specs/mode.md` that the common
+# specs reference; base seeds the standard survival start. `dest` is given explicitly
+# because the source name differs from the seeded path.
+spec = [{ source = "specs/mode-survival.md", dest = "specs/mode.md" }]
+
+# The main menu lists a different start per variant, so each variant supplies its own
+# `title` reference; `gameplay` and `game-over` are common.
 reference = [{ view = "title", path = "reference/menu-base.html" }]

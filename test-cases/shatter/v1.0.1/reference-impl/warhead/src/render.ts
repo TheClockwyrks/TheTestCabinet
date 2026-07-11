@@ -471,7 +471,7 @@ function drawHud(ctx: Ctx, game: Game): void {
 // The torpedo-charge indicator below the lives row: a small torpedo glyph and a
 // charge bar. When ready, the glyph is lit and the bar full; while recharging,
 // the glyph is dimmed and the bar fills smoothly from empty to full across the
-// 10-second recharge (specs/modes/warhead.md — HUD).
+// 10-second recharge (specs/mode-warhead.md — HUD).
 function drawTorpedoHud(ctx: Ctx, game: Game): void {
   const ready = game.torpedoCharged;
   const frac = Math.max(0, Math.min(1, game.torpedoChargeFrac()));

@@ -1,10 +1,14 @@
-# The default Coil variant: Classic mode only, with no extra mode spec on top of
-# the always-present `specs/modes/standard.md`. Listed first in the case
+# The default Coil variant: Classic mode only. Listed first in the case
 # manifest's `variants`, so it is the default. Every path resolves against the
 # version folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
 description = "Classic mode only."
+
+# The mode that varies between variants is seeded to the stable path
+# `specs/mode.md` that the common specs reference; here it is Classic only. `dest`
+# is given explicitly because the source name differs from the seeded path.
+spec = [{ source = "specs/mode-base.md", dest = "specs/mode.md" }]
 
 # The main menu lists a different set of modes per variant, so each variant
 # supplies its own `title` reference; `gameplay` and `game-over` are common.

@@ -66,8 +66,7 @@ start; they cross-reference each other **by name** and form a single spec.
 - `specs/assets.md` — the **provided unit models** and how the build must load and
   use them.
 - `specs/proof.md` — the proof-of-implementation artifacts the build must capture.
-- the mode spec under `specs/modes/` — the playable mode and its deploy-screen
-  entry.
+- `specs/mode.md` — the **Open Battle** the game plays and its deploy-screen setup.
 
 ## Goal of this build
 

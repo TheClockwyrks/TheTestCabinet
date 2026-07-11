@@ -1,18 +1,33 @@
-# Coil — Wrap mode
+# Coil — Classic and Wrap modes
 
-This file defines the **Wrap** mode. It builds on the board in
-`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the scoring and
-flow in `specs/flow.md`. Everything in Classic mode applies except where this
-spec overrides it.
+This file defines this build's two playable modes, **Classic** and **Wrap**, and
+their main-menu entries. It builds on the board in `specs/playfield.md`, the
+simulation in `specs/mechanics.md`, and the scoring and flow in `specs/flow.md`.
 
-## Menu entry
+## Menu entries
 
-This mode spec adds the following entry to the main menu (see Game states in
-`specs/flow.md`), directly **after** `CLASSIC`:
+This spec adds the following entries to the main menu (see Game states in
+`specs/flow.md`), in this order, before `HOW TO PLAY`:
 
-- `WRAP`
+- `CLASSIC` — the **first** menu item.
+- `WRAP` — directly **after** `CLASSIC`.
 
-## Mode
+(`HOW TO PLAY` is a state defined in `specs/flow.md`, not a mode, and is always
+shown last in the menu.)
+
+## Classic
+
+- **Classic** — the standard game on the fully enclosed `30 x 18` board from
+  `specs/playfield.md`. The four perimeter walls are **solid and fatal** and the
+  board does **not** wrap, so the interior playable area is `28 x 16` (`col` in
+  `[1, 28]`, `row` in `[1, 16]`). Exactly one pellet is on the board at a time,
+  there are no interior obstacles, and there is no bonus orb. It uses the 125 ms
+  tick interval, the standard single-pellet placement, the combo scoring, and the
+  standard collision and growth rules.
+
+## Wrap
+
+Everything in Classic applies to Wrap except where this section overrides it.
 
 - **Wrap** — the same `30 x 18` board, but the four perimeter edges become
   **tunnels** instead of solid walls. A snake that leaves one edge re-enters from

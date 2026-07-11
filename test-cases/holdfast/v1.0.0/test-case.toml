@@ -101,13 +101,14 @@ packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
-# first is the default. Each seeds the common specs plus its own additive specs,
-# supplies its own `title` menu reference (the main menu lists a different set of
-# starts per variant; `gameplay` and `game-over` are common), and — for the
+# first is the default. Each seeds the common specs plus its own mode spec (its
+# `specs/mode-<slug>.md` → the stable dest `specs/mode.md`, which REPLACES the mode
+# rather than adding one), supplies its own `title` menu reference (the main menu
+# lists that variant's start; `gameplay` and `game-over` are common), and — for the
 # siegeworks variant — the review item for the harder raids it introduces (rolling
 # up to the common `simulation` domain, since it presses the same threat systems):
-#   - base       — the standard frontier start only.
-#   - siegeworks — adds a harder start: larger raids with sappers that break walls.
+#   - base       — the standard frontier start.
+#   - siegeworks — a harder start: larger raids with sappers that break walls.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
@@ -123,13 +124,14 @@ install = "npm ci"
 build = "npm run build"
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern so mode-specific material
-# can be seeded per variant (see the variant files). These are always present, so
-# the mode specs may reference them freely; the common specs must never reference a
-# mode spec a given variant does not seed (only `modes/homestead.md` is always
-# present). All common specs are plain Markdown, seeded verbatim. A spec's `dest`
-# defaults to its `source` (with a trailing `.hbs` stripped), so these need only
-# name the source they seed.
+# workspace. The specification is decomposed by concern; the mode-specific material
+# is NOT here but is seeded per variant to the stable dest `specs/mode.md` (each
+# variant declares its own `specs/mode-<slug>.md` source → `specs/mode.md`; see the
+# variant files). Because `specs/mode.md` is therefore always present, the common
+# specs reference it freely; and because every variant seeds exactly one mode spec
+# to it, the common specs never mention another variant's mode. All common specs are
+# plain Markdown, seeded verbatim. A spec's `dest` defaults to its `source` (with a
+# trailing `.hbs` stripped), so these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -160,9 +162,6 @@ source = "specs/flow.md"
 # and this spec stay in lockstep. This is the defining spec of a full-stack case.
 [[spec]]
 source = "specs/assets.md"
-
-[[spec]]
-source = "specs/modes/homestead.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact
 # paths the `[[proof]]` entries below declare. The paths in this spec and in the

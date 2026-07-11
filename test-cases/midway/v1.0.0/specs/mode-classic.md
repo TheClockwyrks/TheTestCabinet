@@ -1,13 +1,13 @@
-# Midway — The standard park (classic)
+# Midway — The park
 
-This file defines the standard, always-present start. It builds on the park grid in
-`specs/park.md`, the guests in `specs/guests.md`, the rides and stalls in
+This file defines the park's start — the standard management start. It builds on the
+park grid in `specs/park.md`, the guests in `specs/guests.md`, the rides and stalls in
 `specs/rides.md`, the economy in `specs/economy.md`, the staff in `specs/staff.md`,
 the controls in `specs/controls.md`, and the reputation flow in `specs/flow.md`.
 
 ## Menu entry
 
-This mode spec adds the following entry to the main menu (see Game states in
+This spec adds the following entry to the main menu (see Game states in
 `specs/flow.md`), before `HOW TO PLAY`:
 
 - `NEW PARK`
@@ -25,8 +25,7 @@ last in the menu.)
   park clean, and grow the rating (`specs/flow.md`) — building a park that turns a
   profit and staving off bankruptcy for as long as you can.
 
-The standard start uses every system exactly as the common specs define it, with no
-overrides:
+The start uses every system exactly as the common specs define it, with no overrides:
 
 - the **park grid**, paths, and placement from `specs/park.md`;
 - the **guest desire model** — choosing, queuing, spending, and happiness — from

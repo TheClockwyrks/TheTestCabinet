@@ -102,9 +102,10 @@ packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record. Each
 # is declared in its own file under `variants/` and listed here in order — the first is
-# the default. Each seeds the common specs plus its own additive specs, supplies its
-# own `title` menu reference (the main menu lists a different set of starts per variant;
-# `gameplay` and `game-over` are common), and — for the roughterrain variant — the
+# the default. Each seeds the common specs plus its own start spec (to the stable
+# `specs/mode.md` path), supplies its own `title` menu reference (the main menu's start
+# differs per variant; `gameplay` and `game-over` are common), and — for the
+# roughterrain variant — the
 # review item for the harder start it introduces (rolling up to the common `simulation`
 # domain, since it presses the same city systems):
 #   - base         — the standard flat starter valley.
@@ -125,11 +126,11 @@ install = "npm ci"
 build = "npm run build"
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
-# The specification is decomposed by concern so mode-specific material can be seeded
-# per variant (see the variant files). These are always present, so the mode specs may
-# reference them freely; the common specs must never reference a mode spec a given
-# variant does not seed (only `modes/standard.md` is always present). All common specs
-# are plain Markdown, seeded verbatim. A spec's `dest` defaults to its `source` (with a
+# The specification is decomposed by concern so the varying start can be seeded per
+# variant: each variant seeds its own start spec to the stable `specs/mode.md` path (see
+# the variant files), which is therefore always present and which the common specs
+# reference by that name. The common specs never name a variant. All common specs are
+# plain Markdown, seeded verbatim. A spec's `dest` defaults to its `source` (with a
 # trailing `.hbs` stripped), so these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
@@ -158,9 +159,6 @@ source = "specs/flow.md"
 # in lockstep. This is the defining spec of a full-stack case.
 [[spec]]
 source = "specs/assets.md"
-
-[[spec]]
-source = "specs/modes/standard.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact paths
 # the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`

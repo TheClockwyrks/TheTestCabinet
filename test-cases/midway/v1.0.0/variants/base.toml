@@ -1,11 +1,16 @@
-# The default variant: the standard park start only, with no extra mode spec on top
-# of the always-present `specs/modes/classic.md`. Listed first in the case manifest's
-# `variants`, so it is the default. Every path resolves against the version folder,
-# exactly like the main manifest.
+# The default variant: the standard park start. Seeds the standard mode spec to the
+# stable `specs/mode.md` dest that the common specs reference. Listed first in the case
+# manifest's `variants`, so it is the default. Every path resolves against the version
+# folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
 description = "The standard park start."
 
-# The main menu lists a different set of starts per variant, so each variant supplies
-# its own `title` reference; `gameplay` and `game-over` are common.
+# The varying start is seeded per variant at the common `specs/mode.md` path the other
+# specs reference, so the model sees a single, self-contained mode spec. Base seeds the
+# standard park start.
+spec = [{ source = "specs/mode-classic.md", dest = "specs/mode.md" }]
+
+# The main menu start differs per variant, so each variant supplies its own `title`
+# reference; `gameplay` and `game-over` are common.
 reference = [{ view = "title", path = "reference/menu-base.html" }]

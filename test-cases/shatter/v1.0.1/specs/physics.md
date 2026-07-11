@@ -73,10 +73,9 @@ Gravity acts only on bodies flying **ballistically** — bullets and rocks. The 
 and the saucer are powered craft whose thrusters hold them against the star, so
 they fly where they are steered, unaffected by the well. This keeps flight under
 the player's full control: the star shapes the *board* — curving your shots and
-the rocks' paths — without ever wresting the ship out of your hands. (A mode may add
-its own self-propelled munition that, like the ship and saucer, holds its own course
-and so is likewise **not** pulled by the well; see the mode spec under
-`specs/modes/` when one is seeded.)
+the rocks' paths — without ever wresting the ship out of your hands. (Any
+self-propelled munition the mode spec `specs/mode.md` adds likewise holds its own
+course and so, like the ship and saucer, is **not** pulled by the well.)
 
 What the pull produces, and why it is the heart of the game:
 
@@ -120,18 +119,16 @@ timestep that no body moves more than its own radius per step.
 
 Resolve these interactions:
 
-- **Bullet ↔ rock.** The rock is destroyed and the bullet is removed. The rock
+- **Bullet ↔ rock.** A bullet that hits a rock is removed. Whether that hit
+  destroys the rock outright or only lowers the health of an armored rock is set by
+  the mode spec `specs/mode.md`; on the hit that destroys the rock, the rock
   **splits** per `specs/playfield.md` (Large → two Medium, Medium → two Small,
   Small → nothing) and its **score** is awarded (`specs/flow.md`). Each
   fragment spawns at the destroyed rock's position and takes the parent's
   velocity **plus a split kick** of about **90 px/s** directed **perpendicular
   to the bullet's travel** — the two fragments kicked to opposite sides — so the
   angle of your shot fans the pieces apart. Fragments then obey gravity like any
-  rock. (A mode may give rocks **health** so that a larger rock takes several
-  bullet hits to destroy; where it does, a non-destroying hit still removes the
-  bullet but only lowers the rock's health, and the split and score above happen
-  only on the hit that finally destroys it. See the mode spec under `specs/modes/`
-  when one is seeded.)
+  rock.
 - **Bullet ↔ saucer.** The saucer is destroyed (score `200`, `specs/flow.md`) and
   the bullet is removed.
 - **Bullet ↔ star core.** The bullet is absorbed and removed.

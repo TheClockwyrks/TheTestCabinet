@@ -1,11 +1,15 @@
-# The default variant: the standard starter valley only, with no extra mode spec on
-# top of the always-present `specs/modes/standard.md`. Listed first in the case
-# manifest's `variants`, so it is the default. Every path resolves against the version
-# folder, exactly like the main manifest.
+# The default variant: the standard flat starter valley. It seeds its own start spec to
+# the stable `specs/mode.md` path (the path every common spec references), so the model
+# sees a single, self-contained start spec. Listed first in the case manifest's
+# `variants`, so it is the default. Every path resolves against the version folder,
+# exactly like the main manifest.
 slug = "base"
 name = "Base"
 description = "The standard flat starter valley."
 
-# The main menu lists a different set of starts per variant, so each variant supplies
-# its own `title` reference; `gameplay` and `game-over` are common.
+# Seed the standard start to the common `specs/mode.md` path.
+spec = [{ source = "specs/mode-standard.md", dest = "specs/mode.md" }]
+
+# The main menu's start differs per variant, so each variant supplies its own `title`
+# reference; `gameplay` and `game-over` are common.
 reference = [{ view = "title", path = "reference/menu-base.html" }]

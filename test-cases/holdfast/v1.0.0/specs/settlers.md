@@ -11,7 +11,7 @@ mining), `specs/economy.md` (hauling, building, farming, cooking), and `specs/co
 ## The settlers
 
 The colony starts with a small crew — about **3 settlers** — standing at the landing
-site (`specs/flow.md`; a mode may differ, `specs/modes/`). Each is an autonomous
+site (`specs/flow.md`, `specs/mode.md`). Each is an autonomous
 worker: you do **not** control a settler directly. You shape what they do by
 designating work and setting priorities (`specs/controls.md`); the settlers decide who
 does what and pathfind to it themselves. Each is drawn from its **produced sprite

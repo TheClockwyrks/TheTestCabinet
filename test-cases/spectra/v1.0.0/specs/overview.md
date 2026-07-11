@@ -48,9 +48,9 @@ start; they cross-reference each other by name and form one specification.
   ship and drone sprites you must render from, how to load them under any base
   path, how each entity's second band is derived at runtime, and what is left to
   draw in code. **Read this carefully.**
-- the mode specs under `specs/modes/` — the playable mode(s) and the main-menu
-  entry for each. Read every mode spec present and implement the modes they
-  define. The main menu lists those modes, then `HOW TO PLAY`.
+- `specs/mode.md` — the playable mode(s) and the main-menu entry for each.
+  Implement every mode it defines. The main menu lists those modes, then
+  `HOW TO PLAY`.
 
 ## Goal of this build
 
