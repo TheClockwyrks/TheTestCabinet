@@ -16,13 +16,16 @@ export interface Vec {
   y: number;
 }
 
-// A ship-fired bullet (also reused for the ship). Gravity acts on it.
+// A ship-fired bullet. Gravity acts on it.
 export interface Bullet {
   x: number;
   y: number;
   vx: number;
   vy: number;
   life: number; // seconds remaining before it expires
+  // Recent positions (oldest -> newest) for the motion trail, one per sim step;
+  // capped to a fixed slice of travel time so its length scales with speed.
+  trail: Vec[];
 }
 
 // A drifting rock. `verts` are the per-vertex radii of its irregular outline,

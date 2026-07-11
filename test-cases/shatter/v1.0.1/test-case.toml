@@ -223,6 +223,14 @@ reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
+id = "bullet-trail"
+title = "Bullet motion trail"
+text = "Every moving bullet leaves a continuous, tapering motion trail (a smooth comet in the bullet color, not discrete dots) that traces its recent path — so it visibly curves as the star bends the shot — and whose length scales with the bullet's speed, without smearing across the field on a screen wrap."
+weight = 1
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
 id = "bullet-limits"
 title = "Bullet limits"
 text = "Bullets have a limited lifetime/range, at most four of the ship's bullets exist at once, fire is rate-limited, and a bullet's velocity carries the ship's own motion (a shot fired while moving is faster)."

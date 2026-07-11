@@ -96,6 +96,18 @@ collides as a circle of the radius below.
   it reaches the star core (absorbed), or when it destroys a rock. The exact
   muzzle velocity, lifetime, on-screen limit, and fire rate are in
   `specs/physics.md`.
+- **Each bullet leaves a motion trail (required).** Behind every moving bullet,
+  draw a fading tail that traces its **recent path**, so it visibly bends as the
+  star curves the shot (`specs/physics.md`) — the trail is what makes a bullet's
+  curvature near the star legible at a glance. It must read as one **continuous**
+  streak in the bullet color `#f2f5f7` — a smooth comet, not a row of discrete
+  dots — that **tapers** from the bullet: widest and brightest where it meets the
+  bullet, then narrowing and fading smoothly to nothing at its oldest end. The
+  trail spans a **fixed slice of recent travel time** (on the order of
+  `0.12`–`0.18 s` of motion), so its length is proportional to the bullet's
+  current speed — it stretches on a fast shot and shortens as a bullet slows.
+  Across a screen wrap it follows the bullet to the opposite edge rather than
+  smearing across the field. Match `reference/gameplay.png`.
 
 ## The saucer
 

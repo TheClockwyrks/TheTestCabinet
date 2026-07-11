@@ -42,6 +42,7 @@ import {
   STAR_X,
   STAR_Y,
   START_LIVES,
+  TRAIL_TIME,
   WAVE_BANNER_TIME,
   WAVE_BASE_ROCKS,
   WAVE_MIN_SHIP_DIST,
@@ -75,7 +76,17 @@ import {
   wrapBody,
   wrappedDist,
 } from "./physics";
-import type { AppState, Bullet, EnemyBullet, Rock, Saucer } from "./types";
+import type { AppState, Bullet, EnemyBullet, Rock, Saucer, Vec } from "./types";
+
+// Append a position to a bullet's motion-trail history, capping it to a fixed
+// slice of recent travel time (TRAIL_TIME). dt is the fixed sim step, so the cap
+// is a constant sample count; because the window is a slice of *time*, the
+// trail's on-screen length scales with the bullet's current speed.
+function recordTrail(trail: Vec[], x: number, y: number, dt: number): void {
+  trail.push({ x, y });
+  const max = Math.max(2, Math.round(TRAIL_TIME / dt) + 1);
+  while (trail.length > max) trail.shift();
+}
 
 export const TITLE_ITEMS = ["PLAY", "HOW TO PLAY"];
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"];
@@ -355,6 +366,7 @@ export class Game {
         vx: this.ship.vx + c * MUZZLE_SPEED,
         vy: this.ship.vy + s * MUZZLE_SPEED,
         life: BULLET_LIFE,
+        trail: [{ x: nose.x, y: nose.y }],
       });
       this.fireCooldown = FIRE_INTERVAL;
       this.audio.fire();
@@ -372,6 +384,7 @@ export class Game {
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       wrapBody(b);
+      recordTrail(b.trail, b.x, b.y, dt);
       b.life -= dt;
       if (b.life > 0) keep.push(b);
     }
@@ -535,7 +548,7 @@ export class Game {
     }
   }
 
-  private bulletHitsCore(b: Bullet, dt: number): boolean {
+  private bulletHitsCore(b: Bullet | EnemyBullet, dt: number): boolean {
     return this.bodyHitsCore(b.x, b.y, b.vx, b.vy, BULLET_R, dt);
   }
 

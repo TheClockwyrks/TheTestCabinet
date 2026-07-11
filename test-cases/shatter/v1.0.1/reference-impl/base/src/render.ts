@@ -21,7 +21,7 @@ import {
   TAU,
 } from "./constants";
 import { Game, OVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./game";
-import type { Bullet, EnemyBullet, Rock, Saucer } from "./types";
+import type { Bullet, EnemyBullet, Rock, Saucer, Vec } from "./types";
 
 // The canvas 2D context, with the (widely-supported, sometimes untyped)
 // letterSpacing property available.
@@ -249,6 +249,73 @@ function drawShip(
   });
 }
 
+// A bullet's motion trail: a single tapering, fading comet tracing its recent
+// (gravity-curved) path, so the bend near the star reads at a glance. Built as
+// one filled ribbon whose half-width tapers to zero at the oldest end, filled
+// with a head->tail gradient in the bullet color so it reads as a smooth streak
+// rather than discrete dots. Because the samples span a fixed slice of time, the
+// ribbon's length is proportional to the bullet's speed. The ribbon is cut at a
+// wrap seam so it never smears across the field.
+function drawTrail(ctx: Ctx, b: Bullet): void {
+  // Newest -> oldest, stopping at a wrap seam: a jump larger than half the field
+  // between samples means the bullet wrapped, so the trail ends there.
+  const pts: Vec[] = [];
+  for (let i = b.trail.length - 1; i >= 0; i--) {
+    const p = b.trail[i];
+    const prev = pts[pts.length - 1];
+    if (
+      prev &&
+      (Math.abs(p.x - prev.x) > FIELD_W / 2 || Math.abs(p.y - prev.y) > FIELD_H / 2)
+    ) {
+      break;
+    }
+    pts.push(p);
+  }
+  if (pts.length < 2) return;
+
+  const head = pts[0];
+  const tail = pts[pts.length - 1];
+  if (Math.hypot(head.x - tail.x, head.y - tail.y) < 2) return; // collapsed / at rest
+
+  const n = pts.length;
+  const headHalf = BULLET_R + 1.5;
+  const left: Vec[] = [];
+  const right: Vec[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    const prev = pts[Math.max(i - 1, 0)];
+    const next = pts[Math.min(i + 1, n - 1)];
+    let tx = next.x - prev.x;
+    let ty = next.y - prev.y;
+    const len = Math.hypot(tx, ty) || 1;
+    tx /= len;
+    ty /= len;
+    // Perpendicular to the local tangent, scaled by a half-width that tapers to 0.
+    const nx = -ty;
+    const ny = tx;
+    const hw = headHalf * (1 - i / (n - 1)); // full at head, 0 at oldest end
+    left.push({ x: p.x + nx * hw, y: p.y + ny * hw });
+    right.push({ x: p.x - nx * hw, y: p.y - ny * hw });
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(left[0].x, left[0].y);
+  for (let i = 1; i < n; i++) ctx.lineTo(left[i].x, left[i].y);
+  for (let i = n - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
+  ctx.closePath();
+
+  const grad = ctx.createLinearGradient(head.x, head.y, tail.x, tail.y);
+  grad.addColorStop(0, "rgba(242, 245, 247, 0.5)");
+  grad.addColorStop(0.55, "rgba(242, 245, 247, 0.16)");
+  grad.addColorStop(1, "rgba(242, 245, 247, 0)");
+  ctx.fillStyle = grad;
+  ctx.shadowColor = "rgba(242, 245, 247, 0.3)";
+  ctx.shadowBlur = 6;
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawBullet(ctx: Ctx, b: Bullet): void {
   drawWrapped(b.x, b.y, BULLET_R + 4, (px, py) => {
     ctx.save();
@@ -448,6 +515,7 @@ function drawOverlay(ctx: Ctx, opacity: number): void {
 function drawPlayScene(ctx: Ctx, game: Game): void {
   drawStar(ctx);
   for (const r of game.rocks) drawRock(ctx, r);
+  for (const b of game.bullets) drawTrail(ctx, b);
   for (const b of game.bullets) drawBullet(ctx, b);
   for (const b of game.enemyBullets) drawEnemyBullet(ctx, b);
   if (game.saucer) drawSaucer(ctx, game.saucer);
@@ -576,6 +644,7 @@ function drawPause(ctx: Ctx, game: Game): void {
 function drawPlaySceneFrozen(ctx: Ctx, game: Game): void {
   drawStar(ctx);
   for (const r of game.rocks) drawRock(ctx, r);
+  for (const b of game.bullets) drawTrail(ctx, b);
   for (const b of game.bullets) drawBullet(ctx, b);
   for (const b of game.enemyBullets) drawEnemyBullet(ctx, b);
   if (game.saucer) drawSaucer(ctx, game.saucer);

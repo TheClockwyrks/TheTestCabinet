@@ -133,6 +133,9 @@ deep space. The canonical palette and type are defined below; match them.
   drawn as irregular, angular polygon outlines (not smooth circles), so they read
   as tumbling debris; their collision shape is still the circle defined in
   `specs/playfield.md`.
+- **Bullets leave a tapering motion trail (required).** Each moving bullet draws a
+  continuous, fading comet along its recent path, so the way the star bends a shot
+  reads at a glance; the full requirement is in `specs/playfield.md`.
 - **The star reads as a gravity well.** Draw it as a bright core with a larger,
   softer radial halo fading outward into the field, so a player can see the region
   of strongest pull. Its exact size and the pull it exerts are in
