@@ -13,9 +13,16 @@ export function bearer(token?: string | null): Record<string, string> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
-export async function getJson<T>(base: string, path: string): Promise<T> {
+// GET a JSON document. `token`, when given, is sent as `Authorization: Bearer
+// <token>` — the reviewer coverage-plan reads are account-scoped and supply it;
+// the open reads (catalog, published runs) omit it.
+export async function getJson<T>(
+  base: string,
+  path: string,
+  token?: string | null,
+): Promise<T> {
   const res = await fetch(joinUrl(base, path), {
-    headers: { accept: "application/json" },
+    headers: { accept: "application/json", ...bearer(token) },
   });
   if (!res.ok) throw await httpError(res);
   return (await res.json()) as T;
@@ -62,6 +69,26 @@ export async function putJson<T>(
   });
   if (!res.ok) throw await httpError(res);
   return (await res.json()) as T;
+}
+
+// PUT a JSON body to an endpoint that returns no body (`204 No Content`), sending
+// `token` as a bearer. Used by the coverage-plan upsert, which acknowledges with
+// an empty body. Mirrors {@link putJson} without the response parse.
+export async function putVoid(
+  base: string,
+  path: string,
+  body: unknown,
+  token?: string | null,
+): Promise<void> {
+  const res = await fetch(joinUrl(base, path), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      ...bearer(token),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await httpError(res);
 }
 
 // DELETE a resource. `token` is sent as `Authorization: Bearer <token>` — the

@@ -207,6 +207,17 @@ fn main() -> Result<()> {
                 relay::Notification, bapi::ClientConfig,
             ],
         },
+        // The reviewer coverage-plan surface (console-only): a per-account
+        // declarative plan (`GET`/`PUT /review-plan`) and the coverage matrix
+        // computed from it (`GET /review-plan/coverage`). The combination and cell
+        // types reference `HarnessSlug`, owned by the run-record document.
+        TsModule {
+            file: "review-plan.ts",
+            decls: ts_decls![&cfg;
+                bapi::ReviewPlanCase, bapi::ReviewPlanCombo, bapi::ReviewPlan,
+                bapi::CoverageCell, bapi::CoverageMatrix,
+            ],
+        },
     ];
     for (file, content) in finalize_ts(modules, TS_HEADER) {
         write_ts(&root, file, &content)?;
@@ -263,6 +274,16 @@ fn main() -> Result<()> {
         anon(
             "jobs-api/client-config.schema.json",
             root_schema::<bapi::ClientConfig>(),
+        ),
+        // The reviewer coverage-plan surface. Both reference `HarnessSlug`, owned by
+        // the run-record document, so that ref is rewritten to a cross-document URL.
+        anon(
+            "review-plan/review-plan.schema.json",
+            root_schema::<bapi::ReviewPlan>(),
+        ),
+        anon(
+            "review-plan/coverage.schema.json",
+            root_schema::<bapi::CoverageMatrix>(),
         ),
         // Backend API: the auth surface (the token response is the canonical home
         // of Account) and the canonical review document (the home of the review

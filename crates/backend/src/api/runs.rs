@@ -255,6 +255,11 @@ pub async fn list(
             .list_unpublished(limit, params.before.as_deref())
             .await
             .map_err(ApiError::from)?,
+        Some("unreviewed") => state
+            .db
+            .list_unreviewed(limit, params.before.as_deref())
+            .await
+            .map_err(ApiError::from)?,
         _ => state
             .db
             .list_published(limit, params.before.as_deref())
@@ -523,6 +528,7 @@ fn summary_state(state: Option<&str>) -> SummaryState {
         Some("review") | Some("all") => SummaryState::Review,
         Some("failures") => SummaryState::Failures,
         Some("unpublished") => SummaryState::Unpublished,
+        Some("unreviewed") => SummaryState::Unreviewed,
         _ => SummaryState::Published,
     }
 }

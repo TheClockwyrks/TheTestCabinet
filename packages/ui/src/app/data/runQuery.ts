@@ -21,7 +21,7 @@ export type { RunSort, SortDir };
 export interface RunQuery {
   /** The lifecycle slice to draw from (default `published`). The static site only
    * holds published runs, so a non-`published` state matches nothing there. */
-  state?: "published" | "review" | "failures" | "unpublished";
+  state?: "published" | "review" | "failures" | "unpublished" | "unreviewed";
   /** Filter to one test-case slug (an empty string is ignored). */
   testCase?: string;
   /** Filter to one model id (an empty string is ignored). */
@@ -120,9 +120,7 @@ function primaryCompare(
     case "date":
       return cmpStr(a.startedAt, b.startedAt) * order;
     case "runtime":
-      return (
-        cmpNum(a.metrics.runTimeSeconds, b.metrics.runTimeSeconds) * order
-      );
+      return cmpNum(a.metrics.runTimeSeconds, b.metrics.runTimeSeconds) * order;
     case "tokens":
       return cmpNum(totalTokens(a.metrics), totalTokens(b.metrics)) * order;
     case "testType":
@@ -138,9 +136,14 @@ function primaryCompare(
     case "cost": {
       // Unknown-cost NULLs sort last in either direction: order first by a
       // null-group key (non-null before null), then by the value.
-      const group = nullGroup(a.metrics.cost.comparable, b.metrics.cost.comparable);
+      const group = nullGroup(
+        a.metrics.cost.comparable,
+        b.metrics.cost.comparable,
+      );
       if (group !== 0) return group;
-      return cmpNum(a.metrics.cost.comparable, b.metrics.cost.comparable) * order;
+      return (
+        cmpNum(a.metrics.cost.comparable, b.metrics.cost.comparable) * order
+      );
     }
     case "rating": {
       // Unrated (NULL) runs sort last in either direction; ranked runs by tier.

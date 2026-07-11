@@ -28,8 +28,8 @@ use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{HarnessSlug, RunLinks, RunRecord};
 use test_cabinet_entities::{
-    case_reference_build, job, model, model_alias, model_price, publish_job, review, run, run_link,
-    snapshot_state, tournament,
+    case_reference_build, job, model, model_alias, model_price, publish_job, review, review_plan,
+    run, run_link, snapshot_state, tournament,
 };
 
 use crate::error::Result;
@@ -588,6 +588,43 @@ impl Db {
         Ok((runs, next_before))
     }
 
+    /// List the **unreviewed** runs — completed runs that no account has reviewed
+    /// yet (`run_state = completed AND review_count = 0`) — newest-first by
+    /// `finished_at`, paginated by a `finished_at` cursor. This is the reviewer's
+    /// "nobody has looked at this" worklist, a strict subset of
+    /// [`list_for_review`](Self::list_for_review): it drops the completed runs that
+    /// already carry at least one review, so a reviewer sees only what still needs
+    /// a first pass. The failure tiers are excluded for the same reason they are in
+    /// the review worklist — they carry no review checklist.
+    pub async fn list_unreviewed(
+        &self,
+        limit: usize,
+        before: Option<&str>,
+    ) -> Result<(Vec<StoredRun>, Option<String>)> {
+        let fetch = limit.saturating_add(1);
+        let mut query = run::Entity::find()
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::ReviewCount.eq(0));
+        if let Some(before) = before {
+            query = query.filter(run::Column::FinishedAt.lt(before));
+        }
+        let rows = query
+            .order_by_desc(run::Column::FinishedAt)
+            .order_by_desc(run::Column::Id)
+            .limit(fetch as u64)
+            .all(&self.conn)
+            .await?;
+
+        let mut runs = self.assemble(rows).await?;
+        let next_before = if runs.len() > limit {
+            runs.truncate(limit);
+            runs.last().map(|run| run.record.finished_at.clone())
+        } else {
+            None
+        };
+        Ok((runs, next_before))
+    }
+
     /// List summary rows for the console's **numbered** pager: a `limit`-sized
     /// window at `offset`, ordered by the chosen lifted column (with an `id`
     /// tiebreak) under the supplied [`SummaryFilter`], **plus** the total count of
@@ -1053,6 +1090,106 @@ pub(crate) fn aggregate_review_rating(
     )
 }
 
+/// Reviewer coverage plans and the run/job counts the coverage matrix is built
+/// from. A plan is per-account (keyed by the auth-service user id); the counts are
+/// **global** — they tally every run/job for a cell regardless of who launched it,
+/// so two reviewers dividing the model space never redo each other's runs.
+impl Db {
+    /// Load a reviewer's saved coverage plan, or `None` when they have not saved
+    /// one yet. A malformed stored plan (corrupt JSON) surfaces as an error rather
+    /// than being silently dropped.
+    pub async fn get_review_plan(&self, user_id: &str) -> Result<Option<crate::api::ReviewPlan>> {
+        let Some(row) = review_plan::Entity::find_by_id(user_id.to_string())
+            .one(&self.conn)
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(crate::api::ReviewPlan {
+            runs_per_cell: row.runs_per_cell.max(0) as u32,
+            cases: serde_json::from_str(&row.cases_json)?,
+            combinations: serde_json::from_str(&row.combinations_json)?,
+        }))
+    }
+
+    /// Upsert a reviewer's coverage plan in place (one row per account, keyed by
+    /// `user_id`).
+    pub async fn put_review_plan(
+        &self,
+        user_id: &str,
+        plan: &crate::api::ReviewPlan,
+        updated_at: &str,
+    ) -> Result<()> {
+        let cases_json = serde_json::to_string(&plan.cases)?;
+        let combinations_json = serde_json::to_string(&plan.combinations)?;
+        review_plan::Entity::insert(review_plan::ActiveModel {
+            user_id: Set(user_id.to_string()),
+            runs_per_cell: Set(plan.runs_per_cell as i32),
+            cases_json: Set(cases_json),
+            combinations_json: Set(combinations_json),
+            updated_at: Set(updated_at.to_string()),
+        })
+        .on_conflict(
+            OnConflict::column(review_plan::Column::UserId)
+                .update_columns([
+                    review_plan::Column::RunsPerCell,
+                    review_plan::Column::CasesJson,
+                    review_plan::Column::CombinationsJson,
+                    review_plan::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec(&self.conn)
+        .await?;
+        Ok(())
+    }
+
+    /// Count the **completed** runs for one coverage cell (an exact
+    /// case-version-variant × harness × model tuple). Only evaluable `completed`
+    /// runs count toward a cell's target; the failure tiers do not.
+    pub async fn count_completed_runs_for_cell(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        harness: &str,
+        model: &str,
+    ) -> Result<u64> {
+        Ok(run::Entity::find()
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::TestCaseSlug.eq(slug))
+            .filter(run::Column::TestCaseVersion.eq(version))
+            .filter(run::Column::Variant.eq(variant))
+            .filter(run::Column::HarnessSlug.eq(harness))
+            .filter(run::Column::ModelId.eq(model))
+            .count(&self.conn)
+            .await?)
+    }
+
+    /// Count the **in-flight** jobs — queued, dispatched, or running — for one
+    /// coverage cell. These count toward a cell's target alongside completed runs,
+    /// so triggering the missing runs immediately marks the cell satisfied and the
+    /// reviewer does not double-trigger while runs are still executing.
+    pub async fn count_in_flight_jobs_for_cell(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        harness: &str,
+        model: &str,
+    ) -> Result<u64> {
+        Ok(job::Entity::find()
+            .filter(job::Column::State.is_in(["queued", "dispatched", "running"]))
+            .filter(job::Column::TestCaseSlug.eq(slug))
+            .filter(job::Column::TestCaseVersion.eq(version))
+            .filter(job::Column::Variant.eq(variant))
+            .filter(job::Column::HarnessSlug.eq(harness))
+            .filter(job::Column::ModelId.eq(model))
+            .count(&self.conn)
+            .await?)
+    }
+}
+
 /// The lifted `run.rating` column value: the aggregate rating as its lowercase
 /// wire token, or `None` when the run carries no reviews.
 fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
@@ -1073,6 +1210,9 @@ pub enum SummaryState {
     Failures,
     /// Every unpublished run whatever its terminal state — the "produced" worklist.
     Unpublished,
+    /// Completed runs no account has reviewed yet (`review_count = 0`) — the
+    /// reviewer's "needs a first pass" worklist, a subset of [`Self::Review`].
+    Unreviewed,
 }
 
 /// The filter for [`Db::list_summaries`]: a lifecycle `state` slice, optional
@@ -1143,6 +1283,9 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
             query.filter(run::Column::RunState.is_in(["catastrophic", "timed_out"]))
         }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
+        SummaryState::Unreviewed => query
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::ReviewCount.eq(0)),
     };
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));

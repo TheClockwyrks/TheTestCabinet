@@ -1,0 +1,174 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// The rollup strip above the matrix: covered-cell and missing-run stats plus the
+// "trigger all missing" action.
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+.summaryStat {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+
+  strong {
+    color: t.$color-text;
+    font-size: t.$font-lg;
+  }
+}
+
+.matrix {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+// One test case's block of cells.
+.group {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  margin-bottom: t.$space-sm;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  color: t.$color-text;
+  font-size: t.$font-lg;
+}
+
+.groupVersion {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The "v1.2.0 → v1.3.0 ↑" pill: shown when the pinned version is stale, and a
+// one-click bump to the newest ingested version.
+.staleBadge {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-accent-2;
+  border: none;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.cellList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One combination's coverage against this case: label, progress bar, count, and
+// the trigger button.
+.cell {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(4rem, 8rem) auto auto;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-2xs 0;
+}
+
+.cellDone .cellLabel {
+  color: t.$color-text-muted;
+}
+
+.cellLabel {
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellBar {
+  display: block;
+  height: 0.5rem;
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+.cellBarFill {
+  display: block;
+  height: 100%;
+  background: t.$color-accent;
+  transition: width 0.2s ease;
+
+  .cellDone & {
+    background: t.$color-positive;
+  }
+}
+
+.cellCount {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+.cellInFlight {
+  color: t.$color-accent;
+}
+
+// The in-page plan editor.
+.editor {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
+.chipList {
+  list-style: none;
+  margin: 0 0 t.$space-md;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-2xs t.$space-sm;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+}

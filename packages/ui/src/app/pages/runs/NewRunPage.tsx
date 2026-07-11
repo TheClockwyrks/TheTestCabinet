@@ -15,6 +15,7 @@ import {
   resolveLaunchModel,
 } from "../../data/providers";
 import { ModelCombobox } from "../../components/ModelCombobox";
+import { launchBatch, type LaunchItem } from "./launchBatch";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -215,57 +216,47 @@ export function NewRunPage() {
     setResults(null);
     setLaunching(true);
     // Fan out client-side: `runCount` launches per combination (total =
-    // combinations × runCount). Launches run sequentially and each is isolated in
-    // its own try/catch so a single failure never aborts the rest — every launch
-    // reports its own success or error.
-    const outcomes: LaunchOutcome[] = [];
-    for (const combo of combinations) {
-      for (let i = 0; i < runCount; i++) {
-        try {
-          const runId = await worker.client.launchRun(
-            {
-              testCase: sel.slug,
-              version: sel.version,
-              variant: sel.variant,
-              harness: combo.harness,
-              modelId: resolveLaunchModel(
-                combo.harness,
-                combo.provider,
-                combo.modelId,
-              ),
-              orchestrator: submittedOrchestrator,
-              maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
-              retryCount,
-            },
-            token,
-          );
-          runtime.track({
-            runId,
-            testCaseSlug: sel.slug,
-            testCaseVersion: sel.version,
-            variant: sel.variant,
-            harnessSlug: combo.harness,
-            modelId: combo.modelId,
-            state: "running",
-          });
-          outcomes.push({
-            key: `${combo.id}#${i}`,
-            harness: combo.harness,
-            modelId: combo.modelId,
-            runIndex: i + 1,
-            runId,
-          });
-        } catch (e) {
-          outcomes.push({
-            key: `${combo.id}#${i}`,
-            harness: combo.harness,
-            modelId: combo.modelId,
-            runIndex: i + 1,
-            error: String(e),
-          });
-        }
-      }
-    }
+    // combinations × runCount), through the shared `launchBatch` (sequential, each
+    // isolated so one failure never aborts the rest). Build the launch items and a
+    // parallel array of display metadata, then zip the results back by index.
+    const meta = combinations.flatMap((combo) =>
+      Array.from({ length: runCount }, (_, i) => ({ combo, runIndex: i + 1 })),
+    );
+    const items: LaunchItem[] = meta.map(({ combo }) => ({
+      config: {
+        testCase: sel.slug,
+        version: sel.version,
+        variant: sel.variant,
+        harness: combo.harness,
+        modelId: resolveLaunchModel(
+          combo.harness,
+          combo.provider,
+          combo.modelId,
+        ),
+        orchestrator: submittedOrchestrator,
+        maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
+        retryCount,
+      },
+      track: {
+        testCaseSlug: sel.slug,
+        testCaseVersion: sel.version,
+        variant: sel.variant,
+        harnessSlug: combo.harness,
+        modelId: combo.modelId,
+      },
+    }));
+    const launched = await launchBatch(worker, token, runtime.track, items);
+    const outcomes: LaunchOutcome[] = meta.map((m, i) => {
+      const result = launched[i];
+      return {
+        key: `${m.combo.id}#${m.runIndex}`,
+        harness: m.combo.harness,
+        modelId: m.combo.modelId,
+        runIndex: m.runIndex,
+        runId: result?.runId,
+        error: result?.error,
+      };
+    });
     setLaunching(false);
 
     // Single-launch path is unchanged in feel: on success jump straight to the

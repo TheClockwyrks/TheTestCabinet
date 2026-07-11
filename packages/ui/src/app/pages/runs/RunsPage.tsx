@@ -31,8 +31,13 @@ const PAGE_SIZE = 20;
 // narrows by test case, harness, or model. Produced (local, unpublished) and
 // in-progress runs lead the first page, pinned so they don't repeat across pages.
 export function RunsPage() {
-  const { canExecute, producedSummaries, localIds, writeups, queryRunSummaries } =
-    useGalleryData();
+  const {
+    canExecute,
+    producedSummaries,
+    localIds,
+    writeups,
+    queryRunSummaries,
+  } = useGalleryData();
   const { inProgress } = useRunsRuntime();
   const findModel = useFindModel();
   const { page, setPage, query, setQuery, committedQuery } =
@@ -122,7 +127,8 @@ export function RunsPage() {
   // requested offset), fall back onto the last real page so the list can't strand
   // on an out-of-range, empty window.
   useEffect(() => {
-    if (!loading && page > pageCount - 1) setPage(pageCount - 1, { replace: true });
+    if (!loading && page > pageCount - 1)
+      setPage(pageCount - 1, { replace: true });
   }, [loading, page, pageCount, setPage]);
 
   // In-progress runs lead the list, pinned to the first page so they don't repeat.
@@ -139,6 +145,12 @@ export function RunsPage() {
         />
         {canExecute && (
           <span className={exec.headerActions}>
+            <Link className={exec.secondary} to={routes.runUnreviewed()}>
+              Unreviewed
+            </Link>
+            <Link className={exec.secondary} to={routes.runCoverage()}>
+              Coverage
+            </Link>
             <Link className={exec.secondary} to={routes.runFailures()}>
               Publish failures
             </Link>

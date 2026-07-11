@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { ReviewerWidgets } from "./ReviewerWidgets";
+import { useAuth } from "../../../client/auth";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
@@ -26,11 +28,13 @@ const RECENT_LIMIT = 20;
 // the shown page, driven by the table's own sort state.
 export function HomePage() {
   const {
+    canExecute,
     producedSummaries,
     localIds,
     writeups: localWriteups,
     queryRunSummaries,
   } = useGalleryData();
+  const { token } = useAuth();
   const findReview = useFindReview();
   const [published, setPublished] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,6 +110,10 @@ export function HomePage() {
             <>// insert coin &middot; consume tokens &middot; play the result</>
           }
         />
+
+        {/* Reviewer dashboard: at-a-glance coverage + unreviewed count. Console
+            only, and only for a signed-in reviewer (the plan is per-account). */}
+        {canExecute && token && <ReviewerWidgets />}
 
         {recent.length === 0 ? (
           <p className={styles.empty}>

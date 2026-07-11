@@ -33,6 +33,10 @@ import type {
   WorkerIdentity,
 } from "./types";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type {
+  CoverageMatrix,
+  ReviewPlan,
+} from "@test-cabinet/run-record/review-plan";
 
 // One page of bounded run summary cards from the backend
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of
@@ -179,6 +183,25 @@ export interface BackendClient {
     version: string,
     variant: string,
   ): Promise<ReviewItem[]>;
+
+  // Reviewer coverage plans (console-only, Bearer). A plan is per-account, so
+  // every call carries the reviewer's token. These are optional so the static
+  // site's read-only transport omits them; the console gates the reviewer
+  // surfaces on `canExecute` and a signed-in account, and never calls them
+  // otherwise.
+  /**
+   * The signed-in reviewer's saved coverage plan (`GET /review-plan`), or an
+   * empty plan (`runsPerCell: 0`, no cases/combinations) when none is saved yet.
+   */
+  getReviewPlan?(token: string): Promise<ReviewPlan>;
+  /** Upsert the signed-in reviewer's coverage plan (`PUT /review-plan`). */
+  putReviewPlan?(plan: ReviewPlan, token: string): Promise<void>;
+  /**
+   * The coverage matrix computed from the reviewer's saved plan
+   * (`GET /review-plan/coverage`): every `case × combination` cell with its
+   * completed/in-flight/remaining counts and version-staleness flag.
+   */
+  getCoverage?(token: string): Promise<CoverageMatrix>;
 }
 
 // Handlers for a live run subscription.

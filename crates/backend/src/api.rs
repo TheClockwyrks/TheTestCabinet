@@ -25,6 +25,7 @@ mod ingest_api;
 mod jobs;
 mod models;
 mod publish_jobs;
+mod review_plan;
 mod runs;
 mod test_cases;
 mod tournaments;
@@ -39,6 +40,7 @@ pub use models::{
     LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput, ModelOut, ModelPricesOut,
     ModelSeedOut, PriceObservationOut, compose_catalog,
 };
+pub use review_plan::{CoverageCell, CoverageMatrix, ReviewPlan, ReviewPlanCase, ReviewPlanCombo};
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
 /// Shared application state handed to every handler.
@@ -239,6 +241,14 @@ pub fn router(state: AppState) -> Router {
         // The worker-wide run-completion feed (SSE), so the console can alert on
         // any run finishing without holding a per-run subscription open.
         .route("/notifications", get(jobs::notifications))
+        // A reviewer's per-account declarative coverage plan (auth-gated; keyed to
+        // the token's account) and the coverage matrix computed from it. Console-only
+        // reviewer tooling — the public site carries no token and never calls these.
+        .route(
+            "/review-plan",
+            get(review_plan::get_plan).put(review_plan::put_plan),
+        )
+        .route("/review-plan/coverage", get(review_plan::coverage))
         .route("/snapshot/refresh", post(runs::refresh))
         // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
         // is outermost: it creates one server span per request and enters it for

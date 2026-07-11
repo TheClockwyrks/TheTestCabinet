@@ -52,6 +52,10 @@ import type {
   RunRecord,
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type {
+  CoverageMatrix,
+  ReviewPlan,
+} from "@test-cabinet/run-record/review-plan";
 import {
   delJson,
   delVoid,
@@ -61,6 +65,7 @@ import {
   joinUrl,
   postJson,
   putJson,
+  putVoid,
 } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
@@ -404,6 +409,21 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         baseUrl,
         `/models/seed?runId=${encodeURIComponent(runId)}`,
       );
+    },
+
+    async getReviewPlan(token: string): Promise<ReviewPlan> {
+      // The backend returns an empty plan (runsPerCell 0, no cases/combinations)
+      // when the account has saved none, so the caller never has to special-case
+      // absence. Bearer-scoped to the signed-in reviewer.
+      return getJson<ReviewPlan>(baseUrl, "/review-plan", token);
+    },
+
+    async putReviewPlan(plan: ReviewPlan, token: string): Promise<void> {
+      await putVoid(baseUrl, "/review-plan", plan, token);
+    },
+
+    async getCoverage(token: string): Promise<CoverageMatrix> {
+      return getJson<CoverageMatrix>(baseUrl, "/review-plan/coverage", token);
     },
 
     async listRuns(opts): Promise<RunPage> {

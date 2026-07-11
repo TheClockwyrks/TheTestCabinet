@@ -1,0 +1,62 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+
+.widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
+// One card. It is a link to the full reviewer surface; an inner button (trigger
+// all missing) stops the click from navigating.
+.widget {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-md t.$space-lg;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  text-decoration: none;
+  color: t.$color-text;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+.widgetLabel {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: lowercase;
+}
+
+.widgetStat {
+  color: t.$color-text-muted;
+  font-size: t.$font-md;
+
+  strong {
+    color: t.$color-text;
+    font-size: t.$font-lg;
+  }
+}
+
+.widgetAction {
+  align-self: flex-start;
+  margin-top: t.$space-xs;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  background: t.$color-accent;
+  border: none;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-md;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}

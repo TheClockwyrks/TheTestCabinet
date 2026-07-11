@@ -1806,3 +1806,127 @@ async fn reference_build_upserts_in_place_and_reads_back_per_variant() {
             .is_empty()
     );
 }
+
+// ---- Reviewer coverage plans + counts -------------------------------------
+
+/// A one-case, one-combination plan matching the default `record`/`new_job` cell
+/// (pong v1.0.0 base × claude/claude-sonnet-4-5), with the given per-cell target.
+fn sample_plan(runs_per_cell: u32) -> crate::api::ReviewPlan {
+    crate::api::ReviewPlan {
+        runs_per_cell,
+        cases: vec![crate::api::ReviewPlanCase {
+            slug: "pong".to_string(),
+            version: "v1.0.0".to_string(),
+            variant: "base".to_string(),
+        }],
+        combinations: vec![crate::api::ReviewPlanCombo {
+            harness: HarnessSlug::Claude,
+            model: "claude-sonnet-4-5".to_string(),
+            provider: None,
+        }],
+    }
+}
+
+#[tokio::test]
+async fn review_plan_round_trips_and_upserts() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(
+        db.get_review_plan("u1").await.unwrap().is_none(),
+        "no plan saved yet"
+    );
+
+    db.put_review_plan("u1", &sample_plan(3), "2026-07-11T00:00:00Z")
+        .await
+        .unwrap();
+    let got = db.get_review_plan("u1").await.unwrap().expect("plan saved");
+    assert_eq!(got.runs_per_cell, 3);
+    assert_eq!(got.cases.len(), 1);
+    assert_eq!(got.cases[0].slug, "pong");
+    assert_eq!(got.combinations[0].model, "claude-sonnet-4-5");
+
+    // A second save for the same account upserts in place (one row per account).
+    db.put_review_plan("u1", &sample_plan(5), "2026-07-11T01:00:00Z")
+        .await
+        .unwrap();
+    let updated = db.get_review_plan("u1").await.unwrap().unwrap();
+    assert_eq!(updated.runs_per_cell, 5);
+
+    // A different account has its own (absent) plan.
+    assert!(db.get_review_plan("u2").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // A completed run and a queued job for the same cell.
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let completed = db
+        .count_completed_runs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+        .await
+        .unwrap();
+    assert_eq!(completed, 1, "the one completed run counts");
+
+    let in_flight = db
+        .count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+        .await
+        .unwrap();
+    assert_eq!(in_flight, 1, "the queued job counts as in-flight");
+
+    // A different model shares nothing: neither count sees it.
+    assert_eq!(
+        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "claude", "other-model")
+            .await
+            .unwrap(),
+        0
+    );
+    // A different pinned version is a different cell.
+    assert_eq!(
+        db.count_completed_runs_for_cell("pong", "v2.0.0", "base", "claude", "claude-sonnet-4-5")
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn a_claimed_job_no_longer_counts_toward_a_cell() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(
+        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+            .await
+            .unwrap(),
+        1,
+        "queued counts"
+    );
+    // Claiming moves it to `dispatched` — still in-flight.
+    db.claim_next_job("2026-06-23T00:00:05Z").await.unwrap();
+    assert_eq!(
+        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+            .await
+            .unwrap(),
+        1,
+        "dispatched still counts"
+    );
+}
+
+#[tokio::test]
+async fn unreviewed_lists_completed_runs_with_no_review_and_drops_them_once_reviewed() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None).await.unwrap();
+
+    let (unreviewed, _) = db.list_unreviewed(50, None).await.unwrap();
+    assert_eq!(unreviewed.len(), 1, "a fresh completed run is unreviewed");
+    assert_eq!(unreviewed[0].record.id, "r1");
+
+    // Once any account reviews it, it drops off the unreviewed worklist.
+    db.add_review("r1", &review()).await.unwrap();
+    let (after, _) = db.list_unreviewed(50, None).await.unwrap();
+    assert!(after.is_empty(), "a reviewed run is no longer unreviewed");
+}
