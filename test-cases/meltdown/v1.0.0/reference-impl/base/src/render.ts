@@ -127,7 +127,10 @@ export function render(ctx: Ctx, game: Game): void {
   game.menuHits = [];
 
   if (game.state === "title" || game.state === "howto") {
-    drawFloorBase(ctx);
+    // The menu has no build panel, so extend the reactor field across the whole
+    // stage — a full-screen field reads as one continuous floor behind the menu
+    // instead of stopping short where the (absent) HUD would sit.
+    drawFloorBase(ctx, true);
     // The title shows a dim slice of reactor floor with glowing towers behind
     // the menu; the how-to keeps a clean floor so the text stays legible.
     if (game.state === "title") for (const t of game.towers) drawTower(ctx, game, t);
@@ -156,25 +159,33 @@ export function render(ctx: Ctx, game: Game): void {
 // ---- Reactor: casing wall, floor, and openings ----------------------------
 
 // The reactor floor is inset within an 18-px casing wall (specs/playfield.md):
-// a heavy steel shell around the dark tile floor, with a lit inner rim.
-function drawFloorBase(ctx: Ctx): void {
-  // Casing wall fills the whole reactor region; the floor is inset inside it.
+// a heavy steel shell around the dark tile floor, with a lit inner rim. During
+// play the field fills only the reactor region (the build panel owns the right
+// strip); on the panel-less menu, `fullStage` extends the field across the whole
+// stage so it reads as one continuous floor.
+function drawFloorBase(ctx: Ctx, fullStage = false): void {
+  const regionW = fullStage ? STAGE_W : REACTOR_W;
+  const floorW = fullStage ? STAGE_W - 2 * CASING : FLOOR_W;
+  const floorX1 = FLOOR_X0 + floorW;
+
+  // Casing wall fills the region; the floor is inset inside it.
   ctx.fillStyle = C.casing;
-  ctx.fillRect(0, 0, REACTOR_W, STAGE_H);
+  ctx.fillRect(0, 0, regionW, STAGE_H);
 
   // The dark tile floor.
   ctx.fillStyle = C.steel;
-  ctx.fillRect(FLOOR_X0, FLOOR_Y0, FLOOR_W, FLOOR_H);
+  ctx.fillRect(FLOOR_X0, FLOOR_Y0, floorW, FLOOR_H);
 
   // Faint tile grid, clipped to the floor.
   ctx.save();
   ctx.beginPath();
-  ctx.rect(FLOOR_X0, FLOOR_Y0, FLOOR_W, FLOOR_H);
+  ctx.rect(FLOOR_X0, FLOOR_Y0, floorW, FLOOR_H);
   ctx.clip();
   ctx.strokeStyle = C.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let c = 0; c <= COLS; c++) {
+  const cols = Math.ceil(floorW / TILE);
+  for (let c = 0; c <= cols; c++) {
     const x = FLOOR_X0 + c * TILE;
     ctx.moveTo(x + 0.5, FLOOR_Y0);
     ctx.lineTo(x + 0.5, FLOOR_Y1);
@@ -182,7 +193,7 @@ function drawFloorBase(ctx: Ctx): void {
   for (let r = 0; r <= ROWS; r++) {
     const y = FLOOR_Y0 + r * TILE;
     ctx.moveTo(FLOOR_X0, y + 0.5);
-    ctx.lineTo(FLOOR_X1, y + 0.5);
+    ctx.lineTo(floorX1, y + 0.5);
   }
   ctx.stroke();
   ctx.restore();
@@ -190,7 +201,7 @@ function drawFloorBase(ctx: Ctx): void {
   // Lit inner rim where the casing meets the floor.
   ctx.strokeStyle = C.casingRim;
   ctx.lineWidth = 2;
-  ctx.strokeRect(FLOOR_X0 - 1, FLOOR_Y0 - 1, FLOOR_W + 2, FLOOR_H + 2);
+  ctx.strokeRect(FLOOR_X0 - 1, FLOOR_Y0 - 1, floorW + 2, FLOOR_H + 2);
 }
 
 // The four openings cut into the casing wall — two vents (cool blue) and two
