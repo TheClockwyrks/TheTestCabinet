@@ -168,12 +168,14 @@ fn resolves_carom_from_its_manifest() {
         .map(|v| v.view.clone())
         .collect();
     assert_eq!(multi_views, ["gameplay", "game-over", "title"]);
-    // Validation is opt-in: the manifest declares a single title check, with an
-    // explicit display name. Its `title` baseline resolves per variant.
-    assert_eq!(version.checks.len(), 1);
-    assert_eq!(version.checks[0].view, "title");
-    assert_eq!(version.checks[0].name, "Title Screen");
-    assert_eq!(version.checks[0].reference_view, "title");
+    // Validation is opt-in, and this version declares no reference-similarity
+    // checks: the reference screenshots are seeded as illustrative examples of the
+    // screens rather than layouts to reproduce, so every screen is left to the
+    // model's design and reviewed by a human rather than scored against a baseline.
+    assert!(
+        version.checks.is_empty(),
+        "carom declares no opt-in reference-similarity checks"
+    );
 }
 
 #[test]
