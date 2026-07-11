@@ -48,9 +48,9 @@ substitute creatures or effects.
 
 ## Detecting you — the alert (required, anti-blindside)
 
-Two of the predators can blindside you — the **Gloamfin**, which acquires you in
-the discrete instant one of its sonar pings finds you, and the **Flarefish**, which
-gives off no continuous tell and so can find you unseen: the moment its flare
+Two of the predators can blindside you — the **Gloamfin**, which acquires you the
+instant it takes a sound-fix **by any of its paths** (below), and the **Flarefish**,
+which gives off no continuous tell and so can find you unseen: the moment its flare
 catches you, **or** the moment it drifts up on you and its ordinary light-sense
 fixes on you (below). The moment a predator acquires a fix in one of these ways,
 play a clear **detection alert** so you always know you have been spotted:
@@ -137,7 +137,10 @@ sonar. It is the predator your **sonar** is waiting for.
   same pace as the other hunters. It does **not** creep and then ramp ever faster
   over time; there is no speed build-up. As it wanders it emits its own sonar pings
   (its tell, below).
-- **Sense — its ping, or yours.** The Gloamfin takes a **fix** on you from sonar:
+- **Sense — its ping, or yours.** The Gloamfin takes a **fix** on you from sonar by
+  **three** paths, and **each one fires the detection alert** (above) — the alert is
+  required on *every* Gloamfin acquisition, not only its own ping, so a fix from your
+  sonar or from close hearing announces itself exactly the same way:
   - when **one of its own sonar pings** (below) floods over your tile, **or**
   - when **your** sonar pulse (`specs/sensing.md`) floods over the Gloamfin, **or**
   - by very-close **hearing** — within about **2 tiles**, in or out of line of
@@ -145,7 +148,7 @@ sonar. It is the predator your **sonar** is waiting for.
 
   The fix is the tile the ping caught you on. **Ink does not affect it** (it hunts
   by sound). The instant it takes a fix it may **turn around immediately** to face
-  you.
+  you, and the **detection alert fires** on that fresh acquisition however it came.
 - **Chase — a touch faster than you, to where the ping found you.** On a fix the
   Gloamfin **chases**: it drives toward the fixed tile at up to **`134 px/s` — only
   about **5%** faster than the forager's `128`** — so on a straight run it **slowly
@@ -171,6 +174,14 @@ sonar. It is the predator your **sonar** is waiting for.
   ping**. That ping always fires (it does not wait out the full normal cadence) and
   **resets** the standard ping timer. The delay is deliberate — it is your chance
   to break away before the ping lands.
+  - **The "lost you" ping is drawn ORANGE (required, a distinct tell).** So you can
+    *see* your escape window, the guaranteed "lost you" ping renders its travelling
+    wavefront in **orange**, plainly **distinct from the ordinary violet ping** — the
+    same procedural wavefront, only tinted orange. When an orange crest sweeps out
+    of the Gloamfin, you know it has reached where it last heard you, found you gone,
+    and is casting one last ping to re-find you: put corners between you before that
+    orange front reaches your tile. (An earlier build drew it identical to the routine
+    violet ping, so a reviewer could not tell the "lost you" ping apart at all.)
   - **A floor on the ping rate (required, anti-spam).** The Gloamfin never emits two
     pings closer than about **`3 s`** apart — not even the guaranteed "lost you" one.
     When it keeps re-finding you at close range (its hearing hands it a fix, it
@@ -195,9 +206,10 @@ sonar. It is the predator your **sonar** is waiting for.
   every **`4 s`** (except when it already holds a close-range hearing lock, when it
   goes silent — see the anti-spam rules under Search above) — the **same travelling
   sonar wavefront** the forager's pulse uses (rendered procedurally, here tinted to
-  the Gloamfin's violet rather than the forager's cyan — see `specs/sensing.md` and
-  `specs/assets.md`), sweeping outward through the corridors well beyond the
-  Gloamfin's own sprite. You **see the wavefront** flow toward you — so you know a
+  the Gloamfin's violet rather than the forager's cyan — except the guaranteed "lost
+  you" ping, which is tinted **orange** to set it apart, see the Search rules above
+  and `specs/sensing.md` and `specs/assets.md`), sweeping outward through the
+  corridors well beyond the Gloamfin's own sprite. You **see the wavefront** flow toward you — so you know a
   Gloamfin is near and hunting, and you can watch how far its hearing reaches — but
   the **ping does not draw the Gloamfin itself**: unlike an earlier build, its own
   ping no longer shows its body, so you get the warning without a clean fix on where

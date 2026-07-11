@@ -149,8 +149,9 @@ finds predators, at the cost of being heard. (The control is in
   well beyond a single tile or the forager's own sprite — drawn as its own overlay,
   not as part of any character. The drawn crest is presentation only; the actual
   reveal is the flooded tile set as the front reaches each tile. The Gloamfin emits
-  the **same** wavefront as its tell, tinted to its own color — but the Gloamfin's
-  ping reveals nothing (see below and `specs/predators.md`).
+  the **same** wavefront as its tell, tinted to its own **violet** color — except its
+  guaranteed "lost you" ping, which is tinted **orange** to set it apart — but the
+  Gloamfin's ping reveals nothing (see below and `specs/predators.md`).
 
 ## The two rules, together
 
@@ -177,8 +178,9 @@ distinction matters:
   Flarefish), and it **fades back to the remembered dim** across the flare's final
   fade — the tiles stay revealed, they just drop from lit back to normal remembered
   brightness. It is a gift of vision (`specs/predators.md`).
-- **The Gloamfin's ping reveals nothing.** Its violet sonar wavefront is **visible
-  to you** — you watch it sweep outward through the corridors toward you — but it
+- **The Gloamfin's ping reveals nothing.** Its sonar wavefront (violet, or **orange**
+  for the guaranteed "lost you" ping) is **visible to you** — you watch it sweep
+  outward through the corridors toward you — but it
   does **not** draw the Gloamfin itself, light the maze, reveal or remember any tile,
   or mark any other predator or a drifter. It is a warning you can see, not a map,
   and not even a fix on the hunter that cast it (`specs/predators.md`).

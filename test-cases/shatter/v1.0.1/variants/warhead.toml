@@ -68,8 +68,8 @@ text = "A damaged rock pulled into the star and recycled re-enters from the edge
 weight = 1
 reference = "warhead"
 sub_items = [
-  { id = "preserves-health", title = "A recycled damaged rock re-enters with the same remaining health — the star relocates it, not repairs it" },
-  { id = "resets-speed", title = "Its move speed is still reset to a fresh base drift, so repeated recycling does not keep it accelerating" },
+  { id = "preserves-health", title = "With a single heavily-damaged rock left on the field, when the star swallows it the rock that re-enters is still visibly damaged and dies in a few hits — the star relocates it, it doesn't repair it to full health" },
+  { id = "resets-speed", title = "No rock becomes progressively or absurdly faster after being slung through the star and recycled several times" },
 ]
 
 [[review_item]]

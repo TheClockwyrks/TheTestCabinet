@@ -307,10 +307,14 @@ export class Game {
     range: number,
     violet: boolean,
     emitter: Predator | null,
+    lostYou = false,
   ): void => {
     const buckets = this.maze.floodBuckets(col, row, range);
     const wave = new SonarWave(ox, oy, buckets, violet, !violet);
     wave.emitter = emitter;
+    // The guaranteed "lost you" ping renders orange (distinct from the ordinary
+    // violet ping) so the escape window is legible (specs/predators.md).
+    wave.orange = lostYou;
     this.waves.push(wave);
   };
 

@@ -15,6 +15,7 @@ export class SonarWave {
   readonly oy: number;
   readonly violet: boolean; // true = the Gloamfin's ping, false = the forager's
   readonly reveal: boolean; // the forager's ping reveals terrain; the Gloamfin's does not
+  orange = false; // true = the guaranteed "lost you" ping — drawn orange, not violet (specs/predators.md)
   readonly buckets: Cell[][]; // corridor tiles indexed by distance from the origin
   readonly dist = new Map<number, number>(); // tileKey -> corridor distance
   // Unit-ish travel direction of the pulse through each tile (the BFS gradient:

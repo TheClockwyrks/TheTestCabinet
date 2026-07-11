@@ -75,6 +75,7 @@ export interface World {
     range: number,
     violet: boolean,
     emitter: Predator | null,
+    lostYou?: boolean,
   ) => void;
 }
 
@@ -246,11 +247,13 @@ function updateLanternjaw(p: Predator, dt: number, w: World, mult: number): void
 // forager the game hands the Gloamfin a fix and fires the alert. Because the pulse
 // travels, you can watch it bend down the trench toward you and read exactly how
 // far its hearing reaches.
-function gloamfinPing(p: Predator, w: World): void {
+function gloamfinPing(p: Predator, w: World, lostYou = false): void {
   // The pulse does NOT give away the Gloamfin itself — the source stays hidden in
   // the dark (specs/predators.md); it is revealed only by your light, your sonar,
-  // or the detection alert when a ping actually catches you.
-  w.spawnWave(p.x, p.y, p.col, p.row, GLOAMFIN_PING_RANGE, true, p);
+  // or the detection alert when a ping actually catches you. The guaranteed "lost
+  // you" ping is drawn orange (distinct from the ordinary violet) so its escape
+  // window reads at a glance (specs/predators.md).
+  w.spawnWave(p.x, p.y, p.col, p.row, GLOAMFIN_PING_RANGE, true, p, lostYou);
   w.audio.play("predPulse");
   // Every ping (periodic or the guaranteed "lost you" one) restarts the standard
   // cadence AND arms a minimum spacing, so re-acquiring you at close range cannot
@@ -310,7 +313,7 @@ function updateGloamfin(p: Predator, dt: number, w: World): void {
     if (p.searchPingT !== Infinity) {
       p.searchPingT -= dt;
       if (p.searchPingT <= 0 && p.pingLock <= 0 && !closeLock) {
-        gloamfinPing(p, w);
+        gloamfinPing(p, w, true); // the guaranteed "lost you" ping — drawn orange
         p.searchPingT = Infinity;
       }
     }

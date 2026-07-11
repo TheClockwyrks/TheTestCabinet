@@ -18,6 +18,7 @@ import {
   ROWS,
   SONAR_COOLDOWN,
   SONAR_CYAN_RGB,
+  SONAR_ORANGE_RGB,
   SONAR_VIOLET_RGB,
   SONAR_WAVE_BAND,
   STAGE_H,
@@ -316,7 +317,13 @@ function drawSonarWaves(ctx: CanvasRenderingContext2D, game: Game): void {
   const HALO = { w: TILE * 0.42, k: 0.16 };
   const CORE = { w: TILE * 0.16, k: 0.7 };
   for (const wave of game.waves) {
-    const rgb = wave.violet ? SONAR_VIOLET_RGB : SONAR_CYAN_RGB;
+    // The Gloamfin's guaranteed "lost you" ping is orange, distinct from its
+    // ordinary violet ping (specs/predators.md); the forager's ping is cyan.
+    const rgb = wave.orange
+      ? SONAR_ORANGE_RGB
+      : wave.violet
+        ? SONAR_VIOLET_RGB
+        : SONAR_CYAN_RGB;
     for (const seg of [HALO, CORE]) {
       ctx.lineWidth = seg.w;
       for (const [key, d] of wave.dist) {

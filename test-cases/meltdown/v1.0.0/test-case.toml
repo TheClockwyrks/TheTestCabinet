@@ -203,14 +203,14 @@ description = "The TD core: towers-as-walls mazing and live re-pathing to the fi
 [[review_item]]
 id = "heat-is-power"
 title = "Heat is power, up to the redline"
-text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 0.35x base) — to 3.5x at its per-tower REDLINE (its max-efficiency mark), then holds flat at 3.5x from the redline up to the 100 trip. Its glow tracks heat from cold blue to white-hot, and the heat read shows the redline marker. Because a cold gun is so weak, a tower fed a steady stream of targets hits dramatically harder than an idle one — heat is where nearly all the damage lives."
+text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 0.35x base) — to 3.5x at its per-tower REDLINE (its max-efficiency mark), then holds flat at 3.5x from the redline up to the 100 trip. Its glow tracks heat from cold blue to white-hot, the heat read shows the redline marker, and the selected-tower inspector displays the tower's current per-shot damage alongside its heat damage multiplier (e.g. x3.5) so the climb and the plateau are visible directly. Because a cold gun is so weak, a tower fed a steady stream of targets hits dramatically harder than an idle one — heat is where nearly all the damage lives."
 weight = 1
 domain = "heat"
 reference = "gameplay"
 proof = "heat"
 sub_items = [
   { id = "climbs", title = "Cold gun is feeble (~0.35x); damage climbs to 3.5x at the redline" },
-  { id = "plateau", title = "Holds flat at max power from the redline up to the trip" },
+  { id = "plateau", title = "The inspector's heat damage-multiplier climbs as the tower heats, then holds flat from the redline up to the trip — going past the redline adds trip risk, not more damage" },
   { id = "read", title = "Glow tracks heat cold->white-hot and the heat read shows the redline marker" },
 ]
 
@@ -273,7 +273,7 @@ domain = "heat"
 [[review_item]]
 id = "conduction"
 title = "Conduction between neighbours"
-text = "Two emitter footprints that touch along an edge conduct heat across it toward a common temperature — the hotter bleeds into the cooler — so a dense block trends to one temperature (you cannot hold a white-hot core hard against a cold cryo pocket). It is a tool (a boxed-in tower can drain into a deliberately-cooler neighbour) and a hazard (a Rime touching hot guns is conducted UP toward their heat and stops slowing). The movers (Forge/Sink) have no heat of their own and do not conduct."
+text = "When two emitter footprints touch along an edge, heat conducts across it from the hotter tower into the cooler: a cool tower placed hard against a hot, firing neighbour heats up — its own heat bar climbs — even though it is not firing and has open faces, purely because it is touching a hotter gun. It is a tool (a boxed-in tower can drain into a deliberately-cooler neighbour) and a hazard for the Rime (a Rime jammed against hot guns is conducted UP toward their heat, its heat bar rising until it stops slowing). The movers (Forge/Sink) have no heat of their own and do not conduct."
 weight = 1
 domain = "heat"
 

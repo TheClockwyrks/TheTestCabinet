@@ -197,8 +197,9 @@ finds predators, at the cost of being heard. (The control is in
   vision circle** (that is the point of sonar: the pulse reaches past the little
   window you can see). The drawn crest is presentation only; the actual reveal is the
   flooded tile set as the front reaches each tile. The Gloamfin emits the **same**
-  wavefront as its tell, tinted to its own color — but the Gloamfin's ping reveals
-  nothing (see below and `specs/predators.md`).
+  wavefront as its tell, tinted to its own **violet** color — except its guaranteed
+  "lost you" ping, which is tinted **orange** to set it apart — but the Gloamfin's
+  ping reveals nothing (see below and `specs/predators.md`).
 
 ## Enemy effects — what reveals the maze, and what does not
 
@@ -219,7 +220,8 @@ distinction matters:
   lies outside your own vision circle goes **pitch black** again (it is still
   *remembered*, so it returns when you revisit it). It is a gift of vision
   (`specs/predators.md`).
-- **The Gloamfin's ping reveals nothing.** Its violet sonar wavefront is **visible
+- **The Gloamfin's ping reveals nothing.** Its sonar wavefront (violet, or **orange**
+  for the guaranteed "lost you" ping) is **visible
   to you** — you watch it sweep outward through the corridors, even beyond your vision
   circle, toward you — but it does **not** draw the Gloamfin itself, light the maze,
   reveal or remember any tile, or mark any other predator or a drifter. It is a

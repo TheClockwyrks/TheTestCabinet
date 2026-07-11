@@ -9,7 +9,11 @@ mode spec to a stable path against one scoring domain.
 When an armored rock is pulled into the star and recycled, it re-enters from the
 edge carrying the **same remaining health** it had, instead of returning to full
 health — the star relocates the rock rather than replacing it. A Large already
-chipped to 1 HP comes back at 1 HP, not 3. Its move speed is still reset to a
+chipped to 1 HP comes back at 1 HP, not 3. Because it keeps that remaining
+health, it also re-enters **still rendering its damaged state** — the same
+brighter, jagged, cracked look it had when the star took it, never redrawn as a
+pristine full-health rock — so the preserved damage is visible the moment it
+re-appears. Its move speed is still reset to a
 fresh base drift (as recycling always did), so rocks slung through the star
 repeatedly do not keep accelerating. This closes a loophole where feeding a
 nearly-dead rock to the star handed it back at full armor. Updated

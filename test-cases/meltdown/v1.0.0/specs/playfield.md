@@ -192,6 +192,18 @@ by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
     per-instance runtime tallies, so they appear only on a placed, selected tower —
     not on the shop-hover info panel. (The Forge and Sink deal no damage, so both
     read `0`.)
+  - **Live damage and heat multiplier.** For an emitter, the inspector's damage
+    read must show the tower's **current per-shot damage** together with its
+    **heat damage multiplier** — the factor the tower's heat is applying to its
+    base damage right now, shown beside the damage value (for example `42
+    (x3.5 heat)`). The multiplier **climbs as the tower heats**, from about `0.35x`
+    stone-cold up to `3.5x` at the tower's **redline**, and then **holds flat at
+    that maximum from the redline up to the `100` trip** (`specs/heat.md`): pushing
+    a tower past its redline adds **trip risk, not more damage**. This readout — not
+    just the emitter's glow — is where the player watches heat turn into power and
+    sees the damage plateau directly. (The heat-averse Rime shows its live **slow**
+    percentage in place of a damage read, since it has no damage plateau;
+    `specs/towers.md`.)
 - **Wave controls** — a **Send next wave** action (with its early-send bonus;
   see `specs/flow.md`) that reads **Start** in the untimed opening build phase
   before Wave 1, a game-speed toggle (`1x` / `2x`), and **Pause**.

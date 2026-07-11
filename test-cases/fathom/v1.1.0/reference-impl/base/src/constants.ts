@@ -109,6 +109,7 @@ export const SONAR_WAVE_SPEED = 14; // corridor tiles/sec the wavefront advances
 export const SONAR_WAVE_BAND = 2.6; // tiles: width of the glowing wavefront band
 export const SONAR_CYAN_RGB = "94,242,255"; // COLOR.sonar (#5ef2ff), the forager's ping
 export const SONAR_VIOLET_RGB = "196,107,255"; // COLOR.gloamfin (#c46bff), the Gloamfin's ping
+export const SONAR_ORANGE_RGB = "255,150,60"; // the guaranteed "lost you" ping, distinct from the violet (specs/predators.md)
 
 // ---- Ink (specs/movement.md) -------------------------------------------
 export const INK_COOLDOWN = 8; // s

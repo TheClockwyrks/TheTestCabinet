@@ -239,7 +239,7 @@ sub_items = [
 [[review_item]]
 id = "sonar-attracts-gloamfin"
 title = "Sonar is heard"
-text = "Emitting a sonar pulse makes noise: if it floods over the Gloamfin it hands the Gloamfin a fix on you and sets it chasing — pinging near the Gloamfin feeds the chase rather than helping you."
+text = "Emitting a sonar pulse makes noise: when your wavefront reaches a wandering Gloamfin it hands the Gloamfin a fix on you — the detection alert fires (the Gloamfin flashes lit for its half-second) and it turns to chase your tile. Pinging near the Gloamfin feeds the chase rather than helping you."
 weight = 1
 
 [[review_item]]
@@ -251,20 +251,20 @@ sub_items = [
   { id = "brightness-range", title = "Detection range grows with your brightness" },
   { id = "shaken", title = "Going dim or ink shakes it" },
   { id = "bulb-lookalike", title = "Bulb-light always visible, near-identical to the drifter" },
-  { id = "wander-disguise", title = "While undetected it drifts exactly like a drifter (same slow 64 px/s wander)" },
+  { id = "wander-disguise", title = "An amber light that suddenly accelerates into a chase was, beforehand, drifting at the slow drifter pace (its prior wander is the slow ~64 px/s drift, not the ordinary predator speed)" },
 ]
 
 [[review_item]]
 id = "gloamfin-hunt"
 title = "The Gloamfin hunts sound"
-text = "The Gloamfin wanders at the ordinary predator speed with no speed wind-up over time, emitting its own violet pings. A ping — one of its own or yours — that catches you, or hearing you within about two tiles, hands it a fix and it chases the tile the ping found you on: it out-paces you slightly on a straight run (only about 5% faster), but every corner it turns to follow you drops it below your speed before it ramps back up, so cutting corners is how you open a gap and escape (a straight sprint alone won't). Reaching where it last heard you and finding you gone, it casts about and, after a short delay, fires a guaranteed 'lost you' ping — break away during that window to lose it. While it holds you at close range (within hearing) it goes silent instead of spamming pings. Ink does nothing to it."
+text = "The Gloamfin wanders at the ordinary predator speed with no speed wind-up over time, emitting its own violet pings from varied spots as it drifts. Any acquisition — one of its own pings or yours catching you, or hearing you within about two tiles — fires the detection alert and sets it chasing the tile the fix found you on: it out-paces you slightly on a straight run (only about 5% faster), but every corner it turns to follow you drops it below your speed before it ramps back up, so cutting corners is how you shake it off and escape (a straight sprint alone won't). Reaching where it last heard you and finding you gone, it casts about and, after a short delay, fires a guaranteed 'lost you' ping drawn a distinct orange (vs its usual violet) — break away during that window to lose it. While it holds you at close range (within hearing) it goes silent instead of spamming pings. Ink does nothing to it."
 weight = 1
 proof = "hunt"
 sub_items = [
-  { id = "steady-wander", title = "Wanders at steady ordinary speed, no wind-up" },
-  { id = "sprints-to-ping", title = "A ping (its or yours) or close hearing sets it chasing to that tile" },
-  { id = "corners-slow-it", title = "Cornering drops it below your speed (then it ramps back) — cut corners to escape" },
-  { id = "lost-you-window", title = "Fires a guaranteed 'lost you' ping you can break away during" },
+  { id = "steady-wander", title = "Successive pings come from varied spots as it wanders steadily — no speed wind-up or ever-accelerating creep over time" },
+  { id = "sprints-to-ping", title = "Any acquisition (its own ping, your sonar, or close hearing) fires the detection alert and sets it chasing that tile" },
+  { id = "corners-slow-it", title = "You can shake off a chasing Gloamfin by cutting around corners, whereas sprinting in a straight line alone does not" },
+  { id = "lost-you-window", title = "After losing you it fires a distinct ORANGE 'lost you' ping (vs its usual violet); you can break away during that window" },
   { id = "silent-when-close", title = "Goes silent while holding you at close range, not spamming pings" },
 ]
 

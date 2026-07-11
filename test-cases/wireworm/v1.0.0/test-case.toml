@@ -230,7 +230,7 @@ reference = "gameplay"
 proof = "discharge"
 sub_items = [
   { id = "chains", title = "Arcs to charged nodes within 2 tiles and chains onward through the connected cluster" },
-  { id = "inert-insulates", title = "Inert nodes do not conduct — the arcs leap over them" },
+  { id = "inert-insulates", title = "After a discharge, dark inert nodes inside the blast are still standing while the glowing charged nodes around them are gone — only charged nodes clear" },
   { id = "fries-clean", title = "Worm segments caught in the arc are fried and leave no nodes" },
 ]
 
@@ -310,7 +310,7 @@ text = "When the field grows too sparse a dropper falls straight down a column, 
 weight = 1
 domain = "arcade"
 sub_items = [
-  { id = "sparse-trigger", title = "It appears when the field grows too sparse" },
+  { id = "sparse-trigger", title = "Clearing the lower field to near-empty draws a dropper in to reseed it; keeping the field dense draws far fewer" },
   { id = "reseeds", title = "It falls down a column, laying fresh inert nodes in the empty tiles it passes" },
   { id = "two-bolts", title = "It takes two bolts to kill — the first only speeds it up" },
 ]

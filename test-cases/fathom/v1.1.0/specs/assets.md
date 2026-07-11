@@ -193,7 +193,9 @@ that flows outward through the corridors — bending around bends and reflecting
 walls — so it cannot be a fixed expanding circle; it must be **rendered
 procedurally** (see "What has no asset" below and `specs/sensing.md`). This is used
 both for the **forager's ping** (tinted `#5ef2ff`) and, tinted to the Gloamfin's
-violet `#c46bff`, as the **Gloamfin's tell** (`specs/predators.md`).
+violet `#c46bff`, as the **Gloamfin's tell** — except the Gloamfin's guaranteed
+"lost you" ping, tinted **orange** to set it apart from its ordinary violet ping
+(`specs/predators.md`).
 
 ## The flare bloom — `assets/flare-bloom/` (8 frames, 128×128)
 
@@ -278,7 +280,8 @@ specs describe (using the palette in `specs/overview.md`):
   corridors (bending around bends, reflecting off walls), drawn as a glowing crest
   of short arcs that bulge in the direction the sound is moving, brightest at the
   leading edge. Tinted `#5ef2ff` for the forager and `#c46bff` for the Gloamfin's
-  ping (`specs/sensing.md`, `specs/predators.md`).
+  ordinary ping, and **orange** for the Gloamfin's guaranteed "lost you" ping (a
+  distinct tell — see `specs/sensing.md`, `specs/predators.md`).
 - The **always-visible amber bulb-light**, drawn **identically** for the **bonus
   drifter** and the **Lanternjaw's bulb** — a glowing **amber** mote (`#ffd166`)
   rendered at the creature's center, shown at all times even across unlit fog. It is
@@ -288,8 +291,10 @@ specs describe (using the palette in `specs/overview.md`):
   (`specs/playfield.md`, `specs/predators.md`). (In **Kindle**, this amber glow is
   clipped to your vision circle — see `specs/sensing.md`.)
 - The **detection alert** — the bright flash burst (in the acquiring predator's
-  color) that fires the instant the **Gloamfin's ping**, the **Flarefish's flare**,
-  or the **Flarefish's ordinary light-sense** catches you (`specs/predators.md`).
+  color) that fires the instant a predator takes a fix: any **Gloamfin acquisition**
+  (its own ping, **your** sonar reaching it, or its close-range hearing), the
+  **Flarefish's flare**, or the **Flarefish's ordinary light-sense** catches you
+  (`specs/predators.md`).
 - The **ink cloud** (`#0b0a1f`) (`specs/movement.md`).
 - The forager's **brightness glow and the lit-pocket of vision** around it, and
   any predator **glow** at the edge of sight — these are runtime light, not sprite

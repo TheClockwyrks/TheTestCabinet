@@ -54,6 +54,23 @@ all — it has no band to mismatch, so it is neither destroyed nor charged. The
 dual-use shield, the resonance meter, the discharge, and every other rule are
 unchanged; only what a mismatched **offensive** shot does is different.
 
+### Charge telegraph (required)
+
+Because the charge counter is what makes a mismatched shot dangerous, it must be
+**shown on the drone itself** — a run may not keep it hidden. Every drone that
+has taken at least one mismatched hit displays a **charge telegraph** directly
+above its body: a short horizontal **row of three pips** (one per point of charge
+on the way to the `3`-charge overload), lit left-to-right. Each mismatched shot
+**advances the telegraph by one pip**, drawn in the resonance/amber accent; the
+remaining, unlit pips stay dim. When a drone reaches full charge and
+**overloads**, its charge resets to `0` and the telegraph **empties** (no pips
+shown) until it is fed again. The telegraph rides above the drone as it moves and
+sits above whichever layer of the Prism is currently exposed. An equivalent
+on-drone tell that reads the same buildup — a brightening or crackle that visibly
+advances one step per mismatched hit and clears on overload — also satisfies this,
+but the charge level and the overload threshold must be legible on the field, not
+merely tracked internally.
+
 ### Overload reactions
 
 Each drone overloads in a way true to its identity:

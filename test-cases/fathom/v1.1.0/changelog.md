@@ -69,14 +69,21 @@ wastes a beat facing the wrong way at the moment it finds you.
 
 ## A detection alert when you are spotted
 
-A **detection alert** now fires the instant the Gloamfin's ping or the Flarefish's
-flare (or the Flarefish's ordinary light-sense) acquires you: a sharp flash burst in
-the acquiring predator's color, centered on it, that fades over about `0.5 s` while
-the predator itself is shown **lit** for that window. An earlier build left players
-unsure whether they had actually been detected; the two hunters that can blindside
-you — the Gloamfin, which acquires you in the discrete instant a ping lands, and the
-Flarefish, which shows nothing between flares — now announce the moment they find
-you, so being spotted always reads at a glance.
+A **detection alert** now fires the instant a predator takes a fix: a sharp flash
+burst in the acquiring predator's color, centered on it, that fades over about
+`0.5 s` while the predator itself is shown **lit** for that window. An earlier build
+left players unsure whether they had actually been detected; the two hunters that can
+blindside you — the Gloamfin (eyeless, hunts sound) and the Flarefish (shows nothing
+between flares) — now announce the moment they find you, so being spotted always
+reads at a glance.
+
+The alert is required on **every Gloamfin acquisition path**, not just its own ping:
+whether the Gloamfin is caught by **one of its own pings**, by **your** sonar pulse
+flooding over it, or by its **close-range hearing** (within ~2 tiles), the same
+detection alert fires and it turns to chase. Earlier the cue was easy to read as
+firing only when the Gloamfin's own violet ping landed; a fix handed to it by your
+sonar or by hearing you up close is just as much a blindside and now announces
+itself the same way.
 
 ## The Lanternjaw and the drifters — bait you cannot tell from jaws
 
@@ -128,7 +135,11 @@ range off its short-range hearing:
 - **A delayed, guaranteed "lost you" ping gives you a window.** When it reaches the
   fixed tile and you are gone, it slows to `116 px/s`, casts about, and only after a
   delay of about `1.2 s` fires a guaranteed ping — your chance to break away before it
-  lands.
+  lands. This "lost you" ping is now drawn a **distinct orange** wavefront (rather than
+  the Gloamfin's ordinary violet), so you can *see* the escape window open: an orange
+  crest sweeping out means it reached where it last heard you, found you gone, and is
+  casting one last ping to re-find you. (Earlier it was identical to the routine violet
+  ping, so the window was invisible.)
 - **Pings are floored and it goes silent when it already has you.** Its own pings are
   now floored at about `3 s` apart, so re-finding you up close can no longer make it
   rapid-fire; and while you are inside its ~2-tile hearing range it holds a continuous
@@ -172,8 +183,9 @@ through the corridors — bending around bends, reflecting off walls, revealing 
 tiles before far ones — so it must be **rendered procedurally**, drawn as a glowing
 crest of arcs that bulge the way the sound is moving, brightest at the leading edge.
 It is used both for the forager's ping (tinted `#5ef2ff`) and, tinted violet, as the
-Gloamfin's tell. A ping now catches a target **when its front reaches that tile**,
-not the instant it is cast.
+Gloamfin's tell — except the Gloamfin's guaranteed "lost you" ping, tinted **orange**
+to set it apart (see above). A ping now catches a target **when its front reaches
+that tile**, not the instant it is cast.
 
 ## Maze self-checks — openness and corridor length
 

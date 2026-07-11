@@ -101,13 +101,15 @@ targets:
 - Eating raises brightness `G`, which **widens what you can see** and **widens the
   Lanternjaw's detection range**; `G` **holds for a short delay after your last
   pellet** (resetting each time you eat) and only then decays back toward dark.
-- The **Gloamfin's ping or the Flarefish's flare acquiring you fires a clear
-  detection alert** so you know you have been spotted.
+- **Any** Gloamfin acquisition (its own ping, **your** sonar reaching it, or its
+  close-range hearing) **or the Flarefish's flare or light-sense acquiring you fires
+  a clear detection alert** so you know you have been spotted.
 - The **Lanternjaw** is lost by dimming or by ink. The **Gloamfin** ignores ink and
   **out-paces you on a straight run** once it has a fix, but it **slows below your
   speed each time it corners** (then ramps back up), so you shake it by **cutting
-  corners**; and when it reaches where it last heard you it casts about and re-pings
-  only after a delay — so you lose it by breaking away in that window. It also goes
+  corners**; and when it reaches where it last heard you it casts about and fires a
+  guaranteed **"lost you" ping — drawn a distinct orange** (not its usual violet) —
+  only after a delay, so you lose it by breaking away in that window. It also goes
   **silent while it is right on top of you** (within hearing range) instead of
   spamming pings. The **Flarefish** makes no tell of its own but its flare — your light
   and sonar reveal it like any predator — and once its flare catches you it

@@ -76,6 +76,13 @@ your guns (a maze) to keep them hot.
 - **The band `[R, 100]` is the sweet spot:** full damage, still online. The redline
   marker on the heat read (`specs/playfield.md`, `specs/overview.md`) sits at `R`,
   so the player can see how much room a tower has between full power and the trip.
+- **The multiplier is on screen.** The selected-tower inspector shows the tower's
+  **current per-shot damage** and its **heat damage multiplier** side by side (the
+  live value of `heatMultiplier(H, R)`, e.g. `x3.5 heat`; `specs/playfield.md`).
+  The player watches the multiplier climb as the tower heats and then **hold flat**
+  once heat reaches `R` — the plateau is visible directly, not inferred from the
+  glow. Because the multiplier stops rising at `R`, driving heat on past the
+  redline buys **only trip risk, never more damage**.
 - The heat-averse **Rime** is the exception: it has no damage plateau (it slows,
   and slows best when *cold* — `specs/towers.md`); its redline is effectively the
   `100` trip.
