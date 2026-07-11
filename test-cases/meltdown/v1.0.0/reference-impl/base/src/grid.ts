@@ -2,27 +2,32 @@
 // mazing / can't-seal rules (specs/playfield.md).
 //
 // Tiles are indexed r * COLS + c. A tile is "open" (walkable by the surge) when
-// it is in bounds and not blocked by a tower footprint; intakes and exhausts are
-// open too (the surge walks through them). Distance fields are computed with
-// Dijkstra (orthogonal cost 1, diagonal cost sqrt2) honouring the corner-cut
-// rule: a diagonal step is allowed only when both orthogonally-adjacent tiles it
-// cuts past are open, so the surge never squeezes a diagonal gap between two
-// diagonally-touching towers.
+// it is in bounds and not blocked by a tower footprint; the floor edge tiles at
+// the vents and exhausts are ordinary open floor (the surge walks onto them).
+// Distance fields are computed with Dijkstra (orthogonal cost 1, diagonal cost
+// sqrt2) honouring the corner-cut rule: a diagonal step is allowed only when both
+// orthogonally-adjacent tiles it cuts past are open, so the surge never squeezes
+// a diagonal gap between two diagonally-touching towers.
+//
+// The tile grid is inset within the casing wall: tile (c, r)'s top-left is at
+// (FLOOR_X0 + c*TILE, FLOOR_Y0 + r*TILE) (specs/playfield.md).
 
 import {
   BOTTOM_EXHAUST_COLS,
   COLS,
-  LEFT_INTAKE_ROWS,
+  FLOOR_X0,
+  FLOOR_Y0,
+  LEFT_VENT_ROWS,
   RIGHT_EXHAUST_ROWS,
   ROWS,
   TILE,
-  TOP_INTAKE_COLS,
+  TOP_VENT_COLS,
 } from "./constants";
 
 const SQRT2 = Math.SQRT2;
 const N = COLS * ROWS;
 
-export type PortalKind = "left-intake" | "top-intake" | "right-exhaust" | "bottom-exhaust";
+export type PortalKind = "left-vent" | "top-vent" | "right-exhaust" | "bottom-exhaust";
 
 export interface Portal {
   kind: PortalKind;
@@ -39,12 +44,12 @@ export function rowOf(i: number): number {
   return Math.floor(i / COLS);
 }
 export function tileCenter(c: number, r: number): { x: number; y: number } {
-  return { x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 };
+  return { x: FLOOR_X0 + c * TILE + TILE / 2, y: FLOOR_Y0 + r * TILE + TILE / 2 };
 }
 export function tileAtPixel(x: number, y: number): { c: number; r: number } {
   return {
-    c: Math.max(0, Math.min(COLS - 1, Math.floor(x / TILE))),
-    r: Math.max(0, Math.min(ROWS - 1, Math.floor(y / TILE))),
+    c: Math.max(0, Math.min(COLS - 1, Math.floor((x - FLOOR_X0) / TILE))),
+    r: Math.max(0, Math.min(ROWS - 1, Math.floor((y - FLOOR_Y0) / TILE))),
   };
 }
 
@@ -102,37 +107,29 @@ class MinHeap {
 
 export class Grid {
   readonly blocked = new Uint8Array(N);
-  readonly portalKind = new Int8Array(N).fill(-1); // -1 = none, else PortalKind index
 
-  readonly leftIntake: Portal;
-  readonly topIntake: Portal;
+  readonly leftVent: Portal;
+  readonly topVent: Portal;
   readonly rightExhaust: Portal;
   readonly bottomExhaust: Portal;
 
   constructor() {
-    const leftTiles = LEFT_INTAKE_ROWS.map((r) => idx(0, r));
-    const topTiles = TOP_INTAKE_COLS.map((c) => idx(c, 0));
+    const leftTiles = LEFT_VENT_ROWS.map((r) => idx(0, r));
+    const topTiles = TOP_VENT_COLS.map((c) => idx(c, 0));
     const rightTiles = RIGHT_EXHAUST_ROWS.map((r) => idx(COLS - 1, r));
     const bottomTiles = BOTTOM_EXHAUST_COLS.map((c) => idx(c, ROWS - 1));
-    this.leftIntake = { kind: "left-intake", tiles: leftTiles };
-    this.topIntake = { kind: "top-intake", tiles: topTiles };
+    this.leftVent = { kind: "left-vent", tiles: leftTiles };
+    this.topVent = { kind: "top-vent", tiles: topTiles };
     this.rightExhaust = { kind: "right-exhaust", tiles: rightTiles };
     this.bottomExhaust = { kind: "bottom-exhaust", tiles: bottomTiles };
-    leftTiles.forEach((i) => (this.portalKind[i] = 0));
-    topTiles.forEach((i) => (this.portalKind[i] = 1));
-    rightTiles.forEach((i) => (this.portalKind[i] = 2));
-    bottomTiles.forEach((i) => (this.portalKind[i] = 3));
-  }
-
-  isPortal(i: number): boolean {
-    return this.portalKind[i] >= 0;
   }
 
   inBounds(c: number, r: number): boolean {
     return c >= 0 && c < COLS && r >= 0 && r < ROWS;
   }
 
-  // Open for pathing: in bounds and not blocked (intakes/exhausts are open).
+  // Open for pathing: in bounds and not blocked (vent/exhaust edge tiles are
+  // ordinary open floor).
   // `extra` optionally treats a set of tile indices as blocked (tentative
   // placement preview / seal check).
   isOpen(c: number, r: number, extra?: Set<number>): boolean {

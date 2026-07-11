@@ -1,8 +1,8 @@
 # Meltdown
 
 **Meltdown** is a thermal, open-field **tower-defense** game for the browser.
-Waves of "surge" intruders pour through the intakes of a reactor floor and race
-for the exhaust vents; you stop them with **emitter towers**. Your towers are
+Waves of "surge" intruders pour through the vents of a walled reactor floor and
+race for the exhausts; you stop them with **emitter towers**. Your towers are
 also **walls**, so there is no fixed path — you *build the maze* the surge must
 walk, winding it the long way around so your guns have time to burn it down.
 
@@ -12,7 +12,7 @@ roughly `3x` just under the redline — but push it to `100` heat and it **trips
 offline for three seconds, leaving a hole in your defense. Laying out the floor
 is a thermal problem as much as a spatial one: keep your guns hot, but not so hot
 they cut out. Two support structures sculpt that heat — a **Forge** that pours
-heat into its orthogonal neighbours and a **Vent** that draws it away — and the
+heat into its orthogonal neighbours and a **Sink** that draws it away — and the
 cryo **Rime** runs the rule *backward*: it slows the surge best while it stays
 cold.
 
@@ -22,12 +22,14 @@ API keys; everything needed to play is in the built bundle.
 
 ## The floor
 
-A fixed `1280 x 720` stage: the reactor floor on the left (a `50 x 36` grid of
-`20 px` tiles) and the build panel on the right. The surge enters at the
-**mid-left** and **mid-top** intakes and must cross to its **opposite** exhaust
-(left→right, top→bottom, never the nearer one), so the maze must lengthen that
-crossing to matter. You can never seal the floor: a placement that would strand
-an intake or a walking unit is refused.
+A fixed `1280 x 720` stage: the reactor on the left and the build panel on the
+right. The `950 x 684` reactor floor (a `50 x 36` grid of `19 px` tiles) is ringed
+by an impassable **18 px casing wall**; the surge can enter or leave only through
+the four openings cut into it — the **mid-left** and **mid-top** vents and the
+**mid-right** and **mid-bottom** exhausts. Each unit crosses to its **opposite**
+exhaust (left→right, top→bottom, never the nearer one), so the maze must lengthen
+that crossing to matter. You can never seal the floor: a placement that would
+strand a vent or a walking unit is refused.
 
 ## Towers
 
@@ -35,14 +37,14 @@ Six emitters and two heat-movers:
 
 | Tower | Role |
 | --- | --- |
-| **Arc** | Balanced workhorse; the tower to learn on. |
-| **Stutter** | Rapid, low per-shot; trips the easiest — wants a Vent. |
+| **Arc** | Balanced workhorse and the **cheapest** tower — the one you lay down in numbers to shape the maze. |
+| **Stutter** | Rapid, low per-shot; trips the easiest — wants a Sink. |
 | **Lance** | Long-range sniper; runs cold and cannot trip alone — wants a Forge. |
 | **Bloom** | Area splash; heats fast in a packed chokepoint. |
 | **Rime** | Cryo slow; slows hardest when **cold**, fades as it heats. |
 | **Flak** | Anti-air **only**; dedicated flyer coverage. |
 | **Forge** | Adds heat to each orthogonal emitter (asset in a lull, liability in a push). |
-| **Vent** | Adds cooling to each orthogonal emitter; holds a hot gun under the redline. |
+| **Sink** | Adds cooling to each orthogonal emitter; holds a hot gun under the redline. |
 
 Each tower upgrades through three levels (stronger **and** hotter-running for
 emitters) and sells back for a `70%` refund.
@@ -65,7 +67,7 @@ Mouse-driven, with keyboard accelerators.
 | Cancel placement / deselect / pause | Right-click, or `Esc` |
 | Upgrade selected | Inspector **Upgrade** button, or `U` |
 | Sell selected | Inspector **Sell** button, or `S` |
-| Send next wave (early bonus) | **Send Next Wave** button, or `Space` |
+| Start / send next wave | **Start** (untimed opening phase) or **Send Next Wave** (early bonus) button, or `Space` |
 | Game speed `1x` / `2x` | Speed toggle, or `F` |
 | Pause | **Pause** button, or `P` / `Esc` |
 | Menu navigation | Mouse, or `↑` / `↓` + `Enter` |

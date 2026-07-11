@@ -7,12 +7,20 @@
 import { heatColor, rgba } from "./colors";
 import {
   C,
+  CASING,
+  COLS,
   FLOOR_H,
   FLOOR_W,
+  FLOOR_X0,
+  FLOOR_X1,
+  FLOOR_Y0,
+  FLOOR_Y1,
   MONO,
   PANEL_W,
   PANEL_X,
+  REACTOR_W,
   REDLINE,
+  ROWS,
   STAGE_H,
   STAGE_W,
   TILE,
@@ -48,7 +56,7 @@ const TYPE_COLOR: Record<TowerType, string> = {
   rime: C.rime,
   flak: C.warm,
   forge: C.forge,
-  vent: C.vent,
+  sink: C.sink,
 };
 
 const ROMAN = ["", "I", "II", "III"];
@@ -132,7 +140,7 @@ export function render(ctx: Ctx, game: Game): void {
 
   // In-match (also frozen behind pause / end overlays).
   drawFloorBase(ctx);
-  drawPortals(ctx, game);
+  drawOpenings(ctx, game);
   for (const t of game.towers) drawTower(ctx, game, t);
   drawRangeRings(ctx, game);
   drawPreview(ctx, game);
@@ -145,45 +153,72 @@ export function render(ctx: Ctx, game: Game): void {
   else if (game.state === "gameover") drawEndCard(ctx, game, false);
 }
 
-// ---- Floor & portals ------------------------------------------------------
+// ---- Reactor: casing wall, floor, and openings ----------------------------
 
+// The reactor floor is inset within an 18-px casing wall (specs/playfield.md):
+// a heavy steel shell around the dark tile floor, with a lit inner rim.
 function drawFloorBase(ctx: Ctx): void {
+  // Casing wall fills the whole reactor region; the floor is inset inside it.
+  ctx.fillStyle = C.casing;
+  ctx.fillRect(0, 0, REACTOR_W, STAGE_H);
+
+  // The dark tile floor.
   ctx.fillStyle = C.steel;
-  ctx.fillRect(0, 0, FLOOR_W, FLOOR_H);
+  ctx.fillRect(FLOOR_X0, FLOOR_Y0, FLOOR_W, FLOOR_H);
+
+  // Faint tile grid, clipped to the floor.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(FLOOR_X0, FLOOR_Y0, FLOOR_W, FLOOR_H);
+  ctx.clip();
   ctx.strokeStyle = C.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let x = 0; x <= FLOOR_W; x += TILE) {
-    ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, FLOOR_H);
+  for (let c = 0; c <= COLS; c++) {
+    const x = FLOOR_X0 + c * TILE;
+    ctx.moveTo(x + 0.5, FLOOR_Y0);
+    ctx.lineTo(x + 0.5, FLOOR_Y1);
   }
-  for (let y = 0; y <= FLOOR_H; y += TILE) {
-    ctx.moveTo(0, y + 0.5);
-    ctx.lineTo(FLOOR_W, y + 0.5);
+  for (let r = 0; r <= ROWS; r++) {
+    const y = FLOOR_Y0 + r * TILE;
+    ctx.moveTo(FLOOR_X0, y + 0.5);
+    ctx.lineTo(FLOOR_X1, y + 0.5);
   }
   ctx.stroke();
+  ctx.restore();
+
+  // Lit inner rim where the casing meets the floor.
+  ctx.strokeStyle = C.casingRim;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(FLOOR_X0 - 1, FLOOR_Y0 - 1, FLOOR_W + 2, FLOOR_H + 2);
 }
 
-function drawPortals(ctx: Ctx, game: Game): void {
-  const intake = (x: number, y: number, w: number, h: number) => {
-    ctx.fillStyle = rgba(C.intake, 0.16);
+// The four openings cut into the casing wall — two vents (cool blue) and two
+// exhausts (hazard-striped) — each a four-tile-wide gap (specs/playfield.md).
+function drawOpenings(ctx: Ctx, game: Game): void {
+  const vent = (x: number, y: number, w: number, h: number) => {
+    // A gap in the casing: floor-dark, glowing cool blue.
+    ctx.fillStyle = C.steel;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = C.intake;
+    ctx.fillStyle = rgba(C.vent, 0.35);
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = C.vent;
     ctx.lineWidth = 2;
     ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-    text(ctx, "IN", x + w / 2, y + h / 2 + 3, 9, C.intake, "center", 700);
   };
   const exhaust = (x: number, y: number, w: number, h: number) => {
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
-    ctx.fillStyle = rgba(C.exhaust, 0.14);
+    ctx.fillStyle = C.steel;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = rgba(C.hazard, 0.5);
+    ctx.fillStyle = rgba(C.exhaust, 0.2);
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = rgba(C.hazard, 0.6);
     ctx.lineWidth = 5;
     ctx.beginPath();
-    for (let d = -h; d < w + h; d += 14) {
+    for (let d = -h; d < w + h; d += 12) {
       ctx.moveTo(x + d, y);
       ctx.lineTo(x + d + h, y + h);
     }
@@ -192,24 +227,24 @@ function drawPortals(ctx: Ctx, game: Game): void {
     ctx.strokeStyle = C.exhaust;
     ctx.lineWidth = 2;
     ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-    text(ctx, "OUT", x + w / 2, y + h / 2 + 3, 8, C.exhaust, "center", 700);
   };
-  // Highlight a portal that has surge passing through it (subtle glow omitted
-  // for stillness; positions per specs/playfield.md).
+  // Positions from the grid's edge tiles, drawn in the casing band on that side
+  // (specs/playfield.md): each opening spans four tile rows/columns.
   const g = game.grid;
-  const px = (i: number) => (i % 50) * TILE;
-  const py = (i: number) => Math.floor(i / 50) * TILE;
-  intake(px(g.leftIntake.tiles[0]), py(g.leftIntake.tiles[0]), TILE, TILE * 4);
-  intake(px(g.topIntake.tiles[0]), py(g.topIntake.tiles[0]), TILE * 4, TILE);
-  exhaust(px(g.rightExhaust.tiles[0]), py(g.rightExhaust.tiles[0]), TILE, TILE * 4);
-  exhaust(px(g.bottomExhaust.tiles[0]), py(g.bottomExhaust.tiles[0]), TILE * 4, TILE);
+  const rowOf = (i: number) => Math.floor(i / COLS);
+  const colOf = (i: number) => i % COLS;
+  const span = 4 * TILE;
+  vent(0, FLOOR_Y0 + rowOf(g.leftVent.tiles[0]) * TILE, CASING, span);
+  vent(FLOOR_X0 + colOf(g.topVent.tiles[0]) * TILE, 0, span, CASING);
+  exhaust(FLOOR_X1, FLOOR_Y0 + rowOf(g.rightExhaust.tiles[0]) * TILE, CASING, span);
+  exhaust(FLOOR_X0 + colOf(g.bottomExhaust.tiles[0]) * TILE, FLOOR_Y1, span, CASING);
 }
 
 // ---- Towers ---------------------------------------------------------------
 
 function towerFill(game: Game, t: Tower): string {
   if (t.type === "forge") return C.forge;
-  if (t.type === "vent") return "#3a444f";
+  if (t.type === "sink") return "#3a444f";
   if (t.type === "rime") return C.rime;
   if (t.tripped) {
     // Strobing red while offline.
@@ -219,16 +254,20 @@ function towerFill(game: Game, t: Tower): string {
 }
 
 function drawTower(ctx: Ctx, game: Game, t: Tower): void {
-  const x0 = t.cx - 20;
-  const y0 = t.cy - 20;
+  const S = 2 * TILE; // 2 x 2 footprint (px)
+  const x0 = t.cx - TILE;
+  const y0 = t.cy - TILE;
+  const bx0 = x0 + 2;
+  const by0 = y0 + 2;
+  const bs = S - 4;
   const fill = towerFill(game, t);
 
   ctx.save();
   ctx.shadowColor = fill;
   ctx.shadowBlur =
-    t.type === "vent" ? 10 : t.tripped ? 20 : t.isEmitter ? 8 + t.heatFrac() * 20 : 18;
+    t.type === "sink" ? 10 : t.tripped ? 20 : t.isEmitter ? 8 + t.heatFrac() * 20 : 18;
   ctx.fillStyle = fill;
-  rr(ctx, x0 + 2, y0 + 2, 36, 36, 7);
+  rr(ctx, bx0, by0, bs, bs, 6);
   ctx.fill();
   ctx.restore();
 
@@ -237,23 +276,23 @@ function drawTower(ctx: Ctx, game: Game, t: Tower): void {
   grad.addColorStop(0, rgba("#ffffff", 0.32));
   grad.addColorStop(1, rgba("#ffffff", 0));
   ctx.fillStyle = grad;
-  rr(ctx, x0 + 2, y0 + 2, 36, 36, 7);
+  rr(ctx, bx0, by0, bs, bs, 6);
   ctx.fill();
 
   ctx.strokeStyle = rgba("#ffffff", 0.14);
   ctx.lineWidth = 1.5;
-  rr(ctx, x0 + 2, y0 + 2, 36, 36, 7);
+  rr(ctx, bx0, by0, bs, bs, 6);
   ctx.stroke();
 
   // Glyph.
-  const glyphColor = t.type === "vent" ? C.vent : "#15181d";
-  text(ctx, t.def.glyph, t.cx, t.cy + 6, 17, glyphColor, "center", 700);
+  const glyphColor = t.type === "sink" ? C.sink : "#15181d";
+  text(ctx, t.def.glyph, t.cx, t.cy + 6, 16, glyphColor, "center", 700);
 
   // Heat read on the footprint (emitters, incl. Rime) — a short bar.
   if (t.isEmitter) {
-    const bx = x0 + 6;
-    const by = y0 + 32;
-    const bw = 28;
+    const bx = x0 + 5;
+    const by = y0 + S - 8;
+    const bw = S - 10;
     ctx.fillStyle = rgba("#ffffff", 0.14);
     rr(ctx, bx, by, bw, 4, 2);
     ctx.fill();
@@ -271,7 +310,7 @@ function drawTower(ctx: Ctx, game: Game, t: Tower): void {
 function drawRangeRings(ctx: Ctx, game: Game): void {
   const t = game.selected;
   if (!t || !isEmitterDef(t.def)) return;
-  const r = t.stats().range * 20;
+  const r = t.stats().range * TILE;
   ctx.save();
   ctx.setLineDash([6, 6]);
   ctx.strokeStyle = rgba(C.text, 0.45);
@@ -288,15 +327,16 @@ function drawPreview(ctx: Ctx, game: Game): void {
   const p = game.preview;
   if (!p || !game.armed) return;
   const def = TOWER_DEFS[game.armed];
-  const cx = p.i * 20;
-  const cy = p.j * 20;
+  const S = 2 * TILE;
+  const cx = FLOOR_X0 + p.i * TILE;
+  const cy = FLOOR_Y0 + p.j * TILE;
   const col = p.valid ? C.ok : C.bad;
   // Footprint highlight.
   ctx.fillStyle = rgba(col, 0.25);
-  ctx.fillRect(cx - 20, cy - 20, 40, 40);
+  ctx.fillRect(cx - TILE, cy - TILE, S, S);
   ctx.strokeStyle = col;
   ctx.lineWidth = 2;
-  ctx.strokeRect(cx - 20 + 1, cy - 20 + 1, 38, 38);
+  ctx.strokeRect(cx - TILE + 1, cy - TILE + 1, S - 2, S - 2);
   // Range ring (emitters).
   if (isEmitterDef(def)) {
     ctx.save();
@@ -304,7 +344,7 @@ function drawPreview(ctx: Ctx, game: Game): void {
     ctx.strokeStyle = rgba(col, 0.7);
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(cx, cy, def.range * 20, 0, Math.PI * 2);
+    ctx.arc(cx, cy, def.range * TILE, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -446,11 +486,19 @@ function drawReadouts(ctx: Ctx, game: Game): void {
   rr(ctx, PANEL_INNER_X, barY, PANEL_INNER_W, 5, 2);
   ctx.fill();
   if (game.phase === "build") {
-    const frac = Math.max(0, Math.min(1, game.buildTimer / 15));
-    ctx.fillStyle = C.hazard;
-    rr(ctx, PANEL_INNER_X, barY, PANEL_INNER_W * frac, 5, 2);
-    ctx.fill();
-    text(ctx, `NEXT WAVE IN ${Math.ceil(game.buildTimer)}s`, PANEL_INNER_X, barY + 20, 10, C.textDim, "left", 400);
+    if (game.openingPhase) {
+      // Untimed opening phase — no countdown; the player starts when ready.
+      ctx.fillStyle = C.vent;
+      rr(ctx, PANEL_INNER_X, barY, PANEL_INNER_W, 5, 2);
+      ctx.fill();
+      text(ctx, "BUILD YOUR OPENING MAZE — PRESS START", PANEL_INNER_X, barY + 20, 10, C.textDim, "left", 400);
+    } else {
+      const frac = Math.max(0, Math.min(1, game.buildTimer / 15));
+      ctx.fillStyle = C.hazard;
+      rr(ctx, PANEL_INNER_X, barY, PANEL_INNER_W * frac, 5, 2);
+      ctx.fill();
+      text(ctx, `NEXT WAVE IN ${Math.ceil(game.buildTimer)}s`, PANEL_INNER_X, barY + 20, 10, C.textDim, "left", 400);
+    }
   } else {
     // Rough progress: killed/leaked fraction of the wave.
     ctx.fillStyle = C.exhaust;
@@ -663,16 +711,20 @@ function surgeSwatch(type: SurgeType): string {
 function drawWaveControls(ctx: Ctx, game: Game): void {
   const send = sendBtnRect();
   const inBuild = game.phase === "build";
+  const opening = inBuild && game.openingPhase;
   ctx.save();
   if (inBuild) {
-    ctx.shadowColor = C.hazard;
+    ctx.shadowColor = opening ? C.ok : C.hazard;
     ctx.shadowBlur = 14;
   }
-  ctx.fillStyle = inBuild ? C.hazard : "#2a2f38";
+  ctx.fillStyle = inBuild ? (opening ? C.ok : C.hazard) : "#2a2f38";
   rr(ctx, send.x, send.y, send.w, send.h, 9);
   ctx.fill();
   ctx.restore();
-  if (inBuild) {
+  if (opening) {
+    // Untimed opening phase: the control reads START and pays no early bonus.
+    text(ctx, "START", send.x + send.w / 2, send.y + 28, 15, C.steel, "center", 700);
+  } else if (inBuild) {
     text(ctx, "SEND NEXT WAVE", send.x + send.w / 2, send.y + 22, 13, C.steel, "center", 700);
     text(ctx, `EARLY BONUS +${Math.floor(Math.max(0, game.buildTimer))}`, send.x + send.w / 2, send.y + 38, 9, "#5a4a00", "center", 700);
   } else {
@@ -754,26 +806,27 @@ function drawHowTo(ctx: Ctx): void {
   const lines: Array<[string, string]> = [
     ["GOAL", "Stop the surge from reaching the exhausts. Lose all 20 lives and the reactor breaches; clear wave 20 to win."],
     ["TOWERS ARE WALLS", "Every tower is also a wall — you build the maze the surge must walk. It always keeps a path; you can never seal the floor."],
-    ["TWO STREAMS", "Surge enters at the LEFT and TOP intakes and must cross to its OPPOSITE exhaust (left→right, top→bottom)."],
+    ["WALLED REACTOR", "The floor is a walled reactor. Surge enters at the LEFT and TOP vents and must cross to its OPPOSITE exhaust (left→right, top→bottom) — the only openings in the casing."],
     ["HEAT IS POWER", "Emitters fire harder the hotter they run (up to 3x near the redline) — but hit 100 heat and they TRIP offline for 3s."],
-    ["FORGE & VENT", "The Forge pours heat into orthogonal neighbours (an asset in a lull, a liability in a push); the Vent draws it out."],
-    ["THE RIME", "The cryo Rime runs backward — it slows hardest when COLD and fades as it heats. Keep it isolated or beside a Vent."],
+    ["FORGE & SINK", "The Forge pours heat into orthogonal neighbours (an asset in a lull, a liability in a push); the Sink draws it out."],
+    ["THE RIME", "The cryo Rime runs backward — it slows hardest when COLD and fades as it heats. Keep it isolated or beside a Sink."],
     ["FLYERS", "Drift flyers ignore the maze and fly straight across. Any emitter can hit them; Flak is dedicated air-only coverage."],
-    ["ECONOMY", "Earn kill bounties, wave-clear bonuses, build-phase interest, and an early-send bonus. Sell for a 70% refund."],
-    ["CONTROLS", "Mouse to build/select. 1–8 arm shop towers, U upgrade, S sell, Space send wave, F speed, Esc/P pause."],
+    ["ECONOMY", "Start with 250 — about 16 Arcs for an opening maze. Earn kill bounties, wave bonuses, interest, and an early-send bonus. Sell for a 70% refund."],
+    ["BUILD & START", "The opening build phase is untimed — lay your maze, then press START. Between waves you get up to 15s (send early for a bonus)."],
+    ["CONTROLS", "Mouse to build/select. 1–8 arm shop towers, U upgrade, S sell, Space send/start wave, F speed, Esc/P pause."],
   ];
   const bodyX = 400;
   const bodyMaxW = 1060 - bodyX;
-  let y = 148;
+  let y = 132;
   for (const [head, body] of lines) {
     text(ctx, head, 180, y, 14, C.hot, "left", 700);
     const wrapped = wrapLines(ctx, body, 13, bodyMaxW);
     let ly = y;
     for (const line of wrapped) {
       text(ctx, line, bodyX, ly, 13, C.textDim, "left", 400);
-      ly += 18;
+      ly += 17;
     }
-    y += Math.max(50, wrapped.length * 18 + 22);
+    y += Math.max(46, wrapped.length * 17 + 20);
   }
   spaced(ctx, "CLICK OR PRESS ESC TO GO BACK", cx, 700, 14, C.textFaint, 6, 400);
 }

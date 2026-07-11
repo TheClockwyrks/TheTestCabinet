@@ -1,9 +1,9 @@
 // Meltdown — the Tower entity: heat state, derived stats, and the coupling
 // contributions cached each time the floor changes. The heat integration, the
-// redline trip, firing, and Forge/Vent coupling live in game.ts, which owns the
+// redline trip, firing, and Forge/Sink coupling live in game.ts, which owns the
 // simulation; this class holds the per-tower state they read and write.
 
-import { REDLINE } from "./constants";
+import { FLOOR_X0, FLOOR_Y0, REDLINE, TILE } from "./constants";
 import {
   emitterStats,
   isEmitterDef,
@@ -38,14 +38,14 @@ export class Tower {
   // Coupling contributions from neighbouring movers, recomputed on layout
   // change (game.recomputeCoupling): heat/s poured in, extra coolRate added.
   forgeHeat = 0;
-  ventCool = 0;
+  sinkCool = 0;
 
   constructor(type: TowerType, i: number, j: number) {
     this.type = type;
     this.i = i;
     this.j = j;
-    this.cx = i * 20;
-    this.cy = j * 20;
+    this.cx = FLOOR_X0 + i * TILE;
+    this.cy = FLOOR_Y0 + j * TILE;
     this.totalSpend = TOWER_DEFS[type].cost;
   }
 

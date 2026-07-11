@@ -21,11 +21,11 @@ export interface EmitterDef {
 }
 
 export interface MoverDef {
-  kind: "forge" | "vent";
+  kind: "forge" | "sink";
   name: string;
   glyph: string;
   cost: number;
-  output: number[]; // heat/s (forge) or +coolRate (vent) by level [I, II, III]
+  output: number[]; // heat/s (forge) or +coolRate (sink) by level [I, II, III]
 }
 
 export type TowerDef = EmitterDef | MoverDef;
@@ -35,7 +35,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     kind: "emitter",
     name: "ARC",
     glyph: "◆", // ◆
-    cost: 80,
+    cost: 15,
     range: 6.0,
     fireRate: 2.0,
     baseDamage: 6,
@@ -46,7 +46,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     kind: "emitter",
     name: "STUTTER",
     glyph: "▪", // ▪
-    cost: 110,
+    cost: 40,
     range: 5.0,
     fireRate: 7.0,
     baseDamage: 2.0,
@@ -57,7 +57,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     kind: "emitter",
     name: "LANCE",
     glyph: "▲", // ▲
-    cost: 160,
+    cost: 150,
     range: 12.0,
     fireRate: 0.8,
     baseDamage: 43,
@@ -68,7 +68,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     kind: "emitter",
     name: "BLOOM",
     glyph: "✿", // ✿
-    cost: 180,
+    cost: 150,
     range: 6.0,
     fireRate: 1.2,
     baseDamage: 10,
@@ -80,7 +80,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     kind: "emitter",
     name: "RIME",
     glyph: "❄", // ❄
-    cost: 110,
+    cost: 45,
     range: 5.5,
     fireRate: 2.4,
     baseDamage: 4,
@@ -92,7 +92,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     kind: "emitter",
     name: "FLAK",
     glyph: "△", // △
-    cost: 130,
+    cost: 60,
     range: 8.0,
     fireRate: 2.6,
     baseDamage: 6,
@@ -104,14 +104,14 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     kind: "forge",
     name: "FORGE",
     glyph: "█", // █
-    cost: 60,
+    cost: 20,
     output: [12, 18, 27],
   },
-  vent: {
-    kind: "vent",
-    name: "VENT",
+  sink: {
+    kind: "sink",
+    name: "SINK",
     glyph: "▽", // ▽
-    cost: 60,
+    cost: 20,
     output: [14, 21, 31.5],
   },
 };
@@ -169,10 +169,10 @@ export interface SurgeDef {
 }
 
 export const SURGE_DEFS: Record<SurgeType, SurgeDef> = {
-  mote: { name: "Mote", hp: 40, speed: 60, slowable: true, flies: false, bounty: 4, leak: 1, radius: 8 },
-  sprint: { name: "Sprint", hp: 24, speed: 120, slowable: true, flies: false, bounty: 4, leak: 1, radius: 7 },
-  hulk: { name: "Hulk", hp: 220, speed: 38, slowable: true, flies: false, bounty: 10, leak: 2, radius: 12 },
+  mote: { name: "Mote", hp: 40, speed: 60, slowable: true, flies: false, bounty: 3, leak: 1, radius: 8 },
+  sprint: { name: "Sprint", hp: 24, speed: 120, slowable: true, flies: false, bounty: 3, leak: 1, radius: 7 },
+  hulk: { name: "Hulk", hp: 220, speed: 38, slowable: true, flies: false, bounty: 7, leak: 2, radius: 12 },
   swarm: { name: "Swarm", hp: 12, speed: 70, slowable: true, flies: false, bounty: 2, leak: 1, radius: 5 },
-  drift: { name: "Drift", hp: 60, speed: 80, slowable: true, flies: true, bounty: 8, leak: 1, radius: 10 },
-  core: { name: "Core", hp: 1600, speed: 30, slowable: false, flies: false, bounty: 120, leak: 5, radius: 17, boss: true },
+  drift: { name: "Drift", hp: 60, speed: 80, slowable: true, flies: true, bounty: 6, leak: 1, radius: 10 },
+  core: { name: "Core", hp: 1600, speed: 30, slowable: false, flies: false, bounty: 90, leak: 5, radius: 17, boss: true },
 };

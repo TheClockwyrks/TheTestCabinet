@@ -8,6 +8,8 @@ import { heatColor } from "./colors";
 import {
   BUILD_PHASE_TIME,
   COLS,
+  FLOOR_X0,
+  FLOOR_Y0,
   heatMultiplier,
   hpScale,
   INTEREST_CAP,
@@ -17,6 +19,7 @@ import {
   ROWS,
   START_LIVES,
   START_MONEY,
+  TILE,
   TOTAL_WAVES,
   TRIP_TIME,
   waveClearBonus,
@@ -26,7 +29,7 @@ import { Grid, idx, tileAtPixel } from "./grid";
 import type { Input } from "./input";
 import { Surge, type Goal } from "./surge";
 import { Tower } from "./towers";
-import type { AppState, Intake, Phase, SurgeType, TowerType } from "./types";
+import type { AppState, Phase, SurgeType, TowerType, Vent } from "./types";
 import { TOWER_ORDER } from "./types";
 import {
   ctlRect,
@@ -95,10 +98,13 @@ export class Game {
   waveNumber = 1;
 
   buildTimer = BUILD_PHASE_TIME;
+  // The opening build phase (before Wave 1) is untimed: no countdown, never
+  // auto-starts, no early-send bonus, no interest (specs/flow.md).
+  openingPhase = false;
   private waveEvents: ReturnType<typeof generateWave> = [];
   private spawnCursor = 0;
   private waveElapsed = 0;
-  private spawnCounter: Record<Intake, number> = { left: 0, top: 0 };
+  private spawnCounter: Record<Vent, number> = { left: 0, top: 0 };
 
   speed: 1 | 2 = 1;
   armed: TowerType | null = null;
@@ -137,6 +143,7 @@ export class Game {
     this.score = 0;
     this.waveNumber = 1;
     this.reachedWave = 1;
+    this.openingPhase = false;
     this.armed = null;
     this.selected = null;
     this.preview = null;
@@ -174,6 +181,9 @@ export class Game {
     this.waveNumber = wave;
     this.reachedWave = wave;
     this.phase = "build";
+    // Wave 1's build phase is the untimed opening phase; the between-wave phases
+    // carry the countdown and auto-start (specs/flow.md).
+    this.openingPhase = wave === 1;
     this.buildTimer = BUILD_PHASE_TIME;
     if (payInterest) {
       const interest = Math.min(INTEREST_CAP, Math.floor(this.money * INTEREST_RATE));
@@ -190,10 +200,13 @@ export class Game {
 
   private sendWave(early: boolean): void {
     if (this.state !== "playing" || this.phase !== "build") return;
-    if (early) {
+    // The opening phase pays no early-send bonus; the timed between-wave phases
+    // pay the remaining seconds when the player sends early (specs/flow.md).
+    if (early && !this.openingPhase) {
       const bonus = Math.floor(Math.max(0, this.buildTimer));
       this.money += bonus;
     }
+    this.openingPhase = false;
     this.beginWave();
   }
 
@@ -253,21 +266,21 @@ export class Game {
     return 0;
   }
 
-  // Recompute each emitter's forge-heat-in and vent-cool-added from its movers.
+  // Recompute each emitter's forge-heat-in and sink-cool-added from its movers.
   private recomputeCoupling(): void {
     for (const t of this.towers) {
       t.forgeHeat = 0;
-      t.ventCool = 0;
+      t.sinkCool = 0;
     }
     for (const mover of this.towers) {
-      if (mover.type !== "forge" && mover.type !== "vent") continue;
+      if (mover.type !== "forge" && mover.type !== "sink") continue;
       const out = mover.moverOutput();
       for (const e of this.towers) {
         if (!e.isEmitter) continue;
         const f = this.couplingFactor(mover, e);
         if (f === 0) continue;
         if (mover.type === "forge") e.forgeHeat += out * f;
-        else e.ventCool += out * f;
+        else e.sinkCool += out * f;
       }
     }
   }
@@ -282,12 +295,16 @@ export class Game {
     if (this.shots.length) this.shots = this.shots.filter((s) => s.life > 0);
 
     if (this.phase === "build") {
-      this.buildTimer -= dt;
       // Towers still heat/cool (and idle-cool) during the build phase.
       this.updateTowers(dt);
-      if (this.buildTimer <= 0) {
-        this.buildTimer = 0;
-        this.sendWave(false);
+      // The opening phase never counts down or auto-starts — the player presses
+      // Start when ready (specs/flow.md).
+      if (!this.openingPhase) {
+        this.buildTimer -= dt;
+        if (this.buildTimer <= 0) {
+          this.buildTimer = 0;
+          this.sendWave(false);
+        }
       }
     } else {
       this.spawn(dt);
@@ -307,16 +324,16 @@ export class Game {
     this.waveElapsed += dt;
     while (this.spawnCursor < this.waveEvents.length && this.waveEvents[this.spawnCursor].t <= this.waveElapsed) {
       const e = this.waveEvents[this.spawnCursor++];
-      this.spawnUnit(e.type, e.intake);
+      this.spawnUnit(e.type, e.vent);
     }
   }
 
-  private spawnUnit(type: SurgeType, intake: Intake): void {
-    const tiles = intake === "left" ? this.grid.leftIntake.tiles : this.grid.topIntake.tiles;
-    const slot = this.spawnCounter[intake]++ % tiles.length;
+  private spawnUnit(type: SurgeType, vent: Vent): void {
+    const tiles = vent === "left" ? this.grid.leftVent.tiles : this.grid.topVent.tiles;
+    const slot = this.spawnCounter[vent]++ % tiles.length;
     const tile = tiles[slot];
     const hp = SURGE_DEFS[type].hp * hpScale(this.waveNumber);
-    this.surge.push(new Surge(type, intake, tile, hp));
+    this.surge.push(new Surge(type, vent, tile, hp));
   }
 
   private updateTowers(dt: number): void {
@@ -349,9 +366,9 @@ export class Game {
         t.fireCooldown = Math.max(0, t.fireCooldown - dt);
       }
 
-      // Forge pours in heat; cooling (own + vent) scales with heat.
+      // Forge pours in heat; cooling (own + sink) scales with heat.
       t.heat += t.forgeHeat * dt;
-      t.heat -= (t.stats().coolRate + t.ventCool) * (t.heat / REDLINE) * dt;
+      t.heat -= (t.stats().coolRate + t.sinkCool) * (t.heat / REDLINE) * dt;
       if (t.heat < 0) t.heat = 0;
       if (t.heat >= REDLINE) {
         t.heat = REDLINE;
@@ -364,7 +381,7 @@ export class Game {
   private pickTarget(t: Tower): Surge | null {
     const def = t.def as EmitterDef;
     const stats = t.stats();
-    const range = stats.range * 20;
+    const range = stats.range * TILE;
     const r2 = range * range;
     let best: Surge | null = null;
     let bestRemaining = Infinity;
@@ -395,7 +412,7 @@ export class Game {
       target.damage(dmg);
     } else if (def.splash) {
       // Bloom: splash all surge within the splash radius of the impact.
-      const sr = def.splash * 20;
+      const sr = def.splash * TILE;
       const sr2 = sr * sr;
       for (const u of this.surge) {
         if (!u.alive) continue;
@@ -463,8 +480,9 @@ export class Game {
   // ---- Building / selling / upgrading ------------------------------------
 
   private snapIntersection(x: number, y: number): { i: number; j: number } {
-    const i = Math.max(1, Math.min(COLS - 1, Math.round(x / 20)));
-    const j = Math.max(1, Math.min(ROWS - 1, Math.round(y / 20)));
+    // Intersections are grid-relative to the floor origin (specs/playfield.md).
+    const i = Math.max(1, Math.min(COLS - 1, Math.round((x - FLOOR_X0) / TILE)));
+    const j = Math.max(1, Math.min(ROWS - 1, Math.round((y - FLOOR_Y0) / TILE)));
     return { i, j };
   }
 
@@ -474,9 +492,11 @@ export class Game {
     for (const tile of footprint) {
       const c = tile % COLS;
       const r = Math.floor(tile / COLS);
+      // Edge tiles at the vents/exhausts are ordinary open floor; only the
+      // casing (off-grid) and occupied tiles are unbuildable. The never-seal
+      // rule below keeps the four openings passable.
       if (!this.grid.inBounds(c, r)) return false;
       if (this.grid.blocked[tile]) return false;
-      if (this.grid.isPortal(tile)) return false;
     }
     // No tile in the footprint may be under a surge unit currently on the floor.
     for (const u of this.surge) {
@@ -490,8 +510,8 @@ export class Game {
     const extra = new Set(footprint);
     const reachRight = this.grid.reachable(this.grid.rightExhaust.tiles, extra);
     const reachBottom = this.grid.reachable(this.grid.bottomExhaust.tiles, extra);
-    for (const tile of this.grid.leftIntake.tiles) if (!reachRight[tile]) return false;
-    for (const tile of this.grid.topIntake.tiles) if (!reachBottom[tile]) return false;
+    for (const tile of this.grid.leftVent.tiles) if (!reachRight[tile]) return false;
+    for (const tile of this.grid.topVent.tiles) if (!reachBottom[tile]) return false;
     for (const u of this.surge) {
       if (!u.alive || u.flies) continue;
       const cell = tileAtPixel(u.x, u.y);
@@ -545,7 +565,7 @@ export class Game {
 
   private towerAt(x: number, y: number): Tower | null {
     for (const t of this.towers) {
-      if (x >= t.cx - 20 && x <= t.cx + 20 && y >= t.cy - 20 && y <= t.cy + 20) return t;
+      if (x >= t.cx - TILE && x <= t.cx + TILE && y >= t.cy - TILE && y <= t.cy + TILE) return t;
     }
     return null;
   }

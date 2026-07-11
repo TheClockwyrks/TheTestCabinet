@@ -6,21 +6,33 @@
 export const STAGE_W = 1280;
 export const STAGE_H = 720;
 
-export const FLOOR_W = 1000; // reactor floor: x in [0, 1000]
-export const FLOOR_H = 720;
-
-export const PANEL_X = 1000; // build panel: x in [1000, 1280]
-export const PANEL_W = 280;
-
-export const TILE = 20; // logical px per tile
+// The reactor floor is a 950 x 684 play area ringed by an 18-px casing wall,
+// its top-left corner just inside the casing at (18, 18). The casing is
+// off-grid and impassable; the build panel is the right strip.
+export const CASING = 18; // casing-wall band width (px)
+export const TILE = 19; // logical px per tile
 export const COLS = 50; // c = 0..49
 export const ROWS = 36; // r = 0..35
 
+export const FLOOR_X0 = CASING; // floor origin x = 18
+export const FLOOR_Y0 = CASING; // floor origin y = 18
+export const FLOOR_W = COLS * TILE; // inner floor width = 950
+export const FLOOR_H = ROWS * TILE; // inner floor height = 684
+export const FLOOR_X1 = FLOOR_X0 + FLOOR_W; // right floor edge = 968
+export const FLOOR_Y1 = FLOOR_Y0 + FLOOR_H; // bottom floor edge = 702
+
+export const REACTOR_W = FLOOR_X1 + CASING; // reactor region: x in [0, 986]
+
+export const PANEL_X = REACTOR_W; // build panel: x in [986, 1280]
+export const PANEL_W = STAGE_W - PANEL_X; // 294
+
 export const FIXED_STEP = 1 / 60; // fixed-timestep simulation (specs/controls.md)
 
-// Portals — four-tile edge openings (specs/playfield.md).
-export const LEFT_INTAKE_ROWS = [16, 17, 18, 19];
-export const TOP_INTAKE_COLS = [24, 25, 26, 27];
+// Vents and exhausts — four-tile openings cut into the casing wall
+// (specs/playfield.md). The surge enters at the two vents and leaves at the
+// two exhausts; the tiles listed are the floor edge tiles at each opening.
+export const LEFT_VENT_ROWS = [16, 17, 18, 19];
+export const TOP_VENT_COLS = [24, 25, 26, 27];
 export const RIGHT_EXHAUST_ROWS = [16, 17, 18, 19];
 export const BOTTOM_EXHAUST_COLS = [24, 25, 26, 27];
 
@@ -32,6 +44,9 @@ export const C = {
   panel: "#1b1f26",
   edge: "#2c323c",
 
+  casing: "#3b434f", // casing wall (solid steel)
+  casingRim: "#565f6d", // casing wall — lit inner rim
+
   cold: "#3a7bd5",
   warm: "#f2a43a",
   hot: "#ff5e2e",
@@ -40,14 +55,14 @@ export const C = {
 
   rime: "#79e0ff",
   forge: "#ff7a1f",
-  vent: "#aebfce",
+  sink: "#aebfce", // Sink (heat sink) — the heat-drain mover
 
   ground: "#a4e22a",
   flyer: "#b66bff",
   boss: "#8a2be2",
   hp: "#2ec27e",
 
-  intake: "#5f9bd6",
+  vent: "#5f9bd6", // Vent (entrance)
   exhaust: "#ff5a3c",
   money: "#ffcf4d",
   hazard: "#ffd400",
@@ -87,7 +102,7 @@ export function waveClearBonus(wave: number): number {
   return 20 + 5 * wave;
 }
 
-// Surge HP scales with wave (specs/flow.md).
+// Surge HP scales with wave (specs/flow.md): a Wave 20 unit has ~4.8x base HP.
 export function hpScale(wave: number): number {
-  return 1 + 0.15 * (wave - 1);
+  return 1 + 0.2 * (wave - 1);
 }

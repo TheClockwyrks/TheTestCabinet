@@ -3,11 +3,11 @@
 // straight line to their assigned opposite exhaust. Targeting, damage, bounties,
 // and leaks are handled by game.ts.
 
-import { COLS, FLOOR_H, FLOOR_W } from "./constants";
+import { COLS, FLOOR_X1, FLOOR_Y1 } from "./constants";
 import { SURGE_DEFS, type SurgeDef } from "./defs";
 import type { Grid } from "./grid";
 import { tileAtPixel, tileCenter } from "./grid";
-import type { Intake, SurgeType } from "./types";
+import type { SurgeType, Vent } from "./types";
 
 const SLOW_DURATION = 1.5; // seconds a slow lasts, refreshed by further hits
 
@@ -16,7 +16,7 @@ export type Goal = "right" | "bottom";
 export class Surge {
   readonly type: SurgeType;
   readonly def: SurgeDef;
-  readonly intake: Intake;
+  readonly vent: Vent;
   readonly goal: Goal;
 
   x: number;
@@ -35,11 +35,11 @@ export class Surge {
   alive = true;
   leaked = false;
 
-  constructor(type: SurgeType, intake: Intake, spawnTile: number, hp: number) {
+  constructor(type: SurgeType, vent: Vent, spawnTile: number, hp: number) {
     this.type = type;
     this.def = SURGE_DEFS[type];
-    this.intake = intake;
-    this.goal = intake === "left" ? "right" : "bottom";
+    this.vent = vent;
+    this.goal = vent === "left" ? "right" : "bottom";
     this.hp = hp;
     this.maxHp = hp;
 
@@ -49,14 +49,14 @@ export class Surge {
     this.x = ctr.x;
     this.y = ctr.y;
 
-    // A flyer flies straight from its intake to the opposite exhaust, keeping
-    // its cross-axis coordinate (specs/playfield.md).
+    // A flyer flies straight from its vent to the opposite exhaust opening,
+    // keeping its cross-axis coordinate (specs/playfield.md).
     if (this.goal === "right") {
-      this.targetX = FLOOR_W;
+      this.targetX = FLOOR_X1;
       this.targetY = this.y;
     } else {
       this.targetX = this.x;
-      this.targetY = FLOOR_H;
+      this.targetY = FLOOR_Y1;
     }
   }
 
@@ -102,8 +102,8 @@ export class Surge {
     this.y += (dy / dist) * move;
     // Reaching the exhaust edge leaks it.
     if (
-      (this.goal === "right" && this.x >= FLOOR_W) ||
-      (this.goal === "bottom" && this.y >= FLOOR_H)
+      (this.goal === "right" && this.x >= FLOOR_X1) ||
+      (this.goal === "bottom" && this.y >= FLOOR_Y1)
     ) {
       this.leaked = true;
       this.alive = false;

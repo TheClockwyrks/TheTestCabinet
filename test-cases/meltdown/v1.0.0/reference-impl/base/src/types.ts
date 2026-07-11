@@ -20,7 +20,7 @@ export type TowerType =
   | "rime"
   | "flak"
   | "forge"
-  | "vent";
+  | "sink";
 
 export const TOWER_ORDER: TowerType[] = [
   "arc",
@@ -30,7 +30,7 @@ export const TOWER_ORDER: TowerType[] = [
   "rime",
   "flak",
   "forge",
-  "vent",
+  "sink",
 ];
 
 export type SurgeType =
@@ -41,11 +41,12 @@ export type SurgeType =
   | "drift"
   | "core";
 
-export type Intake = "left" | "top";
+// The two entrances the surge spawns from (specs/playfield.md).
+export type Vent = "left" | "top";
 
 // A scheduled spawn within a wave.
 export interface SpawnEvent {
   t: number; // seconds from wave start
   type: SurgeType;
-  intake: Intake;
+  vent: Vent;
 }
