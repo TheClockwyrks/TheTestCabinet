@@ -425,8 +425,8 @@ export class Game implements WorldView {
   }
 
   private updateSplashOnlyWorld(dt: number): void {
-    // During the death pause the lanes keep sliding for readability, but nothing
-    // can collide (the critter is gone).
+    // During the death pause the lanes keep sliding so the scene still feels
+    // alive, but nothing can collide (the critter is gone).
     this.updateLanes(dt);
     this.critter.advance(dt);
   }

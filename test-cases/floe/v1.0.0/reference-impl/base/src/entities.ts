@@ -65,7 +65,7 @@ export class Critter {
 }
 
 // The hunting bear. It advances tile by tile toward a target the game supplies;
-// this class only owns the hop animation and readable state.
+// this class only owns the hop animation and render state.
 export class Bear {
   col: number;
   row: number;

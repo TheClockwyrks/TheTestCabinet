@@ -81,7 +81,7 @@ function drawStrait(ctx: CanvasRenderingContext2D, game: Game, s: Sprites): void
   drawBays(ctx, game, s);
   drawFloes(ctx, game.lanes.water, s);
   drawCritter(ctx, game.critter, s, game);
-  // Bears draw above floes so a swimming silhouette reads over the water.
+  // Bears draw after the floes, so a bear on the water renders over them.
   for (const h of game.hunters) if (h.bear) drawBear(ctx, h.bear, s, game);
   drawVehicles(ctx, game.lanes.ice, s);
   drawSplashes(ctx, game);
@@ -257,20 +257,7 @@ function drawBear(ctx: CanvasRenderingContext2D, b: Bear, s: Sprites, game: Game
   const cycle = Math.floor(game.simTime * 6) % 2;
 
   if (b.swimming) {
-    // Wake / ripple so the submerged bear stays trackable over open water.
-    ctx.save();
-    ctx.strokeStyle = COLOR.bearWake;
-    ctx.globalAlpha *= 0.7;
-    ctx.lineWidth = 1.5;
-    const cx = x + TILE / 2;
-    const cy = y + TILE * 0.72 + Math.sin(game.simTime * 6) * 1.5;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 18, 7, 0, 0, Math.PI);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.ellipse(cx, cy - 3, 11, 4, 0, 0, Math.PI);
-    ctx.stroke();
-    ctx.restore();
+    // The swim frames already carry the submerged silhouette and wake.
     ctx.drawImage(s.bear[SWIM_BASE[b.facing] + cycle], x, y, TILE, TILE);
     return;
   }

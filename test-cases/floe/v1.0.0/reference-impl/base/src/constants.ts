@@ -55,9 +55,6 @@ export const COLOR = {
   critter: "#f2a03a",
   cream: "#ffe0a8",
 
-  bearWake: "#cfe6f2",
-  bearSub: "#5b6f7a",
-
   score: "#7fe0d0",
   danger: "#e0492f",
   splash: "#cfe6f2",
