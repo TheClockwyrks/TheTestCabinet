@@ -1,75 +1,72 @@
 # Floe — Reference Visuals
 
-These files are the **canonical visual reference** for the Floe test case. They
-are
-authored as self-contained static HTML on a fixed `1280x720` logical stage so the
-testing harness can render and screenshot them deterministically. The rendered
-screenshots serve two purposes: they are seeded into a run as visual targets, and
-they are the baselines for any validation check (declared in `../test-case.toml`)
-that names the view.
+These images are the **canonical visual reference** for the Floe test case.
+Each is a `1280x720` screenshot captured from the case's own **playable
+reference-impl build** (the authored, *correct* game under
+[`../reference-impl/`](../reference-impl/)) — not from a hand-authored mockup.
+They serve two purposes: they are seeded into a run as visual targets, and they
+are the baselines for any validation check (declared in `../test-case.toml`) that
+names the view.
 
-## Source is rendered, not seeded
+## The reference-impl is the source of truth
 
-The mockup **source** in this `reference/` folder is **harness-side only** and is
-never seeded into a run. What the model receives is the *rendered screenshot* of
-each view, seeded as a visual target alongside the seeded specs under
-[`../specs/`](../specs/). Handing over the source HTML/CSS would let a model copy
-the intended UI instead of building it from the spec; a screenshot shows the target
-without giving away the implementation.
+Floe's reference screenshots are **derived from the real game**. There is no
+separate HTML/CSS mockup to keep in sync (the former `*.html` + `theme.css`
+mockups were removed): the reference-impl build *is* the ground truth, and the
+screenshots are captured straight from it. The captured images are committed here
+and referenced from the manifest as `media` (served as-is), because there is no
+longer a mockup for the harness to render at seed time.
+
+The screenshots are still **rendered, not source**: what a run receives is the
+image, seeded as a visual target alongside the seeded specs under
+[`../specs/`](../specs/). The reference-impl source itself is shown only on the
+case's "Reference" tab (via `reference_implementation` in the variant file) and is
+**never seeded into a run** — handing over a correct implementation would let a
+model copy it instead of building from the spec.
 
 ## Views
 
-Each file corresponds to a canonical view slug. The `gameplay` and `game-over`
-views are **common** — the same mockup is rendered and seeded for every variant.
-The `title` view is **variant-specific**: the main menu lists a different set of
-modes per variant, so each variant declares its own menu mockup (see the variant
-files' `reference` entries and the common `[[reference]]` entries in
-`../test-case.toml`).
+Floe has a single `base` variant, so every view is effectively common. The
+`title` view is declared in the variant file; `gameplay` and `game-over` are
+common (in `../test-case.toml`).
 
-| View slug   | Mockup source         | Description                              |
-| ----------- | --------------------- | ---------------------------------------- |
-| `title`     | `menu-<variant>.html` | Title screen and menu, per variant.      |
-| `gameplay`  | `gameplay.html`       | In-game frame, mid-crossing (common).    |
-| `game-over` | `game-over.html`      | Game-over / end card (common).           |
-
-The `title` view has one mockup per variant: this version declares the single
-`base` variant, whose menu (`menu-base.html`) lists `CROSS` then `HOW TO PLAY`.
-
-The `gameplay.html` frame shows the intended look of a live crossing: the strait's
-bands (the near shore, the ice band of sliding plows, dogsleds, and cars, the
-median, the water band of drifting floes, and the far shore with its bays — some
-filled, some
-open), the warm critter riding a floe partway across, and the bear swimming up
-after it (shown as a submerged silhouette with a wake), with the HUD (score, lives,
-bay markers, timer, level). The lanes, floes, bear, and critter shown are just one
-example moment.
-
-`theme.css` holds the shared palette, type, and strait/sprite/HUD furniture
-referenced by every view and by the specification (the seeded specs under
-[`../specs/`](../specs/)): the bear is a big white animal with a dark outline,
-drawn as a submerged silhouette and wake when it swims.
-
-## Generating screenshots
-
-The mockups are the source of truth; their rendered screenshots are a build output
-and are **git-ignored** (the repository ignores
-`test-cases/**/reference/screenshots/`). The testing harness renders each file
-at a
-`1280x720` viewport (for example with Playwright) and writes the images under
-`reference/screenshots/<variant>/`, one folder per variant, so a view slug shared
-across variants (here, `title`) does not clobber another variant's render. Each
-variant folder holds that variant's full set — the common views plus its own
-`title` menu:
+| View slug   | Image                        | Captured from  |
+| ----------- | ---------------------------- | -------------- |
+| `title`     | `screenshots/base/title.png` | the base build |
+| `gameplay`  | `screenshots/gameplay.png`   | the base build |
+| `game-over` | `screenshots/game-over.png`  | the base build |
 
 ```
-reference/screenshots/base/title.png        # from menu-base.html
-reference/screenshots/base/gameplay.png
-reference/screenshots/base/game-over.png
+reference/screenshots/base/title.png
+reference/screenshots/gameplay.png
+reference/screenshots/game-over.png
 ```
 
-Whichever variant a run selects, its `title.png` is seeded into the run as
-`reference/title.png`, so the model always sees a single stable path.
+Whichever view a run needs, it is seeded into the run under `reference/` keyed by
+view slug (the source path here is purely organizational), so the model always
+sees a single stable path.
 
-Because the files are plain static HTML with no scripts or network access, they
-can
-be opened directly (`file://`) or served as static files for rendering.
+## Regenerating the screenshots
+
+The images are a capture of the reference-impl build, so regenerate them whenever
+the build's look changes:
+
+1. Build the reference-impl (`npm ci && npm run build` in `../reference-impl/base`),
+   which emits a static site to its `dist/`.
+2. Serve the built `dist/` over HTTP and open it in Playwright Chromium at a
+   `1280x720` viewport (device scale factor 1). The build exposes its live game
+   instance as `window.__floe` for exactly this headless capture; it is inert
+   during normal play.
+3. Drive each view, then screenshot the page:
+   - **title** — capture on load (the menu is the default screen).
+   - **gameplay** — start a crossing and pose a representative mid-strait frame:
+     the critter partway across among the sliding ice-band vehicles and the
+     drifting water-band floes, the pursuing bear nearby, and the HUD (score,
+     lives, bay markers, timer, level) with a couple of bays filled.
+   - **game-over** — set the game to its game-over state so the end card reads the
+     final score and reached level over the dimmed strait.
+4. Write the PNGs to the paths above.
+
+Because the lanes and the bear are seeded per play, the `gameplay` frame differs
+each capture; any representative frame that clearly shows an in-progress crossing
+is fine.

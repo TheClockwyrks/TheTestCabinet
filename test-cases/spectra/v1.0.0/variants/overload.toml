@@ -10,7 +10,11 @@ description = "Overload, where mismatched shots feed the drone toward an overloa
 # path every variant seeds its mode spec to). It is self-contained: it defines the
 # single Overload mode and its menu entry, replacing the base Sortie mode.
 spec = [{ source = "specs/mode-overload.md", dest = "specs/mode.md" }]
-reference = [{ view = "title", path = "reference/menu-overload.html" }]
+
+# This variant's own `title` reference (its menu lists the OVERLOAD mode, replacing
+# the base Sortie), captured from this variant's reference-impl build and served
+# as-is; `gameplay` and `game-over` are common.
+reference = [{ view = "title", media = "reference/screenshots/overload/title.png" }]
 
 # The authored, *correct* static build of this variant — the case-variant
 # analogue of a run's playable build. A bare directory path (resolved against

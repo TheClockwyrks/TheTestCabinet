@@ -1,70 +1,81 @@
 # Spectra — Reference Visuals
 
-These files are the **canonical visual reference** for the Spectra test case. They
-are authored as self-contained static HTML on a fixed `1280x720` logical stage so
-the testing harness can render and screenshot them deterministically. The rendered
-screenshots serve two purposes: they are seeded into a run as visual targets, and
-they are the baselines for any validation check (declared in `../test-case.toml`)
-that names the view.
+These images are the **canonical visual reference** for the Spectra test case.
+Each is a `1280x720` screenshot captured from the case's own **playable
+reference-impl builds** (the authored, *correct* games under
+[`../reference-impl/`](../reference-impl/)) — not from a hand-authored mockup.
+They serve two purposes: they are seeded into a run as visual targets, and they
+are the baselines for any validation check (declared in `../test-case.toml`) that
+names the view.
 
-## Source is rendered, not seeded
+## The reference-impl is the source of truth
 
-The mockup **source** in this `reference/` folder is **harness-side only** and is
-never seeded into a run. What the model receives is the *rendered screenshot* of
-each view, seeded as a visual target alongside the seeded specs under
-[`../specs/`](../specs/). Handing over the source HTML/CSS would let a model copy
-the intended UI instead of building it from the spec; a screenshot shows the
-target without giving away the implementation.
+Spectra's reference screenshots are **derived from the real games**. There is no
+separate HTML/CSS mockup to keep in sync (the former `*.html` + `theme.css`
+mockups were removed): the reference-impl builds *are* the ground truth, and the
+screenshots are captured straight from them. The captured images are committed
+here and referenced from the manifest as `media` (served as-is), because there is
+no longer a mockup for the harness to render at seed time.
+
+The screenshots are still **rendered, not source**: what a run receives is the
+image, seeded as a visual target alongside the seeded specs under
+[`../specs/`](../specs/). The reference-impl source itself is shown only on the
+case's "Reference" tab (via `reference_implementation` in the variant files) and
+is **never seeded into a run** — handing over a correct implementation would let a
+model copy it instead of building from the spec.
 
 ## Views
 
-Each file corresponds to a canonical view slug. The `gameplay` and `game-over`
-views are **common** — the same mockup is rendered and seeded for every variant.
-The `title` view is **variant-specific**: the main menu lists a different mode
-per variant, so each variant declares its own menu mockup (see the
-`[[variant]]` `reference` entries in `../test-case.toml`).
+The `gameplay` and `game-over` views are **common** — the assault and the
+game-over panel look the same in either mode, so they are captured once from the
+`base` build and shared. The `title` view is **variant-specific**: the main menu
+lists a different mode per variant, so each variant declares its own, captured from
+that variant's build (see the `reference` entries in the variant files under
+[`../variants/`](../variants/)).
 
-| View slug   | Mockup source         | Description                          |
-| ----------- | --------------------- | ------------------------------------ |
-| `title`     | `menu-<variant>.html` | Title screen and menu, per variant.  |
-| `gameplay`  | `gameplay.html`       | In-wave frame, mid-assault (common). |
-| `game-over` | `game-over.html`      | Game-over panel (common).            |
-
-The `title` view has one mockup per variant: `menu-base.html` (`LAUNCH` /
-`HOW TO PLAY`) and `menu-overload.html` (`OVERLOAD` / `HOW TO PLAY`), each listing
-that variant's single seeded mode.
-
-The `gameplay.html` frame shows the intended look of a live wave: a swaying
-formation holding both bands (with a Prism at its center), drones diving and
-firing, and the player ship tuned to one band with its shots in flight, over the
-HUD's score, lives, resonance meter, and polarity indicator. The formation and
-paths shown are just one example moment.
-
-`theme.css` holds the shared palette, type, and field furniture referenced by
-every view and by the specification (the seeded specs under [`../specs/`](../specs/)),
-including the band visual language: cyan reads as round/ring forms, magenta as
-diamond/angular forms.
-
-## Generating screenshots
-
-The mockups are the source of truth; their rendered screenshots are a build output
-and are **git-ignored** (the repository ignores
-`test-cases/**/reference/screenshots/`). The testing harness renders each file at
-a `1280x720` viewport (for example with Playwright) and writes the images under
-`reference/screenshots/<variant>/`, one folder per variant, so a view slug shared
-across variants (here, `title`) does not clobber another variant's render. Each
-variant folder holds that variant's full set — the common views plus its own
-`title` menu:
+| View slug   | Image                            | Captured from        | Scope           |
+| ----------- | -------------------------------- | -------------------- | --------------- |
+| `title`     | `screenshots/<variant>/title.png`| that variant's build | per variant     |
+| `gameplay`  | `screenshots/gameplay.png`       | the base build       | common (shared) |
+| `game-over` | `screenshots/game-over.png`      | the base build       | common (shared) |
 
 ```
-reference/screenshots/base/title.png        # from menu-base.html
-reference/screenshots/base/gameplay.png
-reference/screenshots/base/game-over.png
-reference/screenshots/overload/title.png    # from menu-overload.html
+reference/screenshots/gameplay.png           # common (both variants)
+reference/screenshots/game-over.png          # common (both variants)
+reference/screenshots/base/title.png         # base — LAUNCH / HOW TO PLAY
+reference/screenshots/overload/title.png     # overload — OVERLOAD / HOW TO PLAY
 ```
 
 Whichever variant a run selects, its `title.png` is seeded into the run as
-`reference/title.png`, so the model always sees a single stable path.
+`reference/title.png` (seeding is keyed by view slug, so the source path here is
+purely organizational), so the model always sees a single stable path.
 
-Because the files are plain static HTML with no scripts or network access, they
-can be opened directly (`file://`) or served as static files for rendering.
+## Regenerating the screenshots
+
+The images are a capture of the reference-impl builds, so regenerate them whenever
+a build's look changes:
+
+1. Build each variant's reference-impl (`npm ci && npm run build` in
+   `../reference-impl/base` and `../reference-impl/overload`), which emits a static
+   site to its `dist/`.
+2. Serve the built `dist/` over HTTP and open it in Playwright Chromium at a
+   `1280x720` viewport (device scale factor 1). Each build exposes its live game
+   instance as `window.__spectra` for exactly this headless capture; it is inert
+   during normal play.
+3. Drive each view, then screenshot the page (freezing the sim once posed keeps the
+   frame stable):
+   - **title** — capture on load (the menu is the default screen). The base menu
+     reads `LAUNCH / HOW TO PLAY`; the overload menu reads `OVERLOAD / HOW TO PLAY`.
+   - **gameplay** (base build) — pose a live wave: the resonator-fighter at the
+     bottom, a swaying formation overhead holding both bands (cyan rings + magenta
+     diamonds, with a Prism at its center), a couple of diving drones, enemy and
+     player fire in flight, and the HUD (score, stage, lives, resonance meter,
+     polarity indicator).
+   - **game-over** (base build) — set the game to its game-over state so the result
+     panel reads the final score and reached stage.
+4. Write the PNGs to the paths above (common `gameplay`/`game-over` from the `base`
+   build; each `title` from its own variant's build).
+
+Because entrances and dives are seeded per play, the `gameplay` frame differs each
+capture; any representative frame that clearly shows the dual-band formation is
+fine.

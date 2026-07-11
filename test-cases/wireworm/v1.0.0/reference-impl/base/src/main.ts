@@ -34,7 +34,7 @@ const audio = new Audio();
 const game = new Game(input, audio);
 
 // Expose the live game instance for smoke-testing / inspection. Inert during play.
-(window as unknown as { __ww?: Game }).__ww = game;
+(window as unknown as { __wireworm?: Game }).__wireworm = game;
 
 let last = performance.now();
 let accumulator = 0;

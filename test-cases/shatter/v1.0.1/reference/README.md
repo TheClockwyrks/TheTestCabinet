@@ -1,64 +1,81 @@
 # Shatter — Reference Visuals
 
-These files are the **canonical visual reference** for the Shatter test case. They
-are authored as self-contained static HTML on a fixed `1280x720` logical stage so
-the testing harness can render and screenshot them deterministically. The rendered
-screenshots serve two purposes: they are seeded into a run as visual targets, and
-they are the baselines for any validation check (declared in `../test-case.toml`)
-that names the view.
+These images are the **canonical visual reference** for the Shatter test case.
+Each is a `1280x720` screenshot captured from the case's own **playable
+reference-impl builds** (the authored, *correct* games under
+[`../reference-impl/`](../reference-impl/)) — not from a hand-authored mockup.
+They serve two purposes: they are seeded into a run as visual targets, and they
+are the baselines for any validation check (declared in `../test-case.toml`) that
+names the view.
 
-## Source is rendered, not seeded
+## The reference-impl is the source of truth
 
-The mockup **source** in this `reference/` folder is **harness-side only** and is
-never seeded into a run. What the model receives is the *rendered screenshot* of
-each view (see [Generating screenshots](#generating-screenshots)), seeded as a
-visual target alongside the seeded specs under [`../specs/`](../specs/). Handing
-over the source HTML/CSS would let a model copy the intended UI instead of building
-it from the spec; a screenshot shows the target without giving away the
-implementation.
+Shatter's reference screenshots are **derived from the real games**. There is no
+separate HTML/CSS mockup to keep in sync (the former `*.html` + `theme.css`
+mockups were removed): the reference-impl builds *are* the ground truth, and the
+screenshots are captured straight from them. The captured images are committed
+here and referenced from the manifest as `media` (served as-is), because there is
+no longer a mockup for the harness to render at seed time.
+
+The screenshots are still **rendered, not source**: what a run receives is the
+image, seeded as a visual target alongside the seeded specs under
+[`../specs/`](../specs/). The reference-impl source itself is shown only on the
+case's "Reference" tab (via `reference_implementation` in the variant files) and
+is **never seeded into a run** — handing over a correct implementation would let a
+model copy it instead of building from the spec.
 
 ## Views
 
-Three views are **common** — rendered and seeded for every variant — and the
-`warhead` variant adds one **variant-only** view.
+The `title`, `gameplay`, and `game-over` views are **common** — the standard game
+looks the same for both variants, so they are captured once from the `base` build
+and shared. The `warhead` variant adds one **variant-only** view, captured from
+the `warhead` build (see the `reference` entry in `../variants/warhead.toml`).
 
-| View slug   | File                    | Variant | Description                                                                              |
-| ----------- | ----------------------- | ------- | ---------------------------------------------------------------------------------------- |
-| `title`     | `title.html`            | common  | Title screen and main menu (`PLAY` / `HOW TO PLAY`).                                     |
-| `gameplay`  | `gameplay.html`         | common  | Representative in-game frame with the gravity-bent shot.                                 |
-| `game-over` | `game-over.html`        | common  | Game-over result panel.                                                                  |
-| `warhead`   | `gameplay-warhead.html` | warhead | Warhead frame: an armored rock mid-damage, a torpedo homing, and the torpedo-charge HUD. |
-
-The menu (`title`) is identical for both variants — the Warhead variant changes
-gameplay, not the title screen — so it stays a single common view rather than a
-per-variant mockup.
-
-`theme.css` holds the shared palette, type, and field furniture (the star, the
-ship glyph, rock outlines, the torpedo color, HUD, and menus) referenced by every
-view and by the specification (the seeded specs under `../specs/`).
-
-## Generating screenshots
-
-The mockups are the source of truth; their rendered screenshots are a build output
-and are **git-ignored** (the repository ignores
-`test-cases/**/reference/screenshots/`). The testing harness renders each file
-at a `1280x720` viewport (for example with Playwright) and writes the images
-under `reference/screenshots/<variant>/`, one folder per variant, so the seeded
-path is stable:
+| View slug   | Image                              | Captured from     | Scope           |
+| ----------- | ---------------------------------- | ----------------- | --------------- |
+| `title`     | `screenshots/title.png`            | the base build    | common (shared) |
+| `gameplay`  | `screenshots/gameplay.png`         | the base build    | common (shared) |
+| `game-over` | `screenshots/game-over.png`        | the base build    | common (shared) |
+| `warhead`   | `screenshots/warhead/warhead.png`  | the warhead build | warhead only    |
 
 ```
-reference/screenshots/base/title.png
-reference/screenshots/base/gameplay.png
-reference/screenshots/base/game-over.png
-reference/screenshots/warhead/title.png
-reference/screenshots/warhead/gameplay.png
-reference/screenshots/warhead/game-over.png
-reference/screenshots/warhead/warhead.png
+reference/screenshots/title.png              # common (both variants)
+reference/screenshots/gameplay.png           # common (both variants)
+reference/screenshots/game-over.png          # common (both variants)
+reference/screenshots/warhead/warhead.png    # warhead variant only
 ```
 
-Whichever variant a run selects, its screenshots are seeded into the run under
-`reference/`, so the model always sees a single stable path. The `warhead` variant
-renders the three common views plus its own `warhead` view.
+Whichever variant a run selects, each view is seeded into the run under
+`reference/` keyed by view slug (the source path here is purely organizational),
+so the model always sees a single stable path. The `warhead` variant seeds the
+three common views plus its own `warhead` view.
 
-Because the files are plain static HTML with no scripts or network access, they
-can be opened directly (`file://`) or served as static files for rendering.
+## Regenerating the screenshots
+
+The images are a capture of the reference-impl builds, so regenerate them whenever
+a build's look changes:
+
+1. Build each variant's reference-impl (`npm ci && npm run build` in
+   `../reference-impl/base` and `../reference-impl/warhead`), which emits a static
+   site to its `dist/`.
+2. Serve the built `dist/` over HTTP and open it in Playwright Chromium at a
+   `1280x720` viewport (device scale factor 1). Each build exposes its live game
+   instance as `window.__shatter` for exactly this headless capture; it is inert
+   during normal play.
+3. Drive each view, then screenshot the page (freezing the sim once posed keeps the
+   frame stable):
+   - **title** — capture on load (the menu is the default screen).
+   - **gameplay** (base build) — pose a live field around the central star: the
+     ship under momentum, several rocks on curved orbits, the hunting saucer, and a
+     bullet whose trail bends around the star to show the gravity well.
+   - **game-over** (base build) — set the game to its game-over state so the result
+     panel reads the final score over a dimmed field.
+   - **warhead** (warhead build) — pose an armored rock mid-damage (cracked and
+     glowing, health above zero), a homing torpedo in flight toward a target, and
+     the torpedo-charge bar visible in the HUD.
+4. Write the PNGs to the paths above (the three common views from the `base` build,
+   `warhead` from the `warhead` build).
+
+Because rocks and the saucer are seeded per play, the `gameplay` and `warhead`
+frames differ each capture; any representative frame that clearly shows the star
+and the intended elements is fine.

@@ -33,6 +33,9 @@ const input = new Input();
 input.attach();
 const game = new Game(input);
 
+// Expose the live game for any external tooling (proof capture). Inert.
+(window as unknown as { __shatter?: Game }).__shatter = game;
+
 let last = performance.now();
 let accumulator = 0;
 

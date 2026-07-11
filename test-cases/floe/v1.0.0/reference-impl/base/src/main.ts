@@ -60,6 +60,7 @@ async function start(): Promise<void> {
   const input = new Input();
   input.attach();
   const game = new Game(input);
+  (window as unknown as { __floe?: Game }).__floe = game;
 
   let last = performance.now();
   let accumulator = 0;
