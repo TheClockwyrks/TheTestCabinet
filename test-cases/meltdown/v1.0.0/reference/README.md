@@ -1,75 +1,86 @@
 # Meltdown — Reference Visuals
 
-These files are the **canonical visual reference** for the Meltdown test case.
-They are authored as self-contained static HTML on a fixed `1280x720` logical
-stage so the testing harness can render and screenshot them deterministically.
-The rendered screenshots serve two purposes: they are seeded into a run as
-visual targets, and they are the baselines for any validation check (declared in
-`../test-case.toml`) that names the view.
+These images are the **canonical visual reference** for the Meltdown test case.
+Each is a `1280x720` screenshot captured from the case's own **playable
+reference-impl build** (the authored, *correct* game under
+[`../reference-impl/`](../reference-impl/)) — not from a hand-authored mockup.
+They serve two purposes: they are seeded into a run as visual targets, and they
+are the baselines for any validation check (declared in `../test-case.toml`) that
+names the view.
 
-## Source is rendered, not seeded
+## The reference-impl is the source of truth
 
-The mockup **source** in this `reference/` folder is **harness-side only** and
-is never seeded into a run. What the model receives is the *rendered screenshot*
-of each view, seeded as a visual target alongside the seeded specs under
-[`../specs/`](../specs/). Handing over the source HTML/CSS would let a model
-copy the intended UI instead of building it from the spec; a screenshot shows
-the target without giving away the implementation.
+Meltdown's reference screenshots are **derived from the real game**. There is no
+separate HTML/CSS mockup to keep in sync (the former `*.html` + `theme.css`
+mockups were removed): the reference-impl build *is* the ground truth, and the
+screenshots are captured straight from it. The captured images are committed here
+and referenced from the manifest as `media` (served as-is), because there is no
+longer a mockup for the harness to render at seed time.
+
+The screenshots are still **rendered, not source**: what a run receives is the
+image, seeded as a visual target alongside the seeded specs under
+[`../specs/`](../specs/). The reference-impl source itself is shown only on the
+case's "Reference" tab (via `reference_implementation` in the variant files) and
+is **never seeded into a run** — handing over a correct implementation would let a
+model copy it instead of building from the spec.
 
 ## Views
 
-Each file corresponds to a canonical view slug. The `mode-select`, `gameplay`,
-and `game-over` views are **common** — the same mockup is rendered and seeded for
-every variant. The `title` view is **variant-specific**: the main menu may differ
-per variant, so each variant declares its own menu mockup (see the `[[variant]]`
-`reference` entries in `../test-case.toml`).
+The `mode-select`, `gameplay`, and `game-over` views are **common** — they look
+the same in every variant, so they are captured once from the `base` build and
+shared. The `title` view is **variant-specific**: the main menu may differ per
+variant, so each variant declares its own, captured from that variant's build
+(see the `reference` entries in the variant files under
+[`../variants/`](../variants/)). This version declares the single `base` variant.
 
-| View slug     | Mockup source         | Description                                |
-| ------------- | --------------------- | ------------------------------------------ |
-| `title`       | `menu-<variant>.html` | Title screen and menu, per variant.        |
-| `mode-select` | `mode-select.html`    | Mode-select menu, a mode focused (common). |
-| `gameplay`    | `gameplay.html`       | In-match frame, mid-wave (common).         |
-| `game-over`   | `game-over.html`      | Game-over / end card (common).             |
-
-The `title` view has one mockup per variant: this version declares the single
-`base` variant, whose menu (`menu-base.html`) lists `PLAY` (which opens mode
-select) then `HOW TO PLAY`. The `mode-select.html` mockup illustrates the
-mode-select menu — the mode list beside the focused mode's description — one way
-the content of `../specs/modes.md` can be laid out; only its content and
-navigation are required, not its layout.
-
-The `gameplay.html` frame shows the intended look of a live match: a maze of
-player-built towers at a range of heats (a cold Lance warmed by a Forge, a
-white-hot core braked by a Sink, a tripped/offline Stutter, a cold cryo Rime),
-the surge walking the maze and flyers crossing straight over it, and the build
-panel with money, lives, the wave indicator, the shop, and a selected tower's
-heat read. The maze, heats, and surge shown are just one example moment.
-
-`theme.css` holds the shared palette, type, and floor/tower/HUD furniture
-referenced by every view and by the specification (the seeded specs under
-[`../specs/`](../specs/)), including the heat visual language: an emitter's glow
-tracks its heat from cold blue to white-hot, a tripped emitter is strobing red,
-and each tower carries a small heat read so heat is legible beyond color alone.
-
-## Generating screenshots
-
-The mockups are the source of truth; their rendered screenshots are a build
-output and are **git-ignored** (the repository ignores
-`test-cases/**/reference/screenshots/`). The testing harness renders each file
-at a `1280x720` viewport (for example with Playwright) and writes the images
-under `reference/screenshots/<variant>/`, one folder per variant, so a view slug
-shared across variants (here, `title`) does not clobber another variant's
-render. Each variant folder holds that variant's full set — the common views
-plus its own `title` menu:
+| View slug     | Image                             | Captured from        | Scope           |
+| ------------- | --------------------------------- | -------------------- | --------------- |
+| `title`       | `screenshots/<variant>/title.png` | that variant's build | per variant     |
+| `mode-select` | `screenshots/mode-select.png`     | the base build       | common (shared) |
+| `gameplay`    | `screenshots/gameplay.png`        | the base build       | common (shared) |
+| `game-over`   | `screenshots/game-over.png`       | the base build       | common (shared) |
 
 ```
-reference/screenshots/base/title.png        # from menu-base.html
-reference/screenshots/base/gameplay.png
-reference/screenshots/base/game-over.png
+reference/screenshots/mode-select.png        # common (every variant)
+reference/screenshots/gameplay.png           # common (every variant)
+reference/screenshots/game-over.png          # common (every variant)
+reference/screenshots/base/title.png         # base — PLAY / HOW TO PLAY
 ```
 
 Whichever variant a run selects, its `title.png` is seeded into the run as
-`reference/title.png`, so the model always sees a single stable path.
+`reference/title.png` (seeding is keyed by view slug, so the source path here is
+purely organizational), so the model always sees a single stable path.
 
-Because the files are plain static HTML with no scripts or network access, they
-can be opened directly (`file://`) or served as static files for rendering.
+## Regenerating the screenshots
+
+The images are a capture of the reference-impl build, so regenerate them whenever
+the build's look changes:
+
+1. Build the reference-impl (`npm ci && npm run build` in
+   [`../reference-impl/base`](../reference-impl/base)), which emits a static site
+   to its `dist/`.
+2. Serve the built `dist/` over HTTP and open it in Playwright Chromium at a
+   `1280x720` viewport (device scale factor 1). The build exposes its live game
+   instance as `window.__meltdown` for exactly this headless capture; it is inert
+   during normal play.
+3. Drive each view, then screenshot the page:
+   - **title** (`base`) — capture on load (the menu is the default screen). The
+     base menu reads `PLAY / HOW TO PLAY`.
+   - **mode-select** — set `state = "modeselect"` (focus the first mode) to show
+     the mode list beside the focused mode's description.
+   - **gameplay** — `beginMatch()`, build the winning "maze + heat" serpentine
+     (`sim/mazes.ts` `serpManagedLayout`, from a funded placement so the whole
+     layout lands), set a mid-game `waveNumber` (e.g. 10, which mixes motes,
+     sprints, swarms, hulks, and drift flyers), then `launchWave(false)` and let
+     the sim run a few seconds at `speed = 2` so the surge threads the maze, the
+     flyers cross it, and the interior heats to a visible cold→white-hot gradient.
+     Restore a realistic `money` and select the hottest emitter (`selected`) so
+     the inspector shows a live heat read, then screenshot.
+   - **game-over** — set a plausible `score` / `reachedWave`, then
+     `state = "gameover"` to show the `REACTOR BREACHED` end card.
+4. Write the PNGs to the paths above (the common `mode-select`/`gameplay`/
+   `game-over` from the `base` build; each `title` from its own variant's build).
+
+Because the surge spawns and heat builds over the wave, the `gameplay` frame
+differs each capture; any representative frame that clearly shows the player-built
+maze, the heat gradient, and flyers crossing it is fine.

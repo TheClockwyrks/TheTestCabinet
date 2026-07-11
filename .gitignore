@@ -264,6 +264,8 @@ test-cases/**/reference/screenshots/
 !test-cases/fathom/v1.1.0/reference/screenshots/**
 !test-cases/floe/v1.0.0/reference/screenshots/
 !test-cases/floe/v1.0.0/reference/screenshots/**
+!test-cases/meltdown/v1.0.0/reference/screenshots/
+!test-cases/meltdown/v1.0.0/reference/screenshots/**
 !test-cases/shatter/v1.0.1/reference/screenshots/
 !test-cases/shatter/v1.0.1/reference/screenshots/**
 !test-cases/spectra/v1.0.0/reference/screenshots/
