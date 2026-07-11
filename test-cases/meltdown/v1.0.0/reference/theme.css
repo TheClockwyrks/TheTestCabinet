@@ -15,8 +15,8 @@
  *     18px casing drawn inset; the build panel is x[1000,1280].
  *   - Floor is a 50-col x 36-row grid. Towers occupy a snapped 2x2 tile footprint
  *     centered on a grid intersection. Vents (entrances): left edge rows 16-19, top
- *     edge cols 24-27. Exhausts: right edge rows 16-19, bottom edge cols 24-27 —
- *     each a four-tile opening cut into the casing.
+ *     edge cols 22-29. Exhausts: right edge rows 16-19, bottom edge cols 22-29 —
+ *     the side openings four tiles wide, the top/bottom openings eight.
  *
  * Heat visual language (../specs/heat.md, ../specs/overview.md): an emitter's
  * glow tracks its heat along a ramp cold-blue -> warm-amber -> hot-orange ->

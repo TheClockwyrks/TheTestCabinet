@@ -27,13 +27,17 @@ of the simulation, only how fast it plays.
    of the tower and the shared corner of the four tiles in its **2 x 2
    footprint**. The preview shows the tower's **range** ring from that center
    and a **valid/invalid** footprint highlight (`#46d07a` valid, `#ff4d4d`
-   invalid). A footprint is invalid if any tile in it is outside the floor, an
-   vent/exhaust, already occupied, under a surge unit, unaffordable, or would
-   seal the floor (`specs/playfield.md`).
+   invalid). A footprint is invalid if any tile in it is outside the floor,
+   already occupied, under a surge unit, unaffordable, or would seal the floor
+   (`specs/playfield.md`). Building right up against a vent or exhaust — even
+   partly over its opening tiles — is *valid*, as long as it does not fully seal
+   that opening or the floor.
 3. **Place** — left-click a valid footprint while in placement mode to build
-   there, deducting the tower cost from the current money. With a modifier or a
-   sticky toggle you may keep placing the same type for repeated builds;
-   otherwise placement disarms after one build.
+   there, deducting the tower cost from the current money. **Placement stays
+   armed after each build** — the tower remains "held" on the cursor so you can
+   immediately drop another copy of the same type. It disarms on its own only
+   when you can no longer afford one; otherwise it stays armed until you cancel
+   it (Step 4).
 4. **Cancel** — right-click or press `Esc` to leave placement mode without
    building.
 

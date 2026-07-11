@@ -59,19 +59,23 @@ towers may occupy (subject to the never-seal rule).
 
 ## Vents and Exhausts
 
-The surge enters through two **vents** and leaves through two **exhausts** — each a
-**four-tile-wide opening cut into the casing wall** at the middle of an edge (each
-opening spans `4 x 19 = 76` px, aligned to four tile rows or columns). A unit
-appears at its vent opening and steps onto the adjacent edge tile; a unit that
-reaches the edge tile at its exhaust opening passes out through the casing.
+The surge enters through two **vents** and leaves through two **exhausts** — each an
+**opening cut into the casing wall** at the middle of an edge, aligned to a run of
+tile rows or columns. The two **side** openings (left vent, right exhaust) are
+**four tiles wide** (`4 x 19 = 76` px); the two **top/bottom** openings (top vent,
+bottom exhaust) are **twice as wide — eight tiles** (`8 x 19 = 152` px) — each
+centred on the floor's middle column. A unit appears somewhere across its vent
+opening and steps onto the adjacent edge tile; a unit that reaches an edge tile at
+its exhaust opening passes out through the casing.
 
-- **Left vent** — the left casing, aligned to rows `r = 16..19`. The surge appears
-  here moving right, onto tiles `(0, 16)` through `(0, 19)`.
-- **Top vent** — the top casing, aligned to columns `c = 24..27`. The surge appears
-  moving down, onto tiles `(24, 0)` through `(27, 0)`.
-- **Right exhaust** — the right casing, aligned to rows `r = 16..19`. A unit
-  leaving through here leaks the surge (see `specs/flow.md`).
-- **Bottom exhaust** — the bottom casing, aligned to columns `c = 24..27`.
+- **Left vent** — the left casing, aligned to rows `r = 16..19` (four tiles). The
+  surge appears here moving right, onto tiles `(0, 16)` through `(0, 19)`.
+- **Top vent** — the top casing, aligned to columns `c = 22..29` (eight tiles). The
+  surge appears moving down, onto tiles `(22, 0)` through `(29, 0)`.
+- **Right exhaust** — the right casing, aligned to rows `r = 16..19` (four tiles). A
+  unit leaving through here leaks the surge (see `specs/flow.md`).
+- **Bottom exhaust** — the bottom casing, aligned to columns `c = 22..29` (eight
+  tiles).
 
 Each vent has a fixed opposite exhaust target: surge entering from the left vent
 must leave through the right exhaust, and surge entering from the top vent must
@@ -95,13 +99,23 @@ the core of the game — you build the maze.
   by a surge unit; the casing wall is off-grid and can never be built on. The
   placement preview snaps the cursor to the nearest valid interior grid
   intersection and shows the four tiles surrounding that intersection.
+- **The openings are ordinary floor you may build against.** A tower may be
+  placed **right next to a vent or exhaust**, and its footprint may even cover
+  **some** of an opening's edge tiles — the opening tiles are ordinary Open
+  floor, not off-limits. The only thing forbidden is *fully* sealing an opening:
+  a placement that would leave an opening with **no** passable edge tile (or
+  otherwise disconnect it) is rejected by the never-seal rule below. The surge
+  spawns only on an opening's tiles that are still open floor and can reach the
+  exhaust — never inside a tower footprint.
 - **You can never seal the floor.** A placement is rejected if, after it would
   be placed, either vent would have no path to its **opposite exhaust**, or if
   it would trap a surge unit already on the floor with no remaining route to
   that unit's assigned exhaust. The build UI must show a blocked placement as
   invalid (`#ff4d4d`) and refuse it, rather than letting the player wall the
   surge in. There must always be at least one open route from the left vent to
-  the right exhaust and from the top vent to the bottom exhaust.
+  the right exhaust and from the top vent to the bottom exhaust — but a route
+  through **any one** of an opening's tiles is enough; the player may wall off
+  the rest.
 - Selling a tower (see `specs/towers.md`) reopens all four tiles in its
   footprint immediately and the surge re-paths.
 

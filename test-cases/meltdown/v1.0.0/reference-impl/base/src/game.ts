@@ -329,7 +329,15 @@ export class Game {
   }
 
   private spawnUnit(type: SurgeType, vent: Vent): void {
-    const tiles = vent === "left" ? this.grid.leftVent.tiles : this.grid.topVent.tiles;
+    const portal = vent === "left" ? this.grid.leftVent.tiles : this.grid.topVent.tiles;
+    // A tower may partially block an opening, so spawn only on opening tiles that
+    // are still open floor and can actually reach the exhaust — never inside a
+    // tower footprint or a walled-off pocket (the can't-seal rule guarantees at
+    // least one such tile). The counter cycles through the usable tiles so the
+    // stream still fans across the whole opening.
+    const field = vent === "left" ? this.fieldRight : this.fieldBottom;
+    const usable = portal.filter((t) => !this.grid.blocked[t] && isFinite(field[t]));
+    const tiles = usable.length > 0 ? usable : portal;
     const slot = this.spawnCounter[vent]++ % tiles.length;
     const tile = tiles[slot];
     const hp = SURGE_DEFS[type].hp * hpScale(this.waveNumber);
@@ -507,11 +515,16 @@ export class Game {
     // Affordability.
     if (this.money < TOWER_DEFS[type].cost) return false;
     // Can't seal: both required routes and every walking unit must keep a path.
+    // A tower may partially occupy an opening (build right up against a vent or
+    // exhaust) — what is forbidden is *fully* sealing one off. Each vent must
+    // keep at least one of its opening tiles able to reach its opposite exhaust
+    // (and each exhaust at least one tile reachable from its vent, which the
+    // same flood covers), so the surge always has a way in and out.
     const extra = new Set(footprint);
     const reachRight = this.grid.reachable(this.grid.rightExhaust.tiles, extra);
     const reachBottom = this.grid.reachable(this.grid.bottomExhaust.tiles, extra);
-    for (const tile of this.grid.leftVent.tiles) if (!reachRight[tile]) return false;
-    for (const tile of this.grid.topVent.tiles) if (!reachBottom[tile]) return false;
+    if (!this.grid.leftVent.tiles.some((tile) => reachRight[tile])) return false;
+    if (!this.grid.topVent.tiles.some((tile) => reachBottom[tile])) return false;
     for (const u of this.surge) {
       if (!u.alive || u.flies) continue;
       const cell = tileAtPixel(u.x, u.y);
@@ -528,8 +541,11 @@ export class Game {
     this.towers.push(t);
     this.money -= TOWER_DEFS[type].cost;
     this.recomputePaths();
-    // Sticky placement while Shift is held; otherwise disarm after one build.
-    if (!this.input.isHeld("ShiftLeft") && !this.input.isHeld("ShiftRight")) {
+    // Placement stays armed so the tower remains "held" by the cursor and the
+    // player can immediately drop another copy. It only lets go on its own when
+    // they can no longer afford one; otherwise the player disarms it with Esc or
+    // a right-click (see onPlayKey / onClick, specs/controls.md).
+    if (this.money < TOWER_DEFS[type].cost) {
       this.armed = null;
     }
   }

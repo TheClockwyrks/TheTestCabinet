@@ -63,7 +63,7 @@ Mouse-driven, with keyboard accelerators.
 | --- | --- |
 | Arm a shop tower | Click the shop button, or `1`–`8` (shop order) |
 | Place / select | Left-click the floor |
-| Keep placing the same type | Hold `Shift` while placing |
+| Keep placing the same type | Automatic — the tower stays held after each build until you run out of money or cancel |
 | Cancel placement / deselect / pause | Right-click, or `Esc` |
 | Upgrade selected | Inspector **Upgrade** button, or `U` |
 | Sell selected | Inspector **Sell** button, or `S` |

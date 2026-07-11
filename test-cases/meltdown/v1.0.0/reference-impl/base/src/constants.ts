@@ -28,13 +28,15 @@ export const PANEL_W = STAGE_W - PANEL_X; // 294
 
 export const FIXED_STEP = 1 / 60; // fixed-timestep simulation (specs/controls.md)
 
-// Vents and exhausts — four-tile openings cut into the casing wall
-// (specs/playfield.md). The surge enters at the two vents and leaves at the
-// two exhausts; the tiles listed are the floor edge tiles at each opening.
+// Vents and exhausts — openings cut into the casing wall (specs/playfield.md).
+// The surge enters at the two vents and leaves at the two exhausts; the tiles
+// listed are the floor edge tiles at each opening. The side (left/right)
+// openings span four tiles; the top/bottom openings are twice as wide (eight
+// tiles), both centred on the floor's middle column.
 export const LEFT_VENT_ROWS = [16, 17, 18, 19];
-export const TOP_VENT_COLS = [24, 25, 26, 27];
+export const TOP_VENT_COLS = [22, 23, 24, 25, 26, 27, 28, 29];
 export const RIGHT_EXHAUST_ROWS = [16, 17, 18, 19];
-export const BOTTOM_EXHAUST_COLS = [24, 25, 26, 27];
+export const BOTTOM_EXHAUST_COLS = [22, 23, 24, 25, 26, 27, 28, 29];
 
 // ---- Palette (specs/overview.md) -----------------------------------------
 

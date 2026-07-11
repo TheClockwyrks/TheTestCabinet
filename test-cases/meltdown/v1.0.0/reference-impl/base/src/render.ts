@@ -194,7 +194,7 @@ function drawFloorBase(ctx: Ctx): void {
 }
 
 // The four openings cut into the casing wall — two vents (cool blue) and two
-// exhausts (hazard-striped) — each a four-tile-wide gap (specs/playfield.md).
+// exhausts (hazard-striped) — sized from their tile counts (specs/playfield.md).
 function drawOpenings(ctx: Ctx, game: Game): void {
   const vent = (x: number, y: number, w: number, h: number) => {
     // A gap in the casing: floor-dark, glowing cool blue.
@@ -228,16 +228,17 @@ function drawOpenings(ctx: Ctx, game: Game): void {
     ctx.lineWidth = 2;
     ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
   };
-  // Positions from the grid's edge tiles, drawn in the casing band on that side
-  // (specs/playfield.md): each opening spans four tile rows/columns.
+  // Positions and widths from the grid's edge tiles, drawn in the casing band
+  // on that side (specs/playfield.md): each opening spans its own tile count —
+  // the side vents four tiles, the wider top/bottom openings eight.
   const g = game.grid;
   const rowOf = (i: number) => Math.floor(i / COLS);
   const colOf = (i: number) => i % COLS;
-  const span = 4 * TILE;
-  vent(0, FLOOR_Y0 + rowOf(g.leftVent.tiles[0]) * TILE, CASING, span);
-  vent(FLOOR_X0 + colOf(g.topVent.tiles[0]) * TILE, 0, span, CASING);
-  exhaust(FLOOR_X1, FLOOR_Y0 + rowOf(g.rightExhaust.tiles[0]) * TILE, CASING, span);
-  exhaust(FLOOR_X0 + colOf(g.bottomExhaust.tiles[0]) * TILE, FLOOR_Y1, span, CASING);
+  const spanOf = (tiles: number[]) => tiles.length * TILE;
+  vent(0, FLOOR_Y0 + rowOf(g.leftVent.tiles[0]) * TILE, CASING, spanOf(g.leftVent.tiles));
+  vent(FLOOR_X0 + colOf(g.topVent.tiles[0]) * TILE, 0, spanOf(g.topVent.tiles), CASING);
+  exhaust(FLOOR_X1, FLOOR_Y0 + rowOf(g.rightExhaust.tiles[0]) * TILE, CASING, spanOf(g.rightExhaust.tiles));
+  exhaust(FLOOR_X0 + colOf(g.bottomExhaust.tiles[0]) * TILE, FLOOR_Y1, spanOf(g.bottomExhaust.tiles), CASING);
 }
 
 // ---- Towers ---------------------------------------------------------------
