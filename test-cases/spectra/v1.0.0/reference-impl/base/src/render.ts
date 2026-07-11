@@ -369,8 +369,14 @@ function drawPolarity(ctx: CanvasRenderingContext2D, game: Game): void {
   const band = game.shipBand;
   const col = bandColor(band);
   const cy = 688;
-  const swX = FIELD_W - 150;
   ctx.save();
+  ctx.font = `700 22px ${MONO}`;
+  // Right-anchor the swatch+label group so the widest label (MAGENTA) stays on
+  // screen: the label's right edge sits at a fixed margin and the swatch a fixed
+  // gap to its left. A fixed swatch x instead sized the group for CYAN and pushed
+  // the longer MAGENTA label off the right edge.
+  const labelW = measureSpaced(ctx, game.bandLabel, 6);
+  const swX = FIELD_W - 40 - labelW - 26;
   // Swatch (cyan disc / magenta diamond) carrying the glyph.
   drawGlyph(ctx, band, swX, cy, 15, true);
   // A darker glyph inset so the shape reads on the bright swatch.
@@ -394,7 +400,6 @@ function drawPolarity(ctx: CanvasRenderingContext2D, game: Game): void {
   }
   // Label.
   ctx.fillStyle = col;
-  ctx.font = `700 22px ${MONO}`;
   ctx.textAlign = "left";
   ctx.shadowColor = col;
   ctx.shadowBlur = 8;
