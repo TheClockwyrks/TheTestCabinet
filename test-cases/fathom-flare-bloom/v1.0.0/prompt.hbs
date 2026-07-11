@@ -1,0 +1,47 @@
+Draw the **Fathom flare bloom**, an 8-frame **sprite sheet** of a bright radial burst,
+using only the drawing tool.
+
+The flare bloom is the wide burst of warm light the **Flarefish** predator sets
+off to hunt in a lightless trench — an area effect that floods a radius far
+larger than its own little sprite, which is why it has a large canvas of its own.
+Draw it as a short animation in three beats — a charge-up, a bloom, and a fade —
+centered in the frame, as warm light on full transparency.
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`.
+You build the sheet by calling it **one operation at a time**, each targeting a
+frame with `--frame <index>`. The ordered operations you issue are recorded to a
+per-frame action log, and that log is your submission.
+
+Each frame is its **own separate 128×128 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-circle --frame 5 --cx 64 --cy 64 --r 12 --color "#ffffff"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the flare up operation by operation until each `frames/<index>.png` matches
+the brief: a warm glow charging at the center (frames 0–2), a white-cored radial
+bloom spreading to its widest, brightest peak (frames 3–5), and a fade back toward
+dark (frames 6–7), all centered on (64, 64) in the warm palette on full
+transparency. Played in order the frames must read as one flare going off. When
+you are satisfied, stop: the recorded per-frame action logs are your finished
+submission.

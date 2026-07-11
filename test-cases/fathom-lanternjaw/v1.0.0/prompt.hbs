@@ -1,0 +1,50 @@
+Draw the **Fathom Lanternjaw**, a 16-frame **sprite sheet** of a deep-sea enemy,
+using only the drawing tool.
+
+The Lanternjaw is a **non-playable pursuer** in a deep-sea maze-chase game — an
+anglerfish-style predator that hunts the player by light, but which **hides as the
+harmless bonus drifter** until it fixes on you. You are drawing the *enemy*, never
+the player. It has **two forms** on this one sheet: a **hunting** form — a dark
+predator with gaping jaws under a glowing amber bell (frames 0–7) — and a
+**jellyfish disguise** it wears while wandering (frames 8–15), identical to the
+bonus drifter. Both forms carry the **same amber bell** in the same place; only what
+hangs beneath it (jaws or tendrils) differs.
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. You
+build the sheet by calling it **one operation at a time**, each targeting a frame
+with `--frame <index>`. The ordered operations you issue are recorded to a
+per-frame action log, and that log is your submission.
+
+Each frame is its **own separate 32×32 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-circle --frame 0 --cx 16 --cy 9 --r 5 --color "#ffd166"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the Lanternjaw sprite sheet up operation by operation until each
+`frames/<index>.png` matches the brief: the hunting form drawn in frames 0–7 — an
+amber bell over dark, gaping jaws, swimming and chomping down, up, left, and right
+(two frames each) — and the jellyfish disguise in frames 8–15, an eight-frame
+sway loop that reads as the harmless bonus drifter (the same amber bell, with
+tendrils where the jaws were). When you are satisfied, stop: the recorded per-frame
+action logs are your finished submission.

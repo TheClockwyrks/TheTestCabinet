@@ -59,7 +59,7 @@ its brief.
 [Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/)
 is the full procedure to follow; read it before you start. The single-sprite
 worked examples are the `spectra-*` cases; the sprite-sheet worked examples are
-`lanternjaw`, `gloamfin`, `flarefish`, `trench-walls`, `sonar-pulse`, and
+`lanternjaw`, `drifter`, `gloamfin`, `flarefish`, `trench-walls`, and
 `flare-bloom` — read the one matching the kind you are authoring.
 
 ## Validate

@@ -809,7 +809,7 @@ fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
             "four-directions",
             &["walk-down", "walk-up", "walk-left", "walk-right"],
         ),
-        ("lanternjaw", "lure-bob-tell", &["lure-bob"]),
+        ("lanternjaw", "jellyfish-disguise", &["disguise"]),
         (
             "glimmerfin",
             "four-directions",
@@ -820,7 +820,7 @@ fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
             "chomp",
             &["graze-down", "graze-up", "graze-left", "graze-right"],
         ),
-        ("sonar-pulse", "expanding-wavefront", &["pulse"]),
+        ("drifter", "sway-loop", &["drift"]),
         (
             "flare-bloom",
             "charge-to-bloom",
