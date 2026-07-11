@@ -31,8 +31,7 @@ overrides:
 
 - the tile strait, the near shore, the ice band, the median shelf, the water band,
   and the far shore with its bays from `specs/playfield.md`;
-- the bear's pursuit, hazard-navigation, swimming, and always-visible readout from
-  `specs/hunter.md`;
+- the bear's pursuit, hazard-navigation, and swimming from `specs/hunter.md`;
 - the sliding hazards from `specs/hazards.md` and the drifting floes and drift/
   off-edge death from `specs/water.md`;
 - the one-tile-hop controls from `specs/controls.md`;

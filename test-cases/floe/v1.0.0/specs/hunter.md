@@ -86,19 +86,14 @@ critter does, and it can be **taken out** by the hazards:
 hunt
 returns; it is never permanently removed.)
 
-## Always visible
+## Rendering the bear
 
-The player must be able to **see where the bear is at all times** — a hunter you
-cannot track is unfair:
+Draw the bear from its provided frames (`specs/assets.md`), using the correct frame
+for its current state:
 
-- On ice and on a floe the bear is drawn fully, and because it is a white animal
-  on
-  pale ice it always carries its **dark outline** (`specs/assets.md`) so it never
-  vanishes against the ice.
-- While **swimming**, the bear is mostly submerged: draw it as its **submerged
-  silhouette with a wake/ripple** on the surface (`specs/assets.md`'s swim frames),
-  so even under the water — or passing beneath a floe — its position stays clearly
-  readable. The bear is **never** invisible.
+- On ice and on a floe, draw the **run** frame for its current heading.
+- While **swimming**, draw the **submerged swim** frame set for its current heading
+  (`specs/assets.md`'s swim frames), including while it passes beneath a floe.
 
 ## Catching the critter
 

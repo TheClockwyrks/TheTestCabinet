@@ -122,8 +122,8 @@ targets:
   ice, floes, and water (swimming), routing around the vehicles — and if a vehicle
   catches it, it is **reset** (removed and re-emerging from the near shore), so
   you
-  can lure it into traffic. It stays always visible and catches a critter that
-  hesitates or errs (`specs/hunter.md`).
+  can lure it into traffic. It catches a critter that hesitates or errs
+  (`specs/hunter.md`).
 - **One-tile hops only:** the critter moves exactly one tile per hop, four
   directions, with no long or charged jump (`specs/controls.md`).
 - **Ice band:** solid lanes of sliding multi-tile vehicles — a 3-tile snow

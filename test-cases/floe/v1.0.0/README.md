@@ -25,8 +25,7 @@ shape of
 problem: a fixed-step simulation of tile hopping with a **carry/drift** model on
 the
 floes, a **hunter with real pathfinding** that pursues the critter across the hazard
-board and swims after it across the water (and must stay readable while
-submerged), a
+board and swims after it across the water, a
 row of goal bays to fill, a per-crossing timer, an 8-level progression that
 speeds up
 and adds a second bear, and multiple states and a HUD — a genuinely harder front-end

@@ -125,8 +125,7 @@ four-direction submerged swim, and a lunge:
 
 Draw the bear with the run frame for its current heading while on ice or a floe;
 use the **swim** frame set **for its current heading** whenever it is over open
-water, so its position stays readable as a silhouette and wake
-(`specs/hunter.md`); and play the **lunge** as it catches the critter. The bear is
+water; and play the **lunge** as it catches the critter. The bear is
 a big animal — it fills its tile.
 
 ## The snow plow — `assets/plow/` (1 frame, 96×32, 3 tiles)

@@ -46,11 +46,8 @@ example moment.
 
 `theme.css` holds the shared palette, type, and strait/sprite/HUD furniture
 referenced by every view and by the specification (the seeded specs under
-[`../specs/`](../specs/)), including the readable-hunter language: the bear is a
-big
-white animal with a dark outline, drawn as a submerged silhouette and wake when
-it
-swims so its position is always trackable.
+[`../specs/`](../specs/)): the bear is a big white animal with a dark outline,
+drawn as a submerged silhouette and wake when it swims.
 
 ## Generating screenshots
 

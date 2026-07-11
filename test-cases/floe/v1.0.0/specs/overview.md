@@ -35,8 +35,8 @@ start; they cross-reference each other by name and form one specification.
 - `specs/playfield.md` — the geometry of the strait: the tile grid, the near
   shore, the ice band, the median shelf, the water band, the far shore and its
   bays, and the HUD layout.
-- `specs/hunter.md` — the signature system: the bear, how it pursues, how it
-  navigates hazards and water, and how it stays readable. **Read this carefully.**
+- `specs/hunter.md` — the signature system: the bear, how it pursues, and how it
+  navigates hazards and water. **Read this carefully.**
 - `specs/hazards.md` — the ice band: the sliding vehicles (the snow plow, the
   dogsled, and the car), their lanes and speeds, and how they kill.
 - `specs/water.md` — the water band: the drifting floes, riding and drifting with
@@ -171,11 +171,10 @@ match them.
   the **water band** is dark deadly sea; and the **bays** glow warm and inviting
   at
   the top. A faint tile grid is visible so the player can read the lanes.
-- **The bear must always be readable.** It is a big white animal on pale ice, so
-  render it with its dark outline (`specs/assets.md`) so it never disappears against
-  the ice — and when it swims it must still be trackable as a silhouette and wake
-  on the water (`specs/hunter.md`). Keep the **warm critter** and the **white
-  bear** visually unmistakable from each other and from the field.
+- Draw the bear and the critter from their provided frames (`specs/assets.md`),
+  using the correct frame for the bear's current state — the **run** frame while it
+  is on ice or a floe and the **submerged swim** frame while it is on the water
+  (`specs/hunter.md`).
 - The three canonical screens — the title screen, the in-game view, and the
   game-over screen — are described in full under Game states in `specs/flow.md`.
   Implement each as described, in this palette and type.
