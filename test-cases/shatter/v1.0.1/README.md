@@ -39,15 +39,19 @@ Shatter ships **two** variants against this same target:
 
 - **`base`** (the default, `variants/base.toml`) — the standard endless arcade
   game. It seeds the standard mode spec (`specs/mode-standard.md` → `specs/mode.md`,
-  rocks take a single hit and the ship carries only its primary gun) and is rated on
-  the common `arcade` scoring domain; it adds nothing else of its own.
+  rocks take a single hit and the ship carries only its primary gun); it adds nothing
+  else of its own.
 - **`warhead`** (`variants/warhead.toml`) — the standard game plus **armored
   rocks** (rocks gain health, so a Large takes several bullet hits to break) and a
   **homing torpedo** secondary weapon (`F`, a single guided munition on a 10-second
   recharge that flies true through the gravity well and shatters any rock outright).
   It seeds its own mode spec (`specs/mode-warhead.md` → `specs/mode.md`) and adds an
-  in-game reference view (`warhead`), two proofs (`warhead`, `torpedo`), three review
-  items, and its own `warhead` scoring domain.
+  in-game reference view (`warhead`), two proofs (`warhead`, `torpedo`), and three
+  review items.
+
+Both variants are the same single game mode, so the case has one scoring domain —
+the common `arcade` domain — and every review item, common or `warhead`-only, rolls
+up to it.
 
 The common specs defer their mode-varying rules — how rocks take damage, and which
 bodies gravity pulls — to the mode spec seeded at the stable dest `specs/mode.md`,

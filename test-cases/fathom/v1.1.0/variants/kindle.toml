@@ -31,14 +31,13 @@ reference_implementation = "reference-impl/kindle"
 # additive — the wide circular window of explored trench, pitch black beyond.
 reference = [{ view = "vision-circle", media = "reference/screenshots/kindle/vision-circle.png" }]
 
-# Sensing review items specific to the Kindle model, rolling up to the common
-# `sensing` domain.
+# Sensing review items specific to the Kindle model. Like every Fathom review item
+# they roll up to the case's sole scoring domain, so none names a `domain`.
 [[review_item]]
 id = "kindle-vision-circle"
 title = "The vision circle"
 text = "An outer vision circle centered on the forager — an actual circle cut at the pixel (not tile-by-tile), growing as you eat and shrinking when you stop — is the only place terrain and plankton are drawn. Everything beyond it is pitch black, even ground you already explored. The circle reveals nothing itself; it only limits what of the already-revealed map is shown."
 weight = 1
-domain = "sensing"
 reference = "vision-circle"
 proof = "gameplay"
 
@@ -47,11 +46,9 @@ id = "kindle-memory-like-base"
 title = "A remembered fog, only windowed"
 text = "Underneath, Kindle is the same StarCraft-style fog of war as the base dive: explored terrain and plankton stay known and eaten plankton stay eaten, revealed by the line-of-sight light circle and the corridor-flooding sonar. Ground that falls outside the vision circle is only hidden, not forgotten — return and it is drawn again with any uneaten plankton still there."
 weight = 1
-domain = "sensing"
 
 [[review_item]]
 id = "kindle-outside-circle"
 title = "What shows beyond the circle"
 text = "The vision circle governs terrain and plankton only — not predators, which follow the smaller line-of-sight light circle (and sonar/flare marks). Beyond the vision circle only the always-visible amber lights (the bonus drifter and the Lanternjaw's bulb) and the enemy effects (the Flarefish's flare, the Gloamfin's ping ring) remain visible."
 weight = 1
-domain = "sensing"

@@ -65,13 +65,14 @@ workspace = "workspaces/base"
 init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
-# Shatter ships two: `base` (the default — the standard endless arcade game, rated on
-# the common `arcade` domain) and `warhead` (the standard game plus armored rocks and
-# a homing-torpedo secondary weapon, rated on the common `arcade` domain plus its own
-# `warhead` domain). Each variant seeds exactly one mode spec to the stable dest
-# `specs/mode.md`; `warhead` additionally adds an in-game reference view, proofs,
-# review items, and its scoring domain. The first entry is the default. This list is
-# a root key, so it must precede the first table header (`[build]`).
+# Shatter ships two: `base` (the default — the standard endless arcade game) and
+# `warhead` (the standard game plus armored rocks and a homing-torpedo secondary
+# weapon). Both are the same single game mode, rated on the case's sole common
+# `arcade` domain. Each variant seeds exactly one mode spec to the stable dest
+# `specs/mode.md`; `warhead` additionally adds an in-game reference view, proofs, and
+# review items (which roll up to that same common domain). The first entry is the
+# default. This list is a root key, so it must precede the first table header
+# (`[build]`).
 variants = [
   "variants/base.toml",
   "variants/warhead.toml",
@@ -163,12 +164,12 @@ dest = "proof/gravity.webm"
 # are reviewed by a human rather than scored against a baseline. The automated
 # load check still runs.
 
-# Common scoring domain, rated for every variant. The `base` variant is rated on
-# this domain alone (its overall rating); the `warhead` variant is rated on this
-# domain plus its own `warhead` domain (declared in `variants/warhead.toml`). Every
-# case must declare at least one common domain. The common review items below roll
-# up to this domain implicitly (an item names a `domain` only to scope itself,
-# unnecessary for these since `arcade` is the only common domain).
+# The case's sole scoring domain, rated for every variant. Shatter is one game mode
+# regardless of the selected variant, so both `base` and `warhead` are rated on this
+# single domain — it is the run's overall rating. Every case must declare at least
+# one common domain. Every review item (common here, and the `warhead` variant's own)
+# rolls up to this domain implicitly, so none names a `domain` — `arcade` is the only
+# domain there is.
 [[domain]]
 id = "arcade"
 name = "Arcade"
