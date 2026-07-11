@@ -25,7 +25,8 @@ open air, corner placement, or Sinks (`specs/heat.md`).
 
 Each emitter designates some faces as **radiator faces** (cyan fins, `specs/heat.md`)
 that shed heat far better than plain faces. Radiators are given in the tower's
-**local** (un-rotated) orientation and turn with the tower when it is rotated
+**local** (un-rotated) orientation and turn with the tower's placement rotation,
+which is chosen while the tower is held and **fixed once it is placed**
 (`specs/controls.md`). Movers have no radiator faces.
 
 ## Shared Targeting Rules
@@ -134,10 +135,12 @@ air. Multiple movers touching one emitter stack their effect.
   open floor (`specs/controls.md`). Its cost is deducted from your money
   (`specs/flow.md`); you cannot build what you cannot afford. Placement obeys the
   mazing rules in `specs/playfield.md` (never seal the floor).
-- **Rotate.** An emitter can be **rotated** in `90°` steps — before placing (the
-  held preview rotates) or after, on the selected tower — turning its radiator
-  faces (`specs/heat.md`, `specs/controls.md`). Movers have no faces and do not
-  rotate. Rotating a placed tower re-derives its cooling immediately.
+- **Rotate.** An emitter can be **rotated** in `90°` steps **only while it is
+  held**, before placing — the held preview rotates, turning its radiator faces so
+  you can aim them at the open lane before you commit (`specs/heat.md`,
+  `specs/controls.md`). **Once a tower is placed its orientation is fixed; a placed
+  tower cannot be rotated** — re-aiming a built tower means selling it and building
+  a fresh one. Movers have no faces and do not rotate.
 - **Upgrade.** A selected tower can be upgraded through three levels — I, II, III.
   Each level applies, on top of the previous:
   - **Emitters:** `baseDamage * 1.6`, `range + 1.0` tiles, `fireRate * 1.15`, and
@@ -161,5 +164,6 @@ air. Multiple movers touching one emitter stack their effect.
   included — is back to the `70%` refund.) Selling reopens every tile in its
   footprint immediately and the surge re-paths (`specs/playfield.md`).
 
-Rotating, upgrading, and selling happen through the selected-tower inspector in the
-build panel (`specs/playfield.md`, `specs/controls.md`).
+Upgrading and selling happen through the selected-tower inspector in the build
+panel; rotation happens only on the held preview before placing
+(`specs/playfield.md`, `specs/controls.md`).

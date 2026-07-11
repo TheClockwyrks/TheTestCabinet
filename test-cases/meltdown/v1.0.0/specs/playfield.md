@@ -164,9 +164,11 @@ by a divider (`#2c323c`). It is always fully visible and holds, top to bottom:
   shows its type and level, its current stats (size, range, damage or effect, fire
   rate, mass, and radiator faces), its live heat read (the same heat value drawn on
   the tower footprint, shown here as a labeled bar from `0%` to `100%` with the
-  tower's **redline marker** at its max-efficiency point, `specs/heat.md`), a
-  **Rotate faces** action (emitters), and **Upgrade** (with its cost) and **Sell**
-  (with its refund) actions. When nothing is selected it shows a brief hint or the
+  tower's **redline marker** at its max-efficiency point, `specs/heat.md`), and
+  **Upgrade** (with its cost) and **Sell** (with its refund) actions. (A placed
+  tower cannot be rotated, so the inspector has no rotate action; orientation is
+  chosen on the held preview before placing, `specs/controls.md`.) When nothing is
+  selected it shows a brief hint or the
   next-wave preview.
 - **Wave controls** — a **Send next wave** action (with its early-send bonus;
   see `specs/flow.md`) that reads **Start** in the untimed opening build phase

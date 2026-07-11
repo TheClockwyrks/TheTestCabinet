@@ -50,7 +50,9 @@ goals the game is tuned for:
 ## How it drives the game
 
 The harness only uses the game's public, input-free control surface (added to
-`Game` for exactly this purpose): `beginMatch()`, `build(type, col, row, rot)`,
-`upgrade(t)`, `sell(t)`, `rotate(t)`, `launchWave(early)`, and `fixedStep(dt)`.
+`Game` for exactly this purpose): `beginMatch()`, `build(type, col, row, rot)`
+(the `rot` argument fixes the placement rotation — a placed tower cannot be
+rotated afterward), `upgrade(t)`, `sell(t)`, `launchWave(early)`, and
+`fixedStep(dt)`.
 These call the same code paths the mouse/keyboard handlers do, so a simulated
 match is identical to a played one.

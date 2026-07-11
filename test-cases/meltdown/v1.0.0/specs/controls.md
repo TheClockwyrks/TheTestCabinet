@@ -32,9 +32,12 @@ of the simulation, only how fast it plays.
    floor (`specs/playfield.md`). Building right up against a vent or exhaust — even
    partly over its opening tiles — is *valid*, as long as it does not fully seal
    that opening or the floor.
-3. **Rotate** — while a tower is held (or one is selected), the **rotate** control
-   (below) turns it `90°`, turning its radiator faces so the player can aim them at
-   the open lane (`specs/heat.md`). Movers have no faces and do not rotate.
+3. **Rotate** — while a tower is **held** (in placement mode), the **rotate**
+   control (below) turns the held preview `90°`, turning its radiator faces so the
+   player can aim them at the open lane **before committing** (`specs/heat.md`). A
+   tower's orientation is chosen here and **fixed once it is placed** — a placed
+   tower cannot be rotated, so aim its faces before you drop it. Movers have no
+   faces and do not rotate.
 4. **Place** — left-click a valid footprint while in placement mode to build
    there, deducting the tower cost from the current money. **Placement stays
    armed after each build** — the tower remains "held" on the cursor (at the held
@@ -52,9 +55,6 @@ a live wave (`specs/flow.md`) — subject to affordability and the mazing rules.
 - **Select** — left-click a placed tower (when not in placement mode) to select
   it. Its range ring shows on the floor and the **inspector** opens in the build
   panel (`specs/playfield.md`) with its stats, **live heat read**, and actions.
-- **Rotate** — click the **Rotate faces** action in the inspector (or press the
-  rotate hotkey) to turn the selected emitter `90°`, re-aiming its radiator faces
-  (`specs/heat.md`, `specs/towers.md`).
 - **Upgrade** — click the **Upgrade** action in the inspector (or press the
   upgrade hotkey) to raise the selected tower a level if you can currently
   afford it (`specs/towers.md`).
@@ -87,8 +87,9 @@ below are **required** alongside it.
 
 - **Arm a shop tower:** number keys `1`–`8` arm the eight tower types in shop
   order (top to bottom, left to right).
-- **Rotate faces:** a key (for example `R`) turns the held or selected emitter
-  `90°`; state it in the in-game how-to and the produced `README.md`.
+- **Rotate faces:** a key (for example `R`) turns the **held** emitter preview
+  `90°` (placement mode only — a placed tower cannot be rotated); state it in the
+  in-game how-to and the produced `README.md`.
 - **Cancel placement / deselect / back:** `Esc`.
 - **Send next wave:** `Space`.
 - **Game speed toggle:** `F`.

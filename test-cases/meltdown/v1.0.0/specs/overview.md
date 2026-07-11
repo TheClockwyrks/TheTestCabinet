@@ -15,7 +15,8 @@ there — but run all the way to `100` and it **trips** offline to cool, leaving
 hole in your defense. So laying out the floor is a thermal problem as much as a
 spatial one. And a tower only sheds heat through the faces that touch **open air**:
 pack your guns tight and their cores bake and trip, so you must space and orient
-them — each tower has cyan **radiator faces** you rotate toward the open lane, and
+them — each tower has cyan **radiator faces** you aim toward the open lane as you
+place it, and
 they come in `2 x 2`, `3 x 3`, and `4 x 4` sizes, the big ones hitting harder but
 running hotter. Two support structures sculpt the heat — a thermostatic **Forge**
 that warms its neighbors toward a setpoint and a **Sink** that draws heat out (the

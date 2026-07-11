@@ -45,7 +45,6 @@ import { TOWER_ORDER } from "./types";
 import {
   ctlRect,
   inRect,
-  rotateBtnRect,
   sellBtnRect,
   sendBtnRect,
   shopItemRect,
@@ -653,12 +652,6 @@ export class Game {
     if (this.selected) this.upgrade(this.selected);
   }
 
-  // Rotate the selected emitter's radiator faces (specs/heat.md). Movers have no
-  // faces to rotate.
-  private rotateSelected(): void {
-    if (this.selected) this.rotate(this.selected);
-  }
-
   // Sell any tower, reopen its tiles, re-path. A tower sold during the same build
   // phase it was placed on — before that wave has started, so it never fired a
   // shot — refunds its full spend; otherwise the standard 70% refund applies
@@ -681,14 +674,6 @@ export class Game {
     t.level += 1;
     this.recomputeAdjacency();
     return true;
-  }
-
-  // Rotate any placed emitter's radiator faces one quarter-turn. Re-derives the
-  // tower's cooling for the new orientation.
-  rotate(t: Tower): void {
-    if (!t.isEmitter) return;
-    t.rot = ((t.rot + 1) % 4) as Rotation;
-    this.recomputeAdjacency();
   }
 
   upgradeCostOf(t: Tower): number {
@@ -818,9 +803,10 @@ export class Game {
         this.speed = this.speed === 1 ? 2 : 1;
         break;
       case "KeyR":
-        // Rotate the held tower's radiator faces, or the selected emitter's.
+        // Rotate the held tower's radiator faces to aim them before placing. A
+        // placed tower's orientation is fixed and cannot be rotated
+        // (specs/controls.md, specs/towers.md).
         if (this.armed) this.armedRot = ((this.armedRot + 1) % 4) as Rotation;
-        else this.rotateSelected();
         break;
       case "KeyU":
         this.upgradeSelected();
@@ -941,10 +927,6 @@ export class Game {
     }
     // Inspector actions.
     if (this.selected) {
-      if (this.selected.isEmitter && inRect(rotateBtnRect(), x, y)) {
-        this.rotateSelected();
-        return;
-      }
       if (inRect(upgradeBtnRect(), x, y)) {
         this.upgradeSelected();
         return;
@@ -976,7 +958,7 @@ export class Game {
   // ---- Programmatic control (headless simulation & automated tests) ------
   // A thin, input-free surface over the exact simulation the UI drives, so a
   // headless harness (sim/) can script a full match deterministically —
-  // begin a match, build/upgrade/sell/rotate by coordinate or reference, launch
+  // begin a match, build/upgrade/sell by coordinate or reference, launch
   // a wave — and step fixedStep() as fast as the host allows (no rAF, no render).
   // These call the same private code paths the mouse/keyboard handlers do, so a
   // simulated game is identical to a played one.

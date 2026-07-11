@@ -39,7 +39,6 @@ import {
   PANEL_INNER_W,
   PANEL_INNER_X,
   READOUTS_Y,
-  rotateBtnRect,
   sellBtnRect,
   sendBtnRect,
   SHOP_TITLE_Y,
@@ -765,20 +764,8 @@ function drawInspector(ctx: Ctx, game: Game, t: Tower): void {
     );
   }
 
-  // Rotate action (emitters only — movers have no faces).
-  if (isEmitterDef(t.def)) {
-    const rotR = rotateBtnRect();
-    ctx.fillStyle = "#232a33";
-    rr(ctx, rotR.x, rotR.y, rotR.w, rotR.h, 7);
-    ctx.fill();
-    ctx.strokeStyle = rgba(C.rime, 0.6);
-    ctx.lineWidth = 1;
-    rr(ctx, rotR.x, rotR.y, rotR.w, rotR.h, 7);
-    ctx.stroke();
-    text(ctx, "⟳ ROTATE FACES  (R)", rotR.x + rotR.w / 2, rotR.y + 20, 11, C.rime, "center", 700);
-  }
-
-  // Actions.
+  // Actions. (A placed tower cannot be rotated — orientation is chosen on the
+  // held preview before placing, specs/controls.md — so there is no rotate action.)
   const up = upgradeBtnRect();
   const sell = sellBtnRect();
   const canUp = t.level < 3 && game.money >= game.upgradeCostOf(t);
@@ -1038,13 +1025,13 @@ function drawHowTo(ctx: Ctx): void {
     ["TOWERS ARE WALLS", "Every tower is also a wall — you build the maze the surge must walk. Towers come in 2x2, 3x3, and 4x4 sizes. You can never seal the floor."],
     ["WALLED REACTOR", "Surge enters at the LEFT and TOP vents and must cross to its OPPOSITE exhaust (left→right, top→bottom) — the only openings in the casing."],
     ["HEAT IS POWER", "Emitters fire harder the hotter they run — full power once they reach their REDLINE mark, then hold it up to the 100 trip. Cold guns are nearly useless (about a third power), so keep them hot; hit 100 and they TRIP offline for 5s."],
-    ["RUN IT HOT", "A tower only sheds heat through faces that touch OPEN AIR — its cyan RADIATOR faces cool best. Rotate (R) to aim them at the open lane. Pack towers tight and their cores bake and trip."],
+    ["RUN IT HOT", "A tower only sheds heat through faces that touch OPEN AIR — its cyan RADIATOR faces cool best. Rotate (R) while placing to aim them at the open lane — a placed tower's facing is locked. Pack towers tight and their cores bake and trip."],
     ["SIZE & REDLINE", "Bigger towers hit harder but run hotter — they want corners and open air. Each tower has its own redline: light guns reach max power early with room to spare; heavy guns want to sit right near the top."],
     ["FORGE & SINK", "The Forge warms touching emitters toward its setpoint (never past it) — wake cold guns, feed a Lance. The Sink draws heat out — the only way to cool a boxed-in core."],
     ["THE RIME", "The cryo Rime runs backward — it slows hardest when COLD and fades as it heats. Give it open air or a Sink; keep it away from Forges and hot cores."],
     ["FLYERS", "Drift flyers ignore the maze and fly straight across. Any emitter can hit them; Flak is dedicated air-only coverage."],
     ["ECONOMY", "Start with 250. Earn kill bounties, wave bonuses, interest, and an early-send bonus. Sell for a 70% refund — but a tower sold before the wave it was placed on starts refunds in full. Opening build is untimed — press START; between waves you get 15s."],
-    ["CONTROLS", "Mouse to build/select. 1–8 arm shop towers, R rotate faces, U upgrade, S sell, Space send/start wave, F speed, Esc/P pause."],
+    ["CONTROLS", "Mouse to build/select. 1–8 arm shop towers, R rotate faces while placing, U upgrade, S sell, Space send/start wave, F speed, Esc/P pause."],
   ];
   const bodyX = 372;
   const bodyMaxW = 1096 - bodyX;

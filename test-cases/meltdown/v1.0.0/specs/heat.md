@@ -134,11 +134,13 @@ Not all faces cool equally. Each emitter designates some of its faces as
 a plain edge only `1.1`, both proportional to `H / 100`). Which faces are radiators
 is per-tower (`specs/towers.md`), given in the tower's **local** orientation.
 
-A tower can be **rotated** in `90°` steps (`specs/controls.md`), which turns its
-radiator faces with it (local `N → E → S → W`). So the player controls cooling not
-only by *how many* faces touch open air but by *aiming the radiator faces at the
-air*: the same tower in the same spot can sit safely in its plateau or trip,
-depending purely on which way it faces. This rewards deliberate formations — corners
+A tower can be **rotated** in `90°` steps **while it is held, before placing**
+(`specs/controls.md`), which turns its radiator faces with it (local
+`N → E → S → W`); its orientation is then **locked in at placement** and cannot be
+changed afterward. So the player controls cooling not only by *how many* faces
+touch open air but by *aiming the radiator faces at the air before committing*: the
+same tower in the same spot can sit safely in its plateau or trip, depending purely
+on which way it was faced when it was placed. This rewards deliberate formations — corners
 and diamond shapes that give a tower three open sides, radiator faces turned toward
 the open lane, and packing that deliberately blocks a face to run a neighbor
 hotter. A tower's radiator faces are drawn as cool cyan fin marks on its footprint
