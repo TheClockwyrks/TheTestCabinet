@@ -10,10 +10,10 @@ import {
   BEAR_CATCH_DIST,
   BEAR_EMERGE_ADVANCE,
   BEAR_EMERGE_DELAY,
-  BEAR_ICE_HOP,
+  BEAR_ICE_SPEED,
   BEAR_SECOND_DELAY,
   BEAR_SPEED_STEP,
-  BEAR_SWIM_HOP,
+  BEAR_SWIM_SPEED,
   CLEAR_PAUSE,
   COLOR,
   DEATH_PAUSE,
@@ -134,6 +134,26 @@ export class Game implements WorldView {
       if (v.x < right && v.x + v.len * TILE > left) return true;
     }
     return false;
+  }
+
+  // Does a vehicle sit on this ice tile right now (with a small inset, so a vehicle
+  // barely grazing the tile edge does not count)? Used both to refuse a critter hop
+  // ONTO an occupied tile and to crush a critter a vehicle slides INTO.
+  private vehicleAtTile(col: number, row: number): boolean {
+    const lane = this.iceLaneForRow(row);
+    if (!lane) return false;
+    const left = col * TILE + 5;
+    const right = col * TILE + TILE - 5;
+    for (const v of lane.items) {
+      if (v.x < right && v.x + v.len * TILE > left) return true;
+    }
+    return false;
+  }
+
+  // A tile the critter may not hop ONTO because a vehicle occupies it (an ice tile
+  // under traffic). The hop is refused like a wall — no move, no death.
+  private blockedByVehicle(col: number, row: number): boolean {
+    return isIceRow(row) && this.vehicleAtTile(col, row);
   }
 
   // Coverage plus a safety buffer ahead of each vehicle (a hop's worth of travel),
@@ -372,7 +392,7 @@ export class Game implements WorldView {
     if (this.state === "title") {
       this.updateLanes(dt);
       this.critter.advance(dt);
-      this.animateTitleBear(dt);
+      this.animateTitleBear();
       return;
     }
     if (this.state !== "playing") return;
@@ -454,10 +474,12 @@ export class Game implements WorldView {
     const c = this.critter;
 
     if (dr === 0) {
-      // Horizontal: one absolute tile; refuse if it would leave the strait.
+      // Horizontal: one absolute tile; refuse if it would leave the strait or land
+      // on a tile a vehicle already occupies (you cannot step into traffic).
       const nx = c.x + dc * TILE;
       const center = nx + TILE / 2;
       if (center < 0 || center > STRAIT_W) return false;
+      if (this.blockedByVehicle(xToCol(nx), c.row)) return false;
       c.x = nx;
       c.startHop(dir);
       this.audio.hop();
@@ -467,6 +489,7 @@ export class Game implements WorldView {
     const nr = c.row + dr;
     if (dir === "down") {
       if (nr > ROW_NEAR) return false; // below the near shore
+      if (this.blockedByVehicle(c.col(), nr)) return false; // occupied ice tile
       c.row = nr;
       c.startHop(dir);
       this.audio.hop();
@@ -485,6 +508,7 @@ export class Game implements WorldView {
       this.fillBay(bay);
       return true;
     }
+    if (this.blockedByVehicle(c.col(), nr)) return false; // occupied ice tile
     c.row = nr;
     c.startHop(dir);
     this.audio.hop();
@@ -516,14 +540,11 @@ export class Game implements WorldView {
         return;
       }
     } else if (isIceRow(c.row)) {
-      const lane = this.iceLaneForRow(c.row)!;
-      const left = c.x + 5;
-      const right = c.x + TILE - 5;
-      for (const v of lane.items) {
-        if (v.x < right && v.x + v.len * TILE > left) {
-          this.die("#4a5560");
-          return;
-        }
+      // A vehicle can only end up on the critter's tile by sliding INTO it (the
+      // critter can never hop onto an occupied tile), so this is always a crush.
+      if (this.vehicleAtTile(c.col(), c.row)) {
+        this.die("#4a5560");
+        return;
       }
     }
   }
@@ -542,15 +563,17 @@ export class Game implements WorldView {
         if (h.emergeDelay <= 0 && advanced >= h.emergeAdvance) {
           const bear = new Bear(clampCol(this.critter.col()), ROW_NEAR);
           h.bear = bear;
-          this.decideBearHop(bear, target);
+          this.decideBearStep(bear, target);
         }
         continue;
       }
       const bear = h.bear;
-      const done = bear.advance(dt);
+      const arrived = bear.advance(dt);
 
-      // Reset if a vehicle has swept into the bear's tile (lure it into traffic).
-      if (isIceRow(bear.row) && this.vehicleCovers(bear.col, bear.row)) {
+      // Reset if a vehicle has swept into EITHER tile the bear occupies. Moving
+      // continuously, it straddles the tile it is leaving and the one it is
+      // entering, so a hit on either knocks it out (lure it into traffic).
+      if (this.bearInTraffic(bear)) {
         this.splashes.push({
           x: bear.centerX(),
           y: bear.centerY(),
@@ -562,7 +585,7 @@ export class Game implements WorldView {
         continue;
       }
 
-      if (done) this.decideBearHop(bear, target);
+      if (arrived) this.decideBearStep(bear, target);
 
       // Catch: within about half a tile of the critter.
       const cxc = this.critter.rx + TILE / 2;
@@ -578,19 +601,31 @@ export class Game implements WorldView {
     }
   }
 
-  private decideBearHop(bear: Bear, target: Tile): void {
+  // Is a vehicle sitting on either tile the bear currently occupies? While gliding
+  // between tiles it straddles both, so a hit on either resets it (specs/hunter.md).
+  private bearInTraffic(bear: Bear): boolean {
+    return (
+      (isIceRow(bear.row) && this.vehicleCovers(bear.col, bear.row)) ||
+      (isIceRow(bear.targetRow) &&
+        this.vehicleCovers(bear.targetCol, bear.targetRow))
+    );
+  }
+
+  // At each tile center, pick the next grid step toward the critter (BFS around the
+  // hazards) and commit the bear to gliding there at its footing-appropriate speed.
+  private decideBearStep(bear: Bear, target: Tile): void {
     const next = chooseBearStep(this, { col: bear.col, row: bear.row }, target);
     const swimming = isWaterRow(next.row) && !this.hasFloe(next.col, next.row);
-    const base = swimming ? BEAR_SWIM_HOP : BEAR_ICE_HOP;
-    const dur = base * Math.pow(BEAR_SPEED_STEP, this.level - 1);
-    bear.hopTo(next.col, next.row, dur, swimming);
+    const tilesPerSec =
+      (swimming ? BEAR_SWIM_SPEED : BEAR_ICE_SPEED) *
+      Math.pow(BEAR_SPEED_STEP, this.level - 1);
+    bear.setTarget(next.col, next.row, tilesPerSec * TILE, swimming);
   }
 
   // Gentle idle motion for the title-screen bear (no pursuit, never catches).
-  private animateTitleBear(dt: number): void {
+  private animateTitleBear(): void {
     const bear = this.hunters[0]?.bear;
     if (!bear) return;
-    bear.hopElapsed += dt;
     const bob = Math.sin(this.simTime * 1.4) * 6;
     bear.rx = 6 * TILE + Math.sin(this.simTime * 0.4) * 40;
     bear.ry = 6 * TILE + bob;

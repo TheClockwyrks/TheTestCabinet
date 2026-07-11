@@ -1,21 +1,17 @@
-// Floe — the two live actors: the player's Critter and the hunting Bear. Both are
-// tile creatures that HOP one tile at a time (specs/controls.md, specs/hunter.md).
-// Each keeps a logical tile position plus an eased render position, so movement
-// reads as discrete hops with a little arc, never a smooth glide.
+// Floe — the two live actors: the player's Critter and the hunting Bear. The
+// critter HOPS one tile at a time (specs/controls.md); the bear moves CONTINUOUSLY,
+// pacman-style — a smooth glide at a fixed speed, turning only at tile centers
+// (specs/hunter.md). The critter keeps a logical tile position plus an eased render
+// position so its movement reads as discrete hops; the bear's position is itself
+// continuous, so it is rendered directly.
 
 import {
-  BEAR_ICE_HOP,
   HOP_ANIM,
   ROW_NEAR,
   TILE,
 } from "./constants";
 import { colToX, rowToY, xToCol } from "./grid";
 import type { Dir } from "./types";
-
-function smoothstep(t: number): number {
-  const x = Math.max(0, Math.min(1, t));
-  return x * x * (3 - 2 * x);
-}
 
 // The player critter. Its horizontal position is a float (px) so a floe can carry
 // it smoothly; its row is an integer changed only by hops.
@@ -64,17 +60,21 @@ export class Critter {
   }
 }
 
-// The hunting bear. It advances tile by tile toward a target the game supplies;
-// this class only owns the hop animation and render state.
+// The hunting bear. It glides CONTINUOUSLY toward a target tile the game supplies
+// (specs/hunter.md): it holds a current tile (the last one it settled on) and a
+// target tile one step away, and slides smoothly between them at `speed` px/s.
+// It changes direction only on reaching the target — so its turning is quantized
+// to the grid while its motion stays smooth. rx/ry ARE its logical position (there
+// is nothing to ease); while between tiles it occupies both `col`/`row` and
+// `targetCol`/`targetRow` for hazard collision.
 export class Bear {
-  col: number;
+  col: number; // the tile it last settled on (the one it is leaving)
   row: number;
-  private prevCol: number;
-  private prevRow: number;
-  rx: number;
+  targetCol: number; // the adjacent tile it is gliding toward
+  targetRow: number;
+  rx: number; // continuous strait-local top-left px (also the render position)
   ry: number;
-  hopElapsed = 0;
-  hopDur = BEAR_ICE_HOP;
+  speed = 0; // px/second of the current glide
   facing: Dir = "up";
   swimming = false;
   lunge = 0; // >0 while the strike frame plays on a catch
@@ -82,8 +82,8 @@ export class Bear {
   constructor(col: number, row: number) {
     this.col = col;
     this.row = row;
-    this.prevCol = col;
-    this.prevRow = row;
+    this.targetCol = col;
+    this.targetRow = row;
     this.rx = colToX(col);
     this.ry = rowToY(row);
   }
@@ -95,42 +95,40 @@ export class Bear {
     return this.ry + TILE / 2;
   }
 
-  // Begin a hop into (col,row); `dur` is this hop's cadence, `swimming` its footing.
-  hopTo(col: number, row: number, dur: number, swimming: boolean): void {
-    this.prevCol = this.col;
-    this.prevRow = this.row;
-    if (col !== this.col || row !== this.row) {
-      if (col < this.col) this.facing = "left";
-      else if (col > this.col) this.facing = "right";
-      else if (row < this.row) this.facing = "up";
-      else this.facing = "down";
-    }
-    this.col = col;
-    this.row = row;
-    this.hopDur = dur;
+  // Commit to gliding into the adjacent (col,row) at `speed` px/s; `swimming` is
+  // the footing of that step (open water vs ice/floe). Sets the facing from the
+  // direction of travel.
+  setTarget(col: number, row: number, speed: number, swimming: boolean): void {
+    this.targetCol = col;
+    this.targetRow = row;
+    this.speed = speed;
     this.swimming = swimming;
-    this.hopElapsed = 0;
+    if (col < this.col) this.facing = "left";
+    else if (col > this.col) this.facing = "right";
+    else if (row < this.row) this.facing = "up";
+    else if (row > this.row) this.facing = "down";
   }
 
-  // Advance the hop animation; returns true when the hop has completed and the
-  // bear is ready to choose its next tile.
+  // Glide toward the target tile's top-left. Returns true when the bear has
+  // reached it and settled (col/row snap to the target) — the game then chooses
+  // the next step. Motion is axis-aligned (one grid step at a time).
   advance(dt: number): boolean {
-    this.hopElapsed += dt;
     if (this.lunge > 0) this.lunge = Math.max(0, this.lunge - dt);
-    // Travel across the first 70% of the cadence, then settle so the hop reads
-    // as discrete.
-    const travel = this.hopDur * 0.7;
-    const f = smoothstep(this.hopElapsed / travel);
-    const fromX = colToX(this.prevCol);
-    const fromY = rowToY(this.prevRow);
-    const toX = colToX(this.col);
-    const toY = rowToY(this.row);
-    this.rx = fromX + (toX - fromX) * f;
-    this.ry = fromY + (toY - fromY) * f;
-    // Hop arc only when actually changing tiles.
-    if (this.prevCol !== this.col || this.prevRow !== this.row) {
-      this.ry += -Math.sin(Math.min(1, this.hopElapsed / travel) * Math.PI) * 6;
+    const toX = colToX(this.targetCol);
+    const toY = rowToY(this.targetRow);
+    const dx = toX - this.rx;
+    const dy = toY - this.ry;
+    const dist = Math.abs(dx) + Math.abs(dy); // axis-aligned: only one is nonzero
+    const step = this.speed * dt;
+    if (dist <= step || dist < 1e-4) {
+      this.rx = toX;
+      this.ry = toY;
+      this.col = this.targetCol;
+      this.row = this.targetRow;
+      return true;
     }
-    return this.hopElapsed >= this.hopDur;
+    this.rx += Math.sign(dx) * step;
+    this.ry += Math.sign(dy) * step;
+    return false;
   }
 }

@@ -22,11 +22,12 @@ and it never moves more than one tile per hop.
   is one absolute tile.
 - **Blocked hops are refused.** A hop that would leave the strait (past a side edge,
   below the near shore, or up into the far shore's solid wall or a filled bay,
-  `specs/playfield.md`) is **refused**: the critter simply does not move, and no
-  life is lost for a refused hop. (Death comes from what the critter hops
-  **onto** —
-  a hazard tile, open water — or from drifting off the edge, not from a refused
-  hop.)
+  `specs/playfield.md`), **or onto a tile a vehicle currently occupies**
+  (`specs/hazards.md`), is **refused**: the critter simply does not move, and no
+  life is lost for a refused hop. You can never step into a vehicle. (Death from a
+  vehicle comes only when one **slides into the tile the critter is standing on**,
+  `specs/hazards.md`; death from the water comes from hopping **onto open water**
+  or drifting off the edge, `specs/water.md` — never from a refused hop.)
 - **Up is progress.** Hopping up carries the critter toward the bays; you may hop
   down to retreat, but every moment costs time and lets the bear close
   (`specs/hunter.md`, `specs/flow.md`).

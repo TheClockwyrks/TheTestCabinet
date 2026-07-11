@@ -15,8 +15,9 @@ The numeric values here are **fixed**; implement them exactly as written.
 
 - You start a game with **3 lives**.
 - The critter **loses a life** when it is caught by the bear (`specs/hunter.md`),
-  hit by a sliding hazard (`specs/hazards.md`), falls in the water or is swept off
-  the edge on a floe (`specs/water.md`), or the crossing **timer** runs out (below).
+  crushed by a sliding hazard that slides into it (`specs/hazards.md`), falls in the
+  water or is swept off the edge on a floe (`specs/water.md`), or the crossing
+  **timer** runs out (below).
 - On losing a life: the current crossing ends, the bear is removed
   (`specs/hunter.md`), and a fresh critter respawns on the **near shore** with the
   timer reset — the **filled bays stay filled** (you resume the same level). A
@@ -117,17 +118,17 @@ The game must exhibit these behaviors. They are observable and make good test
 targets:
 
 - **The bear hunts across the whole strait:** it emerges at the near shore and
-  **hops** (one tile at a time, like the critter) after the critter's position over
-  ice, floes, and water (swimming), routing around the vehicles — and if a vehicle
-  catches it, it is **reset** (removed and re-emerging from the near shore), so
-  you
-  can lure it into traffic. It catches a critter that hesitates or errs
-  (`specs/hunter.md`).
+  **moves continuously** (pacman-style — gliding at a fixed speed, turning only at
+  tile centers) toward the critter's position over ice, floes, and water
+  (swimming), routing around the vehicles — and if a vehicle slides into it, it is
+  **reset** (removed and re-emerging from the near shore), so you can lure it into
+  traffic. It catches a critter that hesitates or errs (`specs/hunter.md`).
 - **One-tile hops only:** the critter moves exactly one tile per hop, four
   directions, with no long or charged jump (`specs/controls.md`).
 - **Ice band:** solid lanes of sliding multi-tile vehicles — a 3-tile snow
-  plow, a 2-tile dogsled, and a 2-tile car; contact is death
-  (`specs/hazards.md`).
+  plow, a 2-tile dogsled, and a 2-tile car. The critter **cannot step into** a
+  vehicle-occupied tile (the hop is refused), and a vehicle that **slides into**
+  the critter is death (`specs/hazards.md`).
 - **Water band:** deadly water crossed on drifting floes that **carry** the
   critter —
   1-tile pans and solid 3-/4-tile rafts; falling in or drifting off the edge is

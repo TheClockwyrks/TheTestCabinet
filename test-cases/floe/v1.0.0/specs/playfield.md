@@ -45,9 +45,9 @@ so the two crossing zones dominate the strait:
   not from the bear, which can reach any solid tile (`specs/hunter.md`). Only a
   filled bay is ever truly safe.
 - The **ice band** rows are solid ice: the critter hops freely on them and may pause
-  on an empty tile, but each row is a lane a vehicle slides along, and contact
-  with a
-  vehicle is death (`specs/hazards.md`). The ice band reads as a **darker, duller
+  on an empty tile, but each row is a lane vehicles slide along — the critter
+  cannot enter a tile a vehicle occupies, and a vehicle that slides into the critter
+  is death (`specs/hazards.md`). The ice band reads as a **darker, duller
   ice** than the bright shores and median, so the median stands out as a clear safe
   strip (`specs/overview.md`).
 - The **water band** rows are deadly water: standing on a water tile with no floe

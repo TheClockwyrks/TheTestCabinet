@@ -83,7 +83,7 @@ export const HOP_ANIM = 0.12; // seconds the crouch->leap frame plays
 export const START_LIVES = 3;
 export const TOTAL_LEVELS = 8;
 export const LEVEL_SPEED_STEP = 1.06; // +6% lane/bear speed per level
-export const BEAR_SPEED_STEP = 0.94; // bear hop interval shrinks ~6% per level
+export const BEAR_SPEED_STEP = 1.06; // bear speed grows ~6% per level
 export const SECOND_BEAR_LEVEL = 5;
 
 export const TIMER_BASE = 30; // seconds at level 1
@@ -96,8 +96,10 @@ export const CLEAR_PAUSE = 1.6; // pause after clearing a level
 export const BAYFILL_PAUSE = 0.5; // brief pause after filling a bay
 
 // ---- The bear ----------------------------------------------------------
-export const BEAR_ICE_HOP = 0.33; // seconds/hop on ice or a floe (level 1)
-export const BEAR_SWIM_HOP = 0.5; // seconds/hop over open water (level 1)
+// Continuous, pacman-style motion: a fixed glide speed (tiles/second), turning
+// only at tile centers. ~3 tiles/s on ice/floe and ~2 tiles/s swimming (level 1).
+export const BEAR_ICE_SPEED = 3.0; // tiles/second on ice or a floe (level 1)
+export const BEAR_SWIM_SPEED = 2.0; // tiles/second over open water (level 1)
 export const BEAR_EMERGE_ADVANCE = 3; // rows the critter must advance first
 export const BEAR_EMERGE_DELAY = 0.6; // min seconds before (re)emerging
 export const BEAR_SECOND_DELAY = 1.4; // extra stagger for the second bear

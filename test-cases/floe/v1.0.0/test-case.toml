@@ -176,7 +176,7 @@ dest = "proof/cross.webm"
 [[domain]]
 id = "hunter"
 name = "The Hunter"
-description = "The signature: the bear emerging at the near shore and HOPPING after the critter one tile at a time across the whole strait, navigating around the hazards (and being reset if one catches it), swimming out onto the water after it while staying visible, catching a critter that hesitates or errs, resetting fairly between crossings, and quickening (and doubling) with the level."
+description = "The signature: the bear emerging at the near shore and chasing the critter continuously (pacman-style, turning only at tile centers) across the whole strait, navigating around the hazards (and being reset if one slides into it), swimming out onto the water after it while staying visible, catching a critter that hesitates or errs, resetting fairly between crossings, and speeding up (and doubling) with the level."
 
 [[domain]]
 id = "crossing"
@@ -194,7 +194,7 @@ description = "The crossing core: one-tile hopping, the solid ice lanes of slidi
 [[review_item]]
 id = "bear-pursues"
 title = "The bear hunts across the whole strait"
-text = "The bear emerges at the near shore after the critter advances, then pursues the critter's position across every band — ice, floes, and water — by HOPPING one tile at a time (discrete tile hops, not a smooth glide), not confined to any section. It hops a touch slower than a cleanly-played critter, so steady forward hopping stays ahead, but it visibly closes whenever the critter hesitates, backtracks, or gets stuck."
+text = "The bear emerges at the near shore after the critter advances, then pursues the critter's position across every band — ice, floes, and water — by moving CONTINUOUSLY (pacman-style: gliding smoothly at a fixed speed, always heading up/down/left/right and turning only at tile centers, never a discrete hop and never diagonal), not confined to any section. It moves a touch slower than a cleanly-played critter, so steady forward hopping stays ahead, but it visibly closes whenever the critter hesitates, backtracks, or gets stuck."
 weight = 1
 domain = "hunter"
 reference = "gameplay"
@@ -203,7 +203,7 @@ proof = "hunt"
 [[review_item]]
 id = "bear-navigates"
 title = "The bear navigates the hazards"
-text = "The bear is not immune to the world: it avoids the sliding vehicles and routes AROUND them (a vehicle-choked lane delays and detours it), and if a vehicle catches it, the bear is RESET — knocked out, removed, and re-emerging from the near shore after a delay — NOT merely staggered or dropped down a row. Luring it in front of a moving obstacle is a real way to open distance; the hunt returns rather than being permanently removed."
+text = "The bear is not immune to the world: it avoids the sliding vehicles and routes AROUND them (a vehicle-choked lane delays and detours it), and if a vehicle slides into it — into either tile it is straddling, since it occupies both while between tiles — the bear is RESET — knocked out, removed, and re-emerging from the near shore after a delay — NOT merely staggered or dropped down a row. Luring it in front of a moving obstacle is a real way to open distance; the hunt returns rather than being permanently removed."
 weight = 1
 domain = "hunter"
 proof = "hunt"
@@ -234,7 +234,7 @@ proof = "cross"
 [[review_item]]
 id = "ice-hazards"
 title = "The ice band of sliding hazards"
-text = "The ice band is solid lanes the critter hops freely on, each carrying sliding multi-tile vehicles — a 3-tile snow plow, a 2-tile dogsled, and a 2-tile car — moving at set speeds in alternating directions; contact with ANY tile a vehicle covers is death. The critter is safe in the gaps and on the shores/median (from vehicles), but never from the bear."
+text = "The ice band is solid lanes the critter hops freely on, each carrying sliding multi-tile vehicles — a 3-tile snow plow, a 2-tile dogsled, and a 2-tile car — moving at set speeds in alternating directions. The critter CANNOT step into a tile a vehicle occupies (the hop is refused, like a wall, with no death), but a vehicle that SLIDES INTO the critter's tile is death — you die only when traffic runs into you, never by stepping into it. The critter is safe in the gaps and on the shores/median (from vehicles), but never from the bear."
 weight = 1
 domain = "crossing"
 reference = "gameplay"

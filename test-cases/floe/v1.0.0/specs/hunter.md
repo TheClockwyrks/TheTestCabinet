@@ -12,51 +12,51 @@ game. The numeric values here are **fixed**; implement them exactly as written.
 
 The bear is a single live predator — a big white animal, about one tile, rendered
 from the provided sprite (`specs/assets.md`). It is **not** a lane hazard and
-**not** a timer: it has a tile position on the strait and it **hops toward the
-critter**, one tile at a time, following it wherever it goes. Touching the critter
-kills it (below).
+**not** a timer: it has a position on the strait and it **moves toward the
+critter**, following it wherever it goes. Touching the critter kills it (below).
 
-## The bear hops — the same way the critter moves
+## The bear moves continuously — pacman-style
 
-The bear moves by **discrete one-tile hops**, exactly like the critter — **not**
-a
-smooth continuous glide. Each hop takes it one tile up, down, left, or right (never
-diagonally, never more than one tile), and it **navigates the grid the same way
-the
-critter must**: it hops onto solid ice, rides and hops between floes, and swims
-across open water, tile by tile. Between hops it sits on its tile, so the player
-can
-read where it is and where it is about to go.
+The bear does **not** hop from tile to tile. It **glides continuously** along the
+strait at a fixed speed, the way a pursuer moves through a maze-chase game: it
+always travels in one of the four grid directions — up, down, left, or right,
+never diagonally — and it **changes direction only when it reaches a tile
+center**. At each tile center it picks the grid direction that best closes on the
+critter along a route that **avoids the sliding hazards** (below), then slides
+smoothly across to the next tile, where it chooses again. The motion itself is
+smooth and continuous; only the *turning* is quantized to the grid.
 
-- **Hop cadence.** The bear completes a hop about every **`0.33 s`** on solid ice
-  (roughly 3 tiles/second) and every **`0.5 s`** while swimming across the water
-  (roughly 2 tiles/second) at level 1. A critter that keeps hopping forward promptly
-  moves faster than this and **stays ahead** — but the bear closes about a tile
-  for
-  every hop-length the critter **hesitates, backtracks, or gets stuck**, so it gains
-  on any pause or mistake. Swimming is slower, so committing to the water buys the
-  critter a little tempo, but does **not** shake the bear.
-- **It respects the same movement rules the critter does.** Each hop it steps one
-  tile toward the critter along a route that **avoids the sliding hazards** (below);
-  it does not teleport, phase through walls, or move faster than its hop
-  cadence. It
-  can occupy any tile the critter can reach — solid ice, a floe, or open water —
-  but
-  it **cannot** enter the far shore's solid wall or a **filled bay**
-  (`specs/playfield.md`), so a critter safe in a filled bay is safe from the bear.
+- **Speed.** The bear moves about **`3` tiles/second** on solid ice or a floe and
+  about **`2` tiles/second** while swimming across open water, at level 1. A
+  critter that keeps advancing promptly outruns it and **stays ahead** — but the
+  bear eats about a tile of the critter's lead for every tile-length the critter
+  **hesitates, backtracks, or gets stuck**, so it gains on any pause or mistake.
+  Swimming is slower, so committing to the water buys the critter a little tempo,
+  but does **not** shake the bear.
+- **It occupies both tiles while it is between them.** Because it moves
+  continuously, the bear is usually **straddling two tiles** — the one it is
+  leaving and the one it is entering. For collision with the sliding hazards it is
+  treated as occupying **both** of those tiles until it fully settles onto the next
+  one (see *Navigating the hazards* below). For catching the critter it is a point
+  at its current position.
+- **It respects the same board the critter does.** It travels onto solid ice,
+  rides and swims across floes and open water, and it **cannot** enter the far
+  shore's solid wall or a **filled bay** (`specs/playfield.md`), so a critter safe
+  in a filled bay is safe from the bear. It never teleports, phases through the
+  far-shore wall, or exceeds its speed.
 
 ## Emerging and resetting
 
 - **Emerge.** At the start of a crossing the bear is not yet on the board. It
   **emerges from the near shore** (row 19, `specs/playfield.md`) once the
   critter has
-  hopped **a few tiles forward** off the near shore — so a fresh crossing always
+  advanced **a few tiles forward** off the near shore — so a fresh crossing always
   begins with a short head start, not an instant threat.
 - **Reset on a new crossing.** When a crossing ends — the critter dies
   (`specs/flow.md`) **or** fills a bay (`specs/water.md`) and a new crossing
   begins —
   the bear is **removed** and re-emerges only after the new critter has again
-  hopped a
+  advanced a
   few tiles forward. The bear is never sitting on top of a just-respawned critter.
 
 ## Navigating the hazards — and getting reset by them
@@ -64,22 +64,18 @@ read where it is and where it is about to go.
 The bear is **not** immune to the world — it navigates the same hazard board the
 critter does, and it can be **taken out** by the hazards:
 
-- It **avoids the sliding hazards** (`specs/hazards.md`): it will not hop into a
-  tile
-  a hazard occupies, and **routes around** them, so a hazard-choked lane
-  **delays and
-  detours** it. Leading the bear into a lane a hazard is sweeping is a
-  legitimate way
-  to open distance.
-- **If a hazard catches the bear, the bear is RESET.** If a plow, dogsled, or
-  car runs into the bear's tile (you juke it into traffic, or it mistimes a
-  lane), the bear is
-  **knocked out and removed** — it does **not** shrug it off, and it does **not**
-  merely drop back a row. It then **re-emerges from the near shore** after a short
-  delay, exactly as when a crossing begins. So driving the bear in front of a hazard
-  is a real tool: it buys you the whole time it takes the bear to re-emerge and
-  hop
-  back up to you.
+- It **avoids the sliding hazards** (`specs/hazards.md`): it will not turn toward a
+  tile a hazard occupies (or is about to sweep into), and **routes around** them,
+  so a hazard-choked lane **delays and detours** it. Leading the bear into a lane
+  a hazard is sweeping is a legitimate way to open distance.
+- **If a hazard catches the bear, the bear is RESET.** Because the bear occupies
+  both the tile it is leaving and the tile it is entering while it is between them
+  (above), a plow, dogsled, or car that slides into **either** of those tiles (you
+  juke it into traffic, or it mistimes a lane) **knocks it out and removes it** —
+  it does **not** shrug it off, and it does **not** merely drop back a row. It then
+  **re-emerges from the near shore** after a short delay, exactly as when a crossing
+  begins. So driving the bear in front of a hazard is a real tool: it buys you the
+  whole time it takes the bear to re-emerge and cross back up to you.
 
 (The critter is killed by the hazards, but the bear is only reset by them — the
 hunt
@@ -90,22 +86,23 @@ returns; it is never permanently removed.)
 Draw the bear from its provided frames (`specs/assets.md`), using the correct frame
 for its current state:
 
-- On ice and on a floe, draw the **run** frame for its current heading.
-- While **swimming**, draw the **submerged swim** frame set for its current heading
-  (`specs/assets.md`'s swim frames), including while it passes beneath a floe.
+- On ice and on a floe, draw the **run** frame for its current direction of travel.
+- While **swimming**, draw the **submerged swim** frame set for its current
+  direction (`specs/assets.md`'s swim frames), including while it passes beneath a
+  floe.
 
 ## Catching the critter
 
-If the bear reaches the critter — its tile lands on the critter's (or comes within
-about half a tile) — the critter is **caught** and **loses a life**
+If the bear reaches the critter — its position lands on the critter's (or comes
+within about half a tile) — the critter is **caught** and **loses a life**
 (`specs/flow.md`), wherever they are on the strait. This is the pressure behind
 the
-whole game: you can never stop and wait, because the bear is always hopping closer.
+whole game: you can never stop and wait, because the bear is always closing.
 
 ## Difficulty
 
-- The bear's hop cadence **quickens** with the level: its hop interval shrinks about
-  **6%** per level (both ice and swim), so late crossings give far less slack for
+- The bear's **speed increases** with the level: about **`+6%`** per level (both
+  its ice speed and its swim speed), so late crossings give far less slack for
   hesitation.
 - From **level 5** onward a **second bear** emerges (staggered from the first),
   so
@@ -115,7 +112,7 @@ whole game: you can never stop and wait, because the bear is always hopping clos
 
 The hazards and floes are the classic crossing puzzle; the bear is what turns it
 into
-a **chase**. Because it hops after you across the whole board and only its cadence
+a **chase**. Because it pursues you across the whole board and only its speed
 holds it back, every classic "wait on a safe tile for the lane to clear"
 instinct is
 a trap — the safe tile is where the bear catches up. Floe is about **reading the
