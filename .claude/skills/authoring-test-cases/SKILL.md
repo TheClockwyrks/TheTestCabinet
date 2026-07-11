@@ -1,6 +1,6 @@
 ---
 name: authoring-test-cases
-description: Read this skill before creating, revising, or adding a variant to ANY test case under test-cases/ — an end-to-end playable game, or an asset-generation case of any asset_kind (2D sprite/sprite-sheet drawn with draw/draw-sheet; static or animated voxel/cube models; static or animated meshed mc/sn/dc SDF/CSG models; skinned mc/sn/dc characters; ui high-res 2D; material PBR textures; particle systems; audio sfx/music). The authoring and variant procedures now live in the documentation site (Astro Starlight) so they serve both developers and agents; this skill routes you to the right guide and quickstart, and to the authoritative manifest/testing docs, by test type and asset_kind.
+description: Read this skill before creating, revising, or adding a variant to ANY test case under test-cases/ — an end-to-end playable game, a full-stack game that produces its own 2D assets during the run, or an asset-generation case of any asset_kind (2D sprite/sprite-sheet drawn with draw/draw-sheet; static or animated voxel/cube models; static or animated meshed mc/sn/dc SDF/CSG models; skinned mc/sn/dc characters; ui high-res 2D; material PBR textures; particle systems; audio sfx/music). The authoring and variant procedures now live in the documentation site (Astro Starlight) so they serve both developers and agents; this skill routes you to the right guide and quickstart, and to the authoritative manifest/testing docs, by test type and asset_kind.
 ---
 
 # Authoring test cases (documentation-first)
@@ -22,11 +22,13 @@ guides instruct.
 
 Pick the `asset_kind` from
 [`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md);
-an end-to-end case has no `asset_kind`.
+an end-to-end or full-stack case has no `asset_kind` (a full-stack case is an
+end-to-end game that additionally produces its own 2D assets during the run).
 
 | You are authoring… | Guide | Quickstart |
 | --- | --- | --- |
 | A playable game (end-to-end) | [`guides/authoring-an-end-to-end-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring/authoring-an-end-to-end-test-case.md) | [`quickstarts/author-an-end-to-end-test-case.md`](../../../apps/docs/src/content/docs/quickstarts/authoring/author-an-end-to-end-test-case.md) |
+| A playable game that produces its own 2D assets (full-stack) | [`guides/authoring-a-full-stack-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring/authoring-a-full-stack-test-case.md) | [`quickstarts/author-a-full-stack-test-case.md`](../../../apps/docs/src/content/docs/quickstarts/authoring/author-a-full-stack-test-case.md) |
 | A 2D sprite / sprite sheet (`sprite`, `sprite-sheet`) | [`guides/authoring-an-asset-generation-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring/authoring-an-asset-generation-test-case.md) | [`quickstarts/author-an-asset-generation-test-case.md`](../../../apps/docs/src/content/docs/quickstarts/authoring/author-an-asset-generation-test-case.md) |
 | A static voxel/cube model (`voxel-model`) | [`guides/authoring-a-voxel-model-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring/authoring-a-voxel-model-test-case.md) | — |
 | A rigged, animated voxel model (`voxel-animation`) | [`guides/authoring-a-voxel-animation-test-case.md`](../../../apps/docs/src/content/docs/guides/authoring/authoring-a-voxel-animation-test-case.md) | — |

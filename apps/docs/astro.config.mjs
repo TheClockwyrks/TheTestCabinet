@@ -156,6 +156,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "quickstarts/authoring/author-an-end-to-end-test-case",
+                "quickstarts/authoring/author-a-full-stack-test-case",
                 "quickstarts/authoring/author-an-asset-generation-test-case",
                 "quickstarts/authoring/author-a-voxel-model-test-case",
                 "quickstarts/authoring/author-a-voxel-animation-test-case",
@@ -211,6 +212,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "guides/authoring/authoring-an-end-to-end-test-case",
+                "guides/authoring/authoring-a-full-stack-test-case",
                 "guides/authoring/authoring-an-asset-generation-test-case",
                 "guides/authoring/authoring-a-voxel-model-test-case",
                 "guides/authoring/authoring-a-voxel-animation-test-case",
