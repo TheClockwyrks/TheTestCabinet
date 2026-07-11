@@ -3,9 +3,9 @@
 This is version `v1.0.0` of the **Coil** test case. The implemented game is an
 original grid-and-growth game titled **Coil**: classic grid-locked snake
 mechanics plus a **combo** multiplier (pellets eaten in quick succession score
-more) and three extra modes — **Wrap** (the board edges wrap into tunnels),
-**Maze** (fixed fatal interior obstacles), and **Feast** (a periodic,
-time-limited bonus orb).
+more), offered as four board variants — **Classic**, **Wrap** (the board edges
+wrap into tunnels), **Maze** (fixed fatal interior obstacles), and **Feast** (a
+periodic, time-limited bonus orb) — each a single playable mode, one per run.
 
 `coil` is the catalog slug for this lineage of grid-and-growth cases, and the
 game's in-fiction title. The case is inspired by classic snake games but is
@@ -35,17 +35,16 @@ a meaningful run without the scale of the harder cases.
 
 The specification is split across `specs/` by concern: the common `overview.md`,
 `playfield.md`, `mechanics.md`, and `flow.md` are seeded for every variant, and
-each variant seeds exactly one mode spec to the stable path `specs/mode.md` from
-its own flat `specs/mode-<slug>.md` source (`mode-base.md`, `mode-wrap.md`,
-`mode-maze.md`, `mode-feast.md` — the alt sources define Classic *and* their extra
-mode, since each variant's seed must stand alone). The common specs reference
-`specs/mode.md` for any rule a variant changes, so they never name a mode spec a
-variant does not seed. Each variant is a standalone TOML file under `variants/`,
-listed in order in the manifest's `variants` key. The case offers four variants —
-`base` (Classic mode only), `wrap` (Classic plus Wrap mode), `maze` (Classic plus
-Maze mode), and `feast` (Classic plus Feast mode). The three alt variants each
-declare their own scoring domain, so that mode is rated independently of the
-common gameplay domain.
+each variant seeds exactly one self-contained mode spec to the stable path
+`specs/mode.md` from its own flat `specs/mode-<slug>.md` source (`mode-base.md`,
+`mode-wrap.md`, `mode-maze.md`, `mode-feast.md` — each defining a single playable
+mode, so a run only ever sees one). The common specs reference `specs/mode.md`
+for any rule a variant changes, so they never name a mode spec a variant does not
+seed. Each variant is a standalone TOML file under `variants/`, listed in order
+in the manifest's `variants` key. The case offers four variants — `base`
+(Classic), `wrap` (Wrap), `maze` (Maze), and `feast` (Feast). The three alt
+variants each declare their own scoring domain, so that mode is rated
+independently of the common gameplay domain.
 
 This version has **no assets**: Coil is simple enough to leave all visuals to
 the model, guided by the palette and measurements in the specs and by the seeded

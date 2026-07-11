@@ -1,35 +1,33 @@
-# Spectra — Sortie and Overload
+# Spectra — Overload
 
-This file defines the game's two modes and their main-menu entries. It builds on
-the stage in `specs/playfield.md`, polarity in `specs/polarity.md`, the controls
-in `specs/controls.md`, the drones in `specs/enemies.md`, and the wave flow in
+This file defines the game's mode and its main-menu entry. It builds on the stage
+in `specs/playfield.md`, polarity in `specs/polarity.md`, the controls in
+`specs/controls.md`, the drones in `specs/enemies.md`, and the wave flow in
 `specs/flow.md`.
 
-## Menu entries
+## Menu entry
 
-This file adds the following entries to the main menu (see Game states in
-`specs/flow.md`), in this order, before `HOW TO PLAY`:
+This mode adds the following entry to the main menu (see Game states in
+`specs/flow.md`), before `HOW TO PLAY`:
 
-- `LAUNCH` — starts the standard **Sortie** mode (below).
-- `OVERLOAD` — starts the **Overload** mode (below).
+- `OVERLOAD`
 
 (`HOW TO PLAY` is a state defined in `specs/flow.md`, not a mode, and is always
 shown last in the menu.)
 
-## Sortie
+## Mode
 
-- **Sortie** — the single-ship defense. You pilot the resonator-fighter against
-  wave after wave of the drone swarm, flipping bands to match what you fire at and
-  to shield what fires at you, clearing each stage and pressing into faster,
-  deeper stages until your last life is lost.
+- **Overload** — the single-ship defense, but **mismatched shots are no longer
+  harmless**. You pilot the resonator-fighter against wave after wave of the drone
+  swarm, flipping bands to match what you fire at and to shield what fires at you;
+  a wrong-band shot, though, now **feeds** the drone it hits, charging it toward an
+  **overload** that makes it more dangerous. You can no longer spray the swarm and
+  ignore your band — every shot must match, or you are arming the enemy.
 
-Sortie uses every system exactly as the common specs define it, with no overrides:
+Overload uses every system exactly as the common specs define it, with a single
+rule changed (what a **mismatched** offensive shot does):
 
-- the **two bands** and the **match-to-destroy** rule from `specs/polarity.md`,
-  with a **mismatched** shot — one opposite the drone's current band —
-  **wasted**: it is absorbed and the bullet consumed, dealing no damage and
-  having no other effect (you cannot harm a drone of the band you are not tuned
-  to);
+- the **two bands** and the **match-to-destroy** rule from `specs/polarity.md`;
 - the **dual-use shield** and the **resonance meter and discharge** from
   `specs/polarity.md`;
 - the movement, firing, and flip controls from `specs/controls.md`;
@@ -38,16 +36,11 @@ Sortie uses every system exactly as the common specs define it, with no override
 - the stages, challenge stages, scoring, lives, and stage scaling from
   `specs/flow.md`.
 
-## Overload
+## Mismatched shots charge the drone
 
-- **Overload** — the same defense as Sortie, but **mismatched shots are no longer
-  harmless**. A wrong-band shot now **feeds** the drone it hits, charging it toward
-  an **overload** that makes it more dangerous. You can no longer spray the swarm
-  and ignore your band — every shot must match, or you are arming the enemy.
-
-**Overload changes one rule (mismatched shots).** In Overload, the "mismatch is
-wasted" behavior of Sortie is replaced with the following. Each drone carries a
-**charge** counter, starting at `0`:
+**Overload changes one rule (mismatched shots).** The "mismatch is wasted"
+behavior that `specs/polarity.md` leaves to this mode is defined as follows. Each
+drone carries a **charge** counter, starting at `0`:
 
 - A **matching** shot still **destroys** the drone (or its exposed layer, for the
   Prism) exactly as in `specs/polarity.md`.
@@ -77,7 +70,7 @@ Each drone overloads in a way true to its identity:
   **spawns one extra Shard escort** (of a random band) alongside it. Feeding a
   Prism the wrong band on its shell only grows the swarm around it.
 
-Everything else in Overload is exactly as in Sortie: the two bands and matching
-kills, the dual-use shield, the resonance meter and discharge, all three drones
-and the Prism's spectral inversion, and the stages, challenge stages, scoring,
-lives, and stage scaling. Only what a **mismatched shot** does changes.
+Everything else is exactly as the common specs define it: the two bands and
+matching kills, the dual-use shield, the resonance meter and discharge, all three
+drones and the Prism's spectral inversion, and the stages, challenge stages,
+scoring, lives, and stage scaling. Only what a **mismatched shot** does changes.

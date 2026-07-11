@@ -20,8 +20,8 @@ target without giving away the implementation.
 
 Each file corresponds to a canonical view slug. The `gameplay` and `game-over`
 views are **common** — the same mockup is rendered and seeded for every variant.
-The `title` view is **variant-specific**: the main menu lists a different set of
-modes per variant, so each variant declares its own menu mockup (see the
+The `title` view is **variant-specific**: the main menu lists a different mode
+per variant, so each variant declares its own menu mockup (see the
 `[[variant]]` `reference` entries in `../test-case.toml`).
 
 | View slug   | Mockup source         | Description                          |
@@ -31,8 +31,8 @@ modes per variant, so each variant declares its own menu mockup (see the
 | `game-over` | `game-over.html`      | Game-over panel (common).            |
 
 The `title` view has one mockup per variant: `menu-base.html` (`LAUNCH` /
-`HOW TO PLAY`) and `menu-overload.html`, which inserts the `OVERLOAD` mode between
-the two, matching each variant's seeded mode spec.
+`HOW TO PLAY`) and `menu-overload.html` (`OVERLOAD` / `HOW TO PLAY`), each listing
+that variant's single seeded mode.
 
 The `gameplay.html` frame shows the intended look of a live wave: a swaying
 formation holding both bands (with a Prism at its center), drones diving and

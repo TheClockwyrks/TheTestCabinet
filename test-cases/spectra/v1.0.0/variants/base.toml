@@ -10,8 +10,8 @@ description = "The standard Sortie defense only."
 # It defines only the standard Sortie mode.
 spec = [{ source = "specs/mode-base.md", dest = "specs/mode.md" }]
 
-# The main menu lists a different set of modes per variant, so each variant
-# supplies its own `title` reference; `gameplay` and `game-over` are common.
+# The main menu lists a different mode per variant, so each variant supplies its
+# own `title` reference; `gameplay` and `game-over` are common.
 reference = [{ view = "title", path = "reference/menu-base.html" }]
 
 # The authored, *correct* static build of this variant — the case-variant

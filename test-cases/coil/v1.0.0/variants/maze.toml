@@ -1,13 +1,13 @@
-# Classic plus Maze mode, with fixed fatal interior obstacles. Maze is a separate
-# mode, so it is rated on its own scoring domain rather than folded into the
-# common gameplay domain. Seeds its own mode spec, its own `title` menu, and the
-# review item that rolls up to that domain.
+# Maze mode, with fixed fatal interior obstacles. Maze replaces the base mode, so
+# it is rated on its own scoring domain rather than folded into the common
+# gameplay domain. Seeds its own mode spec, its own `title` menu, and the review
+# item that rolls up to that domain.
 slug = "maze"
 name = "Maze"
-description = "Classic plus Maze mode, with fixed fatal interior obstacles."
+description = "Maze mode, with fixed fatal interior obstacles."
 
-# The mode spec (Classic plus Maze) replaces the common specs' stable
-# `specs/mode.md`. `dest` is explicit because the source name differs.
+# This variant's single mode spec (Maze) is seeded to the stable `specs/mode.md`
+# the common specs reference. `dest` is explicit because the source name differs.
 spec = [{ source = "specs/mode-maze.md", dest = "specs/mode.md" }]
 reference = [{ view = "title", path = "reference/menu-maze.html" }]
 

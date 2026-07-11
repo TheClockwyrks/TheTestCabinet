@@ -1,38 +1,31 @@
-# Coil — Classic and Maze modes
+# Coil — Maze mode
 
-This file defines this build's two playable modes, **Classic** and **Maze**, and
-their main-menu entries. It builds on the board in `specs/playfield.md`, the
-simulation in `specs/mechanics.md`, and the scoring and flow in `specs/flow.md`.
+This file defines this build's one playable mode, **Maze**, and its main-menu
+entry. It builds on the board in `specs/playfield.md`, the simulation in
+`specs/mechanics.md`, and the scoring and flow in `specs/flow.md`.
 
-## Menu entries
+## Menu entry
 
-This spec adds the following entries to the main menu (see Game states in
-`specs/flow.md`), in this order, before `HOW TO PLAY`:
+This spec adds the following entry to the main menu (see Game states in
+`specs/flow.md`), before `HOW TO PLAY`:
 
-- `CLASSIC` — the **first** menu item.
-- `MAZE` — directly **after** `CLASSIC`.
+- `MAZE`
 
 (`HOW TO PLAY` is a state defined in `specs/flow.md`, not a mode, and is always
 shown last in the menu.)
 
-## Classic
-
-- **Classic** — the standard game on the fully enclosed `30 x 18` board from
-  `specs/playfield.md`. The four perimeter walls are **solid and fatal** and the
-  board does **not** wrap, so the interior playable area is `28 x 16` (`col` in
-  `[1, 28]`, `row` in `[1, 16]`). Exactly one pellet is on the board at a time,
-  there are no interior obstacles, and there is no bonus orb. It uses the 125 ms
-  tick interval, the standard single-pellet placement, the combo scoring, and the
-  standard collision and growth rules.
-
 ## Maze
 
-Everything in Classic applies to Maze except where this section overrides it.
+- **Maze** — the game on the fully enclosed `30 x 18` board from
+  `specs/playfield.md` (solid, fatal perimeter walls; interior playable area
+  `28 x 16`), with a set of **fixed interior obstacles** added. Obstacle cells are
+  solid and fatal on contact, just like walls, turning the open board into a
+  course the snake must thread.
 
-- **Maze** — the same fully enclosed `30 x 18` board as Classic, with a set of
-  **fixed interior obstacles** added. Obstacle cells are solid and fatal on
-  contact, just like walls, turning the open board into a course the snake must
-  thread.
+Maze uses the 125 ms tick interval (`specs/mechanics.md`), the standard
+single-pellet placement (`specs/playfield.md`), the combo scoring
+(`specs/mechanics.md` and `specs/flow.md`), and the standard collision and growth
+rules — with the interior obstacles below added.
 
 ### Obstacles
 
@@ -63,5 +56,5 @@ has a free horizontal runway at the start.
   the set of valid pellet cells (see Placement in `specs/playfield.md`).
 
 Walls, tick rate, single-pellet placement, combo scoring, growth, and the
-body/tail collision rule are all unchanged from Classic; Maze only adds the
-fatal interior obstacle cells.
+body/tail collision rule are all as defined in the common specs; Maze only adds
+the fatal interior obstacle cells.

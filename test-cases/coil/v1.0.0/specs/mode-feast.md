@@ -1,44 +1,38 @@
-# Coil — Classic and Feast modes
+# Coil — Feast mode
 
-This file defines this build's two playable modes, **Classic** and **Feast**, and
-their main-menu entries. It builds on the board in `specs/playfield.md`, the
-simulation in `specs/mechanics.md`, and the scoring and flow in `specs/flow.md`.
+This file defines this build's one playable mode, **Feast**, and its main-menu
+entry. It builds on the board in `specs/playfield.md`, the simulation in
+`specs/mechanics.md`, and the scoring and flow in `specs/flow.md`.
 
-## Menu entries
+## Menu entry
 
-This spec adds the following entries to the main menu (see Game states in
-`specs/flow.md`), in this order, before `HOW TO PLAY`:
+This spec adds the following entry to the main menu (see Game states in
+`specs/flow.md`), before `HOW TO PLAY`:
 
-- `CLASSIC` — the **first** menu item.
-- `FEAST` — directly **after** `CLASSIC`.
+- `FEAST`
 
 (`HOW TO PLAY` is a state defined in `specs/flow.md`, not a mode, and is always
 shown last in the menu.)
 
-## Classic
-
-- **Classic** — the standard game on the fully enclosed `30 x 18` board from
-  `specs/playfield.md`. The four perimeter walls are **solid and fatal** and the
-  board does **not** wrap, so the interior playable area is `28 x 16` (`col` in
-  `[1, 28]`, `row` in `[1, 16]`). Exactly one pellet is on the board at a time,
-  there are no interior obstacles, and there is no bonus orb. It uses the 125 ms
-  tick interval, the standard single-pellet placement, the combo scoring, and the
-  standard collision and growth rules.
-
 ## Feast
 
-Everything in Classic applies to Feast except where this section overrides it.
+- **Feast** — the game on the fully enclosed `30 x 18` board from
+  `specs/playfield.md` (solid, fatal perimeter walls; interior playable area
+  `28 x 16`), plus a periodic, time-limited **bonus orb** that appears in addition
+  to the ordinary pellet. The orb is worth far more than a pellet but only stays
+  for a few seconds, so it rewards a player willing to take a risky detour for
+  points.
 
-- **Feast** — the same fully enclosed `30 x 18` board as Classic, plus a
-  periodic, time-limited **bonus orb** that appears in addition to the ordinary
-  pellet. The orb is worth far more than a pellet but only stays for a few
-  seconds, so it rewards a player willing to take a risky detour for points.
+Feast uses the 125 ms tick interval (`specs/mechanics.md`), the standard
+single-pellet placement (`specs/playfield.md`), the combo scoring
+(`specs/mechanics.md` and `specs/flow.md`), and the standard collision and growth
+rules — with the bonus orb below added.
 
 ### The bonus orb
 
-- The standard pellet behaves exactly as in Classic and is always present. The
-  bonus orb is **separate** and is present only some of the time. There is at
-  most **one** bonus orb on the board at any moment.
+- The standard pellet behaves exactly as in the common specs and is always
+  present. The bonus orb is **separate** and is present only some of the time.
+  There is at most **one** bonus orb on the board at any moment.
 - The orb occupies a single cell drawn in the bonus-orb color with a soft glow,
   visibly distinct from the pellet. It **blinks** the whole time it is present,
   and blinks **faster** during its final **2 seconds** to warn it is about to
@@ -61,5 +55,5 @@ Everything in Classic applies to Feast except where this section overrides it.
   pellet on the board is untouched).
 
 Walls, tick rate, single-pellet placement, growth, and the body/tail collision
-rule are all unchanged from Classic; Feast only adds the bonus orb described
-here.
+rule are all as defined in the common specs; Feast only adds the bonus orb
+described here.

@@ -29,10 +29,10 @@ This specification is split across several files:
   and the combo mechanic.
 - `specs/flow.md` — scoring, game states, controls, audio, the HUD, key
   behaviors, and what is out of scope.
-- `specs/mode.md` — the playable game mode(s) and their main-menu entries.
+- `specs/mode.md` — the playable game mode and its main-menu entry.
 
-Read every spec file, including `specs/mode.md`, and implement the mode(s) it
-defines. The main menu lists those modes, then `HOW TO PLAY`.
+Read every spec file, including `specs/mode.md`, and implement the mode it
+defines. The main menu lists that mode, then `HOW TO PLAY`.
 
 ## Goal of this build
 

@@ -83,23 +83,24 @@ import {
 import { buildChallenge, buildWave, type Entrant } from "./waves";
 import type { Bullet, Drone, GameState } from "./types";
 
-// This variant seeds Overload alongside the standard Sortie, so the title menu
-// lists OVERLOAD between LAUNCH and HOW TO PLAY (see reference/menu-overload.html
-// and specs/modes/overload.md "Menu entry").
-const TITLE_MENU = ["LAUNCH", "OVERLOAD", "HOW TO PLAY"];
+// This variant seeds the single Overload mode (it replaces the base Sortie), so
+// the title menu lists just OVERLOAD and HOW TO PLAY (see
+// reference/menu-overload.html and specs/mode.md "Menu entry").
+const TITLE_MENU = ["OVERLOAD", "HOW TO PLAY"];
 const PAUSE_MENU = ["RESUME", "RESTART", "QUIT TO MENU"];
 const GAMEOVER_MENU = ["PLAY AGAIN", "MENU"];
 
-// The selected mode. Sortie is the standard defense; Overload replaces the
-// "mismatch is wasted" rule with the charge/overload mechanic (specs/modes/overload.md).
+// The playable mode. Overload replaces the base Sortie's "mismatch is wasted"
+// rule with the charge/overload mechanic (specs/mode.md). The "sortie" member is
+// retained for the shared rule paths but is not offered by this variant's menu.
 export type Mode = "sortie" | "overload";
 
 export class Game {
   state: GameState = "title";
   menuIndex = 0;
-  // Which mode the current (or most recent) run is playing. Restart and Play
-  // Again keep this mode; only the title menu changes it.
-  mode: Mode = "sortie";
+  // Which mode the current (or most recent) run is playing. This variant only
+  // offers Overload; Restart and Play Again keep this mode.
+  mode: Mode = "overload";
 
   // Run state.
   score = 0;
@@ -172,8 +173,7 @@ export class Game {
       switch (this.state) {
         case "title":
           this.menuNav(code, TITLE_MENU.length, () => {
-            if (this.menuIndex === 0) this.startGame("sortie");
-            else if (this.menuIndex === 1) this.startGame("overload");
+            if (this.menuIndex === 0) this.startGame("overload");
             else this.state = "howto";
           });
           break;
@@ -415,7 +415,7 @@ export class Game {
         }
         case "diving": {
           // A Shard in its Overload headlong plunge travels faster than a normal
-          // dive (specs/modes/overload.md).
+          // dive (specs/mode.md).
           const diveSpeed = d.headlong ? OVERLOAD_DIVE_SPEED : DIVE_SPEED;
           d.pathDist += diveSpeed * speedMult * dt;
           const p = d.path!.at(d.pathDist);
@@ -767,7 +767,7 @@ export class Game {
     }
   }
 
-  // ---- Overload mode (specs/modes/overload.md) ----------------------------
+  // ---- Overload mode (specs/mode.md) ----------------------------
   // A mismatched shot adds a charge; at OVERLOAD_CHARGE the drone overloads with
   // its per-type reaction and its charge resets to 0 (it can overload again).
   private chargeDrone(d: Drone): void {

@@ -11,10 +11,11 @@ What keeps Coil from being pure survival is the **combo**. Pellets eaten in
 close succession stack a scoring multiplier, but the window decays in a couple
 of seconds, so points go to the player who reads the board and takes the
 tightest route from one pellet to the next, not the one who simply stays alive
-longest. Three modes bend the base game around that idea: **Wrap** opens the
-four edges into tunnels so the snake loops off one side and back the other,
-**Maze** plants a fixed course of fatal obstacles to thread, and **Feast** drops
-a high-value bonus orb that lingers only a few seconds before it's gone.
+longest. Three variants bend the base game around that idea, each its own board:
+**Wrap** opens the four edges into tunnels so the snake loops off one side and
+back the other, **Maze** plants a fixed course of fatal obstacles to thread, and
+**Feast** drops a high-value bonus orb that lingers only a few seconds before
+it's gone.
 
 ## Why it is a benchmark
 

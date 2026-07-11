@@ -4,7 +4,7 @@ This file defines the wave/stage progression, the challenge stages, scoring,
 lives, stage scaling, the game's state machine, the HUD, audio, the behaviors
 that make good test targets, and what is out of scope. It refers to the stage in
 `specs/playfield.md`, polarity in `specs/polarity.md`, the controls in
-`specs/controls.md`, the drones in `specs/enemies.md`, and the mode(s) in
+`specs/controls.md`, the drones in `specs/enemies.md`, and the mode in
 `specs/mode.md`.
 
 ## Stages and waves
@@ -89,8 +89,8 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. **Title / main menu.** Shows the title `SPECTRA`, the tagline `TUNE TO
-   SURVIVE`, and a vertical menu listing the playable mode(s) defined in
-   `specs/mode.md` (which declares each mode's menu entry), followed by
+   SURVIVE`, and a vertical menu listing the playable mode defined in
+   `specs/mode.md` (which declares the mode's menu entry), followed by
    `HOW TO PLAY`. The
    selected item is highlighted. A dim slice of starfield with a drone or two may
    show behind the menu for atmosphere.
@@ -129,8 +129,8 @@ interacts (browsers block autoplay).
 The game must exhibit these behaviors. They are observable and make good test
 targets:
 
-- A **matching** shot destroys a drone; a **mismatched** shot is **wasted**
-  (`specs/polarity.md`).
+- A **matching** shot destroys a drone; what a **mismatched** shot does is
+  defined by the active mode (`specs/polarity.md`, `specs/mode.md`).
 - Your band is your **shield**: a **same-band** enemy bullet is absorbed and feeds
   resonance, an **opposite-band** bullet costs a life, and a **drone body** always
   costs a life on contact.

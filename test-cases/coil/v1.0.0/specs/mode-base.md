@@ -7,7 +7,7 @@ entry. It builds on the board in `specs/playfield.md`, the simulation in
 ## Menu entry
 
 This spec adds the following entry to the main menu (see Game states in
-`specs/flow.md`), as the **first** menu item:
+`specs/flow.md`), before `HOW TO PLAY`:
 
 - `CLASSIC`
 

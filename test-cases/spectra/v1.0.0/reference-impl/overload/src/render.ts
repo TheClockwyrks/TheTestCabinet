@@ -224,7 +224,7 @@ function drawDrone(ctx: CanvasRenderingContext2D, game: Game, d: Drone): void {
   }
 
   // Overload charge telegraph: a row of pips above a drone that has taken
-  // mismatched shots, filling toward its overload (specs/modes/overload.md).
+  // mismatched shots, filling toward its overload (specs/mode.md).
   if (game.mode === "overload" && d.charge > 0) drawChargePips(ctx, d);
 }
 

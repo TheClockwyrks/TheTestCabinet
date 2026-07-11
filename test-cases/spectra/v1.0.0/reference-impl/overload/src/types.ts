@@ -55,10 +55,10 @@ export interface Drone {
   // For a diving drone: scheduled firing distances still pending.
   fireAt: number[];
   // True while this drone is in a fast, straight headlong plunge — a Shard's
-  // Overload reaction (specs/modes/overload.md). Only meaningful in Overload mode.
+  // Overload reaction (specs/mode.md). Only meaningful in Overload mode.
   headlong: boolean;
 
-  // --- Overload mode (specs/modes/overload.md) ---
+  // --- Overload mode (specs/mode.md) ---
   // Mismatched-shot charge. A wrong-band shot adds 1; at OVERLOAD_CHARGE the drone
   // overloads (its per-type reaction) and this resets to 0. Always 0 in Sortie.
   charge: number;

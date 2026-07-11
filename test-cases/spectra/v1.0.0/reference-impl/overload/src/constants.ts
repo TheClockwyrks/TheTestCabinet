@@ -112,7 +112,7 @@ export const RES_KILL = 4; // per matching kill (Prism core counts, shell does n
 export const DISCHARGE_TIME = 0.5; // expanding-wave duration
 export const DISCHARGE_MAX_R = 1500; // wave radius that covers the whole stage
 
-// ---- Overload mode (specs/modes/overload.md) ------------------------------
+// ---- Overload mode (specs/mode.md) ------------------------------
 // A mismatched (wrong-band) offensive shot no longer wastes: it adds 1 charge to
 // the drone it hits, and at OVERLOAD_CHARGE the drone overloads with a per-type
 // reaction and its charge resets to 0. (Only in the Overload mode; Sortie is

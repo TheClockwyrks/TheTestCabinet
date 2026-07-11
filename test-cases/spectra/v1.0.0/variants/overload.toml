@@ -1,15 +1,14 @@
-# Sortie plus Overload, where mismatched shots feed the drone toward an overload
-# instead of being wasted. Its review item rolls up to the common `polarity`
-# domain, since Overload extends the band-matching system rather than adding a new
-# axis of judgement.
+# Overload, where mismatched shots feed the drone toward an overload instead of
+# being wasted. Its review item rolls up to the common `polarity` domain, since
+# Overload extends the band-matching system rather than adding a new axis of
+# judgement.
 slug = "overload"
 name = "Overload"
-description = "Sortie plus Overload, where mismatched shots feed the drone toward an overload instead of being wasted."
+description = "Overload, where mismatched shots feed the drone toward an overload instead of being wasted."
 
 # This variant's mode spec, seeded to the stable path `specs/mode.md` (the same
-# path every variant seeds its mode spec to). It is self-contained: it defines
-# both the standard Sortie mode and the Overload mode, with their menu entries, so
-# this variant offers both.
+# path every variant seeds its mode spec to). It is self-contained: it defines the
+# single Overload mode and its menu entry, replacing the base Sortie mode.
 spec = [{ source = "specs/mode-overload.md", dest = "specs/mode.md" }]
 reference = [{ view = "title", path = "reference/menu-overload.html" }]
 

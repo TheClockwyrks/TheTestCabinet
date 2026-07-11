@@ -96,13 +96,13 @@ packages = ["@test-cabinet/particle-runtime"]
 # Each is declared in its own file under `variants/` and listed here in order —
 # the first is the default. Each seeds the common specs plus its own mode spec at
 # the stable path `specs/mode.md` (from its `specs/mode-<slug>.md` source),
-# supplies its own `title` menu reference (the main menu lists a different set of
-# modes per variant; `gameplay` and `game-over` are common), and — for the
-# overload variant — the review item for the Overload mode (rolling up to the
-# common `polarity` domain, since Overload extends the band system):
-#   - base     — Sortie only.
-#   - overload — Sortie plus Overload, where a mismatched shot no longer wastes but
-#                charges the drone toward a per-type overload.
+# supplies its own `title` menu reference (the main menu lists a different mode
+# per variant; `gameplay` and `game-over` are common), and — for the overload
+# variant — the review item for the Overload mode (rolling up to the common
+# `polarity` domain, since Overload extends the band system):
+#   - base     — Sortie.
+#   - overload — Overload, where a mismatched shot no longer wastes but charges the
+#                drone toward a per-type overload.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",

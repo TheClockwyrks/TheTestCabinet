@@ -21,8 +21,8 @@ implementation.
 
 Each file corresponds to a canonical view slug. The `gameplay` and `game-over`
 views are **common** — the same mockup is rendered and seeded for every variant.
-The `title` view is **variant-specific**: the main menu lists a different set of
-modes per variant, so each variant declares its own menu mockup (see the
+The `title` view is **variant-specific**: the main menu lists a different mode
+per variant, so each variant declares its own menu mockup (see the
 `[[variant]]` `reference` entries in `../test-case.toml`).
 
 | View slug   | File(s)                                                                 | Description                                         |
@@ -31,10 +31,11 @@ modes per variant, so each variant declares its own menu mockup (see the
 | `gameplay`  | `gameplay.html`                                                         | Representative in-game frame (common).              |
 | `game-over` | `game-over.html`                                                        | Game-over result panel (common).                    |
 
-The `title` mockups differ only in their menu list: `menu-base.html` shows
-`CLASSIC` / `HOW TO PLAY`; `menu-wrap.html` inserts `WRAP`; `menu-maze.html`
-inserts `MAZE`; and `menu-feast.html` inserts `FEAST` — matching each variant's
-seeded mode spec. (The `wrap` mockup additionally draws the board's perimeter as
+The `title` mockups differ only in their menu list, each showing that variant's
+single mode above `HOW TO PLAY`: `menu-base.html` shows `CLASSIC`;
+`menu-wrap.html` shows `WRAP`; `menu-maze.html` shows `MAZE`; and
+`menu-feast.html` shows `FEAST` — matching each variant's seeded mode spec. (The
+`wrap` mockup additionally draws the board's perimeter as
 an open tunnel boundary; the `maze` mockup adds the dimmed interior obstacle
 bars; and the `feast` mockup adds a dimmed bonus orb — each hinting at its
 mode.)

@@ -12,8 +12,8 @@ name = "Coil"
 
 # Relative difficulty of this case, surfaced on the site. Coil's rules are
 # simple, but a polished, playable build with a correct fixed-timestep loop,
-# grid-locked turning, a decaying combo, multiple modes, and several states is a
-# real front-end task — so it sits at the easy end of the scale, alongside Carom.
+# grid-locked turning, a decaying combo, and several states is a real front-end
+# task — so it sits at the easy end of the scale, alongside Carom.
 difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
@@ -67,16 +67,16 @@ init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
-# the first is the default. Each seeds the common specs plus its own mode spec at
-# the stable path `specs/mode.md` (so the common specs can reference it freely),
-# supplies its own `title` menu reference (the main menu lists a different set of
-# modes per variant; `gameplay` and `game-over` are common), and — for the three
-# alt variants — declares its own scoring domain and the review item that rolls up
-# to it:
-#   - base  — Classic mode only.
-#   - wrap  — Classic plus Wrap mode, where the board edges become wrapping tunnels (own domain).
-#   - maze  — Classic plus Maze mode, with fixed fatal interior obstacles (own domain).
-#   - feast — Classic plus Feast mode, with a periodic, time-limited bonus orb (own domain).
+# the first is the default. Each seeds the common specs plus its own single mode
+# spec at the stable path `specs/mode.md` (so the common specs can reference it
+# freely), supplies its own `title` menu reference (the main menu lists a
+# different mode per variant; `gameplay` and `game-over` are common), and — for
+# the three alt variants — declares its own scoring domain and the review item
+# that rolls up to it:
+#   - base  — Classic mode.
+#   - wrap  — Wrap mode, where the board edges become wrapping tunnels (own domain).
+#   - maze  — Maze mode, with fixed fatal interior obstacles (own domain).
+#   - feast — Feast mode, with a periodic, time-limited bonus orb (own domain).
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = [
   "variants/base.toml",

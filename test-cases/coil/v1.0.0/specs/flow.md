@@ -2,7 +2,7 @@
 
 This file defines scoring, the game's state machine, controls, audio, the HUD,
 and the behaviors that make good test targets. It refers to the geometry in
-`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the mode(s) in
+`specs/playfield.md`, the simulation in `specs/mechanics.md`, and the mode in
 `specs/mode.md`.
 
 ## Scoring
@@ -26,8 +26,8 @@ The game is a small state machine. Each state has a clear screen and controls.
 
 1. **Title / main menu.** Shows the title `COIL`, the tagline `GRID SERPENT`,
    the current `BEST` score, and a vertical menu. The menu lists the playable
-   mode(s) defined in `specs/mode.md` — that spec declares each mode's menu entry
-   and where it sits — followed by `HOW TO PLAY`. The selected item is
+   mode defined in `specs/mode.md` — that spec declares the mode's menu entry —
+   followed by `HOW TO PLAY`. The selected item is
    highlighted. The board furniture (walls, a coiled snake, a pellet) may show
    dimmed behind the menu.
 2. **How to play.** A simple screen describing the controls and the combo
@@ -45,7 +45,7 @@ The game is a small state machine. Each state has a clear screen and controls.
    `BOARD CLEARED` heading instead of `GAME OVER`; it offers the same choices.
 
 The game starts on the title screen and does not begin a round until the player
-selects a mode.
+selects the mode.
 
 ## Controls
 
@@ -98,8 +98,9 @@ tests:
   pellet, never on a wall, the snake, an obstacle, or another pellet/orb.
 - The snake may follow its own retreating tail on a normal tick, but moving into
   any body cell on a growth tick (when the tail does not retract) is fatal.
-- Hitting a wall or the snake's own body ends the round immediately, with no
-  grace frames.
+- The head hitting a fatal cell — a solid wall or interior obstacle where the
+  mode has them (`specs/mode.md`), or the snake's own body — ends the round
+  immediately, with no grace frames.
 - A pellet awards `10 * M`. `M` rises by one (capped at 5) when a pellet is
   eaten while the combo window is open, and resets to 1 when the window lapses.
 - The high score persists across sessions via `localStorage` and updates live
