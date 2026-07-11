@@ -72,6 +72,9 @@ export class Audio {
   bay(): void {
     this.blip(660, 0.1, "triangle", 0.14, 990);
   }
+  bonusLife(): void {
+    this.arpeggio([784, 1047, 1319], 0.08, "triangle", 0.15);
+  }
   levelClear(): void {
     this.arpeggio([523, 659, 784, 1047], 0.09, "triangle");
   }

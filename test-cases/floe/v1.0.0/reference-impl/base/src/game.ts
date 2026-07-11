@@ -17,9 +17,13 @@ import {
   CLEAR_PAUSE,
   COLOR,
   DEATH_PAUSE,
+  FISH_INTERVAL,
+  FISH_LINGER,
   HOP_COOLDOWN,
   ROW_NEAR,
   SCORE_BAY,
+  SCORE_BONUS_CATCH,
+  SCORE_BONUS_LIFE,
   SCORE_LEVEL,
   SCORE_ROW,
   SCORE_TIME_BONUS,
@@ -95,6 +99,19 @@ export class Game implements WorldView {
   timer = TIMER_BASE;
   timerMax = TIMER_BASE;
   bays: boolean[] = new Array(BAY_COUNT).fill(false);
+
+  // Bonus life: a life is awarded each time the score crosses a SCORE_BONUS_LIFE
+  // (10,000-point) milestone. This is the next milestone still to be reached.
+  private nextBonusLife = SCORE_BONUS_LIFE;
+
+  // Bonus catch: a fish sits in one open bay for FISH_LINGER seconds, then a new
+  // one appears in another open bay (about every FISH_INTERVAL seconds). Landing a
+  // crossing in the bay that holds it scores SCORE_BONUS_CATCH. Purely cosmetic /
+  // score — it never affects lives, the timer, or level progression.
+  fishBay: number | null = null; // the open bay currently holding the fish, or null
+  private fishLinger = 0; // seconds the current fish keeps lingering
+  private fishTimer = FISH_INTERVAL; // seconds until the next fish appears (none out)
+  private lastFishBay = -1; // the bay the previous fish used (so it moves elsewhere)
 
   // World.
   lanes: LevelLanes = buildLevelLanes(1);
@@ -209,6 +226,7 @@ export class Game implements WorldView {
     this.level = 1;
     this.lanes = buildLevelLanes(1);
     this.bays.fill(false);
+    this.resetFish();
     // Atmosphere: a resting critter on the near shore, a swimming bear behind it.
     this.critter.place(20, ROW_NEAR);
     this.hunters = [{ bear: new Bear(7, 6), emergeDelay: 0, emergeAdvance: 0 }];
@@ -219,6 +237,7 @@ export class Game implements WorldView {
   private startGame(): void {
     this.lives = START_LIVES;
     this.score = 0;
+    this.nextBonusLife = SCORE_BONUS_LIFE;
     this.level = 1;
     this.levelReached = 1;
     this.startLevel();
@@ -229,6 +248,7 @@ export class Game implements WorldView {
     this.levelReached = this.level;
     this.lanes = buildLevelLanes(this.level);
     this.bays.fill(false);
+    this.resetFish();
     this.timerMax = this.levelTimer();
     this.newCrossing();
   }
@@ -275,7 +295,14 @@ export class Game implements WorldView {
   private fillBay(index: number): void {
     this.bays[index] = true;
     const timeBonus = Math.floor(this.timer) * SCORE_TIME_BONUS;
-    this.score += SCORE_BAY + timeBonus;
+    let gained = SCORE_BAY + timeBonus;
+    if (this.fishBay === index) {
+      // Landed in the bay holding the bonus-catch fish; take it and clear the fish
+      // (its bay is now filled).
+      gained += SCORE_BONUS_CATCH;
+      this.clearFish();
+    }
+    this.addScore(gained);
     this.audio.bay();
     const filled = this.bays.filter(Boolean).length;
     for (const h of this.hunters) h.bear = null;
@@ -288,9 +315,9 @@ export class Game implements WorldView {
   }
 
   private clearLevel(): void {
-    this.score += SCORE_LEVEL * this.level;
+    this.addScore(SCORE_LEVEL * this.level);
     if (this.level >= TOTAL_LEVELS) {
-      this.score += SCORE_VICTORY_LIFE * this.lives;
+      this.addScore(SCORE_VICTORY_LIFE * this.lives);
       this.audio.victory();
       this.state = "victory";
       this.menuIndex = 0;
@@ -424,6 +451,7 @@ export class Game implements WorldView {
 
     // ---- phase === "crossing" -------------------------------------------
     this.updateLanes(dt);
+    this.updateFish(dt);
     this.processHop(dt);
     if (this.phase !== "crossing") return; // a hop may have filled a bay
     this.updateCritterFooting(dt);
@@ -518,9 +546,72 @@ export class Game implements WorldView {
 
   private scoreRowAdvance(newRow: number): void {
     if (newRow < this.bestRow) {
-      this.score += (this.bestRow - newRow) * SCORE_ROW;
+      this.addScore((this.bestRow - newRow) * SCORE_ROW);
       this.bestRow = newRow;
     }
+  }
+
+  // Add to the score and award a bonus life for each SCORE_BONUS_LIFE (10,000-point)
+  // milestone the score newly crosses (a big single gain can cross more than one).
+  private addScore(points: number): void {
+    this.score += points;
+    while (this.score >= this.nextBonusLife) {
+      this.lives += 1;
+      this.nextBonusLife += SCORE_BONUS_LIFE;
+      this.audio.bonusLife();
+    }
+  }
+
+  // ---- The bonus catch (a fish in an open bay) --------------------------
+
+  // Advance the fish: it lingers in its bay for FISH_LINGER seconds (or until that
+  // bay is filled), then a new one appears in another open bay about every
+  // FISH_INTERVAL seconds. Never touches lives, the timer, or level progression.
+  private updateFish(dt: number): void {
+    if (this.fishBay !== null) {
+      if (this.bays[this.fishBay]) {
+        this.clearFish(); // its bay was filled — remove it, schedule the next
+        return;
+      }
+      this.fishLinger -= dt;
+      if (this.fishLinger <= 0) this.clearFish();
+      return;
+    }
+    this.fishTimer -= dt;
+    if (this.fishTimer <= 0) this.spawnFish();
+  }
+
+  // Place a fish in a random open bay, preferring one it did not just leave. With no
+  // open bay, nothing shows and it retries shortly.
+  private spawnFish(): void {
+    const open: number[] = [];
+    for (let i = 0; i < this.bays.length; i++) if (!this.bays[i]) open.push(i);
+    if (open.length === 0) {
+      this.fishTimer = FISH_INTERVAL;
+      return;
+    }
+    const choices =
+      open.length > 1 ? open.filter((i) => i !== this.lastFishBay) : open;
+    const pick = choices[Math.floor(Math.random() * choices.length)];
+    this.fishBay = pick;
+    this.lastFishBay = pick;
+    this.fishLinger = FISH_LINGER;
+  }
+
+  // Remove the current fish and schedule the next appearance so successive fish
+  // arrive about FISH_INTERVAL apart (it has already lingered FISH_LINGER).
+  private clearFish(): void {
+    this.fishBay = null;
+    this.fishLinger = 0;
+    this.fishTimer = Math.max(0, FISH_INTERVAL - FISH_LINGER);
+  }
+
+  // Full reset (start of level / title): no fish out, first one after ~FISH_INTERVAL.
+  private resetFish(): void {
+    this.fishBay = null;
+    this.fishLinger = 0;
+    this.fishTimer = FISH_INTERVAL;
+    this.lastFishBay = -1;
   }
 
   // Water carry, drowning, and off-edge death; ice-band crushing.

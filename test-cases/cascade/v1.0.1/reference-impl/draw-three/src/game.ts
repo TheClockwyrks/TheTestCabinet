@@ -236,10 +236,12 @@ export class Game {
     let card: Card | undefined;
     if (source.kind === "waste") {
       card = this.waste[this.waste.length - 1];
-    } else {
+    } else if (source.kind === "tableau") {
       const col = this.tableau[source.col];
       card = col[col.length - 1];
       if (card && !card.faceUp) return false;
+    } else {
+      return false; // a card already home is not auto-moved
     }
     if (!card) return false;
     const idx = this.foundationFor(card);
@@ -247,7 +249,7 @@ export class Game {
     if (source.kind === "waste") {
       this.waste.pop();
       this.consumedWasteTop();
-    } else this.tableau[source.col].pop();
+    } else if (source.kind === "tableau") this.tableau[source.col].pop();
     this.foundations[idx].push(card);
     this.afterMove();
     return true;
@@ -293,6 +295,24 @@ export class Game {
         const card = this.waste[this.waste.length - 1];
         this.pending = {
           source: { kind: "waste" },
+          cards: [card],
+          grabDX: x - r.x,
+          grabDY: y - r.y,
+          startX: x,
+          startY: y,
+        };
+        return;
+      }
+    }
+    // Foundation top card → pending single-card pullback (foundation → tableau).
+    for (let i = 0; i < 4; i++) {
+      const f = this.foundations[i];
+      if (f.length === 0) continue;
+      const r = foundationRect(i);
+      if (pointInRect(x, y, r)) {
+        const card = f[f.length - 1];
+        this.pending = {
+          source: { kind: "foundation", index: i },
           cards: [card],
           grabDX: x - r.x,
           grabDY: y - r.y,
@@ -373,6 +393,8 @@ export class Game {
     // Detach the cards from their source pile.
     if (p.source.kind === "waste") {
       this.waste.pop();
+    } else if (p.source.kind === "foundation") {
+      this.foundations[p.source.index].pop();
     } else {
       const col = this.tableau[p.source.col];
       col.splice(col.length - p.cards.length, p.cards.length);
@@ -460,6 +482,8 @@ export class Game {
     const d = this.drag!;
     if (d.source.kind === "waste") {
       this.waste.push(...d.cards);
+    } else if (d.source.kind === "foundation") {
+      this.foundations[d.source.index].push(...d.cards);
     } else {
       this.tableau[d.source.col].push(...d.cards);
     }
@@ -494,29 +518,6 @@ export class Game {
         this.autoMoveToFoundation({ kind: "tableau", col });
         return;
       }
-    }
-  }
-
-  // ---- Keyboard (optional accelerators) --------------------------------
-
-  keyDown(code: string): void {
-    if (this.screen === "title") {
-      if (code === "ArrowUp" || code === "KeyW") {
-        this.menuIndex = (this.menuIndex + titleMenu().length - 1) % titleMenu().length;
-      } else if (code === "ArrowDown" || code === "KeyS") {
-        this.menuIndex = (this.menuIndex + 1) % titleMenu().length;
-      } else if (code === "Enter" || code === "Space") {
-        this.activateMenu();
-      }
-      return;
-    }
-    if (code === "Escape") {
-      // Return to the menu from play / how-to / win.
-      this.screen = "title";
-      return;
-    }
-    if (code === "KeyN") {
-      this.newGame();
     }
   }
 

@@ -107,9 +107,9 @@ Produce at least these, in the palette from `specs/overview.md`:
 - **Utility tiles** — the **power plant**, the **power line (wire)**, the **water
   source** (pump/tower), and the **water pipe** (`specs/utilities.md`). A wire and a
   pipe must be distinguishable.
-- **Vehicles** — at least a **car** (and optionally a truck/goods vehicle and a
-  train/tram car) moved along the network in code (`specs/transit.md`). These are small
-  sprites; a couple of variants add life.
+- **Vehicles** — a **car**, a **truck/goods vehicle**, and a **train/tram car**,
+  moved along the network in code (`specs/transit.md`). These are small
+  sprites; the variants add life.
 - **HUD icons** — the small marks the dashboard and palette use: **treasury/money**,
   **population**, **power**, **water**, the three **R/C/I** zone glyphs, **alert**, and
   a tool glyph for each palette entry (`specs/flow.md`, `specs/controls.md`). These sit
@@ -130,7 +130,7 @@ play the sequence on a timer in the game. Good choices:
   played on a tile while it is **developing/upgrading** before its finished building
   sprite appears (`specs/map.md`), paired with the construction-dust particle effect
   (below).
-- **Vehicle variants / a train** — optionally, a rolling/animated vehicle or a
+- **Vehicle variants / a train** — a rolling/animated vehicle and a
   multi-car train cycle (`specs/transit.md`).
 
 In the game, **play the matching sheet for what is happening** — the signal cycling at a
@@ -179,7 +179,7 @@ Audio API. Land them under, for example, `assets/audio/`.
 - **Sound effects** — produce at least a **build/place** cue (a stamp/thunk when the
   player lays a road or building), a **notification chime** (a milestone or a completed
   development), and an **alert** (budget or utility trouble) with `sfx-synth` and/or
-  `sfx-sample`, and optionally a soft **ambient city hum** loop. `sfx-synth` builds a
+  `sfx-sample`, and a soft **ambient city hum** loop. `sfx-synth` builds a
   sound from synth voices alone; `sfx-sample` layers over the baked sample pack (browse
   it via `list-samples`) for a richer result — use whichever suits each cue.
 - **Music** — produce a **calm ambient city music bed** with `music`: a slow, warm,

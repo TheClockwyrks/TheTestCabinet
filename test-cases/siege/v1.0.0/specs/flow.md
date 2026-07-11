@@ -106,8 +106,8 @@ HUD shows, at minimum:
   glance.
 - **Artillery telegraphs** — the ground rings for incoming shells
   (`specs/combat.md`) are drawn in the world (not the flat HUD), warning then
-  imminent; an optional directional cue on the HUD for a shell targeting the
-  player is welcome.
+  imminent; a directional cue on the HUD for a shell targeting the player is
+  **required**.
 - **Respawn overlay** — while the player is dead, a countdown to respawn
   (`specs/phases.md`).
 
@@ -128,12 +128,12 @@ be inspected. Toggling it must not disturb the simulation.
 
 ## Audio
 
-Audio is recommended but optional, and must never be required for the game to run
-or load. If included, synthesize it with the Web Audio API (no audio files): short
-distinct cues for firing, reloading, a hit, an artillery shell incoming and
-landing, a redoubt falling, a medic heal, and the defeat sting. Provide a mute
-toggle, and do not start audio until the player interacts (browsers block
-autoplay).
+Audio is **required**: synthesize it with the Web Audio API (no audio files) —
+short distinct cues for firing, reloading, a hit, an artillery shell incoming and
+landing, a redoubt falling, a medic heal, and the defeat sting. The game must
+still remain fully playable with sound muted and must never fail to run or load
+if audio cannot start. Provide a mute toggle, and do not start audio until the
+player interacts (browsers block autoplay).
 
 ## Out of scope
 

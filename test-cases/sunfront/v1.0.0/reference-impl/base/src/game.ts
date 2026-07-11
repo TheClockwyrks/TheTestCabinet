@@ -17,6 +17,7 @@ import { World } from "./render/world";
 import { Match } from "./match";
 import { Hud, type HudModel, type PanelModel } from "./hud";
 import { Menus } from "./menus";
+import { Minimap } from "./render/minimap";
 import { PlacementGhost } from "./render/ghost";
 import { gridCellCenter } from "./render/terrain";
 import {
@@ -45,6 +46,7 @@ export class Game {
 
   private readonly hud: Hud;
   private readonly menus: Menus;
+  private readonly minimap: Minimap;
   private readonly ghost: PlacementGhost;
 
   private armed: BuildStructureType | null = null;
@@ -73,6 +75,10 @@ export class Game {
       onPlayAgain: () => this.enterMatch(),
       onMenu: () => this.leaveToTitle(),
     });
+    // Click-to-jump minimap (specs/flow.md): only the live match drives the camera.
+    this.minimap = new Minimap(render.overlayRoot, (x, z) => {
+      if (this.state === "in-match") this.render.jumpCameraTo(x, z);
+    });
 
     this.bindInput();
     this.toState("title");
@@ -97,7 +103,10 @@ export class Game {
       this.match.update(dt);
       if (this.match.world.result) this.toMatchOver();
     }
-    if (this.match) this.hud.update(this.snapshot(this.match));
+    if (this.match) {
+      this.hud.update(this.snapshot(this.match));
+      this.minimap.update(this.match, this.render);
+    }
     this.updateGhost();
     this.render.render(dt);
   }
@@ -114,6 +123,7 @@ export class Game {
     this.render.recenter();
     this.menus.hide();
     this.hud.show();
+    this.minimap.show();
     this.render.setPanEnabled(true);
     this.state = "in-match";
   }
@@ -149,6 +159,7 @@ export class Game {
     this.selected = null;
     this.ghost.hide();
     this.hud.hide();
+    this.minimap.hide();
     this.render.setPanEnabled(false);
     this.toState("title");
   }
@@ -157,6 +168,7 @@ export class Game {
   private toState(state: GameState): void {
     this.state = state;
     this.hud.hide();
+    this.minimap.hide();
     this.render.setPanEnabled(false);
     if (state === "title") this.menus.show("title");
     else if (state === "how-to-play") this.menus.show("how-to-play");

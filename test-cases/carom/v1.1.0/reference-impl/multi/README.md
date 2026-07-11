@@ -77,7 +77,7 @@ src/
   types.ts            Shared types
   entities.ts         Ball (home point + own countdown) and Paddle
   input.ts            Keyboard: held state + edge events
-  audio.ts            Web Audio blips (optional, mutable)
+  audio.ts            Web Audio blips (mutable)
   trail.ts            Ball-position history for the motion trail (one per ball)
   physics.ts          Fixed-step integration, collision, spin, ball-to-ball
   ai.ts               The beatable AI opponent

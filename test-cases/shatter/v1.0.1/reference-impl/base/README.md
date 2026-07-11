@@ -87,7 +87,7 @@ src/
   types.ts            Shared entity types
   entities.ts         The Ship class and rock/saucer factories
   input.ts            Keyboard: held flight state + edge events
-  audio.ts            Web Audio sounds (optional, mutable)
+  audio.ts            Web Audio sounds (mutable)
   physics.ts          Wrap, the gravity well, and swept collision
   game.ts             State machine, waves, scoring, lives, saucer, collision
   render.ts           All canvas drawing (neon-on-charcoal)

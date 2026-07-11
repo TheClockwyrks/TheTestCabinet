@@ -57,6 +57,8 @@ its root; serve that directory from any static host, at any base path.
 - **Select a structure:** click a friendly structure (spawner, Solar Extractor, base,
   or Reliquary) to open its panel; `U` upgrades, `X` sells a build-grid structure.
 - **Camera:** pan along the lane with the arrow keys / `WASD` and edge-scroll; a key
-  re-centres on your base. No zoom.
+  re-centres on your base. No zoom. A **minimap** (bottom-left) overviews the whole
+  corridor — friendly and (in-vision) enemy blips plus the current view region — and
+  **clicking it jumps the camera** to that point on the lane.
 - **Toggles:** `F3` performance overlay (live FPS), `F4` wireframe.
 - **In match:** `Esc` or `P` pauses.

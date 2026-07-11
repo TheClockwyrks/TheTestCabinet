@@ -17,10 +17,6 @@ snapped to tiles.
   Movement is smooth and continuous while a key is held. The cursor is **clamped**
   to the band — it can never leave it (never above row `18`, never past a side
   edge, never below the floor).
-- **Mouse (optional).** You may additionally let the mouse move the cursor: the
-  cursor tracks the pointer's `x` (and `y`, clamped to the band). If you support
-  the mouse, it must not be *required* — the keyboard scheme must fully play the
-  game.
 
 Movement speed is yours to tune; it should feel responsive enough to dodge a
 diving worm and a skittering glitch.
@@ -29,8 +25,7 @@ diving worm and a skittering glitch.
 
 The cursor fires **bolts straight up** (`specs/charge.md`, `specs/worm.md`).
 
-- **Fire key.** **Space** fires (and, if the mouse is supported, a **left click**
-  fires). A held fire key auto-repeats at the fire cadence.
+- **Fire key.** **Space** fires. A held fire key auto-repeats at the fire cadence.
 - **Fire cadence.** A bolt may be fired at most every **0.15 s**; at most **3
   bolts** may be in flight at once. (These keep firing deliberate rather than a
   continuous beam.)
@@ -49,11 +44,9 @@ The cursor fires **bolts straight up** (`specs/charge.md`, `specs/worm.md`).
   the pause menu (**Resume**, **Restart**, **Quit to menu** — `specs/flow.md`).
   Pausing freezes the simulation.
 - **Menus.** In the title and end screens, the menu is navigable by keyboard
-  (arrow keys or W/S to move the selection, **Enter** or **Space** to confirm);
-  mouse hover/click may also select and confirm if you support the mouse. Every
-  menu action must be reachable by keyboard alone.
-- **Mute.** If you include audio (`specs/flow.md`), provide a mute toggle (for
+  (arrow keys or W/S to move the selection, **Enter** or **Space** to confirm).
+- **Mute.** Audio is required (`specs/flow.md`); provide a mute toggle (for
   example **M**).
 
-Mouse and keyboard only for this version; no touch or gamepad
+Keyboard only for this version; no mouse, touch, or gamepad
 (`specs/flow.md`).

@@ -174,7 +174,7 @@ Web Audio API. Land them under, for example, `assets/audio/`.
 
 - **Sound effects** — produce at least a **gunshot** cue, a **hit/impact** cue, a
   **build/place** cue, and a **raid-alarm** cue with `sfx-synth` and/or `sfx-sample`, and
-  optionally a soft **turret hum** or **ambient wind** loop. `sfx-synth` builds a sound
+  a soft **turret hum** or **ambient wind** loop. `sfx-synth` builds a sound
   from synth voices alone; `sfx-sample` layers over the baked sample pack (browse it via
   its `--help`) for a richer result — use whichever suits each cue.
 - **Music** — produce an **ambient / tension music bed** with `music`: a low, sparse

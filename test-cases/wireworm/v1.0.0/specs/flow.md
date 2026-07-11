@@ -21,8 +21,7 @@ The numeric values here are **fixed**; implement them exactly as written.
   the top after a short pause. The **node field is left standing** (it is not
   cleared) — only the worm and foes reset. A short spawn-in invulnerability while
   the cursor reappears is encouraged so you are not hit twice instantly.
-- Lives never regenerate during a level. You may award a **bonus life** at a score
-  threshold (for example every `12,000` points) — optional and tunable.
+- A **bonus life** is awarded at every `12,000` points of score.
 - If lives reach **0**, the game ends (Game over, below).
 
 ## Levels and Victory
@@ -94,11 +93,12 @@ foes carry no health bars.
 
 ## Audio
 
-Audio is recommended but optional, and must never be required for the game to run
-or load. If included, synthesize it with the Web Audio API (no audio files):
+Audio is **required**: synthesize it with the Web Audio API (no audio files) —
 distinct short cues for firing a bolt, cutting a worm segment, **a chain-arc
 discharge going off**, a node reaching critical, killing a foe, losing a life,
-clearing a level, and the Victory/Game-over stings. Provide a mute toggle, and do
+clearing a level, and the Victory/Game-over stings. The game must still remain
+fully playable with sound muted and must never fail to run or load if audio
+cannot start. Provide a mute toggle, and do
 not start audio until the player interacts (browsers block autoplay).
 
 ## Key Behaviors

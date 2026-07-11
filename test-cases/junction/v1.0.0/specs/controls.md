@@ -24,7 +24,7 @@ The city view (`y` in `[64, 656]`) is a top-down camera onto the larger map
   dragging with the mouse and/or an edge-scroll near the view's edges — support at least
   one keyboard pan and one mouse pan. The camera is **clamped to the map bounds** so it
   never scrolls past the edges.
-- A modest **zoom** (mouse wheel) is optional. If included it must keep the whole stage
+- A modest **zoom** (mouse wheel) is **required**. It must keep the whole stage
   fitted and the HUD strips fixed (`specs/overview.md`).
 - Panning and zooming never pause or otherwise change the simulation.
 

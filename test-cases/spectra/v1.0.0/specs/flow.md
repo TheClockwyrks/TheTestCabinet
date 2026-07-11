@@ -117,12 +117,12 @@ The polarity indicator and the ship's core color always show the current band.
 
 ## Audio
 
-Audio is recommended but optional, and must never be required for the game to run
-or load. If included, synthesize it with the Web Audio API (no audio files):
+Audio is **required**: synthesize it with the Web Audio API (no audio files) —
 distinct short cues for firing, flipping bands, absorbing a same-band bullet, a
 matching kill, a discharge, a Prism's spectral inversion, getting hit, and
-clearing a stage. Provide a mute toggle, and do not start audio until the player
-interacts (browsers block autoplay).
+clearing a stage. The game must still remain fully playable with sound muted and
+must never fail to run or load if audio cannot start. Provide a mute toggle, and
+do not start audio until the player interacts (browsers block autoplay).
 
 ## Key behaviors
 

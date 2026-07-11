@@ -31,10 +31,8 @@ Cascade is **mouse-driven** — everything needed to play is doable with the mou
 
 Grabbing a face-up tableau card picks up that card and every face-up card below it
 as a run; a legal drop target under the cursor is highlighted, and releasing over
-an illegal spot returns the cards to where they started.
-
-Optional keyboard accelerators: **N** new game, **Esc** return to the menu, and on
-the title menu the **arrow keys** move the selection with **Enter** to activate it.
+an illegal spot returns the cards to where they started. A card already sent home
+may be dragged back off its foundation onto the tableau when a legal build exists.
 
 ## The rules
 
@@ -95,5 +93,5 @@ src/
   cascade.ts          The victory-cascade simulation (fixed timestep, bouncing)
   cards.ts            Card / slot / highlight drawing
   render.ts           All canvas drawing (title, table, how-to-play, win)
-  input.ts            Mouse + optional keyboard, mapped to logical coordinates
+  input.ts            Mouse, mapped to logical coordinates
 ```

@@ -37,6 +37,6 @@ overrides:
 - the worm's winding, diving, splitting, shortening, and field growth from
   `specs/worm.md`;
 - the glitch, the packet-dropper, and the corruptor from `specs/foes.md`;
-- the keyboard-and-optional-mouse controls from `specs/controls.md`;
+- the keyboard controls from `specs/controls.md`;
 - lives, the 12-level progression, scoring, and the win/lose states from
   `specs/flow.md`.

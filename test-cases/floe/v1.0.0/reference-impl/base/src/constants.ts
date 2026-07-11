@@ -111,3 +111,9 @@ export const SCORE_BAY = 50; // per bay reached
 export const SCORE_TIME_BONUS = 2; // per whole second left on the timer
 export const SCORE_LEVEL = 100; // times level, on clearing a level
 export const SCORE_VICTORY_LIFE = 250; // per remaining life at victory
+export const SCORE_BONUS_CATCH = 200; // landing in the bay holding the bonus-catch fish
+export const SCORE_BONUS_LIFE = 10000; // a bonus life is awarded at every 10,000 points
+
+// ---- The bonus catch (a fish that lingers in an open bay) ---------------
+export const FISH_LINGER = 5; // seconds a fish lingers in one bay before moving on
+export const FISH_INTERVAL = 8; // ~seconds between successive fish appearances

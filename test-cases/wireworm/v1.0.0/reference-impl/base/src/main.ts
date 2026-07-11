@@ -29,7 +29,7 @@ window.addEventListener("resize", resize);
 resize();
 
 const input = new Input();
-input.attach(canvas);
+input.attach();
 const audio = new Audio();
 const game = new Game(input, audio);
 

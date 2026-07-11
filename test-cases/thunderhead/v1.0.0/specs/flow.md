@@ -33,8 +33,6 @@ The deploy screen sets up a battle (`specs/battle.md`):
   (`specs/factions.md`), shown with each power's identity and color.
 - **Opponent** — choose an opposing power or **random** (a mirror of your own power is
   allowed).
-- Optionally a **difficulty** for the enemy AI and a **battle length/size** if the
-  build offers them; otherwise sensible defaults.
 - A **Begin** action generates the world and starts the battle.
 
 ## Controls
@@ -115,10 +113,10 @@ faces, matching the two scales.
 
 ## Audio
 
-Audio is **optional** but encouraged, and if present must be **synthesized in code**
-(e.g. the Web Audio API) — no downloaded audio files. Gunfire, engines, torpedo runs,
-alerts, and the end-of-battle stinger are the natural cues. The game must be fully
-playable with sound off.
+Audio is **required** and must be **synthesized in code** (e.g. the Web Audio API) —
+no downloaded audio files. Gunfire, engines, torpedo runs, alerts, and the
+end-of-battle stinger are the natural cues. The game must remain fully playable with
+sound off and must never fail to run or load if audio cannot start.
 
 ## Out of scope
 

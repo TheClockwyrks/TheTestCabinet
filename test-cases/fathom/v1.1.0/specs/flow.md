@@ -76,12 +76,12 @@ fogged.
 
 ## Audio
 
-Audio is recommended but optional, and must never be required for the game to run
-or load. If included, synthesize it with the Web Audio API (no audio files):
+Audio is **required**: synthesize it with the Web Audio API (no audio files) —
 distinct short cues for eating a plankton, emitting a sonar pulse, releasing ink,
-a predator's own pulse or flare, getting caught, and descending. Provide a mute
-toggle, and do not start audio until the player interacts (browsers block
-autoplay).
+a predator's own pulse or flare, getting caught, and descending. The game must
+still remain fully playable with sound muted and must never fail to run or load
+if audio cannot start. Provide a mute toggle, and do not start audio until the
+player interacts (browsers block autoplay).
 
 ## Key behaviors
 

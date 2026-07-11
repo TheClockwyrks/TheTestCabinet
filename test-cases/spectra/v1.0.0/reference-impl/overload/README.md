@@ -108,7 +108,7 @@ src/
   input.ts               Keyboard: held state + edge events
   assets.ts              Loads the provided sprites; per-band tinting; the burst
   particles.ts           Plays the provided drone-burst via the particle runtime
-  audio.ts               Web Audio cues (optional, mutable)
+  audio.ts               Web Audio cues (mutable)
   paths.ts               Arc-length Bezier paths for entrances and dives
   waves.ts               Formation composition + entrance/challenge choreography
   game.ts                State machine, polarity combat, the Overload charge/reactions

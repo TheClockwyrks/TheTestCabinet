@@ -161,7 +161,9 @@ export class Game {
 
   addScore(n: number): void {
     this.score += n;
-    if (this.score >= this.nextBonus) {
+    // A bonus life at every 12,000 points (specs/flow.md); a single jump may
+    // cross more than one milestone.
+    while (this.score >= this.nextBonus) {
       this.lives++;
       this.nextBonus += BONUS_LIFE_EVERY;
     }
@@ -257,8 +259,7 @@ export class Game {
   // ---- Input (once-per-frame edge handling) --------------------------------
   handleInput(): void {
     const keys = this.input.drainKeys();
-    const clicks = this.input.drainClicks();
-    if (keys.length || clicks) this.audio.resume();
+    if (keys.length) this.audio.resume();
 
     for (const k of keys) {
       if (k === "m") this.audio.toggleMute();
@@ -267,7 +268,7 @@ export class Game {
     switch (this.state) {
       case "title":
         this.menuNav(keys, 2);
-        if (this.confirm(keys, clicks)) {
+        if (this.confirm(keys)) {
           if (this.sel === 0) this.startGame();
           else {
             this.state = "howto";
@@ -275,10 +276,7 @@ export class Game {
         }
         break;
       case "howto":
-        if (
-          keys.some((k) => ["Enter", " ", "Escape", "Backspace"].includes(k)) ||
-          clicks
-        ) {
+        if (keys.some((k) => ["Enter", " ", "Escape", "Backspace"].includes(k))) {
           this.state = "title";
           this.sel = 0;
           this.audio.play("menu");
@@ -295,7 +293,7 @@ export class Game {
         this.menuNav(keys, 3);
         if (keys.some((k) => k === "p" || k === "Escape")) {
           this.state = "playing";
-        } else if (this.confirm(keys, clicks)) {
+        } else if (this.confirm(keys)) {
           if (this.sel === 0) this.state = "playing";
           else if (this.sel === 1) this.startGame();
           else {
@@ -307,7 +305,7 @@ export class Game {
       case "victory":
       case "gameover":
         this.menuNav(keys, 2);
-        if (this.confirm(keys, clicks)) {
+        if (this.confirm(keys)) {
           if (this.sel === 0) this.startGame();
           else {
             this.state = "title";
@@ -335,8 +333,8 @@ export class Game {
     }
   }
 
-  private confirm(keys: string[], clicks: number): boolean {
-    return keys.some((k) => k === "Enter" || k === " ") || clicks > 0;
+  private confirm(keys: string[]): boolean {
+    return keys.some((k) => k === "Enter" || k === " ");
   }
 
   // ---- Fixed-step simulation ----------------------------------------------
@@ -397,10 +395,6 @@ export class Game {
       const len = Math.hypot(vx, vy) || 1;
       c.x += (vx / len) * CURSOR_SPEED * dt;
       c.y += (vy / len) * CURSOR_SPEED * dt;
-      this.input.mouseActive = false;
-    } else if (this.input.mouseActive) {
-      c.x = this.input.mouseX;
-      c.y = this.input.mouseY;
     }
     // Clamp to the player band (never leaves it).
     c.x = Math.max(TILE / 2, Math.min(STAGE_W - TILE / 2, c.x));

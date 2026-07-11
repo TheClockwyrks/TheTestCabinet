@@ -33,7 +33,7 @@ There is no pause state and no timed loss; solitaire is untimed here (see
 ## Controls
 
 Cascade is **mouse-driven**; everything needed to play is doable with the mouse
-alone. Keyboard shortcuts are optional accelerators.
+alone.
 
 ### Mouse (primary)
 
@@ -55,13 +55,6 @@ alone. Keyboard shortcuts are optional accelerators.
 
 A face-down card is never draggable, and a face-down tableau card that becomes the
 column's bottom card is turned face-up automatically (`specs/rules.md`).
-
-### Keyboard (optional accelerators)
-
-Optional and never required: for example `N` for a new game, `U` to undo the last
-move (if you implement undo), `Esc` to open/return to the menu, and `Enter` to
-activate the highlighted menu item. If you provide any, list them in the in-game
-**How to play** screen and in the produced `README.md`.
 
 ## HUD
 
@@ -100,5 +93,5 @@ The game must exhibit these behaviors:
 - Hints, an auto-solver, or an auto-complete button that finishes the game for the
   player.
 - Persistence of games or settings between sessions.
-- Network, online, or multiplayer play; touch or gamepad input (mouse and
-  optional keyboard only for this version).
+- Network, online, or multiplayer play; touch or gamepad input (mouse only for
+  this version).

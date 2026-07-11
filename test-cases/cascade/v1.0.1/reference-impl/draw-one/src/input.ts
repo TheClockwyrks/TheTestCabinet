@@ -1,23 +1,11 @@
-// Cascade — mouse and (optional) keyboard input.
+// Cascade — mouse input.
 //
 // The game is played entirely with the mouse. Pointer events are translated from
 // client pixels into the fixed 1280x720 logical space and routed to the Game;
-// double-click drives the auto-move to a foundation. Keyboard shortcuts are
-// optional accelerators (N new game, Esc menu, arrows/Enter on the title menu).
+// double-click drives the auto-move to a foundation.
 
 import { FIELD_H, FIELD_W } from "./constants";
 import type { Game } from "./game";
-
-const HANDLED_KEYS = new Set([
-  "KeyN",
-  "Escape",
-  "Enter",
-  "Space",
-  "ArrowUp",
-  "ArrowDown",
-  "KeyW",
-  "KeyS",
-]);
 
 export function attachInput(canvas: HTMLCanvasElement, game: Game): void {
   // Client pixel → logical stage coordinate.
@@ -57,9 +45,4 @@ export function attachInput(canvas: HTMLCanvasElement, game: Game): void {
 
   // Suppress the browser context menu so a right-click never interrupts play.
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-
-  window.addEventListener("keydown", (e) => {
-    if (HANDLED_KEYS.has(e.code)) e.preventDefault();
-    game.keyDown(e.code);
-  });
 }

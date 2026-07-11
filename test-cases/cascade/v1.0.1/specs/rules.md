@@ -34,8 +34,8 @@ and foundations empty.
   the **same suit** may be added (2 on Ace, 3 on 2, …, King on Queen).
 - Any suit may be started on any empty foundation; a suit is not tied to a fixed
   slot. Once a foundation holds an Ace, it accepts only that suit.
-- Cards on the foundations are normally left there. (A build may allow pulling a
-  foundation card back to the tableau, but this is optional and never required.)
+- Cards on the foundations may be pulled back to the tableau — a legal move — though
+  they are normally left there.
 
 ## Tableau
 

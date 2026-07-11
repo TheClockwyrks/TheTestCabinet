@@ -33,6 +33,8 @@ hunts you.
 - **Water band** — every open-water tile is death. Hop onto a floe and ride it;
   hop floe to floe, and hop off before a floe carries you off the side edge.
 - **The bear** — never stop moving. The only safety is a filled bay.
+- **Bonus catch** — a small fish drifts between the open bays; land a crossing in
+  the bay it is sitting in for extra score. You gain a bonus life every 10,000 points.
 
 ## Controls
 
@@ -94,7 +96,7 @@ src/
   grid.ts             Tile grid & band geometry helpers
   assets.ts           Sprite loading via a page-relative Vite glob
   input.ts            Keyboard: held state + edge events
-  audio.ts            Web Audio cues (optional, mutable)
+  audio.ts            Web Audio cues (mutable)
   lanes.ts            The ice-band vehicles and water-band floes, per level
   entities.ts         The Critter (hops) and the Bear (continuous, pacman-style)
   hunter.ts           The bear's pathfinding (BFS pursuit around the hazards)

@@ -23,9 +23,8 @@ The numeric values here are **fixed**; implement them exactly as written.
   timer reset — the **filled bays stay filled** (you resume the same level). A
   short spawn-in pause before the bear re-emerges is required so you are not caught
   instantly.
-- Lives never regenerate during a level. You may award a **bonus life** at a score
-  threshold (for example every `10,000` points) — optional and tunable. If lives
-  reach **0**, the game ends (Game over, below).
+- Lives never regenerate during a level, but a **bonus life** is awarded at every
+  `10,000` points of score. If lives reach **0**, the game ends (Game over, below).
 
 ## The timer
 
@@ -55,7 +54,7 @@ second pressure alongside the bear — but the bear is the immediate one.
 
 A **score** accumulates across the run and shows in the HUD and end screens. It
 is
-the aggregation of the following (all values tunable):
+the aggregation of the following:
 
 - `+ 10` for each **row advanced** upward (net new progress toward the far shore),
   so pushing forward scores.
@@ -64,10 +63,12 @@ the aggregation of the following (all values tunable):
 - `+ 100 * level` for **clearing a level** (filling its fifth bay).
 - `+ 250 * livesRemaining` awarded at **Victory**.
 
-Optionally, a **bonus catch** (a small fish that occasionally appears in an open
-bay) may be worth extra points if the critter fills that bay while it is there —
-optional and tunable. Score is for the end-screen result and bragging rights only;
-it does not affect play and is **not persisted** between sessions.
+A **bonus catch** — a small fish — appears in one randomly chosen **open bay** and
+lingers there for `5 s` before moving to another open bay; at most one is present at
+a time, and a new one appears about every `8 s`. Completing a crossing into the bay
+that holds the fish scores `+ 200`. Score is for the end-screen result and bragging
+rights only; it does not affect play (lives, timer, or level progression) and is
+**not persisted** between sessions.
 
 ## Game States
 
@@ -105,12 +106,12 @@ visible above the strait (`specs/overview.md`).
 
 ## Audio
 
-Audio is recommended but optional, and must never be required for the game to run
-or load. If included, synthesize it with the Web Audio API (no audio files):
+Audio is **required**: synthesize it with the Web Audio API (no audio files) —
 distinct short cues for a hop, splashing into the water, being crushed by a hazard,
 **the bear catching you**, filling a bay, clearing a level, and the Victory/Game-
-over stings. Provide a mute toggle, and do not start audio until the player
-interacts (browsers block autoplay).
+over stings. The game must still remain fully playable with sound muted and must
+never fail to run or load if audio cannot start. Provide a mute toggle, and do not
+start audio until the player interacts (browsers block autoplay).
 
 ## Key Behaviors
 

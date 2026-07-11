@@ -103,7 +103,7 @@ The simulation advances every frame in logical-pixel space:
   weapon **plays one instance of its provided muzzle-flash effect** at its muzzle
   **each time it fires** — once per cadence, so the flash rate matches its fire rate
   (`specs/assets.md`), while melee units (Scarab, Bulwark) and the support Lumen play
-  none. Any projectile or impact touch beyond that is optional and drawn in code. A
+  none. A
   unit at `0 HP` is destroyed: it flashes white a few times to signal it is no longer
   functional and is then removed; it pays no bounty (`specs/economy.md`).
 - **Attacking structures.** With no enemy units in range, a unit that reaches an

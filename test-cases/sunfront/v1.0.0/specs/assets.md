@@ -165,8 +165,8 @@ flag are carried inside the system itself, so you need not supply them.
   **each** turret as that turret fires.
 - **Scale** each effect to its unit's muzzle — a Monolith's blast reads larger than a
   Sentinel's flash — since the systems are authored small; fit them to the barrel,
-  not the whole model. Tinting is optional: the flashes are authored as neutral
-  gunfire and need no team tint.
+  not the whole model. The flashes are authored as neutral gunfire and are not
+  team-tinted.
 
 ## Loading rule — page-relative paths only
 

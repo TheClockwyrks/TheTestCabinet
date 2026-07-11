@@ -78,7 +78,7 @@ src/
   types.ts            Shared types
   entities.ts         Ball and Paddle
   input.ts            Keyboard: held state + edge events
-  audio.ts            Web Audio blips (optional, mutable)
+  audio.ts            Web Audio blips (mutable)
   trail.ts            Ball-position history for the motion trail
   obstacles.ts        Live-obstacle pose (sway + spin) and oriented collision
   physics.ts          Fixed-step integration, collision, the spin mechanic

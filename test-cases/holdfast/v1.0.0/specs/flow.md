@@ -40,9 +40,8 @@ opening stocks and how hard the raids press.
   before it was lost), and may add secondary measures you choose — living settlers,
   raids repelled, raiders killed, structures built — shown at the loss screen. Scores
   are **not persisted** between sessions.
-- **Milestones (optional).** You may surface short milestones (first turret online,
-  first raid repelled, N days survived) as brief, non-blocking notifications; they are
-  flavor, not required.
+- **Milestones.** Surface short milestones (first turret online,
+  first raid repelled, N days survived) as brief, non-blocking notifications.
 
 ## The loss state
 

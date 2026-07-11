@@ -62,6 +62,14 @@ export class Match {
   /** The player's current vision discs, recomputed each frame (fog of war). */
   private playerVision: VisionSource[] = [];
 
+  /**
+   * The player's current vision discs (fog of war). The minimap reads these to fog-gate
+   * enemy blips exactly as the 3D view fog-gates enemy models (specs/playfield.md).
+   */
+  get vision(): readonly VisionSource[] {
+    return this.playerVision;
+  }
+
   /** Provided muzzle-flash effects, played one-shot per shot (specs/assets.md). */
   private readonly effects: EffectsManager;
   /** Generated health bars + level pips billboarded over the field (specs/overview.md). */

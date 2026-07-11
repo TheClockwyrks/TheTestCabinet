@@ -15,6 +15,7 @@
 
 import * as THREE from "three";
 import { PALETTE, ASPECT_RATIO, MONO_FONT_STACK } from "../constants";
+import { alongDiagonal } from "../mathutil";
 import type { LoadedAssets, RenderEntity, UnitType } from "../types";
 import type { VisionSource } from "../vision";
 import { MaterialRegistry, createUnitMaterial } from "./materials";
@@ -234,6 +235,35 @@ export class World {
   /** Recenter the command camera on the player's base (specs/flow.md). */
   recenter(): void {
     this.camera.recenter();
+  }
+
+  /**
+   * Jump the command camera so its view centres on the logical `(x, z)` point — the
+   * camera only travels along the diagonal, so the view snaps to the nearest point on
+   * the lane (its projection). Drives the minimap's click-to-jump (specs/flow.md).
+   */
+  jumpCameraTo(x: number, z: number): void {
+    this.camera.panTo(alongDiagonal({ x, z }));
+  }
+
+  /**
+   * The current on-ground footprint of the view: the four viewport corners ray-cast
+   * onto the ground plane (player-near first, clockwise), in logical `(x, z)`. The
+   * minimap outlines this so the player can see what the command camera currently
+   * frames (specs/flow.md — the minimap shows the camera's view region).
+   */
+  viewRegion(): { x: number; z: number }[] {
+    const corners: readonly [number, number][] = [
+      [-1, -1], [1, -1], [1, 1], [-1, 1],
+    ];
+    const out: { x: number; z: number }[] = [];
+    for (const [nx, ny] of corners) {
+      this.ndc.set(nx, ny);
+      this.raycaster.setFromCamera(this.ndc, this.camera.camera);
+      const hit = this.raycaster.ray.intersectPlane(this.groundPlane, this.pickPoint);
+      if (hit) out.push({ x: this.pickPoint.x, z: this.pickPoint.z });
+    }
+    return out;
   }
 
   /** Clear the instanced roster and the fog for a fresh match (specs/flow.md restart). */

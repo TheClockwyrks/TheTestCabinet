@@ -105,7 +105,7 @@ Two fields color the map and drive development; they are defined in full in
 
 - **Pollution** spreads outward from industry and heavy traffic onto nearby tiles and
   decays with distance and over time. It is shown as a **produced particle haze**
-  overlay (`specs/assets.md`) driven by the tile pollution field, and (optionally) as a
+  overlay (`specs/assets.md`) driven by the tile pollution field, and as a
   toggle overlay (`specs/controls.md`).
 - **Land value** is a per-tile quality: high near water, parks, good services, and good
   transit; low near pollution, congestion, and unserved edges. It gates how high a tile

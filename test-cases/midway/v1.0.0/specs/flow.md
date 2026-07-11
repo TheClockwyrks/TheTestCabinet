@@ -43,9 +43,8 @@ the loop runs under.
   **peak guests**, **park rating**, **total profit** — shown at the park-closed screen.
   You may add secondary measures you choose. Scores are **not persisted** between
   sessions.
-- **Milestones (optional).** You may surface short milestones (first ride open, first
-  5-star day, N guests at once, N days operated) as brief, non-blocking notifications;
-  they are flavor, not required.
+- **Milestones.** Surface short milestones (first ride open, first
+  5-star day, N guests at once, N days operated) as brief, non-blocking notifications.
 
 ## The loss state
 
@@ -106,7 +105,7 @@ of what this build is about** (`specs/assets.md`): the sound effects and the mus
 must still never be required for the game to run or load, must **not** autostart
 before the player interacts (browsers block autoplay), and must offer a **mute**
 toggle. Play the produced clips via Web Audio: short cues for a **purchase/coin**, a
-**ride ding**, and a **low-cash / ride-broken alarm**, an optional soft **crowd** or
+**ride ding**, and a **low-cash / ride-broken alarm**, a soft **crowd** or
 ride hum, and a cheerful **carnival music bed** underneath. `specs/assets.md` is the
 contract for producing and wiring them.
 

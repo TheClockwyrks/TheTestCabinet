@@ -21,8 +21,12 @@ export interface Rect {
   h: number;
 }
 
-// The two pile kinds a card or run can be picked up from.
-export type DragSource = { kind: "waste" } | { kind: "tableau"; col: number };
+// The pile kinds a card or run can be picked up from. A card already home on a
+// foundation may be pulled back onto the tableau, so foundations are a source too.
+export type DragSource =
+  | { kind: "waste" }
+  | { kind: "foundation"; index: number }
+  | { kind: "tableau"; col: number };
 
 // Where a dragged card/run may legally land.
 export type DropTarget =

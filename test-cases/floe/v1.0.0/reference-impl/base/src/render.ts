@@ -171,8 +171,33 @@ function drawBays(ctx: CanvasRenderingContext2D, game: Game, s: Sprites): void {
       ctx.lineWidth = 2;
       roundedTop(ctx, x + 1, y + 1, w - 2, TILE, 6);
       ctx.stroke();
+      // The bonus-catch fish, if it is lingering in this open bay.
+      if (game.fishBay === i) drawFish(ctx, x, y, w, game.simTime);
     }
   }
+}
+
+// A small canvas-drawn fish (no sprite asset) that sits in an open bay: a teal body
+// with a tail, gently bobbing. Landing a crossing in its bay scores the bonus catch.
+function drawFish(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, t: number): void {
+  const cx = x + w / 2;
+  const cy = y + TILE * 0.62 + Math.sin(t * 3) * 1.5;
+  ctx.save();
+  ctx.fillStyle = COLOR.score;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 8, 4.5, 0, 0, Math.PI * 2); // body
+  ctx.fill();
+  ctx.beginPath(); // tail fin (points right)
+  ctx.moveTo(cx + 6, cy);
+  ctx.lineTo(cx + 12, cy - 4);
+  ctx.lineTo(cx + 12, cy + 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = COLOR.seaDeep;
+  ctx.beginPath();
+  ctx.arc(cx - 4, cy - 1, 1.1, 0, Math.PI * 2); // eye
+  ctx.fill();
+  ctx.restore();
 }
 
 function roundedTop(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

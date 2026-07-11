@@ -74,6 +74,16 @@ export class CommandCamera {
     this.update();
   }
 
+  /**
+   * Jump the view so its target sits at `along` logical units down the diagonal,
+   * clamped to the same pan limits as {@link pan}. Drives the minimap's click-to-jump
+   * (specs/flow.md — a minimap you can click to jump the camera).
+   */
+  panTo(along: number): void {
+    this.panAlong = THREE.MathUtils.clamp(along, PAN_MIN, PAN_MAX);
+    this.update();
+  }
+
   /** The current pan target on the ground plane (for HUD / picking). */
   get targetPoint(): THREE.Vector3 {
     return this.target;

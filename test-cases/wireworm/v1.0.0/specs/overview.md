@@ -38,7 +38,7 @@ you start; they cross-reference each other by name and form one specification.
   down the board, how splitting and shortening work, and how it grows the field.
 - `specs/foes.md` — the support foes (the glitch, the packet-dropper, and the
   corruptor), their behavior, and how they threaten you and reshape the field.
-- `specs/controls.md` — the keyboard (and optional mouse) controls: moving in the
+- `specs/controls.md` — the keyboard controls: moving in the
   band, firing, and pause.
 - `specs/flow.md` — scoring, lives, the level progression and victory, the game
   states, the HUD, audio, and what is out of scope.

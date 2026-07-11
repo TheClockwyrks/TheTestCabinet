@@ -1,31 +1,15 @@
-// Keyboard (required) and optional mouse input (specs/controls.md). Movement uses
-// held state (smooth/continuous); menus and system keys use a once-per-frame
-// edge queue. The keyboard scheme fully plays the game; the mouse is additive.
-
-import { STAGE_W, STAGE_H } from "./constants";
+// Keyboard input (specs/controls.md). Movement uses held state
+// (smooth/continuous); menus and system keys use a once-per-frame edge queue.
+// The keyboard scheme fully plays the game.
 
 export class Input {
   private held = new Set<string>();
   private queue: string[] = []; // edge-pressed action keys, drained per frame
 
-  // Mouse state (optional). Position is in logical stage coordinates.
-  mouseX = STAGE_W / 2;
-  mouseY = STAGE_H / 2;
-  mouseActive = false;
-  mouseFire = false; // held left button
-  private clickQueue = 0; // fresh clicks (for menu confirm)
-
-  private canvas: HTMLCanvasElement | null = null;
-
-  attach(canvas: HTMLCanvasElement): void {
-    this.canvas = canvas;
+  attach(): void {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.onBlur);
-    canvas.addEventListener("mousemove", this.onMouseMove);
-    canvas.addEventListener("mousedown", this.onMouseDown);
-    window.addEventListener("mouseup", this.onMouseUp);
-    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
@@ -54,32 +38,6 @@ export class Input {
 
   private onBlur = (): void => {
     this.held.clear();
-    this.mouseFire = false;
-  };
-
-  private toLogical(e: MouseEvent): void {
-    if (!this.canvas) return;
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    this.mouseX = ((e.clientX - rect.left) / rect.width) * STAGE_W;
-    this.mouseY = ((e.clientY - rect.top) / rect.height) * STAGE_H;
-    this.mouseActive = true;
-  }
-
-  private onMouseMove = (e: MouseEvent): void => {
-    this.toLogical(e);
-  };
-
-  private onMouseDown = (e: MouseEvent): void => {
-    if (e.button !== 0) return;
-    this.toLogical(e);
-    this.mouseFire = true;
-    this.clickQueue++;
-  };
-
-  private onMouseUp = (e: MouseEvent): void => {
-    if (e.button !== 0) return;
-    this.mouseFire = false;
   };
 
   // --- Held (continuous) queries ---
@@ -100,7 +58,7 @@ export class Input {
     return this.down("ArrowDown", "s");
   }
   get firing(): boolean {
-    return this.held.has(" ") || this.held.has("Spacebar") || this.mouseFire;
+    return this.held.has(" ") || this.held.has("Spacebar");
   }
 
   // --- Edge (once-per-frame) queries ---
@@ -109,11 +67,5 @@ export class Input {
     const q = this.queue;
     this.queue = [];
     return q;
-  }
-
-  drainClicks(): number {
-    const c = this.clickQueue;
-    this.clickQueue = 0;
-    return c;
   }
 }

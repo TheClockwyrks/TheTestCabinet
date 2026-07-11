@@ -94,11 +94,12 @@ Keyboard only.
 
 ## Audio
 
-Audio is recommended but optional, and must never be required for the game to run
-or load. If included, synthesize it with the Web Audio API (no audio files):
+Audio is **required**: synthesize it with the Web Audio API (no audio files) —
 distinct short sounds for firing, a rock shattering, the ship's thrust, the
-saucer's presence, and the ship being destroyed. Provide a mute toggle, and do not
-start audio until the player interacts (browsers block autoplay).
+saucer's presence, and the ship being destroyed. The game must still remain fully
+playable with sound muted and must never fail to run or load if audio cannot
+start. Provide a mute toggle, and do not start audio until the player interacts
+(browsers block autoplay).
 
 ## HUD
 

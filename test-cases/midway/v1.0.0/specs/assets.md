@@ -176,7 +176,7 @@ Web Audio API. Land them under, for example, `assets/audio/`.
 
 - **Sound effects** — produce at least a **purchase / coin** cue (a ride ticket or a
   stall sale), a **ride ding / bell** (a ride starting), and a **low-cash or
-  ride-broken alarm** with `sfx-synth` and/or `sfx-sample`, and optionally a soft
+  ride-broken alarm** with `sfx-synth` and/or `sfx-sample`, and a soft
   **crowd or ride hum** loop. `sfx-synth` builds a sound from synth voices alone;
   `sfx-sample` layers over the baked sample pack (browse it via its `--help`) for a
   richer result — use whichever suits each cue.

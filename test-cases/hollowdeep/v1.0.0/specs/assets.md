@@ -165,7 +165,7 @@ Produce the colony's sound with the audio tools and play the resulting `.wav`s v
 Web Audio API. Land them under, for example, `assets/audio/`.
 
 - **Sound effects** — produce at least a **dig** cue (a pick/impact), a **build/place**
-  cue, and a **low-oxygen alarm** with `sfx-synth` and/or `sfx-sample`, and optionally
+  cue, and a **low-oxygen alarm** with `sfx-synth` and/or `sfx-sample`, and
   a soft **machine hum** loop for a running machine. `sfx-synth` builds a sound from
   synth voices alone; `sfx-sample` layers over the baked sample pack (browse it via its
   `--help`) for a richer result — use whichever suits each cue.

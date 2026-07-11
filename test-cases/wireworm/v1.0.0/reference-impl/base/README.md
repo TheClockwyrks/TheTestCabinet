@@ -22,9 +22,9 @@ canvas, bundled with Vite. No backend, no network, no accounts, no API keys.
 ## Controls
 
 - **Move** — Arrow keys or **WASD** (the cursor glides freely within the bottom
-  band; it can never leave it). The mouse may also move the cursor.
-- **Fire** — **Space** (hold to auto-fire) shoots straight up; a left click fires
-  too. At most 3 bolts in flight; a bolt stops at the first node, segment, or foe.
+  band; it can never leave it).
+- **Fire** — **Space** (hold to auto-fire) shoots straight up. At most 3 bolts in
+  flight; a bolt stops at the first node, segment, or foe.
 - **Pause** — **P** or **Esc** (Resume / Restart / Quit to menu).
 - **Menus** — Arrows / **W**/**S** to move the selection, **Enter** / **Space**
   to confirm.
@@ -70,8 +70,8 @@ it from any static file server, at any base path.
 - `src/constants.ts` — geometry, palette, and the tunable balance numbers.
 - `src/types.ts` — shared world types.
 - `src/assets.ts` — sprite loading via a Vite glob (page-relative URLs).
-- `src/input.ts` — keyboard (required) + optional mouse.
-- `src/audio.ts` — Web Audio synthesized cues (optional, muteable).
+- `src/input.ts` — keyboard.
+- `src/audio.ts` — Web Audio synthesized cues (muteable).
 - `src/field.ts` — the node field: scatter, charge helpers, sparse-field count.
 - `src/worm.ts` — the worm's per-step motion: winding, charging, dive.
 - `src/foes.ts` — the glitch, dropper, and corruptor.

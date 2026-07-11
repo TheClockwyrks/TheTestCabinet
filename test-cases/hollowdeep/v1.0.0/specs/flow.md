@@ -40,9 +40,8 @@ refined material it starts with — are set by `specs/mode.md`.
   lasted before it was lost), and may add secondary measures you choose — living
   delvers, tiles dug, material or food banked — shown at the loss screen. Scores are
   **not persisted** between sessions.
-- **Milestones (optional).** You may surface short milestones (first oxygen diffuser
-  online, first harvest, N cycles survived) as brief, non-blocking notifications;
-  they are flavor, not required.
+- **Milestones.** Surface short milestones (first oxygen diffuser
+  online, first harvest, N cycles survived) as brief, non-blocking notifications.
 
 ## The loss state
 
@@ -104,7 +103,7 @@ of what this build is about** (`specs/assets.md`): the sound effects and the mus
 must still never be required for the game to run or load, must **not** autostart before
 the player interacts (browsers block autoplay), and must offer a **mute** toggle. Play
 the produced clips via Web Audio: short cues for **digging**, **building/placing**, and
-a **low-oxygen alarm**, a soft loop for a **running machine** (optional), and an
+a **low-oxygen alarm**, a soft loop for a **running machine**, and an
 **ambient underground music bed** underneath. `specs/assets.md` is the contract for
 producing and wiring them.
 

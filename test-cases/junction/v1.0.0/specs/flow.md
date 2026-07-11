@@ -41,9 +41,9 @@ recoverable.
   it stayed solvent, and may add secondary measures you choose — treasury, developed
   tiles, prosperity/land value — shown at the bankruptcy screen. Scores are **not
   persisted** between sessions.
-- **Milestones (optional).** You may surface short milestones (first rail line, N
+- **Milestones.** Surface short milestones (first rail line, N
   population reached, a district maxed out) as brief, non-blocking notifications with a
-  **fireworks** flourish (`specs/assets.md`); they are flavor, not required.
+  **fireworks** flourish (`specs/assets.md`).
 
 ## The loss state
 

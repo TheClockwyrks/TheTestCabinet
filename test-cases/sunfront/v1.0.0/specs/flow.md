@@ -72,8 +72,8 @@ both.
   centered on the player's own corner. **Pan** it along the lane to view from your
   staging yard up toward the enemy and back: **edge-scroll** (cursor at a screen edge)
   and the **arrow keys** (or `W`/`A`/`S`/`D`). A quick **re-center on your base**
-  (bound to a key) is recommended. No zoom is required. An optional **minimap** you can
-  click to jump the camera is allowed but not required.
+  (bound to a key) is recommended. No zoom is required. A **minimap** you can
+  click to jump the camera is **required**.
 - **Toggles:** a **performance overlay** (live FPS) and **wireframe mode** each
   have a key — state them on the how-to-play screen or a controls hint (e.g. `F3`
   performance, `F4` wireframe); both work during a live match (see **HUD**).

@@ -105,7 +105,7 @@ src/
   types.ts            Shared entity types (Rock now carries armor; Torpedo)
   entities.ts         The Ship class and rock/saucer factories
   input.ts            Keyboard: held flight state (incl. F) + edge events
-  audio.ts            Web Audio sounds (optional, mutable)
+  audio.ts            Web Audio sounds (mutable)
   physics.ts          Wrap, the gravity well, swept collision, angle helpers
   game.ts             State machine, waves, scoring, lives, saucer, armor,
                       the torpedo (launch, homing, recharge), collisions

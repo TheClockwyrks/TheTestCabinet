@@ -72,7 +72,8 @@ a live wave (`specs/flow.md`) — subject to affordability and the mazing rules.
 
 ## Keyboard shortcuts (accelerators)
 
-Keyboard is optional convenience; the mouse path above is the primary one.
+The mouse path above is the primary pointing device; the keyboard shortcuts
+below are **required** alongside it.
 
 - **Arm a shop tower:** number keys `1`–`8` arm the eight tower types in shop
   order (top to bottom, left to right).
