@@ -13,14 +13,14 @@ export interface CampaignMode {
   startEnergy: number;
   startIntegrity: number;
   interest: boolean;
-  // The round each matter type first appears (specs/matter.md wave ramp). The base
-  // atoms (Monatom) start at round 1; each entry below unlocks a trait or a combo.
+  // The round each matter type first appears (specs/matter.md wave ramp). Regular atoms
+  // start at round 1 (their electron count ramps up over the run); each entry below
+  // unlocks a trait or a combo.
   introRounds: {
-    swift: number;
     dimer: number; // bonded
     noble: number; // inert
     polymer: number; // bonded, longer
-    heavy: number; // heavy (energy-immune)
+    heavy: number; // heavy isotope (energy-immune)
     chelate: number; // inert + bonded combo
     shroud: number; // inert + heavy combo
   };
@@ -34,7 +34,6 @@ export const MODE: CampaignMode = {
   startIntegrity: 100,
   interest: true,
   introRounds: {
-    swift: 2,
     dimer: 3,
     noble: 5,
     polymer: 6,

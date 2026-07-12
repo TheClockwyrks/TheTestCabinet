@@ -267,7 +267,7 @@ proof = "systems"
 [[review_item]]
 id = "hit-points-damage-types"
 title = "Hit points and damage types"
-text = "Every unit's electron shells are its hit points; a shot strips shells until the unit is neutralized and pays its energy. Damage comes in three types — energy, kinetic, nuclear — colored on the projectile; a unit's traits, not a per-tower form-lock, decide which damage reaches it."
+text = "Every unit's electron shells are its hit points — a regular atom is one unit type carrying 1–6 electrons (its layers, Bloons-style) on two shells, up to 2 inner and 4 outer, each electron one hit point, so a bigger atom takes more hits and visibly sheds an electron as it is stripped — and a shot strips shells until the unit is neutralized and pays its energy. Damage comes in three types — energy, kinetic, nuclear — colored on the projectile; a unit's traits, not a per-tower form-lock, decide which damage reaches it."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
@@ -276,7 +276,7 @@ proof = "systems"
 [[review_item]]
 id = "heavy-kinetic-nuclear"
 title = "Heavies take kinetic or nuclear only"
-text = "A heavy is immune to energy damage; only kinetic or nuclear cracks it — so several towers can (the Cleaver, the Reactor, or a Beam's Disruptor branch), not one — and it splits into daughter atoms. A board with no kinetic and no nuclear damage cannot stop the heavies and starts leaking."
+text = "A heavy is immune to energy damage; only kinetic or nuclear cracks it — so several towers can (the Cleaver, the Reactor, or a Beam's Disruptor branch), not one — and, being a radioactive isotope, it decays as it is worn down, shedding alpha (6-electron) and beta (2-electron) atoms and transmuting into lighter isotopes until it reaches a stable nucleus. A board with no kinetic and no nuclear damage cannot stop the heavies and starts leaking."
 weight = 1
 domain = "simulation"
 proof = "systems"
@@ -319,7 +319,7 @@ proof = "gameplay"
 [[review_item]]
 id = "produced-matter-sprites"
 title = "Produced, animated matter"
-text = "The atoms, bonded clusters, inert matter, heavy nuclei, and the boss are drawn from sprites the build produced with `draw`/`draw-sheet` — nucleus orbs with electron shells, ball-and-stick clusters, a dense radioactive heavy, a sealed/shrouded inert atom — the traits reading clearly (including stacked ones like a cloaked heavy), and the atoms visibly animate (at least an orbiting-electron cycle, plus the boss's unstable motion), not static dots or ad-hoc code-drawn circles."
+text = "The atoms, bonded clusters, inert matter, heavy isotopes, and the boss are drawn from sprites the build produced with `draw`/`draw-sheet` — nucleus orbs with two electron shells (a regular atom carries 1–6 electrons, up to 2 inner and 4 outer), ball-and-stick clusters, a dense radioactive isotope, a sealed/shrouded inert atom — the traits reading clearly (including stacked ones like a cloaked isotope), and the atoms visibly animate (an orbiting-electron cycle that sheds an electron as the atom is stripped, plus the boss's unstable motion), not static dots or ad-hoc code-drawn circles."
 weight = 1
 domain = "presentation"
 reference = "gameplay"

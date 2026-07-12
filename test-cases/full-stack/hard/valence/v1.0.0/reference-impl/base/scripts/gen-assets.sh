@@ -21,6 +21,7 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TOW="$ROOT/assets/towers"
+MAT="$ROOT/assets/matter"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 CFG="$TMP/cfg.json"
@@ -118,3 +119,30 @@ s fill-rect --frame 2 --x 16 --y 15 --width 16 --height 2 --color '#eaffb0'
 s fill-rect --frame 3 --x 20 --y 15 --width 10 --height 1 --color '#c9f24a'
 
 echo "produced Emitter + Beam sprites under $TOW"
+
+# ============================ ELECTRON (single orbiting dot) ===================
+# One glowing electron on a tiny transparent canvas. The redesign renders a regular atom
+# with TWO shells and up to six electrons (up to 2 inner + 4 outer, specs/matter.md), so
+# the game composites this single-electron sprite once per electron and orbits them
+# (src/render.ts) — replacing the old rotating-pair sprite, which could not express an
+# arbitrary electron count. Four frames give a subtle pulse.
+mkdir -p "$MAT/electrons"
+printf '{ "width": 12, "height": 12, "background": "transparent", "frames": [0,1,2,3], "actions": "%s", "preview": "%s" }\n' \
+  "$TMP/e_{frame}.json" "$MAT/electrons/{frame}.png" > "$CFG"
+draw-sheet init --config "$CFG" >/dev/null
+# a bluish-white electron: soft halo, bright core; radius/brightness pulse across frames
+s fill-circle --frame 0 --cx 6 --cy 6 --r 4 --color '#385887'
+s fill-circle --frame 0 --cx 6 --cy 6 --r 3 --color '#bcd6ff'
+s fill-circle --frame 0 --cx 6 --cy 6 --r 1 --color '#ffffff'
+s fill-circle --frame 1 --cx 6 --cy 6 --r 5 --color '#3f6296'
+s fill-circle --frame 1 --cx 6 --cy 6 --r 3 --color '#d6e6ff'
+s fill-circle --frame 1 --cx 6 --cy 6 --r 2 --color '#ffffff'
+s fill-circle --frame 2 --cx 6 --cy 6 --r 4 --color '#385887'
+s fill-circle --frame 2 --cx 6 --cy 6 --r 3 --color '#cfe0ff'
+s fill-circle --frame 2 --cx 6 --cy 6 --r 1 --color '#ffffff'
+s fill-circle --frame 3 --cx 6 --cy 6 --r 3 --color '#456aa0'
+s fill-circle --frame 3 --cx 6 --cy 6 --r 2 --color '#bcd6ff'
+s fill-circle --frame 3 --cx 6 --cy 6 --r 1 --color '#ffffff'
+# remove the stale frames of the old 8-frame rotating-pair cycle
+rm -f "$MAT/electrons/4.png" "$MAT/electrons/5.png" "$MAT/electrons/6.png" "$MAT/electrons/7.png"
+echo "produced single-electron sprite under $MAT/electrons"

@@ -16,8 +16,9 @@ upgrade towers, so the matter always presses against a board that is still being
 
 - **Starting energy** is set by the campaign start (`specs/mode.md`).
 - **Neutralize bounty.** Neutralizing a unit pays its **energy** value (`specs/matter.md`)
-  the moment it is removed — a stripped-out atom, a split heavy's daughters as they are
-  neutralized, and so on. Fragments each pay their own value as they are finished.
+  the moment it is removed — a stripped-out atom (which pays by its electron count), a
+  decaying isotope's alpha/beta particles as they are neutralized, and so on. Fragments
+  each pay their own value as they are finished.
 - **Round-clear bonus.** Clearing a round (its last unit dies or leaks) pays a flat `20`
   plus `5 × roundNumber`.
 - **Interest.** At the start of each between-round build phase you earn `5%` of your
@@ -33,10 +34,11 @@ upgrade towers, so the matter always presses against a board that is still being
 
 - You start with the **integrity** set by the campaign start (`specs/mode.md`).
 - When a unit reaches the **collector** (`specs/board.md`) it **leaks**, costing its
-  **leak** value in integrity (`specs/matter.md`: most units `1`, a Polymer or Heavy
-  `2`, the boss `12`) and is removed. Because matter fragments, a partly-broken unit
-  still leaks its pieces — an unopened molecule or unsplit heavy that slips through
-  costs its whole leak.
+  **leak** value in integrity (`specs/matter.md`) and is removed. A regular **atom** costs
+  its **remaining electrons** (each layer is one integrity, so partial damage still helps);
+  a bonded cluster or an **isotope** costs a fixed value (a Polymer or an Isotope `2`–`3`),
+  and the boss `12`. Because matter fragments, a partly-broken unit still leaks its pieces —
+  an unopened molecule or an isotope that slips through un-decayed costs its whole leak.
 - Integrity never regenerates. If integrity reaches **`0` or below**, containment fails
   and the game ends (Containment failed, below) — even mid-round.
 
@@ -65,20 +67,26 @@ upgrade towers, so the matter always presses against a board that is still being
 - **Difficulty scaling.** Matter grows harder with the round number `r` — it gains **hit
   points** and, later, gains **traits** (the combos). Reference formulas:
   - **Counts** grow substantially across the run — rounds get larger and denser so the
-    player's board is always pressed (reference: `round(8 + 2r)` units).
-  - **Shells** (a free atom's or a bonded atom's hit points) rise: base
-    (`specs/matter.md`) `+ floor((r − 1) / 4)` (a Monatom is `2` at Round 1, `6` by
-    Round 20).
+    player's board is always pressed (reference: `round(8 + 2r)` units, with the back third
+    denser still).
+  - **The electron ramp.** Regular **atoms** grow by their **electron count**, not a shell
+    bonus (`specs/matter.md`): each round fields atoms from a size window that ramps from
+    `1`–`2` electrons early to the full `6` late, so per-unit health climbs as the sizes
+    do. A freed bonded atom is an ordinary atom whose electron count also climbs with the
+    round, capped at `6`.
   - **Bonded clusters** gain both **length** — one more atom every `7` rounds — and a
     **tougher bond pool**: base `+ floor((r − 1) / 3)` (plus the extra atoms), so a
     Polymer is a longer, heavier chip late.
-  - **Heavies** gain hit points: base `+ floor((r − 1) / 3)` shells to wear down.
+  - **Isotopes** (heavies) gain hit points: base `+ floor((r − 1) / 3)` shells to wear
+    down; their decay chain (the alpha/beta particles they shed) is fixed by type.
   - **Trait combos arrive on a schedule** (`specs/mode.md`): the inert+bonded
     **Chelate** and the inert+heavy **Shroud** appear in the back third, so late rounds
     demand layered answers.
-  - The **boss's** hit points and fragment count grow with the milestone round it anchors.
-  - Speeds, energy bounties, and leak values **do not** scale with the round. All towers
-    are unchanged across rounds; only the matter grows.
+  - The **boss's** hit points and decay-chain length grow with the milestone round it
+    anchors.
+  - Speeds, per-type energy bounties, and per-type leak values **do not** scale with the
+    round (a regular atom's bounty and leak simply follow its own electron count). All
+    towers are unchanged across rounds; only the matter grows.
 - **Victory.** Clearing the **final round** (Round 20) with **integrity remaining** wins
   the game (the Victory state, below).
 
@@ -195,8 +203,10 @@ The game must exhibit these behaviors. They are observable and make good test ta
   bond pool (kinetic fastest), shedding a spray of free atoms — not a single-tower lock
   (`specs/matter.md`, `specs/towers.md`).
 - **Heavies take kinetic or nuclear only** (energy is useless against them), so
-  **several** towers can crack a heavy — Cleaver, Reactor, or a Disruptor Beam — and it
-  splits into daughter atoms (`specs/matter.md`, `specs/towers.md`).
+  **several** towers can crack a heavy — Cleaver, Reactor, or a Disruptor Beam — and, being
+  a **radioactive isotope**, it **decays** as it is worn down, shedding **alpha**
+  (`6`-electron) and **beta** (`2`-electron) atoms and transmuting to a lighter isotope
+  (`specs/matter.md`, `specs/towers.md`).
 - **Inert matter needs detection**, available from **several** sources (a Catalyst aura,
   a Reactor's Fallout zone, an Ionizer's Array branch, a Beam natively); a **Moderator**
   slows matter (heavies resist, the boss is immune) — `specs/matter.md`,

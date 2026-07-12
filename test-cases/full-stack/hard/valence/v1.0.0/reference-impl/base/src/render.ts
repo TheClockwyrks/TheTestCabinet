@@ -9,6 +9,9 @@
 // pointer events without re-deriving the layout.
 
 import {
+  ATOM_INNER_MAX,
+  ATOM_MAX_ELECTRONS,
+  ATOM_OUTER_MAX,
   BOARD_X0,
   BOARD_X1,
   BOARD_Y0,
@@ -318,32 +321,49 @@ function drawUnits(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   }
 }
 
+// A regular atom: a nucleus orb with TWO electron shells — up to 2 electrons on the inner
+// shell and up to 4 on the outer (specs/matter.md, specs/overview.md). The electron count
+// is the atom's remaining hit points, so as it is stripped it visibly sheds electrons (the
+// outer shell empties first, then the inner), and the ring for an empty shell disappears.
 function drawAtom(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number, u: Unit): void {
   const orb = A.sprite(u.element === 0 ? "matter/nucleus_i" : "matter/nucleus_ii");
   const col = u.element === 0 ? COL.elemI : COL.elemII;
+  const e = Math.max(1, Math.min(ATOM_MAX_ELECTRONS, Math.round(u.shells)));
+  const inner = Math.min(e, ATOM_INNER_MAX);
+  const outer = Math.min(Math.max(e - ATOM_INNER_MAX, 0), ATOM_OUTER_MAX);
+  const rIn = 8;
+  const rOut = 13;
+
   ctx.save();
-  ctx.strokeStyle = hexA(COL.shell, 0.5);
+  ctx.strokeStyle = hexA(COL.shell, 0.45);
   ctx.lineWidth = 1;
-  for (let i = 0; i < u.shells; i++) {
+  ctx.beginPath();
+  ctx.arc(x, y, rIn, 0, Math.PI * 2);
+  ctx.stroke();
+  if (outer > 0) {
     ctx.beginPath();
-    ctx.arc(x, y, 8 + i * 3.2, 0, Math.PI * 2);
+    ctx.arc(x, y, rOut, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.restore();
+
   blitGlow(ctx, orb, x, y, 20, col);
+
   if (A.electron.length) {
-    // One orbiting-electron layer per REMAINING shell, each sized to sit on its own shell
-    // ring — so as a unit is stripped of shells it visibly sheds electrons too (the ring
-    // and its electrons vanish together), instead of the ring count dropping while a fixed
-    // electron cloud lingers.
-    const len = A.electron.length;
+    // Composite the produced single-electron sprite once per electron, spaced evenly around
+    // its shell and orbiting on a timer (the two shells counter-rotate so the motion reads).
+    const dot = A.electron[Math.floor((u.animT * 6 + u.id) % A.electron.length)]!;
+    const DOT = 7;
     ctx.save();
-    ctx.globalAlpha = 0.9;
-    for (let i = 0; i < u.shells; i++) {
-      const f = Math.floor((u.animT * 9 + u.id + i * 3) % len);
-      const size = (8 + i * 3.2) * 2.5;
-      blit(ctx, A.electron[f]!, x, y, size, size, 0);
-    }
+    ctx.globalAlpha = 0.95;
+    const ring = (count: number, radius: number, dir: number, phase: number): void => {
+      for (let j = 0; j < count; j++) {
+        const a = phase + dir * u.animT * 1.7 + (j / count) * Math.PI * 2;
+        blit(ctx, dot, x + Math.cos(a) * radius, y + Math.sin(a) * radius, DOT, DOT, 0);
+      }
+    };
+    ring(inner, rIn, 1, u.id * 0.7);
+    ring(outer, rOut, -1, u.id * 1.3);
     ctx.restore();
   }
   if (u.hitFlash < 0.1) flash(ctx, x, y, 16, COL.ionizer);
@@ -665,8 +685,7 @@ function drawPreview(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: nu
   const label = w2.hasBoss ? `ROUND ${w2.round} · BOSS` : `ROUND ${w2.round}`;
   text(ctx, label, x, y + 28, 14, w2.hasBoss ? COL.boss : COL.text, "left", "700", 0.5);
   const iconFor: Record<MatterType, string> = {
-    monatom: "icons/atom",
-    swift: "icons/atom",
+    atom: "icons/atom",
     dimer: "icons/molecule",
     polymer: "icons/molecule",
     noble: "icons/noble",
@@ -949,9 +968,9 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   text(ctx, "HOW TO PLAY", STAGE_W / 2, 60, 32, COL.text, "center", "700", 4);
   const lines: [string, string][] = [
     ["GOAL", "Break matter down before it reaches the collector. Every leak costs integrity; reach 0 and containment fails."],
-    ["HIT POINTS", "Every unit has electron SHELLS — its hit points. Any of three damage types strips them: ENERGY, KINETIC, NUCLEAR. At zero shells a unit is neutralized and pays energy."],
+    ["HIT POINTS", "Every unit has electron SHELLS — its hit points. A regular ATOM carries 1–6 electrons (its layers) on two shells; each is one hit point, so a bigger atom takes more hits. Any of three damage types strips them: ENERGY, KINETIC, NUCLEAR. At zero it is neutralized and pays energy; a leaking atom costs its remaining electrons."],
     ["BONDED (molecules)", "A cluster carries an outer BOND pool — extra health ANY tower chips through, shedding free atoms as it breaks. KINETIC (Cleaver) chews bonds fastest, but it is not the only opener."],
-    ["HEAVY", "Immune to ENERGY. Only KINETIC or NUCLEAR damage it — the Cleaver, the Reactor, or a Beam's Disruptor — and it sheds daughter atoms as it splits."],
+    ["HEAVY (isotope)", "A radioactive isotope: immune to ENERGY, cracked only by KINETIC or NUCLEAR — the Cleaver, the Reactor, or a Beam's Disruptor. As it is worn down it DECAYS, shedding ALPHA (6-electron) and BETA (2-electron) atoms until it reaches a stable nucleus."],
     ["INERT (camo)", "Untargetable until a DETECTOR sees it: a Catalyst's field, a Reactor's fallout, an Ionizer's Array upgrade, or a Beam (which sees it natively). Traits stack late — a heavy that is also inert needs both answers."],
     ["TOWERS", "Seven general-purpose towers; each picks one of two BRANCHES at tier III. Support: a Catalyst reveals + excites (+damage), a Moderator slows."],
     ["ECONOMY", "Neutralizing pays energy; clearing a round pays a bonus; banked energy earns interest. Spend it to build and upgrade."],

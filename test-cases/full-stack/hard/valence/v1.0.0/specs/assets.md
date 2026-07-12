@@ -132,12 +132,14 @@ Produce with `draw-sheet`, which emits **one PNG per frame**. The matter must fe
 frames (land them under, for example, `assets/matter/electrons/`,
 `assets/towers/<tower>/`, `assets/matter/boss/`, one PNG per frame):
 
-- **Orbiting electrons** — a short looping cycle of the electron shells orbiting a
-  nucleus, played on free atoms so they visibly spin (you may produce it as a
-  nucleus-plus-electrons cycle, or as an electrons-only overlay you composite over the
-  produced nucleus orb). The number of shells shown should track the atom's remaining
-  shells (`specs/matter.md`) — produce enough of the cycle, or enough shell variants,
-  that an atom losing a shell reads.
+- **Orbiting electrons** — the electrons that orbit a free atom, played so they visibly
+  spin. A regular atom carries **1–6 electrons on two shells** (up to `2` on the inner and
+  up to `4` on the outer, `specs/matter.md`), and the count **is** its remaining hit points,
+  so as an atom is stripped it must visibly **shed an electron**. Produce a
+  **single-electron** sprite (a short pulse cycle is welcome) that the game composites
+  **once per electron** around the two shells and orbits — or a nucleus-plus-electrons
+  cycle — so any `1`–`6` electron count reads and the shells empty (outer first) as the
+  atom loses hit points.
 - **A tower firing cycle** for at least the primary damage towers (an energy charge
   pulse for the Ionizer/Emitter/Beam, the Cleaver's cleaving motion, the Reactor's
   rotor) so a firing tower animates rather than sitting inert; a Catalyst/Moderator
@@ -163,8 +165,9 @@ whose `render`/emit step writes a **`system.json`**; land them under, for exampl
   (energy/kinetic/nuclear) is welcome.
 - **Bond-snap shards** — a scatter of shards when a bonded cluster's bond pool is
   chipped and it sheds an atom.
-- **Split flash** — a bright radioactive burst when a heavy (or a boss step) splits into
-  daughter atoms.
+- **Split flash** — a bright radioactive burst when an isotope **decays**: each time a
+  heavy or the boss sheds an alpha/beta particle, and when it finally bursts at the end of
+  its decay chain (`specs/matter.md`).
 - **Neutralize burst** — an energy-release burst when a unit is stripped to nothing and
   neutralized (the moment it pays its bounty).
 - **Reveal pulse** — a brief pulse when a detector reveals an inert unit (welcome; the
@@ -185,7 +188,7 @@ the particles yourself.)
 
 **Fire the bursts from the simulation.** Spawn an instance of the matching system **at the
 event's position** — the ionization spark at the atom that lost a shell, the bond-snap
-at the broken bond, the split flash at the splitting heavy, the neutralize burst at
+at the broken bond, the split flash at a decaying isotope, the neutralize burst at
 the atom as it is removed — and let it play out. Because these are simulated, they vary
 shot to shot — that variation is correct; do not freeze them into a single canned frame.
 
@@ -195,7 +198,7 @@ Produce the board's sound with the audio tools and play the resulting `.wav`s vi
 Audio API. Land them under, for example, `assets/audio/`.
 
 - **Sound effects** — produce at least: a **tower shot / shell strip** cue, a **bond
-  snap**, a **nuclear crack** (a heavy or boss splitting), a **neutralize** chime (a
+  snap**, a **nuclear crack** (a heavy or boss decaying), a **neutralize** chime (a
   unit fully broken down), a **build/place** cue, and a **leak alarm** when a unit
   reaches the collector, with `sfx-synth` and/or `sfx-sample` (a **reveal** blip is a
   welcome extra). `sfx-synth` builds a sound from synth voices alone; `sfx-sample`

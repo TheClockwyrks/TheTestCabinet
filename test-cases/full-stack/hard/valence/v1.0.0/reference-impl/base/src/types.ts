@@ -1,17 +1,17 @@
 // Valence — shared runtime types (the simulation entities and UI intents).
 
-import type { Branch, DamageType, MatterType, TowerKind, Trait } from "./constants";
+import type { Branch, DamageType, DecayEmission, MatterType, TowerKind, Trait } from "./constants";
 import type { Lane } from "./board";
 
 export interface AtomSpec {
   element: 0 | 1;
-  shells: number;
+  shells: number; // this atom's electron count (its hit points once freed)
 }
 
 // A live unit of matter on the board. Its TRAITS decide which damage reaches it and
 // whether a tower can see it; its SHELLS are its hit points. Traits stack, and a unit's
 // makeup can change as it is broken down — a bonded cluster sheds free atoms as its bond
-// pool is chipped away, a heavy splits into daughters (specs/matter.md).
+// pool is chipped away, a heavy isotope decays into alpha/beta particles (specs/matter.md).
 export interface Unit {
   id: number;
   type: MatterType;
@@ -35,8 +35,9 @@ export interface Unit {
   hitSlowTimer: number; // Cleaver Impactor on-hit slow, decays
   hitSlowFactor: number;
   radius: number;
-  fragmentsShed: number; // boss: fragment steps already shed
-  fragmentTarget: number; // boss: total fragment steps
+  decayChain: DecayEmission[]; // isotope: the emission (alpha/beta) at each decay step
+  fragmentsShed: number; // isotope: decay steps already emitted
+  fragmentTarget: number; // isotope: total decay steps (= decayChain.length)
   animT: number; // seconds alive (electron orbit / boss wobble frame)
   hitFlash: number; // seconds since last hit (a brief flash)
   dead: boolean;

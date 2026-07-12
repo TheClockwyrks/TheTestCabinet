@@ -71,7 +71,8 @@ nearest its collector — the standard "first" target (`specs/towers.md`).
   … and wrap), and while a wave's composition may **weight** the split (`specs/matter.md`),
   it must **never** funnel a whole wave onto one path and leave another empty. A unit does
   **not** change paths once assigned. A unit that **fragments** (a bonded cluster chipped
-  apart, a heavy split, a boss shedding — `specs/matter.md`) spawns its fragments on the
+  apart, an isotope decaying into alpha/beta particles, a boss shedding — `specs/matter.md`)
+spawns its fragments on the
   **same** path at its own position, so they continue past the towers ahead of it.
 - **Branching as shared segments.** A branching map's fork is two paths that **coincide**
   on a shared trunk (the inlet approach) and/or a shared final run, then **diverge** into

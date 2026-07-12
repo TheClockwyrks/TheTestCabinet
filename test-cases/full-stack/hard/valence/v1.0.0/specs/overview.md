@@ -25,8 +25,9 @@ and a trait opens a unit to a **class** of towers, never just one:
 - **Bonded** matter (a molecule) wraps its atoms in an outer **bond pool** — extra health
   **any** tower chips through, shedding a spray of free atoms as it breaks. Kinetic damage
   chews bonds fastest, but it is not the only opener.
-- **Heavy** matter is **immune to energy**; only **kinetic or nuclear** damage cracks it —
-  several towers can, not one. It splits into lighter daughter atoms.
+- **Heavy** matter is a **radioactive isotope**, **immune to energy**; only **kinetic or
+  nuclear** damage cracks it — several towers can, not one. As it is worn down it **decays**,
+  shedding **alpha** and **beta** particles and transmuting into lighter isotopes.
 - **Inert** matter is **untargetable until it is detected**, and detection comes from
   **several** sources (a support aura or an upgrade branch), not a single tower.
 
@@ -203,10 +204,11 @@ matter apart. The canonical palette and type are below; match them.
 - **A unit's traits must be unmistakable, and readable by more than color alone.** What
   a unit asks of the board — chip its bonds, bring kinetic/nuclear, detect it — is the
   core read of the game (`specs/matter.md`), so the traits must be distinguishable by
-  **shape** as well as color: a **free atom** as a nucleus with visible electron shells
-  (its hit points), a **bonded** cluster as two or more atoms joined by bond sticks
-  (ball-and-stick) with a draining bond-integrity read, a **heavy** as a dense,
-  tightly-bound orb with a radioactive shimmer and its own hit-point read, and an
+  **shape** as well as color: a **free atom** as a nucleus with **two** visible electron
+  shells whose electron count (up to `2` inner, up to `4` outer) is its hit points, a
+  **bonded** cluster as two or more atoms joined by bond sticks (ball-and-stick) with a
+  draining bond-integrity read, a **heavy** as a dense, tightly-bound **radioactive
+  isotope** orb with a shimmer and its own hit-point read, and an
   **inert** unit as a sealed, shrouded orb that visibly snaps to a "revealed" state
   under a detector. Because **traits stack**, a unit may show more than one read at once
   (a shrouded heavy, a cloaked cluster). A player must tell these apart at speed, and

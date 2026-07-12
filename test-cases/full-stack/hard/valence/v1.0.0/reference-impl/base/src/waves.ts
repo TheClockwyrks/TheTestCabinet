@@ -8,7 +8,7 @@
 // rounds (10, 20) fold a Macromass boss into the wave. Reading the coming round's distinct
 // types (the next-round preview) and re-shaping the board for them is the between-round game.
 
-import { BOSS_ROUNDS, type MatterType } from "./constants";
+import { BOSS_ROUNDS, atomElectronRange, type MatterType } from "./constants";
 import type { Lane } from "./board";
 import type { CampaignMode } from "./mode";
 import { Rng } from "./rng";
@@ -17,6 +17,7 @@ export interface SpawnEvent {
   atMs: number;
   type: MatterType;
   lane: Lane;
+  electrons?: number; // a regular atom's electron count = its hit points (specs/matter.md)
 }
 
 export interface Wave {
@@ -37,11 +38,11 @@ export function buildWave(round: number, mode: CampaignMode, pathCount = 2): Wav
   const rng = new Rng(round * 2654435761 + 12345);
   const intro = mode.introRounds;
   const lanes = Math.max(1, pathCount);
+  const [eLo, eHi] = atomElectronRange(round); // this round's regular-atom electron window
 
   const pool: Weighted[] = (
     [
-      { type: "monatom", weight: 5, unlockRound: 1 },
-      { type: "swift", weight: 3, unlockRound: intro.swift },
+      { type: "atom", weight: 6, unlockRound: 1 },
       { type: "dimer", weight: 3, unlockRound: intro.dimer },
       { type: "noble", weight: 2, unlockRound: intro.noble },
       { type: "polymer", weight: 2, unlockRound: intro.polymer },
@@ -51,14 +52,15 @@ export function buildWave(round: number, mode: CampaignMode, pathCount = 2): Wav
     ] satisfies Weighted[]
   ).filter((w) => round >= w.unlockRound);
 
-  // Counts grow substantially: ~10 at round 1 up toward ~50 by round 20.
-  const count = Math.round(8 + round * 2);
+  // Counts grow substantially: ~10 at round 1 up toward ~60 by round 20, with the back
+  // third getting denser still so the late rounds keep pressing a fully-built board.
+  const count = Math.round(8 + round * 2 + Math.max(0, round - 11) * 1.3);
   const totalWeight = pool.reduce((a, w) => a + w.weight, 0);
 
-  const picks: MatterType[] = [];
+  const picks: { type: MatterType; electrons?: number }[] = [];
   for (let i = 0; i < count; i++) {
     let r = rng.next() * totalWeight;
-    let chosen: MatterType = "monatom";
+    let chosen: MatterType = "atom";
     for (const w of pool) {
       r -= w.weight;
       if (r <= 0) {
@@ -66,7 +68,14 @@ export function buildWave(round: number, mode: CampaignMode, pathCount = 2): Wav
         break;
       }
     }
-    picks.push(chosen);
+    let electrons: number | undefined;
+    if (chosen === "atom") {
+      // Size the atom within the round's window, weighted toward the top (max of two rolls)
+      // so waves escalate — early rounds are small atoms, late rounds the full 6-electron.
+      const t = Math.max(rng.next(), rng.next());
+      electrons = eLo + Math.floor(t * (eHi - eLo + 1));
+    }
+    picks.push({ type: chosen, electrons });
   }
 
   // Spawn cadence tightens with the round so late rounds press harder.
@@ -74,8 +83,8 @@ export function buildWave(round: number, mode: CampaignMode, pathCount = 2): Wav
   const events: SpawnEvent[] = [];
   let lane: Lane = 0;
   let t = 600;
-  for (const type of picks) {
-    events.push({ atMs: Math.round(t + rng.range(-60, 60)), type, lane });
+  for (const pick of picks) {
+    events.push({ atMs: Math.round(t + rng.range(-60, 60)), type: pick.type, lane, electrons: pick.electrons });
     lane = (lane + 1) % lanes; // round-robin across the map's paths — every path carries traffic
     t += interval;
   }
@@ -90,7 +99,7 @@ export function buildWave(round: number, mode: CampaignMode, pathCount = 2): Wav
   const durationMs = events.length ? events[events.length - 1]!.atMs + 1200 : 1200;
 
   // Distinct types, in a stable preview order.
-  const order: MatterType[] = ["monatom", "swift", "dimer", "polymer", "noble", "heavy", "chelate", "shroud", "macromass"];
+  const order: MatterType[] = ["atom", "dimer", "polymer", "noble", "heavy", "chelate", "shroud", "macromass"];
   const present = new Set(events.map((e) => e.type));
   const types = order.filter((t2) => present.has(t2));
 

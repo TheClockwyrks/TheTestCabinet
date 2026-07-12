@@ -10,14 +10,16 @@ collector costs **integrity**; every unit you neutralize releases the **energy**
 for more towers.
 
 Its defining idea is that matter is **hit points, damage types, and stackable traits** —
-not a "pop a layer" ladder. Every unit carries electron **shells** (its hit points); any
-of three damage types (**energy**, **kinetic**, **nuclear**) strips them, gated only by a
-unit's **traits**:
+not a "one form, one counter" ladder. Every unit carries electron **shells** (its hit
+points) — a regular **atom** is a single unit type carrying **1–6 electrons** (its layers)
+rendered on two shells, each electron one hit point — and any of three damage types
+(**energy**, **kinetic**, **nuclear**) strips them, gated only by a unit's **traits**:
 
 - **Bonded** clusters wrap their atoms in an outer **bond pool** — extra health *any* tower
   chips through (kinetic fastest), shedding a spray of free atoms.
-- **Heavy** matter is **immune to energy**; only **kinetic or nuclear** cracks it — several
-  towers can — and it splits into daughter atoms.
+- **Heavy** matter is a **radioactive isotope**, **immune to energy**; only **kinetic or
+  nuclear** cracks it — several towers can — and as it is worn down it **decays**, shedding
+  alpha (6-electron) and beta (2-electron) atoms and transmuting into lighter isotopes.
 - **Inert** matter is **untargetable until detected** (a Catalyst aura, a Reactor's Fallout
   zone, an Ionizer's Array branch, or a Beam natively). Traits **stack** late.
 

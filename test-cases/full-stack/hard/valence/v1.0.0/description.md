@@ -11,8 +11,9 @@ electron **shells** (its hit points), and any of three damage types — **energy
 **kinetic**, **nuclear** — strips them; a unit's **traits** decide which damage reaches
 it, and a trait opens a unit to a *class* of towers, never just one. A **bonded** cluster
 wraps its atoms in an outer **bond pool** that *any* tower chips through (kinetic fastest),
-shedding a spray of free atoms. A **heavy** is immune to energy and cracks only under
-**kinetic or nuclear** damage — several towers can. An **inert** unit is untargetable
+shedding a spray of free atoms. A **heavy** is a **radioactive isotope**, immune to energy
+and cracking only under **kinetic or nuclear** damage — several towers can — that **decays**
+as it is worn down, shedding alpha and beta particles. An **inert** unit is untargetable
 until a **detector** reveals it, and detection comes from several sources. Traits **stack**
 late — a cloaked heavy, a bonded cloak — forcing layered defenses. Seven **general-purpose**
 towers each deal a damage type and each choose one of two **upgrade branches**; two are

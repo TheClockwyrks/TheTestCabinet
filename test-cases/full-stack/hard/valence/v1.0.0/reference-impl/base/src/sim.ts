@@ -11,21 +11,23 @@
 // browser and the headless balance harness (sim/).
 
 import {
+  ALPHA_ELECTRONS,
+  BETA_ELECTRONS,
   BUILD_PHASE_SECONDS,
-  FRAGMENT_SPEED_BONUS,
-  HEAVY_DAUGHTERS,
-  HEAVY_DAUGHTER_SHELLS,
+  INERT_ATOM_BOUNTY_BONUS,
   INTEREST_CAP,
   INTEREST_RATE,
   MARK_TIME,
   MATTER,
-  MAX_ATOM_SPEED,
   PROJECTILE_SPEED,
   SLOW_ON_HIT_TIME,
-  STRIP_SPEED_BONUS,
   TOTAL_ROUNDS,
   TOWERS,
   UPGRADE_MULT,
+  atomBounty,
+  atomRadius,
+  atomSpeed,
+  clampElectrons,
   deriveStats,
   roundClearBonus,
   scaledAtoms,
@@ -34,6 +36,7 @@ import {
   scaledShells,
   type Branch,
   type DamageType,
+  type DecayEmission,
   type EffStats,
   type MatterType,
   type TowerKind,
@@ -165,14 +168,17 @@ export class Game {
     if (!w) return;
     while (this.spawnCursor < w.events.length && w.events[this.spawnCursor]!.atMs <= this.waveClock) {
       const e = w.events[this.spawnCursor]!;
-      this.units.push(this.makeUnit(e.type, e.lane));
+      this.units.push(this.makeUnit(e.type, e.lane, e.electrons));
       this.spawned++;
       this.spawnCursor++;
     }
   }
 
   // ---- Unit construction ------------------------------------------------------
-  private makeUnit(type: MatterType, lane: Lane): Unit {
+  // `electrons` sizes a regular atom (its 1..6 electron count = its hit points); it is
+  // ignored by the bonded / isotope types, which read their stats from MATTER and scale
+  // by the round (specs/matter.md).
+  private makeUnit(type: MatterType, lane: Lane, electrons?: number): Unit {
     const def = MATTER[type];
     const r = this.round;
     const traits = [...def.traits] as Trait[];
@@ -198,6 +204,7 @@ export class Game {
       hitSlowTimer: 0,
       hitSlowFactor: 1,
       radius: def.radius,
+      decayChain: [],
       fragmentsShed: 0,
       fragmentTarget: 0,
       animT: 0,
@@ -210,32 +217,46 @@ export class Game {
       u.atoms = Array.from({ length: n }, () => ({ element: def.element, shells }) as AtomSpec);
       u.bondHP = scaledBondHP(def.bondHP, r) + (n - def.atoms); // longer chains, tougher bonds
       u.maxBondHP = u.bondHP;
-    } else if (type === "macromass") {
-      u.shells = scaledHeavyShells(def.shells, r) + (r >= 20 ? 6 : 0);
-      u.maxShells = u.shells;
-      u.fragmentTarget = 6 + (r >= 20 ? 3 : 0);
     } else if (traits.includes("heavy")) {
+      // An unstable isotope (heavy / shroud / boss): hit points scale with the round, and
+      // it breaks down along its decay chain as it is worn down (specs/matter.md).
+      const bossExtra = type === "macromass" && r >= 20;
       u.shells = scaledHeavyShells(def.shells, r);
       u.maxShells = u.shells;
+      u.decayChain = bossExtra ? [...def.decay, "beta", "alpha", "beta"] : [...def.decay];
+      u.fragmentTarget = u.decayChain.length;
     } else {
-      // free atom (plain or inert)
-      u.shells = scaledShells(def.shells, r);
-      u.maxShells = u.shells;
+      // A regular atom (plain or inert), sized by its electron count = its hit points; its
+      // element tint (green ↔ blue) tracks the electron count so the ranks read apart.
+      const e = clampElectrons(electrons ?? def.shells);
+      this.setAtom(u, e);
     }
     return u;
   }
 
-  private makeFreeAtom(lane: Lane, s: number, element: 0 | 1, shells: number, speed: number, inert: boolean): Unit {
-    return {
+  // Configure a unit as a regular atom of `electrons` electrons: its electrons are its
+  // shells, its speed and radius follow the electron count, and (green vs blue) tint tracks
+  // its size so the ranks read apart (specs/matter.md, specs/overview.md).
+  private setAtom(u: Unit, electrons: number, element?: 0 | 1): void {
+    const e = clampElectrons(electrons);
+    u.shells = e;
+    u.maxShells = e;
+    u.element = element ?? (e >= 4 ? 1 : 0);
+    u.baseSpeed = atomSpeed(e);
+    u.radius = atomRadius(e);
+  }
+
+  private makeFreeAtom(lane: Lane, s: number, element: 0 | 1, electrons: number, inert: boolean): Unit {
+    const u: Unit = {
       id: this.nextId++,
-      type: inert ? "noble" : "monatom",
+      type: inert ? "noble" : "atom",
       traits: inert ? ["inert"] : [],
       lane,
       s,
       element,
-      baseSpeed: Math.min(MAX_ATOM_SPEED, speed),
-      shells: Math.max(1, shells),
-      maxShells: Math.max(1, shells),
+      baseSpeed: 0,
+      shells: 0,
+      maxShells: 0,
       atoms: [],
       bondHP: 0,
       maxBondHP: 0,
@@ -248,12 +269,15 @@ export class Game {
       hitSlowTimer: 0,
       hitSlowFactor: 1,
       radius: 10,
+      decayChain: [],
       fragmentsShed: 0,
       fragmentTarget: 0,
       animT: 0,
       hitFlash: 0,
       dead: false,
     };
+    this.setAtom(u, electrons, element);
+    return u;
   }
 
   private hasTrait(u: Unit, t: Trait): boolean {
@@ -538,17 +562,19 @@ export class Game {
     if (this.hasTrait(u, "heavy") && dmgType === "energy") return; // guard (energy can't crack heavy)
     u.hitFlash = 0;
     u.shells -= amount;
-    if (u.type === "macromass") {
-      this.bossProgress(u, p);
-      if (u.shells <= 0) this.bossBurst(u, p);
+    if (this.hasTrait(u, "heavy")) {
+      // An unstable isotope breaks down along its decay chain as it is worn: each step it
+      // crosses emits an alpha/beta particle and transmutes into a lighter isotope; spent,
+      // it reaches a stable nucleus and is neutralized (specs/matter.md).
+      this.decayProgress(u, p);
+      if (u.shells <= 0) this.decayFinalize(u, p);
       else this.fxQueue.push({ kind: "nuclear", x: p.x, y: p.y });
       return;
     }
     if (u.shells <= 0) {
-      if (this.hasTrait(u, "heavy")) this.splitHeavy(u, p);
-      else this.neutralize(u, p);
+      this.neutralize(u, p);
     } else {
-      if (!this.hasTrait(u, "heavy")) u.baseSpeed = Math.min(MAX_ATOM_SPEED, u.baseSpeed + STRIP_SPEED_BONUS);
+      u.baseSpeed = atomSpeed(u.shells); // shed an electron → the lighter atom is faster
       this.fxQueue.push({ kind: dmgType, x: p.x, y: p.y });
     }
   }
@@ -564,7 +590,7 @@ export class Game {
       const target = Math.min(k - 1, Math.floor((u.maxBondHP - Math.max(0, u.bondHP)) / chunk));
       while (u.fragmentsShed < target) {
         const a = u.atoms[u.fragmentsShed]!;
-        this.units.push(this.makeFreeAtom(u.lane, u.s + 4, a.element, a.shells, u.baseSpeed + FRAGMENT_SPEED_BONUS, inert));
+        this.units.push(this.makeFreeAtom(u.lane, u.s + 4, a.element, a.shells, inert));
         u.fragmentsShed++;
         this.fxQueue.push({ kind: "bondsnap", x, y });
         this.sndQueue.push("snap");
@@ -574,28 +600,12 @@ export class Game {
       // The cluster is fully opened — it becomes its last free atom.
       const last = u.atoms[k - 1] ?? { element: u.element, shells: shellsAtom };
       u.traits = u.traits.filter((t) => t !== "bonded");
-      u.type = inert ? "noble" : "monatom";
-      u.element = last.element;
-      u.shells = last.shells;
-      u.maxShells = last.shells;
+      u.type = inert ? "noble" : "atom";
+      this.setAtom(u, last.shells, last.element); // shells/speed/radius from its electrons
       u.atoms = [];
       u.bondHP = 0;
-      u.baseSpeed = Math.min(MAX_ATOM_SPEED, u.baseSpeed + FRAGMENT_SPEED_BONUS);
       this.fxQueue.push({ kind: "bondsnap", x, y });
       this.sndQueue.push("snap");
-    }
-  }
-
-  private splitHeavy(u: Unit, p: { x: number; y: number }): void {
-    u.dead = true;
-    this.payBounty(u);
-    this.fxQueue.push({ kind: "split", x: p.x, y: p.y });
-    this.sndQueue.push("nuclear");
-    const inert = this.hasTrait(u, "inert"); // a Shroud's daughters stay inert
-    const shells = scaledShells(HEAVY_DAUGHTER_SHELLS, this.round);
-    for (let i = 0; i < HEAVY_DAUGHTERS; i++) {
-      const d = this.makeFreeAtom(u.lane, u.s + (i === 0 ? -6 : 6), (i % 2) as 0 | 1, shells, u.baseSpeed + FRAGMENT_SPEED_BONUS, inert);
-      this.units.push(d);
     }
   }
 
@@ -607,45 +617,54 @@ export class Game {
   }
 
   private payBounty(u: Unit): void {
-    const pay = MATTER[u.type].energy;
+    const pay = this.bountyOf(u);
     this.energy += pay;
     this.score += pay;
     this.kills++;
   }
 
-  // The boss fountains matter as it is cracked: each HP step sheds a fragment; the final
-  // hit bursts it into a last spray (specs/matter.md).
-  private bossProgress(u: Unit, p: { x: number; y: number }): void {
+  // A regular atom pays by its electron count (a tougher atom pays more) plus an inert
+  // detection premium; every other type pays its fixed bounty (specs/matter.md, flow.md).
+  private bountyOf(u: Unit): number {
+    if (u.type === "atom" || u.type === "noble") {
+      return atomBounty(u.maxShells) + (this.hasTrait(u, "inert") ? INERT_ATOM_BOUNTY_BONUS : 0);
+    }
+    return MATTER[u.type].energy;
+  }
+
+  // An isotope fountains matter as it is worn down: each decay step it crosses emits its
+  // particle — an alpha (a 6-electron atom) or a beta (a 2-electron atom) — onto the path
+  // behind it while it transmutes into a lighter isotope (specs/matter.md).
+  private decayProgress(u: Unit, p: { x: number; y: number }): void {
     if (u.fragmentTarget <= 0) return;
-    const step = u.maxShells / u.fragmentTarget;
+    const step = u.maxShells / (u.fragmentTarget + 1); // reserve the last band for finalize
     const want = Math.min(u.fragmentTarget, Math.floor((u.maxShells - Math.max(0, u.shells)) / step));
     while (u.fragmentsShed < want && u.shells > 0) {
-      this.shedBossFragment(u, u.fragmentsShed);
+      this.emitDecayParticle(u, u.fragmentsShed);
       u.fragmentsShed++;
       this.fxQueue.push({ kind: "split", x: p.x, y: p.y });
       this.sndQueue.push("nuclear");
     }
   }
 
-  private bossBurst(u: Unit, p: { x: number; y: number }): void {
-    for (let i = 0; i < 3; i++) this.shedBossFragment(u, i);
-    this.payBounty(u);
-    u.dead = true;
+  // The isotope has reached a stable nucleus: emit any decay steps not yet shed (a hard
+  // hit can spend it in one blow), then neutralize it for its bounty (specs/matter.md).
+  private decayFinalize(u: Unit, p: { x: number; y: number }): void {
+    while (u.fragmentsShed < u.fragmentTarget) {
+      this.emitDecayParticle(u, u.fragmentsShed);
+      u.fragmentsShed++;
+    }
+    this.neutralize(u, p);
     this.fxQueue.push({ kind: "split", x: p.x, y: p.y });
     this.sndQueue.push("nuclear");
   }
 
-  private shedBossFragment(u: Unit, idx: number): void {
-    const behind = u.s - 8 - idx * 6;
-    const shells = scaledShells(2, this.round);
-    if (idx % 2 === 0) {
-      const mol = this.makeUnit("dimer", u.lane);
-      mol.s = behind;
-      this.units.push(mol);
-    } else {
-      this.units.push(this.makeFreeAtom(u.lane, behind, 0, shells, MATTER.monatom.speed + FRAGMENT_SPEED_BONUS, false));
-      this.units.push(this.makeFreeAtom(u.lane, behind - 6, 1, shells, MATTER.monatom.speed + FRAGMENT_SPEED_BONUS, false));
-    }
+  private emitDecayParticle(u: Unit, idx: number): void {
+    const kind: DecayEmission = u.decayChain[idx] ?? "beta";
+    const electrons = kind === "alpha" ? ALPHA_ELECTRONS : BETA_ELECTRONS;
+    const element: 0 | 1 = kind === "alpha" ? 1 : 0; // alpha reads heavier (blue), beta lighter (green)
+    const inert = this.hasTrait(u, "inert"); // a Shroud's emitted particles stay inert
+    this.units.push(this.makeFreeAtom(u.lane, u.s - 8 - idx * 5, element, electrons, inert));
   }
 
   private unitById(id: number): Unit | null {
@@ -668,11 +687,20 @@ export class Game {
 
   private leak(u: Unit): void {
     u.dead = true;
-    this.integrity -= MATTER[u.type].leak;
-    this.leakCount += MATTER[u.type].leak;
+    const cost = this.leakOf(u);
+    this.integrity -= cost;
+    this.leakCount += cost;
     const p = this.board.sample(u.lane, this.board.pathLength(u.lane));
     this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
     this.sndQueue.push("alarm");
+  }
+
+  // A regular atom that reaches the collector costs its REMAINING electrons (each layer
+  // is one integrity), so partial damage still helps; other types cost their fixed leak
+  // value (specs/matter.md, specs/flow.md).
+  private leakOf(u: Unit): number {
+    if (u.type === "atom" || u.type === "noble") return Math.max(1, Math.round(u.shells));
+    return MATTER[u.type].leak;
   }
 
   private cullDead(): void {

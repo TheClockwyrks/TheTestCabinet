@@ -30,10 +30,10 @@ and **traits**, and any tower that can reach it chips it down. Concretely:
   by a **kind of tower**, of which there are always several (`specs/towers.md`).
 
 Every unit shows an **integrity read** appropriate to its makeup so the player can see
-progress: a free atom's remaining shells (as rings), a bonded cluster's remaining bond
-integrity (a draining arc), a heavy's remaining shells (a draining arc), and a
-shroud/cloak mark on inert matter. Draw them so the traits are unmistakable at speed
-(`specs/overview.md`).
+progress: a free atom's remaining electrons on its **two shells** (up to `2` inner, up to
+`4` outer), a bonded cluster's remaining bond integrity (a draining arc), a heavy isotope's
+remaining shells (a draining arc), and a shroud/cloak mark on inert matter. Draw them so
+the traits are unmistakable at speed (`specs/overview.md`).
 
 ## The three traits
 
@@ -56,16 +56,31 @@ atoms in all.
 - Freed atoms are ordinary free atoms an energy tower then finishes. If a cluster is also
   **inert** (a Chelate), the atoms it sheds are **inert too** (they still need detection).
 
-### Heavy — immune to energy; kinetic or nuclear only
+### Heavy — a radioactive isotope; kinetic or nuclear only
 
-A **heavy** unit is a dense nucleus that **energy damage cannot touch at all**. Only
-**kinetic** or **nuclear** damage strips its shells — so a **Cleaver**, a **Reactor**,
-or a **Beam** running its **Disruptor** branch (`specs/towers.md`) all crack a heavy; an
-Emitter, an Ionizer, or a plain Beam do nothing to it. A heavy stripped to zero shells
-**splits** into **two lighter daughter atoms** (free atoms, ordinary energy fodder) plus
-a split flash (`specs/assets.md`). A board with **no** kinetic and **no** nuclear damage
-cannot stop heavies, and they leak — but the answer is a **class** of towers, not one
-tower.
+A **heavy** unit is a dense, **radioactive isotope** whose nucleus **energy damage cannot
+touch at all**. Only **kinetic** or **nuclear** damage wears down its shells — so a
+**Cleaver**, a **Reactor**, or a **Beam** running its **Disruptor** branch
+(`specs/towers.md`) all crack a heavy; an Emitter, an Ionizer, or a plain Beam do nothing
+to it. A board with **no** kinetic and **no** nuclear damage cannot stop heavies, and they
+leak — but the answer is a **class** of towers, not one tower.
+
+**A heavy breaks down the way a real radioactive material does — it decays.** As it is
+worn down, each time its shells cross a **decay step** it **emits a particle** and
+**transmutes into a lighter isotope** that travels on:
+
+- an **alpha** particle is a **full 6-electron atom** — a tough chunk the strippers must
+  chew down;
+- a **beta** particle is a **light 2-electron atom** — small and quick.
+
+An isotope's **decay chain** is a fixed sequence of these emissions (its identity); it
+sheds them one per decay step as it is cracked, and when its shells are finally spent it
+has reached a **stable** nucleus and is **neutralized** (paying its bounty) with a split
+flash (`specs/assets.md`). So a cracked heavy is not two tidy daughters but a **stream**
+of alpha and beta particles the energy strippers behind the kinetic/nuclear line must
+clean up. A **Shroud** (below) decays the same way, and the particles it emits stay
+**inert**. (Reference: a base heavy carries **5** shells and a short chain — one alpha,
+one beta.)
 
 ### Inert — untargetable until it is detected
 
@@ -112,51 +127,66 @@ damage type can **reach** it.
 
 ## Matter types
 
-The base (Round 1) roster. `Shells` is a free atom's or heavy's starting hit points;
-`Atoms/Bond` is a bonded cluster's atom count and its outer bond-integrity pool; `Traits`
-lists the stacked traits. Per-round scaling of these is in `specs/flow.md`.
+The base (Round 1) roster. For a regular **Atom**, `Structure` is its **electron count**
+(`1`–`6`), which **is** its shells — its hit points; for an isotope, `Structure` is its
+starting shells; `Atoms/Bond` is a bonded cluster's atom count and its outer bond-integrity
+pool; `Traits` lists the stacked traits. Per-round scaling of these is in `specs/flow.md`.
 
 | Type | Traits | Structure (Round 1) | Speed | Energy | Leak | What it asks of the board |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Monatom** | — | 2 shells | 55 | 2 | 1 | any damage |
-| **Swift** | — | 1 shell | 110 | 2 | 1 | any damage (fast — wants a slow) |
+| **Atom** | — | 1–6 electrons (= shells) | 44–112 | 2–8 | its remaining electrons | any damage |
 | **Dimer** | bonded | 2 atoms, bond 4 | 50 | 5 | 1 | chip bonds (kinetic best), then strip |
 | **Polymer** | bonded | 4 atoms, bond 10 | 40 | 10 | 2 | chip a big bond pool → a spray |
-| **Noble** | inert | 2 shells | 65 | 6 | 1 | detect, then any damage |
-| **Heavy** | heavy | 5 shells | 35 | 12 | 2 | kinetic or nuclear only |
+| **Noble** | inert | 3 electrons | 60 | 6 | its remaining electrons | detect, then any damage |
+| **Isotope** (heavy) | heavy | 5 shells | 36 | 12 | 3 | kinetic or nuclear; decays to alpha/beta |
 | **Chelate** | inert + bonded | 3 atoms, bond 8 | 48 | 12 | 2 | detect, then chip bonds |
-| **Shroud** | inert + heavy | 5 shells | 40 | 16 | 2 | detect **and** kinetic/nuclear |
+| **Shroud** | inert + heavy | 5 shells | 40 | 16 | 3 | detect **and** kinetic/nuclear |
 | **Macromass** | heavy (boss) | see below | 28 | 140 | 12 | a kinetic/nuclear line + cleanup |
 
-- **Monatom** — the baseline atom; the bulk of early rounds.
-- **Swift** — a fragile atom at double speed; punishes a board with no **Moderator** to
-  slow it.
+- **Atom** — the regular unit and the bulk of every round, carrying a number of
+  **electrons** (its **layers**, `1`–`6`). **Each electron is one shell — one hit point**
+  that any damage type strips: a `6`-electron atom is six hits deep, a `1`-electron atom a
+  single hit. Fewer electrons make a **lighter, faster** atom (a `1`-electron atom is the
+  fast, fragile unit that punishes a board with no **Moderator** to slow it); more make a
+  **slower, tougher** one. Its electrons render on **two shells** — up to `2` inner and up
+  to `4` outer — and it visibly **sheds an electron** each time it is stripped. Its bounty
+  rises with its starting electron count, and a leaking atom costs its **remaining
+  electrons** in integrity, so partial damage still helps. Which sizes a round fields ramps
+  with the round (Wave composition, below).
 - **Dimer / Polymer** — bonded clusters. Their bond pool is extra health any tower
   chips, but **kinetic** (the Cleaver) chews it fastest; a Polymer's big pool becomes a
   **spray** of four atoms that floods the strippers behind it.
-- **Noble** — inert; nothing can touch it until a detector reveals it, then a plain atom.
-- **Heavy** — energy-immune; only kinetic or nuclear crack it, and it splits into two
-  daughters. Several towers answer it, but a board with none leaks.
+- **Noble** — an inert atom; nothing can touch it until a detector reveals it, then an
+  ordinary atom.
+- **Isotope** (heavy) — energy-immune and **radioactive**: only kinetic or nuclear wears
+  it down, and as it is cracked it **decays**, emitting **alpha** (`6`-electron) and
+  **beta** (`2`-electron) atoms and transmuting to a lighter isotope until it reaches a
+  stable nucleus. Several towers answer it, but a board with none leaks.
 - **Chelate** — a cloaked cluster: reveal it, then chip its bonds (its shed atoms stay
   inert).
-- **Shroud** — a cloaked heavy: reveal it **and** bring kinetic/nuclear. The hardest
-  single unit; it exists only because traits stack.
+- **Shroud** — a cloaked isotope: reveal it **and** bring kinetic/nuclear, and the
+  alpha/beta particles it decays into stay inert. The hardest single unit; it exists only
+  because traits stack.
 - **Macromass** — the **boss** (below).
 
 ## The boss — Macromass
 
-A **Macromass** is a huge unstable isotope that anchors the milestone rounds
-(`specs/flow.md`). It is a **heavy** (energy-immune, so only kinetic/nuclear hurt it)
-with a very large shell pool (base **26**), and it is **immune to being slowed** by a
-Moderator (too massive). As its shells are worn down it **fountains matter**: each time
-its hit points cross a **fragment step** it **sheds a fragment** — a Dimer or a pair of
-free atoms — onto its path while continuing, and when its shells are finally spent the
-core **bursts** into a last spray. So the boss is not a single wall of health but a
-**stream** the kinetic/nuclear line cracks while the strippers behind it clean up the
-fragments. It moves slowly (speed 28), leaks **12** integrity, and pays a large bounty
-(140) plus whatever its fragments pay. Its exact fragment schedule is yours to tune
-within this shape, but it must genuinely **fragment as it is worn down**, not simply
-drain a bar. (Reference: base **6** fragment steps, `+3` on the final Round 20 boss.)
+A **Macromass** is the heaviest matter in the game: a **super-heavy, highly unstable
+isotope** — a uranium/plutonium-class nucleus with a **long decay chain** — that anchors
+the milestone rounds (`specs/flow.md`). Like any isotope it is **heavy** (energy-immune, so
+only kinetic/nuclear hurt it) with a very large shell pool (base **26**), and it is
+**immune to being slowed** by a Moderator (too massive). As its shells are worn down it
+**fountains matter**: at each **decay step** it emits the next particle in its chain — an
+**alpha** (a `6`-electron atom) or a **beta** (a `2`-electron atom) — onto its path and
+transmutes into a lighter isotope while continuing, and when its shells are finally spent
+the core **bursts**, emitting any remaining steps at once and neutralizing (a stable
+nucleus). So the boss is not a single wall of health but a **stream** of alpha and beta
+particles the kinetic/nuclear line cracks while the strippers behind it clean up. It moves
+slowly (speed 28), leaks **12** integrity, and pays a large bounty (140) plus whatever its
+particles pay. Its exact decay chain is yours to tune within this shape, but it must
+genuinely **fragment into alpha/beta particles as it is worn down**, not simply drain a
+bar. (Reference: a base decay chain of **6** steps alternating beta/alpha, `+3` on the
+final Round 20 boss.)
 
 ## Wave composition
 
@@ -166,13 +196,20 @@ yours to design, within `specs/flow.md`'s progression. Compose rounds so the pla
 answer
 everything with one tower or one damage type:
 
-- Early rounds are mostly **Monatoms** and **Swifts** — teach stripping and the need to
-  slow the fast units.
+- Early rounds are mostly **small atoms** (one or two electrons) — teach stripping and the
+  need to slow the fast, low-electron ones.
+- **The electron ramp.** Every round fields regular **atoms**, but *which sizes* grows with
+  the round: early rounds are `1`–`2`-electron atoms, and the size window shifts up and
+  drops its tiny sizes over the run until the late rounds field the full `6`-electron atoms.
+  More electrons is more health per unit, so a late swarm is far tougher than an early one
+  even though both are "just atoms" — pick each atom's size from the round's window,
+  weighting toward the top so waves escalate.
 - **Dimers** and then **Polymers** enter, teaching that bonds are extra health best
   chewed by **kinetic** but chippable by anything.
 - **Nobles** begin appearing, so the player must field **detection** (from any of its
-  sources), and **Heavies**, so the player must field **kinetic or nuclear** — each a
-  class no single-type board covers.
+  sources), and **Isotopes** (heavies), so the player must field **kinetic or nuclear** —
+  each a class no single-type board covers. A cracked isotope decays into a spray of
+  alpha/beta atoms the strippers must then finish.
 - The **combos** — **Chelate** (inert + bonded) and **Shroud** (inert + heavy) — arrive
   late, forcing **layered** answers (detect *and* the right damage).
 - A **Macromass** boss anchors each milestone round (`specs/flow.md`), with the

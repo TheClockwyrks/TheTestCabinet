@@ -87,7 +87,8 @@ a board is a set of genuine choices, not a fixed checklist.
   matter for **every** tower nearby and makes matter in its field take **+1** damage per
   hit. Without detection somewhere, inert matter is untouchable.
 - **Moderator** buys time: it slows matter so the damage towers land more hits — the
-  answer to Swifts and to packing damage onto a cluster or heavy. Moderators do not
+  answer to fast, low-electron atoms and to packing damage onto a cluster or isotope.
+  Moderators do not
   stack multiplicatively; a unit in two fields takes the **strongest** single slow.
 
 ## Upgrades — tier II, then a branch at tier III
