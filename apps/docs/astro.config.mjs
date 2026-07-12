@@ -546,6 +546,7 @@ export default defineConfig({
                 "testing/asset-generation/voxel-binaries",
                 "testing/asset-generation/mesh-binaries",
                 "testing/asset-generation/skinned-binaries",
+                "testing/asset-generation/blender-binaries",
                 "testing/asset-generation/particle-binaries",
                 "testing/asset-generation/audio-binaries",
                 "testing/asset-generation/rigging-walkers",
