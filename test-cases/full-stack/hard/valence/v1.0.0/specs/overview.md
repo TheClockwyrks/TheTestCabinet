@@ -191,7 +191,9 @@ matter apart. The canonical palette and type are below; match them.
   and the HUD/next-round preview names the types in words as well
   (`specs/board.md`, `specs/flow.md`).
 - **Each tower is color-coded** by its role (the five accent colors above), so a full
-  board still reads as which tool sits where.
+  board still reads as which tool sits where. **The damage towers turn to aim** — each
+  head rotates to face what it is firing at, and every shot is a **visible projectile that
+  carries the hit** to the target on impact (`specs/towers.md`, `specs/assets.md`).
 - **You produce the art, effects, and audio** with the on-`PATH` tools — see
   `specs/assets.md`, which is the contract for the sprites, animations, particle bursts,
   and audio, and how to load and wire each in. The HUD, build panel, menus, node

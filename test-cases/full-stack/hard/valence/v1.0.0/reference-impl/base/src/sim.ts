@@ -20,6 +20,7 @@ import {
   MATTER,
   MAX_ATOM_SPEED,
   MODERATOR_SLOW,
+  PROJECTILE_SPEED,
   RANGE_PER_LEVEL,
   STRIP_SPEED_BONUS,
   TOTAL_ROUNDS,
@@ -41,6 +42,7 @@ import type {
   FxEvent,
   GameState,
   Phase,
+  Projectile,
   Tower,
   Unit,
 } from "./types";
@@ -58,6 +60,7 @@ export class Game {
   speed = 1; // 1 / 2 / 3
 
   units: Unit[] = [];
+  projectiles: Projectile[] = []; // shots in flight (specs/towers.md)
   towers = new Map<number, Tower>(); // node id → tower
 
   // Build / selection UI state.
@@ -97,6 +100,7 @@ export class Game {
     this.round = 0;
     this.speed = 1;
     this.units = [];
+    this.projectiles = [];
     this.towers.clear();
     this.buildKind = null;
     this.selectedNode = null;
@@ -132,6 +136,7 @@ export class Game {
     this.stepAuras();
     this.stepTowers(dt);
     this.stepUnits(dt);
+    this.stepProjectiles(dt); // move shots after units move, so homing stays accurate
     this.cullDead();
     this.checkRoundEnd();
     if (this.integrity <= 0) this.lose();
@@ -269,19 +274,75 @@ export class Game {
   private stepTowers(dt: number): void {
     for (const t of this.towers.values()) {
       t.fireAnim += dt;
-      if (t.kind === "catalyst" || t.kind === "moderator") continue; // auras don't fire
-      t.cooldown -= dt;
-      if (t.cooldown > 0) continue;
+      if (t.kind === "catalyst" || t.kind === "moderator") continue; // auras don't fire or aim
       const target = this.pickTarget(t);
-      if (!target) continue;
+      // The head tracks the current target and keeps its last heading when idle
+      // (specs/towers.md).
+      if (target) {
+        const p = sampleLane(target.lane, target.s);
+        t.aimAngle = Math.atan2(p.y - (t.y - 4), p.x - t.x);
+      }
+      t.cooldown -= dt;
+      if (t.cooldown > 0 || !target) continue;
       t.cooldown = 1 / t.fireRate;
-      const p = sampleLane(target.lane, target.s);
-      t.aimAngle = Math.atan2(p.y - t.y, p.x - t.x);
       t.fireAnim = 0;
-      this.sndQueue.push("shot");
-      this.fxQueue.push({ kind: "muzzle", x: t.x, y: t.y });
-      this.applyHit(t, target);
+      this.launchProjectile(t, target);
     }
+  }
+
+  // Launch a shot from the tower's muzzle toward `target`. The projectile — not this
+  // call — deals the damage, on impact (specs/towers.md).
+  private launchProjectile(t: Tower, target: Unit): void {
+    const speed = PROJECTILE_SPEED[t.kind as "ionizer" | "shear" | "fission"];
+    const muzzle = 14; // barrel length from the head centre
+    const cx = t.x + Math.cos(t.aimAngle) * muzzle;
+    const cy = t.y - 4 + Math.sin(t.aimAngle) * muzzle;
+    this.projectiles.push({
+      id: this.nextId++,
+      kind: t.kind as "ionizer" | "shear" | "fission",
+      level: t.level,
+      x: cx,
+      y: cy,
+      angle: t.aimAngle,
+      speed,
+      targetId: target.id,
+      dead: false,
+    });
+    this.sndQueue.push("shot");
+    this.fxQueue.push({ kind: "muzzle", x: cx, y: cy });
+  }
+
+  // ---- Projectiles in flight --------------------------------------------------
+  private stepProjectiles(dt: number): void {
+    for (const pr of this.projectiles) {
+      if (pr.dead) continue;
+      const target = this.unitById(pr.targetId);
+      if (!target || target.dead) {
+        pr.dead = true; // the target is gone — the shot misses (specs/towers.md)
+        continue;
+      }
+      const p = sampleLane(target.lane, target.s);
+      const dx = p.x - pr.x;
+      const dy = p.y - pr.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const step = pr.speed * dt;
+      pr.angle = Math.atan2(dy, dx);
+      if (dist <= step + target.radius) {
+        // Impact: the projectile connects and applies the tower's effect here.
+        pr.x = p.x;
+        pr.y = p.y;
+        pr.dead = true;
+        this.applyHit(pr, target);
+      } else {
+        pr.x += (dx / dist) * step;
+        pr.y += (dy / dist) * step;
+      }
+    }
+  }
+
+  private unitById(id: number): Unit | null {
+    for (const u of this.units) if (u.id === id) return u;
+    return null;
   }
 
   private pickTarget(t: Tower): Unit | null {
@@ -309,11 +370,13 @@ export class Game {
     }
   }
 
-  private applyHit(t: Tower, u: Unit): void {
+  // Apply a landed shot's effect. `src` is the firing tower's kind+level snapshot,
+  // carried by the projectile so the effect is right on impact (specs/towers.md).
+  private applyHit(src: { kind: TowerKind; level: 1 | 2 | 3 }, u: Unit): void {
     u.hitFlash = 0;
     const p = sampleLane(u.lane, u.s);
-    if (t.kind === "ionizer") {
-      const baseStrip = t.level >= 3 ? 2 : 1;
+    if (src.kind === "ionizer") {
+      const baseStrip = src.level >= 3 ? 2 : 1;
       const strip = baseStrip + (u.excited ? u.excitedBonus : 0);
       u.shells -= strip;
       if (u.shells <= 0) {
@@ -322,11 +385,11 @@ export class Game {
         u.baseSpeed = Math.min(MAX_ATOM_SPEED, u.baseSpeed + STRIP_SPEED_BONUS);
         this.fxQueue.push({ kind: "ionize", x: p.x, y: p.y });
       }
-    } else if (t.kind === "shear") {
-      const bonds = t.level >= 3 ? 2 : 1;
+    } else if (src.kind === "shear") {
+      const bonds = src.level >= 3 ? 2 : 1;
       this.shear(u, bonds);
-    } else if (t.kind === "fission") {
-      this.fission(u, t);
+    } else if (src.kind === "fission") {
+      this.fission(u, src);
     }
   }
 
@@ -374,12 +437,12 @@ export class Game {
     }
   }
 
-  private fission(u: Unit, t: Tower): void {
+  private fission(u: Unit, src: { level: 1 | 2 | 3 }): void {
     const p = sampleLane(u.lane, u.s);
     u.criticality += 1;
 
     // Splash: +1 criticality to other heavies within the level's splash radius.
-    const splash = FISSION_SPLASH[t.level - 1]!;
+    const splash = FISSION_SPLASH[src.level - 1]!;
     if (u.form === "heavy") {
       for (const other of this.units) {
         if (other === u || other.dead || other.form !== "heavy") continue;
@@ -465,6 +528,7 @@ export class Game {
 
   private cullDead(): void {
     if (this.units.some((u) => u.dead)) this.units = this.units.filter((u) => !u.dead);
+    if (this.projectiles.some((p) => p.dead)) this.projectiles = this.projectiles.filter((p) => !p.dead);
   }
 
   // ---- Round flow -------------------------------------------------------------
@@ -479,6 +543,7 @@ export class Game {
     this.score += 100 * this.round;
     this.energy += roundClearBonus(this.round);
     this.wave = null;
+    this.projectiles = []; // no shots carry over into the build phase
     if (this.round >= TOTAL_ROUNDS) {
       this.win();
       return;
@@ -542,6 +607,7 @@ export class Game {
     this.integrity = 0;
     this.state = "defeat";
     this.units = [];
+    this.projectiles = [];
     this.wave = null;
   }
 

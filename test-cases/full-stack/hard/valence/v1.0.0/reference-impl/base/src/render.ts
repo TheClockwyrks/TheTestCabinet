@@ -123,6 +123,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
   // playing / paused / victory / defeat all show the board behind.
   drawBoard(ctx, game, A);
   drawUnits(ctx, game, A);
+  drawProjectiles(ctx, game, A);
   bursts.draw(ctx);
   drawStatusBar(ctx, game, A, clicks);
   drawPanel(ctx, game, A, clicks);
@@ -249,18 +250,30 @@ function drawRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
   ctx.restore();
 }
 
+function isDamageTower(kind: TowerKind): boolean {
+  return kind === "ionizer" || kind === "shear" || kind === "fission";
+}
+
+// Draw a tower's produced sprites: a non-rotating base/mount, then either the rotating
+// head aimed by `aimAngle` (damage towers) or the upright aura body (support towers) —
+// specs/towers.md, specs/assets.md.
+function drawTowerSprite(ctx: CanvasRenderingContext2D, A: Assets, kind: TowerKind, level: number, cx: number, cy: number, size: number, aimAngle: number): void {
+  blit(ctx, A.sprite("towers/base"), cx, cy, size, size, 0);
+  blit(ctx, A.sprite(towerSprite(kind, level)), cx, cy, size, size, isDamageTower(kind) ? aimAngle : 0);
+}
+
 function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Game): void {
-  const base = A.sprite(towerSprite(t.kind, t.level));
   const size = 34;
-  blit(ctx, base, t.x, t.y - 4, size, size, 0);
-  // fire overlay for the damage towers when recently fired
+  const cy = t.y - 4;
+  drawTowerSprite(ctx, A, t.kind, t.level, t.x, cy, size, t.aimAngle);
+  // fire overlay for the damage towers when recently fired — rotates with the head
   if (t.kind === "ionizer" || t.kind === "shear" || t.kind === "fission") {
     const frames = A.towerFire[t.kind];
     if (frames.length && t.fireAnim < 0.24) {
       const idx = Math.min(frames.length - 1, Math.floor((t.fireAnim / 0.24) * frames.length));
       ctx.save();
       ctx.globalAlpha = 0.9;
-      blit(ctx, frames[idx]!, t.x, t.y - 4, size, size, 0);
+      blit(ctx, frames[idx]!, t.x, cy, size, size, t.aimAngle);
       ctx.restore();
     }
   }
@@ -268,7 +281,7 @@ function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Gam
   if (game.selectedNode === t.node) {
     ctx.strokeStyle = COL.text;
     ctx.lineWidth = 2;
-    roundRect(ctx, t.x - size / 2, t.y - 4 - size / 2, size, size, 5);
+    roundRect(ctx, t.x - size / 2, cy - size / 2, size, size, 5);
     ctx.stroke();
   }
   // level pips
@@ -277,6 +290,19 @@ function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Gam
     ctx.beginPath();
     ctx.arc(t.x - 8 + i * 8, t.y + 14, 2.4, 0, Math.PI * 2);
     ctx.fill();
+  }
+}
+
+// ---- projectiles in flight ----------------------------------------------------
+// Each shot is a produced sprite rotated to its heading; it carries the hit to the
+// target and applies the effect on impact (specs/towers.md).
+function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+  for (const pr of game.projectiles) {
+    ctx.save();
+    ctx.shadowColor = TOWERS[pr.kind].color;
+    ctx.shadowBlur = 8;
+    blit(ctx, A.sprite(`towers/proj_${pr.kind}`), pr.x, pr.y, 16, 16, pr.angle);
+    ctx.restore();
   }
 }
 
@@ -656,7 +682,8 @@ function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): 
   const cy = node ? node.y : py;
   drawRange(ctx, cx, cy, TOWERS[game.buildKind].range, game.buildKind);
   ctx.globalAlpha = node ? 0.95 : 0.5;
-  blit(ctx, A.sprite(towerSprite(game.buildKind, 1)), cx, cy - 4, 34, 34, 0);
+  // Preview the base + head; damage heads point at a resting heading (up) until placed.
+  drawTowerSprite(ctx, A, game.buildKind, 1, cx, cy - 4, 34, -Math.PI / 2);
   ctx.globalAlpha = 1;
 }
 

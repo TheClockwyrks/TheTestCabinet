@@ -90,7 +90,20 @@ Produce at least these, in the palette from `specs/overview.md`:
 - **Towers** — each of the five towers (Ionizer, Shear, Fission, Catalyst, Moderator,
   `specs/towers.md`), **color-coded** by role, and each with a **visible change across its
   three upgrade levels** (a distinct sprite per level, or a base sprite plus a produced tier
-  accent/overlay). A tower must read as its type and as upgraded when it is.
+  accent/overlay). A tower must read as its type and as upgraded when it is. **Author the
+  three damage towers (Ionizer, Shear, Fission) as a rotatable head/turret**: draw the head
+  pointing in a **single canonical direction** (for example toward `+x`, "east") so the game
+  can **rotate the whole head to aim it at the target** (`specs/towers.md`), and — because a
+  spinning head reads better on a fixed mount — produce a separate **non-rotatable
+  base/mount** sprite to sit under it (the head rotates; the base does not). Keep the head's
+  canonical facing consistent across a tower's three levels. The two support towers are
+  auras and need not rotate.
+- **Projectiles** — a small **shot sprite for each damage tower** (the Ionizer's charge
+  bolt, the Shear's cleaving shard, the Fission's slug), color-coded to its tower and drawn
+  pointing in the **same canonical direction** as the heads, so the game rotates each to its
+  heading as it flies. The projectile is the object that carries the hit
+  (`specs/towers.md`), so it must be a **visible travelling sprite** — not a static dot at
+  the muzzle, and not omitted in favour of an instant hitscan.
 - **Matter** — the forms (`specs/matter.md`): the **nucleus orb** (in the element tints;
   the electron shells may be drawn in code as rings *over* the produced orb, or produced as
   part of a `draw-sheet` cycle below), the **bond stick** used to compose molecules from

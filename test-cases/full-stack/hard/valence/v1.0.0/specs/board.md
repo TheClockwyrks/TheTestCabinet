@@ -83,6 +83,10 @@ much of the conduit near its node it actually reaches.
   unit's form (a Shear only targets molecules, an Ionizer only free reactive atoms, and so
   on — `specs/towers.md`, `specs/matter.md`); a tower with nothing valid in range holds
   fire.
+- A damage tower's **head rotates to face its current target**, and each shot is a
+  **projectile that travels to the unit and deals its effect on impact** — not an instant
+  hitscan (`specs/towers.md`, `specs/assets.md`). The support towers are auras: they neither
+  aim nor fire a projectile.
 - When a tower is selected or held, draw its **range** as a ring so the player can see
   what it covers before committing (`specs/controls.md`).
 

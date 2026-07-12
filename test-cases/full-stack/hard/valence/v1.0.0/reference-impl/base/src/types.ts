@@ -48,7 +48,23 @@ export interface Tower {
   placedInBuildPhaseOf: number; // the round number whose build phase placed it
   refundable: boolean; // full refund until the round it was placed on has run
   fireAnim: number; // seconds since last shot (drives the fire sheet)
-  aimAngle: number;
+  aimAngle: number; // the head's heading — tracks the current target (specs/towers.md)
+}
+
+// A shot in flight. A damage tower launches one toward its target; it homes onto that
+// unit and applies the tower's effect on IMPACT (specs/towers.md) — never a hitscan. It
+// carries a snapshot of the firing tower's kind and level so the effect is correct even
+// if the tower is later sold or upgraded, and misses harmlessly if its target is gone.
+export interface Projectile {
+  id: number;
+  kind: "ionizer" | "shear" | "fission";
+  level: 1 | 2 | 3;
+  x: number;
+  y: number;
+  angle: number; // heading, for the sprite's rotation
+  speed: number; // px/s
+  targetId: number; // the homed unit
+  dead: boolean;
 }
 
 export type GameState = "title" | "howto" | "playing" | "paused" | "victory" | "defeat";

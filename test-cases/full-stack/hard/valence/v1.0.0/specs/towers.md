@@ -18,8 +18,24 @@ automatically at valid in-range targets, and holds fire when nothing valid is in
   (shots per second) at the **valid** in-range unit **furthest along** the conduit — the
   standard "first" target — and each acts only on the form it counters (`specs/matter.md`).
   A tower whose only in-range units are the wrong form **holds fire**.
+- **The damage towers aim.** A damage tower's **head/turret rotates to face the unit it is
+  firing at**, and keeps pointing at it as that unit moves along the conduit; while it holds
+  fire (nothing valid in range) it keeps its last heading. Its sprite is authored so the
+  head turns independently of any fixed base (`specs/assets.md`). The two support towers are
+  auras and do not rotate or aim.
+- **A shot is a real projectile, and the projectile is what deals the damage.** When a
+  damage tower fires it launches a **projectile** from its muzzle toward the target; the
+  projectile **travels** across the board and applies the tower's effect **on impact** —
+  stripping the shell, breaking the bond, or adding the criticality **when it reaches the
+  unit**, never before. **Hitscan does not satisfy this**: applying the effect the instant
+  the tower fires while a projectile plays as pure decoration is prohibited — no effect may
+  land until its projectile actually connects. If the target is neutralized or leaves the
+  board before the projectile arrives, the shot **misses** and does nothing. Projectiles are
+  fast enough that a hit normally lands well within the fire interval; author a projectile
+  sprite per damage tower (`specs/assets.md`).
 - The two **support** towers (Catalyst, Moderator) are **auras**: they continuously affect
-  **every** valid unit within range, with no shots and no single target.
+  **every** valid unit within range, with no shots, no single target, no aiming, and no
+  projectile.
 - Each tower's info — in the shop hover and the selected-tower inspector
   (`specs/board.md`) — must state **what it targets** in words (for example "Ionizer —
   strips free reactive atoms" or "Shear — breaks molecule bonds"), so the player can tell

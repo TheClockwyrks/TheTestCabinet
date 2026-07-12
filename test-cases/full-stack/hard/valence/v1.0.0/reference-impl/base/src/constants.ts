@@ -182,6 +182,15 @@ export const MATTER: Record<MatterType, MatterDef> = {
   macromass: { type: "macromass", form: "boss", label: "MACROMASS", element: 1, shells: 0, atoms: 1, criticality: 6, speed: 28, energy: 140, leak: 12, radius: 22 },
 };
 
+// Projectile travel speed by damage tower (logical px/s). A shot is a real travelling
+// projectile that deals its effect on impact, not a hitscan (specs/towers.md); these are
+// fast enough that a hit normally lands well within the fire interval.
+export const PROJECTILE_SPEED: Record<"ionizer" | "shear" | "fission", number> = {
+  ionizer: 640, // a quick charge bolt
+  shear: 480, // a heavier cleaving shard
+  fission: 380, // a slow, weighty slug
+};
+
 // Freed/stripped atoms are a little faster; capped (specs/matter.md).
 export const FRAGMENT_SPEED_BONUS = 10; // an atom peeled from a molecule / a fissioned daughter
 export const STRIP_SPEED_BONUS = 6; // an atom that just lost a shell
