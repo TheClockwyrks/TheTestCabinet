@@ -4,7 +4,8 @@
   Canonical view slug: gameplay
   Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system, visual
   design), ../specs/board.md (conduit, lanes, the build grid, HUD), ../specs/matter.md
-  (the forms), ../specs/towers.md (the towers), ../specs/flow.md (the HUD), and
+  (hit points, damage types, traits), ../specs/towers.md (the seven towers),
+  ../specs/flow.md (the HUD), and
   ../specs/assets.md (these are stand-ins for PRODUCED sprites, animations, and
   particle bursts).
 
@@ -56,22 +57,23 @@
         <!-- Support auras (always visible), centered on their tower's cell. -->
         <div class="aura mod" style="left: 460px; top: 540px; width: 240px; height: 240px"></div>
         <div class="aura cat" style="left: 740px; top: 380px; width: 240px; height: 240px"></div>
-        <!-- Selected Fission tower's range ring. -->
+        <!-- Selected Reactor tower's range ring. -->
         <div class="range" style="left: 780px; top: 300px; width: 240px; height: 240px"></div>
 
         <!-- Empty build cells: a legal spot beside Lane A, and the hovered cell on Lane B. -->
         <div class="cell" style="left: 580px; top: 100px"></div>
         <div class="cell hover" style="left: 620px; top: 540px"></div>
 
-        <!-- Towers, each snapped to a build cell (specs/board.md). -->
-        <div class="tower shear" style="left: 140px; top: 300px">S<span class="pips"><i></i><i></i></span></div>
+        <!-- Towers, each snapped to a build cell (specs/board.md). Seven general-purpose
+             types; the tier-III pip carries the chosen branch letter. -->
+        <div class="tower cleaver" style="left: 140px; top: 300px">K<span class="pips"><i></i><i></i></span></div>
         <div class="tower ion" style="left: 300px; top: 100px">I<span class="pips"><i></i><i></i><i></i></span></div>
         <div class="tower ion" style="left: 620px; top: 100px">I<span class="pips"><i></i></span></div>
-        <div class="tower ion" style="left: 300px; top: 540px">I<span class="pips"><i></i><i></i></span></div>
+        <div class="tower emitter" style="left: 300px; top: 540px">E<span class="pips"><i></i><i></i></span></div>
         <div class="tower mod" style="left: 460px; top: 540px">M<span class="pips"><i></i></span></div>
         <div class="tower cat" style="left: 740px; top: 380px">C<span class="pips"><i></i></span></div>
-        <div class="tower fission" style="left: 780px; top: 300px">F<span class="pips"><i></i></span></div>
-        <div class="tower ion" style="left: 860px; top: 380px">I<span class="pips"><i></i><i></i></span></div>
+        <div class="tower reactor" style="left: 780px; top: 300px">R<span class="pips"><i></i><i></i><i></i></span></div>
+        <div class="tower beam" style="left: 860px; top: 380px">B<span class="pips"><i></i><i></i></span></div>
 
         <!-- Matter on the shared entry: a Polymer (4-atom chain) approaching the fork. -->
         <div class="molecule" style="left: 150px; top: 332px">
@@ -79,7 +81,7 @@
           <span class="b"></span><span class="a e1"></span><span class="b"></span><span class="a e2"></span>
         </div>
 
-        <!-- Lane A: a partly-stripped free atom, and an ionization spark at the ionizer. -->
+        <!-- Lane A: a partly-stripped free atom, and an energy-strip spark at the ionizer. -->
         <div class="burst ionize" style="left: 300px; top: 150px"></div>
         <div class="read" style="left: 470px; top: 128px"><i></i><i class="spent"></i></div>
         <div class="atom e2 stripped" style="left: 470px; top: 150px"></div>
@@ -88,7 +90,8 @@
         <div class="atom e1" style="left: 380px; top: 514px"></div>
         <div class="inert-atom" style="left: 640px; top: 514px"></div>
 
-        <!-- Confluence / shared final: a Heavy nucleus mid-fission, shedding a daughter atom. -->
+        <!-- Confluence / shared final: a Heavy nucleus (kinetic/nuclear only) mid-split,
+             shedding a daughter atom, and a neutralize burst downstream. -->
         <div class="burst fission" style="left: 830px; top: 332px"></div>
         <div class="heavy-atom" style="left: 830px; top: 332px"></div>
         <div class="atom e1" style="left: 890px; top: 332px"></div>
@@ -97,34 +100,41 @@
 
       <!-- ================= Right build panel =========================== -->
       <div class="panel-right">
-        <div class="panel-h">EMITTERS</div>
+        <div class="panel-h">REACTOR ARRAY</div>
         <div class="shop">
           <div class="shop-item">
-            <span class="glyph ion">I</span><span class="nm">IONIZER</span><span class="cost">100</span>
+            <span class="glyph emitter">1</span><span class="nm">EMITTER</span><span class="cost">70</span>
           </div>
           <div class="shop-item">
-            <span class="glyph shear">S</span><span class="nm">SHEAR</span><span class="cost">140</span>
+            <span class="glyph ion">2</span><span class="nm">IONIZER</span><span class="cost">105</span>
+          </div>
+          <div class="shop-item">
+            <span class="glyph cleaver">3</span><span class="nm">CLEAVER</span><span class="cost">150</span>
           </div>
           <div class="shop-item selected">
-            <span class="glyph fission">F</span><span class="nm">FISSION</span><span class="cost">250</span>
+            <span class="glyph reactor">4</span><span class="nm">REACTOR</span><span class="cost">240</span>
           </div>
           <div class="shop-item">
-            <span class="glyph cat">C</span><span class="nm">CATALYST</span><span class="cost">180</span>
+            <span class="glyph beam">5</span><span class="nm">BEAM</span><span class="cost">300</span>
           </div>
           <div class="shop-item">
-            <span class="glyph mod">M</span><span class="nm">MODERATOR</span><span class="cost">160</span>
+            <span class="glyph cat">6</span><span class="nm">CATALYST</span><span class="cost">165</span>
+          </div>
+          <div class="shop-item">
+            <span class="glyph mod">7</span><span class="nm">MODERATOR</span><span class="cost">150</span>
           </div>
         </div>
 
         <div class="inspect">
-          <div class="title">FISSION &middot; I</div>
-          <div class="sub">Splits heavy nuclei into daughter atoms</div>
-          <div class="row"><span>RANGE</span><b>120</b></div>
-          <div class="row"><span>FIRE RATE</span><b>0.6 /s</b></div>
-          <div class="row"><span>SPLITS</span><b>4</b></div>
+          <div class="title">REACTOR &middot; III &middot; FALLOUT</div>
+          <div class="sub">Nuclear area burst; leaves a zone that damages and reveals</div>
+          <div class="row"><span>DAMAGE TYPE</span><b>NUCLEAR</b></div>
+          <div class="row"><span>RANGE</span><b>142</b></div>
+          <div class="row"><span>SPLASH</span><b>40</b></div>
+          <div class="row"><span>ZONE</span><b>3/s &middot; reveals</b></div>
           <div class="btns">
-            <div class="btn up">UPGRADE 250</div>
-            <div class="btn sell">SELL 175</div>
+            <div class="btn up">MAX &middot; FALLOUT</div>
+            <div class="btn sell">SELL 476</div>
           </div>
         </div>
 

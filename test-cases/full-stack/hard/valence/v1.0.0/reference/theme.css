@@ -35,10 +35,14 @@
   --inert: #c4cbd6;     /* inert / noble matter */
   --heavy: #c7e14a;     /* heavy nucleus (radioactive) */
   --boss: #a45cff;      /* boss macromass */
-  --ionizer: #4aa6ff;   /* ionizer (charge) */
-  --shear: #ff8646;     /* shear (cleave) */
-  --fission: #ff5470;   /* fission (nuclear) */
-  --catalyst: #e267c8;  /* catalyst (reactive) */
+  --ionizer: #4aa6ff;   /* energy / ionizer */
+  --emitter: #8fb9ff;   /* emitter (energy dart) */
+  --shear: #ff8646;     /* kinetic / cleaver */
+  --cleaver: #ff8646;   /* kinetic / cleaver */
+  --fission: #ff5470;   /* nuclear / reactor */
+  --reactor: #ff5470;   /* nuclear / reactor */
+  --beam: #c9f24a;      /* beam (energy lance) */
+  --catalyst: #e267c8;  /* catalyst (reveal / excite) */
   --moderator: #46d6c2; /* moderator (damping) */
   --alert: #ff5a52;     /* alert / danger */
   --panel: #121821;     /* panels / overlays */
@@ -234,8 +238,10 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
 .tower.ion { background: var(--ionizer); box-shadow: 0 0 14px rgba(74, 166, 255, 0.55); }
-.tower.shear { background: var(--shear); box-shadow: 0 0 14px rgba(255, 134, 70, 0.55); }
-.tower.fission { background: var(--fission); box-shadow: 0 0 14px rgba(255, 84, 112, 0.55); }
+.tower.emitter { background: var(--emitter); box-shadow: 0 0 14px rgba(143, 185, 255, 0.55); }
+.tower.shear, .tower.cleaver { background: var(--cleaver); box-shadow: 0 0 14px rgba(255, 134, 70, 0.55); }
+.tower.fission, .tower.reactor { background: var(--reactor); box-shadow: 0 0 14px rgba(255, 84, 112, 0.55); }
+.tower.beam { background: var(--beam); box-shadow: 0 0 14px rgba(201, 242, 74, 0.55); }
 .tower.cat { background: var(--catalyst); box-shadow: 0 0 14px rgba(226, 103, 200, 0.55); }
 .tower.mod { background: var(--moderator); box-shadow: 0 0 14px rgba(70, 214, 194, 0.55); }
 /* Upgrade pips shown under the tower (I/II/III). */
@@ -416,8 +422,10 @@ body {
   color: #0a0f16;
 }
 .shop-item .glyph.ion { background: var(--ionizer); }
-.shop-item .glyph.shear { background: var(--shear); }
-.shop-item .glyph.fission { background: var(--fission); }
+.shop-item .glyph.emitter { background: var(--emitter); }
+.shop-item .glyph.shear, .shop-item .glyph.cleaver { background: var(--cleaver); }
+.shop-item .glyph.fission, .shop-item .glyph.reactor { background: var(--reactor); }
+.shop-item .glyph.beam { background: var(--beam); }
 .shop-item .glyph.cat { background: var(--catalyst); }
 .shop-item .glyph.mod { background: var(--moderator); }
 .shop-item .nm { flex: 1; font-size: 13px; letter-spacing: 1px; }

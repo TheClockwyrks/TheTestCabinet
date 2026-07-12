@@ -1,118 +1,138 @@
 # Valence — Towers
 
-This file defines the five towers — three that break matter down and two that support —
-their stats, targeting, and how you build, upgrade, and sell them. It builds on the board
-and its build grid in `specs/board.md`, the matter and the decomposition model in
-`specs/matter.md`, the controls in `specs/controls.md`, and the economy in `specs/flow.md`.
-Ranges are in logical pixels; costs and energy are the unitless values of `specs/flow.md`.
+This file defines the **seven towers** — five that deal damage and two that support —
+their stats, their **damage types**, their **detection**, and the two-branch **upgrade**
+choice each offers. It builds on the board and its build grid in `specs/board.md`, the
+hit points / damage-type / trait model in `specs/matter.md`, the controls in
+`specs/controls.md`, and the economy in `specs/flow.md`. Ranges are in logical pixels;
+costs and energy are the unitless values of `specs/flow.md`.
 
 The stat numbers below are **fixed** for this version; implement them exactly as written.
-Equally important is the **behavior**: each tower acts on exactly the forms named, fires
-automatically at valid in-range targets, and holds fire when nothing valid is in range.
+Equally important is the **behavior**: no tower is a lock for one form, no capability is
+monopolized, and each tower offers a real **identity choice** at tier III.
+
+## The design in one paragraph
+
+Every damage tower is **generally useful**: it deals one of three **damage types** and
+can chip almost anything (`specs/matter.md`). The special capabilities are **shared**,
+not owned: **heavy** matter is answered by **any** kinetic or nuclear tower (Cleaver,
+Reactor, or a Beam's Disruptor), **bonded** matter is chipped by **any** tower (kinetic
+just does it fastest), and **detection** of **inert** matter comes from **four** sources
+(the Catalyst aura, the Reactor's Fallout zone, the Ionizer's Array branch, and the Beam
+natively). And each tower reaches tier III by committing to **one of two branches**, so
+a board is a set of genuine choices, not a fixed checklist.
 
 ## Shared targeting rules
 
 - A tower is built on an empty **build cell** (`specs/board.md`) and reaches units on the
   conduit within its **range** (a radius from the cell's center). One tower per cell.
-- The three **damage** towers (Ionizer, Shear, Fission) fire at their **fire rate**
-  (shots per second) at the **valid** in-range unit **furthest along** the conduit — the
-  standard "first" target — and each acts only on the form it counters (`specs/matter.md`).
-  A tower whose only in-range units are the wrong form **holds fire**.
-- **The damage towers aim.** A damage tower's **head/turret rotates to face the unit it is
-  firing at**, and keeps pointing at it as that unit moves along the conduit; while it holds
-  fire (nothing valid in range) it keeps its last heading. Its sprite is authored so the
-  head turns independently of any fixed base (`specs/assets.md`). The two support towers are
-  auras and do not rotate or aim.
+- The five **damage** towers fire at their **fire rate** (shots per second) at a
+  **valid** in-range unit. A unit is valid only if the tower can **see** it (it is not
+  inert, or it is revealed, or the tower detects) **and** the tower's **damage type can
+  reach** it (energy cannot touch a heavy — `specs/matter.md`). The default target is
+  the valid in-range unit **furthest along** the conduit. A tower with nothing valid in
+  range **holds fire**.
+- **The damage towers aim.** A damage tower's **head rotates to face the unit it is
+  firing at** and keeps its last heading while it holds fire. Its sprite is authored so
+  the head turns independently of a fixed base (`specs/assets.md`). The two support
+  towers are auras and do not rotate or aim.
 - **A shot is a real projectile, and the projectile is what deals the damage.** When a
   damage tower fires it launches a **projectile** from its muzzle toward the target; the
-  projectile **travels** across the board and applies the tower's effect **on impact** —
-  stripping the shell, breaking the bond, or adding the criticality **when it reaches the
-  unit**, never before. **Hitscan does not satisfy this**: applying the effect the instant
-  the tower fires while a projectile plays as pure decoration is prohibited — no effect may
-  land until its projectile actually connects. If the target is neutralized or leaves the
-  board before the projectile arrives, the shot **misses** and does nothing. Projectiles are
-  fast enough that a hit normally lands well within the fire interval; author a projectile
-  sprite per damage tower (`specs/assets.md`).
+  projectile **travels** and applies the tower's damage **on impact** — never before.
+  **Hitscan does not satisfy this.** If the target is gone before the projectile
+  arrives, the shot **misses**. Author a projectile sprite per damage type, colored to
+  it (`specs/assets.md`).
 - The two **support** towers (Catalyst, Moderator) are **auras**: they continuously affect
-  **every** valid unit within range, with no shots, no single target, no aiming, and no
-  projectile.
+  **every** valid unit in range, with no shots, no single target, and no projectile.
 - Each tower's info — in the shop hover and the selected-tower inspector
-  (`specs/board.md`) — must state **what it targets** in words (for example "Ionizer —
-  strips free reactive atoms" or "Shear — breaks molecule bonds"), so the player can tell
-  which tool answers the coming round.
+  (`specs/board.md`) — must state **its damage type and what it does** in words, and a
+  coming round's preview must say what each type **asks of the board** (detect /
+  kinetic-nuclear / chip-bonds).
 
-## The damage towers
+## The five damage towers — base (tier I) stats
 
-| Tower | Role | Acts on | Cost | Range | Fire rate | Effect per shot |
+| Tower | Damage type | Cost | Range | Fire rate | Damage | Shape / special |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Ionizer** | Strip free atoms | free reactive atoms | 100 | 110 | 2.0 /s | strip **1** electron shell |
-| **Shear** | Break molecules | molecules | 140 | 100 | 1.5 /s | break **1** bond (peel one atom) |
-| **Fission** | Split heavies | heavy nuclei | 250 | 120 | 0.6 /s | add **1** criticality |
+| **Emitter** | energy | 70 | 100 | 1.8 /s | 1 shell | single target; the cheap starter |
+| **Ionizer** | energy | 105 | 110 | 3.0 /s | 1 shell | single target; rapid, eats swarms |
+| **Cleaver** | kinetic | 150 | 88 | 1.2 /s | 2 shells | **×2 vs bonds**; damages heavies; short range |
+| **Reactor** | nuclear | 240 | 118 | 0.6 /s | 2 shells | **area burst (radius 40)**; hits everything, incl. heavies |
+| **Beam** | energy | 300 | 200 | 0.85 /s | 4 shells | long range, big single hit; **sees inert natively** |
 
-- **Ionizer** is the workhorse and the cheapest tower — the unit you field in numbers to
-  strip the free atoms every chain ends in (`specs/matter.md`). It does nothing to a
-  molecule, an un-catalyzed inert atom, or a heavy, so it always wants the openers
-  (Shear, Fission, Catalyst) ahead of it. The tower to learn on.
-- **Shear** breaks one bond per hit, peeling a molecule apart into the free atoms the
-  ionizers finish (`specs/matter.md`). It does nothing to a lone atom or a heavy. Placed
-  **early** on a lane, it opens molecules before they reach the ionizer line; placed too
-  late, the molecule leaks unopened.
-- **Fission** adds one criticality per hit and is the **only** answer to a heavy nucleus
-  and the boss (`specs/matter.md`). It is slow and expensive, so a little Fission goes a
-  long way, but a board with **none** cannot stop the heavies at all. When a heavy (or a
-  boss step) splits, the fission event does a small **splash**: it adds `1` criticality to
-  any other heavy within `40 px` of the split (helping a fission line chew through a
-  cluster of heavies). Fission does nothing to molecules or free atoms.
+- **Emitter** — the cheapest tower and the one you field in numbers early: quick,
+  low-damage energy. Does nothing to a heavy (energy), but chips bonds and strips atoms
+  all day.
+- **Ionizer** — a rapid energy stripper; the workhorse against swarms of atoms and the
+  spray a Polymer throws off. Energy, so it cannot touch a heavy — pair it with
+  kinetic/nuclear.
+- **Cleaver** — kinetic: it does **double** damage to a bonded unit's bond pool (the
+  fastest opener) **and** it can damage heavies. Short range, so place it **early** on a
+  lane where it can chew clusters open before they reach the strippers.
+- **Reactor** — nuclear: a slow, expensive **area** blast that damages **everything in
+  its radius, heavies included**. A little Reactor covers a lot of a busy merge, but a
+  board of nothing else cannot afford the fire rate to hold a swarm.
+- **Beam** — a long-range lance that lands one **big** energy hit and **sees inert
+  matter natively** — the premium anchor for the shared final run. Energy, so it needs
+  its Disruptor branch (below) to touch heavies.
 
-## The support towers
+## The two support towers — base (tier I) stats
 
-| Tower | Role | Affects | Cost | Range | Effect |
-| --- | --- | --- | --- | --- | --- |
-| **Catalyst** | Make inert matter reactive | inert atoms; reactive matter | 180 | 120 | reveals inert; excites matter |
-| **Moderator** | Slow matter (damping field) | all non-boss matter | 160 | 120 | ×**0.55** speed in field |
+| Tower | Cost | Range | Effect |
+| --- | --- | --- | --- |
+| **Catalyst** | 165 | 120 | **reveals** inert matter in its field (and for `2.0 s` after it leaves), and **excites** every unit in the field (**+1** to the damage each hit deals it). No damage of its own. |
+| **Moderator** | 150 | 120 | **slows** every non-boss unit in its field to `×0.55` speed. A **heavy resists**, slowed only to `×0.78`; the **boss is immune**. |
 
-- **Catalyst** is an aura that does two things: any **inert** (noble) unit inside it
-  becomes **reactive** — an ordinary free atom an Ionizer can then strip (`specs/matter.md`)
-  — and **stays reactive** for `2.0 s` after leaving the field, so a Catalyst placed ahead
-  of an ionizer line keeps nobles strippable as they pass through it. In addition, any unit
-  in the field is **excited**: while excited, an **Ionizer** strips **2** shells per hit
-  instead of 1 (a modest damage synergy). A Catalyst deals no damage itself; without one,
-  inert matter is untouchable.
-- **Moderator** is an aura that **slows** every unit in its field to `0.55 ×` its speed
-  (the slow lifts the moment a unit leaves the field), buying the damage towers more time
-  on a lane — the answer to **Swifts** and to packing more hits onto a molecule or heavy
-  before it passes. A **heavy nucleus resists** the slow (it is only slowed to `0.78 ×`),
-  and the **boss is immune** (`specs/matter.md`). Moderators do not stack multiplicatively
-  — a unit in two Moderator fields takes the **strongest** single slow, not the product.
+- **Catalyst** is the board's primary detector and a damage amplifier: it opens inert
+  matter for **every** tower nearby and makes matter in its field take **+1** damage per
+  hit. Without detection somewhere, inert matter is untouchable.
+- **Moderator** buys time: it slows matter so the damage towers land more hits — the
+  answer to Swifts and to packing damage onto a cluster or heavy. Moderators do not
+  stack multiplicatively; a unit in two fields takes the **strongest** single slow.
+
+## Upgrades — tier II, then a branch at tier III
+
+Each tower upgrades through three tiers — **I → II → III**:
+
+- **Tier II is a generic bump.** A damage tower gains **`+12` range**, **`×1.15` fire
+  rate**, and **`+1` damage**; a support tower gains **`+14` range**. No new behavior —
+  just stronger.
+- **Tier III commits to one of two branches, A or B** — the tower's **identity choice**.
+  The branch is picked when you buy tier III (`specs/controls.md`), applies on top of
+  tier II, and cannot be changed (sell and rebuild to switch). The branches:
+
+| Tower | Branch A | Branch B |
+| --- | --- | --- |
+| **Emitter** | **CHARGED** — `+2` damage and a small **energy splash** (radius `30`). | **SPREAD** — fires at up to **3** targets at once, and `+25` range. |
+| **Ionizer** | **ARRAY** — `×1.5` fire rate, `+20` range, and **detection** (sees inert). | **OVERCHARGE** — `+1` damage and the hit **arcs** to one nearby atom. |
+| **Cleaver** | **REND** — the shot **pierces a line** (up to `2` more units) and its bond bonus rises to **`×3`**. | **IMPACTOR** — **`+3` damage vs heavies**, a **splash** (radius `46`) when a heavy is cracked, and a brief **slow** on any unit it hits. |
+| **Reactor** | **CHAIN** — the blast radius grows (`+34`, to `74`). | **FALLOUT** — leaves a lingering **irradiated zone** (radius `46`, `3` damage/second, `3 s`) that also **reveals** inert matter inside it. |
+| **Beam** | **LANCE** — the shot **pierces the whole lane**, and `+1` damage. | **DISRUPTOR** — gains **heavy damage** (`+2` vs heavies), and **marks** the target so it takes **+1** damage from everything for `2 s`. |
+| **Catalyst** | **BROAD** — `+30` range and the reveal **lingers `4 s`**. | **REAGENT** — a stronger excite: matter in the field takes **+2** damage per hit. |
+| **Moderator** | **CRYOSTAT** — a deeper slow (`×0.40`) that also **grips heavies** (`×0.60`). | **CONTAINMENT** — slow `×0.48` **and** matter in the field is **brittle** (`+1` damage per hit). |
+
+Because these capabilities are **spread across branches**, a board has many ways to
+cover each threat: detection can come from a Catalyst, a Fallout Reactor, an Array
+Ionizer, or a Beam; heavy damage from a Cleaver, a Reactor, or a Disruptor Beam. That
+redundancy is the point — the player chooses **how** to cover a threat, and both
+branches of a tower should be worth taking (the reference build's balance sim checks
+that neither branch dominates).
 
 ## Building, upgrading, and selling
 
-- **Build.** Select a tower in the shop (`specs/board.md`) and place it on an empty cell.
-  Its cost is deducted from your energy (`specs/flow.md`); you cannot build what you cannot
-  afford, and you cannot build on an occupied or conduit-blocked cell.
-- **Upgrade.** A selected tower can be upgraded through three levels — **I, II, III**. Each
-  level applies, on top of the previous:
-  - **Ionizer:** `range + 12`, `fireRate × 1.2`, and **+1 shell stripped per hit** at
-    level III only (so I/II strip 1, III strips 2 — excitement from a Catalyst adds on top).
-  - **Shear:** `range + 12`, `fireRate × 1.2`, and **+1 bond broken per hit** at level III
-    only (so a level-III Shear peels two atoms per hit, opening Polymers far faster).
-  - **Fission:** `range + 12`, `fireRate × 1.25`, and at level III its split **splash**
-    radius rises from `40 px` to `70 px`.
-  - **Catalyst:** `range + 15` per level, and at level III the excited-matter bonus rises
-    from **+1** to **+2** extra shells stripped per Ionizer hit.
-  - **Moderator:** the slow deepens `0.55 × → 0.45 × → 0.38 ×` across I/II/III, and
-    `range + 12` per level. (The heavy-resist and boss-immunity still hold.)
-  - **Cost.** Upgrading to **II** costs `1.0 ×` the tower's build cost; to **III**,
-    `1.6 ×`. (For an Ionizer: `100` to reach II, `160` to reach III.)
-- **Sell.** A selected tower sells for a **`70%` refund** of everything spent on it (build
-  plus upgrades), rounded down — **except** a tower sold during the same build phase it was
-  placed on, before that round has started, which refunds its **full** spend (`100%`, no
-  rounding loss). A tower that has never faced a round can always be undone for a full
-  refund; the `70%` refund only applies once the round it was placed on has run. This
-  matters most during the untimed opening build phase before Round 1 (`specs/flow.md`):
-  freely place, re-shape, and sell back your opening board without penalty. Selling frees
-  the cell immediately.
+- **Build.** Select a tower in the shop (`specs/board.md`) and place it on an empty
+  cell. Its cost is deducted from your energy; you cannot build what you cannot afford
+  or on an occupied or conduit-blocked cell.
+- **Upgrade.** A selected tower upgrades to **II**, then to **III** — where the inspector
+  presents the **two branch choices** and you pick one (`specs/controls.md`).
+  - **Cost.** Upgrading to **II** costs `1.0×` the tower's build cost; to **III**, `1.7×`.
+    (For an Ionizer: `105` to reach II, `179` to reach III.)
+- **Sell.** A selected tower sells for a **`70%` refund** of everything spent on it
+  (build plus upgrades), rounded down — **except** a tower sold during the same build
+  phase it was placed on, before that round has started, which refunds its **full**
+  spend. During the untimed opening build phase (`specs/flow.md`) you can freely place,
+  re-shape, and sell back your opening board without penalty. Selling frees the cell
+  immediately.
 
 Upgrading and selling happen through the selected-tower inspector in the build panel
-(`specs/board.md`, `specs/controls.md`). Size and role never change with level; only the
-stated stats do.
+(`specs/board.md`, `specs/controls.md`). Size and role never change with tier; only the
+stated stats and the chosen branch's behavior do.

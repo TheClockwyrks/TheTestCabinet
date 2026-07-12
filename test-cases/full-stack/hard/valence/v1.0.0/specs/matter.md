@@ -1,159 +1,186 @@
-# Valence — Matter and the decomposition model
+# Valence — Matter: hit points, damage types, and stackable traits
 
-This file defines the **matter** you defend against — its forms, the specific types and
-their stats, the three-axis decomposition model that turns one form into another, and how
-a wave is built. It builds on the board and lanes in `specs/board.md`, the towers in
-`specs/towers.md`, and the round progression in `specs/flow.md`. Speeds are in logical
-pixels per second; energy and integrity values are unitless game numbers.
+This file defines the **matter** you defend against — how a unit takes damage, the three
+**damage types**, the three **stackable traits** that gate what can hurt or even see it,
+the specific matter types and their stats, and how a wave is built. It builds on the board
+and lanes in `specs/board.md`, the towers in `specs/towers.md`, and the round progression
+in `specs/flow.md`. Speeds are in logical pixels per second; energy and integrity values
+are unitless game numbers.
 
 The stat numbers below are the **base** (Round 1) values and are **fixed**; implement them
-exactly as written. Equally important is the **behavior**: the four forms, the three
-decomposition axes, inert matter, and how fragments continue.
+exactly as written. Equally important is the **behavior**: hit points, the three damage
+types, the three traits and how they **stack**, and how fragments continue.
 
-## The four forms
+## The core model: hit points, damage, and traits
 
-Every unit is, at any moment, in one of four **forms**, and its form decides which tool
-can act on it. A unit's form can **change** as it is broken down (a molecule becomes
-atoms; a heavy becomes atoms), which is the heart of the game.
+Valence is **not** a "one form, one tool" ladder. Every unit is a bundle of **hit points**
+and **traits**, and any tower that can reach it chips it down. Concretely:
 
-- **Free atom.** A nucleus (colored by its element) surrounded by **electron shells**
-  (`specs/overview.md`). A free atom is what an **Ionizer** neutralizes: each ionizing hit
-  strips one shell, and an atom stripped to **zero** shells is neutralized and pays its
-  energy. Nothing else acts on a free atom.
-- **Molecule.** Two or more atoms joined by **bonds** (ball-and-stick). Only a **Shear**
-  acts on a molecule: each shearing hit breaks one bond and **peels a free atom off** the
-  molecule (below). While an atom is bonded in a molecule its electrons are engaged in its
-  bonds, so it **cannot be ionized** — the molecule must be sheared apart first.
-- **Heavy nucleus.** A dense, tightly-bound orb with a radioactive shimmer. A heavy is
-  **immune to shearing and ionizing**; only a **Fission** tower acts on it, adding to its
-  **criticality** until it **splits** into two lighter **daughter atoms** (below).
-- **Inert (noble) atom.** A free atom sealed by a **full outer shell** that makes it
-  **untargetable by every tower**. A **Catalyst** tower makes an inert atom **reactive**
-  (`specs/towers.md`), after which it is an ordinary free atom an Ionizer can strip. An
-  inert atom that reaches the collector while still inert leaks normally.
+- **Shells are hit points.** Every unit carries **electron shells** — its hit points. A
+  damage tower's shot removes a number of shells (its **damage**); a unit stripped to
+  **zero** shells is **neutralized**, removed, and pays its **energy** bounty
+  (`specs/flow.md`), with a neutralize burst (`specs/assets.md`).
+- **There are three damage types**, one per damage-tower family (`specs/towers.md`):
+  **energy**, **kinetic**, and **nuclear**. On an ordinary unit all three strip shells the
+  same way; what differs is how each interacts with a unit's **traits** (below). Reading a
+  unit is reading its **traits**, not memorizing a single counter.
+- **Traits gate and modify damage, and they stack.** A unit carries zero or more of three
+  traits — **bonded**, **heavy**, **inert** — and late in the run they **combine** on one
+  unit. A trait never makes a unit answerable by exactly one tower; it makes it answerable
+  by a **kind of tower**, of which there are always several (`specs/towers.md`).
 
-Every unit shows a small **integrity read** appropriate to its form so the player can see
-progress: an atom's remaining electron shells (as rings), a molecule's remaining bonds, a
-heavy's criticality toward its split. Draw the forms so they are unmistakable at speed
+Every unit shows an **integrity read** appropriate to its makeup so the player can see
+progress: a free atom's remaining shells (as rings), a bonded cluster's remaining bond
+integrity (a draining arc), a heavy's remaining shells (a draining arc), and a
+shroud/cloak mark on inert matter. Draw them so the traits are unmistakable at speed
 (`specs/overview.md`).
 
-## The three decomposition axes
+## The three traits
 
-There are exactly three ways matter is broken down, one per damage tower
-(`specs/towers.md`). Each acts on **one form** and does nothing to the others — this hard
-separation is the point of the game, and it is what makes the coming round's composition
-worth reading.
+### Bonded — an outer bond pool any tower chips through
 
-### Shearing — molecule → atoms (Shear tower)
+A **bonded** unit (a molecule) is a cluster of atoms wrapped in an **outer
+bond-integrity pool** — a layer of **extra hit points that sits in front of its atoms**.
+**Any** damage type reduces the bond pool; there is no special "bond-breaker" lock. As
+the pool drains past each fragment threshold the cluster **sheds a free atom** off its
+leading end — a molecule becoming a spray of atoms — and when the pool is spent the
+cluster's **last atom** travels on free. A `k`-atom cluster sheds `k − 1` atoms as its
+bonds are chipped away and continues as the final free atom, so it releases `k` free
+atoms in all.
 
-A **Shear** hit breaks the **leading bond** of a molecule (the bond nearest the atom
-furthest along the conduit) and **peels that atom off** as a **free atom**, which
-continues on the same lane at its own position (`specs/board.md`). The remainder of the
-molecule travels on, one atom shorter. Shearing a molecule down to its **last** atom
-leaves that final atom **free**. So a molecule with `k` atoms and `k − 1` bonds takes
-`k − 1` shearing hits to fully atomize, releasing `k` free atoms in all — a single
-molecule fragmenting into a spray of atoms that ionizers must then finish. Freed atoms are
-a little **faster** than the molecule they came from (they carry the molecule's speed plus
-a small increment, capped — see the table). Shearing does nothing to a lone atom, an inert
-atom, or a heavy nucleus.
+- **Kinetic damage is best against bonds:** a kinetic shot deals its damage to the bond
+  pool **times a bonus** (base `×2`; the **Cleaver** deepens it). So a Cleaver opens
+  clusters **fastest**, but an Ionizer, an Emitter, a Beam, or a Reactor all chip the
+  same bonds — slower, not never. Freed atoms are a little **faster** than the cluster
+  they came from (capped — see the stats).
+- Freed atoms are ordinary free atoms an energy tower then finishes. If a cluster is also
+  **inert** (a Chelate), the atoms it sheds are **inert too** (they still need detection).
 
-### Ionizing — atom → neutralized (Ionizer tower)
+### Heavy — immune to energy; kinetic or nuclear only
 
-An **Ionizer** hit strips **one electron shell** from a **free, reactive** atom. An atom
-stripped to **zero** shells is **neutralized**: it is removed and pays its energy
-(`specs/flow.md`), with a neutralize burst (`specs/assets.md`). A freshly stripped but not
-yet neutralized atom is a little **faster** than before (fewer electrons, more reactive),
-so late ionizing is a race. Ionizing does nothing to a bonded atom (inside a molecule), an
-**inert** atom (until catalyzed), or a heavy nucleus.
+A **heavy** unit is a dense nucleus that **energy damage cannot touch at all**. Only
+**kinetic** or **nuclear** damage strips its shells — so a **Cleaver**, a **Reactor**,
+or a **Beam** running its **Disruptor** branch (`specs/towers.md`) all crack a heavy; an
+Emitter, an Ionizer, or a plain Beam do nothing to it. A heavy stripped to zero shells
+**splits** into **two lighter daughter atoms** (free atoms, ordinary energy fodder) plus
+a split flash (`specs/assets.md`). A board with **no** kinetic and **no** nuclear damage
+cannot stop heavies, and they leak — but the answer is a **class** of towers, not one
+tower.
 
-### Fissioning — heavy → daughter atoms (Fission tower)
+### Inert — untargetable until it is detected
 
-A **Fission** hit adds **one** to a heavy nucleus's **criticality**. When criticality
-reaches the heavy's threshold, the heavy **splits** into **two lighter daughter atoms**
-(free atoms, each with a defined shell count — see the table) that continue on the same
-lane, plus a **fission flash** (`specs/assets.md`). The daughter atoms are then ordinary
-free atoms an Ionizer finishes. Fissioning does nothing to a molecule or a free atom.
+An **inert** unit (noble matter) is sealed and **untargetable by every tower until a
+detector reveals it**. Detection comes from **several** sources (`specs/towers.md`), not
+one:
 
-## Inert matter and the Catalyst
+- a **Catalyst**'s field reveals inert matter inside it (and it **lingers** revealed for a
+  short time after leaving the field);
+- a **Reactor**'s **Fallout** zone reveals inert matter inside the zone;
+- an **Ionizer** that has taken its **Array** branch sees inert matter itself;
+- a **Beam** sees inert matter **natively**, at every tier.
 
-An **inert** atom is untargetable until a **Catalyst** tower's field makes it **reactive**
-(`specs/towers.md`): once reactive it is an ordinary free atom, with the shell count in the
-table, that an Ionizer strips normally. A Catalyst does not damage anything; it only opens
-inert matter up (and gives reactive matter a small edge, `specs/towers.md`). A defense with
-no Catalyst cannot touch inert units at all, and they leak.
+While revealed, an inert unit is an ordinary unit its other traits still describe (a
+revealed inert **atom** is energy fodder; a revealed inert **heavy** still needs
+kinetic/nuclear). An inert unit that reaches the collector unrevealed leaks normally.
+
+### Traits stack
+
+Traits are not exclusive. Early rounds show them one at a time; late rounds **combine**
+them on a single unit, and the combination is the point — it forces a **layered**
+defense rather than one counter:
+
+- a **Shroud** is **inert + heavy**: it must be **detected** *and* hit with **kinetic or
+  nuclear** — energy alone, even once it is revealed, does nothing;
+- a **Chelate** is **inert + bonded**: it must be **detected** before any tower can chip
+  its bonds, and the atoms it sheds are inert too.
+
+No single tower answers a stacked-trait unit; a board that has spread its capabilities
+does.
+
+## Damage types vs traits — the whole interaction
+
+| Damage type | Towers (base) | vs a plain atom's shells | vs a bonded pool | vs a heavy |
+| --- | --- | --- | --- | --- |
+| **Energy** | Emitter, Ionizer, Beam | normal | normal | **nothing** |
+| **Kinetic** | Cleaver | normal | **×2 (Cleaver deepens)** | **yes** |
+| **Nuclear** | Reactor | normal | normal | **yes** |
+
+Detection (seeing **inert** matter) is orthogonal to damage type and is carried by the
+Catalyst aura, the Reactor Fallout zone, the Ionizer Array branch, and the Beam
+(`specs/towers.md`). A tower may act on a unit only if it can **see** it **and** its
+damage type can **reach** it.
 
 ## Matter types
 
-The base (Round 1) roster. `Shells` is a free atom's starting electron shells (ionizing
-hits to neutralize it); `Atoms/Bonds` is a molecule's atoms and bonds (shearing hits to
-atomize it equal the bonds); `Criticality` is a heavy's fission hits to split. Per-round
-scaling of these and of counts is in `specs/flow.md`.
+The base (Round 1) roster. `Shells` is a free atom's or heavy's starting hit points;
+`Atoms/Bond` is a bonded cluster's atom count and its outer bond-integrity pool; `Traits`
+lists the stacked traits. Per-round scaling of these is in `specs/flow.md`.
 
-| Type | Form | Structure (Round 1) | Speed | Energy | Leak | Counter chain |
+| Type | Traits | Structure (Round 1) | Speed | Energy | Leak | What it asks of the board |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Monatom** | free atom | 2 shells | 55 | 2 | 1 | Ionizer |
-| **Swift** | free atom | 1 shell | 110 | 2 | 1 | Ionizer (fast; wants a Moderator) |
-| **Dimer** | molecule | 2 atoms, 1 bond; 2 shells each | 50 | 5 | 1 | Shear → 2 atoms → Ionizer |
-| **Polymer** | molecule | 4 atoms, 3 bonds; 2 shells each | 40 | 10 | 2 | Shear ×3 → 4 atoms → Ionizer |
-| **Noble** | inert atom | sealed; 2 shells when reactive | 65 | 6 | 1 | Catalyst → Ionizer |
-| **Heavy** | heavy nucleus | criticality 2 → two 2-shell atoms | 35 | 12 | 2 | Fission → 2 atoms → Ionizer |
-| **Macromass** | boss | see below | 28 | 140 | 12 | Fission → fragments → Shear/Ionizer |
+| **Monatom** | — | 2 shells | 55 | 2 | 1 | any damage |
+| **Swift** | — | 1 shell | 110 | 2 | 1 | any damage (fast — wants a slow) |
+| **Dimer** | bonded | 2 atoms, bond 4 | 50 | 5 | 1 | chip bonds (kinetic best), then strip |
+| **Polymer** | bonded | 4 atoms, bond 10 | 40 | 10 | 2 | chip a big bond pool → a spray |
+| **Noble** | inert | 2 shells | 65 | 6 | 1 | detect, then any damage |
+| **Heavy** | heavy | 5 shells | 35 | 12 | 2 | kinetic or nuclear only |
+| **Chelate** | inert + bonded | 3 atoms, bond 8 | 48 | 12 | 2 | detect, then chip bonds |
+| **Shroud** | inert + heavy | 5 shells | 40 | 16 | 2 | detect **and** kinetic/nuclear |
+| **Macromass** | heavy (boss) | see below | 28 | 140 | 12 | a kinetic/nuclear line + cleanup |
 
-- **Monatom** — the baseline free atom; the bulk of the early rounds and the unit ionizers
-  are built to eat.
-- **Swift** — a fragile free atom at double speed. Swifts blow down a lane before a thin
-  ionizer line can strip them, so they punish a defense with no **Moderator** to slow them
-  (`specs/towers.md`).
-- **Dimer** — the smallest molecule: one shearing hit frees both its atoms. It teaches
-  that molecules must be **opened before** they can be ionized — a board of pure ionizers
-  cannot touch a Dimer.
-- **Polymer** — a four-atom chain: three shearing hits peel it into four free atoms, so a
-  single Polymer becomes a **spray** that floods the ionizers downstream. It rewards
-  pairing a Shear early with ionizers behind it.
-- **Noble** — inert: untargetable until a **Catalyst** makes it reactive, then an ordinary
-  two-shell atom. Nobles force the player to budget for catalysis rather than leaning on
-  raw damage.
-- **Heavy** — a dense nucleus immune to shearing and ionizing: only **Fission** splits it,
-  into two daughter atoms the ionizers then finish. A board with no Fission cannot stop
-  heavies, which each leak **2** integrity.
+- **Monatom** — the baseline atom; the bulk of early rounds.
+- **Swift** — a fragile atom at double speed; punishes a board with no **Moderator** to
+  slow it.
+- **Dimer / Polymer** — bonded clusters. Their bond pool is extra health any tower
+  chips, but **kinetic** (the Cleaver) chews it fastest; a Polymer's big pool becomes a
+  **spray** of four atoms that floods the strippers behind it.
+- **Noble** — inert; nothing can touch it until a detector reveals it, then a plain atom.
+- **Heavy** — energy-immune; only kinetic or nuclear crack it, and it splits into two
+  daughters. Several towers answer it, but a board with none leaks.
+- **Chelate** — a cloaked cluster: reveal it, then chip its bonds (its shed atoms stay
+  inert).
+- **Shroud** — a cloaked heavy: reveal it **and** bring kinetic/nuclear. The hardest
+  single unit; it exists only because traits stack.
 - **Macromass** — the **boss** (below).
 
 ## The boss — Macromass
 
 A **Macromass** is a huge unstable isotope that anchors the milestone rounds
-(`specs/flow.md`). It is a **heavy nucleus** form with a large **criticality** (base
-**6**), immune to shearing and ionizing. **Fission** it repeatedly: each time its
-criticality crosses a step it **sheds a fragment** — a **Dimer or a pair of free atoms** —
-onto its lane while continuing, and when its criticality is finally spent the core itself
-splits into a last burst of fragments. So a Macromass is not a single wall of health but a
-**fountain of matter**: the fission line cracks the core while the shear and ionizer lines
-behind it clean up the stream of Dimers and atoms it throws off. It moves slowly (speed
-28), leaks **12** integrity if it reaches the collector, and pays a large energy bounty
-(140) plus whatever its fragments pay. It is **immune to being slowed** by a Moderator
-(too massive). Its exact fragment schedule across its criticality is yours to tune within
-this shape, but it must genuinely **fragment as it is fissioned**, not simply drain a
-health bar.
+(`specs/flow.md`). It is a **heavy** (energy-immune, so only kinetic/nuclear hurt it)
+with a very large shell pool (base **26**), and it is **immune to being slowed** by a
+Moderator (too massive). As its shells are worn down it **fountains matter**: each time
+its hit points cross a **fragment step** it **sheds a fragment** — a Dimer or a pair of
+free atoms — onto its lane while continuing, and when its shells are finally spent the
+core **bursts** into a last spray. So the boss is not a single wall of health but a
+**stream** the kinetic/nuclear line cracks while the strippers behind it clean up the
+fragments. It moves slowly (speed 28), leaks **12** integrity, and pays a large bounty
+(140) plus whatever its fragments pay. Its exact fragment schedule is yours to tune
+within this shape, but it must genuinely **fragment as it is worn down**, not simply
+drain a bar. (Reference: base **6** fragment steps, `+3` on the final Round 20 boss.)
 
 ## Wave composition
 
 A round is a timed sequence of units released from the inlet across both lanes
-(`specs/board.md`); the exact spawn timing and lane weighting per round is yours to design,
-within `specs/flow.md`'s progression. Compose rounds so the player cannot answer everything
-with one tower:
+(`specs/board.md`); the exact spawn timing and lane weighting per round is yours to
+design, within `specs/flow.md`'s progression. Compose rounds so the player cannot answer
+everything with one tower or one damage type:
 
-- Early rounds are mostly **Monatoms** and **Swifts**, light enough to teach ionizing and
-  the need to slow the fast units.
-- **Dimers** and then **Polymers** enter as rounds deepen, forcing a Shear line ahead of
-  the ionizers so molecules are opened before they arrive.
-- **Nobles** begin appearing so the player must field a **Catalyst**, and **Heavies** so
-  the player must field **Fission** — each a form no other tower can touch.
-- A **Macromass** boss anchors each milestone round (`specs/flow.md`), with the surrounding
-  wave growing toward the late game.
-- Reading the **next-round preview** (`specs/board.md`, `specs/flow.md`) and re-shaping the
-  board for it — a Shear for the molecule round, a Catalyst before the nobles, Fission
-  before the heavies — is the between-round game.
+- Early rounds are mostly **Monatoms** and **Swifts** — teach stripping and the need to
+  slow the fast units.
+- **Dimers** and then **Polymers** enter, teaching that bonds are extra health best
+  chewed by **kinetic** but chippable by anything.
+- **Nobles** begin appearing, so the player must field **detection** (from any of its
+  sources), and **Heavies**, so the player must field **kinetic or nuclear** — each a
+  class no single-type board covers.
+- The **combos** — **Chelate** (inert + bonded) and **Shroud** (inert + heavy) — arrive
+  late, forcing **layered** answers (detect *and* the right damage).
+- A **Macromass** boss anchors each milestone round (`specs/flow.md`), with the
+  surrounding wave growing toward the late game.
+- Reading the **next-round preview** (`specs/board.md`, `specs/flow.md`) — which names
+  each coming type and what it asks of the board (detect / kinetic-nuclear / chip-bonds)
+  — and re-shaping the board for it is the between-round game.
 
-Because fragments continue on their lane, a molecule or heavy that is only **partly**
-broken down still sends its pieces onward — an un-sheared Polymer that slips past the shear
-line arrives at the ionizers as a molecule they cannot touch, and leaks. The pressure is
-always to open each form up **before** it reaches the collector.
+Because fragments continue on their lane, a cluster or heavy that is only **partly**
+broken down still sends its pieces onward — a Polymer that slips the openers arrives as
+an intact cluster the strippers cannot finish in time, and leaks. The pressure is always
+to open each unit up **before** it reaches the collector.

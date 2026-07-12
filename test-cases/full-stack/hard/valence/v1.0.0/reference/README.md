@@ -38,9 +38,9 @@ The `title` view has one mockup per variant: `menu-base.html` (`CONTAINMENT` /
 
 The `gameplay.html` frame shows the intended look of a live board: the conduit forking into
 two lanes and rejoining before the collector, the board's build grid with towers snapped to
-several cells, matter of more than one form on both lanes (a molecule being sheared, free
-atoms being ionized, a heavy mid-fission), the support auras, a decomposition burst, and the
-HUD's top status bar and right build panel. The exact conduit shape, the build grid, tower
+several cells, matter with more than one trait on both lanes (a bonded cluster being chipped
+open, free atoms being stripped, a heavy mid-split), the support auras, a damage burst, and
+the HUD's top status bar and right build panel. The exact conduit shape, the build grid, tower
 mix, and matter shown are just one example moment.
 
 `theme.css` holds the shared palette, type, and board furniture referenced by every view

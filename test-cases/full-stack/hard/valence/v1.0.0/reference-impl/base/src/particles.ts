@@ -14,12 +14,15 @@ const FIELD = 128; // the authored field size of every fx system
 
 // On-board footprint each burst is scaled to (the 128x128 field maps to this box).
 const FOOTPRINT: Record<FxKind, number> = {
-  ionize: 46,
+  energy: 44,
+  kinetic: 52,
+  nuclear: 78,
   bondsnap: 52,
-  fission: 78,
+  split: 78,
   neutralize: 50,
   muzzle: 30,
   leak: 60,
+  reveal: 48,
 };
 
 interface Live {
@@ -34,7 +37,7 @@ interface Live {
 
 export class Bursts {
   private live: Live[] = [];
-  constructor(private readonly systems: Record<FxKind, ParticleSystem>) {}
+  constructor(private readonly systems: Record<FxKind, ParticleSystem | undefined>) {}
 
   spawn(ev: FxEvent): void {
     const system = this.systems[ev.kind];

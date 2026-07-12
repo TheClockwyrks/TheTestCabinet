@@ -1,9 +1,10 @@
 // Valence — the campaign start this build plays (specs/mode.md).
 //
 // THE CAMPAIGN START IS ISOLATED TO THIS CONFIG: the starting resources, whether
-// interest is paid, and the round each tool-specific matter form is introduced on.
-// Everything else — the board, the decomposition model, the towers, the 20-round
-// progression, scoring, states, and HUD — is common (specs/mode-standard.md).
+// interest is paid, and the round each matter TYPE (and, late, each trait COMBO) first
+// appears. Everything else — the board, the HP/damage-type/trait model, the seven
+// towers and their branch upgrades, the 20-round progression, scoring, states, and HUD —
+// is common (specs/mode-standard.md).
 
 export interface CampaignMode {
   slug: string;
@@ -12,13 +13,16 @@ export interface CampaignMode {
   startEnergy: number;
   startIntegrity: number;
   interest: boolean;
-  // The round each tool-specific form first appears (specs/matter.md wave ramp).
+  // The round each matter type first appears (specs/matter.md wave ramp). The base
+  // atoms (Monatom) start at round 1; each entry below unlocks a trait or a combo.
   introRounds: {
     swift: number;
-    dimer: number;
-    polymer: number;
-    noble: number;
-    heavy: number;
+    dimer: number; // bonded
+    noble: number; // inert
+    polymer: number; // bonded, longer
+    heavy: number; // heavy (energy-immune)
+    chelate: number; // inert + bonded combo
+    shroud: number; // inert + heavy combo
   };
 }
 
@@ -32,8 +36,10 @@ export const MODE: CampaignMode = {
   introRounds: {
     swift: 2,
     dimer: 3,
-    polymer: 5,
-    noble: 6,
+    noble: 5,
+    polymer: 6,
     heavy: 8,
+    chelate: 13,
+    shroud: 15,
   },
 };

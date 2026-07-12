@@ -22,11 +22,12 @@ present in your project. Read all of it before you start, and produce an
 implementation that matches the specification exactly. It is decomposed by concern:
 `specs/overview.md` (goals, hard requirements, the stage, the palette and type),
 `specs/board.md` (the conduit tracks, the build grid, the inlet and
-collector, and the HUD layout), `specs/matter.md` (the matter you defend against and
-the three-axis decomposition model), `specs/towers.md` (the five towers and their
-upgrades), `specs/controls.md`, `specs/flow.md` (the economy, integrity, the round
-campaign, scoring, states, menus, and HUD), `specs/assets.md` (the asset-production
-contract), `specs/proof.md`, and `specs/mode.md` (the campaign start this run plays).
+collector, and the HUD layout), `specs/matter.md` (the matter you defend against — hit
+points, the three damage types, and the stackable traits), `specs/towers.md` (the seven
+towers and their two-branch upgrades), `specs/controls.md`, `specs/flow.md` (the economy,
+integrity, the round campaign, scoring, states, menus, and HUD), `specs/assets.md` (the
+asset-production contract), `specs/proof.md`, and `specs/mode.md` (the campaign start this
+run plays).
 
 ## Build requirements
 
@@ -77,13 +78,14 @@ it works. Before you consider the task complete:
   Chromium with Playwright and confirm it **loads with no console errors** and no
   uncaught exceptions.
 - **Drive the game** — build towers on the grid, start a round, and watch matter flow
-  both lanes: shear a molecule apart and ionize the freed atoms, fission a heavy into
-  daughter atoms, catalyze an inert unit so an ionizer can finish it, and let matter
-  leak to the collector until integrity runs out — then reach both the victory and the
-  containment-failed screens — and **screenshot** the title, live-board, and
-  containment-failed screens. Verify each against the specs — treating the
-  `reference/` images as examples of the intended look only, not a layout to match —
-  and fix what does not follow the specification before finishing.
+  both lanes: chip a bonded cluster open into a spray of atoms and strip them, crack a
+  heavy with kinetic or nuclear damage (and confirm energy does nothing to it) into
+  daughter atoms, detect an inert unit so a tower can finish it, take a tower to tier III
+  and confirm its two branches differ, and let matter leak to the collector until integrity
+  runs out — then reach both the victory and the containment-failed screens — and
+  **screenshot** the title, live-board, and containment-failed screens. Verify each against
+  the specs — treating the `reference/` images as examples of the intended look only, not a
+  layout to match — and fix what does not follow the specification before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
   screenshots and the two short clips, each written to the precise `proof/` path that
   spec names. These are required deliverables of the finished build, not a private

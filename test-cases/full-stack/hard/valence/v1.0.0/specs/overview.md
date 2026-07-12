@@ -4,30 +4,35 @@
 
 **Valence** is a chemistry-themed **tower-defense** game for the browser. Unstable
 **matter** streams out of an **inlet** and flows along a fixed **conduit** toward a
-**collector**; you stop it by placing **emitter towers** on a grid of build cells beside
-the conduit and breaking the matter down before it escapes. Every unit that reaches the
+**collector**; you stop it by placing **towers** on a grid of build cells beside the
+conduit and breaking the matter down before it escapes. Every unit that reaches the
 collector costs you **integrity**; every unit you neutralize releases the **energy**
 that pays for more towers.
 
-Valence's defining idea is that matter does not decompose along one "pop a layer"
-ladder — it comes in genuinely different **forms**, each opened by a different tool:
+Valence's defining idea is that matter is **hit points, damage types, and stackable
+traits** — not a "pop a layer" ladder where each form has exactly one counter. Every
+unit carries **electron shells** (its hit points), and any of three **damage types** —
+**energy**, **kinetic**, **nuclear** — strips them. What differs is a unit's **traits**,
+and a trait opens a unit to a **class** of towers, never just one:
 
-- A **molecule** is a bonded cluster of atoms. A **Shear** tower snaps its bonds so it
-  fragments into its constituent **atoms**, which travel on independently — one molecule
-  becoming a spray of faster atoms.
-- A free **atom** carries **electron shells**. An **Ionizer** strips one shell per hit;
-  a fully stripped atom is **neutralized**. A bonded atom's electrons are engaged in its
-  bonds, so an atom cannot be ionized until it is sheared free of its molecule.
-- A **heavy nucleus** is bound too tightly to shear or ionize. Only a **Fission** tower
-  cracks it, splitting it into two lighter **daughter atoms** that ionizers then finish.
+- **Bonded** matter (a molecule) wraps its atoms in an outer **bond pool** — extra health
+  **any** tower chips through, shedding a spray of free atoms as it breaks. Kinetic damage
+  chews bonds fastest, but it is not the only opener.
+- **Heavy** matter is **immune to energy**; only **kinetic or nuclear** damage cracks it —
+  several towers can, not one. It splits into lighter daughter atoms.
+- **Inert** matter is **untargetable until it is detected**, and detection comes from
+  **several** sources (a support aura or an upgrade branch), not a single tower.
 
-Two support towers change what the damage towers can reach: a **Catalyst** makes
-**inert** matter reactive (it is untargetable until then), and a **Moderator** damps
-matter to buy time. You spend energy across an escalating **round campaign** that ends
-in a fragmenting **boss**; survive every round and you win, run out of integrity and you
+Traits **stack** late in the run — a heavy that is also inert, a cloaked molecule —
+forcing **layered** defenses. Seven **general-purpose** towers each deal a damage type
+and each choose one of two **upgrade branches**, so a board is a set of real choices.
+Two are support **auras**: a **Catalyst** reveals and excites matter, a **Moderator**
+slows it. You spend energy across an escalating **round campaign** that ends in a
+fragmenting **boss**; survive every round and you win, run out of integrity and you
 lose. It is inspired by lane-defense games but is entirely its own, with an original
-name, an atomic-diagram look, the decomposition model, and its own matter and towers.
-Do not reproduce the assets, branding, characters, or exact design of any existing game.
+name, an atomic-diagram look, the damage-type/trait model, and its own matter and
+towers. Do not reproduce the assets, branding, characters, or exact design of any
+existing game.
 
 **You also produce the game's art, effects, and audio yourself.** Valence ships with
 **no** pre-made sprites, effects, or sounds. The run image puts six asset-generation
@@ -47,11 +52,12 @@ they cross-reference each other by name and form one specification.
 - `specs/board.md` — the board: the conduit tracks (the inlet, the fork into two lanes,
   the merge, and the collector), how matter is split across the lanes, the build grid,
   tower range and coverage, and the top status bar and right build panel.
-- `specs/matter.md` — the matter: the forms (molecule, atom, inert atom, heavy nucleus),
-  the matter types and their stats, the three-axis decomposition model, and how a wave is
-  built. **Read this carefully.**
-- `specs/towers.md` — the five towers (Ionizer, Shear, Fission, Catalyst, Moderator),
-  their stats, targeting, and how you build, upgrade, and sell them.
+- `specs/matter.md` — the matter: hit points, the three damage types, the three
+  stackable traits (bonded, heavy, inert) and how they gate damage and detection, the
+  matter types and their stats, and how a wave is built. **Read this carefully.**
+- `specs/towers.md` — the seven towers (Emitter, Ionizer, Cleaver, Reactor, Beam,
+  Catalyst, Moderator), their damage types, detection, the two-branch upgrade choice,
+  and how you build, upgrade, and sell them.
 - `specs/controls.md` — the mouse and keyboard controls: selecting cells, building,
   upgrading and selling towers, starting rounds, game speed, and pause.
 - `specs/flow.md` — the economy, integrity, the round progression and victory, scoring,
@@ -67,12 +73,12 @@ they cross-reference each other by name and form one specification.
 
 Produce a complete, polished, **playable** game that runs entirely in a browser. This is
 a substantial front-end task: a fixed-step real-time simulation of matter flowing along
-branching tracks, grid-snapped tower placement with automatic targeting, a three-axis
-decomposition model with five interacting towers, an economy of energy, interest, and
-integrity, an escalating round campaign with a fragmenting boss, multiple game states and
-menus, and a HUD — **and** a full pass of producing the game's art, effects, and audio
-with the on-`PATH` tools. Aim for a build a person would actually want to play — tense,
-legible, and alive — not a tech demo.
+branching tracks, grid-snapped tower placement with automatic targeting, a hit-point /
+damage-type / stackable-trait model with seven general-purpose towers and their two-branch
+upgrades, an economy of energy, interest, and integrity, an escalating round campaign with
+a fragmenting boss, multiple game states and menus, and a HUD — **and** a full pass of
+producing the game's art, effects, and audio with the on-`PATH` tools. Aim for a build a
+person would actually want to play — tense, legible, and alive — not a tech demo.
 
 ### Hard requirements
 
@@ -165,10 +171,12 @@ matter apart. The canonical palette and type are below; match them.
 | Inert / noble matter | `#c4cbd6` |
 | Heavy nucleus (radioactive) | `#c7e14a` |
 | Boss macromass | `#a45cff` |
-| Ionizer (charge) | `#4aa6ff` |
-| Shear (cleave) | `#ff8646` |
-| Fission (nuclear) | `#ff5470` |
-| Catalyst (reactive) | `#e267c8` |
+| Energy damage / Ionizer | `#4aa6ff` |
+| Emitter (energy) | `#8fb9ff` |
+| Kinetic damage / Cleaver | `#ff8646` |
+| Nuclear damage / Reactor | `#ff5470` |
+| Beam (energy lance) | `#c9f24a` |
+| Catalyst (reveal / excite) | `#e267c8` |
 | Moderator (damping) | `#46d6c2` |
 | Alert / danger | `#ff5a52` |
 | Panels / overlays | `#121821` |
@@ -180,20 +188,26 @@ matter apart. The canonical palette and type are below; match them.
   on a web font that must be downloaded; a system monospace stack is required so the game
   renders identically offline.
 - Keep the board legible: a player must be able to tell the conduit from the substrate,
-  an empty build cell from a built tower, and the direction matter is flowing, at a glance.
-- **The matter's form must be unmistakable, and readable by more than color alone.**
-  Which tool a unit needs is the core read of the game (`specs/matter.md`), so the four
-  forms must be distinguishable by **shape** as well as color: a **free atom** as a
-  nucleus with visible electron shells, a **molecule** as two or more atoms joined by
-  bond sticks (ball-and-stick), a **heavy nucleus** as a dense, tightly-bound orb with a
-  radioactive shimmer, and **inert** matter as a sealed, full-shelled orb. A player must
-  be able to tell a molecule from a lone atom from a heavy from an inert unit at speed,
-  and the HUD/next-round preview names the types in words as well
+  an empty build cell from a built tower, and the direction matter is flowing, at a
+  glance.
+- **A unit's traits must be unmistakable, and readable by more than color alone.** What
+  a unit asks of the board — chip its bonds, bring kinetic/nuclear, detect it — is the
+  core read of the game (`specs/matter.md`), so the traits must be distinguishable by
+  **shape** as well as color: a **free atom** as a nucleus with visible electron shells
+  (its hit points), a **bonded** cluster as two or more atoms joined by bond sticks
+  (ball-and-stick) with a draining bond-integrity read, a **heavy** as a dense,
+  tightly-bound orb with a radioactive shimmer and its own hit-point read, and an
+  **inert** unit as a sealed, shrouded orb that visibly snaps to a "revealed" state
+  under a detector. Because **traits stack**, a unit may show more than one read at once
+  (a shrouded heavy, a cloaked cluster). A player must tell these apart at speed, and
+  the HUD/next-round preview names each type and what it needs in words
   (`specs/board.md`, `specs/flow.md`).
-- **Each tower is color-coded** by its role (the five accent colors above), so a full
-  board still reads as which tool sits where. **The damage towers turn to aim** — each
-  head rotates to face what it is firing at, and every shot is a **visible projectile that
-  carries the hit** to the target on impact (`specs/towers.md`, `specs/assets.md`).
+- **Each tower is color-coded** by its role, and **each shot is colored by its damage
+  type** (energy blue, kinetic orange, nuclear red — the accents above), so a full board
+  reads as which capability sits where and which damage is landing. **The damage towers
+  turn to aim** — each head rotates to face what it is firing at, and every shot is a
+  **visible projectile that carries the hit** to the target on impact
+  (`specs/towers.md`, `specs/assets.md`).
 - **You produce the art, effects, and audio** with the on-`PATH` tools — see
   `specs/assets.md`, which is the contract for the sprites, animations, particle bursts,
   and audio, and how to load and wire each in. The HUD, build panel, menus, build-cell

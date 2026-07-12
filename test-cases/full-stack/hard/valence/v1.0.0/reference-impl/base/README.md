@@ -2,25 +2,28 @@
 
 **Valence** is a chemistry-themed **tower-defense** game for the browser. Unstable
 **matter** streams out of an **inlet** and flows along a fixed branching **conduit**
-toward a **collector**; you stop it by placing **emitter towers** on a grid of build
-cells beside the conduit and breaking the matter down before it escapes. Every unit that
-reaches the collector costs **integrity**; every unit you neutralize releases the
-**energy** that pays for more towers.
+toward a **collector**; you stop it by placing **towers** on a grid of build cells beside
+the conduit and breaking the matter down before it escapes. Every unit that reaches the
+collector costs **integrity**; every unit you neutralize releases the **energy** that pays
+for more towers.
 
-Its defining idea is that matter does not decompose along one ladder — it comes in
-genuinely different **forms**, each opened by a different tool:
+Its defining idea is that matter is **hit points, damage types, and stackable traits** —
+not a "pop a layer" ladder. Every unit carries electron **shells** (its hit points); any
+of three damage types (**energy**, **kinetic**, **nuclear**) strips them, gated only by a
+unit's **traits**:
 
-- A **molecule** is a bonded cluster of atoms. A **Shear** snaps its bonds so it
-  fragments into its constituent **atoms**.
-- A free **atom** carries **electron shells**. An **Ionizer** strips one shell per hit;
-  a fully stripped atom is **neutralized**.
-- A **heavy nucleus** is bound too tightly to shear or ionize. Only a **Fission** tower
-  cracks it, splitting it into two lighter **daughter atoms**.
-- **Inert (noble)** matter is untargetable until a **Catalyst** makes it reactive, and a
-  **Moderator** damps matter to buy time.
+- **Bonded** clusters wrap their atoms in an outer **bond pool** — extra health *any* tower
+  chips through (kinetic fastest), shedding a spray of free atoms.
+- **Heavy** matter is **immune to energy**; only **kinetic or nuclear** cracks it — several
+  towers can — and it splits into daughter atoms.
+- **Inert** matter is **untargetable until detected** (a Catalyst aura, a Reactor's Fallout
+  zone, an Ionizer's Array branch, or a Beam natively). Traits **stack** late.
 
-Spend energy across an escalating **20-round campaign** that ends in a fragmenting
-**Macromass** boss; survive every round and you win, run out of integrity and you lose.
+Seven general-purpose towers each deal a damage type and each choose one of two **upgrade
+branches** at tier III; two are support auras (a **Catalyst** reveals + excites, a
+**Moderator** slows). Spend energy across an escalating **20-round campaign** that ends in
+a fragmenting **Macromass** boss; survive every round and you win, run out of integrity and
+you lose.
 
 This directory is the authored **reference implementation** of the case's `base`
 variant (the *Containment* campaign) — the *correct*, ground-truth build the case is
@@ -41,10 +44,10 @@ monorepo), and the sounds through the Web Audio API.
 
 ## Controls
 
-- **Build** — click a tower in the shop (or press **1**–**5**), then click an empty grid
+- **Build** — click a tower in the shop (or press **1**–**7**), then click an empty grid
   cell beside the conduit. `Esc` / right-click leaves build mode.
-- **Select / upgrade / sell** — click a built tower to select it; **U** upgrades, **S**
-  sells (or use the inspector buttons).
+- **Select / upgrade / sell** — click a built tower to select it; **U** upgrades (at tier
+  III, click one of the two **branch** buttons in the inspector), **S** sells.
 - **Start / send round** — **Space** or the panel button. Before Round 1 the build phase
   is untimed; between rounds it also sends the next round early for a bonus.
 - **Speed** — **F** cycles 1× / 2× / 3×. **Esc** pauses. **M** mutes.
@@ -65,11 +68,16 @@ correctly when served from any base path, including a per-run sub-path.
 
 ## Layout
 
-- [`src/`](src/) — the game. `constants.ts` (stats/palette), `mode.ts` (the campaign
-  start), `board.ts` (conduit geometry + the build grid), `matter`/`waves`/`sim.ts` (the
-  fixed-step simulation and decomposition model), `assets.ts` / `audio.ts` /
-  `particles.ts` (loading and playing the produced art, sound, and effects),
-  `render.ts` (all drawing + HUD), `input.ts` + `main.ts` (input and the loop).
+- [`src/`](src/) — the game. `constants.ts` (stats/palette + the `deriveStats` tower model),
+  `mode.ts` (the campaign start), `board.ts` (conduit geometry + the build grid),
+  `waves`/`sim.ts` (the fixed-step simulation: the hit-point / damage-type / stackable-trait
+  model, detection, and the branch upgrades), `assets.ts` / `audio.ts` / `particles.ts`
+  (loading and playing the produced art, sound, and effects), `render.ts` (all drawing + HUD),
+  `input.ts` + `main.ts` (input and the loop).
+- [`sim/`](sim/) — a headless, deterministic **balance harness** (dev-only, excluded from
+  the build): `npx tsx sim/run.ts` runs a battery of controllers and checks the balance
+  goals (energy-only / no-detection / never-upgraded / one-lane boards must lose; competent
+  mixed play must win). See [`sim/README.md`](sim/README.md).
 - [`assets/`](assets/) — the produced sprites, sprite-sheet frames, particle systems,
   and audio.
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of

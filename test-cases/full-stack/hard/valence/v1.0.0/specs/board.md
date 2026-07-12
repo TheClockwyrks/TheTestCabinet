@@ -2,9 +2,10 @@
 
 This file defines the playfield: the conduit matter travels, how it forks into two lanes
 and rejoins, how matter is split across the lanes, the **build grid** the player places
-towers on and what each covers, and the top status bar and right build panel. It builds on
-the stage in `specs/overview.md` and connects to the matter (`specs/matter.md`), the towers
-(`specs/towers.md`), the controls (`specs/controls.md`), and the flow (`specs/flow.md`).
+towers on and what each covers, and the top status bar and right build panel. It builds
+on the stage in `specs/overview.md` and connects to the matter (`specs/matter.md`), the
+towers (`specs/towers.md`), the controls (`specs/controls.md`), and the flow
+(`specs/flow.md`).
 
 The board occupies `x` in `[0, 1000]`, `y` in `[56, 720]` (`specs/overview.md`) and is
 shown **whole** — there is no scrolling camera; the entire conduit and the whole build
@@ -39,11 +40,12 @@ fork does not implement this board.
 
 Each unit is assigned a lane **at spawn** and travels it from the splitter to the
 confluence. By default the inlet **alternates** lanes — consecutive units go A, B, A, B,
-… — so both lanes always carry traffic and both must be defended; a wave's composition may
-weight the split (`specs/matter.md`), but the game must never funnel a whole wave down one
-lane and leave the other empty. A unit that **fragments** (a molecule sheared apart, a
-heavy fissioned — `specs/matter.md`) — spawns its fragments **on the same lane** at its
-own position, so the fragments continue past the towers ahead on that lane.
+… — so both lanes always carry traffic and both must be defended; a wave's composition
+may weight the split (`specs/matter.md`), but the game must never funnel a whole wave
+down one lane and leave the other empty. A unit that **fragments** (a bonded cluster
+chipped apart, a heavy split — `specs/matter.md`) — spawns its fragments **on the same
+lane** at its own position, so the fragments continue past the towers ahead on that
+lane.
 
 Progress along the conduit is what matters for targeting and leaking; a unit does not
 change lanes once assigned, and lanes do not cross.
@@ -52,19 +54,19 @@ change lanes once assigned, and lanes do not cross.
 
 Towers are placed on a **grid of build cells** that tiles the board — **not** at free
 pixel positions (this is not the free placement of a Bloons-style game) and **not** at a
-fixed handful of spots. The whole board region is divided into a uniform lattice of square
-cells (about `40 px` on a side — you pick the exact size, but it must divide the board into
-a clean grid, drawn as a faint lattice so the player can see the cells). Placement **snaps
-to the grid**: a tower always occupies **exactly one cell** and sits at that cell's
-**center**; it is never placed half on a cell or between cells.
+fixed handful of spots. The whole board region is divided into a uniform lattice of
+square cells (about `40 px` on a side — you pick the exact size, but it must divide the
+board into a clean grid, drawn as a faint lattice so the player can see the cells).
+Placement **snaps to the grid**: a tower always occupies **exactly one cell** and sits
+at that cell's **center**; it is never placed half on a cell or between cells.
 
 The only restriction on *where* is the conduit itself:
 
 - A cell the **conduit passes through** — the track of either lane, plus the inlet, the
-  splitter, the confluence, and the collector — is **blocked**: no tower may occupy it. The
-  conduit is fixed and towers never reroute it; there is no maze-building.
-- Every **other** cell is buildable, and **one tower** occupies a cell — a cell that already
-  holds a tower cannot take another.
+  splitter, the confluence, and the collector — is **blocked**: no tower may occupy it.
+  The conduit is fixed and towers never reroute it; there is no maze-building.
+- Every **other** cell is buildable, and **one tower** occupies a cell — a cell that
+  already holds a tower cannot take another.
 
 So the player may build on **any** empty cell, choosing freely *along* the conduit's
 length; the grid is the constraint on placement, not a fixed set of nodes. An empty
@@ -78,15 +80,16 @@ over the branching conduit:
 
 - A cell **beside Lane A only** reaches units on Lane A while they travel it, and not the
   other lane; likewise a cell **beside Lane B only** reaches Lane B.
-- A cell beside a **shared run** — the inlet approach before the splitter, the confluence,
-  or the shared final run — reaches **both** lanes' traffic (every unit passes the inlet
-  approach and the shared final run). These shared-run cells are the premium positions, and
-  the branching layout naturally leaves **fewer** of them than lane-side cells.
+- A cell beside a **shared run** — the inlet approach before the splitter, the
+  confluence, or the shared final run — reaches **both** lanes' traffic (every unit
+  passes the inlet approach and the shared final run). These shared-run cells are the
+  premium positions, and the branching layout naturally leaves **fewer** of them than
+  lane-side cells.
 
 Design the conduit so the grid around it offers a real choice — blanket one lane, cover
 both cheaply near the merge or the inlet, or spread thin. A tower's **range**
-(`specs/towers.md`) then decides how much of the conduit near its cell it actually reaches;
-a cell far from every lane is legal but reaches nothing.
+(`specs/towers.md`) then decides how much of the conduit near its cell it actually
+reaches; a cell far from every lane is legal but reaches nothing.
 
 ### Range and targeting
 
@@ -96,14 +99,17 @@ a cell far from every lane is legal but reaches nothing.
   collector — the standard "first" target — so it works on the most urgent threat. Splash
   and aura towers differ as noted in `specs/towers.md`.
 - A tower fires **automatically** at its fire rate whenever it has a valid target; there
-  is no manual trigger. What counts as a *valid* target depends on the tower and the
-  unit's form (a Shear only targets molecules, an Ionizer only free reactive atoms, and so
-  on — `specs/towers.md`, `specs/matter.md`); a tower with nothing valid in range holds
-  fire.
+  is no manual trigger. A target is *valid* only if the tower can **see** it (it is not
+  inert, or it is revealed, or the tower detects — `specs/matter.md`) **and** the
+  tower's **damage type can reach** it (energy cannot touch a heavy). Every damage tower
+  is generally useful; the traits, not a per-tower form-lock, decide what a given tower
+  can act on (`specs/towers.md`, `specs/matter.md`). A tower with nothing valid in range
+  holds fire.
 - A damage tower's **head rotates to face its current target**, and each shot is a
-  **projectile that travels to the unit and deals its effect on impact** — not an instant
-  hitscan (`specs/towers.md`, `specs/assets.md`). The support towers are auras: they neither
-  aim nor fire a projectile.
+  **projectile that travels to the unit and deals its damage on impact** — not an
+  instant hitscan — colored by its **damage type** (`specs/towers.md`,
+  `specs/assets.md`). The support towers are auras: they neither aim nor fire a
+  projectile.
 - When a tower is selected or held, draw its **range** as a ring so the player can see
   what it covers before committing (`specs/controls.md`).
 
@@ -123,18 +129,20 @@ produced sprites):
 
 ## Right build panel
 
-The **right build panel** (`x` in `[1000, 1280]`, `y` in `[56, 720]` — `specs/overview.md`)
-is where the player builds and inspects, drawn in code (its small icons may be produced
-sprites). It always shows, from top to bottom:
+The **right build panel** (`x` in `[1000, 1280]`, `y` in `[56, 720]` —
+`specs/overview.md`) is where the player builds and inspects, drawn in code (its small
+icons may be produced sprites). It always shows, from top to bottom:
 
 - **The shop** — one entry per tower type (`specs/towers.md`) with its name, cost, and
   icon, disabled when unaffordable. Hovering an entry shows that tower's info (role,
   range, what it targets, and its per-level effects) in the inspector area below.
 - **The inspector** — context-sensitive: with a **built tower selected**, it shows that
-  tower's type, level, live stats, and its **upgrade** and **sell** controls
-  (`specs/towers.md`); with a **shop entry hovered**, it shows that tower's info; with
-  **neither**, it shows the **next-round preview** — the types the coming round contains
-  (`specs/matter.md`, `specs/flow.md`) — so the player can plan the board for it.
+  tower's type, tier (and chosen **branch**), damage type, live stats, and its
+  **upgrade** and **sell** controls — at tier III the upgrade control presents the
+  tower's **two branch choices** (`specs/towers.md`); with a **shop entry hovered**, it
+  shows that tower's info; with **neither**, it shows the **next-round preview** — the
+  coming round's types and what each asks of the board (`specs/matter.md`,
+  `specs/flow.md`) — so the player can plan for it.
 - **The round control** — the **START ROUND** button before the first round and between
   rounds (which also reads the build-phase countdown and pays the early-send bonus when
   pressed early, `specs/flow.md`), and the speed toggle as an alternative to the status

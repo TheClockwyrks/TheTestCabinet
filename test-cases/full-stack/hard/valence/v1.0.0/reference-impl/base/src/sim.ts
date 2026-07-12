@@ -1,51 +1,48 @@
 // Valence — the simulation (specs/matter.md, specs/towers.md, specs/flow.md).
 //
-// A fixed-step model of matter flowing along the branching conduit, grid-placed towers
-// firing automatically, the three-axis decomposition model (shear / ionize / fission),
-// the Catalyst and Moderator auras, the energy/interest/integrity economy, and the
-// 20-round campaign with its fragmenting boss. Rendering, audio, and particles read
-// this state and drain its event queues; the simulation itself is DOM-free.
+// A fixed-step model of matter flowing along the branching conduit and grid-placed
+// towers firing automatically. Matter is HIT POINTS + DAMAGE TYPES + STACKABLE TRAITS
+// (specs/matter.md): a unit's shells are its hit points; any of three damage types —
+// energy, kinetic, nuclear — strips them, gated only by the unit's traits (BONDED: an
+// outer bond pool any tower chips, best chewed by kinetic; HEAVY: immune to energy;
+// INERT: needs a detector to be seen). Seven general-purpose towers each pick one of two
+// branches at tier III. Rendering, audio, and particles read this state and drain its
+// event queues; the simulation itself is DOM-free and is driven identically by the
+// browser and the headless balance harness (sim/).
 
 import {
   BUILD_PHASE_SECONDS,
-  CATALYST_EXCITE_BONUS,
-  CATALYST_LINGER,
-  FIRERATE_MULT,
-  FISSION_SPLASH,
   FRAGMENT_SPEED_BONUS,
+  HEAVY_DAUGHTERS,
   HEAVY_DAUGHTER_SHELLS,
-  HEAVY_SLOW,
   INTEREST_CAP,
   INTEREST_RATE,
+  MARK_TIME,
   MATTER,
   MAX_ATOM_SPEED,
-  MODERATOR_SLOW,
   PROJECTILE_SPEED,
-  RANGE_PER_LEVEL,
+  SLOW_ON_HIT_TIME,
   STRIP_SPEED_BONUS,
   TOTAL_ROUNDS,
   TOWERS,
   UPGRADE_MULT,
+  deriveStats,
   roundClearBonus,
   scaledAtoms,
-  scaledCriticality,
+  scaledBondHP,
+  scaledHeavyShells,
   scaledShells,
+  type Branch,
+  type DamageType,
+  type EffStats,
   type MatterType,
   type TowerKind,
+  type Trait,
 } from "./constants";
 import { cellCenter, isBlocked, laneLength, sampleLane, type Lane } from "./board";
 import type { CampaignMode } from "./mode";
 import { buildWave, type Wave } from "./waves";
-import type {
-  AtomSpec,
-  Cue,
-  FxEvent,
-  GameState,
-  Phase,
-  Projectile,
-  Tower,
-  Unit,
-} from "./types";
+import type { AtomSpec, Cue, FxEvent, GameState, Phase, Projectile, Tower, Unit, Zone } from "./types";
 
 export class Game {
   readonly mode: CampaignMode;
@@ -61,6 +58,7 @@ export class Game {
 
   units: Unit[] = [];
   projectiles: Projectile[] = []; // shots in flight (specs/towers.md)
+  zones: Zone[] = []; // lingering Reactor Fallout fields (specs/towers.md)
   towers = new Map<number, Tower>(); // cell id → tower
 
   // Build / selection UI state.
@@ -79,6 +77,10 @@ export class Game {
   private waveClock = 0; // ms into the current round
   private spawned = 0;
   private nextId = 1;
+
+  // Simple run tallies (surfaced to the balance harness).
+  kills = 0;
+  leakCount = 0;
 
   // Event queues drained by the presentation layer each frame.
   fxQueue: FxEvent[] = [];
@@ -101,6 +103,7 @@ export class Game {
     this.speed = 1;
     this.units = [];
     this.projectiles = [];
+    this.zones = [];
     this.towers.clear();
     this.buildKind = null;
     this.selectedCell = null;
@@ -111,8 +114,9 @@ export class Game {
     this.spawnCursor = 0;
     this.spawned = 0;
     this.waveClock = 0;
-    // The opening build phase is untimed (specs/flow.md).
-    this.buildTimed = false;
+    this.kills = 0;
+    this.leakCount = 0;
+    this.buildTimed = false; // the opening build phase is untimed (specs/flow.md)
     this.buildTimer = 0;
   }
 
@@ -125,7 +129,6 @@ export class Game {
         this.buildTimer -= dt;
         if (this.buildTimer <= 0) this.beginRound(0);
       }
-      // Towers still animate their idle fire timers down; nothing to fire at.
       for (const t of this.towers.values()) t.fireAnim += dt;
       return;
     }
@@ -133,7 +136,8 @@ export class Game {
     // Round phase.
     this.waveClock += dt * 1000;
     this.spawnDue();
-    this.stepAuras();
+    this.stepAuras(dt);
+    this.stepZones(dt);
     this.stepTowers(dt);
     this.stepUnits(dt);
     this.stepProjectiles(dt); // move shots after units move, so homing stays accurate
@@ -157,23 +161,28 @@ export class Game {
   private makeUnit(type: MatterType, lane: Lane): Unit {
     const def = MATTER[type];
     const r = this.round;
+    const traits = [...def.traits] as Trait[];
     const u: Unit = {
       id: this.nextId++,
       type,
-      form: def.form,
+      traits,
       lane,
       s: 0,
       element: def.element,
       baseSpeed: def.speed,
       shells: 0,
+      maxShells: 0,
       atoms: [],
-      criticality: 0,
-      critThreshold: 0,
-      reactive: false,
-      reactiveTimer: 0,
-      excited: false,
-      excitedBonus: 0,
+      bondHP: 0,
+      maxBondHP: 0,
+      revealed: false,
+      revealTimer: 0,
+      excite: 0,
+      markTimer: 0,
+      markBonus: 0,
       slowFactor: 1,
+      hitSlowTimer: 0,
+      hitSlowFactor: 1,
       radius: def.radius,
       fragmentsShed: 0,
       fragmentTarget: 0,
@@ -181,41 +190,49 @@ export class Game {
       hitFlash: 0,
       dead: false,
     };
-    if (def.form === "atom") {
-      u.shells = scaledShells(def.shells, r);
-    } else if (def.form === "inert") {
-      u.shells = scaledShells(def.shells, r); // shells once reactive
-    } else if (def.form === "molecule") {
+    if (traits.includes("bonded")) {
       const n = scaledAtoms(def.atoms, r);
-      const shells = scaledShells(2, r);
+      const shells = scaledShells(def.shells, r);
       u.atoms = Array.from({ length: n }, () => ({ element: def.element, shells }) as AtomSpec);
-    } else if (def.form === "heavy") {
-      u.critThreshold = scaledCriticality(def.criticality, r);
-    } else if (def.form === "boss") {
-      u.critThreshold = scaledCriticality(def.criticality, r) + (r >= 20 ? 3 : 0);
-      u.fragmentTarget = u.critThreshold;
+      u.bondHP = scaledBondHP(def.bondHP, r) + (n - def.atoms); // longer chains, tougher bonds
+      u.maxBondHP = u.bondHP;
+    } else if (type === "macromass") {
+      u.shells = scaledHeavyShells(def.shells, r) + (r >= 20 ? 6 : 0);
+      u.maxShells = u.shells;
+      u.fragmentTarget = 6 + (r >= 20 ? 3 : 0);
+    } else if (traits.includes("heavy")) {
+      u.shells = scaledHeavyShells(def.shells, r);
+      u.maxShells = u.shells;
+    } else {
+      // free atom (plain or inert)
+      u.shells = scaledShells(def.shells, r);
+      u.maxShells = u.shells;
     }
     return u;
   }
 
-  private makeFreeAtom(lane: Lane, s: number, element: 0 | 1, shells: number, speed: number): Unit {
+  private makeFreeAtom(lane: Lane, s: number, element: 0 | 1, shells: number, speed: number, inert: boolean): Unit {
     return {
       id: this.nextId++,
-      type: "monatom",
-      form: "atom",
+      type: inert ? "noble" : "monatom",
+      traits: inert ? ["inert"] : [],
       lane,
       s,
       element,
       baseSpeed: Math.min(MAX_ATOM_SPEED, speed),
       shells: Math.max(1, shells),
+      maxShells: Math.max(1, shells),
       atoms: [],
-      criticality: 0,
-      critThreshold: 0,
-      reactive: true,
-      reactiveTimer: 0,
-      excited: false,
-      excitedBonus: 0,
+      bondHP: 0,
+      maxBondHP: 0,
+      revealed: false,
+      revealTimer: 0,
+      excite: 0,
+      markTimer: 0,
+      markBonus: 0,
       slowFactor: 1,
+      hitSlowTimer: 0,
+      hitSlowFactor: 1,
       radius: 10,
       fragmentsShed: 0,
       fragmentTarget: 0,
@@ -225,38 +242,74 @@ export class Game {
     };
   }
 
-  // ---- Auras (Catalyst / Moderator) applied before movement -------------------
-  private stepAuras(): void {
-    // Reset per-tick aura state, decay lingering reactivity.
+  private hasTrait(u: Unit, t: Trait): boolean {
+    return u.traits.includes(t);
+  }
+
+  // ---- Auras (Catalyst / Moderator) and detection, applied before movement ----
+  private stepAuras(dt: number): void {
     for (const u of this.units) {
+      u.excite = 0;
       u.slowFactor = 1;
-      u.excited = false;
-      u.excitedBonus = 0;
-      if (u.form === "inert" && u.reactive) {
-        u.reactiveTimer -= 1 / 60; // decays unless re-topped by a field below
-        if (u.reactiveTimer <= 0) u.reactive = false; // re-seals (specs/towers.md)
+      u.markTimer = Math.max(0, u.markTimer - dt);
+      u.hitSlowTimer = Math.max(0, u.hitSlowTimer - dt);
+      if (this.hasTrait(u, "inert")) {
+        u.revealTimer = Math.max(0, u.revealTimer - dt);
+        u.revealed = u.revealTimer > 0; // reveal lingers after leaving a field
       }
     }
     for (const t of this.towers.values()) {
+      const s = this.eff(t);
       if (t.kind === "catalyst") {
-        const bonus = CATALYST_EXCITE_BONUS[t.level - 1]!;
         for (const u of this.unitsInRange(t)) {
-          if (u.form === "inert") {
-            u.reactive = true;
-            u.reactiveTimer = CATALYST_LINGER;
+          if (this.hasTrait(u, "inert")) {
+            if (!u.revealed) this.fxQueue.push({ kind: "reveal", x: sampleLane(u.lane, u.s).x, y: sampleLane(u.lane, u.s).y });
+            u.revealed = true;
+            u.revealTimer = s.revealLinger;
           }
-          u.excited = true;
-          u.excitedBonus = Math.max(u.excitedBonus, bonus);
+          u.excite = Math.max(u.excite, s.auraExcite);
         }
       } else if (t.kind === "moderator") {
-        const factor = MODERATOR_SLOW[t.level - 1]!;
         for (const u of this.unitsInRange(t)) {
-          if (u.form === "boss") continue; // immune
-          const applied = u.form === "heavy" ? Math.max(HEAVY_SLOW, factor) : factor;
+          if (u.type === "macromass") continue; // the boss is immune (specs/matter.md)
+          const applied = this.hasTrait(u, "heavy") ? Math.max(s.auraSlowHeavy, s.auraSlow) : s.auraSlow;
           u.slowFactor = Math.min(u.slowFactor, applied);
+          if (s.auraExcite > 0) u.excite = Math.max(u.excite, s.auraExcite); // Containment brittleness
         }
       }
     }
+    // On-hit slow (Cleaver Impactor) folds in after the auras.
+    for (const u of this.units) {
+      if (u.hitSlowTimer > 0) u.slowFactor = Math.min(u.slowFactor, u.hitSlowFactor);
+    }
+  }
+
+  private eff(t: Tower): EffStats {
+    return deriveStats(t.kind, t.level, t.branch);
+  }
+
+  private stepZones(dt: number): void {
+    for (const z of this.zones) {
+      z.life -= dt;
+      z.tickAcc += dt;
+      const period = 0.4;
+      let apply = 0;
+      while (z.tickAcc >= period) {
+        z.tickAcc -= period;
+        apply += z.dps * period;
+      }
+      for (const u of this.units) {
+        if (u.dead) continue;
+        const p = sampleLane(u.lane, u.s);
+        if (Math.hypot(p.x - z.x, p.y - z.y) > z.radius) continue;
+        if (this.hasTrait(u, "inert")) {
+          u.revealed = true;
+          u.revealTimer = Math.max(u.revealTimer, 0.3);
+        }
+        if (apply > 0) this.damageUnit(u, apply, "nuclear", p);
+      }
+    }
+    this.zones = this.zones.filter((z) => z.life > 0);
   }
 
   private *unitsInRange(t: Tower): Generator<Unit> {
@@ -275,39 +328,80 @@ export class Game {
     for (const t of this.towers.values()) {
       t.fireAnim += dt;
       if (t.kind === "catalyst" || t.kind === "moderator") continue; // auras don't fire or aim
-      const target = this.pickTarget(t);
-      // The head tracks the current target and keeps its last heading when idle
-      // (specs/towers.md).
-      if (target) {
-        const p = sampleLane(target.lane, target.s);
+      const s = this.eff(t);
+      const targets = this.pickTargets(t, s, s.multiTarget);
+      const primary = targets[0] ?? null;
+      if (primary) {
+        const p = sampleLane(primary.lane, primary.s);
         t.aimAngle = Math.atan2(p.y - (t.y - 4), p.x - t.x);
       }
       t.cooldown -= dt;
-      if (t.cooldown > 0 || !target) continue;
+      if (t.cooldown > 0 || !primary) continue;
       t.cooldown = 1 / t.fireRate;
       t.fireAnim = 0;
-      this.launchProjectile(t, target);
+      for (const tgt of targets) this.launchProjectile(t, s, tgt);
     }
   }
 
-  // Launch a shot from the tower's muzzle toward `target`. The projectile — not this
-  // call — deals the damage, on impact (specs/towers.md).
-  private launchProjectile(t: Tower, target: Unit): void {
-    const speed = PROJECTILE_SPEED[t.kind as "ionizer" | "shear" | "fission"];
-    const muzzle = 14; // barrel length from the head centre
+  private pickTargets(t: Tower, s: EffStats, n: number): Unit[] {
+    const valid: Unit[] = [];
+    for (const u of this.unitsInRange(t)) {
+      if (this.isValidTarget(s, u)) valid.push(u);
+    }
+    valid.sort((a, b) => b.s - a.s); // furthest along first
+    return valid.slice(0, Math.max(1, n));
+  }
+
+  // A tower can act on a unit only if it can SEE it (not inert, or revealed, or the tower
+  // detects) AND its damage type can reach it (specs/towers.md).
+  private isValidTarget(s: EffStats, u: Unit): boolean {
+    if (u.dead) return false;
+    if (this.hasTrait(u, "inert") && !u.revealed && !s.detection) return false;
+    return this.canDamage(s, u);
+  }
+
+  private canDamage(s: { damageType: DamageType | null; hitsHeavy: boolean }, u: Unit): boolean {
+    if (!this.hasTrait(u, "heavy")) return true; // bonds and shells take any damage type
+    // Heavy: immune to energy unless the shot explicitly hits heavies (Beam Disruptor).
+    return s.damageType !== "energy" || s.hitsHeavy;
+  }
+
+  private launchProjectile(t: Tower, s: EffStats, target: Unit): void {
+    const muzzle = 14;
     const cx = t.x + Math.cos(t.aimAngle) * muzzle;
     const cy = t.y - 4 + Math.sin(t.aimAngle) * muzzle;
     this.projectiles.push({
       id: this.nextId++,
-      kind: t.kind as "ionizer" | "shear" | "fission",
-      level: t.level,
+      kind: t.kind,
+      damageType: s.damageType!,
+      dmg: s.dmg,
       x: cx,
       y: cy,
       angle: t.aimAngle,
-      speed,
+      speed: PROJECTILE_SPEED[t.kind],
       targetId: target.id,
+      lane: target.lane,
+      splash: s.splash,
+      pierce: s.pierce,
+      pierceRadius: 44,
+      sameLane: false,
+      chain: s.chain,
+      bondBonus: s.bondBonus,
+      heavyBonus: s.heavyBonus,
+      hitsHeavy: s.hitsHeavy,
+      splashOnHeavy: s.splashOnHeavy,
+      slowOnHit: s.slowOnHit,
+      mark: s.mark,
+      hitIds: [],
       dead: false,
     });
+    // Beam Lance pierces the whole lane; encode that on the freshly-pushed shot.
+    const pr = this.projectiles[this.projectiles.length - 1]!;
+    if (s.lanePierce) {
+      pr.pierce = 99;
+      pr.pierceRadius = 260;
+      pr.sameLane = true;
+    }
     this.sndQueue.push("shot");
     this.fxQueue.push({ kind: "muzzle", x: cx, y: cy });
   }
@@ -328,11 +422,10 @@ export class Game {
       const step = pr.speed * dt;
       pr.angle = Math.atan2(dy, dx);
       if (dist <= step + target.radius) {
-        // Impact: the projectile connects and applies the tower's effect here.
         pr.x = p.x;
         pr.y = p.y;
         pr.dead = true;
-        this.applyHit(pr, target);
+        this.onImpact(pr, target);
       } else {
         pr.x += (dx / dist) * step;
         pr.y += (dy / dist) * step;
@@ -340,168 +433,210 @@ export class Game {
     }
   }
 
-  private unitById(id: number): Unit | null {
-    for (const u of this.units) if (u.id === id) return u;
-    return null;
-  }
+  private onImpact(pr: Projectile, primary: Unit): void {
+    const p = sampleLane(primary.lane, primary.s);
+    this.strike(pr, primary, p.x, p.y);
 
-  private pickTarget(t: Tower): Unit | null {
-    // The valid in-range unit furthest along the conduit (standard "first").
-    let best: Unit | null = null;
-    for (const u of this.unitsInRange(t)) {
-      if (!this.isValidTarget(t.kind, u)) continue;
-      if (!best || u.s > best.s) best = u;
-    }
-    return best;
-  }
-
-  private isValidTarget(kind: TowerKind, u: Unit): boolean {
-    if (u.dead) return false;
-    switch (kind) {
-      case "ionizer":
-        // Free reactive atoms only: a plain atom (always reactive) or a catalyzed noble.
-        return u.form === "atom" || (u.form === "inert" && u.reactive);
-      case "shear":
-        return u.form === "molecule";
-      case "fission":
-        return u.form === "heavy" || u.form === "boss";
-      default:
-        return false;
-    }
-  }
-
-  // Apply a landed shot's effect. `src` is the firing tower's kind+level snapshot,
-  // carried by the projectile so the effect is right on impact (specs/towers.md).
-  private applyHit(src: { kind: TowerKind; level: 1 | 2 | 3 }, u: Unit): void {
-    u.hitFlash = 0;
-    const p = sampleLane(u.lane, u.s);
-    if (src.kind === "ionizer") {
-      const baseStrip = src.level >= 3 ? 2 : 1;
-      const strip = baseStrip + (u.excited ? u.excitedBonus : 0);
-      u.shells -= strip;
-      if (u.shells <= 0) {
-        this.neutralize(u);
-      } else {
-        u.baseSpeed = Math.min(MAX_ATOM_SPEED, u.baseSpeed + STRIP_SPEED_BONUS);
-        this.fxQueue.push({ kind: "ionize", x: p.x, y: p.y });
+    // Area of effect (Reactor blast / Emitter Charged) — every unit in the radius.
+    if (pr.splash > 0) {
+      for (const u of this.units) {
+        if (u.dead || pr.hitIds.includes(u.id)) continue;
+        const q = sampleLane(u.lane, u.s);
+        if (Math.hypot(q.x - p.x, q.y - p.y) <= pr.splash) this.strike(pr, u, q.x, q.y);
       }
-    } else if (src.kind === "shear") {
-      const bonds = src.level >= 3 ? 2 : 1;
-      this.shear(u, bonds);
-    } else if (src.kind === "fission") {
-      this.fission(u, src);
+    }
+    // Pierce — pass through further units (a line, or the whole lane for a Lance).
+    if (pr.pierce > 0) {
+      const extra: { u: Unit; d: number; x: number; y: number }[] = [];
+      for (const u of this.units) {
+        if (u.dead || pr.hitIds.includes(u.id)) continue;
+        if (pr.sameLane && u.lane !== pr.lane) continue;
+        const q = sampleLane(u.lane, u.s);
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d <= pr.pierceRadius) extra.push({ u, d, x: q.x, y: q.y });
+      }
+      extra.sort((a, b) => a.d - b.d);
+      for (const e of extra.slice(0, pr.pierce)) this.strike(pr, e.u, e.x, e.y);
+    }
+    // Chain — arc to a nearby atom (Ionizer Overcharge).
+    if (pr.chain > 0) {
+      let arcs = pr.chain;
+      let fx = p.x;
+      let fy = p.y;
+      while (arcs > 0) {
+        let best: { u: Unit; d: number; x: number; y: number } | null = null;
+        for (const u of this.units) {
+          if (u.dead || pr.hitIds.includes(u.id)) continue;
+          if (this.hasTrait(u, "heavy") || this.hasTrait(u, "bonded")) continue;
+          if (this.hasTrait(u, "inert") && !u.revealed) continue;
+          const q = sampleLane(u.lane, u.s);
+          const d = Math.hypot(q.x - fx, q.y - fy);
+          if (d <= 70 && (!best || d < best.d)) best = { u, d, x: q.x, y: q.y };
+        }
+        if (!best) break;
+        this.strike(pr, best.u, best.x, best.y);
+        fx = best.x;
+        fy = best.y;
+        arcs--;
+      }
+    }
+  }
+
+  // Apply one landed shot to one unit. Damage runs against the unit's traits: a bonded
+  // unit's bond pool first (kinetic gets a bonus there), a heavy's shells (energy can't),
+  // a free atom's shells (specs/matter.md).
+  private strike(pr: Projectile, u: Unit, x: number, y: number): void {
+    if (u.dead || pr.hitIds.includes(u.id)) return;
+    if (!this.canDamage(pr, u)) return;
+    pr.hitIds.push(u.id);
+    u.hitFlash = 0;
+    if (pr.mark > 0 && !this.hasTrait(u, "bonded")) {
+      u.markTimer = MARK_TIME;
+      u.markBonus = pr.mark;
+    }
+    if (pr.slowOnHit > 0) {
+      u.hitSlowTimer = SLOW_ON_HIT_TIME;
+      u.hitSlowFactor = pr.slowOnHit;
+    }
+    const bonus = u.excite + (u.markTimer > 0 ? u.markBonus : 0);
+    if (this.hasTrait(u, "bonded")) {
+      const raw = pr.dmg + bonus;
+      const bd = pr.damageType === "kinetic" ? raw * pr.bondBonus : raw;
+      this.bondDamage(u, bd, x, y);
+      this.fxQueue.push({ kind: pr.damageType, x, y });
+    } else {
+      const raw = pr.dmg + bonus + (this.hasTrait(u, "heavy") ? pr.heavyBonus : 0);
+      this.damageUnit(u, raw, pr.damageType, { x, y });
+    }
+    if (pr.splashOnHeavy > 0 && u.dead && this.hasTrait(u, "heavy")) {
+      for (const o of this.units) {
+        if (o === u || o.dead || !this.hasTrait(o, "heavy")) continue;
+        const q = sampleLane(o.lane, o.s);
+        if (Math.hypot(q.x - x, q.y - y) <= pr.splashOnHeavy) this.damageUnit(o, pr.dmg, "kinetic", q);
+      }
+    }
+  }
+
+  // Bare shell damage (used by strike and by a Fallout zone's DoT). `dmgType` only picks
+  // the burst colour here; trait gating is the caller's job.
+  private damageUnit(u: Unit, amount: number, dmgType: DamageType, p: { x: number; y: number }): void {
+    if (u.dead) return;
+    if (this.hasTrait(u, "heavy") && dmgType === "energy") return; // guard (energy can't crack heavy)
+    u.hitFlash = 0;
+    u.shells -= amount;
+    if (u.type === "macromass") {
+      this.bossProgress(u, p);
+      if (u.shells <= 0) this.bossBurst(u, p);
+      else this.fxQueue.push({ kind: "nuclear", x: p.x, y: p.y });
+      return;
+    }
+    if (u.shells <= 0) {
+      if (this.hasTrait(u, "heavy")) this.splitHeavy(u, p);
+      else this.neutralize(u, p);
+    } else {
+      if (!this.hasTrait(u, "heavy")) u.baseSpeed = Math.min(MAX_ATOM_SPEED, u.baseSpeed + STRIP_SPEED_BONUS);
+      this.fxQueue.push({ kind: dmgType, x: p.x, y: p.y });
     }
   }
 
   // ---- Decomposition ----------------------------------------------------------
-  private neutralize(u: Unit): void {
-    u.dead = true;
-    const def = MATTER[u.type];
-    // A freed/daughter atom is a "monatom" clone; pay the source atom's value. To keep
-    // the economy faithful, a fragment atom pays the monatom bounty (2).
-    const bounty = u.form === "atom" && u.type === "monatom" ? MATTER.monatom.energy : def.energy;
-    // Molecules/heavies never neutralize directly (they decompose first), so `def` is an
-    // atom/noble here; pay its listed energy (noble 6, monatom/swift 2).
-    const pay = u.type === "noble" ? MATTER.noble.energy : bounty;
-    this.energy += pay;
-    this.score += pay;
-    const p = sampleLane(u.lane, u.s);
-    this.fxQueue.push({ kind: "neutralize", x: p.x, y: p.y });
-    this.sndQueue.push("neutralize");
-  }
-
-  private shear(u: Unit, bonds: number): void {
-    const p = sampleLane(u.lane, u.s);
-    let broke = false;
-    for (let i = 0; i < bonds && u.atoms.length > 1; i++) {
-      const lead = u.atoms.shift()!;
-      const atom = this.makeFreeAtom(u.lane, u.s + 4, lead.element, lead.shells, u.baseSpeed + FRAGMENT_SPEED_BONUS);
-      this.units.push(atom);
-      broke = true;
+  private bondDamage(u: Unit, amount: number, x: number, y: number): void {
+    u.bondHP -= amount;
+    const k = u.atoms.length; // full constituent count (stable)
+    const inert = this.hasTrait(u, "inert");
+    const shellsAtom = scaledShells(2, this.round);
+    if (k > 1) {
+      const chunk = u.maxBondHP / (k - 1);
+      const target = Math.min(k - 1, Math.floor((u.maxBondHP - Math.max(0, u.bondHP)) / chunk));
+      while (u.fragmentsShed < target) {
+        const a = u.atoms[u.fragmentsShed]!;
+        this.units.push(this.makeFreeAtom(u.lane, u.s + 4, a.element, a.shells, u.baseSpeed + FRAGMENT_SPEED_BONUS, inert));
+        u.fragmentsShed++;
+        this.fxQueue.push({ kind: "bondsnap", x, y });
+        this.sndQueue.push("snap");
+      }
     }
-    if (u.atoms.length <= 1) {
-      // The molecule is down to its last atom — it becomes free.
-      const last = u.atoms[0] ?? { element: u.element, shells: scaledShells(2, this.round) };
-      u.form = "atom";
-      u.type = "monatom";
+    if (u.bondHP <= 0) {
+      // The cluster is fully opened — it becomes its last free atom.
+      const last = u.atoms[k - 1] ?? { element: u.element, shells: shellsAtom };
+      u.traits = u.traits.filter((t) => t !== "bonded");
+      u.type = inert ? "noble" : "monatom";
       u.element = last.element;
       u.shells = last.shells;
-      u.reactive = true;
-      u.baseSpeed = Math.min(MAX_ATOM_SPEED, u.baseSpeed + FRAGMENT_SPEED_BONUS);
+      u.maxShells = last.shells;
       u.atoms = [];
-      broke = true;
-    }
-    if (broke) {
-      this.fxQueue.push({ kind: "bondsnap", x: p.x, y: p.y });
+      u.bondHP = 0;
+      u.baseSpeed = Math.min(MAX_ATOM_SPEED, u.baseSpeed + FRAGMENT_SPEED_BONUS);
+      this.fxQueue.push({ kind: "bondsnap", x, y });
       this.sndQueue.push("snap");
     }
   }
 
-  private fission(u: Unit, src: { level: 1 | 2 | 3 }): void {
-    const p = sampleLane(u.lane, u.s);
-    u.criticality += 1;
-
-    // Splash: +1 criticality to other heavies within the level's splash radius.
-    const splash = FISSION_SPLASH[src.level - 1]!;
-    if (u.form === "heavy") {
-      for (const other of this.units) {
-        if (other === u || other.dead || other.form !== "heavy") continue;
-        const q = sampleLane(other.lane, other.s);
-        if (Math.hypot(q.x - p.x, q.y - p.y) <= splash) other.criticality += 1;
-      }
+  private splitHeavy(u: Unit, p: { x: number; y: number }): void {
+    u.dead = true;
+    this.payBounty(u);
+    this.fxQueue.push({ kind: "split", x: p.x, y: p.y });
+    this.sndQueue.push("nuclear");
+    const inert = this.hasTrait(u, "inert"); // a Shroud's daughters stay inert
+    const shells = scaledShells(HEAVY_DAUGHTER_SHELLS, this.round);
+    for (let i = 0; i < HEAVY_DAUGHTERS; i++) {
+      const d = this.makeFreeAtom(u.lane, u.s + (i === 0 ? -6 : 6), (i % 2) as 0 | 1, shells, u.baseSpeed + FRAGMENT_SPEED_BONUS, inert);
+      this.units.push(d);
     }
+  }
 
-    if (u.form === "boss") {
-      // The boss fountains matter: each hit sheds a fragment; the final hit bursts it.
-      this.fxQueue.push({ kind: "fission", x: p.x, y: p.y });
-      this.sndQueue.push("fission");
-      if (u.criticality >= u.critThreshold) {
-        // Final split: a burst of fragments, then the core is destroyed and pays out.
-        for (let i = 0; i < 3; i++) this.shedBossFragment(u, i);
-        this.energy += MATTER.macromass.energy;
-        this.score += MATTER.macromass.energy;
-        u.dead = true;
-      } else {
-        this.shedBossFragment(u, u.fragmentsShed);
-        u.fragmentsShed++;
-      }
-      return;
-    }
+  private neutralize(u: Unit, p: { x: number; y: number }): void {
+    u.dead = true;
+    this.payBounty(u);
+    this.fxQueue.push({ kind: "neutralize", x: p.x, y: p.y });
+    this.sndQueue.push("neutralize");
+  }
 
-    // A heavy nucleus.
-    if (u.criticality >= u.critThreshold) {
-      u.dead = true;
-      this.fxQueue.push({ kind: "fission", x: p.x, y: p.y });
-      this.sndQueue.push("fission");
-      const shells = scaledShells(HEAVY_DAUGHTER_SHELLS, this.round);
-      for (let i = 0; i < 2; i++) {
-        const d = this.makeFreeAtom(u.lane, u.s + (i === 0 ? -6 : 6), (i % 2) as 0 | 1, shells, u.baseSpeed + FRAGMENT_SPEED_BONUS);
-        this.units.push(d);
-      }
-    } else {
-      this.fxQueue.push({ kind: "fission", x: p.x, y: p.y });
-      this.sndQueue.push("fission");
+  private payBounty(u: Unit): void {
+    const pay = MATTER[u.type].energy;
+    this.energy += pay;
+    this.score += pay;
+    this.kills++;
+  }
+
+  // The boss fountains matter as it is cracked: each HP step sheds a fragment; the final
+  // hit bursts it into a last spray (specs/matter.md).
+  private bossProgress(u: Unit, p: { x: number; y: number }): void {
+    if (u.fragmentTarget <= 0) return;
+    const step = u.maxShells / u.fragmentTarget;
+    const want = Math.min(u.fragmentTarget, Math.floor((u.maxShells - Math.max(0, u.shells)) / step));
+    while (u.fragmentsShed < want && u.shells > 0) {
+      this.shedBossFragment(u, u.fragmentsShed);
+      u.fragmentsShed++;
+      this.fxQueue.push({ kind: "split", x: p.x, y: p.y });
+      this.sndQueue.push("nuclear");
     }
+  }
+
+  private bossBurst(u: Unit, p: { x: number; y: number }): void {
+    for (let i = 0; i < 3; i++) this.shedBossFragment(u, i);
+    this.payBounty(u);
+    u.dead = true;
+    this.fxQueue.push({ kind: "split", x: p.x, y: p.y });
+    this.sndQueue.push("nuclear");
   }
 
   private shedBossFragment(u: Unit, idx: number): void {
     const behind = u.s - 8 - idx * 6;
+    const shells = scaledShells(2, this.round);
     if (idx % 2 === 0) {
-      // A Dimer.
-      const shells = scaledShells(2, this.round);
       const mol = this.makeUnit("dimer", u.lane);
       mol.s = behind;
-      mol.atoms = [
-        { element: 0, shells },
-        { element: 1, shells },
-      ];
       this.units.push(mol);
     } else {
-      // A pair of free atoms.
-      const shells = scaledShells(2, this.round);
-      this.units.push(this.makeFreeAtom(u.lane, behind, 0, shells, MATTER.monatom.speed + FRAGMENT_SPEED_BONUS));
-      this.units.push(this.makeFreeAtom(u.lane, behind - 6, 1, shells, MATTER.monatom.speed + FRAGMENT_SPEED_BONUS));
+      this.units.push(this.makeFreeAtom(u.lane, behind, 0, shells, MATTER.monatom.speed + FRAGMENT_SPEED_BONUS, false));
+      this.units.push(this.makeFreeAtom(u.lane, behind - 6, 1, shells, MATTER.monatom.speed + FRAGMENT_SPEED_BONUS, false));
     }
+  }
+
+  private unitById(id: number): Unit | null {
+    for (const u of this.units) if (u.id === id) return u;
+    return null;
   }
 
   // ---- Movement / leaks -------------------------------------------------------
@@ -519,8 +654,8 @@ export class Game {
 
   private leak(u: Unit): void {
     u.dead = true;
-    const def = MATTER[u.type];
-    this.integrity -= def.leak;
+    this.integrity -= MATTER[u.type].leak;
+    this.leakCount += MATTER[u.type].leak;
     const p = sampleLane(u.lane, laneLength(u.lane));
     this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
     this.sndQueue.push("alarm");
@@ -543,28 +678,24 @@ export class Game {
     this.score += 100 * this.round;
     this.energy += roundClearBonus(this.round);
     this.wave = null;
-    this.projectiles = []; // no shots carry over into the build phase
+    this.projectiles = [];
+    this.zones = [];
     if (this.round >= TOTAL_ROUNDS) {
       this.win();
       return;
     }
-    // Enter the next between-round build phase.
     this.phase = "build";
     this.buildTimed = true;
     this.buildTimer = BUILD_PHASE_SECONDS;
     this.nextWave = buildWave(this.round + 1, this.mode);
-    // Interest at the start of the build phase (specs/flow.md; a mode may disable it).
     if (this.mode.interest) {
       this.energy += Math.min(INTEREST_CAP, Math.floor(this.energy * INTEREST_RATE));
     }
-    // Towers placed on the round that just ran are no longer fully refundable.
     for (const t of this.towers.values()) t.refundable = false;
   }
 
-  // Begin the next round. `earlySeconds` is the whole seconds left on the countdown
-  // when the player sent it early (0 when the timer expired or from the opening phase).
   private beginRound(earlySeconds: number): void {
-    if (earlySeconds > 0) this.energy += earlySeconds; // early-send bonus
+    if (earlySeconds > 0) this.energy += earlySeconds;
     this.round += 1;
     this.phase = "round";
     this.wave = this.nextWave;
@@ -573,13 +704,11 @@ export class Game {
     this.waveClock = 0;
     this.buildTimed = false;
     this.buildTimer = 0;
-    // The coming-round preview now points at the round after this one.
     this.nextWave = buildWave(Math.min(this.round + 1, TOTAL_ROUNDS), this.mode);
-    // Any tower still standing has now faced a round → 70% refund from here on.
     for (const t of this.towers.values()) t.refundable = false;
   }
 
-  // ---- Dev/proof helpers (never used in normal play) --------------------------
+  // ---- Dev/proof helpers (also the balance-harness control surface) -----------
   devGrant(energy: number, integrity: number): void {
     this.energy = energy;
     this.integrity = integrity;
@@ -592,8 +721,6 @@ export class Game {
     this.buildTimed = false;
     this.startRound();
   }
-  // Mark the current round finished so the next fixedStep runs the real end-of-round
-  // path (round-clear bonus → next build phase, or victory after round 20).
   devFinishRound(): void {
     if (this.wave) this.spawnCursor = this.wave.events.length;
     this.units = [];
@@ -608,6 +735,7 @@ export class Game {
     this.state = "defeat";
     this.units = [];
     this.projectiles = [];
+    this.zones = [];
     this.wave = null;
   }
 
@@ -628,13 +756,11 @@ export class Game {
     this.buildKind = null;
   }
 
-  // A click on grid cell `id` (specs/board.md): build it while holding a tower, else
-  // select the tower there (or deselect on an empty cell).
   clickCell(id: number): void {
     if (this.state !== "playing") return;
     const existing = this.towers.get(id);
     if (this.buildKind) {
-      if (!existing) this.build(id, this.buildKind); // build() refuses blocked/unaffordable
+      if (!existing) this.place(id, this.buildKind);
       return;
     }
     this.selectedCell = existing ? id : null;
@@ -645,34 +771,38 @@ export class Game {
     else this.selectedCell = null;
   }
 
-  // Whether a cell can currently take a new tower of `kind`: on the grid, not crossed by
-  // the conduit, not already occupied, and affordable.
   canBuild(id: number, kind: TowerKind): boolean {
     return !isBlocked(id) && !this.towers.has(id) && this.energy >= TOWERS[kind].cost;
   }
 
-  private build(cellId: number, kind: TowerKind): void {
-    if (!this.canBuild(cellId, kind)) return;
+  // Place a tower on a grid cell (shared by the UI and the balance harness). Returns the
+  // built tower, or null if the cell is illegal or unaffordable.
+  place(cellId: number, kind: TowerKind): Tower | null {
+    if (!this.canBuild(cellId, kind)) return null;
     const def = TOWERS[kind];
     const c = cellCenter(cellId);
+    const s = deriveStats(kind, 1, null);
     this.energy -= def.cost;
-    this.towers.set(cellId, {
+    const t: Tower = {
       cell: cellId,
       kind,
       level: 1,
+      branch: null,
       x: c.x,
       y: c.y,
-      range: def.range,
-      fireRate: def.fireRate,
+      range: s.range,
+      fireRate: s.fireRate,
       cooldown: 0,
       spent: def.cost,
       placedInBuildPhaseOf: this.round,
       refundable: this.phase === "build",
       fireAnim: 999,
       aimAngle: -Math.PI / 2,
-    });
+    };
+    this.towers.set(cellId, t);
     this.selectedCell = cellId;
     this.sndQueue.push("build");
+    return t;
   }
 
   upgradeCost(t: Tower): number | null {
@@ -680,34 +810,46 @@ export class Game {
     return Math.round(TOWERS[t.kind].cost * UPGRADE_MULT[t.level + 1]!);
   }
 
-  upgradeSelected(): void {
-    if (this.selectedCell == null) return;
-    const t = this.towers.get(this.selectedCell);
-    if (!t || t.level >= 3) return;
+  // Upgrade a tower one tier. Reaching tier III requires a branch choice (A or B); tier
+  // II ignores `branch`. Shared by the UI (the inspector's two branch buttons) and the
+  // harness.
+  upgrade(t: Tower, branch?: Branch): boolean {
+    if (t.level >= 3) return false;
+    if (t.level === 2 && !branch) return false; // tier III needs a branch
     const cost = this.upgradeCost(t);
-    if (cost == null || this.energy < cost) return;
+    if (cost == null || this.energy < cost) return false;
     this.energy -= cost;
     t.spent += cost;
     t.level = (t.level + 1) as 1 | 2 | 3;
-    // Re-derive stats from base with the per-level modifiers (specs/towers.md).
-    const def = TOWERS[t.kind];
-    t.range = def.range + RANGE_PER_LEVEL[t.kind] * (t.level - 1);
-    t.fireRate = def.fireRate * Math.pow(FIRERATE_MULT[t.kind], t.level - 1);
+    if (t.level === 3) t.branch = branch!;
+    const s = deriveStats(t.kind, t.level, t.branch);
+    t.range = s.range;
+    t.fireRate = s.fireRate;
     this.sndQueue.push("build");
+    return true;
+  }
+
+  upgradeSelected(branch?: Branch): void {
+    if (this.selectedCell == null) return;
+    const t = this.towers.get(this.selectedCell);
+    if (t) this.upgrade(t, branch);
   }
 
   sellRefund(t: Tower): number {
     return t.refundable ? t.spent : Math.floor(t.spent * 0.7);
   }
 
+  sell(t: Tower): void {
+    this.energy += this.sellRefund(t);
+    this.towers.delete(t.cell);
+    if (this.selectedCell === t.cell) this.selectedCell = null;
+    this.sndQueue.push("build");
+  }
+
   sellSelected(): void {
     if (this.selectedCell == null) return;
     const t = this.towers.get(this.selectedCell);
-    if (!t) return;
-    this.energy += this.sellRefund(t);
-    this.towers.delete(this.selectedCell);
-    this.selectedCell = null;
-    this.sndQueue.push("build");
+    if (t) this.sell(t);
   }
 
   cycleSpeed(): void {
@@ -720,6 +862,9 @@ export class Game {
   }
   get comingRound(): Wave {
     return this.nextWave;
+  }
+  statsOf(t: Tower): EffStats {
+    return this.eff(t);
   }
   roundProgress(): number {
     const w = this.wave;

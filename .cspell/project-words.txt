@@ -317,3 +317,7 @@ strippable
 untargetable
 multiplicatively
 ctrls
+Bloons
+stackable
+chippable
+travelling

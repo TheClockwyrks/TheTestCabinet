@@ -1,23 +1,27 @@
 **Valence** is a chemistry-themed tower-defense game. Unstable matter streams out of
 an inlet and flows along a fixed conduit that forks into two lanes and rejoins before
-the collector; you defend it by placing **emitter towers** on the board's build grid
-to break the matter down before it escapes.
+the collector; you defend it by placing **towers** on the board's build grid to break
+the matter down before it escapes.
 
-Its defining idea is a **three-axis decomposition** model that replaces the usual
-"pop a layer" ladder. Matter comes in genuinely different forms, each opened by a
-different tool: a **Shear** tower snaps the bonds of a **molecule** so it fragments
-into its constituent atoms; an **Ionizer** strips a free **atom**'s electron shells
-one by one until it is neutralized; and a **Fission** tower is the only thing that
-cracks a **heavy nucleus**, splitting it into two lighter daughter atoms. **Inert**
-matter is untargetable until a **Catalyst** makes it reactive, a **Moderator** damps
-matter to buy time, and neutralizing matter releases the **energy** that funds your
-next tower — held against the **integrity** you lose whenever matter reaches the
-collector, across an escalating round campaign that ends in a fragmenting boss.
+Its defining idea is that matter is **hit points, damage types, and stackable traits** —
+not a "pop a layer" ladder where each form has exactly one counter. Every unit carries
+electron **shells** (its hit points), and any of three damage types — **energy**,
+**kinetic**, **nuclear** — strips them; a unit's **traits** decide which damage reaches
+it, and a trait opens a unit to a *class* of towers, never just one. A **bonded** cluster
+wraps its atoms in an outer **bond pool** that *any* tower chips through (kinetic fastest),
+shedding a spray of free atoms. A **heavy** is immune to energy and cracks only under
+**kinetic or nuclear** damage — several towers can. An **inert** unit is untargetable
+until a **detector** reveals it, and detection comes from several sources. Traits **stack**
+late — a cloaked heavy, a bonded cloak — forcing layered defenses. Seven **general-purpose**
+towers each deal a damage type and each choose one of two **upgrade branches**; two are
+support auras — a **Catalyst** reveals and excites, a **Moderator** slows — across an
+escalating round campaign that ends in a fragmenting boss.
 
 Valence is also a **full-stack** case: the model under test must **produce the game's
-own assets during the run** — the atom, molecule, heavy, and boss sprites, the
-orbiting-electron and boss animations, the tower sprites across their upgrade tiers,
-the live decomposition particle bursts, and the sound and reactor music — with the
-six asset-generation tools on the run image's `PATH`, and then build the game around
-them. It is inspired by lane-defense games but is entirely its own: an original name,
-an atomic-diagram look, the decomposition model, and its own matter and towers.
+own assets during the run** — the atom, cluster, heavy, inert, and boss sprites, the
+orbiting-electron and boss animations, the seven tower sprites across their tiers and
+branches, the damage-type-colored projectiles, the live particle bursts, and the sound
+and reactor music — with the six asset-generation tools on the run image's `PATH`, and
+then build the game around them. It is inspired by lane-defense games but is entirely its
+own: an original name, an atomic-diagram look, the damage-type/trait model, and its own
+matter and towers.

@@ -2,9 +2,11 @@
 //
 // A round is a timed sequence of units released from the inlet, alternating lanes so
 // both always carry traffic. Types unlock by round (per the campaign mode's intro
-// schedule), counts grow substantially across the run, and the milestone rounds (10,
-// 20) fold a Macromass boss into the wave. Reading the coming round's distinct types
-// (the next-round preview) and re-shaping the board for them is the between-round game.
+// schedule) — atoms first, then bonded and inert and heavy matter, and finally the
+// trait COMBOS (inert+bonded, inert+heavy) that force layered defenses. Counts grow
+// substantially across the run, and the milestone rounds (10, 20) fold a Macromass boss
+// into the wave. Reading the coming round's distinct types (the next-round preview) and
+// re-shaping the board for them is the between-round game.
 
 import { BOSS_ROUNDS, type MatterType } from "./constants";
 import type { Lane } from "./board";
@@ -40,9 +42,11 @@ export function buildWave(round: number, mode: CampaignMode): Wave {
       { type: "monatom", weight: 5, unlockRound: 1 },
       { type: "swift", weight: 3, unlockRound: intro.swift },
       { type: "dimer", weight: 3, unlockRound: intro.dimer },
-      { type: "polymer", weight: 2, unlockRound: intro.polymer },
       { type: "noble", weight: 2, unlockRound: intro.noble },
+      { type: "polymer", weight: 2, unlockRound: intro.polymer },
       { type: "heavy", weight: 2, unlockRound: intro.heavy },
+      { type: "chelate", weight: 2, unlockRound: intro.chelate },
+      { type: "shroud", weight: 2, unlockRound: intro.shroud },
     ] satisfies Weighted[]
   ).filter((w) => round >= w.unlockRound);
 
@@ -85,7 +89,7 @@ export function buildWave(round: number, mode: CampaignMode): Wave {
   const durationMs = events.length ? events[events.length - 1]!.atMs + 1200 : 1200;
 
   // Distinct types, in a stable preview order.
-  const order: MatterType[] = ["monatom", "swift", "dimer", "polymer", "noble", "heavy", "macromass"];
+  const order: MatterType[] = ["monatom", "swift", "dimer", "polymer", "noble", "heavy", "chelate", "shroud", "macromass"];
   const present = new Set(events.map((e) => e.type));
   const types = order.filter((t2) => present.has(t2));
 

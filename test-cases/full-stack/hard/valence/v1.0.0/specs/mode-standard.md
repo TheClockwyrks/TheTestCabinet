@@ -28,8 +28,9 @@ in the menu.)
 This start uses every system exactly as the common specs define it, with no overrides:
 
 - the **board**, its conduit, lanes, and build grid from `specs/board.md`;
-- the **matter** and the three-axis decomposition model from `specs/matter.md`;
-- the **five towers**, their targeting, upgrades, and selling from `specs/towers.md`;
+- the **matter** — hit points, damage types, and stackable traits — from `specs/matter.md`;
+- the **seven towers**, their damage types, detection, branch upgrades, and selling from
+  `specs/towers.md`;
 - the controls from `specs/controls.md`;
 - and the economy, integrity, the 20-round progression with its milestone bosses, scoring,
   the states, and the HUD from `specs/flow.md`, with **interest enabled** as that file

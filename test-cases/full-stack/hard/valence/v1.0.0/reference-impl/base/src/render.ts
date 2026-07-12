@@ -3,8 +3,10 @@
 // Draws the whole 1280x720 stage in logical space: the board (produced conduit,
 // build-cell markers, inlet, collector sprites), the towers and matter (produced sprites +
 // animated cycles), the live decomposition bursts, and the in-code HUD (status bar,
-// build panel), menus, and selection feedback. Returns the frame's clickable regions
-// so the input layer can route pointer events without re-deriving the layout.
+// build panel), menus, and selection feedback. Matter now reads by its stackable TRAITS
+// (bonded / heavy / inert) and hit points; a tower reads by its role, damage type, and
+// tier III branch. Returns the frame's clickable regions so the input layer can route
+// pointer events without re-deriving the layout.
 
 import {
   BOARD_X0,
@@ -12,6 +14,7 @@ import {
   BOARD_Y0,
   BOARD_Y1,
   COL,
+  DMG_COLOR,
   FONT,
   MATTER,
   PANEL_X,
@@ -21,6 +24,9 @@ import {
   TOTAL_ROUNDS,
   TOWERS,
   TOWER_ORDER,
+  deriveStats,
+  type Branch,
+  type EffStats,
   type MatterType,
   type TowerKind,
 } from "./constants";
@@ -37,15 +43,15 @@ import {
   sampleLane,
   type Lane,
 } from "./board";
-import { towerSprite, type Assets } from "./assets";
+import { projSprite, towerSprite, towerTint, type Assets } from "./assets";
 import type { Bursts } from "./particles";
 import type { Clickable, Tower, Unit } from "./types";
 import { Game } from "./sim";
 import { menuItems, type MenuItem } from "./menus";
 
-let time = 0; // seconds, advanced by the loop via setRenderTime
-let menuIndex = 0; // keyboard-selected menu item (also follows the pointer)
-let muted = false; // audio mute state, mirrored from the Audio layer for the HUD glyph
+let time = 0;
+let menuIndex = 0;
+let muted = false;
 export function setRenderTime(t: number): void {
   time = t;
 }
@@ -55,6 +61,12 @@ export function setMenuIndex(i: number): void {
 export function setMuted(m: boolean): void {
   muted = m;
 }
+
+const DAMAGE_TOWERS: TowerKind[] = ["emitter", "ionizer", "cleaver", "reactor", "beam"];
+function isDamageTower(kind: TowerKind): boolean {
+  return DAMAGE_TOWERS.includes(kind);
+}
+const ROMAN = ["I", "II", "III"];
 
 // ---- small helpers ------------------------------------------------------------
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -68,7 +80,6 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-// Stroke a rounded square centred on a build-grid cell (slightly inset from the cell edge).
 function strokeCellRect(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
   const s = CELL - 6;
   roundRect(ctx, cx - s / 2, cy - s / 2, s, s, 5);
@@ -91,7 +102,6 @@ function text(
   ctx.textBaseline = "middle";
   ctx.fillStyle = color;
   if (letter > 0) {
-    // manual letter-spacing for a monospace HUD look
     const chars = [...s];
     const total = chars.length * (size * 0.6 + letter);
     let cx = align === "center" ? x - total / 2 : align === "right" ? x - total : x;
@@ -131,8 +141,8 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
     return clicks;
   }
 
-  // playing / paused / victory / defeat all show the board behind.
   drawBoard(ctx, game, A);
+  drawZones(ctx, game);
   drawUnits(ctx, game, A);
   drawProjectiles(ctx, game, A);
   bursts.draw(ctx);
@@ -149,7 +159,6 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
 
 // ---- board --------------------------------------------------------------------
 function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
-  // substrate + faint grid
   ctx.fillStyle = COL.substrate;
   ctx.fillRect(BOARD_X0, BOARD_Y0, BOARD_X1 - BOARD_X0, BOARD_Y1 - BOARD_Y0);
   ctx.strokeStyle = "rgba(255,255,255,0.03)";
@@ -165,17 +174,13 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   }
   ctx.stroke();
 
-  // conduit: a soft glow underlay, then the produced conduit tiles laid along both lanes
   const conduit = A.sprite("board/conduit");
   ctx.save();
   ctx.shadowColor = COL.flow;
   ctx.shadowBlur = 10;
-  for (const lane of [0, 1] as Lane[]) {
-    for (const p of laneSamples(lane, 9)) blit(ctx, conduit, p.x, p.y, 22, 22, p.ang);
-  }
+  for (const lane of [0, 1] as Lane[]) for (const p of laneSamples(lane, 9)) blit(ctx, conduit, p.x, p.y, 22, 22, p.ang);
   ctx.restore();
 
-  // flow chevrons marching downstream (produced flow sprite), animated by time offset
   const flow = A.sprite("board/flow");
   const march = (time * 60) % 46;
   for (const lane of [0, 1] as Lane[]) {
@@ -188,18 +193,14 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   }
   ctx.globalAlpha = 1;
 
-  // inlet + collector
   blit(ctx, A.sprite("board/inlet"), INLET_POS.x + 6, INLET_POS.y, 40, 40, 0);
   blit(ctx, A.sprite("board/collector"), COLLECTOR_POS.x - 4, COLLECTOR_POS.y, 40, 40, 0);
 
-  // build grid: markers on the empty buildable cells, with legal-build cues in build
-  // mode and a hover/selected highlight (specs/board.md). Idle, only the cells beside a
-  // lane are marked (the useful ones); holding a tower cues every legal cell.
   const nodeImg = A.sprite("board/node");
   const holding = game.buildKind != null;
   for (const c of CELLS) {
     if (c.blocked || game.towers.has(c.id)) continue;
-    const nearLane = c.laneDist < 62; // a useful build cell (a tower here reaches a lane)
+    const nearLane = c.laneDist < 62;
     if (!holding && !nearLane) continue;
     const legal = holding && game.energy >= TOWERS[game.buildKind!].cost;
     ctx.globalAlpha = legal ? 1 : holding ? 0.45 : nearLane ? 0.7 : 0.35;
@@ -213,8 +214,6 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
       ctx.globalAlpha = 1;
     }
   }
-  // hover highlight: the cell under the pointer (green when a legal target, neutral to
-  // select a tower, red when blocked/occupied while holding a tower).
   if (game.hoverCell != null) {
     const hc = CELLS[game.hoverCell]!;
     const occupied = game.towers.has(hc.id);
@@ -227,30 +226,51 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
     ctx.globalAlpha = 1;
   }
 
-  // support-aura tints + towers
-  for (const t of game.towers.values()) drawAura(ctx, t);
-  // range ring for the selected tower
+  for (const t of game.towers.values()) drawAura(ctx, game, t);
   const sel = game.selectedTower;
   if (sel) drawRange(ctx, sel.x, sel.y, sel.range, sel.kind);
   for (const t of game.towers.values()) drawTower(ctx, t, A, game);
 }
 
-function drawAura(ctx: CanvasRenderingContext2D, t: Tower): void {
+// Reactor Fallout zones — an irradiated field that damages and reveals (specs/towers.md).
+function drawZones(ctx: CanvasRenderingContext2D, game: Game): void {
+  for (const z of game.zones) {
+    ctx.save();
+    const a = 0.12 + 0.05 * Math.sin(time * 8 + z.x);
+    const g = ctx.createRadialGradient(z.x, z.y, z.radius * 0.2, z.x, z.y, z.radius);
+    g.addColorStop(0, hexA(COL.fission, a + 0.06));
+    g.addColorStop(1, hexA(COL.fission, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = hexA(COL.fission, 0.3);
+    ctx.setLineDash([3, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawAura(ctx: CanvasRenderingContext2D, game: Game, t: Tower): void {
   if (t.kind !== "catalyst" && t.kind !== "moderator") return;
   const c = t.kind === "catalyst" ? COL.catalyst : COL.moderator;
+  const range = game.statsOf(t).range;
   ctx.save();
-  const g = ctx.createRadialGradient(t.x, t.y, t.range * 0.2, t.x, t.y, t.range);
+  const g = ctx.createRadialGradient(t.x, t.y, range * 0.2, t.x, t.y, range);
   g.addColorStop(0, hexA(c, 0.16));
   g.addColorStop(1, hexA(c, 0));
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(t.x, t.y, t.range, 0, Math.PI * 2);
+  ctx.arc(t.x, t.y, range, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = hexA(c, 0.22);
   ctx.setLineDash([4, 6]);
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(t.x, t.y, t.range, 0, Math.PI * 2);
+  ctx.arc(t.x, t.y, range, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
 }
@@ -268,24 +288,19 @@ function drawRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
   ctx.restore();
 }
 
-function isDamageTower(kind: TowerKind): boolean {
-  return kind === "ionizer" || kind === "shear" || kind === "fission";
-}
-
-// Draw a tower's produced sprites: a non-rotating base/mount, then either the rotating
-// head aimed by `aimAngle` (damage towers) or the upright aura body (support towers) —
-// specs/towers.md, specs/assets.md.
-function drawTowerSprite(ctx: CanvasRenderingContext2D, A: Assets, kind: TowerKind, level: number, cx: number, cy: number, size: number, aimAngle: number): void {
+function towerHead(ctx: CanvasRenderingContext2D, A: Assets, kind: TowerKind, level: number, cx: number, cy: number, size: number, aimAngle: number): void {
   blit(ctx, A.sprite("towers/base"), cx, cy, size, size, 0);
-  blit(ctx, A.sprite(towerSprite(kind, level)), cx, cy, size, size, isDamageTower(kind) ? aimAngle : 0);
+  const ang = isDamageTower(kind) ? aimAngle : 0;
+  const tint = towerTint(kind);
+  const head = tint ? A.tinted(towerSprite(kind, level), tint) : A.sprite(towerSprite(kind, level));
+  blit(ctx, head, cx, cy, size, size, ang);
 }
 
 function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Game): void {
   const size = 34;
   const cy = t.y - 4;
-  drawTowerSprite(ctx, A, t.kind, t.level, t.x, cy, size, t.aimAngle);
-  // fire overlay for the damage towers when recently fired — rotates with the head
-  if (t.kind === "ionizer" || t.kind === "shear" || t.kind === "fission") {
+  towerHead(ctx, A, t.kind, t.level, t.x, cy, size, t.aimAngle);
+  if (isDamageTower(t.kind)) {
     const frames = A.towerFire[t.kind];
     if (frames.length && t.fireAnim < 0.24) {
       const idx = Math.min(frames.length - 1, Math.floor((t.fireAnim / 0.24) * frames.length));
@@ -295,75 +310,74 @@ function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Gam
       ctx.restore();
     }
   }
-  // selection outline
   if (game.selectedCell === t.cell) {
     ctx.strokeStyle = COL.text;
     ctx.lineWidth = 2;
     roundRect(ctx, t.x - size / 2, cy - size / 2, size, size, 5);
     ctx.stroke();
   }
-  // level pips
+  // level pips; the tier-III pip carries the branch letter.
   for (let i = 0; i < t.level; i++) {
     ctx.fillStyle = TOWERS[t.kind].color;
     ctx.beginPath();
     ctx.arc(t.x - 8 + i * 8, t.y + 14, 2.4, 0, Math.PI * 2);
     ctx.fill();
   }
+  if (t.level === 3 && t.branch) text(ctx, t.branch, t.x + 12, t.y + 14, 8, TOWERS[t.kind].color, "left", "800");
 }
 
 // ---- projectiles in flight ----------------------------------------------------
-// Each shot is a produced sprite rotated to its heading; it carries the hit to the
-// target and applies the effect on impact (specs/towers.md).
 function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   for (const pr of game.projectiles) {
     ctx.save();
-    ctx.shadowColor = TOWERS[pr.kind].color;
+    const c = A.projColor[pr.kind];
+    ctx.shadowColor = c;
     ctx.shadowBlur = 8;
-    blit(ctx, A.sprite(`towers/proj_${pr.kind}`), pr.x, pr.y, 16, 16, pr.angle);
+    blit(ctx, A.tinted(projSprite(pr.kind), c), pr.x, pr.y, 16, 16, pr.angle);
     ctx.restore();
   }
 }
 
 // ---- matter -------------------------------------------------------------------
+function hasT(u: Unit, t: "bonded" | "heavy" | "inert"): boolean {
+  return u.traits.includes(t);
+}
+
 function drawUnits(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   for (const u of game.units) {
     const p = sampleLane(u.lane, u.s);
-    switch (u.form) {
-      case "atom":
-        drawAtom(ctx, A, p.x, p.y, u, u.element, u.shells, false);
-        break;
-      case "inert":
-        if (u.reactive) drawAtom(ctx, A, p.x, p.y, u, u.element, u.shells, true);
-        else blitGlow(ctx, A.sprite("matter/inert"), p.x, p.y, 22, COL.inert);
-        break;
-      case "molecule":
-        drawMolecule(ctx, A, p, u);
-        break;
-      case "heavy":
-        drawHeavy(ctx, A, p.x, p.y, u);
-        break;
-      case "boss":
-        drawBoss(ctx, A, p.x, p.y, u);
-        break;
-    }
+    const cloaked = hasT(u, "inert") && !u.revealed;
+    ctx.save();
+    if (cloaked) ctx.globalAlpha = 0.5; // an unrevealed inert unit reads as shrouded
+
+    if (u.type === "macromass") drawBoss(ctx, A, p.x, p.y, u);
+    else if (hasT(u, "bonded")) drawMolecule(ctx, A, p, u);
+    else if (hasT(u, "heavy")) drawHeavy(ctx, A, p.x, p.y, u);
+    else drawAtom(ctx, A, p.x, p.y, u);
+
+    ctx.restore();
+
+    // Trait / status overlays (drawn at full alpha over the body).
+    if (hasT(u, "inert")) drawCloak(ctx, p.x, p.y, u.radius, u.revealed);
+    if (u.slowFactor < 0.999) ring(ctx, p.x, p.y, u.radius + 6, COL.moderator, 0.5);
+    if (u.markTimer > 0) ring(ctx, p.x, p.y, u.radius + 8, COL.beam, 0.8);
+    if (u.excite > 0) ring(ctx, p.x, p.y, u.radius + 3, COL.catalyst, 0.4);
   }
 }
 
-function drawAtom(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number, u: Unit, element: 0 | 1, shells: number, wasNoble: boolean): void {
-  const orb = A.sprite(element === 0 ? "matter/nucleus_i" : "matter/nucleus_ii");
-  const col = element === 0 ? COL.elemI : COL.elemII;
-  // shell-count read: faint rings
+function drawAtom(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number, u: Unit): void {
+  const orb = A.sprite(u.element === 0 ? "matter/nucleus_i" : "matter/nucleus_ii");
+  const col = u.element === 0 ? COL.elemI : COL.elemII;
   ctx.save();
   ctx.strokeStyle = hexA(COL.shell, 0.5);
   ctx.lineWidth = 1;
-  for (let i = 0; i < shells; i++) {
+  for (let i = 0; i < u.shells; i++) {
     ctx.beginPath();
     ctx.arc(x, y, 8 + i * 3.2, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.restore();
-  blitGlow(ctx, orb, x, y, 20, wasNoble ? COL.inert : col);
-  // animated orbiting-electron overlay (produced draw-sheet cycle)
+  blitGlow(ctx, orb, x, y, 20, col);
   if (A.electron.length) {
     const f = Math.floor((u.animT * 9 + u.id) % A.electron.length);
     ctx.save();
@@ -375,12 +389,12 @@ function drawAtom(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number
 }
 
 function drawMolecule(ctx: CanvasRenderingContext2D, A: Assets, p: { x: number; y: number; ang: number }, u: Unit): void {
-  const n = u.atoms.length;
+  const remaining = u.atoms.length - u.fragmentsShed; // atoms still bonded in the cluster
+  const n = Math.max(1, remaining);
   const spacing = 14;
   const dx = Math.cos(p.ang);
   const dy = Math.sin(p.ang);
   const start = -((n - 1) * spacing) / 2;
-  // bonds first (behind atoms)
   const bond = A.sprite("matter/bond");
   for (let i = 0; i < n - 1; i++) {
     const bx = p.x + dx * (start + i * spacing + spacing / 2);
@@ -390,18 +404,34 @@ function drawMolecule(ctx: CanvasRenderingContext2D, A: Assets, p: { x: number; 
   for (let i = 0; i < n; i++) {
     const ax = p.x + dx * (start + i * spacing);
     const ay = p.y + dy * (start + i * spacing);
-    const a = u.atoms[i]!;
+    const a = u.atoms[Math.min(u.fragmentsShed + i, u.atoms.length - 1)]!;
     const orb = A.sprite(a.element === 0 ? "matter/nucleus_i" : "matter/nucleus_ii");
     blitGlow(ctx, orb, ax, ay, 18, a.element === 0 ? COL.elemI : COL.elemII);
   }
+  // bond-integrity read: an outer arc that drains as any tower chips the bonds.
+  const frac = u.maxBondHP > 0 ? Math.max(0, u.bondHP) / u.maxBondHP : 0;
+  ctx.save();
+  ctx.strokeStyle = COL.bond;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 16 + n, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
   if (u.hitFlash < 0.1) flash(ctx, p.x, p.y, 20, COL.shear);
 }
 
 function drawHeavy(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number, u: Unit): void {
   blitGlow(ctx, A.sprite("matter/heavy"), x, y, 26, COL.heavy);
-  // criticality read: an arc filling toward the split
-  const frac = u.critThreshold > 0 ? u.criticality / u.critThreshold : 0;
+  // hit-point read: an arc of REMAINING shells (kinetic/nuclear only chip it).
+  const frac = u.maxShells > 0 ? Math.max(0, u.shells) / u.maxShells : 0;
   ctx.save();
+  ctx.strokeStyle = COL.heavy;
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(x, y, 15, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = COL.fission;
   ctx.lineWidth = 2.5;
   ctx.beginPath();
@@ -419,7 +449,7 @@ function drawBoss(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number
   } else {
     blitGlow(ctx, A.sprite("matter/boss"), x, y, 52, COL.boss);
   }
-  const frac = u.critThreshold > 0 ? u.criticality / u.critThreshold : 0;
+  const frac = u.maxShells > 0 ? Math.max(0, u.shells) / u.maxShells : 0;
   ctx.save();
   ctx.strokeStyle = COL.boss;
   ctx.globalAlpha = 0.4;
@@ -435,6 +465,29 @@ function drawBoss(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number
   ctx.stroke();
   ctx.restore();
   if (u.hitFlash < 0.12) flash(ctx, x, y, 34, COL.fission);
+}
+
+// A sealed inert "cloak" — a dashed shell that reads as camouflage when unseen, and
+// snaps to a solid reveal ring while a detector covers it (specs/matter.md).
+function drawCloak(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, revealed: boolean): void {
+  ctx.save();
+  ctx.strokeStyle = revealed ? hexA(COL.catalyst, 0.9) : hexA(COL.inert, 0.8);
+  ctx.lineWidth = revealed ? 2 : 1.5;
+  ctx.setLineDash(revealed ? [] : [3, 3]);
+  ctx.beginPath();
+  ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c: string, a: number): void {
+  ctx.save();
+  ctx.strokeStyle = hexA(c, a);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function blitGlow(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, size: number, glow: string): void {
@@ -477,21 +530,14 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   text(ctx, "INTEGRITY", 192, 21, 10, COL.text3, "left", "600", 1);
   text(ctx, `${Math.max(0, Math.floor(game.integrity))}`, 192, 36, 18, low ? COL.alert : COL.integrity, "left", "700");
 
-  // round + progress / countdown
-  const rn = Math.max(1, game.round || 1);
   text(ctx, "ROUND", 330, 21, 10, COL.text3, "left", "600", 1);
   text(ctx, `${game.round === 0 ? 1 : game.round}`, 330, 36, 18, COL.text, "left", "700");
   text(ctx, `/ ${TOTAL_ROUNDS}`, 360, 37, 13, COL.text2, "left", "500");
   let sub = "";
-  if (game.state === "playing" && game.phase === "build") {
-    sub = game.buildTimed ? `BUILD · ${Math.ceil(game.buildTimer)}s` : "BUILD · READY";
-  } else if (game.phase === "round") {
-    sub = `${Math.round(game.roundProgress() * 100)}%`;
-  }
+  if (game.state === "playing" && game.phase === "build") sub = game.buildTimed ? `BUILD · ${Math.ceil(game.buildTimer)}s` : "BUILD · READY";
+  else if (game.phase === "round") sub = `${Math.round(game.roundProgress() * 100)}%`;
   if (sub) text(ctx, sub, 420, 37, 12, COL.text2, "left", "600", 1);
-  void rn;
 
-  // right-side controls
   ctrl(ctx, clicks, 1112, `${game.speed}x`, "speed", COL.text, 52);
   ctrl(ctx, clicks, 1172, game.state === "paused" ? "▶" : "❚❚", "pause", COL.text, 40);
   ctrl(ctx, clicks, 1220, muted ? "♪̸" : "♪", "mute", muted ? COL.text3 : COL.text, 40);
@@ -511,6 +557,9 @@ function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, lab
 }
 
 // ---- build panel --------------------------------------------------------------
+const SHOP_Y0 = 90;
+const SHOP_PITCH = 40;
+
 function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(PANEL_X, STATUS_H, STAGE_W - PANEL_X, STAGE_H - STATUS_H);
@@ -522,36 +571,35 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
 
   const px = PANEL_X + 12;
   const pw = STAGE_W - PANEL_X - 24;
-  text(ctx, "EMITTERS", px, 78, 12, COL.text3, "left", "700", 2);
+  text(ctx, "REACTOR ARRAY", px, 78, 11, COL.text3, "left", "700", 1);
 
-  // shop
   let hover: TowerKind | null = null;
   TOWER_ORDER.forEach((kind, i) => {
     const def = TOWERS[kind];
-    const y = 92 + i * 46;
+    const y = SHOP_Y0 + i * SHOP_PITCH;
+    const h = SHOP_PITCH - 4;
     const afford = game.energy >= def.cost;
     const active = game.buildKind === kind;
-    roundRect(ctx, px, y, pw, 40, 7);
+    roundRect(ctx, px, y, pw, h, 6);
     ctx.fillStyle = active ? hexA(def.color, 0.18) : "rgba(255,255,255,0.03)";
     ctx.fill();
     ctx.strokeStyle = active ? def.color : "rgba(255,255,255,0.08)";
     ctx.lineWidth = active ? 2 : 1;
     ctx.stroke();
-    // color chip + glyph letter
-    roundRect(ctx, px + 8, y + 8, 24, 24, 5);
+    roundRect(ctx, px + 7, y + 6, 22, 22, 5);
     ctx.fillStyle = hexA(def.color, afford ? 0.9 : 0.3);
     ctx.fill();
-    text(ctx, def.name[0]!, px + 20, y + 21, 15, COL.void, "center", "800");
-    text(ctx, def.name, px + 42, y + 21, 13, afford ? COL.text : COL.text3, "left", "600", 0.5);
-    text(ctx, `${def.cost}`, px + pw - 10, y + 21, 14, afford ? COL.energy : COL.text3, "right", "700");
-    clicks.push({ x: px, y, w: pw, h: 40, action: `shop:${kind}`, disabled: !afford });
-    if (game.pointerX >= px && game.pointerX <= px + pw && game.pointerY >= y && game.pointerY <= y + 40) hover = kind;
+    text(ctx, `${i + 1}`, px + 18, y + 17, 12, COL.void, "center", "800");
+    text(ctx, def.name, px + 38, y + 13, 12, afford ? COL.text : COL.text3, "left", "600", 0.5);
+    text(ctx, damageTag(kind), px + 38, y + 27, 9, hexA(tagColor(kind), 0.9), "left", "500", 0.5);
+    text(ctx, `${def.cost}`, px + pw - 10, y + 17, 13, afford ? COL.energy : COL.text3, "right", "700");
+    clicks.push({ x: px, y, w: pw, h, action: `shop:${kind}`, disabled: !afford });
+    if (game.pointerX >= px && game.pointerX <= px + pw && game.pointerY >= y && game.pointerY <= y + h) hover = kind;
   });
   game.hoverShop = hover;
 
-  // inspector / preview area
-  const iy = 92 + 5 * 46 + 10;
-  const ih = 636 - iy - 62;
+  const iy = SHOP_Y0 + TOWER_ORDER.length * SHOP_PITCH + 8;
+  const ih = STAGE_H - 58 - iy - 8;
   roundRect(ctx, px, iy, pw, ih, 8);
   ctx.fillStyle = "rgba(255,255,255,0.02)";
   ctx.fill();
@@ -560,57 +608,86 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.stroke();
 
   const sel = game.selectedTower;
-  if (hover) drawTowerInfo(ctx, hover, null, px + 14, iy + 12, pw - 28);
-  else if (sel) drawSelectedTower(ctx, game, sel, px + 14, iy + 12, pw - 28, clicks);
-  else drawPreview(ctx, game, A, px + 14, iy + 12, pw - 28);
+  if (hover) drawTowerInfo(ctx, hover, deriveStats(hover, 1, null), 1, null, px + 14, iy + 10, pw - 28);
+  else if (sel) drawSelectedTower(ctx, game, sel, px + 14, iy + 10, pw - 28, clicks);
+  else drawPreview(ctx, game, A, px + 14, iy + 10, pw - 28);
 
-  // round control
   drawRoundButton(ctx, game, px, pw, clicks);
 }
 
-function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, tower: Tower | null, x: number, y: number, w: number): void {
+function damageTag(kind: TowerKind): string {
   const def = TOWERS[kind];
-  const lvl = tower ? tower.level : 1;
-  text(ctx, `${def.name}${tower ? ` · ${["I", "II", "III"][lvl - 1]}` : ""}`, x, y + 8, 15, def.color, "left", "700", 0.5);
-  text(ctx, capitalize(def.targets), x, y + 30, 11, COL.text2, "left", "400");
-  const range = tower ? tower.range : def.range;
-  const rate = tower ? tower.fireRate : def.fireRate;
-  let row = y + 52;
-  const line = (k: string, v: string) => {
-    text(ctx, k, x, row, 12, COL.text3, "left", "500", 0.5);
-    text(ctx, v, x + w, row, 13, COL.text, "right", "600");
-    row += 20;
+  if (def.support) return kind === "catalyst" ? "SUPPORT · REVEAL" : "SUPPORT · SLOW";
+  const dt = def.damageType!.toUpperCase();
+  return def.detection ? `${dt} · SEES INERT` : dt;
+}
+function tagColor(kind: TowerKind): string {
+  const def = TOWERS[kind];
+  if (def.support) return def.color;
+  return DMG_COLOR[def.damageType!];
+}
+
+function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, s: EffStats, level: number, branch: Branch | null, x: number, y: number, w: number): void {
+  const def = TOWERS[kind];
+  const tier = branch ? `${ROMAN[level - 1]}·${branch === "A" ? def.branchA.name : def.branchB.name}` : ROMAN[level - 1];
+  text(ctx, `${def.name} · ${tier}`, x, y + 8, 14, def.color, "left", "700", 0.5);
+  text(ctx, capitalize(def.targets), x, y + 28, 10, COL.text2, "left", "400");
+  let row = y + 50;
+  const line = (k: string, v: string, c: string = COL.text) => {
+    text(ctx, k, x, row, 11, COL.text3, "left", "500", 0.5);
+    text(ctx, v, x + w, row, 12, c, "right", "600");
+    row += 18;
   };
-  line("RANGE", `${Math.round(range)}`);
+  line("RANGE", `${Math.round(s.range)}`);
   if (def.support) {
-    if (kind === "moderator") line("SLOW", `${Math.round([0.55, 0.45, 0.38][lvl - 1]! * 100)}%`);
-    else line("EXCITE", `+${[1, 1, 2][lvl - 1]!} strip`);
+    if (kind === "moderator") {
+      line("SLOW", `${Math.round((1 - s.auraSlow) * 100)}%`);
+      if (s.auraExcite > 0) line("BRITTLE", `+${s.auraExcite} dmg`, COL.catalyst);
+    } else {
+      line("REVEAL", "inert matter", COL.catalyst);
+      line("EXCITE", `+${s.auraExcite} dmg`);
+    }
   } else {
-    line("FIRE RATE", `${rate.toFixed(1)} /s`);
-    if (kind === "ionizer") line("STRIP", `${lvl >= 3 ? 2 : 1} shell`);
-    if (kind === "shear") line("BREAK", `${lvl >= 3 ? 2 : 1} bond`);
-    if (kind === "fission") line("CRIT", `+1 · splash ${[40, 40, 70][lvl - 1]!}`);
+    line("DAMAGE TYPE", def.damageType!.toUpperCase(), DMG_COLOR[def.damageType!]);
+    line("FIRE RATE", `${s.fireRate.toFixed(1)} /s`);
+    line("DAMAGE", `${s.dmg} shell${s.dmg > 1 ? "s" : ""}`);
+    if (s.detection) line("DETECT", "sees inert", COL.catalyst);
+    if (s.splash > 0) line("SPLASH", `${Math.round(s.splash)}`);
+    if (s.lanePierce) line("PIERCE", "whole lane");
+    else if (s.pierce > 0) line("PIERCE", `${s.pierce}`);
+    if (s.chain > 0) line("CHAIN", `${s.chain}`);
+    if (s.multiTarget > 1) line("TARGETS", `${s.multiTarget}`);
+    if (s.heavyBonus > 0) line("VS HEAVY", `+${s.heavyBonus}`, COL.heavy);
+    if (s.mark > 0) line("MARK", `+${s.mark} dmg`, COL.beam);
   }
 }
 
 function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, x: number, y: number, w: number, clicks: Clickable[]): void {
-  drawTowerInfo(ctx, t.kind, t, x, y, w);
-  // upgrade + sell buttons at the bottom of the inspector
-  const by = y + 150;
-  const upCost = game.upgradeCost(t);
+  drawTowerInfo(ctx, t.kind, game.statsOf(t), t.level, t.branch, x, y, w);
+  const by = STAGE_H - 58 - 8 - 44 - 40; // sit the controls above the round button
+  const def = TOWERS[t.kind];
+  const cost = game.upgradeCost(t);
   const half = (w - 10) / 2;
-  // upgrade
-  const upEnabled = upCost != null && game.energy >= upCost;
-  button(ctx, clicks, x, by, half, 34, upCost != null ? `UPGRADE ${upCost}` : "MAX", "upgrade", upEnabled ? COL.integrity : COL.text3, upEnabled);
-  // sell
-  button(ctx, clicks, x + half + 10, by, half, 34, `SELL ${game.sellRefund(t)}`, "sell", COL.energy, true);
+  if (t.level === 1) {
+    const en = cost != null && game.energy >= cost;
+    button(ctx, clicks, x, by, half, 34, `UPGRADE ${cost}`, "upgrade", en ? COL.integrity : COL.text3, en);
+  } else if (t.level === 2) {
+    // Tier III — choose a branch (specs/towers.md). Two buttons, the identity choice.
+    const en = cost != null && game.energy >= cost;
+    text(ctx, `TIER III — CHOOSE  (${cost})`, x, by - 12, 10, COL.text3, "left", "600", 0.5);
+    button(ctx, clicks, x, by, half, 34, def.branchA.name, "branchA", en ? def.color : COL.text3, en);
+    button(ctx, clicks, x + half + 10, by, half, 34, def.branchB.name, "branchB", en ? def.color : COL.text3, en);
+  } else {
+    text(ctx, `MAX · ${t.branch === "A" ? def.branchA.name : def.branchB.name}`, x, by + 8, 12, def.color, "left", "700", 0.5);
+  }
+  button(ctx, clicks, x, by + 42, w, 30, `SELL ${game.sellRefund(t)}`, "sell", COL.energy, true);
 }
 
 function drawPreview(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {
   text(ctx, "NEXT ROUND", x, y + 8, 12, COL.text3, "left", "700", 1);
   const w2 = game.comingRound;
   const label = w2.hasBoss ? `ROUND ${w2.round} · BOSS` : `ROUND ${w2.round}`;
-  text(ctx, label, x, y + 30, 14, w2.hasBoss ? COL.boss : COL.text, "left", "700", 0.5);
+  text(ctx, label, x, y + 28, 14, w2.hasBoss ? COL.boss : COL.text, "left", "700", 0.5);
   const iconFor: Record<MatterType, string> = {
     monatom: "icons/atom",
     swift: "icons/atom",
@@ -618,33 +695,29 @@ function drawPreview(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: nu
     polymer: "icons/molecule",
     noble: "icons/noble",
     heavy: "icons/heavy",
+    chelate: "icons/molecule",
+    shroud: "icons/heavy",
     macromass: "icons/boss",
   };
-  let row = y + 54;
+  let row = y + 50;
   for (const type of w2.types) {
     const def = MATTER[type];
-    blit(ctx, A.sprite(iconFor[type]), x + 10, row + 8, 18, 18, 0);
-    text(ctx, def.label, x + 26, row + 8, 12, COL.text2, "left", "500", 0.5);
-    text(ctx, counter(type), x + w, row + 8, 10, COL.text3, "right", "400");
-    row += 24;
+    blit(ctx, A.sprite(iconFor[type]), x + 9, row + 7, 17, 17, 0);
+    text(ctx, def.label, x + 24, row + 7, 11, COL.text2, "left", "500", 0.5);
+    text(ctx, counter(type), x + w, row + 7, 9, COL.text3, "right", "400");
+    row += 21;
   }
 }
 
+// What the coming type asks of the board, in words (its traits).
 function counter(type: MatterType): string {
-  switch (type) {
-    case "monatom":
-    case "swift":
-      return "IONIZE";
-    case "dimer":
-    case "polymer":
-      return "SHEAR→IONIZE";
-    case "noble":
-      return "CATALYZE→IONIZE";
-    case "heavy":
-      return "FISSION→IONIZE";
-    case "macromass":
-      return "FISSION";
-  }
+  const traits = MATTER[type].traits;
+  const bits: string[] = [];
+  if (traits.includes("inert")) bits.push("DETECT");
+  if (traits.includes("heavy")) bits.push("KIN/NUC");
+  if (traits.includes("bonded")) bits.push("CHIP BONDS");
+  if (!bits.length) bits.push("ANY DMG");
+  return bits.join(" · ");
 }
 
 function drawRoundButton(ctx: CanvasRenderingContext2D, game: Game, px: number, pw: number, clicks: Clickable[]): void {
@@ -685,27 +758,23 @@ function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): 
   const px = game.pointerX,
     py = game.pointerY;
   if (px < BOARD_X0 || px > BOARD_X1 || py < BOARD_Y0 || py > BOARD_Y1) return;
-  // Snap the held tower to the grid cell under the pointer for the preview (specs/board.md).
   const cellId = cellIdAt(px, py);
   const legal = cellId != null && !isBlocked(cellId) && !game.towers.has(cellId);
   const c = cellId != null ? cellCenter(cellId) : { x: px, y: py };
-  drawRange(ctx, c.x, c.y, TOWERS[game.buildKind].range, game.buildKind);
+  drawRange(ctx, c.x, c.y, deriveStats(game.buildKind, 1, null).range, game.buildKind);
   ctx.globalAlpha = legal ? 0.95 : 0.4;
-  // Preview the base + head; damage heads point at a resting heading (up) until placed.
-  drawTowerSprite(ctx, A, game.buildKind, 1, c.x, c.y - 4, 34, -Math.PI / 2);
+  towerHead(ctx, A, game.buildKind, 1, c.x, c.y - 4, 34, -Math.PI / 2);
   ctx.globalAlpha = 1;
 }
 
 // ---- title / how-to / overlays ------------------------------------------------
 function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
-  // faint board motif behind
   ctx.save();
   ctx.globalAlpha = 0.25;
   const conduit = A.sprite("board/conduit");
   for (const lane of [0, 1] as Lane[]) for (const p of laneSamples(lane, 16)) blit(ctx, conduit, p.x, p.y, 18, 18, p.ang);
   ctx.restore();
 
-  // title with a spectral gradient
   const grad = ctx.createLinearGradient(360, 0, 920, 0);
   grad.addColorStop(0, COL.ionizer);
   grad.addColorStop(0.35, COL.catalyst);
@@ -722,7 +791,6 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.restore();
   text(ctx, game.mode.tagline, STAGE_W / 2, 320, 16, COL.text2, "center", "500", 6);
 
-  // menu items (shared list; highlighted by keyboard index or pointer hover)
   const items = menuItems("title", game);
   items.forEach((it, i) => {
     const y = 420 + i * 60;
@@ -752,26 +820,26 @@ function drawSpaced(ctx: CanvasRenderingContext2D, s: string, cx: number, y: num
 function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
-  text(ctx, "HOW TO PLAY", STAGE_W / 2, 70, 34, COL.text, "center", "700", 4);
+  text(ctx, "HOW TO PLAY", STAGE_W / 2, 60, 32, COL.text, "center", "700", 4);
   const lines: [string, string][] = [
     ["GOAL", "Break matter down before it reaches the collector. Every leak costs integrity; reach 0 and containment fails."],
-    ["FREE ATOM", "A nucleus with electron shells — build an IONIZER to strip its shells until it is neutralized."],
-    ["MOLECULE", "Bonded atoms — a SHEAR breaks its bonds, peeling it into free atoms the ionizers then finish."],
-    ["HEAVY NUCLEUS", "Immune to shear/ionize — only a FISSION tower splits it into daughter atoms."],
-    ["INERT (NOBLE)", "Untargetable until a CATALYST makes it reactive; then an ionizer can strip it."],
-    ["SWIFTS", "Fast atoms — a MODERATOR's field slows matter so your towers get more hits (heavies resist, the boss is immune)."],
+    ["HIT POINTS", "Every unit has electron SHELLS — its hit points. Any of three damage types strips them: ENERGY, KINETIC, NUCLEAR. At zero shells a unit is neutralized and pays energy."],
+    ["BONDED (molecules)", "A cluster carries an outer BOND pool — extra health ANY tower chips through, shedding free atoms as it breaks. KINETIC (Cleaver) chews bonds fastest, but it is not the only opener."],
+    ["HEAVY", "Immune to ENERGY. Only KINETIC or NUCLEAR damage it — the Cleaver, the Reactor, or a Beam's Disruptor — and it sheds daughter atoms as it splits."],
+    ["INERT (camo)", "Untargetable until a DETECTOR sees it: a Catalyst's field, a Reactor's fallout, an Ionizer's Array upgrade, or a Beam (which sees it natively). Traits stack late — a heavy that is also inert needs both answers."],
+    ["TOWERS", "Seven general-purpose towers; each picks one of two BRANCHES at tier III. Support: a Catalyst reveals + excites (+damage), a Moderator slows."],
     ["ECONOMY", "Neutralizing pays energy; clearing a round pays a bonus; banked energy earns interest. Spend it to build and upgrade."],
-    ["CONTROLS", "Click a shop tower (or 1-5), place it on a grid cell. Select a tower to UPGRADE (U) or SELL (S). SPACE starts a round; F cycles speed; ESC pauses; M mutes."],
+    ["CONTROLS", "Click a shop tower (or 1-7), place it on a grid cell. Select a tower to UPGRADE (U) or SELL (S); at tier III pick a branch. SPACE starts a round; F cycles speed; ESC pauses; M mutes."],
   ];
-  let y = 130;
+  let y = 108;
   for (const [k, v] of lines) {
-    text(ctx, k, 180, y, 15, COL.integrity, "left", "700", 1);
-    wrap(ctx, v, 360, y, 760, 15, COL.text2);
-    y += lineCount(ctx, v, 760, 15) * 22 + 14;
+    text(ctx, k, 150, y, 14, COL.integrity, "left", "700", 1);
+    wrap(ctx, v, 340, y, 800, 14, COL.text2);
+    y += lineCount(ctx, v, 800, 14) * 20 + 12;
   }
   const bx = STAGE_W / 2 - 90,
-    byy = STAGE_H - 74;
-  button(ctx, clicks, bx, byy, 180, 44, "BACK", "menu:back", COL.text, true);
+    byy = STAGE_H - 66;
+  button(ctx, clicks, bx, byy, 180, 42, "BACK", "menu:back", COL.text, true);
 }
 
 function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, color: string): void {
@@ -787,7 +855,7 @@ function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, ma
     if (ctx.measureText(test).width > maxW) {
       ctx.fillText(line, x, yy);
       line = w;
-      yy += 22;
+      yy += 20;
     } else line = test;
   }
   ctx.fillText(line, x, yy);
@@ -815,7 +883,6 @@ function drawPause(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
   menuButtons(ctx, game, menuItems("paused", game), 330, 56, 260, clicks);
 }
 
-// Draw a vertical stack of menu buttons highlighted by keyboard index or pointer.
 function menuButtons(ctx: CanvasRenderingContext2D, game: Game, items: MenuItem[], y0: number, gap: number, w: number, clicks: Clickable[]): void {
   const x = STAGE_W / 2 - w / 2;
   items.forEach((it, i) => {
@@ -845,8 +912,6 @@ function drawEnd(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[],
   });
 }
 
-// A menu item is highlighted if the pointer is over it OR it is the keyboard index.
-// The input layer keeps `menuIndex` synced to the hovered item, so they agree.
 function highlighted(game: Game, i: number, x: number, y: number, w: number, h: number): boolean {
   return menuIndex === i || inRect(game.pointerX, game.pointerY, x, y, w, h);
 }

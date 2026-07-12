@@ -24,11 +24,11 @@ type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Valence is hard:
 # it asks for a real-time tower-defense simulation — matter flowing along fixed
-# branching-and-merging tracks, a fixed-node placement model, a three-axis
-# decomposition model (shearing molecules into atoms, ionizing atoms shell by shell,
-# fissioning heavy nuclei into daughter atoms) with camo-like inert matter and a
-# damping/slow field, a live economy of energy/interest/integrity, and an escalating
-# round campaign with a fragmenting boss — AND, on top of that, for the model to
+# branching-and-merging tracks, grid-snapped tower placement, a hit-point / damage-type
+# (energy, kinetic, nuclear) / stackable-trait (bonded, heavy, inert) model with seven
+# general-purpose towers each choosing one of two upgrade branches, detection of camo-like
+# inert matter from several sources, a live economy of energy/interest/integrity, and an
+# escalating round campaign with a fragmenting boss — AND, on top of that, for the model to
 # author every sprite, animation, particle effect, and sound the game plays. The
 # interacting simulation plus a full asset-production pass put this well above the
 # catalog's bounded arcade cases.
@@ -41,9 +41,10 @@ tags = ["tower-defense", "strategy", "2d", "chemistry"]
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.
 summary = """
 A chemistry-themed tower defense: unstable matter streams along branching \
-conduits, and you place emitter towers at fixed nodes to break it down before it \
-reaches the collector — shear molecules into atoms, ionize atoms shell by shell, \
-and fission heavy nuclei — while producing every sprite, effect, and sound with \
+conduits, and you place towers on a build grid to break it down before it reaches \
+the collector — chip bonded clusters open, crack energy-immune heavies with kinetic \
+or nuclear damage, and detect camouflaged inert matter — with seven general-purpose \
+towers and branching upgrades, while producing every sprite, effect, and sound with \
 the on-PATH asset tools."""
 
 # Site-facing prose describing the case, relative to this version folder. NOT seeded
@@ -96,8 +97,8 @@ init = "npm install && npx playwright install chromium"
 # the review UI plays a produced effect with; core bakes it into the run image and
 # the seeded workspace `package.json` depends on it via its baked-in `file:` path, so
 # the build imports it (its `/canvas` binding) like any other dependency and plays
-# each produced `system.json` by simulating it live. The decomposition bursts (the
-# ionization spark, the bond-snap shards, the fission flash, the neutralize burst)
+# each produced `system.json` by simulating it live. The damage/decomposition bursts (the
+# strip spark, the bond-snap shards, the split flash, the neutralize burst, the reveal pulse)
 # and tower muzzle effects are all produced `particle-2d` systems played this way;
 # see `specs/assets.md` for the consumption contract. (A root key, so it must sit
 # above the first `[table]` header.)
@@ -218,12 +219,12 @@ dest = "proof/pressure.webm"
 [[domain]]
 id = "simulation"
 name = "Reaction Systems"
-description = "The interacting real-time systems: matter flowing along the fixed branching-and-merging conduits, the fixed-node tower placement and automatic targeting, the three-axis decomposition model (shearing molecules into their atoms, ionizing free atoms shell by shell, fissioning heavy nuclei into daughter atoms), the catalyst that makes inert matter reactive and the moderator that damps it, the energy/interest/integrity economy, and the escalating round campaign with its fragmenting boss."
+description = "The interacting real-time systems: matter flowing along the fixed branching-and-merging conduits, grid-snapped tower placement and automatic targeting, the hit-point / damage-type / stackable-trait model (any tower chips a bonded cluster's bond pool into a spray of atoms; only kinetic or nuclear damage cracks an energy-immune heavy; inert matter is untargetable until detected), the seven general-purpose towers with their two-branch upgrades, the catalyst reveal/excite aura and the moderator slow, the energy/interest/integrity economy, and the escalating round campaign with its fragmenting boss."
 
 [[domain]]
 id = "presentation"
 name = "Presentation & Assets"
-description = "The genuinely tool-produced assets and how the build presents them: the atom, molecule, heavy-nucleus, inert, and boss matter sprites, the animated orbiting-electron and boss cycles, the tower sprites across their upgrade tiers, the tracks and nodes, the live decomposition particle bursts, the produced sound effects and reactor music bed, and the in-code HUD and build panel that read it all at a glance — including whether a player can tell at speed which tool each unit on screen needs."
+description = "The genuinely tool-produced assets and how the build presents them: the atom, bonded-cluster, heavy, inert, and boss matter sprites (with their shell / bond-integrity / hit-point / reveal reads), the animated orbiting-electron and boss cycles, the seven tower sprites across their tiers and branches, the damage-type-colored projectiles, the tracks and build grid, the live particle bursts, the produced sound effects and reactor music bed, and the in-code HUD and build panel that read it all at a glance — including whether a player can tell at speed what each unit on screen demands (chip its bonds / kinetic-nuclear / detect it)."
 
 # Reviewer checklist items, common to every variant. The major, observable
 # requirements a reviewer must explicitly check by playing the build — the things
@@ -245,48 +246,57 @@ reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
-id = "fixed-nodes"
-title = "Fixed-node placement and targeting"
-text = "Towers can be built only at the board's fixed emitter nodes (one tower per node), each covering the track within its range; a built tower automatically fires at in-range matter with no manual trigger. Nodes near the shared segments reach both lanes; lane nodes reach one."
+id = "grid-placement"
+title = "Build-grid placement and targeting"
+text = "Towers snap to a grid of build cells beside the conduit (one tower per cell, never on a conduit-crossed cell), each covering the track within its range; a built tower automatically fires at valid in-range matter with no manual trigger. Cells beside the shared segments reach both lanes; lane cells reach one."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
-id = "shear-atomize"
-title = "Shearing molecules into atoms"
-text = "A molecule is a bonded cluster of atoms; a Shear tower breaks one bond per hit, peeling the molecule apart until its constituent free atoms travel on independently — a single molecule fragmenting into a spray of faster atoms. Shear does nothing to a lone atom or a heavy nucleus."
+id = "bonds-as-health"
+title = "Bonds are extra health any tower chips"
+text = "A bonded cluster wraps its atoms in an outer bond pool that ANY damage type chips through — not a single bond-breaker tower — shedding free atoms as a spray as it depletes. Kinetic damage (the Cleaver) chews bonds fastest, but an energy or nuclear tower opens the same cluster too, just slower."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
 proof = "systems"
 
 [[review_item]]
-id = "ionize-shells"
-title = "Ionizing atoms shell by shell"
-text = "A free atom carries electron shells; an Ionizer strips one per hit, and a fully stripped atom is neutralized and releases its energy. A bonded atom (inside a molecule), an un-catalyzed inert atom, and a heavy nucleus cannot be ionized until opened up by the right tool."
+id = "hit-points-damage-types"
+title = "Hit points and damage types"
+text = "Every unit's electron shells are its hit points; a shot strips shells until the unit is neutralized and pays its energy. Damage comes in three types — energy, kinetic, nuclear — colored on the projectile; a unit's traits, not a per-tower form-lock, decide which damage reaches it."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
 proof = "systems"
 
 [[review_item]]
-id = "fission-heavies"
-title = "Fissioning heavy nuclei"
-text = "Heavy nuclei are immune to shearing and ionizing; only a Fission tower cracks them, splitting a heavy into two lighter daughter atoms (which are then finished by ionizers). A defense with no fission cannot stop the heavies and starts leaking."
+id = "heavy-kinetic-nuclear"
+title = "Heavies take kinetic or nuclear only"
+text = "A heavy is immune to energy damage; only kinetic or nuclear cracks it — so several towers can (the Cleaver, the Reactor, or a Beam's Disruptor branch), not one — and it splits into daughter atoms. A board with no kinetic and no nuclear damage cannot stop the heavies and starts leaking."
 weight = 1
 domain = "simulation"
 proof = "systems"
 
 [[review_item]]
-id = "inert-and-damping"
-title = "Inert matter and the damping field"
-text = "Inert (noble) matter is untargetable by every tower until a Catalyst tower makes it reactive; a Moderator tower slows matter in its field for pacing, with heavy nuclei resisting the slow. Both support towers change what the damage towers can do rather than dealing damage themselves."
+id = "detection-and-slow"
+title = "Detection from several sources, and the slow"
+text = "Inert matter is untargetable until a DETECTOR reveals it, and detection comes from several sources — a Catalyst aura, a Reactor's Fallout zone, an Ionizer's Array branch, or a Beam natively — not one tower. A Moderator slows matter for pacing (heavies resist, the boss is immune). Traits stack late, so a cloaked heavy needs both detection and kinetic/nuclear."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
 proof = "systems"
+
+[[review_item]]
+id = "branch-upgrades"
+title = "Two-branch tower upgrades"
+text = "Each of the seven towers upgrades through three tiers, and at tier III commits to one of two distinct BRANCHES (an identity choice, e.g. an Ionizer's Array with detection vs its Overcharge chain), applied on top of a generic tier-II bump. The choice is real and both branches are worth taking; a tower visibly reads as upgraded and as which branch it took."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "gameplay"
 
 [[review_item]]
 id = "economy-rounds"
@@ -300,7 +310,7 @@ proof = "pressure"
 [[review_item]]
 id = "produced-matter-sprites"
 title = "Produced, animated matter"
-text = "The atoms, molecules, inert matter, heavy nuclei, and the boss are drawn from sprites the build produced with `draw`/`draw-sheet` — nucleus orbs with electron shells, ball-and-stick molecules, a dense radioactive heavy, a sealed inert atom — and the atoms visibly animate (at least an orbiting-electron cycle, plus the boss's unstable motion), not static dots or ad-hoc code-drawn circles."
+text = "The atoms, bonded clusters, inert matter, heavy nuclei, and the boss are drawn from sprites the build produced with `draw`/`draw-sheet` — nucleus orbs with electron shells, ball-and-stick clusters, a dense radioactive heavy, a sealed/shrouded inert atom — the traits reading clearly (including stacked ones like a cloaked heavy), and the atoms visibly animate (at least an orbiting-electron cycle, plus the boss's unstable motion), not static dots or ad-hoc code-drawn circles."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
@@ -308,8 +318,8 @@ proof = "gameplay"
 
 [[review_item]]
 id = "produced-tower-sprites"
-title = "Produced tower sprites across tiers"
-text = "The five towers (Ionizer, Shear, Fission, Catalyst, Moderator) and the tracks, nodes, inlet, and collector are rendered from sprites the build produced with `draw`, and a tower's sprite visibly changes as it is upgraded through its tiers — not flat rectangles or ad-hoc canvas fills."
+title = "Produced tower sprites across tiers and branches"
+text = "The seven towers (Emitter, Ionizer, Cleaver, Reactor, Beam, Catalyst, Moderator), the damage-type-colored projectiles, and the tracks, build grid, inlet, and collector are rendered from sprites the build produced with `draw`, and a tower's sprite visibly changes as it is upgraded through its tiers and reads as which tier-III branch it took — not flat rectangles or ad-hoc canvas fills."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
@@ -317,8 +327,8 @@ proof = "gameplay"
 
 [[review_item]]
 id = "produced-decomposition-fx"
-title = "Produced decomposition particle bursts"
-text = "The ionization spark, the bond-snap shards, the fission flash, and the neutralize burst are particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated bursts fired at the moment of each decomposition event, not a flat flash or a hand-coded effect."
+title = "Produced particle bursts"
+text = "The strip spark, the bond-snap shards, the split flash, and the neutralize burst are particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated bursts fired at the moment of each event, not a flat flash or a hand-coded effect."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
@@ -327,7 +337,7 @@ proof = "systems"
 [[review_item]]
 id = "produced-audio"
 title = "Produced sound and music"
-text = "The board has real audio the build produced with the audio tools: shot/strip, bond-snap, fission, neutralize, build, and leak-alarm sound effects (`sfx-synth` and/or `sfx-sample`) and a tense reactor music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
+text = "The board has real audio the build produced with the audio tools: shot/strip, bond-snap, nuclear-crack, neutralize, build, and leak-alarm sound effects (`sfx-synth` and/or `sfx-sample`) and a tense reactor music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
 weight = 1
 domain = "presentation"
 proof = "pressure"
@@ -335,7 +345,7 @@ proof = "pressure"
 [[review_item]]
 id = "readable-at-speed"
 title = "Readable matter, HUD, and build panel"
-text = "A player can tell at a glance — even at fast speed — which tool each unit on screen needs (molecule vs free atom vs inert vs heavy vs boss), read energy, integrity, the round number and its progress, and read the shop and the selected-tower inspector. The HUD, build panel, node highlights, range previews, and menus are drawn in code; only their small icons may be produced sprites."
+text = "A player can tell at a glance — even at fast speed — what each unit on screen demands (chip its bonds vs bring kinetic/nuclear vs detect it, and the stacked-trait combos), read energy, integrity, the round number and its progress, and read the shop and the selected-tower inspector (damage type, tier, branch). The HUD, build panel, cell highlights, range previews, and menus are drawn in code; only their small icons may be produced sprites."
 weight = 1
 domain = "presentation"
 reference = "gameplay"

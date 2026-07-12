@@ -64,6 +64,17 @@ async function main(): Promise<void> {
     select: (x: number, y: number) => {
       game.selectedCell = cellIdAt(x, y);
     },
+    // Upgrade the tower at (x, y) toward `level`, taking `branch` for the tier-III step.
+    upgrade: (x: number, y: number, level = 3, branch: "A" | "B" = "A") => {
+      const cell = cellIdAt(x, y);
+      if (cell == null) return;
+      const t = game.towers.get(cell);
+      if (!t) return;
+      while (t.level < level) {
+        const ok = game.upgrade(t, t.level === 2 ? branch : undefined);
+        if (!ok) break;
+      }
+    },
     setState: (s: Game["state"]) => (game.state = s),
   };
 
@@ -99,6 +110,12 @@ async function main(): Promise<void> {
         break;
       case "upgrade":
         game.upgradeSelected();
+        break;
+      case "branchA":
+        game.upgradeSelected("A");
+        break;
+      case "branchB":
+        game.upgradeSelected("B");
         break;
       case "sell":
         game.sellSelected();
@@ -154,7 +171,7 @@ async function main(): Promise<void> {
         if (game.phase === "build") game.startRound();
         return;
       }
-      if (k >= "1" && k <= "5") {
+      if (k >= "1" && k <= "7") {
         game.selectShop(TOWER_ORDER[Number(k) - 1]!);
         return;
       }

@@ -53,7 +53,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Build spots as world coordinates that snap to the build grid (specs/board.md). Keyed
 // by lane role so the demo boards read: shared inlet/final (both lanes), Lane A top,
-// Lane B bottom, and fission near the confluence. `spots()` turns [kind, key] pairs into
+// Lane B bottom, and a reactor near the confluence. `spots()` turns [kind, key] pairs into
 // the [kind, x, y] triples the coordinate-based build API takes.
 const SPOT = {
   inA: [100, 356], inB: [100, 436], // shared inlet approach — reaches both lanes
@@ -63,29 +63,28 @@ const SPOT = {
 };
 const spots = (pairs) => pairs.map(([kind, key]) => [kind, ...SPOT[key]]);
 
-// A generous full board used for the "contained" scenarios.
+// A generous full board used for the "contained" scenarios: energy strippers
+// (ionizer/emitter/beam), kinetic + nuclear (cleaver/reactor) for the heavies, detection
+// (catalyst + the beam natively), and a moderator for pacing — one of everything, the
+// point of the redesign (specs/towers.md).
 const FULL_BOARD = spots([
-  ["shear", "a0"], ["shear", "b0"],
+  ["cleaver", "a0"], ["cleaver", "b0"],
   ["ionizer", "a1"], ["ionizer", "a2"], ["ionizer", "a4"],
   ["ionizer", "b1"], ["ionizer", "b2"], ["ionizer", "b4"],
-  ["ionizer", "outA"], ["ionizer", "outB"],
-  ["fission", "aF"], ["fission", "bF"],
+  ["ionizer", "outA"], ["reactor", "outB"],
+  ["reactor", "aF"], ["beam", "bF"],
   ["catalyst", "a3"], ["catalyst", "b3"],
-  ["moderator", "inA"], ["moderator", "inB"],
+  ["moderator", "inA"], ["emitter", "inB"],
 ]);
 
-async function buildBoard(page, board, upgrade = 0) {
-  await page.evaluate(({ board, upgrade }) => {
+// Upgrade every placed tower toward `upgrade` (1..3); at tier III each takes `branch`.
+async function buildBoard(page, board, upgrade = 0, branch = "A") {
+  await page.evaluate(({ board, upgrade, branch }) => {
     const v = window.__valence;
     for (const [kind, x, y] of board) v.build(kind, x, y);
-    if (upgrade) {
-      for (const [, x, y] of board) {
-        v.select(x, y);
-        for (let i = 1; i < upgrade; i++) v.game.upgradeSelected();
-      }
-      v.game.selectedCell = null;
-    }
-  }, { board, upgrade });
+    if (upgrade > 1) for (const [, x, y] of board) v.upgrade(x, y, upgrade, branch);
+    v.game.selectedCell = null;
+  }, { board, upgrade, branch });
 }
 
 // ---- 1. title.png -------------------------------------------------------------
@@ -118,22 +117,24 @@ async function buildBoard(page, board, upgrade = 0) {
     v.game.devGrant(4000, 100);
     v.game.devBeginRound(9); // atoms + molecules + nobles + heavies all present
   });
-  // A deliberately light board — shears open molecules (a bond-snap burst mid-flight) and
-  // catalysts reactivate nobles, but with no ionizers nothing is neutralized, so varied
-  // matter (atoms, molecules, heavies, nobles) survives and travels well down both lanes.
+  // A deliberately light board — cleavers chip molecules open (a bond-snap burst
+  // mid-flight) and catalysts reveal nobles, but with only a couple of strippers little is
+  // neutralized, so varied matter (atoms, molecules, heavies, revealed/unrevealed inert)
+  // survives and travels well down both lanes.
   await buildBoard(page, spots([
-    ["shear", "a1"], ["shear", "b1"], ["catalyst", "a2"], ["catalyst", "b2"],
+    ["cleaver", "a1"], ["cleaver", "b1"], ["catalyst", "a2"], ["catalyst", "b2"],
+    ["ionizer", "a4"], ["ionizer", "b4"],
   ]));
   await page.evaluate(() => (window.__valence.game.selectedCell = null));
-  // Capture once matter has fanned onto both lanes with 3+ forms present.
+  // Capture once matter has fanned onto both lanes with 3+ trait categories present.
   let gsnap = {};
   for (let i = 0; i < 70; i++) {
     gsnap = await page.evaluate(() => {
       const g = window.__valence.game;
       const onLanes = g.units.filter((u) => u.s > 240).length;
       const bothLanes = new Set(g.units.filter((u) => u.s > 200).map((u) => u.lane)).size;
-      const forms = new Set(g.units.map((u) => u.form)).size;
-      return { onLanes, bothLanes, forms, total: g.units.length };
+      const cats = new Set(g.units.map((u) => (u.traits.includes("bonded") ? "bonded" : u.traits.includes("heavy") ? "heavy" : u.traits.includes("inert") ? "inert" : "atom")));
+      return { onLanes, bothLanes, forms: cats.size, total: g.units.length };
     });
     if (gsnap.onLanes >= 4 && gsnap.forms >= 3 && gsnap.bothLanes >= 2) break;
     await sleep(80);
@@ -160,8 +161,9 @@ async function buildBoard(page, board, upgrade = 0) {
     v.game.speed = 3;
     v.game.devBeginRound(12);
   });
-  // a partial defense so some matter is neutralized (earning score) before the breach
-  await buildBoard(page, spots([["ionizer", "a1"], ["ionizer", "a2"], ["shear", "a0"], ["ionizer", "outA"]]));
+  // an energy-only defense: it strips atoms (earning score) but cannot touch the heavies,
+  // which leak until integrity is spent and containment fails (specs/matter.md).
+  await buildBoard(page, spots([["ionizer", "a1"], ["ionizer", "a2"], ["emitter", "a0"], ["ionizer", "outA"]]));
   for (let i = 0; i < 160; i++) {
     const s = await page.evaluate(() => window.__valence.game.state);
     if (s === "defeat") break;
@@ -222,9 +224,9 @@ await clip(
     });
     // A partial board — one lane thinner — so some matter leaks under pressure.
     await buildBoard(page, spots([
-      ["shear", "a0"], ["ionizer", "a1"], ["ionizer", "a2"], ["ionizer", "a4"],
-      ["fission", "aF"], ["catalyst", "a3"], ["moderator", "inA"],
-      ["ionizer", "outA"], ["fission", "bF"], ["ionizer", "b2"],
+      ["cleaver", "a0"], ["ionizer", "a1"], ["ionizer", "a2"], ["ionizer", "a4"],
+      ["reactor", "aF"], ["catalyst", "a3"], ["moderator", "inA"],
+      ["ionizer", "outA"], ["reactor", "bF"], ["ionizer", "b2"],
     ]), 2);
   },
   7,
@@ -248,11 +250,11 @@ await clip(
     g.devBeginRound(9);
     for (const [k, x, y] of board) v.build(k, x, y);
     const startEnergy = g.energy;
-    let sawMolecule = false, sawHeavy = false, sawFreedAtoms = 0, maxUnits = 0;
+    let sawMolecule = false, sawHeavy = false, maxUnits = 0;
     for (let i = 0; i < 120; i++) {
       for (const u of g.units) {
-        if (u.form === "molecule") sawMolecule = true;
-        if (u.form === "heavy") sawHeavy = true;
+        if (u.traits.includes("bonded")) sawMolecule = true;
+        if (u.traits.includes("heavy")) sawHeavy = true;
       }
       maxUnits = Math.max(maxUnits, g.units.length);
       if (g.phase === "build") break; // round cleared
