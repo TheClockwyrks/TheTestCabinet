@@ -135,6 +135,7 @@ async function main(): Promise<void> {
         break;
       case "menu:resume":
         game.state = "playing";
+        game.paused = false; // Resume fully un-freezes (clears any interactive pause too)
         break;
       case "upgrade":
         game.upgradeSelected();
@@ -155,7 +156,8 @@ async function main(): Promise<void> {
         game.cycleSpeed();
         break;
       case "pause":
-        togglePause();
+        // The status-bar control pauses / resumes IN PLACE (no menu) — specs/controls.md.
+        game.togglePause();
         break;
       case "mute":
         audio.toggleMute();
@@ -163,9 +165,11 @@ async function main(): Promise<void> {
     }
   }
 
-  function togglePause(): void {
-    if (game.state === "playing") game.state = "paused";
-    else if (game.state === "paused") game.state = "playing";
+  // Open the Esc overlay menu, which also freezes the board (specs/flow.md).
+  function openPauseMenu(): void {
+    if (game.state !== "playing") return;
+    game.state = "paused";
+    menuIndex = 0;
   }
 
   function routeClick(x: number, y: number): void {
@@ -195,7 +199,11 @@ async function main(): Promise<void> {
     }
     if (game.state === "playing") {
       if (k === " ") {
+        // In the build phase, Space launches the round; once a round is live it toggles
+        // the interactive (in-place) pause so you can keep building on a still board
+        // without opening the menu (specs/controls.md).
         if (game.phase === "build") game.startRound();
+        else game.togglePause();
         return;
       }
       if (k >= "1" && k <= "7") {
@@ -215,9 +223,11 @@ async function main(): Promise<void> {
         return;
       }
       if (k === "Escape") {
+        // Esc first cancels a held tool / selection; otherwise it opens the pause MENU
+        // (which also freezes the board), even if already interactively paused.
         if (game.buildKind) game.cancelBuild();
         else if (game.selectedTowerId != null) game.clickEmptyBoard();
-        else togglePause();
+        else openPauseMenu();
       }
       return;
     }
@@ -274,7 +284,7 @@ async function main(): Promise<void> {
     handleInput();
     syncMenuIndexToPointer();
 
-    if (game.state === "playing") {
+    if (game.state === "playing" && !game.paused) {
       acc += dt * game.speed;
       let steps = 0;
       while (acc >= FIXED_STEP && steps < 600) {
@@ -283,6 +293,8 @@ async function main(): Promise<void> {
         steps++;
       }
     } else {
+      // Frozen — by the interactive pause, the Esc menu, or a non-play screen. Drop the
+      // accumulator so no burst of ticks fires on resume.
       acc = 0;
     }
 

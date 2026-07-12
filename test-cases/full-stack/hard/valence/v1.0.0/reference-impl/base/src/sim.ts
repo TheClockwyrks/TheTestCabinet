@@ -50,6 +50,10 @@ export class Game {
   board: Board; // the paths + free-placement rules of the current map
   state: GameState = "title";
   phase: Phase = "build";
+  // Interactive (in-place) pause: freezes the simulation while play interaction stays
+  // live, so you can place / upgrade / sell towers on a still board (specs/controls.md).
+  // Distinct from the `paused` GameState, which is the Esc overlay MENU (also frozen).
+  paused = false;
 
   energy = 0;
   integrity = 0;
@@ -105,6 +109,7 @@ export class Game {
   start(): void {
     this.state = "playing";
     this.phase = "build";
+    this.paused = false;
     this.energy = this.mode.startEnergy;
     this.integrity = this.mode.startIntegrity;
     this.maxIntegrity = this.mode.startIntegrity;
@@ -131,7 +136,7 @@ export class Game {
 
   // ---- Fixed simulation step --------------------------------------------------
   fixedStep(dt: number): void {
-    if (this.state !== "playing") return;
+    if (this.state !== "playing" || this.paused) return;
 
     if (this.phase === "build") {
       if (this.buildTimed) {
@@ -707,6 +712,7 @@ export class Game {
     if (earlySeconds > 0) this.energy += earlySeconds;
     this.round += 1;
     this.phase = "round";
+    this.paused = false; // launching a round always resumes the simulation
     this.wave = this.nextWave;
     this.spawnCursor = 0;
     this.spawned = 0;
@@ -746,6 +752,12 @@ export class Game {
     this.projectiles = [];
     this.zones = [];
     this.wave = null;
+  }
+
+  // Toggle the interactive (in-place) pause. Only meaningful while playing; the board
+  // stays interactive so towers can still be placed / upgraded (specs/controls.md).
+  togglePause(): void {
+    if (this.state === "playing") this.paused = !this.paused;
   }
 
   // ---- Player actions (called by input, routed via clickables) ----------------

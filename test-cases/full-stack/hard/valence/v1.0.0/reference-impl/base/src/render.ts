@@ -487,12 +487,17 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   text(ctx, `${game.round === 0 ? 1 : game.round}`, 330, 36, 18, COL.text, "left", "700");
   text(ctx, `/ ${TOTAL_ROUNDS}`, 360, 37, 13, COL.text2, "left", "500");
   let sub = "";
-  if (game.state === "playing" && game.phase === "build") sub = game.buildTimed ? `BUILD · ${Math.ceil(game.buildTimer)}s` : "BUILD · READY";
+  let subColor: string = COL.text2;
+  if (game.paused) {
+    // Interactive (in-place) pause: the board is frozen but still fully interactive.
+    sub = "PAUSED";
+    subColor = COL.alert;
+  } else if (game.state === "playing" && game.phase === "build") sub = game.buildTimed ? `BUILD · ${Math.ceil(game.buildTimer)}s` : "BUILD · READY";
   else if (game.phase === "round") sub = `${Math.round(game.roundProgress() * 100)}%`;
-  if (sub) text(ctx, sub, 420, 37, 12, COL.text2, "left", "600", 1);
+  if (sub) text(ctx, sub, 420, 37, 12, subColor, "left", "600", 1);
 
   ctrl(ctx, clicks, 1112, `${game.speed}x`, "speed", COL.text, 52);
-  ctrl(ctx, clicks, 1172, game.state === "paused" ? "▶" : "❚❚", "pause", COL.text, 40);
+  ctrl(ctx, clicks, 1172, game.paused ? "▶" : "❚❚", "pause", game.paused ? COL.alert : COL.text, 40);
   ctrl(ctx, clicks, 1220, muted ? "♪̸" : "♪", "mute", muted ? COL.text3 : COL.text, 40);
 }
 
@@ -906,7 +911,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
     ["INERT (camo)", "Untargetable until a DETECTOR sees it: a Catalyst's field, a Reactor's fallout, an Ionizer's Array upgrade, or a Beam (which sees it natively). Traits stack late — a heavy that is also inert needs both answers."],
     ["TOWERS", "Seven general-purpose towers; each picks one of two BRANCHES at tier III. Support: a Catalyst reveals + excites (+damage), a Moderator slows."],
     ["ECONOMY", "Neutralizing pays energy; clearing a round pays a bonus; banked energy earns interest. Spend it to build and upgrade."],
-    ["CONTROLS", "Pick a map, then click a shop tower (or 1-7) and place it freely beside the paths — anywhere off the track and clear of other towers. Select a tower to UPGRADE (U) or SELL (S); at tier III pick a branch. SPACE starts a round; F cycles speed; ESC pauses; M mutes."],
+    ["CONTROLS", "Pick a map, then click a shop tower (or 1-7) and place it freely beside the paths — anywhere off the track and clear of other towers. Select a tower to UPGRADE (U) or SELL (S); at tier III pick a branch. SPACE starts a round, then pauses it in place (build while frozen); the status-bar ❚❚ pauses in place too. F cycles speed; ESC opens the pause menu; M mutes."],
   ];
   let y = 108;
   for (const [k, v] of lines) {

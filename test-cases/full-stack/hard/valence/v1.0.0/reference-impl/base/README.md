@@ -53,9 +53,14 @@ monorepo), and the sounds through the Web Audio API.
   placement). `Esc` / right-click leaves build mode.
 - **Select / upgrade / sell** — click a built tower to select it; **U** upgrades (at tier
   III, click one of the two **branch** buttons in the inspector), **S** sells.
-- **Start / send round** — **Space** or the panel button. Before Round 1 the build phase
-  is untimed; between rounds it also sends the next round early for a bonus.
-- **Speed** — **F** cycles 1× / 2× / 3×. **Esc** pauses. **M** mutes.
+- **Start / send round** — **Space** (while the build phase runs) or the panel button.
+  Before Round 1 the build phase is untimed; between rounds it also sends the next round
+  early for a bonus.
+- **Pause in place** — the status-bar **❚❚** control, or **Space** once a round is live,
+  freezes ticks **without** a menu while the board stays interactive (keep placing and
+  upgrading towers on the still board); press again to resume.
+- **Speed** — **F** cycles 1× / 2× / 3×. **Esc** opens the pause **menu** (also freezes the
+  board). **M** mutes.
 - Every menu is fully operable with the mouse; `↑`/`↓` + `Enter` are keyboard alternatives.
 
 ## Develop, build, and run

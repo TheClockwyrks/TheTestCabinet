@@ -117,9 +117,14 @@ are defined in `specs/controls.md`).
 4. **In play.** The live game: the chosen map's paths, matter flowing along them, the
    towers firing and the support auras, and the full HUD and build panel. This covers both
    the **build phase** (countdown running, no matter spawning) and the **round phase**
-   (matter active); building is allowed in both (`specs/controls.md`).
+   (matter active); building is allowed in both (`specs/controls.md`). Play can be **paused
+   in place** here — ticks freeze while the board stays fully interactive, with no menu
+   over it — via the status-bar pause control or **`Space`** during a round
+   (`specs/controls.md`).
 5. **Paused.** The `Esc` overlay menu, reachable in play. Offers **Resume**, **Restart**,
-   and **Quit to menu**. The board is visible but frozen behind the menu.
+   and **Quit to menu**. The board is visible but frozen behind the menu. This is separate
+   from the in-place pause of state 4: the menu freezes the game *and* covers it, whereas
+   the in-place pause freezes the game but keeps it playable.
 6. **Victory.** Shown when the final round is cleared with integrity remaining. Displays
    the final **score**, **rounds survived** (all `20`), and **integrity remaining**,
    with **PLAY AGAIN** and **MENU**.
@@ -205,6 +210,10 @@ The game must exhibit these behaviors. They are observable and make good test ta
 - Towers can be **upgraded** through a **two-branch** tier-III choice
   (`specs/towers.md`) and **sold**; the milestone rounds field a **Macromass** boss that
   **fragments as it is worn down** (`specs/matter.md`).
+- The game can be **paused in place** (status-bar pause or **`Space`** during a round):
+  ticks freeze but the board stays interactive, so towers can still be placed, upgraded,
+  and sold on the still board, with no menu shown. **`Esc`** instead opens the pause
+  **menu**, which also freezes the game (`specs/controls.md`).
 - The matter and tower sprites, the electron and boss **animations**, the decomposition
   **particle bursts**, and the **audio** are all **produced with the on-`PATH` tools** and
   wired in (`specs/assets.md`).

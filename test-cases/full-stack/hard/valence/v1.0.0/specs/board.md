@@ -153,9 +153,12 @@ produced sprites):
 - **Integrity** — remaining integrity, with its icon; it turns to the alert color as it
   runs low.
 - **Round** — `ROUND n / N` (the current round over the run's total), with a read of the
-  current round's progress or the between-round build-phase countdown (`specs/flow.md`).
-- **Global controls** — the game **speed** toggle and its current setting, **pause**, and
-  a **mute** toggle (`specs/controls.md`, `specs/flow.md`).
+  current round's progress or the between-round build-phase countdown, and a clear
+  **PAUSED** read while the game is paused in place (`specs/flow.md`, `specs/controls.md`).
+- **Global controls** — the game **speed** toggle and its current setting, a **pause**
+  toggle that pauses and resumes **in place** (freezing the game without a menu while the
+  board stays interactive) and reflects the paused state, and a **mute** toggle
+  (`specs/controls.md`, `specs/flow.md`).
 
 ## Right build panel
 

@@ -307,6 +307,14 @@ weight = 1
 domain = "simulation"
 proof = "pressure"
 
+[[review_item]]
+id = "pause-in-place"
+title = "Pause in place, distinct from the pause menu"
+text = "The game can be paused IN PLACE — freezing all ticks (matter, fire, decomposition, the economy, and any build countdown) while the board stays fully interactive, with NO menu shown — via a status-bar pause control and, once a round is live, `Space`; the paused state is clearly indicated, and towers can still be placed, upgraded, and sold on the still board before resuming. This is separate from the `Esc` pause menu, which also freezes the game but covers it with the Resume/Restart/Quit menu; `Esc` opens that menu even when already paused in place."
+weight = 1
+domain = "simulation"
+proof = "gameplay"
+
 # --- Presentation & Assets ------------------------------------------------------
 [[review_item]]
 id = "produced-matter-sprites"

@@ -12,7 +12,9 @@ Run the simulation on a **fixed timestep** — the **tick** — decoupled from r
 matter movement, tower fire, decomposition, and the economy are reproducible and do not
 depend on the render frame rate. Render with smooth interpolation between ticks. The
 **speed controls** (below) scale how many ticks pass per real second; **pause** halts
-ticks entirely.
+ticks entirely. Pausing comes in two forms that both freeze ticks but differ in what
+else they do — an **in-place pause** that leaves the board fully interactive, and the
+**pause menu**, described under *Rounds, speed, and pause* below.
 
 ## Building and inspecting towers
 
@@ -42,19 +44,28 @@ Selecting a tool or tower and reading the shop and inspector is done from the bu
 ## Rounds, speed, and pause
 
 - **Start / send round.** The **START ROUND** control in the build panel
-  (`specs/board.md`) — or **`Space`** — starts the next round. Before **Round 1** the
-  opening build phase is untimed and starts only when you press it; between rounds it
-  also **sends the next round early** while the build-phase countdown runs, paying the
-  early-send bonus (`specs/flow.md`).
+  (`specs/board.md`) — or **`Space`** while the build phase is running — starts the next
+  round. Before **Round 1** the opening build phase is untimed and starts only when you
+  press it; between rounds it also **sends the next round early** while the build-phase
+  countdown runs, paying the early-send bonus (`specs/flow.md`). Once a round is live,
+  **`Space`** instead toggles the **in-place pause** (below) — there is no round to send
+  mid-round, so the key becomes the pause/resume toggle.
 - **Speed.** A **speed** toggle cycles the game speed — at least **`1×`** and **`2×`** (a
   `3×` is welcome) — scaling how many ticks pass per second so the player can fast-forward
   a quiet round and slow down for a crisis. The keys **`1`**/**`2`**(/**`3`**) are used as
   tower hotkeys above, so bind speed to a dedicated key (for example **`F`** to cycle, or
   **`+`**/**`−`**) and/or the HUD toggle; the current speed is shown (`specs/board.md`).
-- **Pause / menu.** **`Esc`** with nothing held or selected opens the **Paused** overlay
-  menu — **Resume**, **Restart**, **Quit to menu** (`specs/flow.md`) — and freezes the
-  board behind it; in build mode or with a tower selected, `Esc` first cancels that. A
-  dedicated **pause** control in the status bar also pauses and resumes in place.
+- **In-place pause.** A dedicated **pause** control in the status bar — and, once a round
+  is live, **`Space`** — **pauses and resumes in place**: it freezes ticks (matter, fire,
+  decomposition, the economy, and any build-phase countdown all halt) **without** opening
+  any menu, and **the board stays fully interactive** — you can keep placing, upgrading,
+  selling, and inspecting towers on the still board, then resume. The frozen state is
+  clearly indicated (`specs/board.md`). This is distinct from the pause **menu** below.
+- **Pause menu.** **`Esc`** with nothing held or selected opens the **Paused** overlay
+  menu — **Resume**, **Restart**, **Quit to menu** (`specs/flow.md`) — which also freezes
+  the board behind it; in build mode or with a tower selected, `Esc` first cancels that.
+  Opening the menu freezes the game even if it was already paused in place, and **Resume**
+  returns to normal running play (clearing any in-place pause).
 - **Mute.** **`M`** (or the status-bar control) toggles audio mute (`specs/flow.md`).
 - **Menus.** In the title, map-select, how-to-play, pause, victory, and containment-failed
   screens, the pointer and/or `Up`/`Down` (or `W`/`S`) move the selection and
