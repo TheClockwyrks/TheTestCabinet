@@ -1,0 +1,132 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 550,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "spray",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 22,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 380.0,
+      "lifetimeSpread": 90.0,
+      "speed": 100.0,
+      "speedSpread": 45.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 3,
+      "forces": {
+        "gravity": 320.0,
+        "drag": 1.2
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.15
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#e05a6a",
+            "at": 0.0
+          },
+          {
+            "color": "#c0473f",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "mist",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 14,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 250.0,
+      "lifetimeSpread": 60.0,
+      "speed": 60.0,
+      "speedSpread": 30.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 23,
+      "forces": {
+        "gravity": 180.0,
+        "drag": 2.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.5,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.9,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#e05a6a",
+            "at": 0.0
+          },
+          {
+            "color": "#c0473f",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}
