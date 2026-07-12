@@ -68,7 +68,7 @@ ARG RUST_VERSION=1.96.0
 # exact version. `wasm-pack` is the convenience wrapper on top. Bump the CLI and the
 # spec's crate pin together.
 ARG WASM_BINDGEN_VERSION=0.2.100
-ARG WASM_PACK_VERSION=15.0
+ARG WASM_PACK_VERSION=0.15.0
 
 USER root
 
