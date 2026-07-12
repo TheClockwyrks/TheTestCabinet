@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
+import { RunsTabs } from "./RunsTabs";
 import { usePagedSearchParams } from "../../components/usePagedSearchParams";
 import { useGalleryData } from "../../data/galleryContext";
 import type { RunQueryResult } from "../../data/runQuery";
-import { routes } from "../../routes";
 import styles from "./RunsPage.module.scss";
-import exec from "./RunExec.module.scss";
 
 // How many runs to show per page — matches the all-runs list.
 const PAGE_SIZE = 20;
@@ -67,20 +65,12 @@ export function UnreviewedPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--runs/unreviewed"
-          comment={<>// completed runs nobody has reviewed yet</>}
-        />
-        <span className={exec.headerActions}>
-          <Link className={exec.secondary} to={routes.runs()}>
-            All runs
-          </Link>
-          <Link className={exec.secondary} to={routes.runCoverage()}>
-            Coverage
-          </Link>
-        </span>
-      </div>
+      <PromptHeader
+        command="--runs/unreviewed"
+        comment={<>// completed runs nobody has reviewed yet</>}
+      />
+
+      <RunsTabs active="unreviewed" />
 
       {result.summaries.length === 0 ? (
         loading ? (

@@ -24,7 +24,7 @@ export function ConnectionsPage() {
           through.
         </p>
         <form
-          className={styles.addForm}
+          className={styles.connectForm}
           onSubmit={(e) => {
             e.preventDefault();
             if (backendUrl.trim()) backend.setUrl(backendUrl.trim());

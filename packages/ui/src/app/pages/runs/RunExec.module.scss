@@ -310,6 +310,22 @@
   margin: t.$space-lg 0 t.$space-sm;
 }
 
+// A section label leading a panel is spaced by the panel's own padding, so drop
+// its top margin there — otherwise the gap above the first heading reads as double
+// the panel's other edges. (The checklist / item-rail zero this explicitly for
+// their own labels; this covers the bare-panel case, e.g. Settings → Connections.)
+.sectionLabel:first-child {
+  margin-top: 0;
+}
+
+// Likewise a notice or muted line that ends a panel: the panel padding provides
+// the bottom gutter, so drop the element's own trailing margin so the panel's top
+// and bottom insets stay balanced.
+.notice:last-child,
+.muted:last-child {
+  margin-bottom: 0;
+}
+
 // The live event feed itself now lives in the shared `EventFeed` component
 // (`components/EventFeed.module.scss`), which owns its own styling so the run
 // monitor and the Appearance settings preview render it identically.
@@ -588,11 +604,20 @@
   color: t.$color-text-muted;
 }
 
-.addForm {
+// The single-backend connect form: the URL field flexes to fill the row with the
+// Connect button pinned to its end, aligned to the input's bottom edge, wrapping
+// the button beneath the field only when the row is truly cramped.
+.connectForm {
   display: flex;
-  flex-direction: column;
-  gap: t.$space-sm;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
   margin-bottom: t.$space-lg;
+
+  .field {
+    flex: 1 1 16rem;
+    min-width: 0;
+  }
 }
 
 // The topbar gear: a link to the Settings section (consoles only).

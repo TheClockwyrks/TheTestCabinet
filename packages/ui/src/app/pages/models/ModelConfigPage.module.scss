@@ -10,6 +10,13 @@
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: t.$space-md;
   margin-bottom: t.$space-lg;
+
+  // The grid's own bottom margin sets the gap to the next row, and the column gap
+  // spaces the fields within it — so the gridded fields must not add their own
+  // bottom margin on top, or the first-row gap reads as double the ones below it.
+  .field {
+    margin-bottom: 0;
+  }
 }
 
 .field {

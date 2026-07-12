@@ -10,6 +10,7 @@ import { describeRunState } from "../../data/runState";
 import { useWorkers } from "../../../client/context";
 import { useAuth } from "../../../client/auth";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
+import { RunsTabs } from "./RunsTabs";
 import { useFindModel } from "../../data/useModels";
 import { formatSlug } from "../../format";
 import { useTestCaseName } from "../../data/useTestCaseName";
@@ -71,16 +72,13 @@ export function RunFailuresPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--runs --failures"
-          blink
-          comment={<>// publishable failures awaiting publish</>}
-        />
-        <Link className={exec.secondary} to={routes.runs()}>
-          ← All runs
-        </Link>
-      </div>
+      <PromptHeader
+        command="--runs --failures"
+        blink
+        comment={<>// publishable failures awaiting publish</>}
+      />
+
+      <RunsTabs active="failures" />
 
       {/* The static gallery never reaches this page (the route is console-only),
           but guard anyway so it degrades to an empty state rather than offering

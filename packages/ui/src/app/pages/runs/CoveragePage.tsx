@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
 import type {
   CoverageCell,
   CoverageMatrix,
@@ -23,7 +22,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
-import { routes } from "../../routes";
+import { RunsTabs } from "./RunsTabs";
 import { launchBatch, type LaunchItem } from "./launchBatch";
 import exec from "./RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -250,24 +249,18 @@ export function CoveragePage() {
           command="--runs/coverage"
           comment={<>// what still needs running</>}
         />
-        <span className={exec.headerActions}>
-          <Link className={exec.secondary} to={routes.runUnreviewed()}>
-            Unreviewed
-          </Link>
-          <Link className={exec.secondary} to={routes.runs()}>
-            All runs
-          </Link>
-          {!editing && (
-            <button
-              className={exec.secondary}
-              type="button"
-              onClick={() => setEditing(true)}
-            >
-              Edit plan
-            </button>
-          )}
-        </span>
+        {!editing && (
+          <button
+            className={exec.secondary}
+            type="button"
+            onClick={() => setEditing(true)}
+          >
+            Edit plan
+          </button>
+        )}
       </div>
+
+      <RunsTabs active="coverage" />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
       {!canTrigger && (

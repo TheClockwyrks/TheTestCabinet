@@ -5,7 +5,9 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: t.$space-md;
-  margin-bottom: t.$space-xl;
+  // Match the featured run's bottom margin so the widgets→feature gap equals the
+  // feature→run-log gap below it.
+  margin-bottom: t.$space-lg;
 }
 
 // One card. It is a link to the full reviewer surface; an inner button (trigger
