@@ -3,7 +3,7 @@
 This file defines the **matter** you defend against — how a unit takes damage, the three
 **damage types**, the three **stackable traits** that gate what can hurt or even see it,
 the specific matter types and their stats, and how a wave is built. It builds on the board
-and lanes in `specs/board.md`, the towers in `specs/towers.md`, and the round progression
+and paths in `specs/board.md`, the towers in `specs/towers.md`, and the round progression
 in `specs/flow.md`. Speeds are in logical pixels per second; energy and integrity values
 are unitless game numbers.
 
@@ -150,7 +150,7 @@ A **Macromass** is a huge unstable isotope that anchors the milestone rounds
 with a very large shell pool (base **26**), and it is **immune to being slowed** by a
 Moderator (too massive). As its shells are worn down it **fountains matter**: each time
 its hit points cross a **fragment step** it **sheds a fragment** — a Dimer or a pair of
-free atoms — onto its lane while continuing, and when its shells are finally spent the
+free atoms — onto its path while continuing, and when its shells are finally spent the
 core **bursts** into a last spray. So the boss is not a single wall of health but a
 **stream** the kinetic/nuclear line cracks while the strippers behind it clean up the
 fragments. It moves slowly (speed 28), leaks **12** integrity, and pays a large bounty
@@ -160,9 +160,10 @@ drain a bar. (Reference: base **6** fragment steps, `+3` on the final Round 20 b
 
 ## Wave composition
 
-A round is a timed sequence of units released from the inlet across both lanes
-(`specs/board.md`); the exact spawn timing and lane weighting per round is yours to
-design, within `specs/flow.md`'s progression. Compose rounds so the player cannot answer
+A round is a timed sequence of units released from the inlet(s) and distributed across the
+map's paths (`specs/board.md`); the exact spawn timing and path weighting per round is
+yours to design, within `specs/flow.md`'s progression. Compose rounds so the player cannot
+answer
 everything with one tower or one damage type:
 
 - Early rounds are mostly **Monatoms** and **Swifts** — teach stripping and the need to
@@ -180,7 +181,7 @@ everything with one tower or one damage type:
   each coming type and what it asks of the board (detect / kinetic-nuclear / chip-bonds)
   — and re-shaping the board for it is the between-round game.
 
-Because fragments continue on their lane, a cluster or heavy that is only **partly**
+Because fragments continue on their path, a cluster or heavy that is only **partly**
 broken down still sends its pieces onward — a Polymer that slips the openers arrives as
 an intact cluster the strippers cannot finish in time, and leaks. The pressure is always
 to open each unit up **before** it reaches the collector.

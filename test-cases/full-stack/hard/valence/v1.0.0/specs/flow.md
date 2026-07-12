@@ -42,7 +42,8 @@ upgrade towers, so the matter always presses against a board that is still being
 
 ## Rounds and victory
 
-- A game is a run of **`20` rounds** on the one board, numbered `ROUND 1` … `ROUND 20`.
+- A game is a run of **`20` rounds** on the **map the player chose** at the map-select
+  screen (`specs/board.md`), numbered `ROUND 1` … `ROUND 20`.
 - Between rounds there is a **build phase** of up to **`15 s`** (its countdown shown in
   the build panel, `specs/board.md`), during which no matter spawns and you build,
   upgrade, sell, and re-shape the board. Interest is paid at its start. You may **send
@@ -54,7 +55,7 @@ upgrade towers, so the matter always presses against a board that is still being
   only at the start of the between-round phases) does not apply to it. Because nothing
   has faced a round yet, every tower placed in the opening phase is **fully refundable**
   while it lasts (`specs/towers.md`).
-- During a round, matter spawns from the inlet over time and across both lanes
+- During a round, matter spawns over time and is distributed across the map's paths
   (`specs/board.md`, `specs/matter.md`). A round is **cleared** when every unit it
   released has either been neutralized or leaked. Clearing a round pays its bonus and
   begins the next build phase.
@@ -101,22 +102,28 @@ are defined in `specs/controls.md`).
    listing the playable start defined by `specs/mode.md` (which declares its own entry),
    followed by `HOW TO PLAY`. The selected item is highlighted. A dim slice of a live
    board may show behind the menu for atmosphere.
-2. **How to play.** Describes the goal (break matter down before it reaches the
+2. **Map select.** Reached from the campaign start on the main menu (`specs/mode.md`). Lists
+   the **maps** the campaign offers (`specs/board.md`) — at least the Easy single-path, the
+   Medium branching, and the Hard multiple-separate-path maps — each showing its **name**,
+   **difficulty**, **topology** (single / branching / multiple), and **path style** (curved
+   / straight), with a small preview of its path shape. Choosing a map begins the 20-round
+   campaign on it; a **BACK** choice returns to the main menu.
+3. **How to play.** Describes the goal (break matter down before it reaches the
    collector), the controls, the hit-point / damage-type model, and the three stackable
    traits and what each asks of the board — **bonded** (chip its bond pool, any tower,
    kinetic best), **heavy** (kinetic or nuclear only), **inert** (needs a detector) —
    plus the Moderator's slow, the Catalyst's reveal, and the economy and integrity.
    Returns to the menu.
-3. **In play.** The live game: the board and its conduit, matter flowing both lanes, the
+4. **In play.** The live game: the chosen map's paths, matter flowing along them, the
    towers firing and the support auras, and the full HUD and build panel. This covers both
    the **build phase** (countdown running, no matter spawning) and the **round phase**
    (matter active); building is allowed in both (`specs/controls.md`).
-4. **Paused.** The `Esc` overlay menu, reachable in play. Offers **Resume**, **Restart**,
+5. **Paused.** The `Esc` overlay menu, reachable in play. Offers **Resume**, **Restart**,
    and **Quit to menu**. The board is visible but frozen behind the menu.
-5. **Victory.** Shown when the final round is cleared with integrity remaining. Displays
+6. **Victory.** Shown when the final round is cleared with integrity remaining. Displays
    the final **score**, **rounds survived** (all `20`), and **integrity remaining**,
    with **PLAY AGAIN** and **MENU**.
-6. **Containment failed.** Shown when integrity reaches `0`. Displays the final
+7. **Containment failed.** Shown when integrity reaches `0`. Displays the final
    **score** and the **round reached**, with **PLAY AGAIN** (or **TRY AGAIN**) and
    **MENU**.
 
@@ -128,14 +135,17 @@ visual layout, styling, and interaction details are yours, subject to the palett
 type of `specs/overview.md`. The campaign start's menu entry is in `specs/mode.md`.
 
 - **Main menu** — the title, a tagline, the playable start from `specs/mode.md`, then
-  **HOW TO PLAY**. The start → begins a game; HOW TO PLAY → the how-to-play screen.
+  **HOW TO PLAY**. The start → the map-select screen; HOW TO PLAY → the how-to-play screen.
+- **Map select** — the maps the campaign offers, each with its name, difficulty, topology,
+  and path style (`specs/board.md`); choosing one → begins a game on that map; **BACK** →
+  the main menu.
 - **How to play** — the goal, the controls, the hit-point / damage-type model, the three
   stackable traits and what each asks of the board, and the economy; a way back to the
   menu.
 - **Pause menu** — **Resume**, **Restart**, and **Quit to menu**, over the frozen board.
 - **Victory screen** and **Containment-failed screen** — the end-of-game results with
-  **PLAY AGAIN** and **MENU**. PLAY AGAIN replays the same campaign start; MENU returns to
-  the main menu.
+  **PLAY AGAIN** and **MENU**. PLAY AGAIN replays the same campaign start **on the same
+  map**; MENU returns to the main menu.
 
 Every menu must be fully operable with the mouse alone, with the keyboard accelerators of
 `specs/controls.md` as an alternative. This specification fixes the **content and
@@ -167,12 +177,15 @@ what the coming round needs, and which capability each unit on the board demands
 
 The game must exhibit these behaviors. They are observable and make good test targets:
 
-- Matter enters at the **inlet**, is split across the two **lanes** at the splitter, and
-  leaks at the **collector**; both lanes carry traffic and both must be defended
-  (`specs/board.md`).
-- Towers build **on the board's grid cells** (not on conduit-blocked cells), cover the
-  conduit within their **range**, and fire **automatically** at the valid in-range unit
-  furthest along (`specs/board.md`, `specs/towers.md`).
+- The campaign begins at a **MAP SELECT** where the player picks one of several maps —
+  an Easy **single path**, a Medium **branching** fork of lanes, a Hard set of **multiple
+  separate paths** (some maps curved, some straight/right-angle) — and plays the run on it
+  (`specs/board.md`, `specs/flow.md`).
+- Matter enters at each **inlet**, is **distributed across the map's paths**, and leaks at a
+  **collector**; every path carries traffic and each must be defended (`specs/board.md`).
+- Towers are **placed freely** on the board (off the paths, not overlapping — no grid),
+  cover the paths within their **range**, and fire **automatically** at the valid in-range
+  unit furthest along (`specs/board.md`, `specs/towers.md`).
 - **Bonds are extra health any tower chips:** any damage type drains a bonded cluster's
   bond pool (kinetic fastest), shedding a spray of free atoms — not a single-tower lock
   (`specs/matter.md`, `specs/towers.md`).
@@ -184,7 +197,7 @@ The game must exhibit these behaviors. They are observable and make good test ta
   slows matter (heavies resist, the boss is immune) — `specs/matter.md`,
   `specs/towers.md`.
 - **Traits stack** late (a Shroud is inert + heavy, a Chelate is inert + bonded), forcing
-  **layered** answers; **fragments continue** on their lane and an unopened unit leaks
+  **layered** answers; **fragments continue** on their path and an unopened unit leaks
   (`specs/matter.md`).
 - The **economy** runs on neutralize bounties, the round-clear bonus, interest, and the
   early-send bonus; a **leak** costs integrity; **`0`** integrity fails containment;
@@ -200,8 +213,9 @@ The game must exhibit these behaviors. They are observable and make good test ta
 
 - Network or online multiplayer, and any saved/persisted progress between sessions.
 - Touch or gamepad input (mouse and keyboard only for this version).
-- A board editor, multiple boards, or procedurally generated conduits — this version is
-  the one fixed board of `specs/board.md`.
+- A board editor or **procedurally generated** maps — the maps are the **fixed, hand-authored
+  set** of `specs/board.md` (the player chooses among them at map select, but cannot edit
+  or generate one).
 - An in-run research or tech tree beyond the per-tower upgrades of `specs/towers.md`.
 - Any matter form, tower, or mechanic beyond those specified here — keep the scope to the
   systems above, done well.

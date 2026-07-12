@@ -5,6 +5,7 @@
 
 import type { GameState } from "./types";
 import type { Game } from "./sim";
+import { MAPS } from "./board";
 
 export interface MenuItem {
   label: string;
@@ -18,6 +19,8 @@ export function menuItems(state: GameState, game: Game): MenuItem[] {
         { label: game.mode.menuLabel, action: "menu:play" },
         { label: "HOW TO PLAY", action: "menu:howto" },
       ];
+    case "mapselect":
+      return [...MAPS.map((m) => ({ label: m.name, action: `map:${m.id}` })), { label: "BACK", action: "menu:back" }];
     case "howto":
       return [{ label: "BACK", action: "menu:back" }];
     case "paused":

@@ -1,12 +1,12 @@
 // Valence — wave composition (specs/matter.md "Wave composition", specs/flow.md).
 //
-// A round is a timed sequence of units released from the inlet, alternating lanes so
-// both always carry traffic. Types unlock by round (per the campaign mode's intro
-// schedule) — atoms first, then bonded and inert and heavy matter, and finally the
-// trait COMBOS (inert+bonded, inert+heavy) that force layered defenses. Counts grow
-// substantially across the run, and the milestone rounds (10, 20) fold a Macromass boss
-// into the wave. Reading the coming round's distinct types (the next-round preview) and
-// re-shaping the board for them is the between-round game.
+// A round is a timed sequence of units released from the inlet(s), distributed round-robin
+// across the map's paths so every path always carries traffic (specs/board.md). Types
+// unlock by round (per the campaign mode's intro schedule) — atoms first, then bonded and
+// inert and heavy matter, and finally the trait COMBOS (inert+bonded, inert+heavy) that
+// force layered defenses. Counts grow substantially across the run, and the milestone
+// rounds (10, 20) fold a Macromass boss into the wave. Reading the coming round's distinct
+// types (the next-round preview) and re-shaping the board for them is the between-round game.
 
 import { BOSS_ROUNDS, type MatterType } from "./constants";
 import type { Lane } from "./board";
@@ -33,9 +33,10 @@ interface Weighted {
   unlockRound: number;
 }
 
-export function buildWave(round: number, mode: CampaignMode): Wave {
+export function buildWave(round: number, mode: CampaignMode, pathCount = 2): Wave {
   const rng = new Rng(round * 2654435761 + 12345);
   const intro = mode.introRounds;
+  const lanes = Math.max(1, pathCount);
 
   const pool: Weighted[] = (
     [
@@ -75,13 +76,13 @@ export function buildWave(round: number, mode: CampaignMode): Wave {
   let t = 600;
   for (const type of picks) {
     events.push({ atMs: Math.round(t + rng.range(-60, 60)), type, lane });
-    lane = lane === 0 ? 1 : 0;
+    lane = (lane + 1) % lanes; // round-robin across the map's paths — every path carries traffic
     t += interval;
   }
 
   const hasBoss = BOSS_ROUNDS.includes(round);
   if (hasBoss) {
-    // The boss anchors the middle of the wave, on the lane the alternation would give.
+    // The boss anchors the middle of the wave, on the path the round-robin would give.
     events.push({ atMs: Math.round(t * 0.45), type: "macromass", lane });
   }
 

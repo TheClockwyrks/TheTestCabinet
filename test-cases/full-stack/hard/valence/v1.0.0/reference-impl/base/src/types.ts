@@ -43,11 +43,11 @@ export interface Unit {
 }
 
 export interface Tower {
-  cell: number; // the build-grid cell id this tower occupies (specs/board.md)
+  id: number; // unique id (towers are placed freely, not keyed to a grid cell — specs/board.md)
   kind: TowerKind;
   level: 1 | 2 | 3;
   branch: Branch | null; // the branch chosen at tier III (null until then)
-  x: number;
+  x: number; // freely-placed position on the board
   y: number;
   range: number;
   fireRate: number;
@@ -103,7 +103,7 @@ export interface Zone {
   tickAcc: number; // accumulator for the damage cadence
 }
 
-export type GameState = "title" | "howto" | "playing" | "paused" | "victory" | "defeat";
+export type GameState = "title" | "mapselect" | "howto" | "playing" | "paused" | "victory" | "defeat";
 export type Phase = "build" | "round";
 
 export type FxKind = "energy" | "kinetic" | "nuclear" | "bondsnap" | "split" | "neutralize" | "muzzle" | "leak" | "reveal";

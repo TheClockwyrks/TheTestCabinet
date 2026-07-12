@@ -27,7 +27,7 @@ capability is monopolized, upgrades and coverage both matter. The checks encode 
 1. **energy-only spam must lose** — energy can't touch a heavy (needs kinetic/nuclear).
 2. **no-detection must lose** — inert matter leaks with nothing to reveal it.
 3. **never-upgraded must lose** — tier-I firepower drowns under late hit points.
-4. **one-lane cluster must lose** — the grid rewards covering both lanes.
+4. **one-lane cluster must lose** — on the branching map, coverage must reach both lanes.
 5. **competent mixed + upgraded + placed must win** (realistic economy).
 6. *(soft)* **both branch leanings win** — neither branch family dominates.
 

@@ -39,13 +39,15 @@ import {
   type TowerKind,
   type Trait,
 } from "./constants";
-import { cellCenter, isBlocked, laneLength, sampleLane, type Lane } from "./board";
+import { Board, DEFAULT_MAP, TOWER_FOOTPRINT, type GameMap, type Lane, type Pt } from "./board";
 import type { CampaignMode } from "./mode";
 import { buildWave, type Wave } from "./waves";
 import type { AtomSpec, Cue, FxEvent, GameState, Phase, Projectile, Tower, Unit, Zone } from "./types";
 
 export class Game {
   readonly mode: CampaignMode;
+  map: GameMap; // the chosen map (specs/board.md); set by startOn() before a run
+  board: Board; // the paths + free-placement rules of the current map
   state: GameState = "title";
   phase: Phase = "build";
 
@@ -59,13 +61,12 @@ export class Game {
   units: Unit[] = [];
   projectiles: Projectile[] = []; // shots in flight (specs/towers.md)
   zones: Zone[] = []; // lingering Reactor Fallout fields (specs/towers.md)
-  towers = new Map<number, Tower>(); // cell id → tower
+  towers: Tower[] = []; // freely-placed towers (specs/board.md)
 
   // Build / selection UI state.
   buildKind: TowerKind | null = null;
-  selectedCell: number | null = null;
+  selectedTowerId: number | null = null;
   hoverShop: TowerKind | null = null;
-  hoverCell: number | null = null;
   pointerX = -1; // logical-space pointer, for the held-tower cursor / range preview
   pointerY = -1;
 
@@ -86,9 +87,18 @@ export class Game {
   fxQueue: FxEvent[] = [];
   sndQueue: Cue[] = [];
 
-  constructor(mode: CampaignMode) {
+  constructor(mode: CampaignMode, map: GameMap = DEFAULT_MAP) {
     this.mode = mode;
-    this.nextWave = buildWave(1, mode);
+    this.map = map;
+    this.board = new Board(map);
+    this.nextWave = buildWave(1, mode, this.board.pathCount);
+  }
+
+  // Choose the map to defend, then start a fresh run on it (specs/board.md, flow.md).
+  startOn(map: GameMap): void {
+    this.map = map;
+    this.board = new Board(map);
+    this.start();
   }
 
   // ---- Lifecycle --------------------------------------------------------------
@@ -104,13 +114,12 @@ export class Game {
     this.units = [];
     this.projectiles = [];
     this.zones = [];
-    this.towers.clear();
+    this.towers = [];
     this.buildKind = null;
-    this.selectedCell = null;
+    this.selectedTowerId = null;
     this.hoverShop = null;
-    this.hoverCell = null;
     this.wave = null;
-    this.nextWave = buildWave(1, this.mode);
+    this.nextWave = buildWave(1, this.mode, this.board.pathCount);
     this.spawnCursor = 0;
     this.spawned = 0;
     this.waveClock = 0;
@@ -129,7 +138,7 @@ export class Game {
         this.buildTimer -= dt;
         if (this.buildTimer <= 0) this.beginRound(0);
       }
-      for (const t of this.towers.values()) t.fireAnim += dt;
+      for (const t of this.towers) t.fireAnim += dt;
       return;
     }
 
@@ -258,12 +267,12 @@ export class Game {
         u.revealed = u.revealTimer > 0; // reveal lingers after leaving a field
       }
     }
-    for (const t of this.towers.values()) {
+    for (const t of this.towers) {
       const s = this.eff(t);
       if (t.kind === "catalyst") {
         for (const u of this.unitsInRange(t)) {
           if (this.hasTrait(u, "inert")) {
-            if (!u.revealed) this.fxQueue.push({ kind: "reveal", x: sampleLane(u.lane, u.s).x, y: sampleLane(u.lane, u.s).y });
+            if (!u.revealed) this.fxQueue.push({ kind: "reveal", x: this.board.sample(u.lane, u.s).x, y: this.board.sample(u.lane, u.s).y });
             u.revealed = true;
             u.revealTimer = s.revealLinger;
           }
@@ -300,7 +309,7 @@ export class Game {
       }
       for (const u of this.units) {
         if (u.dead) continue;
-        const p = sampleLane(u.lane, u.s);
+        const p = this.board.sample(u.lane, u.s);
         if (Math.hypot(p.x - z.x, p.y - z.y) > z.radius) continue;
         if (this.hasTrait(u, "inert")) {
           u.revealed = true;
@@ -316,7 +325,7 @@ export class Game {
     const r2 = t.range * t.range;
     for (const u of this.units) {
       if (u.dead) continue;
-      const p = sampleLane(u.lane, u.s);
+      const p = this.board.sample(u.lane, u.s);
       const dx = p.x - t.x;
       const dy = p.y - t.y;
       if (dx * dx + dy * dy <= r2) yield u;
@@ -325,14 +334,14 @@ export class Game {
 
   // ---- Tower fire -------------------------------------------------------------
   private stepTowers(dt: number): void {
-    for (const t of this.towers.values()) {
+    for (const t of this.towers) {
       t.fireAnim += dt;
       if (t.kind === "catalyst" || t.kind === "moderator") continue; // auras don't fire or aim
       const s = this.eff(t);
       const targets = this.pickTargets(t, s, s.multiTarget);
       const primary = targets[0] ?? null;
       if (primary) {
-        const p = sampleLane(primary.lane, primary.s);
+        const p = this.board.sample(primary.lane, primary.s);
         t.aimAngle = Math.atan2(p.y - (t.y - 4), p.x - t.x);
       }
       t.cooldown -= dt;
@@ -415,7 +424,7 @@ export class Game {
         pr.dead = true; // the target is gone — the shot misses (specs/towers.md)
         continue;
       }
-      const p = sampleLane(target.lane, target.s);
+      const p = this.board.sample(target.lane, target.s);
       const dx = p.x - pr.x;
       const dy = p.y - pr.y;
       const dist = Math.hypot(dx, dy) || 1;
@@ -434,14 +443,14 @@ export class Game {
   }
 
   private onImpact(pr: Projectile, primary: Unit): void {
-    const p = sampleLane(primary.lane, primary.s);
+    const p = this.board.sample(primary.lane, primary.s);
     this.strike(pr, primary, p.x, p.y);
 
     // Area of effect (Reactor blast / Emitter Charged) — every unit in the radius.
     if (pr.splash > 0) {
       for (const u of this.units) {
         if (u.dead || pr.hitIds.includes(u.id)) continue;
-        const q = sampleLane(u.lane, u.s);
+        const q = this.board.sample(u.lane, u.s);
         if (Math.hypot(q.x - p.x, q.y - p.y) <= pr.splash) this.strike(pr, u, q.x, q.y);
       }
     }
@@ -451,7 +460,7 @@ export class Game {
       for (const u of this.units) {
         if (u.dead || pr.hitIds.includes(u.id)) continue;
         if (pr.sameLane && u.lane !== pr.lane) continue;
-        const q = sampleLane(u.lane, u.s);
+        const q = this.board.sample(u.lane, u.s);
         const d = Math.hypot(q.x - p.x, q.y - p.y);
         if (d <= pr.pierceRadius) extra.push({ u, d, x: q.x, y: q.y });
       }
@@ -469,7 +478,7 @@ export class Game {
           if (u.dead || pr.hitIds.includes(u.id)) continue;
           if (this.hasTrait(u, "heavy") || this.hasTrait(u, "bonded")) continue;
           if (this.hasTrait(u, "inert") && !u.revealed) continue;
-          const q = sampleLane(u.lane, u.s);
+          const q = this.board.sample(u.lane, u.s);
           const d = Math.hypot(q.x - fx, q.y - fy);
           if (d <= 70 && (!best || d < best.d)) best = { u, d, x: q.x, y: q.y };
         }
@@ -511,7 +520,7 @@ export class Game {
     if (pr.splashOnHeavy > 0 && u.dead && this.hasTrait(u, "heavy")) {
       for (const o of this.units) {
         if (o === u || o.dead || !this.hasTrait(o, "heavy")) continue;
-        const q = sampleLane(o.lane, o.s);
+        const q = this.board.sample(o.lane, o.s);
         if (Math.hypot(q.x - x, q.y - y) <= pr.splashOnHeavy) this.damageUnit(o, pr.dmg, "kinetic", q);
       }
     }
@@ -647,7 +656,7 @@ export class Game {
       u.hitFlash += dt;
       const v = u.baseSpeed * u.slowFactor;
       u.s += v * dt;
-      const len = laneLength(u.lane);
+      const len = this.board.pathLength(u.lane);
       if (u.s >= len) this.leak(u);
     }
   }
@@ -656,7 +665,7 @@ export class Game {
     u.dead = true;
     this.integrity -= MATTER[u.type].leak;
     this.leakCount += MATTER[u.type].leak;
-    const p = sampleLane(u.lane, laneLength(u.lane));
+    const p = this.board.sample(u.lane, this.board.pathLength(u.lane));
     this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
     this.sndQueue.push("alarm");
   }
@@ -687,11 +696,11 @@ export class Game {
     this.phase = "build";
     this.buildTimed = true;
     this.buildTimer = BUILD_PHASE_SECONDS;
-    this.nextWave = buildWave(this.round + 1, this.mode);
+    this.nextWave = buildWave(this.round + 1, this.mode, this.board.pathCount);
     if (this.mode.interest) {
       this.energy += Math.min(INTEREST_CAP, Math.floor(this.energy * INTEREST_RATE));
     }
-    for (const t of this.towers.values()) t.refundable = false;
+    for (const t of this.towers) t.refundable = false;
   }
 
   private beginRound(earlySeconds: number): void {
@@ -704,8 +713,8 @@ export class Game {
     this.waveClock = 0;
     this.buildTimed = false;
     this.buildTimer = 0;
-    this.nextWave = buildWave(Math.min(this.round + 1, TOTAL_ROUNDS), this.mode);
-    for (const t of this.towers.values()) t.refundable = false;
+    this.nextWave = buildWave(Math.min(this.round + 1, TOTAL_ROUNDS), this.mode, this.board.pathCount);
+    for (const t of this.towers) t.refundable = false;
   }
 
   // ---- Dev/proof helpers (also the balance-harness control surface) -----------
@@ -716,7 +725,7 @@ export class Game {
   }
   devBeginRound(n: number): void {
     this.round = n - 1;
-    this.nextWave = buildWave(n, this.mode);
+    this.nextWave = buildWave(n, this.mode, this.board.pathCount);
     this.phase = "build";
     this.buildTimed = false;
     this.startRound();
@@ -749,47 +758,57 @@ export class Game {
   selectShop(kind: TowerKind): void {
     if (this.state !== "playing") return;
     this.buildKind = kind;
-    this.selectedCell = null;
+    this.selectedTowerId = null;
   }
 
   cancelBuild(): void {
     this.buildKind = null;
   }
 
-  clickCell(id: number): void {
+  // The built tower whose footprint contains world point (x, y), if any.
+  towerAt(x: number, y: number): Tower | null {
+    for (const t of this.towers) {
+      if (Math.hypot(t.x - x, t.y - y) <= TOWER_FOOTPRINT) return t;
+    }
+    return null;
+  }
+
+  // A click on the board (specs/controls.md): in build mode, place the held tower at the
+  // pointer (refused if illegal); otherwise select a tower under the pointer, or deselect.
+  clickBoard(x: number, y: number): void {
     if (this.state !== "playing") return;
-    const existing = this.towers.get(id);
     if (this.buildKind) {
-      if (!existing) this.place(id, this.buildKind);
+      this.place(x, y, this.buildKind);
       return;
     }
-    this.selectedCell = existing ? id : null;
+    const hit = this.towerAt(x, y);
+    this.selectedTowerId = hit ? hit.id : null;
   }
 
   clickEmptyBoard(): void {
     if (this.buildKind) this.buildKind = null;
-    else this.selectedCell = null;
+    else this.selectedTowerId = null;
   }
 
-  canBuild(id: number, kind: TowerKind): boolean {
-    return !isBlocked(id) && !this.towers.has(id) && this.energy >= TOWERS[kind].cost;
+  // Is (x, y) a legal, affordable spot for `kind`? Off the paths, in bounds, no overlap.
+  canBuildAt(x: number, y: number, kind: TowerKind): boolean {
+    return this.energy >= TOWERS[kind].cost && this.board.canPlaceAt(x, y, this.towers);
   }
 
-  // Place a tower on a grid cell (shared by the UI and the balance harness). Returns the
-  // built tower, or null if the cell is illegal or unaffordable.
-  place(cellId: number, kind: TowerKind): Tower | null {
-    if (!this.canBuild(cellId, kind)) return null;
+  // Place a tower at a free board position (specs/board.md). Returns the built tower, or
+  // null if the spot is illegal or unaffordable.
+  place(x: number, y: number, kind: TowerKind): Tower | null {
+    if (!this.canBuildAt(x, y, kind)) return null;
     const def = TOWERS[kind];
-    const c = cellCenter(cellId);
     const s = deriveStats(kind, 1, null);
     this.energy -= def.cost;
     const t: Tower = {
-      cell: cellId,
+      id: this.nextId++,
       kind,
       level: 1,
       branch: null,
-      x: c.x,
-      y: c.y,
+      x,
+      y,
       range: s.range,
       fireRate: s.fireRate,
       cooldown: 0,
@@ -799,10 +818,19 @@ export class Game {
       fireAnim: 999,
       aimAngle: -Math.PI / 2,
     };
-    this.towers.set(cellId, t);
-    this.selectedCell = cellId;
+    this.towers.push(t);
+    this.selectedTowerId = t.id;
     this.sndQueue.push("build");
     return t;
+  }
+
+  // Place near a target world point, snapping to the nearest legal spot (the balance
+  // harness names approximate anchors; the browser places exactly at the pointer instead).
+  placeNear(x: number, y: number, kind: TowerKind): Tower | null {
+    if (this.energy < TOWERS[kind].cost) return null;
+    const p: Pt | null = this.board.nearestLegal(x, y, this.towers);
+    if (!p) return null;
+    return this.place(p.x, p.y, kind);
   }
 
   upgradeCost(t: Tower): number | null {
@@ -830,8 +858,7 @@ export class Game {
   }
 
   upgradeSelected(branch?: Branch): void {
-    if (this.selectedCell == null) return;
-    const t = this.towers.get(this.selectedCell);
+    const t = this.selectedTower;
     if (t) this.upgrade(t, branch);
   }
 
@@ -841,14 +868,13 @@ export class Game {
 
   sell(t: Tower): void {
     this.energy += this.sellRefund(t);
-    this.towers.delete(t.cell);
-    if (this.selectedCell === t.cell) this.selectedCell = null;
+    this.towers = this.towers.filter((o) => o.id !== t.id);
+    if (this.selectedTowerId === t.id) this.selectedTowerId = null;
     this.sndQueue.push("build");
   }
 
   sellSelected(): void {
-    if (this.selectedCell == null) return;
-    const t = this.towers.get(this.selectedCell);
+    const t = this.selectedTower;
     if (t) this.sell(t);
   }
 
@@ -858,7 +884,7 @@ export class Game {
 
   // ---- Derived reads for the HUD ---------------------------------------------
   get selectedTower(): Tower | null {
-    return this.selectedCell != null ? (this.towers.get(this.selectedCell) ?? null) : null;
+    return this.selectedTowerId != null ? (this.towers.find((t) => t.id === this.selectedTowerId) ?? null) : null;
   }
   get comingRound(): Wave {
     return this.nextWave;

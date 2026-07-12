@@ -1,70 +1,52 @@
 // Valence — headless balance harness.
 //
 // Drives the exact game simulation from ../src, with no DOM, no rAF, and no rendering,
-// as fast as the host CPU allows. A `Controller` scripts the build phases (place/upgrade
-// towers on grid cells); the harness sends each round and steps the fixed simulation to
-// completion, gathering per-round metrics. The sim is deterministic (seeded waves, fixed
-// spawn schedules), so a layout maps to a single reproducible result — which is what
-// makes it useful for balancing.
+// as fast as the host CPU allows. A `Controller` scripts the build phases (freely place /
+// upgrade towers at world anchors); the harness sends each round and steps the fixed
+// simulation to completion, gathering per-round metrics. The sim is deterministic (seeded
+// waves, fixed spawn schedules), so a layout maps to a single reproducible result — which
+// is what makes it useful for balancing. The battery runs on the MEDIUM branching map
+// (JUNCTION: a fork into two lanes sharing an inlet trunk and a final run), so the
+// coverage goals (one-lane must leak, shared-run towers cover both) apply.
 //
 // Run the reports with:  npx tsx sim/run.ts
 
 import { FIXED_STEP, TOWERS, type Branch, type TowerKind } from "../src/constants";
-import { CELLS, cellIdAt, type CellInfo } from "../src/board";
+import { mapById, type Pt } from "../src/board";
 import { MODE } from "../src/mode";
 import { Game } from "../src/sim";
 import type { Tower } from "../src/types";
 
+const SIM_MAP = mapById("junction");
+
 export function newGame(): Game {
-  return new Game(MODE);
+  return new Game(MODE, SIM_MAP);
 }
 
 // ---- Board placement helpers (declarative layouts refer to world anchors) ------
-export const buildable: CellInfo[] = CELLS.filter((c) => !c.blocked);
-
-// The nearest buildable cell to a world point (for laying towers beside the lanes).
-export function cellNear(x: number, y: number): number {
-  let best = buildable[0]!;
-  let bd = Infinity;
-  for (const c of buildable) {
-    const d = (c.cx - x) ** 2 + (c.cy - y) ** 2;
-    if (d < bd) {
-      bd = d;
-      best = c;
-    }
-  }
-  return best.id;
-}
-
-// A run of cells beside a horizontal lane segment: one cell per column across [x0,x1],
-// offset to `y` (just off the track), nearest-buildable and de-duplicated in order.
-export function laneCells(x0: number, x1: number, y: number): number[] {
-  const out: number[] = [];
-  const seen = new Set<number>();
-  for (let x = x0; x <= x1; x += 40) {
-    const id = cellNear(x, y);
-    if (!seen.has(id)) {
-      seen.add(id);
-      out.push(id);
-    }
-  }
+// A row of world points just off a horizontal lane run: one point every `step` px across
+// [x0,x1] at height `y`. Free placement snaps each to the nearest legal spot (Board.nearestLegal).
+function row(x0: number, x1: number, y: number, step = 40): Pt[] {
+  const out: Pt[] = [];
+  for (let x = x0; x <= x1; x += step) out.push({ x, y });
   return out;
 }
 
-// The board's named anchor rows (from src/board.ts geometry).
+// JUNCTION's named anchor rows (its top lane runs y≈150, bottom lane y≈626, and both the
+// inlet trunk and final run sit at y≈388 — see src/board.ts).
 export const ANCHORS = {
-  laneA: (): number[] => laneCells(170, 800, 145), // above Lane A (top run y≈185)
-  laneAlow: (): number[] => laneCells(170, 800, 225),
-  laneB: (): number[] => laneCells(170, 800, 655), // below Lane B (bottom run y≈615)
-  laneBhigh: (): number[] => laneCells(170, 800, 575),
-  sharedIn: (): number[] => laneCells(40, 130, 360).concat(laneCells(40, 130, 440)), // inlet approach
-  sharedOut: (): number[] => laneCells(840, 950, 360).concat(laneCells(840, 950, 440)), // final run
+  laneA: (): Pt[] => row(190, 780, 112), // above the top lane
+  laneAlow: (): Pt[] => row(190, 780, 200), // below the top lane (between the lanes)
+  laneB: (): Pt[] => row(190, 780, 664), // below the bottom lane
+  laneBhigh: (): Pt[] => row(190, 780, 576), // above the bottom lane
+  sharedIn: (): Pt[] => row(40, 120, 352).concat(row(40, 120, 424)), // inlet trunk (both lanes)
+  sharedOut: (): Pt[] => row(856, 960, 352).concat(row(856, 960, 424)), // final run (both lanes)
 };
 
 // ---- Controllers ---------------------------------------------------------------
 export interface BuildOrder {
   kind: TowerKind;
-  cell: number;
+  at: Pt; // world anchor to place near (free placement snaps to nearest legal)
   level?: 1 | 2 | 3; // upgrade target once affordable
   branch?: Branch; // required to reach level 3
   minRound?: number; // do not attempt before this round's build phase
@@ -89,7 +71,7 @@ export function layoutController(name: string, orders: BuildOrder[], note?: stri
       for (const o of orders) {
         if (placed.has(o)) continue;
         if (o.minRound && round < o.minRound) continue;
-        const t = game.place(o.cell, o.kind);
+        const t = game.placeNear(o.at.x, o.at.y, o.kind);
         if (t) placed.set(o, t);
       }
       let progressed = true;
@@ -164,7 +146,7 @@ export function runMatch(controller: Controller, opts?: { maxRoundSeconds?: numb
       integrityAfter: g.integrity,
       leaked: integrityBefore - g.integrity,
       energyAfter: Math.min(g.energy, 999999),
-      towers: g.towers.size,
+      towers: g.towers.length,
       kills: g.kills - killsBefore,
       resolved: steps < maxSteps,
     });
@@ -189,9 +171,7 @@ export function runMatch(controller: Controller, opts?: { maxRoundSeconds?: numb
     integrityLeft: Math.max(0, g.integrity),
     score: g.score,
     finalEnergy: g.energy > 999999 ? 0 : g.energy,
-    finalTowers: g.towers.size,
+    finalTowers: g.towers.length,
     rounds,
   };
 }
-
-export { cellIdAt };

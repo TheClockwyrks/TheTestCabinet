@@ -1,101 +1,131 @@
-# Valence — The board: conduits, the build grid, and the HUD
+# Valence — The board: maps, paths, free tower placement, and the HUD
 
-This file defines the playfield: the conduit matter travels, how it forks into two lanes
-and rejoins, how matter is split across the lanes, the **build grid** the player places
-towers on and what each covers, and the top status bar and right build panel. It builds
-on the stage in `specs/overview.md` and connects to the matter (`specs/matter.md`), the
-towers (`specs/towers.md`), the controls (`specs/controls.md`), and the flow
-(`specs/flow.md`).
+This file defines the playfield: the **maps** the campaign offers, the **paths** matter
+travels along each map (a single path, branching lanes, or several separate tracks), the
+**path styles** (smooth curves vs straight right-angle runs), how matter is distributed
+across a map's paths, how the player **freely places** towers on the board, and the top
+status bar and right build panel. It builds on the stage in `specs/overview.md` and
+connects to the matter (`specs/matter.md`), the towers (`specs/towers.md`), the controls
+(`specs/controls.md`), and the flow (`specs/flow.md`).
 
 The board occupies `x` in `[0, 1000]`, `y` in `[56, 720]` (`specs/overview.md`) and is
-shown **whole** — there is no scrolling camera; the entire conduit and the whole build
-grid are visible at once.
+shown **whole** — there is no scrolling camera; the entire map (every path, every inlet
+and collector) and everything built on it are visible at once, whichever map is in play.
 
-## The conduit
+## Maps
 
-Matter travels a single fixed **conduit** — a smooth path (a polyline or spline) drawn as
-a glowing channel over the substrate, with a visible sense of **flow direction** toward
-the collector (`specs/overview.md`). Its **topology is fixed** for this version; its exact
-geometry within the board is yours to design, and the whole of it must be on screen.
+Valence ships **several maps**, and the campaign begins at a **MAP SELECT** screen
+(`specs/flow.md`) where the player chooses which one to defend before the run starts. Each
+map lays **one or more paths** over the board region; the maps differ in their **topology**
+(how many paths and how they relate) and in their **path style** (curved or straight). The
+map set **must** include at least these three, one at each difficulty:
 
-The topology is one inlet, a fork into two lanes, a merge, and a collector:
+- **Easy — a single path.** One inlet, one collector, one unbroken route across the board.
+  No fork; every unit travels the same path.
+- **Medium — branching paths.** A route that **forks into two (or more) lanes** the inlet
+  assigns units across, so more than one lane must be defended at once. The lanes may run
+  separately and **rejoin** into a shared final run, or diverge to their own collectors.
+- **Hard — multiple separate paths.** **Two or more fully independent tracks** that never
+  share a lane, each carrying its own traffic from its own inlet toward a collector. The
+  player must cover several unconnected fronts with one board's worth of towers.
 
-1. **Inlet.** A single entry point at one edge of the board where every unit spawns and
-   begins traveling.
-2. **Splitter.** A short shared run from the inlet reaches a **splitter junction** where
-   the conduit **forks into two parallel lanes** — call them **Lane A** and **Lane B**.
-   The two lanes run separately across the board.
-3. **Confluence.** The two lanes **rejoin** at a **confluence junction** into a single
-   **shared final run**.
-4. **Collector.** The shared final run ends at the **collector** at the far edge — the
-   exit. A unit that reaches the collector **leaks** (`specs/flow.md`).
+**Difficulty is topology, not numbers.** Every map plays the **same** 20-round campaign
+with the **same** economy, integrity, matter roster, scaling, and towers
+(`specs/flow.md`, `specs/matter.md`, `specs/towers.md`) — a harder map is harder **only
+because its layout is harder to cover** (more lanes, more separate fronts, fewer premium
+shared stretches). No map changes any pinned value.
 
-The two lanes must be **visibly distinct paths** a player can point at, long enough that a
-tower on one lane cannot trivially cover the other along its whole length. Lay them out so
-the fork, both lanes, the merge, and the shared run all read clearly, and so a unit's
-progress toward the collector is easy to follow. A single serpentine path with no genuine
-fork does not implement this board.
+### Path styles — curves and right angles
 
-### Which lane a unit takes
+A path's geometry is drawn one of two ways, and the map set must show **both**:
 
-Each unit is assigned a lane **at spawn** and travels it from the splitter to the
-confluence. By default the inlet **alternates** lanes — consecutive units go A, B, A, B,
-… — so both lanes always carry traffic and both must be defended; a wave's composition
-may weight the split (`specs/matter.md`), but the game must never funnel a whole wave
-down one lane and leave the other empty. A unit that **fragments** (a bonded cluster
-chipped apart, a heavy split — `specs/matter.md`) — spawns its fragments **on the same
-lane** at its own position, so the fragments continue past the towers ahead on that
-lane.
+- **Curved.** The path is a **smooth spline** (or dense curve) that sweeps and bends — no
+  hard corners.
+- **Straight / right-angle.** The path is an **axis-aligned polyline**: straight runs
+  joined by **90° corners**, like circuitry.
 
-Progress along the conduit is what matters for targeting and leaking; a unit does not
-change lanes once assigned, and lanes do not cross.
+**At least one map's paths must be smooth curves, and at least one map's paths must be
+straight lines with right-angle corners.** (The single-path, branching, and multiple-path
+maps above may each pick either style, so long as both styles appear somewhere in the
+set.) Either way a path reads as a glowing channel over the substrate with a visible sense
+of **flow direction** toward its collector (`specs/overview.md`), and its whole length is
+on screen.
 
-## The build grid
+## Paths
 
-Towers are placed on a **grid of build cells** that tiles the board — **not** at free
-pixel positions (this is not the free placement of a Bloons-style game) and **not** at a
-fixed handful of spots. The whole board region is divided into a uniform lattice of
-square cells (about `40 px` on a side — you pick the exact size, but it must divide the
-board into a clean grid, drawn as a faint lattice so the player can see the cells).
-Placement **snaps to the grid**: a tower always occupies **exactly one cell** and sits
-at that cell's **center**; it is never placed half on a cell or between cells.
+A **path** is an ordered route from an **inlet** (where units spawn) to a **collector**
+(the exit). A unit spawns at its path's inlet, travels the path, and **leaks**
+(`specs/flow.md`) when it reaches that path's collector. Progress along a path is measured
+as **arc length toward the collector**, so the unit **furthest along** a path is the one
+nearest its collector — the standard "first" target (`specs/towers.md`).
 
-The only restriction on *where* is the conduit itself:
+- **Inlets and collectors are per path.** A map with several paths has several endpoints.
+  Endpoints **may share a position**: several paths may start at one **shared inlet mouth**
+  (one entry feeding multiple routes), several paths may end at one **shared collector**
+  (multiple routes draining to one exit), or each path may have its own 1:1 inlet and
+  collector. All three arrangements are allowed; each path is still its own route from
+  start to finish.
+- **Which path a unit takes.** Each unit is assigned a path **at spawn**. The inlet
+  **distributes** units across the map's paths so **every path always carries traffic and
+  each must be defended** — by default round-robin (consecutive units go to path 0, 1, 2,
+  … and wrap), and while a wave's composition may **weight** the split (`specs/matter.md`),
+  it must **never** funnel a whole wave onto one path and leave another empty. A unit does
+  **not** change paths once assigned. A unit that **fragments** (a bonded cluster chipped
+  apart, a heavy split, a boss shedding — `specs/matter.md`) spawns its fragments on the
+  **same** path at its own position, so they continue past the towers ahead of it.
+- **Branching as shared segments.** A branching map's fork is two paths that **coincide**
+  on a shared trunk (the inlet approach) and/or a shared final run, then **diverge** into
+  distinct lanes between them. Where paths overlap, one tower covers **both** — those
+  shared stretches are the **premium** coverage, and a branching layout naturally leaves
+  **fewer** of them than lane-only stretches. On a **multiple-separate-paths** map no
+  stretch is shared, so coverage cannot be doubled up — every front costs its own towers.
 
-- A cell the **conduit passes through** — the track of either lane, plus the inlet, the
-  splitter, the confluence, and the collector — is **blocked**: no tower may occupy it.
-  The conduit is fixed and towers never reroute it; there is no maze-building.
-- Every **other** cell is buildable, and **one tower** occupies a cell — a cell that
-  already holds a tower cannot take another.
+A single serpentine path is a perfectly good **Easy** map, but it does not satisfy the
+**Medium** (a genuine fork) or **Hard** (genuinely separate tracks) topologies above.
 
-So the player may build on **any** empty cell, choosing freely *along* the conduit's
-length; the grid is the constraint on placement, not a fixed set of nodes. An empty
-buildable cell is shown as a clear marker (`specs/overview.md`); the currently hovered or
-selected cell is highlighted, and the held or selected tower's **range** is previewed
-(`specs/controls.md`). While a tower is held for placement, the legal cells are cued and a
-blocked or occupied cell is refused.
+## Free tower placement
 
-Coverage — not just density — is what the board rewards, and it falls out of the grid laid
-over the branching conduit:
+Towers are placed at **arbitrary positions** on the board — this **is** the free placement
+of a Bloons-style tower defense, **not** a snap-to-grid and **not** a fixed handful of
+nodes. A tower occupies a small round **footprint** centered where the player drops it, and
+sits exactly at the point placed.
 
-- A cell **beside Lane A only** reaches units on Lane A while they travel it, and not the
-  other lane; likewise a cell **beside Lane B only** reaches Lane B.
-- A cell beside a **shared run** — the inlet approach before the splitter, the
-  confluence, or the shared final run — reaches **both** lanes' traffic (every unit
-  passes the inlet approach and the shared final run). These shared-run cells are the
-  premium positions, and the branching layout naturally leaves **fewer** of them than
-  lane-side cells.
+The only restrictions on *where* are the paths and the other towers:
 
-Design the conduit so the grid around it offers a real choice — blanket one lane, cover
-both cheaply near the merge or the inlet, or spread thin. A tower's **range**
-(`specs/towers.md`) then decides how much of the conduit near its cell it actually
-reaches; a cell far from every lane is legal but reaches nothing.
+- **Off the paths.** A tower's footprint may **not overlap any path** — a tower may not sit
+  on the track (of any lane) or on an inlet or collector. There is a small clearance beyond
+  the visible channel so a tower reads as clearly *beside* the path, not on it. The paths
+  are fixed and towers never reroute them; there is **no maze-building**.
+- **No overlap.** A tower's footprint may **not overlap another tower's** footprint — two
+  towers cannot occupy the same spot.
+- **In bounds.** The whole footprint must lie within the board region.
+
+**Any point satisfying all three is buildable.** The player chooses freely where along a
+path to build and how densely to pack towers between the paths; the constraint is only the
+paths and the footprints, not a lattice. While a tower is **held** for placement, its ghost
+follows the pointer, its **range** is previewed as a ring, and an **illegal** spot — on a
+path, overlapping a tower, out of bounds, or unaffordable — is clearly **refused**
+(`specs/controls.md`).
+
+Coverage — not just density — is what the board rewards, and it now falls out of *where*
+you drop each tower over the map's paths:
+
+- A tower **beside one lane only** reaches the units on that lane while they travel it, and
+  not another separate lane.
+- A tower beside a **shared stretch** (a branching map's inlet approach or shared final
+  run) reaches **both** lanes' traffic — the premium spots, and fewer of them.
+- On a **multiple-separate-paths** map, a tower placed **between** two tracks may reach
+  both if they run close enough for its **range**, but the separate fronts generally each
+  demand their own coverage.
+
+A tower's **range** (`specs/towers.md`) decides how much of the nearby path it actually
+reaches; a spot far from every path is legal but reaches nothing.
 
 ### Range and targeting
 
-- A tower's **range** is a radius in logical pixels measured from its cell's **center**. A
-  unit is targetable while the point it occupies on the conduit lies within that radius.
-- By default a tower fires at the in-range unit **furthest along** the conduit toward the
+- A tower's **range** is a radius in logical pixels measured from its **placed position**.
+  A unit is targetable while the point it occupies on its path lies within that radius.
+- By default a tower fires at the in-range unit **furthest along** its path toward the
   collector — the standard "first" target — so it works on the most urgent threat. Splash
   and aura towers differ as noted in `specs/towers.md`.
 - A tower fires **automatically** at its fire rate whenever it has a valid target; there

@@ -51,15 +51,16 @@ function watch(page) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Build spots as world coordinates that snap to the build grid (specs/board.md). Keyed
-// by lane role so the demo boards read: shared inlet/final (both lanes), Lane A top,
-// Lane B bottom, and a reactor near the confluence. `spots()` turns [kind, key] pairs into
-// the [kind, x, y] triples the coordinate-based build API takes.
+// The proof runs on the MEDIUM branching map (JUNCTION): a fork into two lanes that share
+// an inlet trunk and a final run, so the demo boards read a real fork+merge with free
+// placement. Spots are world anchors beside each run; free placement snaps each to the
+// nearest legal spot (specs/board.md). Keyed by lane role: shared inlet/final (both lanes),
+// Lane A (top run y≈150), Lane B (bottom run y≈626), plus reactors near the merge.
 const SPOT = {
-  inA: [100, 356], inB: [100, 436], // shared inlet approach — reaches both lanes
-  outA: [900, 356], outB: [900, 436], // shared final run — reaches both lanes
-  a0: [180, 276], a1: [300, 156], a2: [420, 156], a3: [540, 156], a4: [660, 156], aF: [780, 300], // Lane A
-  b0: [180, 516], b1: [300, 676], b2: [420, 676], b3: [540, 676], b4: [660, 676], bF: [780, 476], // Lane B
+  inA: [90, 350], inB: [90, 426], // shared inlet trunk — reaches both lanes
+  outA: [900, 350], outB: [900, 426], // shared final run — reaches both lanes
+  a0: [200, 112], a1: [320, 112], a2: [440, 112], a3: [560, 112], a4: [680, 112], aF: [770, 210], // Lane A (top)
+  b0: [200, 664], b1: [320, 664], b2: [440, 664], b3: [560, 664], b4: [680, 664], bF: [770, 566], // Lane B (bottom)
 };
 const spots = (pairs) => pairs.map(([kind, key]) => [kind, ...SPOT[key]]);
 
@@ -83,7 +84,7 @@ async function buildBoard(page, board, upgrade = 0, branch = "A") {
     const v = window.__valence;
     for (const [kind, x, y] of board) v.build(kind, x, y);
     if (upgrade > 1) for (const [, x, y] of board) v.upgrade(x, y, upgrade, branch);
-    v.game.selectedCell = null;
+    v.game.selectedTowerId = null;
   }, { board, upgrade, branch });
 }
 
@@ -113,7 +114,7 @@ async function buildBoard(page, board, upgrade = 0, branch = "A") {
   await sleep(300);
   await page.evaluate(() => {
     const v = window.__valence;
-    v.game.start();
+    v.startOn("junction");
     v.game.devGrant(4000, 100);
     v.game.devBeginRound(9); // atoms + molecules + nobles + heavies all present
   });
@@ -125,7 +126,7 @@ async function buildBoard(page, board, upgrade = 0, branch = "A") {
     ["cleaver", "a1"], ["cleaver", "b1"], ["catalyst", "a2"], ["catalyst", "b2"],
     ["ionizer", "a4"], ["ionizer", "b4"],
   ]));
-  await page.evaluate(() => (window.__valence.game.selectedCell = null));
+  await page.evaluate(() => (window.__valence.game.selectedTowerId = null));
   // Capture once matter has fanned onto both lanes with 3+ trait categories present.
   let gsnap = {};
   for (let i = 0; i < 70; i++) {
@@ -139,7 +140,7 @@ async function buildBoard(page, board, upgrade = 0, branch = "A") {
     if (gsnap.onLanes >= 4 && gsnap.forms >= 3 && gsnap.bothLanes >= 2) break;
     await sleep(80);
   }
-  await page.evaluate(() => (window.__valence.game.selectedCell = null));
+  await page.evaluate(() => (window.__valence.game.selectedTowerId = null));
   await page.screenshot({ path: path.join(proofDir, "gameplay.png") });
   console.log("gameplay stage:", JSON.stringify(gsnap));
   const snap = await page.evaluate(() => ({ round: window.__valence.game.round, units: window.__valence.game.units.length, energy: Math.round(window.__valence.game.energy) }));
@@ -156,7 +157,7 @@ async function buildBoard(page, board, upgrade = 0, branch = "A") {
   await sleep(300);
   await page.evaluate(() => {
     const v = window.__valence;
-    v.game.start();
+    v.startOn("junction");
     v.game.devGrant(760, 14); // a thin board + low integrity: it scores, then breaches
     v.game.speed = 3;
     v.game.devBeginRound(12);
@@ -201,7 +202,7 @@ await clip(
   async (page) => {
     await page.evaluate(() => {
       const v = window.__valence;
-      v.game.start();
+      v.startOn("junction");
       v.game.devGrant(6000, 100);
       v.game.speed = 1;
       v.game.devBeginRound(9); // molecules + nobles + heavies present
@@ -217,7 +218,7 @@ await clip(
   async (page) => {
     await page.evaluate(() => {
       const v = window.__valence;
-      v.game.start();
+      v.startOn("junction");
       v.game.devGrant(2200, 20); // below the 25% alert threshold so leaks show red
       v.game.speed = 2;
       v.game.devBeginRound(10); // boss round
@@ -243,7 +244,7 @@ await clip(
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const v = window.__valence;
     const g = v.game;
-    g.start();
+    v.startOn("junction");
     g.devGrant(9999, 100);
     g.speed = 3;
     // Fully upgraded board; run a molecule/heavy/noble round and confirm decomposition.

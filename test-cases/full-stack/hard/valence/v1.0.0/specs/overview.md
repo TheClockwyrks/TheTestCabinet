@@ -3,11 +3,18 @@
 ## Overview
 
 **Valence** is a chemistry-themed **tower-defense** game for the browser. Unstable
-**matter** streams out of an **inlet** and flows along a fixed **conduit** toward a
-**collector**; you stop it by placing **towers** on a grid of build cells beside the
-conduit and breaking the matter down before it escapes. Every unit that reaches the
-collector costs you **integrity**; every unit you neutralize releases the **energy**
-that pays for more towers.
+**matter** streams out of an **inlet** and flows along a fixed **path** toward a
+**collector**; you stop it by **freely placing** **towers** beside the path and breaking
+the matter down before it escapes. Every unit that reaches the collector costs you
+**integrity**; every unit you neutralize releases the **energy** that pays for more
+towers.
+
+The campaign is played on a **map you choose at the start** (`specs/board.md`,
+`specs/flow.md`), and the maps differ in **topology** — an easy **single path**, a medium
+**branching** fork of lanes, a hard set of **multiple separate paths** — and in **path
+style** (some maps sweep as smooth **curves**, others run as straight lines with
+**right-angle** corners). Towers are **placed freely**, Bloons-style: anywhere on the
+board that is off the paths and not on another tower, not snapped to a grid.
 
 Valence's defining idea is that matter is **hit points, damage types, and stackable
 traits** — not a "pop a layer" ladder where each form has exactly one counter. Every
@@ -49,17 +56,19 @@ they cross-reference each other by name and form one specification.
 
 - `specs/overview.md` — this file: goals, hard requirements, free choices, the
   coordinate system, the stage layout, the palette and type, and the visual design.
-- `specs/board.md` — the board: the conduit tracks (the inlet, the fork into two lanes,
-  the merge, and the collector), how matter is split across the lanes, the build grid,
-  tower range and coverage, and the top status bar and right build panel.
+- `specs/board.md` — the board: the **maps** the campaign offers (single-path, branching,
+  and multiple-separate-path topologies, in curved or straight-and-right-angle styles),
+  the **paths** matter travels (inlets, collectors, and how units are distributed across a
+  map's paths), **free tower placement** (off the paths, no overlap — no grid), tower range
+  and coverage, and the top status bar and right build panel.
 - `specs/matter.md` — the matter: hit points, the three damage types, the three
   stackable traits (bonded, heavy, inert) and how they gate damage and detection, the
   matter types and their stats, and how a wave is built. **Read this carefully.**
 - `specs/towers.md` — the seven towers (Emitter, Ionizer, Cleaver, Reactor, Beam,
   Catalyst, Moderator), their damage types, detection, the two-branch upgrade choice,
   and how you build, upgrade, and sell them.
-- `specs/controls.md` — the mouse and keyboard controls: selecting cells, building,
-  upgrading and selling towers, starting rounds, game speed, and pause.
+- `specs/controls.md` — the mouse and keyboard controls: freely placing and selecting
+  towers, upgrading and selling them, starting rounds, game speed, and pause.
 - `specs/flow.md` — the economy, integrity, the round progression and victory, scoring,
   the game states, the required menus, the HUD, and what is out of scope.
 - `specs/assets.md` — the **asset-production contract**: every asset you must produce
@@ -72,8 +81,8 @@ they cross-reference each other by name and form one specification.
 ## Goal of this build
 
 Produce a complete, polished, **playable** game that runs entirely in a browser. This is
-a substantial front-end task: a fixed-step real-time simulation of matter flowing along
-branching tracks, grid-snapped tower placement with automatic targeting, a hit-point /
+a substantial front-end task: a fixed-step real-time simulation of matter flowing along a
+chosen map's paths, free tower placement with automatic targeting, a hit-point /
 damage-type / stackable-trait model with seven general-purpose towers and their two-branch
 upgrades, an economy of energy, interest, and integrity, an escalating round campaign with
 a fragmenting boss, multiple game states and menus, and a HUD — **and** a full pass of
@@ -116,10 +125,12 @@ person would actually want to play — tense, legible, and alive — not a tech 
 You choose the language, framework, bundler, and rendering approach, subject to the
 requirements above. Plain TypeScript with Canvas 2D is entirely sufficient; a framework
 is not required. Favor a clean, well-structured codebase over any particular technology.
-**You design the exact geometry of the conduit and the build grid laid over it** (within
-the fixed topology and the grid rules `specs/board.md` sets), the exact visual design of
-the matter and towers, and how the board reads on screen — there is no pixel-exact layout
-to reproduce, only the topology, stats, and behavior the specs pin.
+**You design the exact geometry of each map's paths** (within the required topologies and
+path styles `specs/board.md` sets — single-path, branching, and multiple-separate-path
+maps, with at least one curved and at least one straight/right-angle map), the free-placement
+footprint and clearance, the exact visual design of the matter and towers, and how the
+board reads on screen — there is no pixel-exact layout to reproduce, only the topologies,
+stats, and behavior the specs pin.
 
 ## Coordinate system and presentation
 
@@ -143,8 +154,8 @@ The stage is divided into three regions (`specs/board.md` details each):
   indicator, and the global speed/pause/mute controls;
 - the **right build panel** — `x` in `[1000, 1280]`, `y` in `[56, 720]` — with the tower
   shop, the selected-tower inspector, the next-round preview, and the start/send control;
-- the **board** — `x` in `[0, 1000]`, `y` in `[56, 720]` — the conduit, its build grid
-  and towers, the matter, projectiles, and effects.
+- the **board** — `x` in `[0, 1000]`, `y` in `[56, 720]` — the chosen map's paths and the
+  freely-placed towers, the matter, projectiles, and effects.
 
 The status bar and build panel are fixed and always fully visible; the board fills the
 rest. The whole board is on screen at once — there is no scrolling camera.
@@ -159,9 +170,9 @@ matter apart. The canonical palette and type are below; match them.
 | --- | --- |
 | Deep field / void (background) | `#090d13` |
 | Substrate (board fill) | `#10171f` |
-| Conduit / track | `#22303e` |
-| Conduit flow glow (direction of travel) | `#3d6b8c` |
-| Build-cell marker (empty) | `#2b3d4e` |
+| Path / track (conduit channel) | `#22303e` |
+| Path flow glow (direction of travel) | `#3d6b8c` |
+| Placement cue (valid spot) | `#2b3d4e` |
 | Energy (currency) | `#ffcf4a` |
 | Integrity (containment) | `#46d6e6` |
 | Free atom — element I | `#7fe0a0` |
@@ -187,9 +198,8 @@ matter apart. The canonical palette and type are below; match them.
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do not depend
   on a web font that must be downloaded; a system monospace stack is required so the game
   renders identically offline.
-- Keep the board legible: a player must be able to tell the conduit from the substrate,
-  an empty build cell from a built tower, and the direction matter is flowing, at a
-  glance.
+- Keep the board legible: a player must be able to tell a path from the substrate, a legal
+  placement spot from an illegal one, and the direction matter is flowing, at a glance.
 - **A unit's traits must be unmistakable, and readable by more than color alone.** What
   a unit asks of the board — chip its bonds, bring kinetic/nuclear, detect it — is the
   core read of the game (`specs/matter.md`), so the traits must be distinguishable by
@@ -210,9 +220,8 @@ matter apart. The canonical palette and type are below; match them.
   (`specs/towers.md`, `specs/assets.md`).
 - **You produce the art, effects, and audio** with the on-`PATH` tools — see
   `specs/assets.md`, which is the contract for the sprites, animations, particle bursts,
-  and audio, and how to load and wire each in. The HUD, build panel, menus, build-cell
-  highlights, range previews, and selection feedback all come from your code, in this
-  palette.
+  and audio, and how to load and wire each in. The HUD, build panel, menus, placement
+  cues, range previews, and selection feedback all come from your code, in this palette.
 - The three canonical screens — the title screen, the live board, and the
   containment-failed screen — are described in full under Game states in `specs/flow.md`
   (with the victory screen). Implement each as described, in this palette and type.
@@ -229,6 +238,6 @@ Treat them as **illustrative examples, not targets to reproduce**: they show one
 screens can look, but design your own menus, board geometry, and layout rather than copy
 them. The only firm requirement is that every menu and navigation path this specification
 mandates is present, rendered in the palette and type the spec defines. They are images
-only — and the exact conduit shape, build grid, tower mix, and matter positions they
+only — and the exact path shapes, tower placement, tower mix, and matter positions they
 show are just **one example moment**. Build the screens from this specification, and
-design your own conforming board.
+design your own conforming maps.

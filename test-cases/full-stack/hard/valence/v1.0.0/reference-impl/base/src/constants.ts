@@ -30,7 +30,7 @@ export const COL = {
   substrate: "#10171f",
   conduit: "#22303e",
   flow: "#3d6b8c",
-  cell: "#2b3d4e", // build-cell marker (empty)
+  cell: "#2b3d4e", // placement cue (valid spot) — free placement, no grid (specs/board.md)
   energy: "#ffcf4a",
   integrity: "#46d6e6",
   elemI: "#7fe0a0",

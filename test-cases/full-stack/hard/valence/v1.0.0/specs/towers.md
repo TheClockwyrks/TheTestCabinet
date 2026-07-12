@@ -2,7 +2,7 @@
 
 This file defines the **seven towers** — five that deal damage and two that support —
 their stats, their **damage types**, their **detection**, and the two-branch **upgrade**
-choice each offers. It builds on the board and its build grid in `specs/board.md`, the
+choice each offers. It builds on the board and its free tower placement in `specs/board.md`, the
 hit points / damage-type / trait model in `specs/matter.md`, the controls in
 `specs/controls.md`, and the economy in `specs/flow.md`. Ranges are in logical pixels;
 costs and energy are the unitless values of `specs/flow.md`.
@@ -24,8 +24,9 @@ a board is a set of genuine choices, not a fixed checklist.
 
 ## Shared targeting rules
 
-- A tower is built on an empty **build cell** (`specs/board.md`) and reaches units on the
-  conduit within its **range** (a radius from the cell's center). One tower per cell.
+- A tower is **placed freely** on the board (`specs/board.md`) — anywhere off the paths and
+  not overlapping another tower — and reaches units on the paths within its **range** (a
+  radius from its placed position). Towers cannot overlap.
 - The five **damage** towers fire at their **fire rate** (shots per second) at a
   **valid** in-range unit. A unit is valid only if the tower can **see** it (it is not
   inert, or it is revealed, or the tower detects) **and** the tower's **damage type can
@@ -119,9 +120,9 @@ that neither branch dominates).
 
 ## Building, upgrading, and selling
 
-- **Build.** Select a tower in the shop (`specs/board.md`) and place it on an empty
-  cell. Its cost is deducted from your energy; you cannot build what you cannot afford
-  or on an occupied or conduit-blocked cell.
+- **Build.** Select a tower in the shop (`specs/board.md`) and place it at any legal spot
+  on the board. Its cost is deducted from your energy; you cannot build what you cannot
+  afford, on a path, out of bounds, or where it would overlap another tower.
 - **Upgrade.** A selected tower upgrades to **II**, then to **III** — where the inspector
   presents the **two branch choices** and you pick one (`specs/controls.md`).
   - **Cost.** Upgrading to **II** costs `1.0×` the tower's build cost; to **III**, `1.7×`.
@@ -130,7 +131,7 @@ that neither branch dominates).
   (build plus upgrades), rounded down — **except** a tower sold during the same build
   phase it was placed on, before that round has started, which refunds its **full**
   spend. During the untimed opening build phase (`specs/flow.md`) you can freely place,
-  re-shape, and sell back your opening board without penalty. Selling frees the cell
+  re-shape, and sell back your opening board without penalty. Selling frees the spot
   immediately.
 
 Upgrading and selling happen through the selected-tower inspector in the build panel

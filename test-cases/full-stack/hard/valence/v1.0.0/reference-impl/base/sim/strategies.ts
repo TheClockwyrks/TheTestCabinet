@@ -5,26 +5,27 @@
 //   1. energy-only spam must LOSE (no answer to heavies).
 //   2. a no-detection board must LOSE (inert matter leaks).
 //   3. a never-upgraded board must LOSE late.
-//   4. a one-lane cluster must LOSE (the grid rewards coverage).
+//   4. a one-lane cluster must LOSE (coverage matters — free placement, both lanes).
 //   5. a competent mixed + upgraded + well-placed board must WIN.
 //   6. (soft) both branch leanings can win — neither branch dominates.
 
 import { ANCHORS, layoutController, type BuildOrder, type Controller } from "./harness";
+import type { Pt } from "../src/board";
 import type { Branch, TowerKind } from "../src/constants";
 
-// Pick every k-th cell from a lane run, so towers spread along it rather than clumping.
-function spread(cells: number[], count: number, offset = 0): number[] {
-  const out: number[] = [];
-  const step = Math.max(1, Math.floor(cells.length / count));
+// Pick every k-th anchor from a lane run, so towers spread along it rather than clumping.
+function spread(pts: Pt[], count: number, offset = 0): Pt[] {
+  const out: Pt[] = [];
+  const step = Math.max(1, Math.floor(pts.length / count));
   for (let i = 0; i < count; i++) {
-    const idx = (offset + i * step) % cells.length;
-    out.push(cells[idx]!);
+    const idx = (offset + i * step) % pts.length;
+    out.push(pts[idx]!);
   }
   return [...new Set(out)];
 }
 
-function order(kind: TowerKind, cell: number, level?: 1 | 2 | 3, branch?: Branch, minRound?: number): BuildOrder {
-  return { kind, cell, level, branch, minRound };
+function order(kind: TowerKind, at: Pt, level?: 1 | 2 | 3, branch?: Branch, minRound?: number): BuildOrder {
+  return { kind, at, level, branch, minRound };
 }
 
 export function controllerSet(): Controller[] {

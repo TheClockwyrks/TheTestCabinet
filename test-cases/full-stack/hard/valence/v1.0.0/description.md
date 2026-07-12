@@ -1,7 +1,9 @@
 **Valence** is a chemistry-themed tower-defense game. Unstable matter streams out of
-an inlet and flows along a fixed conduit that forks into two lanes and rejoins before
-the collector; you defend it by placing **towers** on the board's build grid to break
-the matter down before it escapes.
+an inlet and flows along a fixed path toward a collector; you pick a **map** at the
+start — an easy single path, a medium **branching** fork of lanes, or a hard set of
+**multiple separate paths** (some maps curved, others straight with right-angle
+corners) — and defend it by **freely placing** **towers** beside the paths, Bloons-style,
+to break the matter down before it escapes.
 
 Its defining idea is that matter is **hit points, damage types, and stackable traits** —
 not a "pop a layer" ladder where each form has exactly one counter. Every unit carries

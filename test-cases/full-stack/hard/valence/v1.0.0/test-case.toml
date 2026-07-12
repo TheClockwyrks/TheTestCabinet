@@ -23,8 +23,9 @@ name = "Valence"
 type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Valence is hard:
-# it asks for a real-time tower-defense simulation — matter flowing along fixed
-# branching-and-merging tracks, grid-snapped tower placement, a hit-point / damage-type
+# it asks for a real-time tower-defense simulation — matter flowing along a chosen map's
+# paths (an easy single path, a medium branching fork, or a hard set of multiple separate
+# paths, in curved or straight/right-angle styles), free Bloons-style tower placement, a hit-point / damage-type
 # (energy, kinetic, nuclear) / stackable-trait (bonded, heavy, inert) model with seven
 # general-purpose towers each choosing one of two upgrade branches, detection of camo-like
 # inert matter from several sources, a live economy of energy/interest/integrity, and an
@@ -40,12 +41,12 @@ tags = ["tower-defense", "strategy", "2d", "chemistry"]
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.
 summary = """
-A chemistry-themed tower defense: unstable matter streams along branching \
-conduits, and you place towers on a build grid to break it down before it reaches \
-the collector — chip bonded clusters open, crack energy-immune heavies with kinetic \
-or nuclear damage, and detect camouflaged inert matter — with seven general-purpose \
-towers and branching upgrades, while producing every sprite, effect, and sound with \
-the on-PATH asset tools."""
+A chemistry-themed tower defense: pick a map — a single path, a branching fork of \
+lanes, or multiple separate paths — and freely place towers beside its conduits to \
+break unstable matter down before it reaches the collector — chip bonded clusters \
+open, crack energy-immune heavies with kinetic or nuclear damage, and detect \
+camouflaged inert matter — with seven general-purpose towers and branching upgrades, \
+while producing every sprite, effect, and sound with the on-PATH asset tools."""
 
 # Site-facing prose describing the case, relative to this version folder. NOT seeded
 # into a run; it exists only to introduce the case on the site.
@@ -219,12 +220,12 @@ dest = "proof/pressure.webm"
 [[domain]]
 id = "simulation"
 name = "Reaction Systems"
-description = "The interacting real-time systems: matter flowing along the fixed branching-and-merging conduits, grid-snapped tower placement and automatic targeting, the hit-point / damage-type / stackable-trait model (any tower chips a bonded cluster's bond pool into a spray of atoms; only kinetic or nuclear damage cracks an energy-immune heavy; inert matter is untargetable until detected), the seven general-purpose towers with their two-branch upgrades, the catalyst reveal/excite aura and the moderator slow, the energy/interest/integrity economy, and the escalating round campaign with its fragmenting boss."
+description = "The interacting real-time systems: the map select and its maps (an easy single path, a medium branching fork of lanes, a hard set of multiple separate paths — curved or straight/right-angle), matter flowing along a chosen map's paths and distributed across them, free Bloons-style tower placement (off the paths, no overlap) and automatic targeting, the hit-point / damage-type / stackable-trait model (any tower chips a bonded cluster's bond pool into a spray of atoms; only kinetic or nuclear damage cracks an energy-immune heavy; inert matter is untargetable until detected), the seven general-purpose towers with their two-branch upgrades, the catalyst reveal/excite aura and the moderator slow, the energy/interest/integrity economy, and the escalating round campaign with its fragmenting boss."
 
 [[domain]]
 id = "presentation"
 name = "Presentation & Assets"
-description = "The genuinely tool-produced assets and how the build presents them: the atom, bonded-cluster, heavy, inert, and boss matter sprites (with their shell / bond-integrity / hit-point / reveal reads), the animated orbiting-electron and boss cycles, the seven tower sprites across their tiers and branches, the damage-type-colored projectiles, the tracks and build grid, the live particle bursts, the produced sound effects and reactor music bed, and the in-code HUD and build panel that read it all at a glance — including whether a player can tell at speed what each unit on screen demands (chip its bonds / kinetic-nuclear / detect it)."
+description = "The genuinely tool-produced assets and how the build presents them: the atom, bonded-cluster, heavy, inert, and boss matter sprites (with their shell / bond-integrity / hit-point / reveal reads), the animated orbiting-electron and boss cycles, the seven tower sprites across their tiers and branches, the damage-type-colored projectiles, the path tracks (curved and straight/right-angle), the live particle bursts, the produced sound effects and reactor music bed, and the in-code HUD, map-select previews, and build panel that read it all at a glance — including whether a player can tell at speed what each unit on screen demands (chip its bonds / kinetic-nuclear / detect it)."
 
 # Reviewer checklist items, common to every variant. The major, observable
 # requirements a reviewer must explicitly check by playing the build — the things
@@ -237,18 +238,18 @@ description = "The genuinely tool-produced assets and how the build presents the
 
 # --- Reaction Systems -----------------------------------------------------------
 [[review_item]]
-id = "branching-tracks"
-title = "Branching, merging conduits"
-text = "Matter enters at the inlet and flows a fixed conduit that forks into two lanes and rejoins before the collector; units are split across both lanes so both must be defended, and matter that reaches the collector leaks. The track is one fixed board, not a per-game random layout."
+id = "maps-and-paths"
+title = "Multiple maps with distinct path topologies"
+text = "A MAP SELECT lets the player choose among several fixed, hand-authored maps that differ in topology — at least an easy SINGLE PATH, a medium BRANCHING fork of lanes, and a hard set of MULTIPLE SEPARATE paths — and in path style (at least one map's paths are smooth curves, at least one map's are straight lines with right-angle corners). Matter enters at each inlet, is distributed across the map's path(s) so every path carries traffic and each must be defended, and leaks at a collector. Maps are chosen, not per-game random layouts, and every map plays the same rounds/economy — the topology, not the numbers, is the difficulty."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
-id = "grid-placement"
-title = "Build-grid placement and targeting"
-text = "Towers snap to a grid of build cells beside the conduit (one tower per cell, never on a conduit-crossed cell), each covering the track within its range; a built tower automatically fires at valid in-range matter with no manual trigger. Cells beside the shared segments reach both lanes; lane cells reach one."
+id = "free-placement"
+title = "Free tower placement and targeting"
+text = "Towers are placed FREELY at arbitrary board positions, Bloons-style — not snapped to a grid and not at fixed nodes — refused only when the footprint would sit on a path, overlap another tower, or fall out of bounds (or be unaffordable). Each covers the nearby path(s) within its range, and a built tower automatically fires at valid in-range matter with no manual trigger. A tower beside a shared/branch stretch reaches both lanes; one beside a single lane reaches one."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
@@ -319,7 +320,7 @@ proof = "gameplay"
 [[review_item]]
 id = "produced-tower-sprites"
 title = "Produced tower sprites across tiers and branches"
-text = "The seven towers (Emitter, Ionizer, Cleaver, Reactor, Beam, Catalyst, Moderator), the damage-type-colored projectiles, and the tracks, build grid, inlet, and collector are rendered from sprites the build produced with `draw`, and a tower's sprite visibly changes as it is upgraded through its tiers and reads as which tier-III branch it took — not flat rectangles or ad-hoc canvas fills."
+text = "The seven towers (Emitter, Ionizer, Cleaver, Reactor, Beam, Catalyst, Moderator), the damage-type-colored projectiles, and the path tracks, inlet, and collector are rendered from sprites the build produced with `draw`, and a tower's sprite visibly changes as it is upgraded through its tiers and reads as which tier-III branch it took — not flat rectangles or ad-hoc canvas fills."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
@@ -345,7 +346,7 @@ proof = "pressure"
 [[review_item]]
 id = "readable-at-speed"
 title = "Readable matter, HUD, and build panel"
-text = "A player can tell at a glance — even at fast speed — what each unit on screen demands (chip its bonds vs bring kinetic/nuclear vs detect it, and the stacked-trait combos), read energy, integrity, the round number and its progress, and read the shop and the selected-tower inspector (damage type, tier, branch). The HUD, build panel, cell highlights, range previews, and menus are drawn in code; only their small icons may be produced sprites."
+text = "A player can tell at a glance — even at fast speed — what each unit on screen demands (chip its bonds vs bring kinetic/nuclear vs detect it, and the stacked-trait combos), read energy, integrity, the round number and its progress, and read the shop and the selected-tower inspector (damage type, tier, branch). The HUD, build panel, placement cues, range previews, map-select previews, and menus are drawn in code; only their small icons may be produced sprites."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
@@ -355,7 +356,7 @@ proof = "gameplay"
 [[review_item]]
 id = "states-complete"
 title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the live board with its HUD and build panel, pause (resume/restart/quit to menu), containment-failed (defeat), and victory after the final round — each end screen showing the rounds survived, with a way to play again and to the menu."
+text = "Every game state is reachable and behaves correctly: title menu, map select (choose one of the maps, or back to the menu), how-to-play, the live board with its HUD and build panel, pause (resume/restart/quit to menu), containment-failed (defeat), and victory after the final round — each end screen showing the rounds survived, with a way to play again (on the same map) and to the menu."
 weight = 1
 reference = "title"
 proof = "title"

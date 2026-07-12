@@ -23,7 +23,7 @@ drawn **in code** (below):
 
 | Tool | Produces | Used for |
 | --- | --- | --- |
-| `draw` | one sprite → a PNG | the tracks, the build-cell marker, inlet/collector, towers, matter, and HUD icons |
+| `draw` | one sprite → a PNG | the path tracks, inlet/collector, towers, matter, and HUD icons |
 | `draw-sheet` | a sprite sheet, **one PNG per frame** | the orbiting-electron, tower-fire, and boss animations |
 | `particle-2d` | a particle system → a `system.json` | the decomposition bursts and muzzle effects |
 | `sfx-synth` | a procedural sound → a `.wav` | shot / strip / snap / alarm cues from raw synthesis |
@@ -85,11 +85,12 @@ icons may be `16×16` or `24×24`.
 
 Produce at least these, in the palette from `specs/overview.md`:
 
-- **Board** — the **conduit/track** segment art (so the channel reads as a glowing
-  conduit with a sense of flow), the **empty build-cell** marker, the **inlet**, and the
-  **collector** (`specs/board.md`). A tiling conduit sprite or a small set of
-  segment/corner pieces is fine; the goal is that the conduit and its direction read at
-  a glance.
+- **Board** — the **path/track** segment art (so a path reads as a glowing conduit with a
+  sense of flow, whether it sweeps as a **curve** or runs straight with **right-angle**
+  corners — `specs/board.md`), the **inlet**, and the **collector**. A tiling track sprite
+  or a small set of segment/corner pieces is fine; the goal is that a path and its direction
+  read at a glance on every map. (There is no build-cell marker — placement is free, and the
+  legal/illegal placement cue is drawn in code, below.)
 - **Towers** — each of the seven towers (Emitter, Ionizer, Cleaver, Reactor, Beam,
   Catalyst, Moderator, `specs/towers.md`), **color-coded** by role, and each with a
   **visible change across its tiers** — tier II stronger and tier III carrying a mark of
@@ -223,16 +224,17 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   may be produced `draw` sprites, but the panels, bars, text, and layout are code.
 - All **menus, overlays, and state screens** — title, how-to-play, pause, victory, and
   containment-failed (`specs/flow.md`).
-- **Board and selection feedback** — the build-cell highlights, the held-tower and
-  selected-tower **range rings**, the build-legality cues, and each unit's **integrity
-  read** (a free atom's shell rings drawn over the produced orb, a bonded cluster's
+- **Board and selection feedback** — the map-select previews, the held-tower ghost and its
+  legal/illegal placement cue, the held-tower and selected-tower **range rings**, and each
+  unit's **integrity read** (a free atom's shell rings drawn over the produced orb, a bonded
+  cluster's
   draining bond arc, a heavy's draining hit-point arc, and the reveal/cloak mark on
   inert matter and the excite/slow/mark status rings; the composited electron overlay
   may be a produced `draw-sheet` cycle) — the code that reads the simulation and draws
   these cues (`specs/board.md`, `specs/matter.md`, `specs/controls.md`).
-- The **conduit routing** — laying the produced conduit sprites along the fixed track and
-  drawing the flow direction; the *tiles/segments* are produced, deciding where they go is
-  code.
+- The **path routing** — laying the produced track sprites along each map's paths (curved
+  or straight/right-angle) and drawing the flow direction; the *tiles/segments* are
+  produced, deciding where they go per map is code.
 
 ## Genuinely produce the assets — this is the point here
 

@@ -1,9 +1,11 @@
 # Valence
 
 **Valence** is a chemistry-themed **tower-defense** game for the browser. Unstable
-**matter** streams out of an **inlet** and flows along a fixed branching **conduit**
-toward a **collector**; you stop it by placing **towers** on a grid of build cells beside
-the conduit and breaking the matter down before it escapes. Every unit that reaches the
+**matter** streams out of an **inlet** and flows along a fixed **path** toward a
+**collector**; you pick a **map** at the start — an easy **single path**, a medium
+**branching** fork of lanes, or a hard set of **multiple separate paths** (some maps
+curved, some straight with right-angle corners) — and stop the matter by **freely placing**
+**towers** beside the paths, Bloons-style, before it escapes. Every unit that reaches the
 collector costs **integrity**; every unit you neutralize releases the **energy** that pays
 for more towers.
 
@@ -44,8 +46,11 @@ monorepo), and the sounds through the Web Audio API.
 
 ## Controls
 
-- **Build** — click a tower in the shop (or press **1**–**7**), then click an empty grid
-  cell beside the conduit. `Esc` / right-click leaves build mode.
+- **Pick a map** — the campaign start opens a **map select** (single path / branching /
+  multiple separate paths, curved or straight); choose one to play the run on it.
+- **Build** — click a tower in the shop (or press **1**–**7**), then click any legal spot
+  on the board — anywhere off the paths and clear of other towers (free, Bloons-style
+  placement). `Esc` / right-click leaves build mode.
 - **Select / upgrade / sell** — click a built tower to select it; **U** upgrades (at tier
   III, click one of the two **branch** buttons in the inspector), **S** sells.
 - **Start / send round** — **Space** or the panel button. Before Round 1 the build phase
@@ -69,7 +74,7 @@ correctly when served from any base path, including a per-run sub-path.
 ## Layout
 
 - [`src/`](src/) — the game. `constants.ts` (stats/palette + the `deriveStats` tower model),
-  `mode.ts` (the campaign start), `board.ts` (conduit geometry + the build grid),
+  `mode.ts` (the campaign start), `board.ts` (the map catalog, path geometry + free placement),
   `waves`/`sim.ts` (the fixed-step simulation: the hit-point / damage-type / stackable-trait
   model, detection, and the branch upgrades), `assets.ts` / `audio.ts` / `particles.ts`
   (loading and playing the produced art, sound, and effects), `render.ts` (all drawing + HUD),

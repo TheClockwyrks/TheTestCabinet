@@ -30,19 +30,7 @@ import {
   type MatterType,
   type TowerKind,
 } from "./constants";
-import {
-  CELL,
-  CELLS,
-  COLLECTOR_POS,
-  INLET_POS,
-  cellCenter,
-  cellIdAt,
-  isBlocked,
-  laneLength,
-  laneSamples,
-  sampleLane,
-  type Lane,
-} from "./board";
+import { Board, MAPS, TOWER_FOOTPRINT, type GameMap } from "./board";
 import { projSprite, towerSprite, type Assets } from "./assets";
 import type { Bursts } from "./particles";
 import type { Clickable, Tower, Unit } from "./types";
@@ -78,12 +66,6 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y + h, x, y, rr);
   ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
-}
-
-function strokeCellRect(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
-  const s = CELL - 6;
-  roundRect(ctx, cx - s / 2, cy - s / 2, s, s, 5);
-  ctx.stroke();
 }
 
 function text(
@@ -136,6 +118,10 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
     drawTitle(ctx, game, A, clicks);
     return clicks;
   }
+  if (game.state === "mapselect") {
+    drawMapSelect(ctx, game, clicks);
+    return clicks;
+  }
   if (game.state === "howto") {
     drawHowto(ctx, clicks);
     return clicks;
@@ -158,78 +144,48 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
 }
 
 // ---- board --------------------------------------------------------------------
-function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
-  ctx.fillStyle = COL.substrate;
-  ctx.fillRect(BOARD_X0, BOARD_Y0, BOARD_X1 - BOARD_X0, BOARD_Y1 - BOARD_Y0);
-  ctx.strokeStyle = "rgba(255,255,255,0.03)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = BOARD_X0; x <= BOARD_X1; x += 40) {
-    ctx.moveTo(x, BOARD_Y0);
-    ctx.lineTo(x, BOARD_Y1);
-  }
-  for (let y = BOARD_Y0; y <= BOARD_Y1; y += 40) {
-    ctx.moveTo(BOARD_X0, y);
-    ctx.lineTo(BOARD_X1, y);
-  }
-  ctx.stroke();
-
+// Lay the produced track sprites along every path of the current map (curved or
+// straight/right-angle), draw the flow direction and the inlet/collector of each path,
+// then the auras, the selected tower's range, and the towers. Placement is free, so there
+// is no grid to draw — the legal/illegal cue rides the held-tower cursor (drawBuildCursor).
+function drawPaths(ctx: CanvasRenderingContext2D, board: Board, A: Assets, step: number, size: number): void {
   const conduit = A.sprite("board/conduit");
   ctx.save();
   ctx.shadowColor = COL.flow;
   ctx.shadowBlur = 10;
-  for (const lane of [0, 1] as Lane[]) for (const p of laneSamples(lane, 9)) blit(ctx, conduit, p.x, p.y, 22, 22, p.ang);
+  for (let i = 0; i < board.pathCount; i++) for (const p of board.pathSamples(i, step)) blit(ctx, conduit, p.x, p.y, size, size, p.ang);
   ctx.restore();
+}
+
+function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+  const board = game.board;
+  ctx.fillStyle = COL.substrate;
+  ctx.fillRect(BOARD_X0, BOARD_Y0, BOARD_X1 - BOARD_X0, BOARD_Y1 - BOARD_Y0);
+
+  drawPaths(ctx, board, A, 9, 22);
 
   const flow = A.sprite("board/flow");
   const march = (time * 60) % 46;
-  for (const lane of [0, 1] as Lane[]) {
-    const total = laneLength(lane);
+  for (let i = 0; i < board.pathCount; i++) {
+    const total = board.pathLength(i);
     for (let s = march; s < total; s += 46) {
-      const p = sampleLane(lane, s);
+      const p = board.sample(i, s);
       ctx.globalAlpha = 0.55;
       blit(ctx, flow, p.x, p.y, 15, 15, p.ang);
     }
   }
   ctx.globalAlpha = 1;
 
-  blit(ctx, A.sprite("board/inlet"), INLET_POS.x + 6, INLET_POS.y, 40, 40, 0);
-  blit(ctx, A.sprite("board/collector"), COLLECTOR_POS.x - 4, COLLECTOR_POS.y, 40, 40, 0);
-
-  const nodeImg = A.sprite("board/node");
-  const holding = game.buildKind != null;
-  for (const c of CELLS) {
-    if (c.blocked || game.towers.has(c.id)) continue;
-    const nearLane = c.laneDist < 62;
-    if (!holding && !nearLane) continue;
-    const legal = holding && game.energy >= TOWERS[game.buildKind!].cost;
-    ctx.globalAlpha = legal ? 1 : holding ? 0.45 : nearLane ? 0.7 : 0.35;
-    blit(ctx, nodeImg, c.cx, c.cy, 22, 22, 0);
-    ctx.globalAlpha = 1;
-    if (legal) {
-      ctx.strokeStyle = COL.integrity;
-      ctx.globalAlpha = 0.35 + 0.22 * Math.sin(time * 6);
-      ctx.lineWidth = 1.5;
-      strokeCellRect(ctx, c.cx, c.cy);
-      ctx.globalAlpha = 1;
-    }
-  }
-  if (game.hoverCell != null) {
-    const hc = CELLS[game.hoverCell]!;
-    const occupied = game.towers.has(hc.id);
-    let color: string = COL.text;
-    if (holding) color = !hc.blocked && !occupied && game.energy >= TOWERS[game.buildKind!].cost ? COL.integrity : COL.alert;
-    ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.85;
-    ctx.lineWidth = 2;
-    strokeCellRect(ctx, hc.cx, hc.cy);
-    ctx.globalAlpha = 1;
+  // Inlet at the start of each path, collector at its end (positions may be shared).
+  for (const path of board.paths) {
+    blit(ctx, A.sprite("board/inlet"), path.inlet.x + 6, path.inlet.y, 40, 40, 0);
+    blit(ctx, A.sprite("board/collector"), path.collector.x - 4, path.collector.y, 40, 40, 0);
   }
 
-  for (const t of game.towers.values()) drawAura(ctx, game, t);
+  for (const t of game.towers) drawAura(ctx, game, t);
   const sel = game.selectedTower;
   if (sel) drawRange(ctx, sel.x, sel.y, sel.range, sel.kind);
-  for (const t of game.towers.values()) drawTower(ctx, t, A, game);
+  for (const t of game.towers) drawTower(ctx, t, A, game);
 }
 
 // Reactor Fallout zones — an irradiated field that damages and reveals (specs/towers.md).
@@ -308,7 +264,7 @@ function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Gam
       ctx.restore();
     }
   }
-  if (game.selectedCell === t.cell) {
+  if (game.selectedTowerId === t.id) {
     ctx.strokeStyle = COL.text;
     ctx.lineWidth = 2;
     roundRect(ctx, t.x - size / 2, cy - size / 2, size, size, 5);
@@ -342,7 +298,7 @@ function hasT(u: Unit, t: "bonded" | "heavy" | "inert"): boolean {
 
 function drawUnits(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   for (const u of game.units) {
-    const p = sampleLane(u.lane, u.s);
+    const p = game.board.sample(u.lane, u.s);
     const cloaked = hasT(u, "inert") && !u.revealed;
     ctx.save();
     if (cloaked) ctx.globalAlpha = 0.5; // an unrevealed inert unit reads as shrouded
@@ -748,19 +704,29 @@ function button(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y
   if (enabled) clicks.push({ x, y, w, h, action });
 }
 
-// ---- build cursor (held tower + range) ----------------------------------------
+// ---- build cursor (held tower ghost + range + legality) -----------------------
+// Free placement (specs/board.md): the held tower follows the pointer exactly, its range
+// is previewed, and a green/red footprint ring cues whether the spot is legal.
 function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   if (!game.buildKind) return;
   if (game.state !== "playing") return;
   const px = game.pointerX,
     py = game.pointerY;
   if (px < BOARD_X0 || px > BOARD_X1 || py < BOARD_Y0 || py > BOARD_Y1) return;
-  const cellId = cellIdAt(px, py);
-  const legal = cellId != null && !isBlocked(cellId) && !game.towers.has(cellId);
-  const c = cellId != null ? cellCenter(cellId) : { x: px, y: py };
-  drawRange(ctx, c.x, c.y, deriveStats(game.buildKind, 1, null).range, game.buildKind);
+  const legal = game.canBuildAt(px, py, game.buildKind);
+  drawRange(ctx, px, py, deriveStats(game.buildKind, 1, null).range, game.buildKind);
+  // Footprint validity ring.
+  ctx.save();
+  ctx.strokeStyle = legal ? COL.integrity : COL.alert;
+  ctx.fillStyle = hexA(legal ? COL.integrity : COL.alert, 0.12);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(px, py, TOWER_FOOTPRINT, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
   ctx.globalAlpha = legal ? 0.95 : 0.4;
-  towerHead(ctx, A, game.buildKind, 1, c.x, c.y - 4, 34, -Math.PI / 2);
+  towerHead(ctx, A, game.buildKind, 1, px, py - 4, 34, -Math.PI / 2);
   ctx.globalAlpha = 1;
 }
 
@@ -769,7 +735,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.save();
   ctx.globalAlpha = 0.25;
   const conduit = A.sprite("board/conduit");
-  for (const lane of [0, 1] as Lane[]) for (const p of laneSamples(lane, 16)) blit(ctx, conduit, p.x, p.y, 18, 18, p.ang);
+  for (let i = 0; i < game.board.pathCount; i++) for (const p of game.board.pathSamples(i, 16)) blit(ctx, conduit, p.x, p.y, 18, 18, p.ang);
   ctx.restore();
 
   const grad = ctx.createLinearGradient(360, 0, 920, 0);
@@ -802,6 +768,120 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   text(ctx, "↑↓ SELECT    ENTER CONFIRM    MOUSE OK", STAGE_W / 2, 660, 13, COL.text3, "center", "500", 4);
 }
 
+// ---- map select ---------------------------------------------------------------
+// Cache one Board per map so its dense path polylines can be drawn as a preview thumbnail.
+const previewBoards = new Map<string, Board>();
+function previewBoard(map: GameMap): Board {
+  let b = previewBoards.get(map.id);
+  if (!b) {
+    b = new Board(map);
+    previewBoards.set(map.id, b);
+  }
+  return b;
+}
+
+function difficultyColor(d: GameMap["difficulty"]): string {
+  return d === "EASY" ? COL.moderator : d === "MEDIUM" ? COL.energy : COL.alert;
+}
+
+// Draw a map's paths, scaled from board space into the preview rect (curved or straight).
+function drawMapPreview(ctx: CanvasRenderingContext2D, map: GameMap, x: number, y: number, w: number, h: number): void {
+  ctx.save();
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fillStyle = COL.substrate;
+  ctx.fill();
+  ctx.clip();
+  const bw = BOARD_X1 - BOARD_X0;
+  const bh = BOARD_Y1 - BOARD_Y0;
+  const s = Math.min((w - 20) / bw, (h - 20) / bh);
+  const ox = x + (w - bw * s) / 2 - BOARD_X0 * s;
+  const oy = y + (h - bh * s) / 2 - BOARD_Y0 * s;
+  const board = previewBoard(map);
+  ctx.strokeStyle = COL.conduit;
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const path of board.paths) {
+    ctx.beginPath();
+    path.poly.forEach((p, i) => {
+      const px = ox + p.x * s;
+      const py = oy + p.y * s;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.strokeStyle = COL.conduit;
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.strokeStyle = hexA(COL.flow, 0.8);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // inlet (green) and collector (alert) dots.
+    ctx.fillStyle = COL.elemI;
+    ctx.beginPath();
+    ctx.arc(ox + path.inlet.x * s, oy + path.inlet.y * s, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COL.alert;
+    ctx.beginPath();
+    ctx.arc(ox + path.collector.x * s, oy + path.collector.y * s, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawMapSelect(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+  ctx.fillStyle = COL.void;
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+  text(ctx, "SELECT MAP", STAGE_W / 2, 70, 34, COL.text, "center", "700", 6);
+  text(ctx, "SAME CAMPAIGN, DIFFERENT FRONT — THE MAP IS THE DIFFICULTY", STAGE_W / 2, 108, 12, COL.text3, "center", "500", 3);
+
+  const n = MAPS.length;
+  const cardW = 360;
+  const gap = 30;
+  const total = n * cardW + (n - 1) * gap;
+  const x0 = (STAGE_W - total) / 2;
+  const cardY = 150;
+  const cardH = 400;
+
+  MAPS.forEach((map, i) => {
+    const x = x0 + i * (cardW + gap);
+    const on = highlighted(game, i, x, cardY, cardW, cardH);
+    const dc = difficultyColor(map.difficulty);
+    roundRect(ctx, x, cardY, cardW, cardH, 12);
+    ctx.fillStyle = on ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.02)";
+    ctx.fill();
+    ctx.strokeStyle = on ? COL.energy : "rgba(255,255,255,0.10)";
+    ctx.lineWidth = on ? 2.5 : 1;
+    ctx.stroke();
+
+    drawMapPreview(ctx, map, x + 18, cardY + 18, cardW - 36, 200);
+
+    text(ctx, map.name, x + 20, cardY + 248, 24, on ? COL.energy : COL.text, "left", "800", 2);
+    // difficulty pill
+    const pillW = 12 + map.difficulty.length * 8;
+    roundRect(ctx, x + cardW - 20 - pillW, cardY + 236, pillW, 24, 6);
+    ctx.fillStyle = hexA(dc, 0.18);
+    ctx.fill();
+    ctx.strokeStyle = dc;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    text(ctx, map.difficulty, x + cardW - 20 - pillW / 2, cardY + 249, 11, dc, "center", "700", 1);
+
+    text(ctx, `${map.topology} · ${map.styleLabel}`, x + 20, cardY + 280, 11, COL.text2, "left", "600", 1);
+    wrap(ctx, map.blurb, x + 20, cardY + 306, cardW - 40, 12, COL.text3);
+
+    clicks.push({ x, y: cardY, w: cardW, h: cardH, action: `map:${map.id}` });
+  });
+
+  // BACK button (last menu item).
+  const backIdx = MAPS.length;
+  const bx = STAGE_W / 2 - 90;
+  const byy = cardY + cardH + 26;
+  const onBack = highlighted(game, backIdx, bx, byy, 180, 42);
+  button(ctx, clicks, bx, byy, 180, 42, "BACK", "menu:back", onBack ? COL.energy : COL.text, true);
+
+  text(ctx, "↑↓ / ← → SELECT    ENTER CONFIRM    MOUSE OK", STAGE_W / 2, STAGE_H - 22, 12, COL.text3, "center", "500", 3);
+}
+
 function drawSpaced(ctx: CanvasRenderingContext2D, s: string, cx: number, y: number, size: number, letter: number): void {
   const chars = [...s];
   const adv = size * 0.62 + letter;
@@ -826,7 +906,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
     ["INERT (camo)", "Untargetable until a DETECTOR sees it: a Catalyst's field, a Reactor's fallout, an Ionizer's Array upgrade, or a Beam (which sees it natively). Traits stack late — a heavy that is also inert needs both answers."],
     ["TOWERS", "Seven general-purpose towers; each picks one of two BRANCHES at tier III. Support: a Catalyst reveals + excites (+damage), a Moderator slows."],
     ["ECONOMY", "Neutralizing pays energy; clearing a round pays a bonus; banked energy earns interest. Spend it to build and upgrade."],
-    ["CONTROLS", "Click a shop tower (or 1-7), place it on a grid cell. Select a tower to UPGRADE (U) or SELL (S); at tier III pick a branch. SPACE starts a round; F cycles speed; ESC pauses; M mutes."],
+    ["CONTROLS", "Pick a map, then click a shop tower (or 1-7) and place it freely beside the paths — anywhere off the track and clear of other towers. Select a tower to UPGRADE (U) or SELL (S); at tier III pick a branch. SPACE starts a round; F cycles speed; ESC pauses; M mutes."],
   ];
   let y = 108;
   for (const [k, v] of lines) {

@@ -7,7 +7,7 @@
 // interpolates and draws every frame.
 
 import { FIXED_STEP, PANEL_X, STAGE_H, STAGE_W, STATUS_H, TOWER_ORDER, type TowerKind } from "./constants";
-import { cellIdAt } from "./board";
+import { mapById } from "./board";
 import { MODE } from "./mode";
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";
@@ -49,27 +49,44 @@ async function main(): Promise<void> {
   let elapsed = 0;
 
   // Expose the live game for the Playwright proof-capture script (inert in play).
-  // Board helpers take world coordinates and snap to the build grid (specs/board.md).
+  // Placement is free: helpers take world coordinates directly (specs/board.md).
   (window as unknown as { __valence?: unknown }).__valence = {
     game,
     audio,
-    cellAt: (x: number, y: number) => cellIdAt(x, y),
+    startOn: (id: string) => game.startOn(mapById(id)),
+    // The tower nearest a world point (placement snaps away from the exact anchor).
+    nearestTower: (x: number, y: number) => {
+      let best = null as null | { x: number; y: number; id: number };
+      let bd = Infinity;
+      for (const t of game.towers) {
+        const d = Math.hypot(t.x - x, t.y - y);
+        if (d < bd) {
+          bd = d;
+          best = t;
+        }
+      }
+      return best;
+    },
+    // Place a tower at a free board position, snapping to the nearest legal spot.
     build: (kind: TowerKind, x: number, y: number) => {
-      const cell = cellIdAt(x, y);
-      if (cell == null) return;
-      game.selectShop(kind);
-      game.clickCell(cell);
-      game.cancelBuild();
+      game.placeNear(x, y, kind);
     },
     select: (x: number, y: number) => {
-      game.selectedCell = cellIdAt(x, y);
+      const t = game.towerAt(x, y);
+      game.selectedTowerId = t ? t.id : null;
     },
-    // Upgrade the tower at (x, y) toward `level`, taking `branch` for the tier-III step.
+    // Upgrade the tower nearest (x, y) toward `level`, taking `branch` for the tier-III step.
     upgrade: (x: number, y: number, level = 3, branch: "A" | "B" = "A") => {
-      const cell = cellIdAt(x, y);
-      if (cell == null) return;
-      const t = game.towers.get(cell);
-      if (!t) return;
+      let t = null as (typeof game.towers)[number] | null;
+      let bd = Infinity;
+      for (const o of game.towers) {
+        const d = Math.hypot(o.x - x, o.y - y);
+        if (d < bd) {
+          bd = d;
+          t = o;
+        }
+      }
+      if (!t || bd > 60) return;
       while (t.level < level) {
         const ok = game.upgrade(t, t.level === 2 ? branch : undefined);
         if (!ok) break;
@@ -88,11 +105,22 @@ async function main(): Promise<void> {
       game.selectShop(action.slice(5) as TowerKind);
       return;
     }
+    if (action.startsWith("map:")) {
+      // A map-select choice — start the campaign on that map (specs/board.md, flow.md).
+      game.startOn(mapById(action.slice(4)));
+      menuIndex = 0;
+      return;
+    }
     switch (action) {
       case "menu:play":
+        // The campaign start opens the map select (specs/flow.md).
+        game.state = "mapselect";
+        menuIndex = 0;
+        break;
       case "menu:restart":
       case "menu:again":
-        game.start();
+        // Replay the same campaign on the same chosen map (specs/flow.md).
+        game.startOn(game.map);
         menuIndex = 0;
         break;
       case "menu:howto":
@@ -145,18 +173,17 @@ async function main(): Promise<void> {
     for (let i = clickables.length - 1; i >= 0; i--) {
       const c = clickables[i]!;
       if (c.disabled) continue;
-      if (game.state !== "playing" && !c.action.startsWith("menu:")) continue;
+      // Outside play, only navigation clicks fire (menu items and map-select cards).
+      if (game.state !== "playing" && !c.action.startsWith("menu:") && !c.action.startsWith("map:")) continue;
       if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
         activate(c.action);
         return;
       }
     }
-    // Board hit-test (placement / selection) only while playing. A click maps to the
-    // grid cell that contains it (specs/board.md); clicks off the grid deselect.
+    // Board hit-test (free placement / selection) only while playing. A click places the
+    // held tower at the pointer, or selects/deselects a tower under it (specs/board.md).
     if (game.state === "playing" && x < PANEL_X && y > STATUS_H) {
-      const cell = cellIdAt(x, y);
-      if (cell != null) game.clickCell(cell);
-      else game.clickEmptyBoard();
+      game.clickBoard(x, y);
     }
   }
 
@@ -189,19 +216,20 @@ async function main(): Promise<void> {
       }
       if (k === "Escape") {
         if (game.buildKind) game.cancelBuild();
-        else if (game.selectedCell != null) game.clickEmptyBoard();
+        else if (game.selectedTowerId != null) game.clickEmptyBoard();
         else togglePause();
       }
       return;
     }
-    // Menu states.
+    // Menu states. Up/Left (or W/A) and Down/Right (or S/D) move the selection — the
+    // map-select cards lay out horizontally, so left/right feel natural there too.
     const items = menuItems(game.state, game);
-    if (k === "ArrowUp" || lower === "w") menuIndex = (menuIndex - 1 + items.length) % items.length;
-    else if (k === "ArrowDown" || lower === "s") menuIndex = (menuIndex + 1) % items.length;
+    if (k === "ArrowUp" || k === "ArrowLeft" || lower === "w" || lower === "a") menuIndex = (menuIndex - 1 + items.length) % items.length;
+    else if (k === "ArrowDown" || k === "ArrowRight" || lower === "s" || lower === "d") menuIndex = (menuIndex + 1) % items.length;
     else if (k === "Enter" || k === " ") {
       if (items[menuIndex]) activate(items[menuIndex]!.action);
     } else if (k === "Escape") {
-      if (game.state === "howto") activate("menu:back");
+      if (game.state === "howto" || game.state === "mapselect") activate("menu:back");
       else if (game.state === "paused") activate("menu:resume");
       else if (game.state === "victory" || game.state === "defeat") activate("menu:menu");
     }
@@ -242,8 +270,6 @@ async function main(): Promise<void> {
     const pl = input.pointerLogical;
     game.pointerX = pl.x;
     game.pointerY = pl.y;
-    // Track the build-grid cell under the pointer for the hover highlight (specs/board.md).
-    game.hoverCell = game.state === "playing" && pl.x < PANEL_X && pl.y > STATUS_H ? cellIdAt(pl.x, pl.y) : null;
 
     handleInput();
     syncMenuIndexToPointer();
