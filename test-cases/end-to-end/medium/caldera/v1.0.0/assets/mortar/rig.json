@@ -1,0 +1,386 @@
+{
+  "parts": [
+    {
+      "name": "base",
+      "pivot": [
+        16,
+        0,
+        16
+      ]
+    },
+    {
+      "name": "yoke",
+      "parent": "base",
+      "pivot": [
+        16,
+        13,
+        14
+      ]
+    },
+    {
+      "name": "tub",
+      "parent": "yoke",
+      "pivot": [
+        16,
+        13,
+        14
+      ]
+    },
+    {
+      "name": "screw",
+      "parent": "base",
+      "pivot": [
+        16,
+        9,
+        8
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "tub_elevate",
+      "part": "yoke",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        16,
+        13,
+        14
+      ],
+      "min": -0.3,
+      "max": 0.5,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "tub_recoil",
+      "part": "tub",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        16,
+        13,
+        14
+      ],
+      "min": -4.2,
+      "max": 0.8,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "screw_slide",
+      "part": "screw",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        16,
+        9,
+        8
+      ],
+      "min": -2.6,
+      "max": 0.8,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "idle",
+      "periodMs": 3600,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "tub_elevate",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.04,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 900,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1800,
+              "value": -0.032,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2700,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3600,
+              "value": 0.04,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "tub_recoil",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 900,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1800,
+              "value": -0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2700,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3600,
+              "value": 0.14,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "screw_slide",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.01,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 900,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1800,
+              "value": -0.11,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2700,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3600,
+              "value": 0.01,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fire",
+      "periodMs": 2600,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "tub_elevate",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 240,
+              "value": -0.05,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 760,
+              "value": 0.3,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 980,
+              "value": 0.31,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.35,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1030,
+              "value": 0.12,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1110,
+              "value": 0.2,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1200,
+              "value": 0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1340,
+              "value": 0.19,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1900,
+              "value": 0.13,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2350,
+              "value": 0.03,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2600,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "tub_recoil",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 240,
+              "value": 0.3,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 760,
+              "value": 0.1,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 980,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1030,
+              "value": -3.9,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1110,
+              "value": -2.55,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1200,
+              "value": -3.15,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1340,
+              "value": -2.65,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1900,
+              "value": -1.25,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2350,
+              "value": -0.16,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2600,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "screw_slide",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 240,
+              "value": 0.25,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 760,
+              "value": -0.43,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 980,
+              "value": -0.5,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1000,
+              "value": -1.28,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1030,
+              "value": -2.34,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1110,
+              "value": -1.72,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1200,
+              "value": -1.96,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1340,
+              "value": -1.76,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1900,
+              "value": -0.9,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2350,
+              "value": -0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2600,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

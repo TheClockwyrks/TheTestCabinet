@@ -1,0 +1,11 @@
+# The half-size variant: the same Boiler sculpted in a volume with each extent ~halved
+# from the case's base 34x44x34. Its `[voxel]` OVERRIDES the case volume for runs of
+# this variant, and the brief is rendered at these dimensions.
+slug = "half"
+name = "Half Size"
+
+[voxel]
+width = 17
+height = 22
+depth = 17
+background = "transparent"

@@ -1,0 +1,6 @@
+# The default variant, listed first in the case manifest's `variants`. It declares
+# no `[voxel]`, so it inherits the case's volume (80x70x80) — the reference size the
+# `half` and `double` variants scale from. Every path here resolves against the
+# version folder, exactly like the main manifest.
+slug = "base"
+name = "Base Size"

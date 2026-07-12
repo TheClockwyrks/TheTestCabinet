@@ -1,0 +1,11 @@
+# The double-size variant: the same Mortar sculpted in a volume with each extent
+# doubled from the case's base 34x34x34. Its `[voxel]` OVERRIDES the case volume for
+# runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 68
+height = 68
+depth = 68
+background = "transparent"

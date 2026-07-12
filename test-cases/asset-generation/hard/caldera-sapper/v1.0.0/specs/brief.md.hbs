@@ -1,0 +1,136 @@
+# Caldera Sapper — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera Sapper, the network-cutting technician of the
+Slag — a tall, spindly, insectile obsidian creature that stalks on four thin high-kneed
+legs, holds its narrow body high on a long segmented spine, and cuts pipes and structures
+with two long shear arms — as a 3D voxel model with a rig a game can pose at runtime.
+Build it with `voxel-anim` (painting opaque cells one operation at a time) as a rigged
+model that reads unmistakably as this spindly obsidian thing, stalks believably on its
+legs, and cuts on demand. There is no target model to copy.
+
+This test measures creativity and craft, not instruction-following. The brief fixes
+what the Sapper is and how it must move; it deliberately does not hand you a parts
+list, joint placements, or pose angles — working out the pieces a stalking, cutting
+creature needs, where they attach, and how they articulate is the test. Invent the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the Sapper, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the Sapper faces toward `z = {{voxel.maxZ}}` (the front) at rest, the shear arms
+  reaching forward. Up is +y.
+- Build the Sapper symmetric about the lengthwise vertical centerplane — the four legs
+  and the two shear arms mirror left/right, and the body, spine, and head are centered
+  on it.
+- The Sapper is deliberately **tall and spindly** — a narrow body carried high on thin
+  legs, its segmented spine rising most of the height of the volume to a small head. It
+  is a precise technician; nothing about it should read as armored, heavy, low, or
+  massive.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same
+  volume's coordinates, positioned where the part sits on the assembled Sapper (a leg
+  already under the high body, a shear arm already reaching forward).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Body — obsidian | `#241f2b` |
+| Deep recess, shadowed seam — obsidian dark | `#16131b` |
+| Accent plate (the accent region) | `#4a4358` |
+| Acid glow — the spine beads | `#9ede3a` |
+
+Do **not** use steel `#c9ced6` or violet `#b56bff` anywhere on the model. A game
+paints those on at run time (see *The accent region*); baking them in defeats it.
+
+## What the Sapper is (and what is yours to invent)
+
+Fixed — the Sapper must read unmistakably as all of these:
+
+- A **tall, narrow, insectile body** of obsidian, held high off the ground and carried
+  on a **long segmented spine** that curves up to a small, narrow head. Its shadowed
+  seams and recesses are obsidian dark.
+- **Four thin, high-kneed legs**, one at each corner, that carry it and stalk (see the
+  animations). They read as thin, jointed, and spidery — the legs of a light stepper,
+  not a heavy walker.
+- **Two long multi-jointed cutting shear arms** reaching from the front — scissoring
+  blades it uses to cut pipes and structures. These are **tools**, not fists: it is a
+  technician, not a brawler, and nothing about it reads as armored or heavy.
+- **A row of acid-green beads running along each segment of the spine**, and no other
+  glow anywhere on the model. There is **no eye and no chest seams**: that beaded spine
+  is the Sapper's whole glow signature.
+
+The Sapper carries **no armor plating** and no weapon but its shears — its shear arms
+are its whole armament, and it is the only Slag that carries tools. It is the tall, thin
+one: nothing about it reads as low, long, fast, wide, top-heavy, or massive.
+
+Everything else is yours to invent — the exact silhouette and proportions of the body,
+spine, and head, the number of segments and joints in each leg and each shear arm, how
+the beads run along the spine, and how you break the Sapper into rig parts. Nothing here
+prescribes a shape; the test rewards a bold, characterful design that is unmistakably the
+Sapper and animates convincingly.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time to show the Sapper's **tier**, by finding every
+voxel of one reserved color and repainting it. That reserved color is the **accent
+plate** color `#4a4358`, and it is what makes the contract work:
+
+- Sculpt the **plates along the outer faces of both cutting shear arms** — and only
+  those — in `#4a4358`.
+- Use `#4a4358` **nowhere else** on the model. Not a stray voxel, not a highlight, not
+  a seam. Every voxel of it is treated as an accent plate.
+- The accent must be **coherent contiguous plates** — one plate group per shear arm,
+  not scattered flecks — and it must be clearly **visible from more than one angle**, so
+  a player reads a Sapper's tier at a glance across the battlefield.
+
+Everything else — the body, the recesses, the legs, the spine, the head, the spine
+beads — keeps its own color and is never repainted. Get this wrong and every Sapper in
+the game looks the same tier.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author
+the motion). Author each with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion has the right character — the Sapper is light and precise, so its motion is quick
+and spidery, not the heavy ease of a big machine.
+
+- **`move`** — the stalk (a game-triggered playable, `loop = true`). The four thin legs
+  pick their way with a quick, spidery, high-stepping gait while the narrow body stays
+  held high and level, so it reads as a light, precise creature stepping, not gliding or
+  flailing. Authored in place: the body does not translate across the scene — the leg
+  cycle alone carries the stride (played on its own the planted foot slides straight back
+  under the body, treadmill-style, then swings forward), and a game supplies the real
+  travel. The legs work; the body holds high and level.
+- **`attack`** — the cut (a game-triggered playable, `loop = true`). The two shear arms
+  open wide and scissor shut in one clean cutting stroke, the blades meeting at the
+  close, then reset to their stance before looping. It reads as cutting through a pipe or
+  structure, not punching. The feet stay planted.
+
+You may add your own extra parts, joints, or animations on top of this (for example a
+slight sway of the high body at rest), but you must not drop or contradict the required
+`move` and `attack` animations, by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on
+your `PATH`. Define your own parts with `define-part` (giving each a parent and a
+pivot), sculpt each by selecting it with `--part <name>`, set pivots with `set-pivot`,
+place joints with `define-joint`, and author the two animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and
+a mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation;
+run `voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png`
+previews) between calls to judge each part against this brief — that each leg seats under
+the high body, the segmented spine curves up unbroken to the small head, the two shear
+arms reach out from the front, and the animations read with the right lightness. Run
+`voxel-anim render` before you finish so it emits the per-part `.glb` geometry your result
+is built from — an unrendered part scores as empty (`voxel-anim render --component <part>`
+renders one part; `voxel-anim render --time <ms> --animation <name>` renders the model
+posed at that instant to check the motion).

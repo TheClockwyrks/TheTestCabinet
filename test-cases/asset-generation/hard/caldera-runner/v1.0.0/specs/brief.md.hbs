@@ -1,0 +1,130 @@
+# Caldera Runner — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera Runner, the fast, fragile chaff of the Slag
+— a low, long, ground-hugging obsidian creature that skitters on four legs and lunges
+at what it reaches — as a 3D voxel model with a rig a game can pose at runtime. Build
+it with `voxel-anim` (painting opaque cells one operation at a time) as a rigged model
+that reads unmistakably as this scuttling obsidian thing, runs believably on its legs,
+and lunges on demand. There is no target model to copy.
+
+This test measures creativity and craft, not instruction-following. The brief fixes
+what the Runner is and how it must move; it deliberately does not hand you a parts
+list, joint placements, or pose angles — working out the pieces a running, lunging
+creature needs, where they attach, and how they articulate is the test. Invent the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the Runner, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the head points toward `z = {{voxel.maxZ}}` (the front) at rest. Up is +y.
+- Build the Runner symmetric about the lengthwise vertical centerplane — the four legs
+  mirror left/right, and the body, head, and dorsal ridge are centered on it.
+- The Runner is deliberately **low and long** — it fills most of the depth, rides only
+  a little way off the ground on its legs, and never reads as tall. It is the smallest
+  and fastest thing on the field; nothing about it should read as heavy or armored.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same
+  volume's coordinates, positioned where the part sits on the assembled Runner (a leg
+  already under its corner, the head already out at the front).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Body — obsidian | `#241f2b` |
+| Deep recess, shadowed seam — obsidian dark | `#16131b` |
+| Accent plate — the dorsal ridge (see below) | `#4a4358` |
+| Acid glow — the eye slit | `#9ede3a` |
+
+Do **not** use steel `#c9ced6` or violet `#b56bff` anywhere on the model. A game
+paints those on at run time (see *The accent region*); baking them in defeats it.
+
+## What the Runner is (and what is yours to invent)
+
+Fixed — the Runner must read unmistakably as all of these:
+
+- A **low, long, wedge-shaped body** of obsidian, narrow at the front and broadening
+  slightly toward the back, held close to the ground and running most of the length of
+  the volume. Its shadowed seams and recesses are obsidian dark.
+- **Four legs**, one at each corner, that carry it and run (see the animations). They
+  read as thin, sprung, and quick — the legs of something built for speed, not weight.
+- A **narrow, low head** at the front carrying **one single horizontal eye slit** of
+  acid glow, and no other glow anywhere on the model. This slit is the Runner's whole
+  glow signature.
+- A **raised dorsal ridge** of plates running along the spine, from behind the head
+  toward the back — the accent region below.
+
+The Runner carries **no weapon, no armor plating, and no tools**. It kills by throwing
+its body at what it reaches. It is the low, long, fast one: nothing about it reads as
+heavy, top-heavy, armored, spindly, or massive.
+
+Everything else is yours to invent — the exact silhouette and proportions of the body
+and head, the number of segments and joints in each leg, how the dorsal ridge is
+shaped, and how you break the Runner into rig parts. Nothing here prescribes a shape;
+the test rewards a bold, characterful design that is unmistakably the Runner and
+animates convincingly.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time to show the Runner's **tier**, by finding every
+voxel of one reserved color and repainting it. That reserved color is the **accent
+plate** color `#4a4358`, and it is what makes the contract work:
+
+- Sculpt the **dorsal ridge plates** — and only those — in `#4a4358`.
+- Use `#4a4358` **nowhere else** on the model. Not a stray voxel, not a highlight, not
+  a seam. Every voxel of it is treated as an accent plate.
+- The ridge must be **one contiguous run** of plates along the spine, and it must be
+  clearly **visible from the side and from above** — that is how a player reads a
+  Runner's tier at a glance across the battlefield.
+
+Everything else — the body, the recesses, the legs, the head, the eye slit — keeps its
+own color and is never repainted. Get this wrong and every Runner in the game looks the
+same tier.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author
+the motion). Author each with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion has snap — the Runner is light and quick, so its motion is fast and darting, not
+the heavy ease of a big machine.
+
+- **`move`** — the run (a game-triggered playable, `loop = true`). The feet plant on the
+  ground and the body skitters over them so it reads as a light creature sprinting, not
+  flailing or gliding. Authored in place: the body does not translate across the scene —
+  the leg cycle alone carries the stride (played on its own the planted foot slides
+  straight back under the body, treadmill-style, then swings forward), and a game
+  supplies the real travel. The legs move; the head holds steady and level, eye slit
+  forward, so it stays fixed on what it is running at.
+- **`attack`** — the lunge (a game-triggered playable, `loop = true`). The Runner coils
+  back on its legs, throws its head and body forward in one fast strike, and recoils to
+  its stance before looping — a snap out, a recovery. The whole body commits to the
+  lunge; this is a creature with no weapon hurling itself at a target. The feet stay
+  planted.
+
+You may add your own extra parts, joints, or animations on top of this (for example a
+twitch of the ridge plates at rest), but you must not drop or contradict the required
+`move` and `attack` animations, by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on
+your `PATH`. Define your own parts with `define-part` (giving each a parent and a
+pivot), sculpt each by selecting it with `--part <name>`, set pivots with `set-pivot`,
+place joints with `define-joint`, and author the two animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and
+a mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation;
+run `voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png`
+previews) between calls to judge each part against this brief — that each leg's chain
+seats under its own corner of the body, the head meets the body, the dorsal ridge runs
+unbroken, and the animations read with the right lightness. Run `voxel-anim render`
+before you finish so it emits the per-part `.glb` geometry your result is built from —
+an unrendered part scores as empty (`voxel-anim render --component <part>` renders one
+part; `voxel-anim render --time <ms> --animation <name>` renders the model posed at that
+instant to check the motion).

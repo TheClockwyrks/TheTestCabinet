@@ -1,0 +1,85 @@
+Sculpt and rig the **Caldera Core**, the Holdfast the whole game defends — a broad
+stepped brass keep, a ziggurat of receding tiers rising to a crowned summit, with banners
+hanging from its upper tiers and a beacon at the very top, the biggest built thing on the
+field — as a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} opaque-voxel model using only the `voxel-anim` tool. You build
+it by **painting opaque cells** one operation at a time, and you **author its idle and
+upgrade animations** as F-curves.
+
+This test measures **creativity and craft**, not instruction-following: the brief tells
+you *what the Core is* and *how it must move*, but the parts you build, how you break the
+keep into moving pieces, where you place the joints, and how you shape every form are
+**entirely yours to invent**. Work out the pieces a tiered keep whose banners stir and
+whose tiers grind upward needs.
+
+## How sculpting and rigging works
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on your
+`PATH`. You build the model by calling it **one operation at a time**, and the ordered
+operations you issue — recorded per part to `parts/<part>.actions.json` — together with
+the rig you define are your submission.
+
+**You invent the rig.** Define whatever parts you need with `define-part` (giving each a
+parent and a pivot), place joints on them with `define-joint`, and author the required
+animations with `define-animation`/`add-keyframe`. Every voxel operation targets a
+**part** with `--part <name>`, so define a part before you sculpt into it; each part is
+sculpted **separately** in its own preview and log. The volume starts **empty**. Voxels
+are **opaque** `#rrggbb` colors — there is no transparency. Each call **records only** —
+it appends the operation to that part's log and renders nothing; run `voxel-anim render`
+when you want to (re)draw the per-part previews (`parts/<part>.png`) and the assembled
+scene.
+
+Each operation is an ordinary subcommand with flags, naming its part, for example:
+
+```
+voxel-anim define-part --name tier0
+voxel-anim fill-box --part tier0 --x0 4 --y0 0 --z0 4 --x1 40 --y1 8 --z1 40 --color "#c8a24a"
+```
+
+(The part name above is just an example — name your own parts however you like.) Run
+`voxel-anim --help` to list every operation **and** the rig subcommands (defining parts,
+setting pivots, defining joints, and defining/keyframing animations), and `voxel-anim
+<operation> --help` for one operation's exact flags — that help text is the
+authoritative contract. **Run `voxel-anim render`, then read `parts/<part>.png`** to see
+that part's progress **and the assembled-scene previews under `scene/`
+(`scene/iso.png`, `scene/front.png`, `scene/side.png`, `scene/top.png`)** — the whole
+Core composed from all your parts, drawn when you run `voxel-anim render`. The scene views
+are how you confirm the parts actually fit together: that each tier steps cleanly onto the
+one below it, the crown rings the summit, the banners hang on their tiers, and the beacon
+stands at the very top. Because each part is sculpted in the shared volume's coordinates,
+position each part where it belongs on the finished Core; the scene simply composes them
+there.
+
+## What to read first
+
+The files below are already present at `{{workspace}}`. Read every one before you start:
+
+{{#each specs}}
+- `{{this.path}}`
+{{/each}}
+
+`specs/brief.md` describes the volume and its coordinate system, the palette, the form of
+the Core, the **accent region** the game recolors to show its upgrade level, and — the
+fixed contract — the two animations you must author: **`idle`** (the self-playing life of
+the keep) and **`upgrade`** (the one-shot that grinds the tiers up and holds its final
+pose). It does **not** hand you a parts list or joint angles; that is the point. Run
+`voxel-anim --help` for the exact operation, rig, and animation subcommands.
+
+## What to deliver
+
+Build and rig the Core up operation by operation until each `parts/<part>.png` matches the
+brief, the assembled `scene/` previews show the parts fitting together correctly, and the
+rig is complete: a broad stepped brass keep of receding tiers rising to a crowned summit,
+banners hanging from the upper tiers, a beacon at the very top, and a verdigris accent on
+the crown ring and the banner trim sculpted **only** in `#2f7d72` and appearing nowhere
+else on the model. **Author the two required animations** as F-curves with the `voxel-anim`
+animation subcommands: an **`idle`** (a self-playing loop that turns the beacon and stirs
+the banners while the keep stays fixed) and an **`upgrade`** (a one-shot that grinds the
+tiers and crown up, flares the beacon, and holds its taller final pose without looping).
+The animations and the accent region are the fixed contract — produce all of them; the
+parts and joints that realize them are yours. You may add your own extra parts, joints, or
+animations on top, but do not drop or contradict the required `idle` and `upgrade`. Before
+you finish, run `voxel-anim render` so it emits the per-part `.glb` geometry your result is
+built from — an unrendered part is scored as empty (`voxel-anim render --component <part>`
+redraws one part; `voxel-anim render --time <ms> --animation <name>` renders the model
+posed at that instant of an animation to check the motion). When you are satisfied, stop:
+the recorded per-part logs and `rig.json` are your finished submission.

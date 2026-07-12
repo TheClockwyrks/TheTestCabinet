@@ -1,0 +1,166 @@
+slug = "caldera-breaker"
+name = "Caldera Breaker"
+difficulty = "hard"
+tags = ["voxel", "rig", "creature"]
+summary = """
+Sculpt and rig the Caldera Breaker: the slow, armored siege of the Slag — a wide, \
+top-heavy obsidian biped with a brick-slab torso far broader than its hips, carried on \
+two short thick legs, that walks knuckled over two enormous fused ram-forearms, reads by \
+the acid-green seams cracking across its chest, and grinds through what it reaches — \
+painted cell by cell with the `voxel-anim` tool, one recorded operation at a time. \
+The model invents whatever parts and joints it needs; the fixed contract is two \
+animations it must author — a heavy `move` and a ramming `attack` — plus a contiguous \
+accent region the game recolors to show the Breaker's tier."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME Breaker at three sizes — `base` (this case's
+# volume), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D canvas):
+# `width` across (x), `height` up (y), `depth` front-to-back (z), in voxels. Sized
+# from the Breaker's real size at the roster's shared scale — it is the WIDE,
+# TOP-HEAVY Slag, and the volume's broad, tall, hunched proportions carry that before a
+# single voxel is placed. Each part is sculpted separately in this shared volume's
+# coordinates. The volume always starts EMPTY; `background` is only the clear color
+# behind the rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 46
+height = 44
+depth = 34
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the rig;
+# every operation targets a part with `--part <name>`, recording to that part's action
+# log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help` for the
+# operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each part the
+# model defines), the authoritative output each part's regenerated model is rebuilt
+# from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. Both names here are the ones
+# `caldera`'s `assets/models.json` binds to the Breaker's game events.
+[model]
+
+# `move` — the trudge. A game-triggered playable that loops: a heavy, slow walk on two
+# short thick legs, the mass rocking side to side over each planted foot, authored in
+# place so the leg cycle alone carries the stride and the game supplies the travel.
+[[model.animation]]
+name = "move"
+loop = true
+auto_play = false
+
+# `attack` — the ram. A game-triggered playable that loops: the Breaker rears and drives
+# both fused ram-forearms down and forward into what it is grinding through, then
+# recovers. It carries no weapon; the ram-forearms ARE the weapon, and the feet stay
+# planted.
+[[model.animation]]
+name = "attack"
+loop = true
+auto_play = false
+
+# The self-contained brief, seeded for the run. It is a Handlebars template (`.hbs`),
+# rendered per variant so the volume it states matches the selected size. The seeded
+# dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Caldera Breaker and poses \
+correctly — the wide, top-heavy obsidian biped with a brick-slab torso on two short thick \
+legs, walking knuckled over two enormous fused ram-forearms, carrying acid-green seams \
+cracking across its chest and one contiguous accent region, whose slow trudge and driving \
+ram carry the weight of the most armored thing on the field, in the disciplined Caldera \
+palette."""
+
+[[review_item]]
+id = "reads-as-breaker"
+title = "Reads as the Breaker"
+text = """
+From more than one angle the model reads unmistakably as the Breaker: a WIDE, TOP-HEAVY \
+obsidian biped — a brick-like slab torso far broader than its hips, carried on two short, \
+thick legs, hunched slightly forward over two enormous fused ram-forearms it walks \
+knuckled over. Those forearms are shields and battering rams, NOT hands: it has no \
+fingers and no weapon. A low fused ram-head is sunk between the shoulders with no visible \
+neck. Acid-green seams crack across the slab chest, and there is NO other acid glow \
+anywhere on the model — no eyes — that cracked chest is the Breaker's whole glow \
+signature. It reads as the slow, armored one: nothing about it is low and long, spindly, \
+or massive."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "move-reads"
+title = "Move trudges heavy and in place"
+text = """
+Playing `move` trudges the Breaker forward: its two short thick legs plant and its heavy \
+mass rocks side to side over each planted foot, so it reads as a slow, armored machine \
+hauling its weight rather than gliding or sliding weightlessly. The motion is heavy and \
+deliberate, never light or darting. The body does not translate across the scene — the leg \
+cycle alone carries the stride — and the ram-forearms stay carried low and forward. It \
+loops seamlessly."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "attack-reads"
+title = "Attack drives the rams home"
+text = """
+Playing `attack` rears the Breaker up and drives both fused ram-forearms down and forward \
+into what it is grinding through, then recovers to its stance — a heavy commit and a \
+recovery, with the feet staying planted. The whole top-heavy mass throws behind the ram, \
+reading as a creature with no weapon slamming its forearms into a target rather than \
+punching with hands."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "accent-plates"
+title = "A contiguous accent region on chest and rams"
+text = """
+The chest-slab plates AND the plates on the outer face of both ram-forearms — and only \
+those — are sculpted in the accent color `#4a4358`, as coherent contiguous plates (the \
+chest as one plate group, each forearm's outer face as another), not scattered flecks, and \
+clearly visible from more than one angle. That color appears NOWHERE else on the model — \
+not one stray voxel, highlight, or seam. The game finds every voxel of it and repaints it \
+to show the Breaker's tier, so a scattered, broken, or misplaced accent region breaks the \
+tier system outright."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Caldera palette discipline"
+text = """
+Uses only the brief's four colors — obsidian body, obsidian-dark recesses, the accent \
+plate, and the acid glow — with no out-of-palette colors, and in particular NO steel \
+`#c9ced6` and NO violet `#b56bff` anywhere on the model, since a game paints those on \
+at run time. No stray voxels drift off the body."""
+weight = 1
+domain = "fidelity"

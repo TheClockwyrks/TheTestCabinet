@@ -91,9 +91,13 @@ file line.
 Every archetype comes in three **tiers**. A tier is the **same model re-plated** in
 a tier accent (`specs/overview.md`) — Tier I plain obsidian, Tier II steel
 **plating**, Tier III bright violet elite **trim** — each tougher, better-armored,
-and hitting harder. **You do not invent new geometry per tier; you re-skin and
-re-stat the one model.** Which tier a spawning unit rolls is set by the wave schedule
-(`specs/waves.md`), not by anything here.
+and hitting harder. **There is one provided model per archetype and no more**: each
+ships with an **accent region** (its plates and trim) authored in the reserved accent
+color, and you produce a tier by **recoloring that region** — Tier I obsidian, Tier II
+steel, Tier III violet — leaving the body and the acid glow untouched. The exact
+recolor procedure is in `specs/assets.md`. **You do not author geometry per tier, and
+you do not tint the whole model.** Which tier a spawning unit rolls is set by the wave
+schedule (`specs/waves.md`), not by anything here.
 
 Apply these multipliers to each archetype's Tier I base stats:
 

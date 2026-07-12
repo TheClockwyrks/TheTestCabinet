@@ -1,0 +1,11 @@
+# The double-size variant: the same Core sculpted in a volume with each extent doubled
+# from the case's base 80x70x80. Its `[voxel]` OVERRIDES the case volume for runs of
+# this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 160
+height = 140
+depth = 160
+background = "transparent"

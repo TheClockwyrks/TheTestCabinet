@@ -1,0 +1,106 @@
+{
+  "parts": [
+    {
+      "name": "base",
+      "pivot": [
+        12,
+        0,
+        11
+      ]
+    },
+    {
+      "name": "post",
+      "parent": "base",
+      "pivot": [
+        12,
+        6,
+        11
+      ]
+    },
+    {
+      "name": "collar",
+      "parent": "post",
+      "pivot": [
+        12,
+        35,
+        11
+      ]
+    },
+    {
+      "name": "drum",
+      "parent": "post",
+      "pivot": [
+        12,
+        42,
+        11
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "drum_spin",
+      "part": "drum",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        12,
+        42,
+        11
+      ],
+      "min": -1000.0,
+      "max": 1000.0,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "idle",
+      "periodMs": 4000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "drum_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 4000,
+              "value": 6.283185,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fire",
+      "periodMs": 600,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "drum_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 600,
+              "value": 12.56637,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

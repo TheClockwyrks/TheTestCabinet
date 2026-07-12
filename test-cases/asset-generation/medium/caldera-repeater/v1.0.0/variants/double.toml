@@ -1,0 +1,11 @@
+# The double-size variant: the same Repeater sculpted in a volume with each extent
+# doubled from the case's base 24x50x24. Its `[voxel]` OVERRIDES the case volume for
+# runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 48
+height = 100
+depth = 48
+background = "transparent"

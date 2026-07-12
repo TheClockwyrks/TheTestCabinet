@@ -1,0 +1,125 @@
+# Caldera Repeater — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera Repeater, the cheap workhorse tower of the
+Holdfast — a slim brass post rising to a rotating drum of many short iron barrels, like
+a rotary gun — as a 3D voxel model with a rig a game can pose at runtime. Build it with
+`voxel-anim` (painting opaque cells one operation at a time) as a rigged model that reads
+unmistakably as this fast, light emplacement, ticks its drum over on its own, and cycles
+its barrels in a burst on demand. There is no target model to copy.
+
+This test measures creativity and craft, not instruction-following. The brief fixes what
+the Repeater is and how it must move; it deliberately does not hand you a parts list,
+joint placements, or pose angles — working out the pieces a tower whose barrel drum spins
+needs, where they attach, and how they articulate is the test. Invent the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the tower, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the barrels point toward `z = {{voxel.maxZ}}` (the front) at rest. Up is +y.
+- The Repeater is a **static emplacement founded on the ground**: its base sits flat on
+  the ground at `y = 0` and does not move. Build it symmetric about the lengthwise vertical
+  centerplane.
+- The Repeater is deliberately **slim and medium-height** — a slender post, not a bulky
+  one, carrying the drum up where it can traverse. It is the cheap, fast, light workhorse;
+  nothing about it should read as heavy, squat, or massive.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same volume's
+  coordinates, positioned where the part sits on the assembled Repeater (a leg of the post
+  already under the drum, the barrels already clustered around their axis).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Brass — primary plating | `#c8a24a` |
+| Brass dark — shadow, underside | `#8a6d2e` |
+| Iron — mechanisms, barrels, recesses | `#3a3836` |
+| Accent fitting — verdigris (the accent region) | `#2f7d72` |
+
+Do **not** use steel `#b8bcc2`, gold `#ffce54`, or white `#dfeaea` anywhere on the model.
+Those are the colors a game paints onto the accent collar at run time to show the tower's
+upgrade level (see *The accent region*); baking any of them in makes a base-level tower
+look permanently upgraded.
+
+## What the Repeater is (and what is yours to invent)
+
+Fixed — the Repeater must read unmistakably as all of these:
+
+- A **slim brass post** founded flat on the ground, rising to carry the drum aloft. It
+  is slender, not bulky — the light, cheap workhorse. Its shadowed seams and undersides
+  are brass dark.
+- A **rotating drum of many short barrels** at the top — a cluster of short iron muzzles
+  arranged around a single spinning axis, like a rotary gun. The **many short barrels** are
+  the Repeater's whole tell: a reviewer must be able to name it from that cluster of
+  muzzles alone.
+- A **collar ring** where the drum meets the post — the accent region below.
+
+The Repeater is a **weapon of the Holdfast — brass-and-iron machinery, not a creature**. The
+tell is the **drum of many short barrels** crowning a slim post: nothing about this tower is
+squat, needle-thin, or barrel-less.
+
+Everything else is yours to invent — the exact silhouette and proportions of the post and
+drum, how many barrels ring the axis and how they are shaped, how the collar is formed, and
+how you break the Repeater into rig parts. Nothing here prescribes a shape; the test rewards
+a bold, characterful design that is unmistakably the Repeater and animates convincingly.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time to show the tower's **upgrade level**, by finding
+every voxel of one reserved color and repainting it (brass dark at level 0, steel at level
+1, gold at level 2), so one model serves all three levels. That reserved color is the
+**verdigris accent** `#2f7d72`, and it is what makes the contract work:
+
+- Sculpt the **collar ring** where the barrel drum meets the top of the post — and only
+  that — in `#2f7d72`.
+- Use `#2f7d72` **nowhere else** on the model. Not a stray voxel, not a highlight, not a
+  seam. Every voxel of it is treated as accent fitting.
+- The collar must be **one contiguous ring** and clearly **visible from more than one
+  angle** — that is how a player reads a tower's upgrade level at a glance across the
+  battlefield.
+
+Everything else — the post, the drum, the barrels, the recesses — keeps its own color and is
+never repainted. Get this wrong and every Repeater in the game looks the same level.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author the
+motion). Author each with `voxel-anim define-animation` then `add-keyframe`, choosing the
+period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion reads right — a slow, steady tick-over at idle and a fast, snappy cycle when firing.
+
+- **`idle`** — the tick-over (a self-playing idle, `loop = true`, `auto_play = true`). The
+  barrel drum turns slowly and continuously on its own, with no caller, so the tower reads
+  as live and powered even when it is not firing. Only the drum turns; the post and the
+  ground base stay fixed. It loops seamlessly.
+- **`fire`** — the burst (a game-triggered playable, `loop = true`). The drum spins up fast
+  and the barrels cycle, one muzzle coming round after another in a rapid burst, reading as
+  a light, fast-firing rotary gun rather than a single heavy shot. The post and base stay
+  fixed; only the drum spins.
+
+You may add your own extra parts, joints, or animations on top of this (for example a faint
+sway of a heat wisp), but you must not drop or contradict the required `idle` and `fire`
+animations, by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on your
+`PATH`. Define your own parts with `define-part` (giving each a parent and a pivot), sculpt
+each by selecting it with `--part <name>`, set pivots with `set-pivot`, place joints with
+`define-joint`, and author the two animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
+mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation; run
+`voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png` previews)
+between calls to judge each part against this brief — that the post stands under the drum,
+the barrels cluster evenly around their axis, the collar rings the join unbroken, and the
+animations read with the right snap. Run `voxel-anim render` before you finish so it emits
+the per-part `.glb` geometry your result is built from — an unrendered part scores as empty
+(`voxel-anim render --component <part>` renders one part; `voxel-anim render --time <ms>
+--animation <name>` renders the model posed at that instant to check the motion).
