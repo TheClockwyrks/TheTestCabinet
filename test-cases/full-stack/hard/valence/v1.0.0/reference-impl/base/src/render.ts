@@ -332,10 +332,18 @@ function drawAtom(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number
   ctx.restore();
   blitGlow(ctx, orb, x, y, 20, col);
   if (A.electron.length) {
-    const f = Math.floor((u.animT * 9 + u.id) % A.electron.length);
+    // One orbiting-electron layer per REMAINING shell, each sized to sit on its own shell
+    // ring — so as a unit is stripped of shells it visibly sheds electrons too (the ring
+    // and its electrons vanish together), instead of the ring count dropping while a fixed
+    // electron cloud lingers.
+    const len = A.electron.length;
     ctx.save();
     ctx.globalAlpha = 0.9;
-    blit(ctx, A.electron[f]!, x, y, 30, 30, 0);
+    for (let i = 0; i < u.shells; i++) {
+      const f = Math.floor((u.animT * 9 + u.id + i * 3) % len);
+      const size = (8 + i * 3.2) * 2.5;
+      blit(ctx, A.electron[f]!, x, y, size, size, 0);
+    }
     ctx.restore();
   }
   if (u.hitFlash < 0.1) flash(ctx, x, y, 16, COL.ionizer);
@@ -589,8 +597,12 @@ function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, s: EffSta
   const def = TOWERS[kind];
   const tier = branch ? `${ROMAN[level - 1]}·${branch === "A" ? def.branchA.name : def.branchB.name}` : ROMAN[level - 1];
   text(ctx, `${def.name} · ${tier}`, x, y + 8, 14, def.color, "left", "700", 0.5);
-  text(ctx, capitalize(def.targets), x, y + 28, 10, COL.text2, "left", "400");
-  let row = y + 50;
+  // The role/targets line can be long — wrap it to the panel width instead of letting it
+  // run off the edge, and start the stat rows below however many lines it took.
+  const targets = capitalize(def.targets);
+  const targetLines = lineCount(ctx, targets, w, 10);
+  wrap(ctx, targets, x, y + 28, w, 10, COL.text2, 13);
+  let row = y + 28 + (targetLines - 1) * 13 + 22;
   const line = (k: string, v: string, c: string = COL.text) => {
     text(ctx, k, x, row, 11, COL.text3, "left", "500", 0.5);
     text(ctx, v, x + w, row, 12, c, "right", "600");
@@ -635,6 +647,12 @@ function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, 
     text(ctx, `TIER III — CHOOSE  (${cost})`, x, by - 12, 10, COL.text3, "left", "600", 0.5);
     button(ctx, clicks, x, by, half, 34, def.branchA.name, "branchA", en ? def.color : COL.text3, en);
     button(ctx, clicks, x + half + 10, by, half, 34, def.branchB.name, "branchB", en ? def.color : COL.text3, en);
+    // The choice is permanent, so make the buttons self-explanatory: hovering either one
+    // pops a tooltip describing what that branch actually does.
+    const overA = inRect(game.pointerX, game.pointerY, x, by, half, 34);
+    const overB = inRect(game.pointerX, game.pointerY, x + half + 10, by, half, 34);
+    if (overA) drawTooltip(ctx, `${def.branchA.name} — TIER III`, def.branchA.blurb, def.color, by + 17);
+    else if (overB) drawTooltip(ctx, `${def.branchB.name} — TIER III`, def.branchB.blurb, def.color, by + 17);
   } else {
     text(ctx, `MAX · ${t.branch === "A" ? def.branchA.name : def.branchB.name}`, x, by + 8, 12, def.color, "left", "700", 0.5);
   }
@@ -707,6 +725,32 @@ function button(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y
   ctx.stroke();
   text(ctx, label, x + w / 2, y + h / 2 + 1, 12, enabled ? color : COL.text3, "center", "700");
   if (enabled) clicks.push({ x, y, w, h, action });
+}
+
+// A floating info popover, anchored to the LEFT of the build panel (over the board) so it
+// never clips past the panel edge. `anchorY` is the vertical centre it points at; the box
+// is clamped to stay on-screen.
+function drawTooltip(ctx: CanvasRenderingContext2D, title: string, body: string, accent: string, anchorY: number): void {
+  const tw = 236;
+  const pad = 12;
+  const innerW = tw - pad * 2;
+  const bodyLines = lineCount(ctx, body, innerW, 11);
+  const th = pad + 16 + bodyLines * 15 + pad;
+  const tx = PANEL_X - 12 - tw;
+  const ty = Math.max(STATUS_H + 8, Math.min(STAGE_H - th - 8, anchorY - th / 2));
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 24;
+  roundRect(ctx, tx, ty, tw, th, 10);
+  ctx.fillStyle = COL.panel;
+  ctx.fill();
+  ctx.restore();
+  roundRect(ctx, tx, ty, tw, th, 10);
+  ctx.strokeStyle = hexA(accent, 0.6);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  text(ctx, title, tx + pad, ty + pad + 6, 12, accent, "left", "700", 0.5);
+  wrap(ctx, body, tx + pad, ty + pad + 24, innerW, 11, COL.text2, 15);
 }
 
 // ---- build cursor (held tower ghost + range + legality) -----------------------
@@ -924,7 +968,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   button(ctx, clicks, bx, byy, 180, 42, "BACK", "menu:back", COL.text, true);
 }
 
-function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, color: string): void {
+function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, color: string, lineHeight = 20): void {
   ctx.font = `400 ${size}px ${FONT}`;
   const words = s.split(" ");
   let line = "";
@@ -937,7 +981,7 @@ function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, ma
     if (ctx.measureText(test).width > maxW) {
       ctx.fillText(line, x, yy);
       line = w;
-      yy += 20;
+      yy += lineHeight;
     } else line = test;
   }
   ctx.fillText(line, x, yy);
