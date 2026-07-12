@@ -3,7 +3,7 @@
 # the same registry + tag the driver image is published under. Keep it in lockstep
 # with the dispatcher image tag so they version together.
 #
-# TCAB_CONTAINER_TAG pins the RUN-CONTAINER images (test-cabinet-base/-sprite/
+# TCAB_CONTAINER_TAG pins the RUN-CONTAINER images (test-cabinet-base/-base-wasm/-sprite/
 # -sprite-sheet/-adversarial/-performance) the driver resolves for each sandbox pod.
 # Like TCAB_DRIVER_IMAGE it is an env value, not an `image:` field — the driver reads
 # it at run time (core::harness::resolve_run_image) and the dispatcher forwards it

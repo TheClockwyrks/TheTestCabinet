@@ -1,10 +1,11 @@
 # The 2D full-stack run-container image for The Test Cabinet.
 #
 # Every full-stack run (a case with `type = "full-stack"`) executes in this one
-# image. Unlike an end-to-end run — which builds a program in the bare base image —
-# a full-stack run must ALSO produce its own 2D assets during the run, so this image
-# is the base run-container image plus the baked-in 2D asset-generation binaries on
-# `PATH`: `draw` and `draw-sheet` (sprites / sprite sheets), `particle-2d` (particle
+# image. Unlike an end-to-end run — which builds a program in the Rust/wasm base
+# image — a full-stack run must ALSO produce its own 2D assets during the run, so
+# this image is the Rust/wasm base image (`base-wasm`) plus the baked-in 2D
+# asset-generation binaries on `PATH`: `draw` and `draw-sheet` (sprites / sprite
+# sheets), `particle-2d` (particle
 # systems), and the three audio tools `sfx-synth` (procedural SFX), `sfx-sample`
 # (sampled SFX), and `music` (sampled-instrument music). See the asset-generation
 # docs under `apps/docs/src/content/docs/testing/asset-generation/` for each tool and
@@ -22,18 +23,20 @@
 # is the repository root so the compile stage can see `crates/` — see
 # `containers/build.sh`.
 #
-# This image inherits everything from the base — the toolchain, the unprivileged
-# `node` run user, the `/work` working directory, and the keep-alive CMD — so it only
-# adds the six binaries and the two audio packs. The image a run resolves is selected
-# by its test type (see crate `harness::resolve_run_image`).
+# This image inherits everything from base-wasm — the Node build toolchain, the
+# Rust + `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack` toolchain, the
+# unprivileged `node` run user, the `/work` working directory, and the keep-alive
+# CMD — so it only adds the six binaries and the two audio packs. The image a run
+# resolves is selected by its test type (see crate `harness::resolve_run_image`).
 
-# `BASE_IMAGE` is the base image to extend. It is declared here, BEFORE the first
-# `FROM`, so it is a global build arg the `FROM` for the run image below can consume —
-# an `ARG` declared after a `FROM` is scoped to that stage and would be blank in a
-# later `FROM`. `build.sh` passes the base image it just built (e.g. the local
-# `test-cabinet-base:latest`, or a registry-qualified tag) so this image is always
-# `FROM` the matching base.
-ARG BASE_IMAGE=test-cabinet-base:latest
+# `BASE_IMAGE` is the base image to extend — the Rust/wasm base (`base-wasm`), so a
+# full-stack build may author its simulation core in Rust and ship it as committed
+# wasm. It is declared here, BEFORE the first `FROM`, so it is a global build arg the
+# `FROM` for the run image below can consume — an `ARG` declared after a `FROM` is
+# scoped to that stage and would be blank in a later `FROM`. `build.sh` passes the
+# base-wasm image it just built (e.g. the local `test-cabinet-base-wasm:latest`, or a
+# registry-qualified tag) so this image is always `FROM` the matching base-wasm.
+ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 
 # --- Stage 1: compile the six 2D asset-generation binaries ------------------
 FROM docker.io/library/rust:1-bookworm AS assets-build
@@ -52,8 +55,8 @@ RUN cargo build --release --bins \
 	-p test-cabinet-sfx-sample \
 	-p test-cabinet-music
 
-# --- Stage 2: the base run image, plus the binaries + the audio packs -------
-# `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
+# --- Stage 2: the base-wasm run image, plus the binaries + the audio packs -------
+# `FROM` the base-wasm built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
 # Bake in the six binaries compiled in stage 1. `/usr/local/bin` is on PATH and

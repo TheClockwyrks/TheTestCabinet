@@ -79,12 +79,13 @@ fn usage_carries_normalized_token_classes() {
 #[test]
 fn image_defaults_to_published_namespace_on_latest() {
     // Nothing set: the published GHCR image for the run, on the latest tag.
-    // End-to-end runs resolve the base image; single-sprite runs resolve the
-    // sprite image (the base plus baked-in `draw`); sprite-sheet runs resolve the
-    // sprite-sheet image (the base plus baked-in `draw-sheet`).
+    // End-to-end runs resolve the base-wasm image (the base plus the shared Rust/wasm
+    // toolchain); single-sprite runs resolve the sprite image (the base plus baked-in
+    // `draw`); sprite-sheet runs resolve the sprite-sheet image (the base plus baked-in
+    // `draw-sheet`).
     assert_eq!(
-        compose_run_image(BASE_IMAGE_NAME, None, None, None),
-        "ghcr.io/theclockwyrks/test-cabinet-base:latest"
+        compose_run_image(BASE_WASM_IMAGE_NAME, None, None, None),
+        "ghcr.io/theclockwyrks/test-cabinet-base-wasm:latest"
     );
     assert_eq!(
         compose_run_image(SPRITE_IMAGE_NAME, None, None, None),
@@ -102,8 +103,8 @@ fn image_spec_tracks_the_test_type_and_asset_kind() {
     // env var; there is no override spanning every image. `asset_kind` is ignored
     // for an end-to-end run.
     let base = image_spec_for(TestType::EndToEnd, AssetKind::Sprite);
-    assert_eq!(base.name, BASE_IMAGE_NAME);
-    assert_eq!(base.override_env, BASE_IMAGE_OVERRIDE_ENV);
+    assert_eq!(base.name, BASE_WASM_IMAGE_NAME);
+    assert_eq!(base.override_env, BASE_WASM_IMAGE_OVERRIDE_ENV);
 
     let sprite = image_spec_for(TestType::AssetGeneration, AssetKind::Sprite);
     assert_eq!(sprite.name, SPRITE_IMAGE_NAME);
@@ -124,12 +125,12 @@ fn image_spec_tracks_the_test_type_and_asset_kind() {
 fn image_applies_registry_and_tag_overrides() {
     assert_eq!(
         compose_run_image(
-            BASE_IMAGE_NAME,
+            BASE_WASM_IMAGE_NAME,
             None,
             Some("registry.example.com/team".to_string()),
             Some("v2".to_string()),
         ),
-        "registry.example.com/team/test-cabinet-base:v2"
+        "registry.example.com/team/test-cabinet-base-wasm:v2"
     );
     // The same registry/tag carries the sprite and sprite-sheet images too.
     assert_eq!(
@@ -153,12 +154,12 @@ fn image_applies_registry_and_tag_overrides() {
     // A trailing slash on the registry is normalized away.
     assert_eq!(
         compose_run_image(
-            BASE_IMAGE_NAME,
+            BASE_WASM_IMAGE_NAME,
             None,
             Some("registry.example.com/team/".to_string()),
             None
         ),
-        "registry.example.com/team/test-cabinet-base:latest"
+        "registry.example.com/team/test-cabinet-base-wasm:latest"
     );
 }
 
@@ -167,8 +168,8 @@ fn image_empty_registry_names_a_local_image() {
     // An explicitly empty registry (distinct from unset) drops the prefix, naming
     // a local image for offline development — for either test type's image.
     assert_eq!(
-        compose_run_image(BASE_IMAGE_NAME, None, Some(String::new()), None),
-        "test-cabinet-base:latest"
+        compose_run_image(BASE_WASM_IMAGE_NAME, None, Some(String::new()), None),
+        "test-cabinet-base-wasm:latest"
     );
     assert_eq!(
         compose_run_image(SPRITE_IMAGE_NAME, None, Some(String::new()), None),
@@ -182,13 +183,13 @@ fn image_empty_registry_names_a_local_image() {
 
 #[test]
 fn explicit_image_override_wins_verbatim() {
-    // The image's own override (`TCAB_CONTAINER_IMAGE_BASE` /
+    // The image's own override (`TCAB_CONTAINER_IMAGE_BASE_WASM` /
     // `TCAB_CONTAINER_IMAGE_SPRITE` / `TCAB_CONTAINER_IMAGE_SPRITE_SHEET`) takes
     // precedence over registry/tag and is used verbatim (e.g. a pinned digest),
     // trimmed of surrounding whitespace.
     assert_eq!(
         compose_run_image(
-            BASE_IMAGE_NAME,
+            BASE_WASM_IMAGE_NAME,
             Some("  ghcr.io/me/custom-base@sha256:abc  ".to_string()),
             Some("registry.example.com".to_string()),
             Some("v9".to_string()),
@@ -264,7 +265,7 @@ fn run_image_override_envs_is_exhaustive() {
     ];
 
     // The complete set of override envs every image can resolve: the four
-    // test-type-only images (base for end-to-end, full-stack-2d for full-stack,
+    // test-type-only images (base-wasm for end-to-end, full-stack-2d for full-stack,
     // adversarial, performance) plus one per asset kind.
     let mut expected: Vec<&str> = vec![
         image_spec_for(TestType::EndToEnd, AssetKind::Sprite).override_env,

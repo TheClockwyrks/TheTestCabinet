@@ -40,7 +40,8 @@ example by deleting files.
 - A run executes in one of **five run-container images**, selected by the test
   case's [test type](/testing/overview/) and — for asset-generation — its
   [`asset_kind`](/testing/asset-generation/manifests/): an
-  [end-to-end](/testing/end-to-end/overview/) run uses the **base image**; a single-sprite
+  [end-to-end](/testing/end-to-end/overview/) run uses the **base-wasm image** (the
+  base plus the shared Rust → WebAssembly toolchain); a single-sprite
   [asset-generation](/testing/asset-generation/overview/) run
   (`asset_kind = "sprite"`) uses the **sprite image** (the base image plus the
   baked-in `draw` tool); a sprite-sheet run (`asset_kind = "sprite-sheet"`) uses
@@ -54,11 +55,11 @@ example by deleting files.
   are registry images, and a runner resolves the one for the run from its **own
   registry configuration** — `TCAB_CONTAINER_REGISTRY` (default
   `ghcr.io/theclockwyrks`) and `TCAB_CONTAINER_TAG` (default `latest`) select the
-  image named for the run (`test-cabinet-base`, `test-cabinet-sprite`,
+  image named for the run (`test-cabinet-base-wasm`, `test-cabinet-sprite`,
   `test-cabinet-sprite-sheet`, `test-cabinet-voxel`, or
   `test-cabinet-voxel-animation`), and a **per-image** override pins a verbatim
   reference for one image without touching the others — one
-  `TCAB_CONTAINER_IMAGE_*` per run image (`_BASE` for end-to-end, `_SPRITE` for
+  `TCAB_CONTAINER_IMAGE_*` per run image (`_BASE_WASM` for end-to-end, `_SPRITE` for
   single-sprite, `_SPRITE_SHEET` for sprite-sheet, and so on through every
   asset-generation kind — including `_BLENDER` for blender-character — plus
   `_ADVERSARIAL` and `_PERFORMANCE`; there is no override that spans every image,

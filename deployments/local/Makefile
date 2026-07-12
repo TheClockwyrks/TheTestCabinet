@@ -136,9 +136,11 @@ RUN_IMAGE_TAG    := local
 # asset kind instead of the whole set — the full rebuild recompiles ~20 images from
 # scratch (minutes each) and is rarely what an iteration on one tool needs.
 #
-#   - end-to-end runs execute in the `base` image (which is ALSO the FROM every
-#     other image builds on; build.sh (re)builds it as needed);
-#   - full-stack runs execute in the `full-stack-2d` image (the base plus the six 2D
+#   - end-to-end runs execute in the `base-wasm` image (the Node `base` plus the
+#     shared Rust → wasm toolchain). The plain `base` is the FROM every other image
+#     builds on but is NOT itself a run image, so it is built as needed (build.sh
+#     handles it) and never imported on its own;
+#   - full-stack runs execute in the `full-stack-2d` image (base-wasm plus the six 2D
 #     asset-generation binaries and the two audio packs they need — so building it
 #     needs the R2 PRESIGN credentials in .env, like the sfx-sample/music images);
 #   - asset-generation runs each execute in their own per-kind image;
@@ -151,7 +153,7 @@ RUN_IMAGE_TAG    := local
 # bakes headless Blender (a large third-party download), so it is the slowest asset
 # image to build; rebuild it alone with `make run-image-blender` when iterating on the
 # `tcab-blend` runner rather than paying for the whole `run-images-asset` group.
-E2E_IMAGE_NAMES         := base
+E2E_IMAGE_NAMES         := base-wasm
 FULL_STACK_IMAGE_NAMES  := full-stack-2d
 ASSET_IMAGE_NAMES       := sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned blender particle-2d particle-3d sfx-synth sfx-sample music
 ADVERSARIAL_IMAGE_NAMES := adversarial
@@ -159,7 +161,8 @@ PERFORMANCE_IMAGE_NAMES := performance
 
 # Every run image this Makefile builds + imports locally: the union of the per-type
 # groups above (so it stays in lockstep with them). Order matches build.sh's
-# dependency order (base first, then full-stack-2d which is FROM it).
+# dependency order (base, then base-wasm which is FROM it, then full-stack-2d /
+# adversarial / performance which are FROM base-wasm).
 RUN_IMAGE_NAMES  := $(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES)
 
 # Map a space-separated list of image NAMES to their fully-qualified `:local` refs
@@ -320,7 +323,7 @@ images:
 # change to one test type's tooling only rebuilds that type. Reach for the narrowest
 # target that covers what you changed:
 #   - `run-images`               everything (what local-up runs; the heavy path)
-#   - `run-images-e2e`           just the base image (an end-to-end / base-layer change)
+#   - `run-images-e2e`           the base-wasm image (an end-to-end / base-layer change)
 #   - `run-images-asset`         every asset-generation kind
 #   - `run-image-<kind>`         one asset kind, e.g. `run-image-voxel-animation`
 #                                (you changed only `voxel-anim` → rebuild only that image)
@@ -341,8 +344,9 @@ images:
 # NAMES to pass to build.sh; $(2) is the matching list of fully-qualified refs to
 # save + import (normally `$(call run_image_refs,$(1))`). Since an asset/adversarial/
 # performance image bakes its base's layers in, importing just those refs is enough
-# for their run pods — the standalone `base` image is only imported for end-to-end
-# runs (the `run-images-e2e` group and the full `run-images`).
+# for their run pods — the plain `base` image is never imported on its own (it is not
+# a run image); end-to-end runs schedule against `base-wasm`, imported via the
+# `run-images-e2e` group and the full `run-images`.
 define build_import_run_images
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
@@ -367,9 +371,10 @@ run-images:
 	$(call build_import_run_images,$(RUN_IMAGE_NAMES),$(RUN_IMGS))
 
 # Per-test-type rebuilds — the fast paths after changing one type's baked-in tooling.
-# `-e2e` rebuilds only the base image (also the FROM every other image builds on);
-# `-asset` rebuilds all asset-generation kinds; `-adversarial` / `-performance` each
-# rebuild their one image. build.sh auto-(re)builds the base when a group needs it.
+# `-e2e` rebuilds the base-wasm image (build.sh (re)builds the plain base it is FROM as
+# needed); `-asset` rebuilds all asset-generation kinds; `-adversarial` / `-performance`
+# each rebuild their one image. build.sh auto-(re)builds the base/base-wasm parents when
+# a group needs them.
 run-images-e2e: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-e2e:
 	$(call build_import_run_images,$(E2E_IMAGE_NAMES),$(call run_image_refs,$(E2E_IMAGE_NAMES)))

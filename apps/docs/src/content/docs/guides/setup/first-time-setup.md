@@ -90,7 +90,7 @@ container at run time, so none is a per-harness image to build or pull. The
 and pins the resolved digest in the run record; you do not have to build anything
 on the host to make a first run. The cluster resolves the image from its own
 configuration (`TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG`, or a per-image
-override — `TCAB_CONTAINER_IMAGE_BASE` / `TCAB_CONTAINER_IMAGE_SPRITE` /
+override — `TCAB_CONTAINER_IMAGE_BASE_WASM` / `TCAB_CONTAINER_IMAGE_SPRITE` /
 `TCAB_CONTAINER_IMAGE_SPRITE_SHEET`) — see
 [Execution](/components/core/execution/#containerization).
 

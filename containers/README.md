@@ -10,9 +10,19 @@ There is **one image per run kind**, selected by a run's
 its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md).
 The full set is whatever [`build.sh`](#building) builds; the notable ones:
 
-- the **base** image, which every
+- the **base** image, the shared Node foundation every other image is built `FROM`
+  (directly, or via **base-wasm**) except the self-contained blender image; it is
+  not itself resolved as a run image;
+- the **base-wasm** image, which every
   [end-to-end](../apps/docs/src/content/docs/testing/end-to-end/) run executes
-  in;
+  in — the base plus the shared **Rust → WebAssembly toolchain** (Rust with the
+  `wasm32-unknown-unknown` target, `wasm-bindgen`, `wasm-pack`, and `binaryen`),
+  so an end-to-end or full-stack build may author its core simulation in Rust and
+  ship it as a **committed wasm build input** (the toolchain is present only while
+  the run is live — a build's `npm ci && npm run build` must consume the committed
+  `.wasm`, never invoke `cargo`/`wasm-pack`, exactly as it must not shell out to
+  `draw`). It is the parent of the full-stack-2d, adversarial, and performance
+  images;
 - the **sprite** image, which every single-sprite
   [asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
   run (`asset_kind = "sprite"`) executes in — the base image plus the baked-in
@@ -80,14 +90,14 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   bank;
 - the **adversarial** image, which every
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
-  run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
-  toolchain (so a model's controller builds to a wasm core module in-container)
-  and the Foray tooling compiled from `crates/`: the baked-in `foray` CLI, the
+  run executes in — **base-wasm** (which supplies the Rust + `wasm32-unknown-unknown`
+  toolchain a model's controller builds to a wasm core module with in-container)
+  plus the Foray tooling compiled from `crates/`: the baked-in `foray` CLI, the
   controller buildkit, and the reference modules + map; and
 - the **performance** image, which every
   [performance](../apps/docs/src/content/docs/testing/performance/overview.md)
-  run executes in — the base image plus the Rust + `wasm32-unknown-unknown`
-  toolchain (so a model's engine builds to a wasm core module in-container) and
+  run executes in — **base-wasm** (which supplies the Rust + `wasm32-unknown-unknown`
+  toolchain a model's engine builds to a wasm core module with in-container) plus
   the Lattice tooling compiled from `crates/`: the baked-in `lattice` CLI, the
   engine buildkit, the reference engines, and the committed training scenarios.
 
@@ -103,7 +113,8 @@ the image by test type and asset kind via
 
 ```
 containers/
-├── base/Dockerfile             # the end-to-end run image (toolchain, run user)
+├── base/Dockerfile             # the shared Node foundation (toolchain, run user); not a run image itself
+├── base-wasm/Dockerfile        # the end-to-end run image: base plus the shared Rust → wasm toolchain
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
@@ -168,9 +179,13 @@ unprivileged run user cannot `apt-get` them at init time.
 It likewise installs **no agent harness** and **no Test Cabinet binary**. The
 harness CLI is installed into the container at run time from the harness's
 [manifest](../harnesses/README.md), the same way and for the same reason a test
-case prepares its workspace with an init command. End-to-end runs never touch a
-drawing tool, so neither lives in the base — they live in the asset-generation
-images below.
+case prepares its workspace with an init command. An asset-generation run never
+touches a drawing tool from the base, and none of them compiles Rust, so neither a
+drawing tool nor the Rust toolchain lives here — the drawing tools live in the
+asset-generation images below, and the Rust toolchain lives in **base-wasm** (next).
+The base is **not itself a run image**: it is the build-time parent that base-wasm
+and the asset-generation images are each built `FROM`. End-to-end runs execute in
+base-wasm.
 
 The base run image carries nothing for the **shippable Test Cabinet packages**
 (below): a case that declares
@@ -179,6 +194,45 @@ them **vendored into its run repository at seed time**, so the produced tree is
 self-contained. The packages that get vendored come from a host **package store**
 baked into the [driver image](../deployments/images/driver.Dockerfile), which is
 the image that seeds runs.
+
+## Rust/wasm base image (`base-wasm`)
+
+`base-wasm/` is the base image plus the shared **Rust → WebAssembly toolchain**, and
+it is the image **every end-to-end run executes in** (and the parent the full-stack-2d,
+adversarial, and performance images are each built `FROM`). It exists as its own layer,
+rather than folding the toolchain into the base, so the asset-generation images — which
+never compile Rust — do not carry it; and it is shared, rather than installed per
+dependent image, so the adversarial and performance images no longer install a Rust
+toolchain of their own.
+
+It bakes on top of the base:
+
+- the **Rust toolchain** (pinned; `RUST_VERSION` in `base-wasm/Dockerfile`) with the
+  `wasm32-unknown-unknown` target, so `cargo build --target wasm32-unknown-unknown`
+  works in-container during a run;
+- **`wasm-bindgen-cli`**, so a build can use the `wasm-bindgen` crate to pass rich
+  values across the JS ↔ wasm boundary rather than hand-marshalling integers through
+  linear memory — the ergonomic path for a browser simulation core. Its version is
+  pinned and **must match** the `wasm-bindgen` crate a build depends on, so a case that
+  uses it pins its crate to the same version; and
+- **`wasm-pack`** plus **`binaryen`** (`wasm-opt`), the conventional build/optimize
+  pipeline, present so an offline run never needs to fetch a matching optimizer.
+
+The toolchain is installed system-wide and made world-readable so the unprivileged run
+user can invoke `cargo`/`rustc`/`wasm-bindgen`/`wasm-pack` and the wasm target without
+root; its cargo registry/cache is owned by the run user so a build can resolve its own
+crate dependencies at run time. A `profile.d` snippet re-adds cargo's bin dir to the
+`PATH` a login shell (`bash -lc`) sees, because Debian's `/etc/profile` otherwise resets
+it.
+
+Crucially, this toolchain — like the asset-generation binaries — is on `PATH` **only
+while the run is live**. It is **not** present when a build is re-run to
+[validate](../apps/docs/src/content/docs/components/core/validation.md) it or when the
+published source is rebuilt (that rebuild is a bare, Node-only `npm ci && npm run build`
+off the run container). So a build that uses Rust must **compile once during the run and
+commit the resulting `.wasm`** (and any generated JS glue) as a build input its bundler
+consumes directly; `npm run build` must **not** invoke `cargo`/`wasm-pack`, exactly as
+it must not shell out to `draw`. The case's specification states that contract.
 
 ## The shippable Test Cabinet packages
 
@@ -367,17 +421,16 @@ in this repo.
 
 ## Adversarial image
 
-`adversarial/` is the base image plus the **Rust toolchain with the
-`wasm32-unknown-unknown` target** and **The Test Cabinet's own Foray tooling**
-(`adversarial/Dockerfile` is `FROM` the base, so it inherits the toolchain, the
-`node` run user, the `/work` working directory, and the keep-alive `CMD`). An
+`adversarial/` is the **base-wasm** image plus **The Test Cabinet's own Foray
+tooling** (`adversarial/Dockerfile` is `FROM` base-wasm, so it inherits the Node
+toolchain, the shared **Rust toolchain with the `wasm32-unknown-unknown` target**,
+the `node` run user, the `/work` working directory, and the keep-alive `CMD`). An
 [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md) run
 asks the model to write a controller in Rust; the case's `[build]` commands
 compile that controller to a wasm core module **inside this container at run
-time**, which is why the Rust toolchain is baked in. The toolchain is installed
-system-wide and made world-readable so the unprivileged run user can invoke
-`cargo`/`rustc` and the wasm target without root; its cargo registry/cache is
-owned by the run user so a controller build can resolve dependencies at run time.
+time**, which is why base-wasm carries the Rust toolchain (installed system-wide,
+world-readable, with a run-user-owned cargo registry — see the **base-wasm** section
+above). This image adds only the Foray tooling.
 
 Like the asset-generation images, this one **also bakes in The Test Cabinet's own
 tooling**, compiled from `crates/` in a multi-stage build and copied under
@@ -408,16 +461,16 @@ workspace dependencies fails the image build.
 
 ## Performance image
 
-`performance/` is the base image plus the **Rust toolchain with the
-`wasm32-unknown-unknown` target** and **The Test Cabinet's own Lattice tooling**
-(`performance/Dockerfile` is `FROM` the base, so it inherits the toolchain, the
-`node` run user, the `/work` working directory, and the keep-alive `CMD`). A
+`performance/` is the **base-wasm** image plus **The Test Cabinet's own Lattice
+tooling** (`performance/Dockerfile` is `FROM` base-wasm, so it inherits the Node
+toolchain, the shared **Rust toolchain with the `wasm32-unknown-unknown` target**,
+the `node` run user, the `/work` working directory, and the keep-alive `CMD`). A
 [performance](../apps/docs/src/content/docs/testing/performance/overview.md) run
 asks the model to write a factory-simulation engine in Rust; the case's `[build]`
 commands compile that engine to a wasm core module **inside this container at run
-time**, exactly as the adversarial image compiles a controller, which is why the
-Rust toolchain is baked in the same way (system-wide, world-readable, with a
-run-user-owned cargo registry).
+time**, exactly as the adversarial image compiles a controller — both inherit that
+Rust toolchain from base-wasm (system-wide, world-readable, with a run-user-owned
+cargo registry). This image adds only the Lattice tooling.
 
 Like the adversarial image, this one **also bakes in The Test Cabinet's own
 tooling**, compiled from `crates/` in a multi-stage build and copied under

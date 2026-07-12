@@ -43,11 +43,17 @@ solo developer does, rather than integrating assets someone else made to spec.
 
 ## The full-stack-2d run image
 
-An end-to-end run executes in the bare base container. A full-stack run instead
-executes in a dedicated **`test-cabinet-full-stack-2d`** run image: the same base
-plus the 2D asset-generation binaries baked onto `PATH`. Selecting the image is
-automatic — the full-stack test type picks it in place of the base image — so a
-case declares nothing to get the tools; they are simply present at run time.
+An end-to-end run executes in the **base-wasm** container (the Node base plus the
+shared Rust → WebAssembly toolchain). A full-stack run instead executes in a
+dedicated **`test-cabinet-full-stack-2d`** run image: that same base-wasm plus the 2D
+asset-generation binaries baked onto `PATH`. Selecting the image is automatic — the
+full-stack test type picks it in place of the base-wasm image — so a case declares
+nothing to get the tools; they are simply present at run time. Because full-stack
+inherits base-wasm, a full-stack build may also author its core simulation in Rust and
+compile it to a **committed wasm build input**, exactly as an end-to-end build may; the
+compiled `.wasm` is committed and consumed like any other produced asset — the Rust
+toolchain is on `PATH` only while the run is live, so `npm run build` must not invoke
+`cargo`/`wasm-pack`, exactly as it must not shell out to `draw`.
 
 Six binaries are on `PATH`, each the same tool the corresponding
 [asset-generation](/testing/asset-generation/overview/) case uses, invoked as a

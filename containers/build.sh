@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Builds The Test Cabinet run-container images:
-#   - the base image, which every end-to-end run executes in;
+#   - the base image, the shared Node foundation every other image is `FROM`
+#     (directly, or via base-wasm) except the self-contained blender image;
+#   - the base-wasm image, which every end-to-end run executes in — the base plus
+#     the shared Rust → WebAssembly toolchain (Rust + `wasm32-unknown-unknown` +
+#     wasm-bindgen + wasm-pack + binaryen), so an end-to-end or full-stack build may
+#     author its simulation core in Rust and ship it as committed wasm
+#     (`base-wasm/Dockerfile` is `FROM` the base built here);
 #   - the sprite image, which every single-sprite asset-generation run
 #     (`asset_kind = "sprite"`) executes in — the base image plus the baked-in
 #     `draw` binary (`sprite/Dockerfile` is `FROM` the base built here);
@@ -23,17 +29,17 @@
 #     binary (`mc`/`mc-anim`/`sn`/`sn-anim`/`dc`/`dc-anim`) and the Mesa
 #     software-Vulkan (lavapipe) runtime the previews render with (each
 #     `<name>/Dockerfile` is `FROM` the base); and
-#   - the adversarial image, which every adversarial run executes in — the base
-#     image plus the Rust + `wasm32-unknown-unknown` toolchain (so a model's
-#     controller builds to wasm in-container) and the Foray tooling compiled from
+#   - the adversarial image, which every adversarial run executes in — base-wasm
+#     (which supplies the Rust + `wasm32-unknown-unknown` toolchain a model's
+#     controller builds to wasm with) plus the Foray tooling compiled from
 #     `crates/`: the baked-in `foray` CLI, the controller buildkit, and the
-#     reference modules + map (`adversarial/Dockerfile` is `FROM` the base here);
+#     reference modules + map (`adversarial/Dockerfile` is `FROM` base-wasm here);
 #     and
-#   - the performance image, which every performance run executes in — the base
-#     image plus the Rust + `wasm32-unknown-unknown` toolchain and the Lattice
-#     tooling compiled from `crates/`: the baked-in `lattice` CLI, the engine
-#     buildkit, the reference engines, and the committed training scenarios
-#     (`performance/Dockerfile` is `FROM` the base here).
+#   - the performance image, which every performance run executes in — base-wasm
+#     (which supplies the Rust + `wasm32-unknown-unknown` toolchain a model's engine
+#     builds to wasm with) plus the Lattice tooling compiled from `crates/`: the
+#     baked-in `lattice` CLI, the engine buildkit, the reference engines, and the
+#     committed training scenarios (`performance/Dockerfile` is `FROM` base-wasm here).
 # None is a per-harness image: a run installs the selected harness's CLI into the
 # image at run time (see `harnesses/README.md`).
 #
@@ -51,7 +57,7 @@
 # The images are distributed via a registry and pulled by the runner, which
 # resolves the one for a run's test type and asset kind from its own registry
 # configuration (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG, or a per-image
-# override TCAB_CONTAINER_IMAGE_BASE / TCAB_CONTAINER_IMAGE_SPRITE /
+# override TCAB_CONTAINER_IMAGE_BASE_WASM (end-to-end) / TCAB_CONTAINER_IMAGE_SPRITE /
 # TCAB_CONTAINER_IMAGE_SPRITE_SHEET / TCAB_CONTAINER_IMAGE_VOXEL /
 # TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION / TCAB_CONTAINER_IMAGE_MC /
 # TCAB_CONTAINER_IMAGE_MC_ANIMATION / TCAB_CONTAINER_IMAGE_SN /
@@ -65,7 +71,8 @@
 # With PUSH=1 the script pushes each built image to IMAGE_REGISTRY and prints its
 # pushed digest reference. Without PUSH it just builds locally (the offline
 # development path): the images are named `test-cabinet-base:<tag>`,
-# `test-cabinet-sprite:<tag>`, `test-cabinet-sprite-sheet:<tag>`,
+# `test-cabinet-base-wasm:<tag>`, `test-cabinet-sprite:<tag>`,
+# `test-cabinet-sprite-sheet:<tag>`,
 # `test-cabinet-voxel:<tag>`, `test-cabinet-voxel-animation:<tag>`,
 # `test-cabinet-mc:<tag>`, `test-cabinet-mc-animation:<tag>`,
 # `test-cabinet-sn:<tag>`, `test-cabinet-sn-animation:<tag>`,
@@ -80,7 +87,8 @@
 #                 runner's default TCAB_CONTAINER_REGISTRY.
 #   IMAGE_TAG     tag applied to the images (default: latest)
 #   IMAGE_NAME_PREFIX  image name prefix (default: test-cabinet-); the base is
-#                 IMAGE_NAME_PREFIXbase, the sprite image is
+#                 IMAGE_NAME_PREFIXbase, the base-wasm image is
+#                 IMAGE_NAME_PREFIXbase-wasm, the sprite image is
 #                 IMAGE_NAME_PREFIXsprite, the sprite-sheet image is
 #                 IMAGE_NAME_PREFIXsprite-sheet, the voxel image is
 #                 IMAGE_NAME_PREFIXvoxel, the voxel-animation image is
@@ -108,6 +116,11 @@ readonly DOCKER="${DOCKER:-docker}"
 # sprite and sprite-sheet tags are composed inline by `build_asset_image`; only the
 # base, adversarial, and performance tags are referenced by name here.
 readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
+# The Rust/wasm middle layer built `FROM` the base: the base plus the shared Rust →
+# WebAssembly toolchain. End-to-end runs resolve this image, and the full-stack-2d,
+# adversarial, and performance images are each built `FROM` it (they no longer install
+# a Rust toolchain of their own), so it stays in lockstep with the base within a build.
+readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
@@ -156,6 +169,28 @@ build_base() {
 		local reference
 		reference="$(push_and_pin "${BASE_IMAGE}" base)"
 		echo "==> base reference: ${reference}"
+	fi
+}
+
+# Build the Rust/wasm base image `FROM` the base built above plus the shared Rust →
+# WebAssembly toolchain (Rust + the `wasm32-unknown-unknown` target + wasm-bindgen +
+# wasm-pack + binaryen). End-to-end runs resolve this image directly, and the
+# full-stack-2d, adversarial, and performance images are built `FROM` it. Building
+# from the local base tag avoids a registry round-trip and keeps this image pinned to
+# the base produced in this same invocation. The context is the repository root only
+# for `.dockerignore` parity with the other images; this image compiles nothing from
+# `crates/` (it installs the public toolchain), so the context is otherwise unused.
+build_base_wasm() {
+	echo "==> building ${BASE_WASM_IMAGE} (FROM ${BASE_IMAGE})"
+	"$DOCKER" build \
+		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		-t "${BASE_WASM_IMAGE}" \
+		-f "${SCRIPT_DIR}/base-wasm/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${BASE_WASM_IMAGE}" base-wasm)"
+		echo "==> base-wasm reference: ${reference}"
 	fi
 }
 
@@ -236,7 +271,7 @@ build_audio_image() {
 	fi
 }
 
-# Build the 2D full-stack image: the base plus the six 2D asset-generation binaries
+# Build the 2D full-stack image: base-wasm plus the six 2D asset-generation binaries
 # (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the two audio packs
 # those tools need (the combat-core sample pack for `sfx-sample`, the gm-lite instrument
 # bank for `music`). It is the union of a plain asset image and BOTH audio images, so it
@@ -276,9 +311,9 @@ build_full_stack_2d() {
 	mapfile -t lines <<<"${presign}"
 	local bank_url="${lines[0]}" bank_sha="${lines[1]}"
 
-	echo "==> building ${image} (FROM ${BASE_IMAGE}) with ${sample_ref} + ${bank_ref}"
+	echo "==> building ${image} (FROM ${BASE_WASM_IMAGE}) with ${sample_ref} + ${bank_ref}"
 	"$DOCKER" build \
-		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
 		--build-arg "SAMPLE_PACK=${sample_ref}" \
 		--build-arg "SAMPLE_PACK_URL=${sample_url}" \
 		--build-arg "SAMPLE_PACK_SHA256=${sample_sha}" \
@@ -296,18 +331,18 @@ build_full_stack_2d() {
 }
 
 build_adversarial() {
-	echo "==> building ${ADVERSARIAL_IMAGE} (FROM ${BASE_IMAGE})"
-	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
-	# arg, the local tag) plus the Rust + `wasm32-unknown-unknown` toolchain a
-	# model's controller compiles to wasm with, AND the Foray tooling the image's
-	# first stage compiles from `crates/`: the `foray` CLI, the controller buildkit
-	# (`foray-core` + `foray-controller-sdk`), and the reference wasm modules + map.
-	# Like the asset-generation images it therefore needs the repository root as its
-	# build context (a repo-root `.dockerignore` keeps it lean). Building from the
-	# local base tag avoids a registry round-trip and keeps the adversarial image
-	# pinned to the base produced in this same invocation.
+	echo "==> building ${ADVERSARIAL_IMAGE} (FROM ${BASE_WASM_IMAGE})"
+	# Built `FROM` the base-wasm image built above (passed as the BASE_IMAGE build
+	# arg, the local tag) — which already carries the Rust + `wasm32-unknown-unknown`
+	# toolchain a model's controller compiles to wasm with — plus the Foray tooling
+	# the image's first stage compiles from `crates/`: the `foray` CLI, the controller
+	# buildkit (`foray-core` + `foray-controller-sdk`), and the reference wasm modules
+	# + map. Like the asset-generation images it therefore needs the repository root as
+	# its build context (a repo-root `.dockerignore` keeps it lean). Building from the
+	# local base-wasm tag avoids a registry round-trip and keeps the adversarial image
+	# pinned to the base-wasm produced in this same invocation.
 	"$DOCKER" build \
-		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
 		-t "${ADVERSARIAL_IMAGE}" \
 		-f "${SCRIPT_DIR}/adversarial/Dockerfile" "${SCRIPT_DIR}/.."
 
@@ -339,19 +374,19 @@ build_blender() {
 }
 
 build_performance() {
-	echo "==> building ${PERFORMANCE_IMAGE} (FROM ${BASE_IMAGE})"
-	# Built `FROM` the base image just built above (passed as the BASE_IMAGE build
-	# arg, the local tag) plus the Rust + `wasm32-unknown-unknown` toolchain a
-	# model's engine compiles to wasm with, AND the Lattice tooling the image's
-	# first stage compiles from `crates/`: the `lattice` CLI, the engine buildkit
-	# (`lattice-core` + `lattice-sdk`), and the reference engine wasm modules. It
-	# also bakes the committed training scenarios from the case's version folder
-	# under `test-cases/`. Like the adversarial image it therefore needs the
-	# repository root as its build context (a repo-root `.dockerignore` keeps it
-	# lean). Building from the local base tag avoids a registry round-trip and keeps
-	# the performance image pinned to the base produced in this same invocation.
+	echo "==> building ${PERFORMANCE_IMAGE} (FROM ${BASE_WASM_IMAGE})"
+	# Built `FROM` the base-wasm image built above (passed as the BASE_IMAGE build
+	# arg, the local tag) — which already carries the Rust + `wasm32-unknown-unknown`
+	# toolchain a model's engine compiles to wasm with — plus the Lattice tooling the
+	# image's first stage compiles from `crates/`: the `lattice` CLI, the engine
+	# buildkit (`lattice-core` + `lattice-sdk`), and the reference engine wasm modules.
+	# It also bakes the committed training scenarios from the case's version folder
+	# under `test-cases/`. Like the adversarial image it therefore needs the repository
+	# root as its build context (a repo-root `.dockerignore` keeps it lean). Building
+	# from the local base-wasm tag avoids a registry round-trip and keeps the
+	# performance image pinned to the base-wasm produced in this same invocation.
 	"$DOCKER" build \
-		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
 		-t "${PERFORMANCE_IMAGE}" \
 		-f "${SCRIPT_DIR}/performance/Dockerfile" "${SCRIPT_DIR}/.."
 
@@ -369,6 +404,7 @@ build_performance() {
 build_one() {
 	case "$1" in
 		base)         build_base ;;
+		base-wasm)    build_base_wasm ;;
 		adversarial)  build_adversarial ;;
 		performance)  build_performance ;;
 		# The full-stack-2d image bakes six binaries AND two content-addressed audio
@@ -394,6 +430,7 @@ build_one() {
 # builds only the named subset.
 ALL_NAMES=(
 	base
+	base-wasm
 	full-stack-2d
 	sprite sprite-sheet
 	voxel voxel-animation
@@ -430,15 +467,17 @@ for name in "${selected[@]}"; do
 	fi
 done
 
-# Uphold the FROM-base invariant. Rebuild base first if it was selected; otherwise,
-# if any base-dependent image was selected but no base image exists yet, build it so the
-# `FROM ${BASE_IMAGE}` in those Dockerfiles resolves. An existing base is reused
-# untouched — select `base` explicitly to rebuild it after a base-level change.
+# Uphold the FROM-base and FROM-base-wasm invariants. Rebuild base (then base-wasm)
+# first if selected; otherwise, if any dependent image was selected but its parent
+# image does not exist yet, build the parent so the `FROM ${BASE_IMAGE}` in those
+# Dockerfiles resolves. An existing parent is reused untouched — select `base` /
+# `base-wasm` explicitly to rebuild it after a change at that layer.
 select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
 
-# Whether the selection includes any image built `FROM` the base. Every image is, EXCEPT
-# `blender`, which is a self-contained `ubuntu:26.04` image (see build_blender) — so a
-# selection of only `blender` must NOT drag in a base build.
+# Whether the selection includes any image built `FROM` the base (directly, or via
+# base-wasm). Every image is, EXCEPT `blender`, which is a self-contained
+# `ubuntu:26.04` image (see build_blender) — so a selection of only `blender` must NOT
+# drag in a base build.
 select_needs_base() {
 	local x
 	for x in "${selected[@]}"; do
@@ -447,16 +486,40 @@ select_needs_base() {
 	return 1
 }
 
+# Whether the selection includes any image built `FROM` base-wasm (the Rust/wasm
+# middle layer): the full-stack-2d, adversarial, and performance images. Such a
+# selection needs base-wasm present, which in turn needs base — both handled below.
+select_needs_base_wasm() {
+	local x
+	for x in "${selected[@]}"; do
+		case "$x" in
+			full-stack-2d | adversarial | performance) return 0 ;;
+		esac
+	done
+	return 1
+}
+
+# Layer 1 — the base. `select_needs_base` is true whenever base-wasm or any of its
+# dependents is selected (none of them is `base`/`blender`), so this also covers the
+# base that base-wasm is `FROM`.
 if select_has base; then
 	build_base
 elif select_needs_base && ! image_present "${BASE_IMAGE}"; then
-	echo "==> base image ${BASE_IMAGE} not present; building it first (every image but blender is FROM it)"
+	echo "==> base image ${BASE_IMAGE} not present; building it first (every image but blender is FROM it, directly or via base-wasm)"
 	build_base
 fi
 
-# Build each selected image (base is already handled above).
+# Layer 2 — base-wasm (now that base is present if it was needed).
+if select_has base-wasm; then
+	build_base_wasm
+elif select_needs_base_wasm && ! image_present "${BASE_WASM_IMAGE}"; then
+	echo "==> base-wasm image ${BASE_WASM_IMAGE} not present; building it first (full-stack-2d/adversarial/performance are FROM it)"
+	build_base_wasm
+fi
+
+# Build each selected image (base and base-wasm are already handled above).
 for name in "${selected[@]}"; do
-	[[ "$name" == base ]] && continue
+	[[ "$name" == base || "$name" == base-wasm ]] && continue
 	build_one "$name"
 done
 echo "==> done"

@@ -79,7 +79,7 @@ patches:
 # service at that sha; the docs-only tip commit shares the push, so the tag rides on
 # it). Bumped from the v0.4.0 pin `ba19bd69`.
 #
-# The RUN-CONTAINER images (test-cabinet-base/-sprite/-sprite-sheet/-adversarial/
+# The RUN-CONTAINER images (test-cabinet-base/-base-wasm/-sprite/-sprite-sheet/-adversarial/
 # -performance, plus the voxel/mesh/skin/ui/material/particle/audio kinds) are pinned
 # SEPARATELY via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml and are NOT
 # generally in lockstep with the service images — they only rebuild when
