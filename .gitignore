@@ -254,14 +254,16 @@ $RECYCLE.BIN/
 # be committed.
 test-cases/**/reference/screenshots/
 
-# Exception: Cascade and Fathom derive their reference screenshots from their
-# playable reference-impl builds (captured with Playwright), not from HTML
-# mockups, so those images ARE the committed source of truth — the `[[reference]]`
-# entries point at them as `media`. Keep them tracked.
+# Exception: Cascade, Fathom and Coil derive their reference screenshots from a
+# playable build (captured with Playwright), not from HTML mockups, so those images
+# ARE the committed source of truth — the `[[reference]]` entries point at them as
+# `media`. Keep them tracked.
 !test-cases/cascade/v1.0.0/reference/screenshots/
 !test-cases/cascade/v1.0.0/reference/screenshots/**
 !test-cases/fathom/v1.1.0/reference/screenshots/
 !test-cases/fathom/v1.1.0/reference/screenshots/**
+!test-cases/coil/v1.0.0/reference/screenshots/
+!test-cases/coil/v1.0.0/reference/screenshots/**
 
 # Cargo build output. Cargo.lock is intentionally committed because this
 # workspace builds applications (the CLI and desktop app), not just libraries.

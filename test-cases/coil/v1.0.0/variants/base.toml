@@ -10,4 +10,7 @@ description = "Classic mode: grow the snake, thread the open board, and build th
 # This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
 # path the common specs reference). Classic mode; self-contained.
 spec = [{ source = "specs/mode-base.md", dest = "specs/mode.md" }]
-reference = [{ view = "title", path = "reference/menu-base.html" }]
+
+# The Classic title screen, captured from a playable build and served as-is (the
+# former `menu-base.html` mockup is gone). `gameplay` and `game-over` are common.
+reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
