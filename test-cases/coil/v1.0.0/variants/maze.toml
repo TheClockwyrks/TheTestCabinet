@@ -10,7 +10,17 @@ description = "Maze mode: the grid-serpent run on a board laced with fixed fatal
 # This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
 # path the common specs reference). Maze mode; self-contained.
 spec = [{ source = "specs/mode-maze.md", dest = "specs/mode.md" }]
-reference = [{ view = "title", path = "reference/menu-maze.html" }]
+
+# This variant's three views, all captured from a playable Maze build and served as-is
+# (the former `menu-maze.html` mockup is gone): the title menu (`MAZE` / `HOW TO PLAY`,
+# with the obstacle course dimmed behind it), the in-play board — laced with the fixed,
+# fatal obstacle bars this mode is about — and the game-over panel, through which those
+# bars and the `MAZE` HUD tag are still visible.
+reference = [
+  { view = "title", media = "reference/screenshots/maze/title.png" },
+  { view = "gameplay", media = "reference/screenshots/maze/gameplay.png" },
+  { view = "game-over", media = "reference/screenshots/maze/game-over.png" },
+]
 
 [[domain]]
 id = "maze"

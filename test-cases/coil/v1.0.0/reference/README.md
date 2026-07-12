@@ -8,56 +8,70 @@ validation check (declared in `../test-case.toml`) that names the view.
 
 ## The playable build is the source of truth
 
-Coil's reference screenshots are **derived from a real game**, so each image shows
-the actual produced sprite set (the biting head, the straight-body tube, the corner
-sprites at each bend, the tapering tail — see [`../specs/assets.md`](../specs/assets.md))
-and the real HUD, rather than a CSS approximation of them. The captured images are
-committed under `screenshots/` and referenced from the manifest as `media` (served
-as-is), because there is no longer a mockup for the harness to render at seed time.
+Coil's reference screenshots are **derived from real games**. There is no separate
+HTML/CSS mockup to keep in sync (the former `*.html` + `theme.css` mockups were
+removed): a playable build per variant *is* the ground truth, and the screenshots
+are captured straight from it — so each image shows the actual produced sprite set
+(the biting head, the straight-body tube, the corner sprites at each bend, the
+tapering tail — see [`../specs/assets.md`](../specs/assets.md)) and the real board
+and HUD, rather than a CSS approximation of them. The captured images are committed
+under `screenshots/` and referenced from the manifest as `media` (served as-is),
+because there is no longer a mockup for the harness to render at seed time.
 
 The screenshots are still **rendered, not source**: what a run receives is the image,
 seeded as a visual target alongside the seeded specs under [`../specs/`](../specs/).
-The build they were captured from is never seeded into a run.
+The builds they were captured from are never seeded into a run.
 
 ## Views
 
-The `title` view is **variant-specific** — each variant's main menu lists its own
-single mode — so it lives under `screenshots/<variant>/`. The `gameplay` and
-`game-over` views are **common**: they look the same in every variant, and are
-captured from the `base` build and seeded for all of them.
+There are **no common views**. Every view is variant-specific and lives under
+`screenshots/<variant>/`, because each variant is exactly one mode and the mode shows
+in all three:
 
-| View slug   | Image                            | Captured from | Scope       |
-| ----------- | -------------------------------- | ------------- | ----------- |
-| `title`     | `screenshots/base/title.png`     | `base` build  | Base only   |
-| `gameplay`  | `screenshots/gameplay.png`       | `base` build  | common      |
-| `game-over` | `screenshots/game-over.png`      | `base` build  | common      |
+- the **title** menu lists that variant's single mode (`CLASSIC` for `base`, `MAZE`
+  for `maze`, each above `HOW TO PLAY`);
+- the **gameplay** board differs by mode — Maze laces the board with the fixed, fatal
+  obstacle course (see [`../specs/mode-maze.md`](../specs/mode-maze.md)) that a
+  Classic board does not have; and
+- the **game-over** frame shows the dimmed board behind the end panel — obstacle bars
+  included — and the HUD's mode tag, so it too differs by mode.
+
+| View slug   | Base                            | Maze                            |
+| ----------- | ------------------------------- | ------------------------------- |
+| `title`     | `screenshots/base/title.png`    | `screenshots/maze/title.png`    |
+| `gameplay`  | `screenshots/base/gameplay.png` | `screenshots/maze/gameplay.png` |
+| `game-over` | `screenshots/base/game-over.png`| `screenshots/maze/game-over.png`|
 
 ```text
-reference/screenshots/base/title.png   # Base only — the CLASSIC / HOW TO PLAY menu
-reference/screenshots/gameplay.png     # common — the coiled snake mid-combo, and the HUD
-reference/screenshots/game-over.png    # common — the end panel over the finished board
+base/title.png       # the CLASSIC / HOW TO PLAY menu
+base/gameplay.png    # the coiled snake mid-combo on the open board
+base/game-over.png   # the end panel over the open board
+maze/title.png       # the MAZE menu, obstacle course dimmed behind it
+maze/gameplay.png    # the snake threading the fatal obstacle bars
+maze/game-over.png   # the end panel, bars still visible behind it
 ```
 
 Seeding is keyed by the view slug, so the path here is purely organizational:
-whichever variant a run selects, its `title.png` is seeded as `reference/title.png`,
-so the model always sees a single stable path.
+whichever variant a run selects, its images are seeded as `reference/title.png`,
+`reference/gameplay.png`, and `reference/game-over.png`, so the model always sees a
+single stable set of paths.
 
 - **`gameplay`** shows the intended in-play look: the snake rendered from its
   produced sprites — head, straight body, and corner sprites where it bends, so the
   body reads as a continuous turning coil — pixel-aligned on the crisp grid, the
   pellet on the board, and the HUD showing `SCORE`, `BEST`, the mode tag, and the
-  combo multiplier with its draining window bar.
+  combo multiplier with its draining window bar. The Maze capture additionally shows
+  the four obstacle bars in the obstacle color, point-symmetric about the board
+  centre.
 - **`game-over`** shows the real end panel (`GAME OVER`, the final score and `BEST`,
   and the `PLAY AGAIN` / `MENU` choices) over the board the round ended on.
 
-The `maze` variant's `title` view is still the `menu-maze.html` mockup (rendered at
-seed time); it will be captured from a Maze build alongside this set once Maze mode
-exists in the game.
-
 ## Regenerating the screenshots
 
-The images are a capture of a real build, so regenerate them whenever the game's
-look changes:
+The images are a capture of real builds, so regenerate them whenever a build's look
+changes. A build implements exactly one mode (the one its seeded `specs/mode.md`
+describes), so the Base views come from a Classic build and the Maze views from a
+Maze build:
 
 1. Build the game (`npm ci && npm run build`), which emits a static site to `dist/`.
 2. Serve the built `dist/` over HTTP and open it in Playwright Chromium at a
@@ -68,16 +82,16 @@ look changes:
 3. Drive each view through the real input path — `Sim.requestTurn`, the same call a
    key press makes — so growth, turning, and the combo behave exactly as in play:
    - **title** — capture on load, once the sprites have finished loading.
-   - **gameplay** — press `Enter` (the `CLASSIC` menu item), then steer the snake to
-     eat pellets (shortest path to the pellet, avoiding the body) until it has grown
-     into a coil with several bends and the combo has climbed to a multiplier of at
-     least `x3`; capture while the window bar still has some of its drain left to
-     show.
+   - **gameplay** — press `Enter` (the mode's menu item), then steer the snake to eat
+     pellets (shortest path to the pellet, treating the body **and, in Maze, the
+     obstacle cells** as solid) until it has grown into a coil with several bends and
+     the combo has climbed to a multiplier of at least `x3`; capture while the window
+     bar still has some of its drain left to show.
    - **game-over** — from a gameplay frame, stop steering and let the snake run into
      a wall, so the panel shows a real final score; capture once the state is
      `gameover`.
-4. Write the PNGs to the paths above, then screenshot the `#stage` canvas (not the
-   page) so the image is exactly the `1280x720` logical stage.
+4. Screenshot the `#stage` canvas (not the page), so the image is exactly the
+   `1280x720` logical stage, and write the PNGs to the paths above.
 
 Pellet placement is random, so no two captures are identical; any representative
 frame that clearly shows the view is fine.

@@ -124,22 +124,32 @@ succession. This is Coil's defining mechanic.
 
 - The multiplier `M` is an integer, starts each round at **1**, and is capped at
   **5**.
-- A **combo window** of **2.4 seconds** of simulation time governs the
-  multiplier. Eating a pellet (re)opens a fresh 2.4 s window.
+- A **combo window** of **3.5 seconds** of simulation time governs the
+  multiplier. Eating a pellet (re)opens a fresh 3.5 s window.
 - When a pellet is eaten:
   - if the combo window was **open** (i.e. it had not yet expired since the last
     pellet), `M` increases by one, to a maximum of `5`;
   - if the window was **closed** (this is the first pellet of the round, or the
     window had lapsed), `M` resets to `1`.
   - The pellet then awards `10 * M` points using the updated `M`, and the window
-    reopens for another 2.4 s.
+    reopens for another 3.5 s.
 - If the combo window **lapses** without a pellet being eaten (step 6 expires
   it), `M` resets to `1`.
 
 The window is measured in simulation time and decremented each tick by the
 tick's elapsed time, so it is independent of the tick rate. At the base 8-ticks-
-per-second rate, 2.4 s is roughly 19 ticks — enough travel to reach most
-pellets if you take an efficient route, but easily lost by wandering.
+per-second rate, 3.5 s is 28 ticks — and the snake covers exactly one cell per
+tick, so the window is a travel budget of 28 cells.
+
+That budget is sized against the board, so that a lost combo is the player's
+fault rather than the spawn's. Pellets are placed uniformly at random
+(`specs/playfield.md`), and on the `28 x 16` interior the mean Manhattan distance
+from an eaten pellet to the next one is about 15 cells, with the far corners
+reaching 42. A 28-cell budget therefore covers the large majority of spawns by a
+direct route, while leaving little slack: the combo is broken by the detours you
+are forced into — around your own lengthening body, or around the fatal obstacle
+course in Maze mode (`specs/mode.md`) — and by wandering, not by a pellet landing
+somewhere you could never have reached in time.
 
 The full scoring rules, including how the multiplier and its window are shown in
 the HUD, are in `specs/flow.md`.

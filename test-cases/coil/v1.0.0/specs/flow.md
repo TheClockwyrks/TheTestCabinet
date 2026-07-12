@@ -83,7 +83,7 @@ The HUD occupies the band above the board (`y` in `[0, 120)`; see
   its right edge near `x = 1080`.
 - **Combo** centered (near `x = 640`): the current multiplier as `x2` … `x5`,
   with a thin **window bar** beneath it that drains from full to empty over the
-  2.4 s combo window, in the combo accent color. The combo readout and bar are
+  3.5 s combo window, in the combo accent color. The combo readout and bar are
   shown only while `M` is at least `2`; at `M = 1` the combo area is empty.
 - A small, dim label showing the current mode's name (e.g. `CLASSIC`) sits in the
   HUD.

@@ -144,21 +144,19 @@ source = "specs/assets.md"
 [[spec]]
 source = "specs/proof.md"
 
-# Common reference views, seeded for EVERY variant. Each `media` is a 1280x720
-# screenshot captured (with Playwright) from a playable Coil build — the real game,
-# not a hand-authored mockup — and served as-is: seeded into the run as a visual
-# target, never rendered at seed time. See `reference/README.md` for how they are
-# regenerated. References are not validated unless a `[[check]]` below names them.
-# The `title` view is variant-specific (declared per variant above) because the main
-# menu differs by variant; `gameplay` and `game-over` look the same in every variant,
-# so they are common.
-[[reference]]
-view = "gameplay"
-media = "reference/screenshots/gameplay.png"
-
-[[reference]]
-view = "game-over"
-media = "reference/screenshots/game-over.png"
+# Reference views. Each is a 1280x720 screenshot captured (with Playwright) from a
+# playable Coil build — the real game, not a hand-authored mockup — and served as-is:
+# seeded into the run as a visual target, never rendered at seed time. See
+# `reference/README.md` for how they are regenerated. References are not validated
+# unless a `[[check]]` below names them.
+#
+# There are NO common reference views: every view is declared per variant, in the
+# files under `variants/`. Each variant is exactly one mode, and the mode shows in
+# all three views — the menu lists that variant's single mode; the in-play board
+# differs, since Maze laces it with the fatal obstacle course a Classic board does
+# not have; and the game-over frame shows both the dimmed board (obstacles included)
+# behind the end panel and the HUD's mode tag. So each variant supplies its own
+# `title`, `gameplay`, and `game-over`.
 
 # Proof of implementation, requested for every variant. Each declares a `dest`
 # path (relative to the run workspace root) the build must write a screenshot
@@ -237,7 +235,7 @@ domain = "gameplay"
 [[review_item]]
 id = "combo-window"
 title = "Combo window"
-text = "The 2.4-second combo window reopens on every eat and drains as a thin bar beneath the multiplier in the HUD. The combo readout and bar appear only while the multiplier is at least x2 and are absent at x1, and wandering until the window lapses drops the multiplier back to 1."
+text = "The 3.5-second combo window reopens on every eat and drains as a thin bar beneath the multiplier in the HUD. The combo readout and bar appear only while the multiplier is at least x2 and are absent at x1, and wandering until the window lapses drops the multiplier back to 1."
 weight = 1
 domain = "gameplay"
 # A video proof with no still that meaningfully depicts the combo window timing,
