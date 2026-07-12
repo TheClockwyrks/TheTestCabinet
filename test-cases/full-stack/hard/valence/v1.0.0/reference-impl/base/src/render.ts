@@ -43,7 +43,7 @@ import {
   sampleLane,
   type Lane,
 } from "./board";
-import { projSprite, towerSprite, towerTint, type Assets } from "./assets";
+import { projSprite, towerSprite, type Assets } from "./assets";
 import type { Bursts } from "./particles";
 import type { Clickable, Tower, Unit } from "./types";
 import { Game } from "./sim";
@@ -291,9 +291,7 @@ function drawRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
 function towerHead(ctx: CanvasRenderingContext2D, A: Assets, kind: TowerKind, level: number, cx: number, cy: number, size: number, aimAngle: number): void {
   blit(ctx, A.sprite("towers/base"), cx, cy, size, size, 0);
   const ang = isDamageTower(kind) ? aimAngle : 0;
-  const tint = towerTint(kind);
-  const head = tint ? A.tinted(towerSprite(kind, level), tint) : A.sprite(towerSprite(kind, level));
-  blit(ctx, head, cx, cy, size, size, ang);
+  blit(ctx, A.sprite(towerSprite(kind, level)), cx, cy, size, size, ang);
 }
 
 function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Game): void {
@@ -330,10 +328,9 @@ function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Gam
 function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   for (const pr of game.projectiles) {
     ctx.save();
-    const c = A.projColor[pr.kind];
-    ctx.shadowColor = c;
+    ctx.shadowColor = DMG_COLOR[pr.damageType];
     ctx.shadowBlur = 8;
-    blit(ctx, A.tinted(projSprite(pr.kind), c), pr.x, pr.y, 16, 16, pr.angle);
+    blit(ctx, A.sprite(projSprite(pr.damageType)), pr.x, pr.y, 16, 16, pr.angle);
     ctx.restore();
   }
 }

@@ -6,15 +6,16 @@
 // under any base path (vite.config sets base "./"), exactly as specs/assets.md
 // requires — never a root-absolute "/assets/…" URL.
 //
-// The tower and matter roster is keyed by ROLE; several roles share a produced sprite
-// FAMILY (a Cleaver reads as the produced cleave/shear head, a Reactor as the produced
-// reactor/fission rotor), and the two energy generalists (Emitter, Beam) reuse a family
-// tinted to their accent. The damage-type bursts and cues map onto the produced systems.
-// This mapping is the single place the produced files meet the redesigned roster.
+// Each tower ROLE has its own produced head/fire sprites, except that a Cleaver reads as
+// the produced kinetic "shear" head and a Reactor as the produced nuclear "fission" rotor
+// (true re-roles — same visual). The three projectiles are keyed by DAMAGE TYPE (the
+// produced energy/kinetic/nuclear shots), and the damage/decomposition bursts and cues
+// map onto the produced systems. This mapping is the one place the produced files meet
+// the redesigned roster.
 
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 import type { FxKind, Cue } from "./types";
-import { DMG_COLOR, type TowerKind } from "./constants";
+import type { DamageType, TowerKind } from "./constants";
 
 const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });
 const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", { eager: true, import: "default" });
@@ -33,16 +34,23 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-// The produced sprite family a tower ROLE draws from (specs/assets.md). Emitter and Beam
-// reuse the ionizer/cleave heads, tinted to their accent in render.
-const TOWER_FAMILY: Record<TowerKind, "ionizer" | "shear" | "fission" | "catalyst" | "moderator"> = {
-  emitter: "ionizer",
+// The produced sprite family a tower ROLE draws from. Emitter and Beam have their own
+// produced heads and fire cycles; Cleaver/Reactor re-use the kinetic/nuclear heads.
+const SPRITE_FAMILY: Record<TowerKind, string> = {
+  emitter: "emitter",
   ionizer: "ionizer",
   cleaver: "shear",
   reactor: "fission",
-  beam: "ionizer",
+  beam: "beam",
   catalyst: "catalyst",
   moderator: "moderator",
+};
+
+// The produced projectile sprite for each damage type (specs/matter.md, specs/towers.md).
+const PROJ_BY_TYPE: Record<DamageType, string> = {
+  energy: "towers/proj_ionizer",
+  kinetic: "towers/proj_shear",
+  nuclear: "towers/proj_fission",
 };
 
 // Which produced particle system stands in for each decomposition/damage event.
@@ -72,12 +80,10 @@ const CUE_SOURCE: Record<Cue, string> = {
 
 export interface Assets {
   sprite(name: string): HTMLImageElement;
-  tinted(name: string, color: string): HTMLImageElement; // a colour-tinted variant, cached
   has(name: string): boolean;
   electron: HTMLImageElement[];
   boss: HTMLImageElement[];
   towerFire: Record<TowerKind, HTMLImageElement[]>;
-  projColor: Record<TowerKind, string>; // damage-type accent for a shot
   fx: Record<FxKind, ParticleSystem | undefined>;
   audioUrl: Record<Cue | "music", string>;
 }
@@ -105,30 +111,6 @@ export async function loadAssets(): Promise<Assets> {
     return img;
   };
 
-  // A small cache of colour-tinted sprite variants (keeps some of the produced shading
-  // while pushing the head toward the role's accent). Used for the two reused families.
-  const tintCache = new Map<string, HTMLImageElement>();
-  const tinted = (name: string, color: string): HTMLImageElement => {
-    const key = `${name}|${color}`;
-    const hit = tintCache.get(key);
-    if (hit) return hit;
-    const src = sprite(name);
-    const c = document.createElement("canvas");
-    c.width = src.naturalWidth || 32;
-    c.height = src.naturalHeight || 32;
-    const cx = c.getContext("2d")!;
-    cx.imageSmoothingEnabled = false;
-    cx.drawImage(src, 0, 0);
-    cx.globalCompositeOperation = "source-atop";
-    cx.globalAlpha = 0.55;
-    cx.fillStyle = color;
-    cx.fillRect(0, 0, c.width, c.height);
-    const out = new Image();
-    out.src = c.toDataURL();
-    tintCache.set(key, out);
-    return out;
-  };
-
   const rawFx: Record<string, ParticleSystem> = {};
   for (const [globPath, sys] of Object.entries(fxJson)) rawFx[keyOf(globPath, ".system.json").replace("fx/", "")] = sys;
   const fx = {} as Record<FxKind, ParticleSystem | undefined>;
@@ -140,27 +122,17 @@ export async function loadAssets(): Promise<Assets> {
   for (const k of Object.keys(CUE_SOURCE) as Cue[]) audioUrl[k] = rawWav[CUE_SOURCE[k]] ?? rawWav.build ?? "";
   audioUrl.music = rawWav.music ?? "";
 
-  const fireByFamily: Record<string, HTMLImageElement[]> = {
-    ionizer: framesFor("towers/ionizer_fire", 4),
-    shear: framesFor("towers/shear_fire", 4),
-    fission: framesFor("towers/fission_fire", 4),
-  };
   const towerFire = {} as Record<TowerKind, HTMLImageElement[]>;
-  const projColor = {} as Record<TowerKind, string>;
-  for (const kind of Object.keys(TOWER_FAMILY) as TowerKind[]) {
-    towerFire[kind] = fireByFamily[TOWER_FAMILY[kind]] ?? [];
-    projColor[kind] =
-      kind === "cleaver" ? DMG_COLOR.kinetic : kind === "reactor" ? DMG_COLOR.nuclear : DMG_COLOR.energy;
+  for (const kind of Object.keys(SPRITE_FAMILY) as TowerKind[]) {
+    towerFire[kind] = framesFor(`towers/${SPRITE_FAMILY[kind]}_fire`, 4);
   }
 
   return {
     sprite,
-    tinted,
     has: (name: string) => imgs.has(name),
     electron: framesFor("matter/electrons", 8),
     boss: framesFor("matter/boss_anim", 8),
     towerFire,
-    projColor,
     fx,
     audioUrl,
   };
@@ -168,19 +140,10 @@ export async function loadAssets(): Promise<Assets> {
 
 // The produced base-sprite name for a tower role and level (1..3), via its family.
 export function towerSprite(kind: TowerKind, level: number): string {
-  return `towers/${TOWER_FAMILY[kind]}_${Math.max(1, Math.min(3, level))}`;
+  return `towers/${SPRITE_FAMILY[kind]}_${Math.max(1, Math.min(3, level))}`;
 }
 
-// The produced projectile sprite for a tower role, via its family.
-export function projSprite(kind: TowerKind): string {
-  const fam = TOWER_FAMILY[kind];
-  const base = fam === "shear" ? "shear" : fam === "fission" ? "fission" : "ionizer";
-  return `towers/proj_${base}`;
-}
-
-// Roles that reuse a family tinted to their own accent (Emitter, Beam).
-export function towerTint(kind: TowerKind): string | null {
-  if (kind === "emitter") return "#8fb9ff";
-  if (kind === "beam") return "#c9f24a";
-  return null;
+// The produced projectile sprite for a damage type (energy / kinetic / nuclear).
+export function projSprite(damageType: DamageType): string {
+  return PROJ_BY_TYPE[damageType];
 }
