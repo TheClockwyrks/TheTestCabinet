@@ -1,0 +1,16 @@
+{
+  "name": "junction-sim-core",
+  "type": "module",
+  "version": "1.0.0",
+  "license": "MIT",
+  "files": [
+    "junction_sim_core_bg.wasm",
+    "junction_sim_core.js",
+    "junction_sim_core.d.ts"
+  ],
+  "main": "junction_sim_core.js",
+  "types": "junction_sim_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

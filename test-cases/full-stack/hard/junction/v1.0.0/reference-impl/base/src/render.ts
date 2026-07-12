@@ -31,13 +31,10 @@ import {
 import { roadSprite, zoneSprite, type Assets } from "./assets";
 import { drawHud, blit, hexA, inRect, lineCount, roundRect, text, wrap } from "./hud";
 import { drawOverlay } from "./overlays";
-import { menuItems, type MenuItem } from "./menus";
-import { canPlace, capitalCostAt, sourceCovering, tilesForDrag } from "./tools";
-import { vehiclePos } from "./transit";
-import { colOf, idx, inBounds, rowOf } from "./world";
+import { colOf, idx, inBounds, rowOf } from "./grid";
 import type { Bursts, Haze, HazePatch } from "./particles";
 import type { Clickable, Tool } from "./types";
-import type { Game } from "./sim";
+import type { Game, MenuItem } from "./sim";
 
 // The particle players the frame draws (updated by main.ts, only drawn here).
 export interface RenderFx {
@@ -329,7 +326,7 @@ function hazePatches(game: Game, range: TileRange): HazePatch[] {
 function drawVehicles(ctx: CanvasRenderingContext2D, game: Game, assets: Assets): void {
   const tramFrames = assets.anim.tram;
   for (const v of game.vehicles) {
-    const p = vehiclePos(v);
+    const p = { x: v.x, y: v.y }; // the core resolves the interpolated world position
     const ang = v.angle + Math.PI / 2; // art faces "up"; align to the heading
     if (v.kind === "tram") {
       const img = tramFrames.length ? tramFrames[Math.floor(v.animT * 10) % tramFrames.length]! : assets.sprite("vehicles/tram");
@@ -372,36 +369,12 @@ interface ToolPreview {
 
 function computeToolPreview(game: Game): ToolPreview | null {
   const tool = game.activeTool;
-  if (!tool || game.state !== "playing") return null;
-  const hv = game.hoverTile;
-  if (hv < 0) return null;
-  const anchor = dragAnchor >= 0 ? dragAnchor : hv;
-  const w = game.world;
-  const cells: { i: number; ok: boolean }[] = [];
-  let cost = 0;
-  let refusal: string | null = null;
-
-  if (tool === "plant" || tool === "source") {
-    const chk = canPlace(w, tool, anchor);
-    const c0 = colOf(anchor);
-    const r0 = rowOf(anchor);
-    for (let r = r0; r <= r0 + 1; r++) for (let c = c0; c <= c0 + 1; c++) if (inBounds(c, r)) cells.push({ i: idx(c, r), ok: chk.ok });
-    if (chk.ok) cost = capitalCostAt(w, tool, anchor);
-    else refusal = chk.reason ?? "CAN'T BUILD HERE";
-  } else if (tool === "bulldoze") {
-    for (const i of tilesForDrag(tool, colOf(anchor), rowOf(anchor), colOf(hv), rowOf(hv))) {
-      cells.push({ i, ok: w.net[i]! !== 0 || w.zone[i]! !== 0 || sourceCovering(w, i) !== null });
-    }
-  } else {
-    for (const i of tilesForDrag(tool, colOf(anchor), rowOf(anchor), colOf(hv), rowOf(hv))) {
-      const chk = canPlace(w, tool, i);
-      cells.push({ i, ok: chk.ok });
-      if (chk.ok) cost += capitalCostAt(w, tool, i);
-      else if (!refusal) refusal = chk.reason ?? null;
-    }
-    if (cost > game.budget.treasury) refusal = refusal ?? "NOT ENOUGH FUNDS";
-  }
-  return { tool, cells, cost, refusal };
+  if (!tool || game.state !== "playing" || game.hoverTile < 0) return null;
+  // The core computes the placement legality, span-aware cost, and refusal reason; the
+  // renderer only draws the ghost. `dragAnchor` (the tile a drag began on) is passed so the
+  // preview spans the whole in-progress run/rectangle (specs/simulation.md).
+  const preview = game.toolPreview(dragAnchor, game.hoverTile);
+  return { tool, cells: preview.cells, cost: preview.cost, refusal: preview.refusal };
 }
 
 function drawToolCells(ctx: CanvasRenderingContext2D, game: Game, assets: Assets): void {
@@ -456,7 +429,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game): void {
   const w = game.world;
   const zk = w.zoneAt(i);
   const n = w.net[i]!;
-  const src = sourceCovering(w, i);
+  const src = game.sourceCovering(i);
   const x = 14;
   const y = VIEW_Y0 + 12;
   const bw = 188;
@@ -544,7 +517,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
   ctx.restore();
   text(ctx, game.mode.tagline, STAGE_W / 2, 306, 16, COL.text2, "center", "600", 6);
 
-  const items = menuItems("title", game);
+  const items = game.menuItems();
   items.forEach((it, i) => {
     const y = 410 + i * 62;
     const on = highlighted(i, STAGE_W / 2 - 200, y - 26, 400, 52);
@@ -584,7 +557,7 @@ function drawPause(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
   dim(ctx);
   panelBox(ctx, 440, 210, 400, 300);
   text(ctx, "PAUSED", STAGE_W / 2, 262, 30, COL.text, "center", "700", 4);
-  menuButtons(ctx, menuItems("paused", game), 316, 58, 260, clicks);
+  menuButtons(ctx, game.menuItems(), 316, 58, 260, clicks);
 }
 
 function drawBankrupt(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
@@ -600,7 +573,7 @@ function drawBankrupt(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickab
   stat("SURVIVED", `${game.stats.monthsSurvived} MONTHS`, 372, COL.text);
   const debt = Math.round(Math.min(0, game.budget.treasury));
   stat("FINAL DEBT", `-$${Math.abs(debt).toLocaleString("en-US")}`, 428, COL.alert);
-  const items = menuItems("bankrupt", game);
+  const items = game.menuItems();
   const xs = [STAGE_W / 2 - 170, STAGE_W / 2 + 10];
   items.forEach((it, i) => {
     const on = highlighted(i, xs[i]!, 496, 160, 44);

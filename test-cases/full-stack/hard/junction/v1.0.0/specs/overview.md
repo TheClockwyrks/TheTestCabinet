@@ -31,6 +31,15 @@ and music — with those tools during this build. The full contract for what to 
 and how to wire it in is `specs/assets.md`; read it as carefully as the simulation
 specs.
 
+**You also author the simulation itself in Rust, run as WebAssembly.** The city's
+deterministic simulation — the tile world, development, transit, utilities, the economy,
+and the tools and state that drive them — must be written in **Rust and compiled to
+WebAssembly** during this build, then driven from your JavaScript/TypeScript front end;
+the run image puts the Rust → wasm toolchain on your `PATH` for exactly this. The full
+contract for what must live in Rust, what stays in the front end, and how the compiled
+`.wasm` is committed as a build input is `specs/simulation.md`; read it as carefully as
+this file.
+
 ## How the specification is organized
 
 This specification is split across several files. Read **all** of them before you
@@ -54,6 +63,10 @@ start; they cross-reference each other by name and form one specification.
 - `specs/flow.md` — the shape of a game: the growth-and-solvency pressure, the clock,
   scoring, the bankruptcy loss state, the game states, the HUD dashboard, audio, and
   what is out of scope.
+- `specs/simulation.md` — the **simulation-core contract**: the city's simulation must
+  be authored in **Rust and run as WebAssembly**, driven by your JS/TS front end. Says
+  what must live in Rust, what stays in the front end, and how the compiled `.wasm` is
+  committed as a build input. **Read this carefully.**
 - `specs/assets.md` — the **asset-production contract**: every asset you must produce
   with the on-`PATH` tools, where each lands, and how each is wired into the build.
   **Read this carefully.**
@@ -80,12 +93,23 @@ actually want to play — legible, responsive, and alive — not a tech demo.
   (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`), per
   `specs/assets.md`. Do not ship placeholder rectangles, ad-hoc code-drawn art in
   place of a sprite, downloaded assets, or silence.
+- **Core simulation in Rust → WebAssembly.** The city's deterministic simulation — the
+  tile world, development, transit, utilities, the economy, and the tools and state that
+  drive them — must be **authored in Rust and compiled to WebAssembly during this build**
+  (the Rust → wasm toolchain is on your `PATH`), then driven from the front end. The
+  compiled `.wasm` is **committed as a build input**: `npm run build` stays **Node-only**
+  and must not invoke `cargo`/`wasm-pack`. `specs/simulation.md` is the full contract —
+  what must live in Rust, what stays in JS/TS, the determinism and no-DOM rules, and the
+  build-input rule; follow it exactly.
 - **Runs in the browser with no backend.** No server, accounts, database, or network
   calls at runtime. Everything needed to play must be self-contained.
 - **No API keys or credentials** of any kind to build, run, or play.
 - **npm-driven static build.** The project must be a Node project with a
   `package.json` at its root, buildable with **only Node.js and npm-installed
-  dependencies** (no separately installed language toolchain). **Commit a
+  dependencies** (no separately installed language toolchain at build time). The Rust →
+  wasm core is **not** an exception to this: it is compiled once during the run and its
+  `.wasm` is **committed as a build input**, so `npm run build` consumes the committed
+  module and does not compile Rust (`specs/simulation.md`). **Commit a
   `package-lock.json`**: the build is installed with `npm ci`, which requires that
   lockfile. Running `npm ci` and then `npm run build` must produce the complete static
   site, with no further manual step, into one of `dist/`, `build/`, or `out/` at the
@@ -105,10 +129,13 @@ actually want to play — legible, responsive, and alive — not a tech demo.
 
 ### Free choices
 
-You choose the language, framework, bundler, and rendering approach, subject to the
-requirements above. Plain TypeScript with Canvas 2D is entirely sufficient; a
-framework is not required. Favor a clean, well-structured codebase over any particular
-technology. **You design the exact layout of the starting map and its terrain, the
+You choose the **front-end** language, framework, bundler, and rendering approach,
+subject to the requirements above — plain TypeScript with Canvas 2D driving the wasm core
+is entirely sufficient, and a framework is not required. The **simulation core is not a
+free choice**: it must be Rust compiled to WebAssembly (`specs/simulation.md`); what is
+free there is how you design the module and its boundary, not the language. Favor a
+clean, well-structured codebase over any particular technology. **You design the exact
+layout of the starting map and its terrain, the
 full set of buildable things beyond the ones the specs require, and how the city
 reads on screen** (within the constraints in the specs) —
 there is no fixed map to reproduce.

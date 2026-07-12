@@ -18,7 +18,11 @@ name = "Junction"
 # type schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
 # exactly six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
 # `sfx-sample`, and `music` — and no others; every asset the game needs is produced
-# with one of them (`specs/assets.md` is the production contract). A root identity
+# with one of them (`specs/assets.md` is the production contract). On top of that, this
+# case REQUIRES the model to author the game's core simulation in Rust and compile it to
+# WebAssembly during the run — the full-stack-2d image is built on the base-wasm layer,
+# so the Rust → wasm toolchain is on `PATH` — committing the `.wasm` as a build input the
+# Node-only build consumes (`specs/simulation.md` is that contract). A root identity
 # field, so it sits above the first table.
 type = "full-stack"
 
@@ -28,9 +32,10 @@ type = "full-stack"
 # across, with congestion that builds on overloaded links; power and water utility
 # networks whose supply propagates and gates development; and an RCI demand economy
 # with a real budget that ends the game in bankruptcy — AND, on top of that, for the
-# model to author every sprite, animation, particle effect, and sound the game plays.
-# Interlocking simulations plus a full asset-production pass put this well above the
-# catalog's bounded arcade cases.
+# model to author every sprite, animation, particle effect, and sound the game plays,
+# AND to write that whole simulation in Rust compiled to WebAssembly behind a JS/TS view
+# layer. Interlocking simulations plus a full asset-production pass plus a Rust → wasm
+# core put this well above the catalog's bounded arcade cases.
 difficulty = "hard"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
@@ -42,8 +47,8 @@ summary = """
 A top-down transit-and-utility city builder: zone land for homes, shops, and \
 industry, lay the roads and rail that carry citizens to work, and run the power and \
 water that let it all grow — keep traffic flowing and the budget solvent or the city \
-goes bankrupt — and the build must produce its own sprites, effects, and audio with \
-the on-PATH asset tools."""
+goes bankrupt — with the whole simulation authored in Rust and run as WebAssembly, and \
+the build producing its own sprites, effects, and audio with the on-PATH asset tools."""
 
 # Site-facing prose describing the case, relative to this version folder. NOT
 # seeded into a run; it exists only to introduce the case on the site.
@@ -63,8 +68,9 @@ prompt = "prompt.hbs"
 
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
 # stopped. Junction is a large build — several interacting simulations on one grid
-# plus a full asset-production pass through six tools — so it gets eight hours:
-# comfortably more than a healthy build needs while still bounding a runaway session.
+# authored in Rust → wasm, plus a full asset-production pass through six tools — so it
+# gets eight hours: comfortably more than a healthy build needs while still bounding a
+# runaway session.
 max_runtime_hours = 8
 
 # Starter workspace seeded into the root of every run before the specs. It gives the
@@ -147,6 +153,16 @@ source = "specs/controls.md"
 [[spec]]
 source = "specs/flow.md"
 
+# The simulation-core contract: the city's deterministic simulation must be authored in
+# Rust and compiled to WebAssembly during the run, then driven from the JS/TS front end;
+# the compiled `.wasm` is committed as a build input (npm build stays Node-only). Seeded
+# for every variant so the `rust-wasm-core` review item and this spec stay in lockstep.
+# This — alongside `specs/assets.md` — is a defining requirement of THIS full-stack case:
+# the full-stack-2d image is built on the base-wasm layer, so the Rust → wasm toolchain
+# is on `PATH` during the run.
+[[spec]]
+source = "specs/simulation.md"
+
 # The asset-production contract: every asset the game needs, which of the six on-PATH
 # binaries produces it, where it lands in the workspace, and how it is wired into the
 # build. Seeded for every variant so the produced-asset review items and this spec stay
@@ -217,7 +233,7 @@ dest = "proof/crisis.webm"
 [[domain]]
 id = "simulation"
 name = "City Systems"
-description = "The interacting simulations on one grid: the zoned, self-developing city map with its density tiers, pollution, and land value; the road/rail transit network citizens and goods path across, with congestion that builds on overloaded links; the power and water utility networks whose supply propagates and gates development; and the RCI demand economy with a real budget that ends the game in bankruptcy."
+description = "The interacting simulations on one grid — authored in Rust and run as WebAssembly (specs/simulation.md): the zoned, self-developing city map with its density tiers, pollution, and land value; the road/rail transit network citizens and goods path across, with congestion that builds on overloaded links; the power and water utility networks whose supply propagates and gates development; and the RCI demand economy with a real budget that ends the game in bankruptcy."
 
 [[domain]]
 id = "presentation"
@@ -285,6 +301,17 @@ weight = 1
 domain = "simulation"
 reference = "gameplay"
 proof = "systems"
+
+# The defining implementation requirement of this case: the simulation is authored in
+# Rust → WebAssembly, not JS/TS (specs/simulation.md). This is a SOURCE-inspection item —
+# the reviewer checks the published run's repository, not just the running build — so it
+# declares no `reference` or `proof` media (no screenshot demonstrates a wasm core).
+[[review_item]]
+id = "rust-wasm-core"
+title = "Core simulation in Rust/WebAssembly"
+text = "The city's deterministic simulation — the tile world, development, transit, utilities, the economy, and the tools and state that drive them — is authored in Rust and compiled to a committed `.wasm` the JS/TS front end drives (not re-implemented in JS/TS). The build is self-contained: `npm ci && npm run build` succeeds Node-only and does not invoke `cargo`/`wasm-pack` (the committed `.wasm` is a build input). The front end is a view/I-O layer only, and the sim is deterministic and touches no DOM/Canvas/Audio directly."
+weight = 1
+domain = "simulation"
 
 # --- Presentation & Assets ------------------------------------------------------
 [[review_item]]

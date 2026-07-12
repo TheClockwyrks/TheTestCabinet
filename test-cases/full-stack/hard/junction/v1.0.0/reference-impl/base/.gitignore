@@ -1,6 +1,11 @@
 # Dependencies — reinstalled with `npm ci`; never committed.
 node_modules/
 
+# Rust build artifacts for the wasm simulation core (`sim-core/`). The COMPILED wasm build
+# input lives in `src/sim-core-pkg/` (committed, consumed as-is by `npm run build`); the
+# `target/` it is compiled from is not committed. See scripts/build-wasm.sh.
+sim-core/target/
+
 # Production build output — produced by `npm run build`. Anchored to the project
 # root so the committed, vendored `vendor/particle-runtime/dist` is NOT ignored.
 /dist/

@@ -2,12 +2,24 @@
 
 This is the implementation contract for the engineers who build the authored,
 ground-truth **`base`** reference implementation of the `junction` full-stack case. It is
-the analogue of the committed `valence` reference and must mirror its shape and quality: a
-self-contained static web app — plain **TypeScript** rendering to a single **HTML5
-canvas**, bundled with **Vite** (`base: "./"`), no backend/accounts/network/API keys, all
-produced assets committed under `assets/` and loaded page-relative via `import.meta.glob`,
-the particle systems played through `@test-cabinet/particle-runtime` and the audio through
-Web Audio.
+a self-contained static web app whose **core simulation is authored in Rust and compiled to
+WebAssembly** (the case requirement, `specs/simulation.md`) and driven by a thin
+**TypeScript** view layer rendering to a single **HTML5 canvas**, bundled with **Vite**
+(`base: "./"`), no backend/accounts/network/API keys. All produced assets are committed
+under `assets/` and loaded page-relative via `import.meta.glob`; the particle systems play
+through `@test-cabinet/particle-runtime` and the audio through Web Audio.
+
+**The Rust/wasm boundary.** The deterministic city model — the tile world, the network
+graph, transit + congestion, utilities, the economy, development, the tools, and the game
+state machine — lives in the **`sim-core/`** Rust crate, compiled with `wasm-pack` to the
+**committed** `src/sim-core-pkg/` (a build INPUT, not a build step: `npm run build` is
+Node-only and never runs `cargo`/`wasm-pack`; re-generate with `npm run build:wasm` and
+commit). The front end (`src/*.ts`) owns only presentation and I/O: rendering, the HUD, the
+camera, input, audio, and particle playback. The renderer reads the tile arrays **zero-copy**
+as typed-array views over the wasm module's linear memory; the moving agents, HUD stats,
+menus, and notifications cross as small per-frame copies — so a frame is one `step` call
+plus direct reads. The same `sim-core` crate compiles **natively** for the balance harness
+(`§7`), exactly as the adversarial case's `foray-core` compiles both native and to wasm.
 
 Read the specs first — they are authoritative. This document does not restate them; it
 pins the **numbers, types, module boundaries, layout, and proof plan** the engineers work
@@ -50,12 +62,16 @@ The game is a small state machine (`§5`): **title → howto**, **title → play
 
 ---
 
-## 2. Core data model (`src/types.ts` + tile arrays in `src/world.ts`)
+## 2. Core data model (Rust: `sim-core/src/types.rs` + tile arrays in `sim-core/src/world.rs`)
 
-The world is a **struct-of-arrays tile grid** (dense typed arrays indexed by
-`idx = row * MAP_COLS + col`) for the per-tile fields the sim sweeps every tick, plus a
-handful of object lists for placed sources and moving agents. This is the contract every
-later module depends on.
+The model lives in the **Rust core**; the shapes below are given in TypeScript-ish form for
+brevity but are Rust structs/enums in `sim-core/src/types.rs`, and the view layer mirrors
+the handful it reads in `src/types.ts`. The world is a **struct-of-arrays tile grid** (dense
+`Vec<u8>`/`Vec<f32>`/`Vec<i16>` arrays indexed by `idx = row * MAP_COLS + col`) for the
+per-tile fields the sim sweeps every tick, plus object lists for placed sources and moving
+agents. The `u8`/`f32` tile arrays are the ones the renderer reads **zero-copy** as
+typed-array views over wasm linear memory (`§4`, the `World` view in `src/sim.ts`); their
+pointers are stable because the `Vec`s are allocated once and never resized.
 
 ### 2.1 Enums and small unions
 
@@ -162,11 +178,17 @@ canvas directly). `Game` also exposes the tool actions (`applyTool`, `bulldoze`,
 
 ---
 
-## 3. Constants & tuning table (`src/constants.ts`)
+## 3. Constants & tuning table
 
-Every number the spec pins lives here (mirrors valence's `constants.ts`). Values the spec
-leaves to us are fixed here and restated in the `README`. The **balance sim** (`sim/`, `§7`)
-validates the tunables; treat the economy numbers as the sim's starting point.
+The numbers split by concern: the **simulation tuning** (grid size, tiers, transit/utility
+capacities, the economy and RCI coefficients, milestones — every number a *rule* reads) lives
+in the Rust core at **`sim-core/src/constants.rs`**, and the **presentation** constants the
+view needs (the palette `COL`, `FONT`, stage/camera geometry, `NET_*` bit values the renderer
+tests, the tool palette metadata) stay in **`src/constants.ts`**. Values the spec leaves to
+us are fixed in `constants.rs` and restated in the `README`. The **native balance harness**
+(`sim-core/tests/balance.rs`, `§7`) validates the tunables; treat the economy numbers as its
+starting point — a tuning change is a one-line edit in `constants.rs` re-checked with
+`cargo test`.
 
 ### 3.1 Stage, grid, camera (`specs/overview.md`, `specs/map.md`, `specs/controls.md`)
 
@@ -288,41 +310,54 @@ building; first fully-served district. Each fires **once** → a `Notification` 
 
 ---
 
-## 4. Module breakdown (`src/*.ts`)
+## 4. Module breakdown
 
-Modeled on valence's split (`constants`/`types`/`assets`/`audio`/`particles`/`render`/
-`input`/`main` + sim modules). Each file's responsibility and key exports:
+Two halves: the **Rust simulation core** (`sim-core/src/*.rs`, compiled to wasm) and the
+**TypeScript view layer** (`src/*.ts`) that drives it.
+
+### 4.1 Rust core — `sim-core/src/*.rs`
+
+| File | Responsibility | Key items |
+| --- | --- | --- |
+| `constants.rs` | All simulation tuning (`§3`): grid/clock, per-tier tables, transit/utility caps, cost/upkeep, pollution/land/RCI coefficients, milestones, tool placement metadata. | `POP/JOBS/UTIL_DEMAND`, `COST/UPKEEP`, `RCI_*`, `NET_*`, `drag_kind`, … |
+| `types.rs` | The data model (`§2`): enums (`Terrain`/`ZoneKind`/`Tool`/`GameState`/…), `Source`, `Vehicle`, `Notification`, `Signal`, `Rci`, `Budget`, `GameStats`, `FxEvent`, `Snapshot`. | all enums/structs above |
+| `rng.rs` | Seeded PRNG (mulberry32, wrapping-u32 exactly matching the JS stream) so terrain gen and vehicle spawns are deterministic. | `Rng` |
+| `world.rs` | The tile grid: allocates the `Vec` arrays (`§2.2`), index helpers, the **starter-valley generator** (river, hills — `specs/mode.md`), buildability, net-bitmask helpers. | `World`, `idx`, `in_bounds`, `buildable`, `generate_valley(seed)` |
+| `graph.rs` | Connected-component labelling per carrier (rebuilt on edit) + the multi-source Dijkstra **route field** over the road+rail graph weighted by live per-link travel time. | `rebuild_networks`, `route_field` |
+| `transit.rs` | **Signature system.** Each tick: trips from developed R tiles to nearest jobs/shops, load laid on links via `route_field`, congestion travel-time, spawn/advance visible `Vehicle`s. Writes `access`, `load`. Plus `rebuild_signals`, `vehicle_pos`. | `step_transit`, `vehicle_pos`, `rebuild_signals` |
+| `utilities.rs` | Power & water: propagate supply through each source's component, mark `powered`/`watered`, resolve **over-draw** (farthest-first), report supply/demand. | `step_utilities` |
+| `economy.rs` | Pollution diffusion+decay, land-value recompute, monthly **RCI demand** update, and the **budget settle** (income/upkeep/treasury, bankruptcy test). | `step_pollution`, `recompute_land`, `update_rci`, `settle_budget` |
+| `develop.rs` | Per-tile develop/upgrade/abandon sweep from the gate conditions (`access && powered && watered && demand>0 && land≥tier`), driving `build`/`decay`/`tier`, queuing dust FX. | `step_development` |
+| `tools.rs` | Tool legality (with refusal reasons), span-aware cost, placement + bulldoze mutation, `tiles_for_drag`, `source_covering`. | `can_place`, `capital_cost_at`, `apply_tool`, `tiles_for_drag` |
+| `mode.rs` | The `base` start config (`specs/mode.md`): `menu_label "NEW CITY"`, tagline, seed, `START_TREASURY`, starting RCI, stub geometry. | `MODE` |
+| `menus.rs` | The core owns each state's menu list (title/howto/paused/bankrupt) so render + keyboard nav agree; the highlight index lives on the `Game`. | `menu_items(state)` |
+| `game.rs` | The `Game`: owns world/economy state, the **state machine**, the menu index; `fixed_step(dt)` orders the tick; tool/selection/tax actions; `snd`/`fx` queues; the scripted proof surface. DOM-free — the camera is a front-end concern. | `Game` |
+| `wasm.rs` (wasm only) | The `#[wasm_bindgen]` boundary: `step`, tile-array pointers (zero-copy), packed vehicle/signal/source snapshots, scalar getters, menus, `tool_preview`, action + proof methods, `drain_sounds`/`drain_fx`. | `Sim`, `wasm_memory` |
+| `tests/balance.rs` | The native balance harness (`§7`) — `cargo test`. | — |
+
+### 4.2 TypeScript view layer — `src/*.ts`
 
 | File | Responsibility | Key exports |
 | --- | --- | --- |
-| `constants.ts` | All tuning (`§3`), palette `COL`, `FONT`, per-tier tables, tool metadata. | `COL`, `FONT`, `TILE`, `MAP_COLS/ROWS`, `SPEEDS`, `POP/JOBS/UTIL_DEMAND/...`, `TOOLS`, cost tables |
-| `types.ts` | The data model (`§2`): enums, `Source`, `Vehicle`, `Milestone`, `Notification`, `Signal`, `Rci`, `Budget`, `GameStats`, `Clickable`, `FxEvent`. | all interfaces/unions above |
-| `rng.ts` | Small seeded PRNG (mulberry32) so terrain gen and vehicle spawns are deterministic (valence has this). | `makeRng(seed)` |
-| `world.ts` | The tile grid: allocates the typed arrays (`§2.2`), tile index helpers, the **starter-valley generator** (river, hills, pre-placed road stub — `specs/mode.md`), buildability tests, and net-bitmask helpers. | `World`, `idx`, `inBounds`, `buildable`, `generateValley(seed)` |
-| `camera.ts` | Camera pan/zoom state, **clamp to map bounds**, and `world↔screen` transforms restricted to the `[64,656]` band (`specs/map.md`, `specs/controls.md`). | `Camera` (`pan`, `zoom`, `worldToScreen`, `screenToTile`, `clamp`) |
-| `graph.ts` | Connected-component labelling per carrier (road/rail/wire/pipe) via union-find, rebuilt on any edit; A*/Dijkstra path search over the road+rail graph weighted by live per-link travel time. | `rebuildNetworks(world)`, `findPath(world, a, b)` |
-| `transit.ts` | **Signature system.** Each tick: generate trips from developed R tiles to nearest jobs/shops, assign them onto links via `graph.findPath`, sum per-tile `load`, derive congestion travel-time, spawn/advance visible `Vehicle`s (rail legs ride station→station). Writes `access`, `load`. | `stepTransit(game, dt)`, `assignTrips`, `spawnVehicles` |
-| `utilities.ts` | Power & water from one mechanism, two carriers: propagate supply through each source's component, mark `powered`/`watered`, resolve **over-draw** (farthest-first), report supply/demand to `stats`. | `stepUtilities(game)` |
-| `economy.ts` | Pollution diffusion+decay, land-value recompute, monthly **RCI demand** update, and the **budget settle** (income/upkeep/treasury, bankruptcy test). | `stepPollution`, `recomputeLand`, `updateRci`, `settleBudget(game)` |
-| `develop.ts` | Per-tile develop/upgrade/abandon sweep from the gate conditions (`access && powered && watered && demand>0 && land≥tier`), driving `build`/`decay`/`tier`, queuing dust FX and construction signals. | `stepDevelopment(game)` |
-| `mode.ts` | The `base` start config isolated here (`specs/mode.md`): `menuLabel "NEW CITY"`, tagline, seed, `START_TREASURY`, starting RCI, stub geometry. | `MODE: CityMode` |
-| `tools.ts` | Tool catalog (order, glyph icon, label, cost function, legality predicate) and placement application (single tile + **drag rectangle/run**, span detection, refusal reasons). | `TOOLS`, `toolCost(tool, tiles)`, `canPlace(...)`, `applyTool(...)` |
-| `sim.ts` | The `Game` class: owns world/camera/economy state and the **state machine**; `fixedStep(dt)` orders the tick (transit → utilities → develop → pollution/land → monthly settle → milestones); tool/selection/tax actions; `sndQueue`/`fxQueue`; test hook surface. | `Game` |
-| `assets.ts` | Load the **produced** files via `import.meta.glob` (page-relative), map `(zone,tier)`→sprite, road-shape→sprite, vehicle/icon lookups, `FxKind`→`ParticleSystem`, `Cue`→wav url. | `loadAssets()`, `Assets`, `zoneSprite`, `roadSprite`, `iconOf` |
-| `audio.ts` | Web Audio playback of the produced `.wav`s — cues on events, ambient hum + music bed looped, **no autostart before gesture**, **mute** toggle (verbatim shape of valence `Audio`). | `Audio` |
-| `particles.ts` | Play produced systems through `@test-cabinet/particle-runtime`'s `/canvas` binding: a persistent **pollution-haze** field driven by the tile pollution array, and **one-shot** dust/fireworks players. | `Haze`, `Bursts` |
-| `overlays.ts` | Draw the in-code data overlays (traffic load→gridlock, utility served/unserved, land-value) from the sim fields (kept out of `render.ts` for size). | `drawOverlay(ctx, game, cam, overlay)` |
-| `hud.ts` | Draw the in-code HUD chrome: top vitals strip, bottom RCI meters + build palette + cost readout + tax stepper; returns `Clickable[]`. | `drawHud(...)`, `drawTax(...)` |
-| `menus.ts` | Single source of truth for each state's menu items (title/howto/paused/bankrupt) so render + keyboard nav agree (valence pattern). | `menuItems(state, game)` |
-| `render.ts` | The frame: camera terrain/zones/buildings/roads/rail/stations/utilities (produced sprites), interpolated vehicles + animated signal/construction sheets, the live haze, then `overlays`, `hud`, selection/tool ghost + refusal cursor, and the menu/state screens. Returns `Clickable[]`. | `render(ctx, game, assets, fx)` |
-| `input.ts` | Pointer + keyboard capture, viewport transform to logical space, drag tracking (zone/road drag runs), wheel→zoom (valence `Input` shape). | `Input` |
-| `main.ts` | Bootstrap: fit the stage (letterbox/center, crisp, correct on load), load assets, wire input, run the **fixed-timestep loop** (accumulator, speed scale, freeze when paused/menu), drain `sndQueue`/`fxQueue`, expose the `window.__junction` test hook. | — |
+| `sim.ts` | Loads the wasm core (`sim-core-pkg/`) and presents it as a `Game`: zero-copy tile-array `World` views (rebuilt on memory growth), live scalar getters, per-frame vehicle/signal/source/notification reads, the menu list, `toolPreview`, the queue drains, and every player/proof action. | `Game`, `createGame`, `initSim` |
+| `grid.ts` | Pure tile-index geometry helpers the renderer/input need (mirror the Rust `world` helpers). | `idx`, `colOf`, `rowOf`, `inBounds` |
+| `constants.ts` | Presentation constants: palette `COL`, `FONT`, stage/camera geometry, `NET_*` bit values, the tool palette metadata `TOOLS`. | `COL`, `FONT`, `TILE`, `NET_*`, `TOOLS`, … |
+| `types.ts` | The view-side mirror of the enums/small unions the renderer reads. | the unions above |
+| `camera.ts` | Camera pan/zoom, **clamp to map bounds**, `world↔screen` restricted to the `[64,656]` band. This is the one piece of spatial state the FRONT END owns. | `Camera` |
+| `assets.ts` | Load the **produced** files via `import.meta.glob` (page-relative), map `(zone,tier)`→sprite, road-shape→sprite, icon lookups, `FxKind`→system, `Cue`→wav url. | `loadAssets`, `zoneSprite`, `roadSprite`, `iconOf` |
+| `audio.ts` | Web Audio playback of the produced `.wav`s — cues on events, ambient hum + music bed looped, no autostart before gesture, mute toggle. | `Audio` |
+| `particles.ts` | Play produced systems through `@test-cabinet/particle-runtime`'s `/canvas` binding: persistent **pollution-haze** + one-shot dust/fireworks. | `Haze`, `Bursts` |
+| `overlays.ts` | The in-code data overlays (traffic/utility/land-value) drawn from the tile views. | `drawOverlay` |
+| `hud.ts` | The in-code HUD chrome (top vitals, bottom RCI + palette + cost readout + tax stepper) + the shared canvas primitives; returns `Clickable[]`. | `drawHud`, `text`, `roundRect`, `blit`, `hexA` |
+| `render.ts` | The frame: terrain/zones/buildings/carriers/utilities (produced sprites), interpolated vehicles + animated sheets, the live haze, then `overlays`, `hud`, selection/tool ghost (from `game.toolPreview`), and the menu/state screens. | `render` |
+| `input.ts` | Pointer + keyboard capture, viewport transform to logical space, drag tracking, wheel→zoom. | `Input` |
+| `main.ts` | Bootstrap: fit the stage, load assets **and** the wasm core, wire input, run the fixed-timestep loop, drain the core's sound/fx queues (fireworks placed at the view centre), expose `window.__junction`. | — |
 
 `src/vite-env.d.ts`, `index.html` (single `#stage` canvas, monospace, `image-rendering:
 pixelated`, `#12161c` background), `vite.config.ts` (`base: "./"`), `tsconfig.json`,
-`package.json` (+ committed `package-lock.json`), and a vendored
-`vendor/particle-runtime/` copy so a plain `npm ci` resolves the `file:` dep — all exactly
-as valence ships them.
+`package.json` (+ committed `package-lock.json`), a vendored `vendor/particle-runtime/` copy
+so a plain `npm ci` resolves the `file:` dep, and the committed `src/sim-core-pkg/` wasm
+build input (re-generated with `npm run build:wasm`, never by `npm run build`).
 
 ---
 
@@ -390,12 +425,15 @@ over water/hill priced up in the readout. Speed keys `1/2/3` (or `+`/`-`), `Spac
 
 Captured from the **built** game with the project-local Playwright (`scripts/proof.mjs`,
 pinned in `package.json`), driven through a `window.__junction` test hook that `main.ts`
-exposes (the valence `__valence` analogue). The hook offers deterministic helpers so the
-captures are reproducible: `newCity(seed)`, `zoneRect(kind,c0,r0,c1,r1)`, `road(c0,r0,c1,r1)`,
-`rail(...)`, `station(c,r)`, `plant(c,r)`, `source(c,r)`, `wire(...)`, `pipe(...)`,
-`setTax(rate)`, `setSpeed(n)`, `setOverlay(o)`, `centerOn(c,r)`, `advance(months)`,
+exposes. The hook offers deterministic helpers so the captures are reproducible:
+`newCity(seed)`, `zoneRect(kind,c0,r0,c1,r1)`, `road(c0,r0,c1,r1)`, `rail(...)`,
+`station(c,r)`, `plant(c,r)`, `source(c,r)`, `wire(...)`, `pipe(...)`, `setTax(rate)`,
+`setTreasury(v)`, `setSpeed(n)`, `setOverlay(o)`, `centerOn(c,r)`, `advance(months)`,
 `snapshot()` (population/treasury/balance), and `forceBankruptcy()` (drops tax to 0 and
-strips income for the crisis clip). Each helper drives real `Game` methods — no fake state.
+strips income for the crisis clip). Each helper drives the real **wasm core** through the
+`Game` binding — no fake state. Because the core lives in wasm linear memory, the mjs reads
+tile state through the live `g.world` view (a step can grow memory and detach an earlier
+view) and stages the treasury via `setTreasury` rather than writing a field.
 
 | Artifact | What to drive & capture |
 | --- | --- |
@@ -411,21 +449,23 @@ build, not served by it.
 
 ---
 
-## 7. Balance harness (`sim/`, dev-only — mirrors valence)
+## 7. Balance harness (`sim-core/tests/balance.rs`, native `cargo test`)
 
-A headless deterministic harness (`npx tsx sim/run.ts`, excluded from the build) drives the
-`Game` with scripted "player" strategies over the tile arrays and asserts the balance goals
-so the economy numbers in `§3.7`–`§3.8` are validated, not guessed:
+Because the `sim-core` crate compiles **natively** as well as to wasm, the balance goals are
+asserted with plain `cargo test` — no browser, no wasm, no separate tsx harness. Each test
+drives the real `Game` with a scripted "player" strategy (the same build the proof capture
+uses) and asserts the economy behaves, validating the `§3` numbers rather than guessing them:
 
 - **A competent build-out** (zone to demand, connect+serve before developing, add rail when
-  a corridor congests, keep tax ~9%) must **grow population and stay solvent** for many
-  months.
-- **A careless over-builder** (lay networks far ahead of the tax base) must **slide toward
-  bankruptcy**.
-- **A neglecter** (stop growing, leave upkeep fixed) must eventually **go insolvent**.
-- **Cutting a link / a plant** must **abandon** the tiles that depended on it.
+  a corridor congests, keep tax ~9%) must **grow population** and stay **solvent for many
+  months** (well past when an over-builder is already bankrupt). Perpetual solvency is not
+  a given — the economy is tuned so an over-wired city loses money each period (the core
+  tension), so the assertion is a long viable window, not that the treasury never falls.
+- **A careless over-builder** (lay networks far ahead of the tax base) must **go bankrupt**.
+- **A neglecter** (strip income / stop growing) must eventually **go insolvent**.
+- **Cutting a plant** must **abandon** the tiles that depended on it.
 - Determinism: same seed + same script ⇒ identical month-by-month treasury/population.
 
-`sim/` reuses `src/` modules directly (no forked sim), so a tuning change is a one-line edit
-in `constants.ts` re-checked by re-running the harness — the workflow the valence memory
-notes as the correct way to re-balance.
+The harness uses `Game` directly (no forked sim), so a tuning change is a one-line edit in
+`sim-core/src/constants.rs` re-checked by re-running `cargo test` — then re-run
+`npm run build:wasm` to refresh the committed wasm build input.

@@ -15,10 +15,11 @@ Underneath sit several interacting systems: a self-developing zoned map, a trans
 network with real congestion, power and water networks, an RCI demand economy with
 pollution and land-value feedback, and a budget that ends the game in bankruptcy.
 
-Junction is also a **full-stack case**: the model under test must **produce the game's
-own assets during the run** — the zone/transit/utility sprites and vehicles, the animated
-signal/construction/vehicle sheets, the pollution/dust/fireworks particle overlays, and
-the sound and music — with the six asset-generation tools on the run image's `PATH`, and
-then build the game around them. It is inspired by city sims like *SimCity* and the
-flow-pressure of *Mini Metro* but is entirely its own: an original name, look, and system
-set, and its own scope.
+Junction is also a **full-stack case** with a twist: the model under test must **produce
+the game's own assets during the run** — the zone/transit/utility sprites and vehicles,
+the animated signal/construction/vehicle sheets, the pollution/dust/fireworks particle
+overlays, and the sound and music — with the six asset-generation tools on the run image's
+`PATH`, **and author the entire simulation in Rust compiled to WebAssembly** behind a
+JS/TS view layer (the compiled `.wasm` committed as a build input), then build the game
+around it all. It is inspired by city sims like *SimCity* and the flow-pressure of *Mini
+Metro* but is entirely its own: an original name, look, and system set, and its own scope.

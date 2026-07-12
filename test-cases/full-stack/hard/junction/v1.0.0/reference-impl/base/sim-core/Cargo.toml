@@ -1,0 +1,37 @@
+# Junction — the core simulation, authored in Rust and compiled to WebAssembly.
+#
+# This crate is the whole deterministic city model (specs/simulation.md): the tile
+# world, network graph + pathfinding, transit + congestion, utilities, the economy,
+# development, the tools, and the game state machine. It has NO DOM/Canvas/Audio and no
+# I/O — pure rules plus data — so the exact same crate compiles NATIVELY for the balance
+# harness (`cargo test`) and to `wasm32-unknown-unknown` for the browser. The JS/TS front
+# end drives it: it renders the state and forwards the player's actions.
+#
+# `crate-type = ["cdylib", "rlib"]`: `cdylib` is the browser module `wasm-pack` emits;
+# `rlib` links the pure `Game` into the native balance tests. The compiled `.wasm` is a
+# committed BUILD INPUT — `npm run build` never runs `cargo`/`wasm-pack`.
+[package]
+name = "junction-sim-core"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# An empty `[workspace]` table makes this crate its own workspace root, so running
+# `cargo`/`wasm-pack` inside it never gets absorbed by the surrounding repository's Cargo
+# workspace — it is a standalone project, like the repo a model would actually produce.
+[workspace]
+
+[lib]
+name = "junction_sim_core"
+crate-type = ["cdylib", "rlib"]
+
+# `wasm-bindgen` is only needed for the browser build's JS bindings; the native balance
+# harness compiles the pure `Game` without it. Gating the dependency on the wasm target
+# keeps `cargo test` lean and free of any JS-glue dependency.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true

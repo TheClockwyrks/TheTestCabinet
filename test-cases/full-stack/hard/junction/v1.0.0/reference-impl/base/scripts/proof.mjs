@@ -61,12 +61,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // `treasury` seeds the running balance; `zoomOn` frames the developed core for a capture.
 function buildCity(page, { treasury = 140000 } = {}) {
   return page.evaluate((t) => {
-    const J = window.__junction, g = J.game, w = g.world, COLS = w.cols;
+    const J = window.__junction, g = J.game, COLS = g.world.cols;
     const idx = (c, r) => r * COLS + c;
     const TERR = ["earth", "grass", "water", "hill"];
-    const terr = (c, r) => TERR[w.terrain[idx(c, r)]];
+    // Read the terrain through the live `g.world` view each call: placing carriers can grow
+    // the wasm memory, which detaches any previously-captured typed-array view.
+    const terr = (c, r) => TERR[g.world.terrain[idx(c, r)]];
     J.newCity(0x4a554e43);
-    g.budget.treasury = t;
+    J.setTreasury(t);
 
     const BC0 = 32, BC1 = 66, TOP = 30, BOT = 44;
     // Even-row road+wire+pipe service corridors across the core block.
@@ -163,8 +165,7 @@ async function frameCore(page, zoom = 20) {
   await page.evaluate(() => window.__junction.advance(18)); // grow a real peak population
   // Strip income (tax → 0) and run credit down to the debt limit → a bankrupt settle.
   await page.evaluate(() => {
-    const g = window.__junction.game;
-    g.budget.treasury = 1500;
+    window.__junction.setTreasury(1500);
     window.__junction.forceBankruptcy();
     window.__junction.advance(60);
   });
@@ -230,7 +231,7 @@ await clip(
     // slides toward (and reaches) bankruptcy on camera. Audio is left un-muted.
     await page.evaluate(() => {
       const J = window.__junction, g = J.game;
-      g.budget.treasury = 5200;
+      J.setTreasury(5200);
       g.setOverlay("none");
       window.__junction.forceBankruptcy(); // tax → 0
       g.speed = 3;
@@ -248,8 +249,11 @@ await clip(
   await sleep(300);
   await buildCity(page, { treasury: 140000 });
   const checks = await page.evaluate(() => {
-    const J = window.__junction, g = J.game, w = g.world, C = w.cols * w.rows;
+    const J = window.__junction, g = J.game;
     J.advance(24);
+    // Capture the tile view AFTER advancing (the sim step can grow wasm memory and detach an
+    // earlier view); reading through `g.world` here gives the current, live-backed arrays.
+    const w = g.world, C = w.cols * w.rows;
     let tier1 = 0, tier2 = 0, developed = 0, poweredDev = 0, wateredDev = 0, ind = 0;
     for (let i = 0; i < C; i++) {
       if (w.zone[i] && w.tier[i] > 0) {
@@ -266,7 +270,7 @@ await clip(
     const vehicles = g.vehicles.length > 0;
 
     // Bankruptcy reachable: strip income and burn credit down.
-    g.budget.treasury = 1200;
+    J.setTreasury(1200);
     J.forceBankruptcy();
     J.advance(80);
     const bankruptReachable = g.state === "bankrupt";

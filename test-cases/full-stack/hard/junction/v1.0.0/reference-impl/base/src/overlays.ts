@@ -15,7 +15,7 @@ import { hexA } from "./hud";
 import type { Camera } from "./camera";
 import type { Game } from "./sim";
 import type { Overlay } from "./types";
-import { idx } from "./world";
+import { idx } from "./grid";
 
 export function drawOverlay(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, overlay: Overlay): void {
   if (overlay === "none") return;

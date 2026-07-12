@@ -53,6 +53,17 @@ summary here. Three things bear restating, because the harness depends on them:
   **`@test-cabinet/particle-runtime`** library already installed as a dependency of your
   project (import it like any other dependency; do not fetch or reimplement it). Load
   every produced file with page-relative URLs so it resolves from the served sub-path.
+- **Your core simulation is Rust → WebAssembly.** The city's deterministic simulation —
+  the tile world, development, transit, utilities, the economy, and the tools and state
+  that drive them — must be **authored in Rust and compiled to WebAssembly during this
+  build**, then driven from your front end. The Rust → wasm toolchain (`cargo`,
+  `wasm-pack`, `wasm-bindgen`, the `wasm32-unknown-unknown` target) is on your `PATH` for
+  exactly this. Compile the module **once** and **commit** the resulting `.wasm` (and its
+  binding glue): it is a **build input**, so `npm run build` must stay **Node-only** and
+  must **not** shell out to `cargo`/`wasm-pack` — exactly as it must not shell out to
+  `draw`. **`specs/simulation.md` is the authoritative contract**: it states what must
+  live in Rust, what stays in JS/TS, the determinism and no-DOM rules, and that the
+  committed `.wasm` is consumed directly at build time.
 - **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
   screenshots that are **illustrative examples, not targets to reproduce**, of the
   title, gameplay, and bankruptcy screens — they show one way the screens can look.
@@ -101,4 +112,7 @@ published. When the build is complete and verified, commit everything: run
 with nothing uncommitted or untracked. A `.gitignore` already excludes `node_modules/`
 and the build output (`dist/`/`build/`/`out/`), so a clean tree does not mean
 committing those — but it does mean committing your source, your `package-lock.json`,
-your `README.md`, the **produced assets under `assets/`**, and the `proof/` artifacts.
+your `README.md`, the **produced assets under `assets/`**, your **Rust simulation source
+and the compiled `.wasm` (plus its binding glue)**, and the `proof/` artifacts. Add
+Rust's build directory (`target/`) to your `.gitignore` so it stays out of the committed
+tree, but the committed `.wasm` build input must be tracked.

@@ -17,10 +17,27 @@ balance still negative.
 
 This directory is the authored **reference implementation** of the case's `base` variant
 (the standard *New City* start) — the *correct*, ground-truth build the case is judged
-against. It is a self-contained static web app: plain **TypeScript** rendering to a single
-**HTML5 canvas**, bundled with **Vite** (`base: "./"`). No backend, accounts, network calls,
-or API keys; everything needed to play is in the built bundle. The implementation contract
-is [`DESIGN.md`](DESIGN.md); the asset plan is [`ASSETS.md`](ASSETS.md).
+against. It is a self-contained static web app whose **core simulation is authored in Rust
+and compiled to WebAssembly** (the case requirement) and driven by a thin **TypeScript** view
+layer rendering to a single **HTML5 canvas**, bundled with **Vite** (`base: "./"`). No
+backend, accounts, network calls, or API keys; everything needed to play is in the built
+bundle. The implementation contract is [`DESIGN.md`](DESIGN.md); the asset plan is
+[`ASSETS.md`](ASSETS.md).
+
+## The simulation is Rust, compiled to WebAssembly
+
+Junction's deterministic city model — the tile world, the network graph and pathfinding,
+transit + congestion, the power/water utilities, the RCI-demand-and-budget economy,
+development, the build tools, and the game state machine — is authored in **Rust** in
+[`sim-core/`](sim-core/) and compiled with `wasm-pack` to the committed
+[`src/sim-core-pkg/`](src/sim-core-pkg/). The TypeScript in [`src/`](src/) is only the view
+and I/O layer (rendering, HUD, camera, input, audio, particle playback); it reads the tile
+arrays **zero-copy** as typed-array views over the wasm module's linear memory and forwards
+the player's actions into the core. The compiled `.wasm` is a **build input**, exactly like
+the produced assets: `npm run build` is Node-only and never runs `cargo`/`wasm-pack` — the
+committed module is bundled as-is. Re-generate it with `npm run build:wasm` after changing
+`sim-core/` and commit the result. Because the same crate also compiles natively, the economy
+balance is validated with `cargo test` (see [`DESIGN.md`](DESIGN.md) §7).
 
 ## The assets are produced, not pre-made
 
@@ -68,26 +85,34 @@ is bulldozed. See [`DESIGN.md`](DESIGN.md) §3 for the full tuning table.
 ```bash
 npm ci            # install (requires the committed package-lock.json)
 npm run dev       # Vite dev server
-npm run build     # type-check + produce the static site into dist/
+npm run build     # type-check + produce the static site into dist/ (Node-only)
 npm run preview   # serve the production build locally
+
+# Dev-only — regenerate the committed Rust→wasm core (needs the Rust toolchain on PATH):
+npm run build:wasm            # wasm-pack build → src/sim-core-pkg/ (commit the result)
+cargo test --manifest-path sim-core/Cargo.toml   # the native balance harness
 ```
 
 `npm run build` emits a fully self-contained static site into `dist/` with an `index.html`
-at its root. The bundler base is relative (`base: "./"`), so `dist/` runs correctly when
-served from any base path, including a per-run sub-path.
+at its root, consuming the committed `src/sim-core-pkg/` wasm as-is — it does **not** compile
+Rust. The bundler base is relative (`base: "./"`), so `dist/` runs correctly when served from
+any base path, including a per-run sub-path.
 
 ## Layout
 
-- [`src/`](src/) — the game. `constants.ts` (tuning + palette + the tool/cost tables),
-  `types.ts` / `world.ts` (the struct-of-arrays tile grid), `rng.ts` + `mode.ts` (the
-  deterministic valley and the `New City` start), `camera.ts` (pan/zoom + the
-  tile↔screen transform), `graph.ts` / `transit.ts` / `utilities.ts` (network labelling,
-  routing + congestion, power/water supply), `develop.ts` / `economy.ts` / `sim.ts` (the
-  fixed-step city sim: development tiers, the demand/budget economy, and the states),
-  `tools.ts` (build legality, span-aware cost, and placement), `assets.ts` / `audio.ts` /
-  `particles.ts` (loading and playing the produced art, sound, and effects),
-  `overlays.ts` / `hud.ts` / `menus.ts` / `render.ts` (the overlays, HUD chrome, menu
-  list, and all drawing), and `input.ts` + `main.ts` (input capture and the loop).
+- [`sim-core/`](sim-core/) — the **Rust simulation core** (compiled to wasm): the tile
+  world, network graph + pathfinding, transit/congestion, utilities, the economy,
+  development, the tools, and the game state machine, plus the `wasm-bindgen` boundary and
+  the native balance harness in `tests/balance.rs`. See [`DESIGN.md`](DESIGN.md) §4.1.
+- [`src/`](src/) — the **TypeScript view layer**. `sim.ts` binds the wasm core (zero-copy
+  tile views + the `Game` the rest of the code reads), `grid.ts` (tile-index helpers),
+  `constants.ts` (palette + geometry + the tool palette metadata), `types.ts` (view-side
+  enums), `camera.ts` (the pan/zoom + tile↔screen transform — the one bit of spatial state
+  the front end owns), `assets.ts` / `audio.ts` / `particles.ts` (loading and playing the
+  produced art, sound, and effects), `overlays.ts` / `hud.ts` / `render.ts` (the overlays,
+  HUD chrome, and all drawing), and `input.ts` + `main.ts` (input capture and the loop).
+- [`src/sim-core-pkg/`](src/sim-core-pkg/) — the committed `wasm-pack` output (the `.wasm`
+  build input + its JS glue), regenerated by `npm run build:wasm`.
 - [`assets/`](assets/) — the produced sprites, sprite-sheet frames, particle systems, and
   audio.
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of

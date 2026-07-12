@@ -1,390 +1,443 @@
-// Junction — the Game: owns the world/camera/economy state and the state machine, and
-// orders the fixed simulation step (specs/flow.md, DESIGN §4, §5.2).
+// Junction — the simulation front-end binding (specs/simulation.md).
 //
-// `fixedStep(dt)` is the whole tick, in the order DESIGN §4 fixes:
-//   transit → utilities → develop → pollution/land → (monthly) RCI + budget settle → stats +
-//   milestones. It is DOM-free and deterministic, driven identically by the browser loop and
-//   the headless balance harness / proof hook. The Game also exposes the player actions
-//   (tools, tax, speed, overlay, pause), the notification/sound/fx queues the presentation
-//   layer drains, and the scripted control surface (`newCity`, `zoneRect`, `road`, `advance`,
-//   `snapshot`, `forceBankruptcy`, …) that `main.ts` wires to `window.__junction`.
+// The city simulation itself is authored in Rust and runs as WebAssembly (`sim-core/`,
+// compiled to the committed `sim-core-pkg/`). This module is the thin TS layer that drives
+// that core and presents it to the rest of the front end in the shape the renderer, HUD, and
+// input layer already expect: a `Game` object whose fields read straight from the wasm core.
+//
+// The bulk per-tile state is read ZERO-COPY: the tile arrays live in the wasm module's linear
+// memory and the `World` view here wraps them with typed-array views (rebuilt only when the
+// backing buffer changes on a memory growth — the array pointers themselves are stable). The
+// moving agents, HUD stats, menus, and notifications are tiny, so they cross as small
+// per-frame copies. A frame is one `fixedStep` call plus direct reads — the front end never
+// re-implements a rule; it forwards actions in and renders the state out.
 
+import init, { Sim as WasmSim, wasm_memory } from "./sim-core-pkg/junction_sim_core.js";
 import { Camera } from "./camera";
-import {
-  FIXED_STEP,
-  JOBS,
-  MILESTONES,
-  NET_RAIL,
-  NET_ROAD,
-  POP,
-  POP_MILESTONES,
-  SHOP_CAP,
-  START_MONTH,
-  TAX_MAX,
-  TAX_MIN,
-  TAX_STEP,
-  TICKS_PER_MONTH,
-  TILE,
-  TILE_COUNT,
-} from "./constants";
-import { computeStationBonus, recomputeLand, settleBudget, stepPollution, updateRci } from "./economy";
-import { stepDevelopment } from "./develop";
-import { rebuildNetworks } from "./graph";
-import { rebuildSignals, stepTransit } from "./transit";
-import { applyTool, tilesForDrag } from "./tools";
-import { stepUtilities } from "./utilities";
-import { MODE, type CityMode } from "./mode";
-import { Rng } from "./rng";
-import { World, generateValley, idx } from "./world";
-import type { ApplyResult } from "./tools";
-import type { Budget, Clock, Cue, FxEvent, GameState, GameStats, Notification, Overlay, Rci, Signal, Tool, Vehicle, ZoneKind } from "./types";
+import { MAP_COLS, MAP_ROWS, TILE_COUNT } from "./constants";
+import { colOf, rowOf, idx } from "./grid";
+import type { Cue, FxEvent, FxKind, GameState, Overlay, Tool, VehicleKind, ZoneKind } from "./types";
 
-const NOTIFY_TTL = 6; // seconds a HUD toast lives
-const MAX_NOTIFICATIONS = 5;
-const DISTRICT_MILESTONE = 8; // fully-served developed tiles that count as a "district"
-
+// ---- Enum ↔ code tables (must mirror the Rust `types` module) ------------------
+const STATES: GameState[] = ["title", "howto", "playing", "paused", "bankrupt"];
+const OVERLAYS: Overlay[] = ["none", "traffic", "utility", "landvalue"];
+const TOOL_CODES: Tool[] = ["zoneRes", "zoneCom", "zoneInd", "road", "rail", "station", "plant", "wire", "source", "pipe", "bulldoze"];
+const CUES: Cue[] = ["build", "chime", "alert"];
+const FX: FxKind[] = ["haze", "dust", "fireworks"];
+const TONES: Array<"info" | "good" | "alert"> = ["info", "good", "alert"];
+const VEHICLE_KINDS: VehicleKind[] = ["car", "truck", "tram"];
+const SOURCE_KINDS: Array<"plant" | "source"> = ["plant", "source"];
+const ZONES: ZoneKind[] = ["res", "com", "ind"];
 const ZONE_TOOL: Record<ZoneKind, Tool> = { res: "zoneRes", com: "zoneCom", ind: "zoneInd" };
 
-export interface Snapshot {
-  population: number;
-  peakPopulation: number;
-  treasury: number;
-  balance: number;
-  monthsSurvived: number;
-  bankrupt: boolean;
+export interface MenuItem {
+  label: string;
+  action: string;
 }
 
+// A produced-source read the render/inspector layer uses.
+export interface SourceView {
+  col: number;
+  row: number;
+  kind: "plant" | "source";
+  capacity: number;
+  supplied: number;
+}
+
+// A visible vehicle, its interpolated world position already resolved by the core.
+export interface VehicleView {
+  kind: VehicleKind;
+  x: number;
+  y: number;
+  angle: number;
+  animT: number;
+}
+
+let initialized = false;
+
+/// Load the wasm core once (idempotent). The `.wasm` is resolved page-relative by the
+/// generated glue via `import.meta.url`, so it works under any base path (specs/simulation.md).
+export async function initSim(): Promise<void> {
+  if (!initialized) {
+    await init();
+    initialized = true;
+  }
+}
+
+// ---- The tile-array views over wasm linear memory ------------------------------
+// The renderer reads these directly. They are rebuilt only when the backing ArrayBuffer
+// changes (a wasm memory growth detaches the old views); the tile-array pointers are stable
+// because those Vecs are allocated once in the core and never resized.
+class World {
+  readonly cols = MAP_COLS;
+  readonly rows = MAP_ROWS;
+  terrain!: Uint8Array;
+  zone!: Uint8Array;
+  net!: Uint8Array;
+  tier!: Uint8Array;
+  powered!: Uint8Array;
+  watered!: Uint8Array;
+  access!: Uint8Array;
+  build!: Float32Array;
+  decay!: Float32Array;
+  pollution!: Float32Array;
+  land!: Float32Array;
+  load!: Float32Array;
+  cap!: Float32Array;
+  private buf: ArrayBuffer | null = null;
+
+  constructor(private wasm: WasmSim) {
+    this.rebuild();
+  }
+
+  // Rebuild the views if the wasm memory buffer has changed since last time.
+  ensure(): void {
+    const mem = wasm_memory() as WebAssembly.Memory;
+    if (mem.buffer !== this.buf) this.rebuild();
+  }
+
+  private rebuild(): void {
+    const mem = wasm_memory() as WebAssembly.Memory;
+    const b = mem.buffer;
+    this.buf = b;
+    const u8 = (ptr: number): Uint8Array => new Uint8Array(b, ptr, TILE_COUNT);
+    const f32 = (ptr: number): Float32Array => new Float32Array(b, ptr, TILE_COUNT);
+    this.terrain = u8(this.wasm.terrain_ptr());
+    this.zone = u8(this.wasm.zone_ptr());
+    this.net = u8(this.wasm.net_ptr());
+    this.tier = u8(this.wasm.tier_ptr());
+    this.powered = u8(this.wasm.powered_ptr());
+    this.watered = u8(this.wasm.watered_ptr());
+    this.access = u8(this.wasm.access_ptr());
+    this.build = f32(this.wasm.build_ptr());
+    this.decay = f32(this.wasm.decay_ptr());
+    this.pollution = f32(this.wasm.pollution_ptr());
+    this.land = f32(this.wasm.land_ptr());
+    this.load = f32(this.wasm.load_ptr());
+    this.cap = f32(this.wasm.cap_ptr());
+  }
+
+  zoneAt(i: number): ZoneKind | null {
+    const z = this.zone[i]!;
+    return z === 0 ? null : ZONES[z - 1]!;
+  }
+  developedAt(i: number): boolean {
+    return this.zone[i]! !== 0 && this.tier[i]! > 0;
+  }
+
+  get sources(): SourceView[] {
+    const p = this.wasm.sources();
+    const out: SourceView[] = [];
+    for (let k = 0; k < p.length; k += 5) {
+      out.push({ col: p[k]!, row: p[k + 1]!, kind: SOURCE_KINDS[p[k + 2]!]!, capacity: p[k + 3]!, supplied: p[k + 4]! });
+    }
+    return out;
+  }
+}
+
+// ---- The Game: the front-end handle to the wasm core ---------------------------
+// Its readable fields are live getters over the core, so a value is never stale after an
+// action; the camera is the one piece of spatial state the FRONT END owns (specs/simulation.md).
 export class Game {
-  readonly mode: CityMode;
-  world: World;
-  camera = new Camera();
+  readonly wasm: WasmSim;
+  readonly camera = new Camera();
+  readonly mode: { menuLabel: string; tagline: string };
+  private readonly _world: World;
 
-  state: GameState = "title";
-  overlay: Overlay = "none";
-  activeTool: Tool | null = null;
-  paused = false; // in-place pause (specs/controls.md) — distinct from the paused STATE
-  speed: 1 | 2 | 3 = 1;
-
-  vehicles: Vehicle[] = [];
-  signals: Signal[] = [];
-  rci: Rci = { r: 0, c: 0, d: 0 };
-  budget: Budget = { treasury: 0, income: 0, upkeep: 0, balance: 0, taxRate: 0 };
-  stats: GameStats = emptyStats();
-  clock: Clock = { ...START_MONTH };
-
-  notifications: Notification[] = [];
-  private milestonesFired = new Set<string>();
-
-  hoverTile = -1;
-  selectedTile = -1;
-
-  // Queues drained by the presentation layer each frame (sim owns no audio/canvas).
-  sndQueue: Cue[] = [];
-  fxQueue: FxEvent[] = [];
-
-  rng = new Rng(1);
-  nextVehicleId = 1;
-  private tickCount = 0;
-
-  // Derived flags refreshed by recomputeStats (drive the milestone checks cheaply).
-  private railTiles = 0;
-  private tier3Tiles = 0;
-  private servedDistrict = 0;
-
-  constructor(mode: CityMode = MODE) {
-    this.mode = mode;
-    this.world = generateValley(mode.seed); // a valley behind the title menu for atmosphere
-    this.markNetworksDirty();
+  constructor() {
+    this.wasm = new WasmSim();
+    this._world = new World(this.wasm);
+    this.mode = { menuLabel: this.wasm.mode_menu_label(), tagline: this.wasm.mode_tagline() };
+    this.centerOnMode();
   }
 
-  // ---- Lifecycle / state machine ---------------------------------------------
-  // Start a fresh city (specs/mode.md): a new valley, the pre-placed stub, the starting
-  // treasury/tax/demand, the camera centred on the stub, then straight into play.
-  newCity(seed?: number): void {
-    const s = (seed ?? this.mode.seed) >>> 0;
-    this.world = generateValley(s);
-    this.rng = new Rng(s ^ 0x9e3779b9);
+  // The tile view, guaranteed current (rebuilt if wasm memory grew since last access).
+  get world(): World {
+    this._world.ensure();
+    return this._world;
+  }
 
-    // The short pre-placed starting road stub (mode owns the geometry).
-    for (let k = 0; k < this.mode.stub.len; k++) {
-      const col = this.mode.stub.col + k;
-      const row = this.mode.stub.row;
-      if (col >= 0 && col < this.world.cols && row >= 0 && row < this.world.rows) {
-        this.world.setNet(idx(col, row), NET_ROAD);
-      }
+  private centerOnMode(): void {
+    this.camera.centerOnTile(this.wasm.center_col(), this.wasm.center_row());
+  }
+
+  // ---- Live scalar / aggregate reads ----------------------------------------
+  get state(): GameState {
+    return STATES[this.wasm.state()]!;
+  }
+  get overlay(): Overlay {
+    return OVERLAYS[this.wasm.overlay()]!;
+  }
+  get activeTool(): Tool | null {
+    const c = this.wasm.active_tool();
+    return c < 0 ? null : TOOL_CODES[c]!;
+  }
+  get paused(): boolean {
+    return this.wasm.paused();
+  }
+  get speed(): number {
+    return this.wasm.speed();
+  }
+  set speed(n: number) {
+    this.wasm.set_speed(n);
+  }
+  get hoverTile(): number {
+    return this.wasm.hover_tile();
+  }
+  get selectedTile(): number {
+    return this.wasm.selected_tile();
+  }
+  get budget(): { treasury: number; income: number; upkeep: number; balance: number; taxRate: number } {
+    return {
+      treasury: this.wasm.treasury(),
+      income: this.wasm.income(),
+      upkeep: this.wasm.upkeep(),
+      balance: this.wasm.balance(),
+      taxRate: this.wasm.tax_rate(),
+    };
+  }
+  get stats(): {
+    population: number;
+    jobs: number;
+    shops: number;
+    peakPopulation: number;
+    monthsSurvived: number;
+    power: { supply: number; demand: number };
+    water: { supply: number; demand: number };
+  } {
+    return {
+      population: this.wasm.population(),
+      jobs: this.wasm.jobs(),
+      shops: this.wasm.shops(),
+      peakPopulation: this.wasm.peak_population(),
+      monthsSurvived: this.wasm.months_survived(),
+      power: { supply: this.wasm.power_supply(), demand: this.wasm.power_demand() },
+      water: { supply: this.wasm.water_supply(), demand: this.wasm.water_demand() },
+    };
+  }
+  get rci(): { r: number; c: number; d: number } {
+    return { r: this.wasm.rci_r(), c: this.wasm.rci_c(), d: this.wasm.rci_d() };
+  }
+  get clock(): { month: number; year: number } {
+    return { month: this.wasm.clock_month(), year: this.wasm.clock_year() };
+  }
+
+  get vehicles(): VehicleView[] {
+    const p = this.wasm.vehicles();
+    const out: VehicleView[] = [];
+    for (let k = 0; k < p.length; k += 5) {
+      out.push({ x: p[k]!, y: p[k + 1]!, angle: p[k + 2]!, kind: VEHICLE_KINDS[p[k + 3]!]!, animT: p[k + 4]! });
     }
-
-    this.budget = { treasury: this.mode.startTreasury, income: 0, upkeep: 0, balance: 0, taxRate: this.mode.startTax };
-    this.rci = { ...this.mode.startRci };
-    this.stats = emptyStats();
-    this.clock = { ...START_MONTH };
-    this.vehicles = [];
-    this.notifications = [];
-    this.milestonesFired.clear();
-    this.tickCount = 0;
-    this.nextVehicleId = 1;
-    this.paused = false;
-    this.speed = 1;
-    this.activeTool = null;
-    this.overlay = "none";
-    this.selectedTile = -1;
-    this.hoverTile = -1;
-
-    this.markNetworksDirty();
-    recomputeLand(this.world);
-    this.recomputeStats();
-    this.camera.centerOnTile(this.mode.centerCol, this.mode.centerRow);
-    this.state = "playing";
+    return out;
+  }
+  get signals(): Array<{ col: number; row: number; phase: number }> {
+    const p = this.wasm.signals();
+    const out: Array<{ col: number; row: number; phase: number }> = [];
+    for (let k = 0; k < p.length; k += 3) out.push({ col: p[k]!, row: p[k + 1]!, phase: p[k + 2]! });
+    return out;
+  }
+  get notifications(): Array<{ text: string; age: number; ttl: number; tone: "info" | "good" | "alert" }> {
+    const n = this.wasm.notif_len();
+    const out: Array<{ text: string; age: number; ttl: number; tone: "info" | "good" | "alert" }> = [];
+    for (let i = 0; i < n; i++) {
+      out.push({ text: this.wasm.notif_text(i), age: this.wasm.notif_age(i), ttl: this.wasm.notif_ttl(i), tone: TONES[this.wasm.notif_tone(i)]! });
+    }
+    return out;
   }
 
-  showHowto(): void {
-    this.state = "howto";
-  }
-  backToTitle(): void {
-    this.state = "title";
-  }
-  openPauseMenu(): void {
-    if (this.state === "playing") this.state = "paused";
-  }
-  resume(): void {
-    if (this.state === "paused") this.state = "playing";
-  }
-  restart(): void {
-    this.newCity();
-  }
-  quitToMenu(): void {
-    this.state = "title";
-    this.vehicles = [];
+  // The source (if any) whose 2×2 footprint covers tile `i` — a placed-object read, not a rule.
+  sourceCovering(i: number): SourceView | null {
+    const c = colOf(i);
+    const r = rowOf(i);
+    for (const s of this.world.sources) {
+      if (c >= s.col && c <= s.col + 1 && r >= s.row && r <= s.row + 1) return s;
+    }
+    return null;
   }
 
-  // Re-label the carrier components + station bonus + signals after any tool edit.
-  markNetworksDirty(): void {
-    rebuildNetworks(this.world);
-    computeStationBonus(this.world);
-    rebuildSignals(this);
+  // ---- Menus (the core owns the list + highlight index) ---------------------
+  menuItems(): MenuItem[] {
+    const n = this.wasm.menu_len();
+    const out: MenuItem[] = [];
+    for (let i = 0; i < n; i++) out.push({ label: this.wasm.menu_label(i), action: this.wasm.menu_action(i) });
+    return out;
+  }
+  get menuIndex(): number {
+    return this.wasm.menu_index();
+  }
+  menuMove(delta: number): void {
+    this.wasm.menu_move(delta);
+  }
+  menuSetIndex(i: number): void {
+    this.wasm.menu_set_index(i);
+  }
+  menuConfirm(): void {
+    const item = this.menuItems()[this.menuIndex];
+    if (item) this.dispatch(item.action);
   }
 
-  declareBankrupt(): void {
-    if (this.state === "bankrupt") return;
-    this.state = "bankrupt";
-    this.activeTool = null;
-    this.paused = false;
-    this.notify("CITY BANKRUPT", "alert");
-    this.sndQueue.push("alert");
+  // ---- Tool preview (legality + cost + refusal, computed in the core) --------
+  toolPreview(anchor: number, hover: number): { cells: Array<{ i: number; ok: boolean }>; cost: number; refusal: string | null } {
+    const tp = this.wasm.tool_preview(anchor, hover);
+    const cost = tp.cost;
+    const refusal = tp.refusal ?? null;
+    const packed = tp.cells();
+    tp.free();
+    const cells: Array<{ i: number; ok: boolean }> = [];
+    for (let k = 0; k < packed.length; k += 2) cells.push({ i: packed[k]!, ok: packed[k + 1]! !== 0 });
+    return { cells, cost, refusal };
   }
 
-  // ---- The fixed simulation step (DESIGN §4 order) ---------------------------
+  // ---- The tick + queue drains ----------------------------------------------
   fixedStep(dt: number): void {
-    if (this.state !== "playing" || this.paused) return;
-    this.tickCount++;
-    stepTransit(this, dt);
-    stepUtilities(this);
-    stepDevelopment(this);
-    stepPollution(this.world);
-    recomputeLand(this.world);
-    this.recomputeStats();
-    if (this.tickCount % TICKS_PER_MONTH === 0) {
-      updateRci(this);
-      settleBudget(this);
-      this.raiseBudgetAlert();
-    }
-    this.checkMilestones();
-    this.ageNotifications(dt);
+    this.wasm.step(dt);
+  }
+  advance(months: number): void {
+    this.wasm.advance(months);
+  }
+  drainSounds(): Cue[] {
+    return Array.from(this.wasm.drain_sounds()).map((c) => CUES[c]!);
+  }
+  drainFx(): FxEvent[] {
+    const p = this.wasm.drain_fx();
+    const out: FxEvent[] = [];
+    for (let k = 0; k < p.length; k += 4) out.push({ kind: FX[p[k]!]!, x: p[k + 1]!, y: p[k + 2]!, strength: p[k + 3]! });
+    return out;
   }
 
-  // Aggregate the developed tiles into the HUD stats + the milestone flags in one sweep.
-  private recomputeStats(): void {
-    const w = this.world;
-    let population = 0;
-    let jobs = 0;
-    let shops = 0;
-    let rail = 0;
-    let tier3 = 0;
-    let district = 0;
-    for (let i = 0; i < TILE_COUNT; i++) {
-      if (w.net[i]! & NET_RAIL) rail++;
-      if (!w.developedAt(i)) continue;
-      const t = w.tier[i]!;
-      const z = w.zoneAt(i)!;
-      if (z === "res") population += POP.res[t]!;
-      else if (z === "com") {
-        jobs += JOBS.com[t]!;
-        shops += SHOP_CAP.com[t]!;
-      } else jobs += JOBS.ind[t]!;
-      if (t >= 3) tier3++;
-      if (w.powered[i]! && w.watered[i]! && w.access[i]!) district++;
-    }
-    this.stats.population = population;
-    this.stats.jobs = jobs;
-    this.stats.shops = shops;
-    this.stats.peakPopulation = Math.max(this.stats.peakPopulation, population);
-    this.railTiles = rail;
-    this.tier3Tiles = tier3;
-    this.servedDistrict = district;
-  }
-
-  private checkMilestones(): void {
-    if (this.railTiles > 0) this.fireMilestone("first-rail");
-    for (const threshold of POP_MILESTONES) {
-      if (this.stats.population >= threshold) this.fireMilestone(`pop-${threshold}`);
-    }
-    if (this.tier3Tiles > 0) this.fireMilestone("first-tier3");
-    if (this.servedDistrict >= DISTRICT_MILESTONE) this.fireMilestone("first-district");
-  }
-
-  private fireMilestone(id: string): void {
-    if (this.milestonesFired.has(id)) return;
-    this.milestonesFired.add(id);
-    const label = MILESTONES.find((m) => m.id === id)?.label ?? id;
-    this.notify(label, "good");
-    this.sndQueue.push("chime");
-    // Fireworks at the current view centre so the flourish is on-screen.
-    this.fxQueue.push({ kind: "fireworks", x: this.camera.cx, y: this.camera.cy, strength: 1 });
-  }
-
-  private raiseBudgetAlert(): void {
-    if (this.budget.balance < 0 && this.budget.treasury < this.mode.startTreasury * 0.25) {
-      this.notify("LOSING MONEY", "alert");
-      this.sndQueue.push("alert");
-    }
-  }
-
-  private notify(text: string, tone: Notification["tone"]): void {
-    this.notifications.push({ text, age: 0, ttl: NOTIFY_TTL, tone });
-    if (this.notifications.length > MAX_NOTIFICATIONS) this.notifications.shift();
-  }
-
-  private ageNotifications(dt: number): void {
-    for (const n of this.notifications) n.age += dt;
-    this.notifications = this.notifications.filter((n) => n.age < n.ttl);
-  }
-
-  // ---- Player actions (called by input, routed via clickables) ---------------
+  // ---- Player actions --------------------------------------------------------
   selectTool(tool: Tool | null): void {
-    this.activeTool = tool;
+    this.wasm.select_tool(tool === null ? -1 : TOOL_CODES.indexOf(tool));
   }
-  setSpeed(n: number): void {
-    this.speed = (n < 1 ? 1 : n > 3 ? 3 : n) as 1 | 2 | 3;
+  dispatch(action: string): void {
+    this.wasm.dispatch(action);
+    // `menu:play`/`again`/`restart` start a fresh city; the camera (a front-end concern)
+    // re-centres on the mode's focus tile since the core does not touch it.
+    if (action === "menu:play" || action === "menu:again" || action === "menu:restart") this.centerOnMode();
   }
-  cycleSpeed(): void {
-    this.setSpeed(this.speed >= 3 ? 1 : this.speed + 1);
+  applyDrag(tool: Tool, c0: number, r0: number, c1: number, r1: number): number {
+    return this.wasm.apply_drag(TOOL_CODES.indexOf(tool), c0, r0, c1, r1);
   }
-  setOverlay(o: Overlay): void {
-    this.overlay = o;
-  }
-  cycleOverlay(): void {
-    const order: Overlay[] = ["none", "traffic", "utility", "landvalue"];
-    this.overlay = order[(order.indexOf(this.overlay) + 1) % order.length]!;
-  }
-  togglePause(): void {
-    if (this.state === "playing") this.paused = !this.paused;
-  }
-  setTaxRate(rate: number): void {
-    const stepped = Math.round(rate / TAX_STEP) * TAX_STEP;
-    this.budget.taxRate = Math.max(TAX_MIN, Math.min(TAX_MAX, Number(stepped.toFixed(2))));
-  }
-  taxUp(): void {
-    this.setTaxRate(this.budget.taxRate + TAX_STEP);
-  }
-  taxDown(): void {
-    this.setTaxRate(this.budget.taxRate - TAX_STEP);
+  applyStamp(tool: Tool, col: number, row: number): number {
+    return this.wasm.apply_stamp(TOOL_CODES.indexOf(tool), col, row);
   }
   setHover(tile: number): void {
-    this.hoverTile = tile;
+    this.wasm.set_hover(tile);
   }
   setSelected(tile: number): void {
-    this.selectedTile = tile;
+    this.wasm.set_selected(tile);
+  }
+  setSpeed(n: number): void {
+    this.wasm.set_speed(n);
+  }
+  cycleSpeed(): void {
+    this.wasm.cycle_speed();
+  }
+  setOverlay(o: Overlay): void {
+    this.wasm.set_overlay(OVERLAYS.indexOf(o));
+  }
+  cycleOverlay(): void {
+    this.wasm.cycle_overlay();
+  }
+  togglePause(): void {
+    this.wasm.toggle_pause();
+  }
+  taxUp(): void {
+    this.wasm.tax_up();
+  }
+  taxDown(): void {
+    this.wasm.tax_down();
+  }
+  setTax(rate: number): void {
+    this.wasm.set_tax(rate);
   }
   centerOn(col: number, row: number): void {
     this.camera.centerOnTile(col, row);
   }
-  panBy(dx: number, dy: number): void {
-    this.camera.panBy(dx, dy);
+
+  // ---- State machine ---------------------------------------------------------
+  newCity(seed?: number): void {
+    if (seed === undefined) this.wasm.new_city();
+    else this.wasm.new_city_seeded(seed >>> 0);
+    this.centerOnMode();
+  }
+  showHowto(): void {
+    this.wasm.show_howto();
+  }
+  backToTitle(): void {
+    this.wasm.back_to_title();
+  }
+  openPauseMenu(): void {
+    this.wasm.open_pause_menu();
+  }
+  resume(): void {
+    this.wasm.resume();
+  }
+  restart(): void {
+    this.wasm.restart();
+    this.centerOnMode();
+  }
+  quitToMenu(): void {
+    this.wasm.quit_to_menu();
+  }
+  setState(state: GameState): void {
+    this.wasm.set_state(STATES.indexOf(state));
   }
 
-  // Apply the active tool over an explicit tile list (single click) or a drag run/rectangle.
-  applyToolTiles(tool: Tool, tiles: number[]): ApplyResult {
-    if (this.state !== "playing") return { placed: 0, spent: 0 };
-    return applyTool(this, tool, tiles);
+  // ---- Scripted control surface (window.__junction, DESIGN §6) ---------------
+  zoneRect(kind: ZoneKind, c0: number, r0: number, c1: number, r1: number): { placed: number } {
+    return { placed: this.applyDrag(ZONE_TOOL[kind], c0, r0, c1, r1) };
   }
-  applyDrag(tool: Tool, c0: number, r0: number, c1: number, r1: number): ApplyResult {
-    return this.applyToolTiles(tool, tilesForDrag(tool, c0, r0, c1, r1));
+  road(c0: number, r0: number, c1: number, r1: number): { placed: number } {
+    return { placed: this.applyDrag("road", c0, r0, c1, r1) };
   }
-
-  // ---- Scripted control surface (window.__junction / balance harness) --------
-  // Each helper drives the real Game methods — no fake state — so the captures are
-  // reproducible (DESIGN §6).
-  zoneRect(kind: ZoneKind, c0: number, r0: number, c1: number, r1: number): ApplyResult {
-    return this.applyDrag(ZONE_TOOL[kind], c0, r0, c1, r1);
+  rail(c0: number, r0: number, c1: number, r1: number): { placed: number } {
+    return { placed: this.applyDrag("rail", c0, r0, c1, r1) };
   }
-  road(c0: number, r0: number, c1: number, r1: number): ApplyResult {
-    return this.applyDrag("road", c0, r0, c1, r1);
+  wire(c0: number, r0: number, c1: number, r1: number): { placed: number } {
+    return { placed: this.applyDrag("wire", c0, r0, c1, r1) };
   }
-  rail(c0: number, r0: number, c1: number, r1: number): ApplyResult {
-    return this.applyDrag("rail", c0, r0, c1, r1);
+  pipe(c0: number, r0: number, c1: number, r1: number): { placed: number } {
+    return { placed: this.applyDrag("pipe", c0, r0, c1, r1) };
   }
-  wire(c0: number, r0: number, c1: number, r1: number): ApplyResult {
-    return this.applyDrag("wire", c0, r0, c1, r1);
+  station(col: number, row: number): { placed: number } {
+    return { placed: this.applyStamp("station", col, row) };
   }
-  pipe(c0: number, r0: number, c1: number, r1: number): ApplyResult {
-    return this.applyDrag("pipe", c0, r0, c1, r1);
+  plant(col: number, row: number): { placed: number } {
+    return { placed: this.applyStamp("plant", col, row) };
   }
-  station(col: number, row: number): ApplyResult {
-    return this.applyToolTiles("station", [idx(col, row)]);
+  source(col: number, row: number): { placed: number } {
+    return { placed: this.applyStamp("source", col, row) };
   }
-  plant(col: number, row: number): ApplyResult {
-    return this.applyToolTiles("plant", [idx(col, row)]);
+  bulldozeRect(c0: number, r0: number, c1: number, r1: number): { placed: number } {
+    return { placed: this.applyDrag("bulldoze", c0, r0, c1, r1) };
   }
-  source(col: number, row: number): ApplyResult {
-    return this.applyToolTiles("source", [idx(col, row)]);
+  setTreasury(value: number): void {
+    this.wasm.set_treasury(value);
   }
-  bulldozeRect(c0: number, r0: number, c1: number, r1: number): ApplyResult {
-    return this.applyToolTiles("bulldoze", tilesForDrag("bulldoze", c0, r0, c1, r1));
-  }
-  setTax(rate: number): void {
-    this.setTaxRate(rate);
-  }
-
-  // Run `months` whole budget periods of simulation (used by the proof/harness).
-  advance(months: number): void {
-    const ticks = Math.max(0, Math.round(months * TICKS_PER_MONTH));
-    for (let k = 0; k < ticks; k++) {
-      if (this.state !== "playing") break;
-      this.fixedStep(FIXED_STEP);
-    }
-  }
-
-  // Drop tax to zero so income dries up and upkeep drives the treasury toward the debt
-  // limit — the deliberate slide into bankruptcy for the crisis clip (DESIGN §6).
   forceBankruptcy(): void {
-    this.setTaxRate(0);
+    this.wasm.force_bankruptcy();
   }
-
-  snapshot(): Snapshot {
-    return {
-      population: this.stats.population,
-      peakPopulation: this.stats.peakPopulation,
-      treasury: Math.round(this.budget.treasury),
-      balance: Math.round(this.budget.balance),
-      monthsSurvived: this.stats.monthsSurvived,
-      bankrupt: this.state === "bankrupt",
+  snapshot(): { population: number; peakPopulation: number; treasury: number; balance: number; monthsSurvived: number; bankrupt: boolean } {
+    const s = this.wasm.snapshot();
+    const o = {
+      population: s.population,
+      peakPopulation: s.peak_population,
+      treasury: s.treasury,
+      balance: s.balance,
+      monthsSurvived: s.months_survived,
+      bankrupt: s.bankrupt,
     };
-  }
-
-  // World-pixel size of a tile (handy for the render/proof layers that import the Game).
-  get tilePx(): number {
-    return TILE;
+    s.free();
+    return o;
   }
 }
 
-function emptyStats(): GameStats {
-  return {
-    population: 0,
-    jobs: 0,
-    shops: 0,
-    peakPopulation: 0,
-    power: { supply: 0, demand: 0 },
-    water: { supply: 0, demand: 0 },
-    monthsSurvived: 0,
-  };
+/// Construct a Game after ensuring the wasm core is loaded.
+export async function createGame(): Promise<Game> {
+  await initSim();
+  return new Game();
 }
+
+// Handy re-exports for the input layer (which maps a screen point to a tile then a core call).
+export { idx };

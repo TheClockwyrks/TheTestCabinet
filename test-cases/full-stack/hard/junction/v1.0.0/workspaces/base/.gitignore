@@ -1,6 +1,10 @@
 # Dependencies — reinstalled with `npm ci`; never committed.
 node_modules/
 
+# Rust build artifacts for the Rust → wasm simulation core. The compiled `.wasm`
+# (a committed build input) is tracked; the build directory it comes out of is not.
+target/
+
 # Production build output — produced by `npm run build` and deployed to static
 # hosting separately, so it is not part of the published source repository.
 dist/

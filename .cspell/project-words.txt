@@ -113,9 +113,11 @@ pathfinding
 dests
 buildkit
 cdylib
+rlib
 rustc
 rustup
 bindgen
+binaryen
 wasmtime
 schemars
 wasip
@@ -193,6 +195,7 @@ loadouts
 
 # Caldera hex-terrain strategy tower-defense test case.
 hotbar
+buildability
 buildables
 unpowered
 chokepoints
@@ -321,3 +324,17 @@ Bloons
 stackable
 chippable
 travelling
+
+# Junction reference-impl DESIGN/README (Rust→wasm city builder).
+PRNG
+blit
+STATN
+landvalue
+Menlo
+Consolas
+neighbour
+neighbours
+colour
+colouring
+tunables
+mult

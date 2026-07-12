@@ -1,25 +1,24 @@
 // Junction — bootstrap and the fixed-timestep loop (specs/controls.md, specs/overview.md,
-// DESIGN §4, §5).
+// specs/simulation.md, DESIGN §4, §5).
 //
-// Loads the produced assets, fits the fixed 1280×720 stage into the window (letterboxed,
-// centered, crisp at any pixel density and correct on load before any input), wires input,
-// and runs the loop: the simulation advances in fixed FIXED_STEP ticks (scaled by the speed
-// control, frozen while paused or on a menu) decoupled from rendering, which interpolates and
-// draws every frame. Each frame it drains the sim's sound/fx queues into the Web Audio layer
-// and the particle players, and exposes the `window.__junction` test hook (the valence
-// `__valence` analogue) so the Playwright proof captures drive the real Game.
+// Loads the produced assets AND the Rust/wasm simulation core, fits the fixed 1280×720 stage
+// into the window (letterboxed, centered, crisp at any pixel density and correct on load
+// before any input), wires input, and runs the loop: the core advances in fixed FIXED_STEP
+// ticks (scaled by the speed control, frozen while paused or on a menu) decoupled from
+// rendering, which interpolates and draws every frame. Each frame it drains the core's
+// sound/fx queues into the Web Audio layer and the particle players, and exposes the
+// `window.__junction` test hook so the Playwright proof captures drive the real core. The
+// simulation is the wasm core; this file owns only presentation and I/O (specs/simulation.md).
 
 import { EDGE_MARGIN, FIXED_STEP, PAN_SPEED, STAGE_H, STAGE_W, VIEW_Y0, VIEW_Y1 } from "./constants";
-import { MODE } from "./mode";
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";
 import { Bursts, Haze } from "./particles";
-import { Game } from "./sim";
+import { createGame } from "./sim";
 import { Input } from "./input";
-import { menuItems } from "./menus";
+import { idx, inBounds } from "./grid";
 import { render, setDragAnchor, setMenuIndex, setMuted, setPointer, setRenderTime } from "./render";
-import { idx, inBounds } from "./world";
-import type { Clickable, Overlay, Tool, ZoneKind } from "./types";
+import type { Clickable, Overlay, Tool } from "./types";
 
 const ZOOM_STEP = 2; // on-screen px per tile added/removed per wheel notch
 
@@ -43,15 +42,13 @@ window.addEventListener("resize", resize);
 resize();
 
 async function main(): Promise<void> {
-  const assets = await loadAssets();
+  const [assets, game] = await Promise.all([loadAssets(), createGame()]);
   const audio = new Audio(assets.audioUrl);
   const haze = new Haze(assets.fx.haze);
   const bursts = new Bursts(assets.fx);
-  const game = new Game(MODE);
   const input = new Input();
   input.attach(canvas);
 
-  let menuIndex = 0;
   let clickables: Clickable[] = [];
   let gestured = false;
   let elapsed = 0;
@@ -62,12 +59,12 @@ async function main(): Promise<void> {
   let pan: { button: number; lastX: number; lastY: number; dist: number } | null = null;
 
   // ---- The scripted control surface for the Playwright proof captures (DESIGN §6) --------
-  // Every helper drives the real Game methods — no fake state — so the captures reproduce.
+  // Every helper drives the real wasm core through the front-end binding — no fake state.
   (window as unknown as { __junction?: unknown }).__junction = {
     game,
     audio,
     newCity: (seed?: number) => game.newCity(seed),
-    zoneRect: (kind: ZoneKind, c0: number, r0: number, c1: number, r1: number) => game.zoneRect(kind, c0, r0, c1, r1),
+    zoneRect: (kind: "res" | "com" | "ind", c0: number, r0: number, c1: number, r1: number) => game.zoneRect(kind, c0, r0, c1, r1),
     road: (c0: number, r0: number, c1: number, r1: number) => game.road(c0, r0, c1, r1),
     rail: (c0: number, r0: number, c1: number, r1: number) => game.rail(c0, r0, c1, r1),
     wire: (c0: number, r0: number, c1: number, r1: number) => game.wire(c0, r0, c1, r1),
@@ -77,13 +74,14 @@ async function main(): Promise<void> {
     source: (c: number, r: number) => game.source(c, r),
     bulldozeRect: (c0: number, r0: number, c1: number, r1: number) => game.bulldozeRect(c0, r0, c1, r1),
     setTax: (rate: number) => game.setTax(rate),
+    setTreasury: (v: number) => game.setTreasury(v),
     setSpeed: (n: number) => game.setSpeed(n),
     setOverlay: (o: Overlay) => game.setOverlay(o),
     centerOn: (c: number, r: number) => game.centerOn(c, r),
     advance: (months: number) => game.advance(months),
     snapshot: () => game.snapshot(),
     forceBankruptcy: () => game.forceBankruptcy(),
-    setState: (s: Game["state"]) => (game.state = s),
+    setState: (s: "title" | "howto" | "playing" | "paused" | "bankrupt") => game.setState(s),
   };
 
   const gesture = (): void => {
@@ -92,60 +90,13 @@ async function main(): Promise<void> {
   };
 
   // ---- Menu / HUD action dispatch --------------------------------------------------------
+  // Mute is a front-end audio concern; every other action is a state transition the core owns.
   function activate(action: string): void {
-    if (action.startsWith("tool:")) {
-      const tool = action.slice(5) as Tool;
-      game.selectTool(game.activeTool === tool ? null : tool); // click the active tool to drop it
+    if (action === "mute") {
+      audio.toggleMute();
       return;
     }
-    switch (action) {
-      // Title / navigation.
-      case "menu:play":
-      case "menu:again": // fresh valley (title NEW CITY, bankruptcy TRY AGAIN)
-        game.newCity();
-        menuIndex = 0;
-        break;
-      case "menu:howto":
-        game.showHowto();
-        menuIndex = 0;
-        break;
-      case "menu:back":
-      case "menu:menu": // how-to BACK, bankruptcy MENU → title
-        game.backToTitle();
-        menuIndex = 0;
-        break;
-      case "menu:resume":
-        game.resume();
-        game.paused = false; // Resume also clears any in-place pause so the city runs
-        break;
-      case "menu:restart": // paused RESTART → fresh valley, same seed
-        game.restart();
-        menuIndex = 0;
-        break;
-      case "menu:quit":
-        game.quitToMenu();
-        menuIndex = 0;
-        break;
-      // In-play HUD controls.
-      case "mute":
-        audio.toggleMute();
-        break;
-      case "pause":
-        game.togglePause();
-        break;
-      case "speed":
-        game.cycleSpeed();
-        break;
-      case "overlay":
-        game.cycleOverlay();
-        break;
-      case "taxUp":
-        game.taxUp();
-        break;
-      case "taxDown":
-        game.taxDown();
-        break;
-    }
+    game.dispatch(action);
   }
 
   // Topmost clickable under (x,y) that is live for the current state. Outside play, only the
@@ -161,12 +112,6 @@ async function main(): Promise<void> {
       }
     }
     return false;
-  }
-
-  // Open the Esc overlay pause menu, which also freezes the board (specs/flow.md).
-  function openPauseMenu(): void {
-    game.openPauseMenu();
-    menuIndex = 0;
   }
 
   // ---- Pointer routing -------------------------------------------------------------------
@@ -188,7 +133,7 @@ async function main(): Promise<void> {
     const tool = game.activeTool;
     if (tool) {
       if (tool === "station" || tool === "plant" || tool === "source") {
-        game.applyToolTiles(tool, [idx(hit.col, hit.row)]); // single-stamp tools place at once
+        game.applyStamp(tool, hit.col, hit.row); // single-stamp tools place at once
       } else {
         toolDrag = { tool, col: hit.col, row: hit.row }; // zones / carriers paint on drag
       }
@@ -262,22 +207,22 @@ async function main(): Promise<void> {
           // Esc first drops a held tool, then a selection, then opens the pause menu.
           if (game.activeTool) game.selectTool(null);
           else if (game.selectedTile >= 0) game.setSelected(-1);
-          else openPauseMenu();
+          else game.openPauseMenu();
           return;
         default:
           return; // WASD / arrows drive continuous pan, handled in updatePan
       }
     }
 
-    // Menu states — pointer + keyboard navigate the shared menus.ts list.
-    const items = menuItems(game.state, game);
+    // Menu states — pointer + keyboard navigate the core-owned menu list.
+    const items = game.menuItems();
     if (items.length === 0) return;
     if (k === "ArrowUp" || k === "ArrowLeft" || lower === "w" || lower === "a") {
-      menuIndex = (menuIndex - 1 + items.length) % items.length;
+      game.menuMove(-1);
     } else if (k === "ArrowDown" || k === "ArrowRight" || lower === "s" || lower === "d") {
-      menuIndex = (menuIndex + 1) % items.length;
+      game.menuMove(1);
     } else if (k === "Enter" || k === " ") {
-      activate(items[menuIndex]!.action);
+      game.menuConfirm();
     } else if (k === "Escape") {
       if (game.state === "howto") activate("menu:back");
       else if (game.state === "paused") activate("menu:resume");
@@ -288,12 +233,12 @@ async function main(): Promise<void> {
   // Keep the keyboard selection in sync with a hovering pointer so the highlight agrees.
   function syncMenuIndexToPointer(): void {
     if (game.state === "playing") return;
-    const items = menuItems(game.state, game);
+    const items = game.menuItems();
     const pl = input.pointerLogical;
     for (let i = 0; i < items.length; i++) {
       const c = clickables.find((cl) => cl.action === items[i]!.action);
       if (c && pl.x >= c.x && pl.x <= c.x + c.w && pl.y >= c.y && pl.y <= c.y + c.h) {
-        menuIndex = i;
+        game.menuSetIndex(i);
         return;
       }
     }
@@ -385,17 +330,21 @@ async function main(): Promise<void> {
       acc = 0; // drop the accumulator so no burst of ticks fires on resume
     }
 
-    // Drain the sim's presentation queues (sim owns no audio / canvas — DESIGN §2.5).
-    for (const cue of game.sndQueue) audio.play(cue);
-    game.sndQueue.length = 0;
-    for (const fx of game.fxQueue) bursts.spawn(fx);
-    game.fxQueue.length = 0;
+    // Drain the core's presentation queues (the sim owns no audio / canvas — specs/simulation.md).
+    for (const cue of game.drainSounds()) audio.play(cue);
+    for (const fx of game.drainFx()) {
+      // The core emits a milestone's fireworks with a placeholder position; the front end
+      // places it at the current view centre so the flourish is on-screen (the camera is a
+      // front-end concern).
+      if (fx.kind === "fireworks") bursts.spawn({ kind: "fireworks", x: game.camera.cx, y: game.camera.cy, strength: fx.strength });
+      else bursts.spawn(fx);
+    }
     haze.update(dt);
     bursts.update(dt);
 
     setRenderTime(elapsed);
     setMuted(audio.muted);
-    setMenuIndex(menuIndex);
+    setMenuIndex(game.menuIndex);
     setPointer(pl.x, pl.y);
     setDragAnchor(toolDrag ? idx(toolDrag.col, toolDrag.row) : -1);
 
