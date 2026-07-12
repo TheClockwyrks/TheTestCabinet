@@ -307,3 +307,13 @@ serp
 modeselect
 gameover
 Vite
+
+# Valence (valence) domain terms and reference mockup class names.
+Monatom
+Monatoms
+Macromass
+camo
+strippable
+untargetable
+multiplicatively
+ctrls

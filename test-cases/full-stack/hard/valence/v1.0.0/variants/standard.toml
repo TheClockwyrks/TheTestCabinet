@@ -1,0 +1,15 @@
+# The default variant: the standard containment campaign. Listed first in the case
+# manifest's `variants`, so it is the default. Every path resolves against the version
+# folder, exactly like the main manifest.
+slug = "standard"
+name = "Standard"
+description = "The standard containment campaign: 500 starting energy, 100 integrity, interest enabled, over the full 20-round run."
+
+# The campaign start is seeded to the stable path `specs/mode.md` that the common specs
+# reference; standard seeds the standard containment start. `dest` is given explicitly
+# because the source name differs from the seeded path.
+spec = [{ source = "specs/mode-standard.md", dest = "specs/mode.md" }]
+
+# The main menu lists a different start per variant, so each variant supplies its own
+# `title` reference; `gameplay` and `game-over` are common.
+reference = [{ view = "title", path = "reference/menu-standard.html" }]
