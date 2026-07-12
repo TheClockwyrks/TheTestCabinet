@@ -1,6 +1,6 @@
 **Valence** is a chemistry-themed tower-defense game. Unstable matter streams out of
 an inlet and flows along a fixed conduit that forks into two lanes and rejoins before
-the collector; you defend it by placing **emitter towers** at the board's fixed nodes
+the collector; you defend it by placing **emitter towers** on the board's build grid
 to break the matter down before it escapes.
 
 Its defining idea is a **three-axis decomposition** model that replaces the usual

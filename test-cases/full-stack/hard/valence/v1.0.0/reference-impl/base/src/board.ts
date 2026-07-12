@@ -83,36 +83,84 @@ export function laneSamples(lane: Lane, stepPx: number): SamplePt[] {
   return out;
 }
 
-// ---- Emitter nodes (specs/board.md) -------------------------------------------
-// 16 fixed nodes: 4 beside the shared runs (premium — reach both lanes), 6 beside
-// Lane A, 6 beside Lane B. Which lane(s) a node actually reaches is decided purely
-// by range against the conduit at runtime, so shared nodes cover both lanes because
-// both lane polylines pass through the same shared world points.
-export interface NodeDef {
+// ---- The build grid (specs/board.md) ------------------------------------------
+// Towers snap to a uniform square grid that tiles the board region (x in [0,1000],
+// y in [56,720]) — not free pixel placement, and not a fixed set of nodes. A cell is
+// buildable unless the conduit crosses it (blocked) or a tower already occupies it.
+// Which lane(s) a cell actually reaches is decided purely by range against the conduit
+// at runtime, so a cell beside a shared run covers both lanes because both lane
+// polylines pass through the same shared world points.
+export const CELL = 40; // logical px per cell edge
+export const GRID_X0 = 0;
+export const GRID_Y0 = 56; // STATUS_H — the board region starts below the status bar
+export const COLS = 25; // 1000 / 40 → columns span x in [0, 1000]
+export const ROWS = 16; // rows span y in [56, 696]
+const BLOCK_DIST = 24; // a cell whose center is within this of the track is on the conduit
+
+export interface CellInfo {
   id: number;
-  x: number;
-  y: number;
+  col: number;
+  row: number;
+  cx: number; // center x
+  cy: number; // center y
+  blocked: boolean; // the conduit passes through this cell — no tower may occupy it
+  laneDist: number; // distance from the cell center to the nearest lane centerline
 }
 
-export const NODES: NodeDef[] = [
-  // Shared — inlet approach.
-  { id: 0, x: 88, y: 352 },
-  { id: 1, x: 88, y: 448 },
-  // Shared — final run.
-  { id: 2, x: 892, y: 352 },
-  { id: 3, x: 892, y: 448 },
-  // Lane A (top).
-  { id: 4, x: 214, y: 300 },
-  { id: 5, x: 214, y: 224 },
-  { id: 6, x: 320, y: 128 },
-  { id: 7, x: 485, y: 128 },
-  { id: 8, x: 650, y: 128 },
-  { id: 9, x: 756, y: 268 },
-  // Lane B (bottom).
-  { id: 10, x: 214, y: 500 },
-  { id: 11, x: 214, y: 576 },
-  { id: 12, x: 320, y: 672 },
-  { id: 13, x: 485, y: 672 },
-  { id: 14, x: 650, y: 672 },
-  { id: 15, x: 756, y: 532 },
-];
+// Shortest distance from point p to segment a-b.
+function distToSegment(px: number, py: number, a: Pt, b: Pt): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / len2)) : 0;
+  const qx = a.x + dx * t;
+  const qy = a.y + dy * t;
+  return Math.hypot(px - qx, py - qy);
+}
+
+// Distance from a point to the nearest lane centerline (either lane's polyline).
+function distToConduit(px: number, py: number): number {
+  let best = Infinity;
+  for (const poly of LANE_POLY) {
+    for (let i = 1; i < poly.length; i++) {
+      const d = distToSegment(px, py, poly[i - 1]!, poly[i]!);
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}
+
+// Every cell of the grid, precomputed once. `blocked` marks the cells the conduit
+// crosses (the tracks, inlet, splitter, confluence, and collector all lie on a lane
+// polyline, so distance-to-conduit covers them).
+export const CELLS: CellInfo[] = (() => {
+  const out: CellInfo[] = [];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const cx = GRID_X0 + col * CELL + CELL / 2;
+      const cy = GRID_Y0 + row * CELL + CELL / 2;
+      const laneDist = distToConduit(cx, cy);
+      out.push({ id: row * COLS + col, col, row, cx, cy, blocked: laneDist < BLOCK_DIST, laneDist });
+    }
+  }
+  return out;
+})();
+
+// The cell id containing world point (x, y), or null if it falls outside the grid.
+export function cellIdAt(x: number, y: number): number | null {
+  const col = Math.floor((x - GRID_X0) / CELL);
+  const row = Math.floor((y - GRID_Y0) / CELL);
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
+  return row * COLS + col;
+}
+
+export function cellCenter(id: number): Pt {
+  const c = CELLS[id]!;
+  return { x: c.cx, y: c.cy };
+}
+
+// A cell is blocked when the conduit crosses it; blocked cells can never hold a tower.
+export function isBlocked(id: number): boolean {
+  const c = CELLS[id];
+  return !c || c.blocked;
+}

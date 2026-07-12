@@ -157,8 +157,9 @@ The game must exhibit these behaviors. They are observable and make good test ta
 - Matter enters at the **inlet**, is split across the two **lanes** at the splitter, and
   leaks at the **collector**; both lanes carry traffic and both must be defended
   (`specs/board.md`).
-- Towers build **only at the fixed nodes**, cover the conduit within their **range**, and
-  fire **automatically** at the valid in-range unit furthest along (`specs/board.md`,
+- Towers build **on the board's grid cells** (not on conduit-blocked cells), cover the
+  conduit within their **range**, and fire **automatically** at the valid in-range unit
+  furthest along (`specs/board.md`,
   `specs/towers.md`).
 - **Shear** peels a molecule into free atoms, **Ionizer** strips a free atom's shells to
   neutralize it, and **Fission** is the only thing that splits a **heavy** into daughter

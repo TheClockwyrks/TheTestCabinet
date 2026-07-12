@@ -22,7 +22,7 @@ drawn **in code** (below):
 
 | Tool | Produces | Used for |
 | --- | --- | --- |
-| `draw` | one sprite → a PNG | the tracks, nodes, inlet/collector, towers, matter, and HUD icons |
+| `draw` | one sprite → a PNG | the tracks, the build-cell marker, inlet/collector, towers, matter, and HUD icons |
 | `draw-sheet` | a sprite sheet, **one PNG per frame** | the orbiting-electron, tower-fire, and boss animations |
 | `particle-2d` | a particle system → a `system.json` | the decomposition bursts and muzzle effects |
 | `sfx-synth` | a procedural sound → a `.wav` | shot / strip / snap / alarm cues from raw synthesis |
@@ -84,7 +84,7 @@ icons may be `16×16` or `24×24`.
 Produce at least these, in the palette from `specs/overview.md`:
 
 - **Board** — the **conduit/track** segment art (so the channel reads as a glowing conduit
-  with a sense of flow), the **empty node** marker, the **inlet**, and the **collector**
+  with a sense of flow), the **empty build-cell** marker, the **inlet**, and the **collector**
   (`specs/board.md`). A tiling conduit sprite or a small set of segment/corner pieces is
   fine; the goal is that the conduit and its direction read at a glance.
 - **Towers** — each of the five towers (Ionizer, Shear, Fission, Catalyst, Moderator,
@@ -208,7 +208,7 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   sprites, but the panels, bars, text, and layout are code.
 - All **menus, overlays, and state screens** — title, how-to-play, pause, victory, and
   containment-failed (`specs/flow.md`).
-- **Board and selection feedback** — the node highlights, the held-tower and selected-tower
+- **Board and selection feedback** — the build-cell highlights, the held-tower and selected-tower
   **range rings**, the build-legality cues, and each unit's **integrity read** (an atom's
   shell rings drawn over the produced orb, a molecule's bond count, a heavy's criticality;
   the composited electron overlay may be a produced `draw-sheet` cycle) — the code that reads

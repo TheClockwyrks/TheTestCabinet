@@ -36,7 +36,7 @@ export interface Unit {
 }
 
 export interface Tower {
-  node: number;
+  cell: number; // the build-grid cell id this tower occupies (specs/board.md)
   kind: TowerKind;
   level: 1 | 2 | 3;
   x: number;

@@ -2,7 +2,7 @@
 
 This file defines the five towers — three that break matter down and two that support —
 their stats, targeting, and how you build, upgrade, and sell them. It builds on the board
-and nodes in `specs/board.md`, the matter and the decomposition model in
+and its build grid in `specs/board.md`, the matter and the decomposition model in
 `specs/matter.md`, the controls in `specs/controls.md`, and the economy in `specs/flow.md`.
 Ranges are in logical pixels; costs and energy are the unitless values of `specs/flow.md`.
 
@@ -12,8 +12,8 @@ automatically at valid in-range targets, and holds fire when nothing valid is in
 
 ## Shared targeting rules
 
-- A tower is built on an empty **node** (`specs/board.md`) and reaches units on the conduit
-  within its **range** (a radius from the node). One tower per node.
+- A tower is built on an empty **build cell** (`specs/board.md`) and reaches units on the
+  conduit within its **range** (a radius from the cell's center). One tower per cell.
 - The three **damage** towers (Ionizer, Shear, Fission) fire at their **fire rate**
   (shots per second) at the **valid** in-range unit **furthest along** the conduit — the
   standard "first" target — and each acts only on the form it counters (`specs/matter.md`).
@@ -87,9 +87,9 @@ automatically at valid in-range targets, and holds fire when nothing valid is in
 
 ## Building, upgrading, and selling
 
-- **Build.** Select a tower in the shop (`specs/board.md`) and place it on an empty node.
+- **Build.** Select a tower in the shop (`specs/board.md`) and place it on an empty cell.
   Its cost is deducted from your energy (`specs/flow.md`); you cannot build what you cannot
-  afford, and you cannot build on an occupied node.
+  afford, and you cannot build on an occupied or conduit-blocked cell.
 - **Upgrade.** A selected tower can be upgraded through three levels — **I, II, III**. Each
   level applies, on top of the previous:
   - **Ionizer:** `range + 12`, `fireRate × 1.2`, and **+1 shell stripped per hit** at
@@ -111,7 +111,7 @@ automatically at valid in-range targets, and holds fire when nothing valid is in
   refund; the `70%` refund only applies once the round it was placed on has run. This
   matters most during the untimed opening build phase before Round 1 (`specs/flow.md`):
   freely place, re-shape, and sell back your opening board without penalty. Selling frees
-  the node immediately.
+  the cell immediately.
 
 Upgrading and selling happen through the selected-tower inspector in the build panel
 (`specs/board.md`, `specs/controls.md`). Size and role never change with level; only the

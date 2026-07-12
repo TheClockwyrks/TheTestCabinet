@@ -22,12 +22,12 @@ in the menu.)
   break the matter down before it reaches the collector, banking and spending energy across
   the escalating rounds, until you either clear the final round with integrity to spare
   (victory) or run out of integrity (containment failed). The `500` opening buys a real
-  starting board — a few towers across the nodes — rather than a single tower, so the opening
+  starting board — a few towers across the grid — rather than a single tower, so the opening
   build phase is a genuine layout decision.
 
 This start uses every system exactly as the common specs define it, with no overrides:
 
-- the **board**, its conduit, lanes, and nodes from `specs/board.md`;
+- the **board**, its conduit, lanes, and build grid from `specs/board.md`;
 - the **matter** and the three-axis decomposition model from `specs/matter.md`;
 - the **five towers**, their targeting, upgrades, and selling from `specs/towers.md`;
 - the controls from `specs/controls.md`;

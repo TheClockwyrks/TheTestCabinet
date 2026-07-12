@@ -1,6 +1,6 @@
 // Valence — the simulation (specs/matter.md, specs/towers.md, specs/flow.md).
 //
-// A fixed-step model of matter flowing along the branching conduit, fixed-node towers
+// A fixed-step model of matter flowing along the branching conduit, grid-placed towers
 // firing automatically, the three-axis decomposition model (shear / ionize / fission),
 // the Catalyst and Moderator auras, the energy/interest/integrity economy, and the
 // 20-round campaign with its fragmenting boss. Rendering, audio, and particles read
@@ -33,7 +33,7 @@ import {
   type MatterType,
   type TowerKind,
 } from "./constants";
-import { NODES, laneLength, sampleLane, type Lane } from "./board";
+import { cellCenter, isBlocked, laneLength, sampleLane, type Lane } from "./board";
 import type { CampaignMode } from "./mode";
 import { buildWave, type Wave } from "./waves";
 import type {
@@ -61,13 +61,13 @@ export class Game {
 
   units: Unit[] = [];
   projectiles: Projectile[] = []; // shots in flight (specs/towers.md)
-  towers = new Map<number, Tower>(); // node id → tower
+  towers = new Map<number, Tower>(); // cell id → tower
 
   // Build / selection UI state.
   buildKind: TowerKind | null = null;
-  selectedNode: number | null = null;
+  selectedCell: number | null = null;
   hoverShop: TowerKind | null = null;
-  hoverNode: number | null = null;
+  hoverCell: number | null = null;
   pointerX = -1; // logical-space pointer, for the held-tower cursor / range preview
   pointerY = -1;
 
@@ -103,9 +103,9 @@ export class Game {
     this.projectiles = [];
     this.towers.clear();
     this.buildKind = null;
-    this.selectedNode = null;
+    this.selectedCell = null;
     this.hoverShop = null;
-    this.hoverNode = null;
+    this.hoverCell = null;
     this.wave = null;
     this.nextWave = buildWave(1, this.mode);
     this.spawnCursor = 0;
@@ -621,40 +621,47 @@ export class Game {
   selectShop(kind: TowerKind): void {
     if (this.state !== "playing") return;
     this.buildKind = kind;
-    this.selectedNode = null;
+    this.selectedCell = null;
   }
 
   cancelBuild(): void {
     this.buildKind = null;
   }
 
-  clickNode(id: number): void {
+  // A click on grid cell `id` (specs/board.md): build it while holding a tower, else
+  // select the tower there (or deselect on an empty cell).
+  clickCell(id: number): void {
     if (this.state !== "playing") return;
     const existing = this.towers.get(id);
     if (this.buildKind) {
-      if (!existing) this.build(id, this.buildKind);
+      if (!existing) this.build(id, this.buildKind); // build() refuses blocked/unaffordable
       return;
     }
-    this.selectedNode = existing ? id : null;
+    this.selectedCell = existing ? id : null;
   }
 
   clickEmptyBoard(): void {
     if (this.buildKind) this.buildKind = null;
-    else this.selectedNode = null;
+    else this.selectedCell = null;
   }
 
-  private build(nodeId: number, kind: TowerKind): void {
+  // Whether a cell can currently take a new tower of `kind`: on the grid, not crossed by
+  // the conduit, not already occupied, and affordable.
+  canBuild(id: number, kind: TowerKind): boolean {
+    return !isBlocked(id) && !this.towers.has(id) && this.energy >= TOWERS[kind].cost;
+  }
+
+  private build(cellId: number, kind: TowerKind): void {
+    if (!this.canBuild(cellId, kind)) return;
     const def = TOWERS[kind];
-    if (this.energy < def.cost) return;
-    if (this.towers.has(nodeId)) return;
-    const node = NODES[nodeId]!;
+    const c = cellCenter(cellId);
     this.energy -= def.cost;
-    this.towers.set(nodeId, {
-      node: nodeId,
+    this.towers.set(cellId, {
+      cell: cellId,
       kind,
       level: 1,
-      x: node.x,
-      y: node.y,
+      x: c.x,
+      y: c.y,
       range: def.range,
       fireRate: def.fireRate,
       cooldown: 0,
@@ -664,7 +671,7 @@ export class Game {
       fireAnim: 999,
       aimAngle: -Math.PI / 2,
     });
-    this.selectedNode = nodeId;
+    this.selectedCell = cellId;
     this.sndQueue.push("build");
   }
 
@@ -674,8 +681,8 @@ export class Game {
   }
 
   upgradeSelected(): void {
-    if (this.selectedNode == null) return;
-    const t = this.towers.get(this.selectedNode);
+    if (this.selectedCell == null) return;
+    const t = this.towers.get(this.selectedCell);
     if (!t || t.level >= 3) return;
     const cost = this.upgradeCost(t);
     if (cost == null || this.energy < cost) return;
@@ -694,12 +701,12 @@ export class Game {
   }
 
   sellSelected(): void {
-    if (this.selectedNode == null) return;
-    const t = this.towers.get(this.selectedNode);
+    if (this.selectedCell == null) return;
+    const t = this.towers.get(this.selectedCell);
     if (!t) return;
     this.energy += this.sellRefund(t);
-    this.towers.delete(this.selectedNode);
-    this.selectedNode = null;
+    this.towers.delete(this.selectedCell);
+    this.selectedCell = null;
     this.sndQueue.push("build");
   }
 
@@ -709,7 +716,7 @@ export class Game {
 
   // ---- Derived reads for the HUD ---------------------------------------------
   get selectedTower(): Tower | null {
-    return this.selectedNode != null ? (this.towers.get(this.selectedNode) ?? null) : null;
+    return this.selectedCell != null ? (this.towers.get(this.selectedCell) ?? null) : null;
   }
   get comingRound(): Wave {
     return this.nextWave;

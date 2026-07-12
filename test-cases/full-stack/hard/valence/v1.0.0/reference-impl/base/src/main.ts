@@ -7,7 +7,7 @@
 // interpolates and draws every frame.
 
 import { FIXED_STEP, PANEL_X, STAGE_H, STAGE_W, STATUS_H, TOWER_ORDER, type TowerKind } from "./constants";
-import { NODES } from "./board";
+import { cellIdAt } from "./board";
 import { MODE } from "./mode";
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";
@@ -49,13 +49,20 @@ async function main(): Promise<void> {
   let elapsed = 0;
 
   // Expose the live game for the Playwright proof-capture script (inert in play).
+  // Board helpers take world coordinates and snap to the build grid (specs/board.md).
   (window as unknown as { __valence?: unknown }).__valence = {
     game,
     audio,
-    build: (kind: TowerKind, node: number) => {
+    cellAt: (x: number, y: number) => cellIdAt(x, y),
+    build: (kind: TowerKind, x: number, y: number) => {
+      const cell = cellIdAt(x, y);
+      if (cell == null) return;
       game.selectShop(kind);
-      game.clickNode(node);
+      game.clickCell(cell);
       game.cancelBuild();
+    },
+    select: (x: number, y: number) => {
+      game.selectedCell = cellIdAt(x, y);
     },
     setState: (s: Game["state"]) => (game.state = s),
   };
@@ -127,18 +134,11 @@ async function main(): Promise<void> {
         return;
       }
     }
-    // Board hit-test (placement / selection) only while playing.
+    // Board hit-test (placement / selection) only while playing. A click maps to the
+    // grid cell that contains it (specs/board.md); clicks off the grid deselect.
     if (game.state === "playing" && x < PANEL_X && y > STATUS_H) {
-      let hit: number | null = null;
-      let best = 24 * 24;
-      for (const n of NODES) {
-        const d = (n.x - x) ** 2 + (n.y - y) ** 2;
-        if (d < best) {
-          best = d;
-          hit = n.id;
-        }
-      }
-      if (hit != null) game.clickNode(hit);
+      const cell = cellIdAt(x, y);
+      if (cell != null) game.clickCell(cell);
       else game.clickEmptyBoard();
     }
   }
@@ -172,7 +172,7 @@ async function main(): Promise<void> {
       }
       if (k === "Escape") {
         if (game.buildKind) game.cancelBuild();
-        else if (game.selectedNode != null) game.clickEmptyBoard();
+        else if (game.selectedCell != null) game.clickEmptyBoard();
         else togglePause();
       }
       return;
@@ -225,6 +225,8 @@ async function main(): Promise<void> {
     const pl = input.pointerLogical;
     game.pointerX = pl.x;
     game.pointerY = pl.y;
+    // Track the build-grid cell under the pointer for the hover highlight (specs/board.md).
+    game.hoverCell = game.state === "playing" && pl.x < PANEL_X && pl.y > STATUS_H ? cellIdAt(pl.x, pl.y) : null;
 
     handleInput();
     syncMenuIndexToPointer();

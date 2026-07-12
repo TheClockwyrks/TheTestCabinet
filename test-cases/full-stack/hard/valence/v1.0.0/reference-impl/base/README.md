@@ -2,8 +2,8 @@
 
 **Valence** is a chemistry-themed **tower-defense** game for the browser. Unstable
 **matter** streams out of an **inlet** and flows along a fixed branching **conduit**
-toward a **collector**; you stop it by placing **emitter towers** at the fixed nodes
-beside the conduit and breaking the matter down before it escapes. Every unit that
+toward a **collector**; you stop it by placing **emitter towers** on a grid of build
+cells beside the conduit and breaking the matter down before it escapes. Every unit that
 reaches the collector costs **integrity**; every unit you neutralize releases the
 **energy** that pays for more towers.
 
@@ -41,8 +41,8 @@ monorepo), and the sounds through the Web Audio API.
 
 ## Controls
 
-- **Build** — click a tower in the shop (or press **1**–**5**), then click an empty node.
-  `Esc` / right-click leaves build mode.
+- **Build** — click a tower in the shop (or press **1**–**5**), then click an empty grid
+  cell beside the conduit. `Esc` / right-click leaves build mode.
 - **Select / upgrade / sell** — click a built tower to select it; **U** upgrades, **S**
   sells (or use the inspector buttons).
 - **Start / send round** — **Space** or the panel button. Before Round 1 the build phase
@@ -66,7 +66,7 @@ correctly when served from any base path, including a per-run sub-path.
 ## Layout
 
 - [`src/`](src/) — the game. `constants.ts` (stats/palette), `mode.ts` (the campaign
-  start), `board.ts` (conduit geometry + nodes), `matter`/`waves`/`sim.ts` (the
+  start), `board.ts` (conduit geometry + the build grid), `matter`/`waves`/`sim.ts` (the
   fixed-step simulation and decomposition model), `assets.ts` / `audio.ts` /
   `particles.ts` (loading and playing the produced art, sound, and effects),
   `render.ts` (all drawing + HUD), `input.ts` + `main.ts` (input and the loop).

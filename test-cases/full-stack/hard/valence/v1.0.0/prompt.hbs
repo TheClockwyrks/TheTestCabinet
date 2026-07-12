@@ -21,7 +21,7 @@ The full specification is in the `specs/` directory at `{{workspace}}`, already
 present in your project. Read all of it before you start, and produce an
 implementation that matches the specification exactly. It is decomposed by concern:
 `specs/overview.md` (goals, hard requirements, the stage, the palette and type),
-`specs/board.md` (the conduit tracks, the fixed emitter nodes, the inlet and
+`specs/board.md` (the conduit tracks, the build grid, the inlet and
 collector, and the HUD layout), `specs/matter.md` (the matter you defend against and
 the three-axis decomposition model), `specs/towers.md` (the five towers and their
 upgrades), `specs/controls.md`, `specs/flow.md` (the economy, integrity, the round
@@ -76,7 +76,7 @@ it works. Before you consider the task complete:
 - Produce the **static production build** and serve it locally, then open it in
   Chromium with Playwright and confirm it **loads with no console errors** and no
   uncaught exceptions.
-- **Drive the game** — build towers at the nodes, start a round, and watch matter flow
+- **Drive the game** — build towers on the grid, start a round, and watch matter flow
   both lanes: shear a molecule apart and ionize the freed atoms, fission a heavy into
   daughter atoms, catalyze an inert unit so an ionizer can finish it, and let matter
   leak to the collector until integrity runs out — then reach both the victory and the

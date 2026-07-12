@@ -1,7 +1,7 @@
 // Valence — rendering (specs/overview.md, specs/board.md, specs/flow.md).
 //
 // Draws the whole 1280x720 stage in logical space: the board (produced conduit,
-// nodes, inlet, collector sprites), the towers and matter (produced sprites +
+// build-cell markers, inlet, collector sprites), the towers and matter (produced sprites +
 // animated cycles), the live decomposition bursts, and the in-code HUD (status bar,
 // build panel), menus, and selection feedback. Returns the frame's clickable regions
 // so the input layer can route pointer events without re-deriving the layout.
@@ -25,9 +25,13 @@ import {
   type TowerKind,
 } from "./constants";
 import {
+  CELL,
+  CELLS,
   COLLECTOR_POS,
   INLET_POS,
-  NODES,
+  cellCenter,
+  cellIdAt,
+  isBlocked,
   laneLength,
   laneSamples,
   sampleLane,
@@ -62,6 +66,13 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y + h, x, y, rr);
   ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
+}
+
+// Stroke a rounded square centred on a build-grid cell (slightly inset from the cell edge).
+function strokeCellRect(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+  const s = CELL - 6;
+  roundRect(ctx, cx - s / 2, cy - s / 2, s, s, 5);
+  ctx.stroke();
 }
 
 function text(
@@ -181,32 +192,39 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   blit(ctx, A.sprite("board/inlet"), INLET_POS.x + 6, INLET_POS.y, 40, 40, 0);
   blit(ctx, A.sprite("board/collector"), COLLECTOR_POS.x - 4, COLLECTOR_POS.y, 40, 40, 0);
 
-  // nodes: empty markers, with hover/selected highlight and legal-build cues
+  // build grid: markers on the empty buildable cells, with legal-build cues in build
+  // mode and a hover/selected highlight (specs/board.md). Idle, only the cells beside a
+  // lane are marked (the useful ones); holding a tower cues every legal cell.
   const nodeImg = A.sprite("board/node");
-  for (const n of NODES) {
-    const tower = game.towers.get(n.id);
-    const legal = game.buildKind != null && !tower && game.energy >= TOWERS[game.buildKind].cost;
-    if (!tower) {
-      ctx.globalAlpha = legal ? 1 : game.buildKind ? 0.5 : 0.8;
-      blit(ctx, nodeImg, n.x, n.y, 26, 26, 0);
+  const holding = game.buildKind != null;
+  for (const c of CELLS) {
+    if (c.blocked || game.towers.has(c.id)) continue;
+    const nearLane = c.laneDist < 62; // a useful build cell (a tower here reaches a lane)
+    if (!holding && !nearLane) continue;
+    const legal = holding && game.energy >= TOWERS[game.buildKind!].cost;
+    ctx.globalAlpha = legal ? 1 : holding ? 0.45 : nearLane ? 0.7 : 0.35;
+    blit(ctx, nodeImg, c.cx, c.cy, 22, 22, 0);
+    ctx.globalAlpha = 1;
+    if (legal) {
+      ctx.strokeStyle = COL.integrity;
+      ctx.globalAlpha = 0.35 + 0.22 * Math.sin(time * 6);
+      ctx.lineWidth = 1.5;
+      strokeCellRect(ctx, c.cx, c.cy);
       ctx.globalAlpha = 1;
-      if (legal) {
-        ctx.strokeStyle = COL.integrity;
-        ctx.globalAlpha = 0.4 + 0.25 * Math.sin(time * 6);
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, 15, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
     }
-    if (game.hoverNode === n.id && !tower) {
-      ctx.strokeStyle = COL.text;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, 14, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+  }
+  // hover highlight: the cell under the pointer (green when a legal target, neutral to
+  // select a tower, red when blocked/occupied while holding a tower).
+  if (game.hoverCell != null) {
+    const hc = CELLS[game.hoverCell]!;
+    const occupied = game.towers.has(hc.id);
+    let color: string = COL.text;
+    if (holding) color = !hc.blocked && !occupied && game.energy >= TOWERS[game.buildKind!].cost ? COL.integrity : COL.alert;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2;
+    strokeCellRect(ctx, hc.cx, hc.cy);
+    ctx.globalAlpha = 1;
   }
 
   // support-aura tints + towers
@@ -278,7 +296,7 @@ function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Gam
     }
   }
   // selection outline
-  if (game.selectedNode === t.node) {
+  if (game.selectedCell === t.cell) {
     ctx.strokeStyle = COL.text;
     ctx.lineWidth = 2;
     roundRect(ctx, t.x - size / 2, cy - size / 2, size, size, 5);
@@ -667,23 +685,14 @@ function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): 
   const px = game.pointerX,
     py = game.pointerY;
   if (px < BOARD_X0 || px > BOARD_X1 || py < BOARD_Y0 || py > BOARD_Y1) return;
-  // snap to nearest empty node within reach for the preview
-  let node = null as null | { x: number; y: number; id: number };
-  let bestD = 44 * 44;
-  for (const n of NODES) {
-    if (game.towers.has(n.id)) continue;
-    const d = (n.x - px) ** 2 + (n.y - py) ** 2;
-    if (d < bestD) {
-      bestD = d;
-      node = n;
-    }
-  }
-  const cx = node ? node.x : px;
-  const cy = node ? node.y : py;
-  drawRange(ctx, cx, cy, TOWERS[game.buildKind].range, game.buildKind);
-  ctx.globalAlpha = node ? 0.95 : 0.5;
+  // Snap the held tower to the grid cell under the pointer for the preview (specs/board.md).
+  const cellId = cellIdAt(px, py);
+  const legal = cellId != null && !isBlocked(cellId) && !game.towers.has(cellId);
+  const c = cellId != null ? cellCenter(cellId) : { x: px, y: py };
+  drawRange(ctx, c.x, c.y, TOWERS[game.buildKind].range, game.buildKind);
+  ctx.globalAlpha = legal ? 0.95 : 0.4;
   // Preview the base + head; damage heads point at a resting heading (up) until placed.
-  drawTowerSprite(ctx, A, game.buildKind, 1, cx, cy - 4, 34, -Math.PI / 2);
+  drawTowerSprite(ctx, A, game.buildKind, 1, c.x, c.y - 4, 34, -Math.PI / 2);
   ctx.globalAlpha = 1;
 }
 
@@ -752,7 +761,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
     ["INERT (NOBLE)", "Untargetable until a CATALYST makes it reactive; then an ionizer can strip it."],
     ["SWIFTS", "Fast atoms — a MODERATOR's field slows matter so your towers get more hits (heavies resist, the boss is immune)."],
     ["ECONOMY", "Neutralizing pays energy; clearing a round pays a bonus; banked energy earns interest. Spend it to build and upgrade."],
-    ["CONTROLS", "Click a shop tower (or 1-5), place it on a node. Select a tower to UPGRADE (U) or SELL (S). SPACE starts a round; F cycles speed; ESC pauses; M mutes."],
+    ["CONTROLS", "Click a shop tower (or 1-5), place it on a grid cell. Select a tower to UPGRADE (U) or SELL (S). SPACE starts a round; F cycles speed; ESC pauses; M mutes."],
   ];
   let y = 130;
   for (const [k, v] of lines) {

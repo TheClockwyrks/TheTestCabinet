@@ -8,12 +8,12 @@
  *
  * Stage geometry (matches ../specs/overview.md):
  *   - 1280x720 stage; top status bar y[0,56] (energy, integrity, round, controls),
- *     board x[0,1000] y[56,720] (the conduit, nodes, towers, matter), and the right
+ *     board x[0,1000] y[56,720] (the conduit, build cells, towers, matter), and the right
  *     build panel x[1000,1280] y[56,720] (shop, inspector, next-round preview).
  *   - Objects inside .board use BOARD-LOCAL coordinates: the board starts at stage
  *     y=56 and x=0, so a point at board-local (bx,by) is at stage (bx, 56+by).
  *
- * These mockups depict the board with simple CSS stand-ins for the conduit, nodes,
+ * These mockups depict the board with simple CSS stand-ins for the conduit, build cells,
  * towers, matter, and decomposition bursts. In the real build those are PRODUCED
  * assets (sprites, animated sheets, and live particle systems) — see
  * ../specs/assets.md; here they are only visual targets for layout, palette, and
@@ -25,7 +25,7 @@
   --substrate: #10171f; /* board fill */
   --conduit: #22303e;   /* conduit / track */
   --flow: #3d6b8c;      /* conduit flow glow */
-  --node: #2b3d4e;      /* emitter node (empty) */
+  --cell: #2b3d4e;      /* build-cell marker (empty) */
   --energy: #ffcf4a;    /* energy (currency) */
   --integrity: #46d6e6; /* integrity (containment) */
   --elem-1: #7fe0a0;    /* free atom — element I */
@@ -140,7 +140,7 @@ body {
 }
 .ctrl.active { border-color: var(--energy); color: var(--text); }
 
-/* ---- Board: the conduit, nodes, towers, matter (x[0,1000] y[56,720]) -- */
+/* ---- Board: the conduit, build cells, towers, matter (x[0,1000] y[56,720]) -- */
 .board {
   position: absolute;
   left: 0;
@@ -149,11 +149,14 @@ body {
   height: 664px;
   overflow: hidden;
   background-color: var(--substrate);
+  /* The board is a 40px BUILD GRID (specs/board.md): faint cell lines plus a small
+   * marker at each cell center (the buildable cells towers snap to). */
   background-image:
     radial-gradient(1200px 500px at 500px 700px, #14202b, transparent),
+    radial-gradient(circle at 20px 20px, rgba(43, 61, 78, 0.55) 1.5px, transparent 2.5px),
     linear-gradient(0deg, rgba(0, 0, 0, 0.25) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 0, 0, 0.25) 1px, transparent 1px);
-  background-size: 100% 100%, 40px 40px, 40px 40px;
+  background-size: 100% 100%, 40px 40px, 40px 40px, 40px 40px;
 }
 
 /* A conduit segment: a rounded glowing channel. Sized/placed inline per segment,
@@ -196,25 +199,26 @@ body {
   box-shadow: 0 0 14px rgba(255, 90, 82, 0.4);
 }
 
-/* Emitter node: a small ring beside the conduit. Placed inline (board-local),
- * centered on its point via transform. */
-.node {
+/* A build-grid cell highlight: a rounded square on one 40px cell, the size a tower
+ * occupies (specs/board.md). Placed inline (board-local) on a cell center via transform.
+ * The plain form cues an empty legal cell; .hover is the cell under the pointer. */
+.cell {
   position: absolute;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  transform: translate(-10px, -10px);
-  border: 2px dashed var(--node);
-  background: rgba(43, 61, 78, 0.25);
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  transform: translate(-17px, -17px);
+  border: 1.5px solid rgba(70, 214, 230, 0.45);
+  background: rgba(43, 61, 78, 0.14);
 }
-.node.hover {
-  border-color: var(--energy);
-  border-style: solid;
-  box-shadow: 0 0 10px rgba(255, 207, 74, 0.4);
+.cell.hover {
+  border-color: var(--text);
+  border-width: 2px;
+  box-shadow: 0 0 8px rgba(232, 238, 245, 0.25);
 }
 
-/* A tower on a node: a color-coded emitter with a glyph, glow, and tier pips.
- * Placed inline (board-local), centered via transform. */
+/* A tower on a build cell: a color-coded emitter with a glyph, glow, and tier pips.
+ * Placed inline (board-local) on a cell center via transform. */
 .tower {
   position: absolute;
   width: 34px;

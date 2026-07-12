@@ -1,8 +1,9 @@
 # Valence — Controls
 
 This file defines how the player interacts with the board: the simulation step, building
-and inspecting towers at the nodes, starting rounds, and the speed and pause controls. It
-builds on the board and nodes in `specs/board.md`, the towers in `specs/towers.md`, and
+and inspecting towers on the build grid, starting rounds, and the speed and pause controls.
+It builds on the board and its build grid in `specs/board.md`, the towers in
+`specs/towers.md`, and
 the flow in `specs/flow.md`. Keyboard and mouse only; no touch or gamepad for this version.
 
 ## Simulation
@@ -15,16 +16,17 @@ ticks entirely.
 
 ## Building and inspecting towers
 
-The player builds only at the fixed **emitter nodes** (`specs/board.md`):
+The player builds by placing towers on the board's **build grid** (`specs/board.md`):
 
 - **Build.** Choose a tower in the shop (click its entry, or press its **hotkey** —
   `1`–`5` for the five towers in shop order) to enter build mode for that type; the
-  cursor then shows the held tower and its **range ring**, and the legal empty nodes are
-  highlighted. Click an **empty node** to build it there, spending its cost
-  (`specs/towers.md`, `specs/flow.md`). Building is refused (clearly) on an occupied node
-  or when you cannot afford it. Build mode stays active so you can place several of a type
-  in a row; `Esc` or right-click leaves build mode.
-- **Select.** Click a **built tower** (or its node) to select it. The selected tower shows
+  cursor then shows the held tower snapped to the cell under the pointer and its **range
+  ring**, and the legal empty cells are highlighted. Click an **empty cell** to build it
+  there, spending its cost (`specs/towers.md`, `specs/flow.md`). Building is refused
+  (clearly) on an occupied or conduit-blocked cell or when you cannot afford it. Build mode
+  stays active so you can place several of a type in a row; `Esc` or right-click leaves
+  build mode.
+- **Select.** Click a **built tower** (or its cell) to select it. The selected tower shows
   its **range ring**, and the build-panel inspector shows its type, level, live stats, and
   its **upgrade** and **sell** controls (`specs/board.md`, `specs/towers.md`).
 - **Upgrade / sell.** With a tower selected, **upgrade** it (the inspector's control, or

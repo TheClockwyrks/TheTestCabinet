@@ -14,7 +14,7 @@ seeded as a visual target alongside the seeded specs under [`../specs/`](../spec
 Handing over the source HTML/CSS would let a model copy the intended UI instead of building
 it from the spec; a screenshot shows the target without giving away the implementation.
 
-The mockups depict the board with simple CSS stand-ins for the conduit, nodes, towers,
+The mockups depict the board with simple CSS stand-ins for the conduit, build grid, towers,
 matter, and decomposition bursts. In the real build those are **produced assets** — sprites,
 animated sprite sheets, and live particle systems the model authors with the on-`PATH`
 tools (see [`../specs/assets.md`](../specs/assets.md)). The mockups are targets for
@@ -37,12 +37,11 @@ The `title` view has one mockup per variant: `menu-base.html` (`CONTAINMENT` /
 `HOW TO PLAY`), matching the variant's seeded mode spec.
 
 The `gameplay.html` frame shows the intended look of a live board: the conduit forking into
-two lanes and rejoining before the collector, towers built at several fixed nodes,
-matter of more than one form on both lanes (a molecule being sheared, free atoms being
-ionized, a
-heavy mid-fission), the support auras, a decomposition burst, and the HUD's top status bar
-and right build panel. The exact conduit shape, node placement, tower mix, and matter shown
-are just one example moment.
+two lanes and rejoining before the collector, the board's build grid with towers snapped to
+several cells, matter of more than one form on both lanes (a molecule being sheared, free
+atoms being ionized, a heavy mid-fission), the support auras, a decomposition burst, and the
+HUD's top status bar and right build panel. The exact conduit shape, the build grid, tower
+mix, and matter shown are just one example moment.
 
 `theme.css` holds the shared palette, type, and board furniture referenced by every view
 and by the specification (the seeded specs under [`../specs/`](../specs/)), including the

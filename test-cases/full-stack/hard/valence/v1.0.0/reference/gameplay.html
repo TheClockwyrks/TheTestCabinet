@@ -3,12 +3,12 @@
   Valence — live-board reference mockup (representative frame).
   Canonical view slug: gameplay
   Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system, visual
-  design), ../specs/board.md (conduit, lanes, nodes, HUD), ../specs/matter.md (the
-  forms), ../specs/towers.md (the towers), ../specs/flow.md (the HUD), and
+  design), ../specs/board.md (conduit, lanes, the build grid, HUD), ../specs/matter.md
+  (the forms), ../specs/towers.md (the towers), ../specs/flow.md (the HUD), and
   ../specs/assets.md (these are stand-ins for PRODUCED sprites, animations, and
   particle bursts).
 
-  The conduit shape, node placement, tower mix, and matter positions vary at runtime;
+  The conduit shape, the build grid, tower mix, and matter positions vary at runtime;
   this frame is a representative mid-round moment for a soft palette/layout comparison,
   not a strict pixel match. Objects inside .board use BOARD-LOCAL coordinates (the
   board starts at stage y=56).
@@ -53,25 +53,25 @@
         <div class="inlet" style="left: 24px; top: 332px">&#9656;</div>
         <div class="collector" style="left: 958px; top: 332px">&#9633;</div>
 
-        <!-- Support auras (always visible). -->
-        <div class="aura mod" style="left: 460px; top: 478px; width: 240px; height: 240px"></div>
-        <div class="aura cat" style="left: 720px; top: 364px; width: 240px; height: 240px"></div>
+        <!-- Support auras (always visible), centered on their tower's cell. -->
+        <div class="aura mod" style="left: 460px; top: 540px; width: 240px; height: 240px"></div>
+        <div class="aura cat" style="left: 740px; top: 380px; width: 240px; height: 240px"></div>
         <!-- Selected Fission tower's range ring. -->
-        <div class="range" style="left: 760px; top: 300px; width: 240px; height: 240px"></div>
+        <div class="range" style="left: 780px; top: 300px; width: 240px; height: 240px"></div>
 
-        <!-- Empty nodes. -->
-        <div class="node" style="left: 460px; top: 180px"></div>
-        <div class="node hover" style="left: 620px; top: 544px"></div>
+        <!-- Empty build cells: a legal spot beside Lane A, and the hovered cell on Lane B. -->
+        <div class="cell" style="left: 580px; top: 100px"></div>
+        <div class="cell hover" style="left: 620px; top: 540px"></div>
 
-        <!-- Towers on nodes. -->
-        <div class="tower shear" style="left: 120px; top: 300px">S<span class="pips"><i></i><i></i></span></div>
-        <div class="tower ion" style="left: 300px; top: 120px">I<span class="pips"><i></i><i></i><i></i></span></div>
-        <div class="tower ion" style="left: 620px; top: 120px">I<span class="pips"><i></i></span></div>
-        <div class="tower ion" style="left: 300px; top: 544px">I<span class="pips"><i></i><i></i></span></div>
-        <div class="tower mod" style="left: 460px; top: 478px">M<span class="pips"><i></i></span></div>
-        <div class="tower cat" style="left: 720px; top: 364px">C<span class="pips"><i></i></span></div>
-        <div class="tower fission" style="left: 760px; top: 300px">F<span class="pips"><i></i></span></div>
-        <div class="tower ion" style="left: 860px; top: 364px">I<span class="pips"><i></i><i></i></span></div>
+        <!-- Towers, each snapped to a build cell (specs/board.md). -->
+        <div class="tower shear" style="left: 140px; top: 300px">S<span class="pips"><i></i><i></i></span></div>
+        <div class="tower ion" style="left: 300px; top: 100px">I<span class="pips"><i></i><i></i><i></i></span></div>
+        <div class="tower ion" style="left: 620px; top: 100px">I<span class="pips"><i></i></span></div>
+        <div class="tower ion" style="left: 300px; top: 540px">I<span class="pips"><i></i><i></i></span></div>
+        <div class="tower mod" style="left: 460px; top: 540px">M<span class="pips"><i></i></span></div>
+        <div class="tower cat" style="left: 740px; top: 380px">C<span class="pips"><i></i></span></div>
+        <div class="tower fission" style="left: 780px; top: 300px">F<span class="pips"><i></i></span></div>
+        <div class="tower ion" style="left: 860px; top: 380px">I<span class="pips"><i></i><i></i></span></div>
 
         <!-- Matter on the shared entry: a Polymer (4-atom chain) approaching the fork. -->
         <div class="molecule" style="left: 150px; top: 332px">

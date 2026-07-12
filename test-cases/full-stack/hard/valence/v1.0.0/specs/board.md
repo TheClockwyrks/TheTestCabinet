@@ -1,14 +1,14 @@
-# Valence — The board: conduits, nodes, and the HUD
+# Valence — The board: conduits, the build grid, and the HUD
 
 This file defines the playfield: the conduit matter travels, how it forks into two lanes
-and rejoins, how matter is split across the lanes, the fixed emitter nodes where towers
-go and what each covers, and the top status bar and right build panel. It builds on the
-stage in `specs/overview.md` and connects to the matter (`specs/matter.md`), the towers
+and rejoins, how matter is split across the lanes, the **build grid** the player places
+towers on and what each covers, and the top status bar and right build panel. It builds on
+the stage in `specs/overview.md` and connects to the matter (`specs/matter.md`), the towers
 (`specs/towers.md`), the controls (`specs/controls.md`), and the flow (`specs/flow.md`).
 
 The board occupies `x` in `[0, 1000]`, `y` in `[56, 720]` (`specs/overview.md`) and is
-shown **whole** — there is no scrolling camera; the entire conduit and every node are
-visible at once.
+shown **whole** — there is no scrolling camera; the entire conduit and the whole build
+grid are visible at once.
 
 ## The conduit
 
@@ -48,33 +48,50 @@ own position, so the fragments continue past the towers ahead on that lane.
 Progress along the conduit is what matters for targeting and leaking; a unit does not
 change lanes once assigned, and lanes do not cross.
 
-## Emitter nodes
+## The build grid
 
-Towers are **not** placed freely — the board has a fixed set of **emitter nodes**, the
-only places a tower can be built, and **one tower** occupies a node. There are **16**
-nodes, placed beside the conduit and fixed for this version (you design their exact
-positions within the rules below). An empty node is drawn as a clear marker
-(`specs/overview.md`); the currently hovered or selected node is highlighted, and its
-tower's **range** is previewed (`specs/controls.md`).
+Towers are placed on a **grid of build cells** that tiles the board — **not** at free
+pixel positions (this is not the free placement of a Bloons-style game) and **not** at a
+fixed handful of spots. The whole board region is divided into a uniform lattice of square
+cells (about `40 px` on a side — you pick the exact size, but it must divide the board into
+a clean grid, drawn as a faint lattice so the player can see the cells). Placement **snaps
+to the grid**: a tower always occupies **exactly one cell** and sits at that cell's
+**center**; it is never placed half on a cell or between cells.
 
-Distribute the nodes so the board rewards thought about **coverage**, not just density:
+The only restriction on *where* is the conduit itself:
 
-- Some nodes sit beside **Lane A only** and some beside **Lane B only** — a tower there
-  reaches units on that lane while they travel it, and not the other lane.
-- Some nodes sit by the **shared runs** — the inlet approach before the splitter, the
-  confluence, and the shared final run — where a tower reaches **both** lanes' traffic
-  (every unit passes the inlet approach and the shared final run). These shared-run nodes
-  are the premium positions and there should be **fewer** of them than lane nodes.
+- A cell the **conduit passes through** — the track of either lane, plus the inlet, the
+  splitter, the confluence, and the collector — is **blocked**: no tower may occupy it. The
+  conduit is fixed and towers never reroute it; there is no maze-building.
+- Every **other** cell is buildable, and **one tower** occupies a cell — a cell that already
+  holds a tower cannot take another.
 
-Roughly: about six nodes on each lane and about four on the shared runs, so a player must
-choose between blanketing one lane, covering both cheaply near the merge, or hitting
-everything early at the inlet. A tower's **range** (`specs/towers.md`) then decides how
-much of the conduit near its node it actually reaches.
+So the player may build on **any** empty cell, choosing freely *along* the conduit's
+length; the grid is the constraint on placement, not a fixed set of nodes. An empty
+buildable cell is shown as a clear marker (`specs/overview.md`); the currently hovered or
+selected cell is highlighted, and the held or selected tower's **range** is previewed
+(`specs/controls.md`). While a tower is held for placement, the legal cells are cued and a
+blocked or occupied cell is refused.
+
+Coverage — not just density — is what the board rewards, and it falls out of the grid laid
+over the branching conduit:
+
+- A cell **beside Lane A only** reaches units on Lane A while they travel it, and not the
+  other lane; likewise a cell **beside Lane B only** reaches Lane B.
+- A cell beside a **shared run** — the inlet approach before the splitter, the confluence,
+  or the shared final run — reaches **both** lanes' traffic (every unit passes the inlet
+  approach and the shared final run). These shared-run cells are the premium positions, and
+  the branching layout naturally leaves **fewer** of them than lane-side cells.
+
+Design the conduit so the grid around it offers a real choice — blanket one lane, cover
+both cheaply near the merge or the inlet, or spread thin. A tower's **range**
+(`specs/towers.md`) then decides how much of the conduit near its cell it actually reaches;
+a cell far from every lane is legal but reaches nothing.
 
 ### Range and targeting
 
-- A tower's **range** is a radius in logical pixels measured from its node. A unit is
-  targetable while the point it occupies on the conduit lies within that radius.
+- A tower's **range** is a radius in logical pixels measured from its cell's **center**. A
+  unit is targetable while the point it occupies on the conduit lies within that radius.
 - By default a tower fires at the in-range unit **furthest along** the conduit toward the
   collector — the standard "first" target — so it works on the most urgent threat. Splash
   and aura towers differ as noted in `specs/towers.md`.

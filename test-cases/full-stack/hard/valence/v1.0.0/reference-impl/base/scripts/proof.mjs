@@ -51,27 +51,39 @@ function watch(page) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Build spots as world coordinates that snap to the build grid (specs/board.md). Keyed
+// by lane role so the demo boards read: shared inlet/final (both lanes), Lane A top,
+// Lane B bottom, and fission near the confluence. `spots()` turns [kind, key] pairs into
+// the [kind, x, y] triples the coordinate-based build API takes.
+const SPOT = {
+  inA: [100, 356], inB: [100, 436], // shared inlet approach — reaches both lanes
+  outA: [900, 356], outB: [900, 436], // shared final run — reaches both lanes
+  a0: [180, 276], a1: [300, 156], a2: [420, 156], a3: [540, 156], a4: [660, 156], aF: [780, 300], // Lane A
+  b0: [180, 516], b1: [300, 676], b2: [420, 676], b3: [540, 676], b4: [660, 676], bF: [780, 476], // Lane B
+};
+const spots = (pairs) => pairs.map(([kind, key]) => [kind, ...SPOT[key]]);
+
 // A generous full board used for the "contained" scenarios.
-const FULL_BOARD = [
-  ["shear", 4], ["shear", 10],
-  ["ionizer", 5], ["ionizer", 6], ["ionizer", 8],
-  ["ionizer", 11], ["ionizer", 12], ["ionizer", 14],
-  ["ionizer", 2], ["ionizer", 3],
-  ["fission", 9], ["fission", 15],
-  ["catalyst", 7], ["catalyst", 13],
-  ["moderator", 0], ["moderator", 1],
-];
+const FULL_BOARD = spots([
+  ["shear", "a0"], ["shear", "b0"],
+  ["ionizer", "a1"], ["ionizer", "a2"], ["ionizer", "a4"],
+  ["ionizer", "b1"], ["ionizer", "b2"], ["ionizer", "b4"],
+  ["ionizer", "outA"], ["ionizer", "outB"],
+  ["fission", "aF"], ["fission", "bF"],
+  ["catalyst", "a3"], ["catalyst", "b3"],
+  ["moderator", "inA"], ["moderator", "inB"],
+]);
 
 async function buildBoard(page, board, upgrade = 0) {
   await page.evaluate(({ board, upgrade }) => {
     const v = window.__valence;
-    for (const [kind, node] of board) v.build(kind, node);
+    for (const [kind, x, y] of board) v.build(kind, x, y);
     if (upgrade) {
-      for (const [, node] of board) {
-        window.__valence.game.selectedNode = node;
-        for (let i = 1; i < upgrade; i++) window.__valence.game.upgradeSelected();
+      for (const [, x, y] of board) {
+        v.select(x, y);
+        for (let i = 1; i < upgrade; i++) v.game.upgradeSelected();
       }
-      window.__valence.game.selectedNode = null;
+      v.game.selectedCell = null;
     }
   }, { board, upgrade });
 }
@@ -105,10 +117,14 @@ async function buildBoard(page, board, upgrade = 0) {
     v.game.start();
     v.game.devGrant(4000, 100);
     v.game.devBeginRound(9); // atoms + molecules + nobles + heavies all present
-    // A deliberately lighter board so varied matter survives on the lanes to read.
-    for (const [k, n] of [["shear", 4], ["shear", 10], ["ionizer", 5], ["ionizer", 8], ["ionizer", 11], ["ionizer", 14], ["fission", 9], ["fission", 15], ["catalyst", 7], ["catalyst", 13], ["moderator", 0]]) v.build(k, n);
-    v.game.selectedNode = null;
   });
+  // A deliberately light board — shears open molecules (a bond-snap burst mid-flight) and
+  // catalysts reactivate nobles, but with no ionizers nothing is neutralized, so varied
+  // matter (atoms, molecules, heavies, nobles) survives and travels well down both lanes.
+  await buildBoard(page, spots([
+    ["shear", "a1"], ["shear", "b1"], ["catalyst", "a2"], ["catalyst", "b2"],
+  ]));
+  await page.evaluate(() => (window.__valence.game.selectedCell = null));
   // Capture once matter has fanned onto both lanes with 3+ forms present.
   let gsnap = {};
   for (let i = 0; i < 70; i++) {
@@ -122,7 +138,7 @@ async function buildBoard(page, board, upgrade = 0) {
     if (gsnap.onLanes >= 4 && gsnap.forms >= 3 && gsnap.bothLanes >= 2) break;
     await sleep(80);
   }
-  await page.evaluate(() => (window.__valence.game.selectedNode = null));
+  await page.evaluate(() => (window.__valence.game.selectedCell = null));
   await page.screenshot({ path: path.join(proofDir, "gameplay.png") });
   console.log("gameplay stage:", JSON.stringify(gsnap));
   const snap = await page.evaluate(() => ({ round: window.__valence.game.round, units: window.__valence.game.units.length, energy: Math.round(window.__valence.game.energy) }));
@@ -143,9 +159,9 @@ async function buildBoard(page, board, upgrade = 0) {
     v.game.devGrant(760, 14); // a thin board + low integrity: it scores, then breaches
     v.game.speed = 3;
     v.game.devBeginRound(12);
-    // a partial defense so some matter is neutralized (earning score) before the breach
-    for (const [k, n] of [["ionizer", 5], ["ionizer", 6], ["shear", 4], ["ionizer", 2]]) v.build(k, n);
   });
+  // a partial defense so some matter is neutralized (earning score) before the breach
+  await buildBoard(page, spots([["ionizer", "a1"], ["ionizer", "a2"], ["shear", "a0"], ["ionizer", "outA"]]));
   for (let i = 0; i < 160; i++) {
     const s = await page.evaluate(() => window.__valence.game.state);
     if (s === "defeat") break;
@@ -205,11 +221,11 @@ await clip(
       v.game.devBeginRound(10); // boss round
     });
     // A partial board — one lane thinner — so some matter leaks under pressure.
-    await buildBoard(page, [
-      ["shear", 4], ["ionizer", 5], ["ionizer", 6], ["ionizer", 8],
-      ["fission", 9], ["catalyst", 7], ["moderator", 0],
-      ["ionizer", 2], ["fission", 15], ["ionizer", 12],
-    ], 2);
+    await buildBoard(page, spots([
+      ["shear", "a0"], ["ionizer", "a1"], ["ionizer", "a2"], ["ionizer", "a4"],
+      ["fission", "aF"], ["catalyst", "a3"], ["moderator", "inA"],
+      ["ionizer", "outA"], ["fission", "bF"], ["ionizer", "b2"],
+    ]), 2);
   },
   7,
 );
@@ -221,7 +237,7 @@ await clip(
   await page.goto(url, { waitUntil: "networkidle" });
   await page.mouse.click(640, 200);
   await sleep(300);
-  const checks = await page.evaluate(async () => {
+  const checks = await page.evaluate(async (board) => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const v = window.__valence;
     const g = v.game;
@@ -230,8 +246,7 @@ await clip(
     g.speed = 3;
     // Fully upgraded board; run a molecule/heavy/noble round and confirm decomposition.
     g.devBeginRound(9);
-    const board = [["shear", 4], ["shear", 10], ["ionizer", 5], ["ionizer", 6], ["ionizer", 8], ["ionizer", 11], ["ionizer", 12], ["ionizer", 14], ["ionizer", 2], ["ionizer", 3], ["fission", 9], ["fission", 15], ["catalyst", 7], ["catalyst", 13], ["moderator", 0], ["moderator", 1]];
-    for (const [k, n] of board) v.build(k, n);
+    for (const [k, x, y] of board) v.build(k, x, y);
     const startEnergy = g.energy;
     let sawMolecule = false, sawHeavy = false, sawFreedAtoms = 0, maxUnits = 0;
     for (let i = 0; i < 120; i++) {
@@ -253,7 +268,7 @@ await clip(
     const wonReachable = g.state === "victory";
 
     return { sawMolecule, sawHeavy, contained, earnedEnergy, maxUnits, wonReachable, integrity: Math.round(g.integrity) };
-  });
+  }, FULL_BOARD);
   console.log("functional checks:", JSON.stringify(checks));
   await page.close();
   globalThis.__checks = checks;
