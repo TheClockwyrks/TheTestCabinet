@@ -24,6 +24,7 @@ use test_cabinet_core::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::client::JobClient;
 use crate::config::{Config, DriverRuntime};
 use crate::creds::mounted_creds;
 use crate::kubernetes::{KubernetesArtifactCollector, KubernetesContainerRuntime};
@@ -76,6 +77,7 @@ pub async fn drive(
     config: &Config,
     request: &RunRequest,
     outbound: &UnboundedSender<Outbound>,
+    job_client: &JobClient,
 ) -> Result<RunRecord, RunFailure> {
     // When the run requests an explicit auth mode, lock it for the engine by
     // setting `TCAB_AUTH_MODE` before resolution — the driver does not select the
@@ -169,6 +171,7 @@ pub async fn drive(
                 collector,
                 creds,
                 outbound,
+                job_client,
             )
             .await
         }
@@ -190,6 +193,7 @@ pub async fn drive(
                 collector,
                 creds,
                 outbound,
+                job_client,
             )
             .await
         }
@@ -221,6 +225,7 @@ async fn drive_engine<R, C>(
     collector: C,
     creds: Option<Box<dyn CredBytesSource + Send + Sync>>,
     outbound: &UnboundedSender<Outbound>,
+    client: &JobClient,
 ) -> Result<RunRecord, test_cabinet_core::Error>
 where
     R: ContainerRuntime,
@@ -254,6 +259,18 @@ where
     // relay, so the console's run monitor can watch the sprite take shape; other
     // run types produce none and the listener simply never fires.
     let preview = Arc::new(BackendPreviewSink::new(outbound.clone()));
+
+    // The pre-run setup is done (the definition is materialized and the container
+    // runtime is connected); the engine is about to create the sandbox and drive the
+    // harness session, so advance the job from `starting` to `running` now. Reporting
+    // this is best-effort: the run is already underway, and losing the transition only
+    // leaves the console showing "starting" a little longer — not worth aborting a run
+    // that is about to execute (a genuinely unreachable backend fails the run on its
+    // own shortly after, via the streaming calls below).
+    if let Err(err) = client.post_status_running().await {
+        tracing::warn!(error = %err, "could not report `running` to the backend; continuing");
+    }
+
     engine
         .run_resolved(request, test_case, &mut events, Some(preview))
         .await

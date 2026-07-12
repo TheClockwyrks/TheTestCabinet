@@ -9,6 +9,7 @@ import type {
   AuthResult,
   BackendIdentity,
   DomainRating,
+  HarnessConfigEntry,
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
@@ -111,6 +112,21 @@ export interface BackendClient {
   fetchModelLogo?(url: string, token: string): Promise<LogoFetchResult>;
   /** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
   seedModelFromRun?(runId: string): Promise<ModelSeed>;
+
+  // Per-harness configuration (`GET /harness-config` open; the setter Bearer). The
+  // list enumerates every harness with its current knobs (today: max parallelism);
+  // the setter upserts one harness's config and returns the refreshed list. Optional
+  // so a transport without them (the static site) hides the affordance.
+  /** Every harness with its current configuration (`GET /harness-config`). */
+  listHarnessConfigs?(): Promise<HarnessConfigEntry[]>;
+  /** Set a harness's maximum parallelism (`null` = no limit); resolves to the
+   * refreshed list (`POST /harness-config/{slug}`, Bearer). */
+  setHarnessMaxParallelism?(
+    slug: string,
+    maxParallelism: number | null,
+    token: string,
+  ): Promise<HarnessConfigEntry[]>;
+
   listTestCases(): Promise<TestCase[]>;
   listVersions(slug: string): Promise<string[]>;
   resolveVersion(slug: string, version: string): Promise<VersionInfo>;

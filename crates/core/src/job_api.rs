@@ -102,6 +102,10 @@ pub struct ClaimedJob {
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum DriverState {
+    /// The driver pod has come up and is running the pre-run setup (connecting to
+    /// the container runtime, materializing the served definition) — the run is not
+    /// yet executing the harness, but it will as soon as setup finishes.
+    Starting,
     /// Execution has begun.
     Running,
     /// The run produced a record (carried in the same update).
@@ -151,8 +155,19 @@ pub struct LaunchAck {
 pub enum JobState {
     /// Enqueued, awaiting a dispatcher to claim it.
     Queued,
+    /// Enqueued, but intentionally held back: the run's harness is already at its
+    /// configured maximum parallelism, so the backend will not hand it to a
+    /// dispatcher until an in-flight run of the same harness finishes. Distinct from
+    /// `queued` (which is free to be claimed the moment a dispatcher has capacity) so
+    /// an operator can see a run is deliberately waiting rather than merely next in
+    /// line.
+    Pending,
     /// Claimed by the dispatcher; the driver Job is being created.
     Dispatched,
+    /// The driver pod is up and running the pre-run setup (connecting to the
+    /// container runtime, materializing the definition) — not yet executing the
+    /// harness, but it will as soon as setup finishes.
+    Starting,
     /// The driver is executing the run.
     Running,
     /// The run produced a record.
@@ -168,7 +183,9 @@ impl JobState {
     /// the backend never writes) is treated as `queued`.
     pub fn from_db(state: &str) -> Self {
         match state {
+            "pending" => Self::Pending,
             "dispatched" => Self::Dispatched,
+            "starting" => Self::Starting,
             "running" => Self::Running,
             "succeeded" => Self::Succeeded,
             "failed" => Self::Failed,

@@ -12,7 +12,7 @@ import type { HarnessSlug, RunRecord } from "./index";
 /**
  * The state a driver reports for a job via `POST /jobs/{id}/status`.
  */
-export type DriverState = "running" | "succeeded" | "failed";
+export type DriverState = "starting" | "running" | "succeeded" | "failed";
 
 /**
  * The body of `POST /jobs`: what to run, with what, against which model. The
@@ -119,7 +119,9 @@ export type StatusUpdate = {
  */
 export type JobState =
   | "queued"
+  | "pending"
   | "dispatched"
+  | "starting"
   | "running"
   | "succeeded"
   | "failed"

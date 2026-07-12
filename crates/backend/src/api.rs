@@ -21,6 +21,7 @@ use crate::publisher::Publisher;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
+mod harness_config;
 mod ingest_api;
 mod jobs;
 mod models;
@@ -111,6 +112,10 @@ pub fn router(state: AppState) -> Router {
             "/models/{slug}",
             axum::routing::put(models::update).delete(models::delete),
         )
+        // Per-harness configuration (today: max parallelism). The list is an open
+        // read; setting a harness's config requires a token.
+        .route("/harness-config", get(harness_config::list))
+        .route("/harness-config/{slug}", post(harness_config::set))
         .route("/test-cases", get(test_cases::catalog))
         .route("/test-cases/{slug}/versions", get(test_cases::versions))
         .route(

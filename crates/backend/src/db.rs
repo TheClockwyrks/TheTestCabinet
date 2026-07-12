@@ -28,11 +28,30 @@ use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{HarnessSlug, RunLinks, RunRecord};
 use test_cabinet_entities::{
-    case_reference_build, job, model, model_alias, model_price, publish_job, review, review_plan,
-    run, run_link, snapshot_state, tournament,
+    case_reference_build, harness_config, job, model, model_alias, model_price, publish_job, review,
+    review_plan, run, run_link, snapshot_state, tournament,
 };
 
 use crate::error::Result;
+
+/// The non-terminal job states — a run the queue still owns, from enqueue through
+/// execution. A job in one of these is "in flight": it appears in the active-run
+/// list, counts toward coverage, and is cancelable. `queued` and `pending` have no
+/// driver yet (the dispatcher will claim a `queued` one; a `pending` one is held
+/// back because its harness is at its parallelism cap); `dispatched`, `starting`,
+/// and `running` each have a driver Job coming up or executing.
+const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
+
+/// The job states that occupy a **parallelism slot** for their harness: a driver
+/// Job has been (or is being) created for them. Used to enforce a harness's maximum
+/// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count.
+const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+
+/// The job states a backend restart must reap: a driver was executing them (or
+/// being created for them) and went down with the backend, so the job can never
+/// reach a terminal state on its own. `queued`/`pending` jobs have no driver, so
+/// they are left for the dispatcher to drain once it reconnects.
+const REAPABLE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
 /// A stored run: the full record, its reviews, and its links. This is the shape
 /// `GET /runs/{id}` and the snapshot's per-run file are built from. A run may be
@@ -1166,10 +1185,11 @@ impl Db {
             .await?)
     }
 
-    /// Count the **in-flight** jobs — queued, dispatched, or running — for one
-    /// coverage cell. These count toward a cell's target alongside completed runs,
-    /// so triggering the missing runs immediately marks the cell satisfied and the
-    /// reviewer does not double-trigger while runs are still executing.
+    /// Count the **in-flight** jobs — queued, pending, dispatched, starting, or
+    /// running — for one coverage cell. These count toward a cell's target alongside
+    /// completed runs, so triggering the missing runs immediately marks the cell
+    /// satisfied and the reviewer does not double-trigger while runs are still
+    /// executing (or waiting to).
     pub async fn count_in_flight_jobs_for_cell(
         &self,
         slug: &str,
@@ -1179,7 +1199,7 @@ impl Db {
         model: &str,
     ) -> Result<u64> {
         Ok(job::Entity::find()
-            .filter(job::Column::State.is_in(["queued", "dispatched", "running"]))
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .filter(job::Column::TestCaseSlug.eq(slug))
             .filter(job::Column::TestCaseVersion.eq(version))
             .filter(job::Column::Variant.eq(variant))
@@ -1454,28 +1474,126 @@ impl Db {
         Ok(())
     }
 
-    /// Atomically claim the oldest `queued` job, flipping it to `dispatched`, and
-    /// return it (or `None` when the queue is empty). The select-then-update runs
-    /// in one transaction; SQLite serializes writers (single-writer WAL), so two
-    /// dispatchers cannot claim the same job.
+    /// Atomically claim the oldest claimable job, flipping it to `dispatched`, and
+    /// return it (or `None` when nothing is claimable). Enforces each harness's
+    /// configured maximum parallelism: a job is claimable only when its harness has
+    /// fewer than its limit of runs already occupying a parallelism slot
+    /// ([`ACTIVE_SLOT_STATES`] — `dispatched`/`starting`/`running`). A harness with
+    /// no configured limit is always claimable.
+    ///
+    /// The same pass **reconciles the display state** of every non-selected waiting
+    /// job: a `queued`/`pending` job whose harness is at its cap is moved to
+    /// `pending` (held back, visible as such), and one whose harness is back under
+    /// its cap is released to `queued`. So an operator sees exactly which waiting
+    /// runs are deliberately held versus merely next in line. Selection stays FIFO
+    /// (oldest `created_at`, then `id`) across harnesses, skipping any at their cap.
+    ///
+    /// The select-then-updates run in one transaction; SQLite serializes writers
+    /// (single-writer WAL), so two dispatchers cannot claim the same job.
     pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
+        use std::collections::HashMap;
+
         let txn = self.conn.begin().await?;
-        let candidate = job::Entity::find()
-            .filter(job::Column::State.eq("queued"))
+
+        // The per-harness parallelism limits (harnesses with no configured limit are
+        // absent → unlimited).
+        let caps: HashMap<String, i32> = harness_config::Entity::find()
+            .all(&txn)
+            .await?
+            .into_iter()
+            .filter_map(|row| row.max_parallelism.map(|max| (row.harness_slug, max)))
+            .collect();
+
+        // How many runs of each harness already occupy a parallelism slot.
+        let mut active_by_harness: HashMap<String, i64> = HashMap::new();
+        for job in job::Entity::find()
+            .filter(job::Column::State.is_in(ACTIVE_SLOT_STATES))
+            .all(&txn)
+            .await?
+        {
+            *active_by_harness.entry(job.harness_slug).or_insert(0) += 1;
+        }
+
+        // Is a harness under its configured cap right now, given `active` already in
+        // flight? Absent from `caps` means unlimited.
+        let under_cap = |harness: &str, active: i64| -> bool {
+            caps.get(harness)
+                .is_none_or(|&max| active < i64::from(max))
+        };
+
+        // Walk the waiting jobs oldest-first: claim the first whose harness is under
+        // its cap, and reconcile the pending/queued display state of the rest so a
+        // held-back run reads as `pending` and a now-claimable one as `queued`.
+        let waiting = job::Entity::find()
+            .filter(job::Column::State.is_in(["queued", "pending"]))
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
-            .one(&txn)
+            .all(&txn)
             .await?;
-        let Some(model) = candidate else {
-            txn.commit().await?;
-            return Ok(None);
-        };
-        let mut active = model.into_active_model();
-        active.state = Set("dispatched".to_string());
-        active.updated_at = Set(now.to_string());
-        let updated = active.update(&txn).await?;
+
+        let mut claimed: Option<job::Model> = None;
+        for job in waiting {
+            let active = active_by_harness
+                .get(&job.harness_slug)
+                .copied()
+                .unwrap_or(0);
+            let has_room = under_cap(&job.harness_slug, active);
+
+            if claimed.is_none() && has_room {
+                // Claim this one: it now occupies a slot for its harness, so bump the
+                // count for the reconcile of any later same-harness jobs.
+                *active_by_harness.entry(job.harness_slug.clone()).or_insert(0) += 1;
+                let mut active_model = job.into_active_model();
+                active_model.state = Set("dispatched".to_string());
+                active_model.updated_at = Set(now.to_string());
+                claimed = Some(active_model.update(&txn).await?);
+                continue;
+            }
+
+            // Not claimed: make its display state match whether its harness has room.
+            let target = if has_room { "queued" } else { "pending" };
+            if job.state != target {
+                let mut active_model = job.into_active_model();
+                active_model.state = Set(target.to_string());
+                active_model.updated_at = Set(now.to_string());
+                active_model.update(&txn).await?;
+            }
+        }
+
         txn.commit().await?;
-        Ok(Some(updated))
+        Ok(claimed)
+    }
+
+    /// Every stored per-harness config row (harnesses with no overrides are absent).
+    pub async fn list_harness_configs(&self) -> Result<Vec<harness_config::Model>> {
+        Ok(harness_config::Entity::find().all(&self.conn).await?)
+    }
+
+    /// Set (or clear, with `None`) a harness's maximum parallelism, upserting its
+    /// config row and stamping `updated_at`. A `None` limit means unlimited; the row
+    /// is kept (carrying `NULL`) so the setting is explicit and auditable.
+    pub async fn set_harness_max_parallelism(
+        &self,
+        harness_slug: &str,
+        max_parallelism: Option<i32>,
+        now: &str,
+    ) -> Result<()> {
+        harness_config::Entity::insert(harness_config::ActiveModel {
+            harness_slug: Set(harness_slug.to_string()),
+            max_parallelism: Set(max_parallelism),
+            updated_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::column(harness_config::Column::HarnessSlug)
+                .update_columns([
+                    harness_config::Column::MaxParallelism,
+                    harness_config::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec(&self.conn)
+        .await?;
+        Ok(())
     }
 
     /// Atomically cancel a job: move it to the terminal `canceled` state, stamping
@@ -1494,7 +1612,7 @@ impl Db {
     ) -> Result<Option<job::Model>> {
         let txn = self.conn.begin().await?;
         let candidate = job::Entity::find_by_id(id.to_string())
-            .filter(job::Column::State.is_in(["queued", "dispatched", "running"]))
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .one(&txn)
             .await?;
         let Some(model) = candidate else {
@@ -1552,34 +1670,35 @@ impl Db {
             .await?)
     }
 
-    /// Fail every job mid-execution (`dispatched` or `running`) in one update,
-    /// stamping `updated_at` and the supplied terminal `detail`. Returns how many
-    /// were reaped.
+    /// Fail every job mid-execution (`dispatched`, `starting`, or `running`) in one
+    /// update, stamping `updated_at` and the supplied terminal `detail`. Returns how
+    /// many were reaped.
     ///
     /// This is the single-box backend's startup reconciliation (see
     /// [`crate::build`]): when the whole stack shares one machine, a backend
     /// restart means every in-flight driver went down with it, so any job the
     /// store still believes is executing is orphaned — it can never reach a
     /// terminal state on its own and would otherwise show as forever "running".
-    /// `queued` jobs are deliberately left untouched: they have no driver yet, so
-    /// the dispatcher drains them normally once it reconnects.
+    /// `queued` and `pending` jobs are deliberately left untouched: they have no
+    /// driver yet, so the dispatcher drains them normally once it reconnects.
     pub async fn fail_in_flight_jobs(&self, now: &str, detail: &str) -> Result<u64> {
         let result = job::Entity::update_many()
             .col_expr(job::Column::State, Expr::value("failed"))
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(detail))
-            .filter(job::Column::State.is_in(["dispatched", "running"]))
+            .filter(job::Column::State.is_in(REAPABLE_STATES))
             .exec(&self.conn)
             .await?;
         Ok(result.rows_affected)
     }
 
-    /// Every job still in flight (`queued`, `dispatched`, or `running`),
-    /// oldest-first by enqueue time. This is the console's active-run list: a run
-    /// it is watching survives a page reload because the backend remembers it.
+    /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
+    /// `running`), oldest-first by enqueue time. This is the console's active-run
+    /// list: a run it is watching survives a page reload because the backend
+    /// remembers it — including one held back (`pending`) or spinning up (`starting`).
     pub async fn active_jobs(&self) -> Result<Vec<job::Model>> {
         Ok(job::Entity::find()
-            .filter(job::Column::State.is_in(["queued", "dispatched", "running"]))
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
             .all(&self.conn)

@@ -112,9 +112,10 @@ pub async fn launch(
     Ok((StatusCode::ACCEPTED, Json(ack)).into_response())
 }
 
-/// `GET /jobs/active` — the runs still in flight (queued, dispatched, or
-/// running), each described by the identity captured at enqueue. The console
-/// seeds its in-progress list from this so a run it is watching survives a reload.
+/// `GET /jobs/active` — the runs still in flight (queued, pending, dispatched,
+/// starting, or running), each described by the identity captured at enqueue. The
+/// console seeds its in-progress list from this so a run it is watching survives a
+/// reload — including runs held back (`pending`) or still spinning up (`starting`).
 pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobOut>>, ApiError> {
     let jobs = state.db.active_jobs().await.map_err(ApiError::from)?;
     Ok(Json(
@@ -147,8 +148,9 @@ pub async fn status(
 /// `POST /jobs/{id}/cancel` — request cancellation of an in-flight run. Requires a
 /// bearer token (the launching account, the same gate as `POST /jobs`).
 ///
-/// A job still in a non-terminal state (`queued`, `dispatched`, or `running`) is
-/// atomically moved to the terminal `canceled` state and its live stream is closed,
+/// A job still in a non-terminal state (`queued`, `pending`, `dispatched`,
+/// `starting`, or `running`) is atomically moved to the terminal `canceled` state
+/// and its live stream is closed,
 /// so every watching console's monitor reflects the end at once. The
 /// [driver](crate) polls its own job's state while it runs, so it observes the
 /// cancellation, drops the in-flight harness exec, tears its sandbox down, and
@@ -299,6 +301,7 @@ pub async fn ingest_preview(
 /// `POST /jobs/{id}/status` — the driver advances the job's state. Authenticated
 /// by the per-job token.
 ///
+/// `starting` records that the driver pod is up and running the pre-run setup;
 /// `running` records that execution began. `succeeded` carries the produced
 /// [`RunRecord`] — persisted to the `run` store **regardless of outcome**
 /// (completed, unevaluable, or a model failure that produced a record), using the
@@ -339,6 +342,14 @@ pub async fn update_status(
     let now = now_rfc3339()?;
 
     match update.state {
+        DriverState::Starting => {
+            state
+                .db
+                .set_job_state(&id, "starting", &now, None, None)
+                .await
+                .map_err(ApiError::from)?;
+            Ok(StatusCode::NO_CONTENT)
+        }
         DriverState::Running => {
             state
                 .db

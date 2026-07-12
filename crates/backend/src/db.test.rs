@@ -538,6 +538,148 @@ async fn claim_takes_the_oldest_queued_job_first() {
     assert_eq!(second.unwrap().id, "newer");
 }
 
+/// A job for a specific harness, otherwise identical to [`new_job`].
+fn new_job_h(id: &str, created_at: &str, harness: &str) -> NewJob {
+    NewJob {
+        harness_slug: harness.to_string(),
+        ..new_job(id, created_at)
+    }
+}
+
+#[tokio::test]
+async fn claim_respects_harness_max_parallelism_and_holds_pending() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Only one Claude run may be in flight at a time.
+    db.set_harness_max_parallelism("claude", Some(1), "2026-06-23T00:00:00Z")
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j1", "2026-06-23T00:00:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j2", "2026-06-23T00:01:00Z", "claude"))
+        .await
+        .unwrap();
+
+    // The first claim takes j1 (now occupying the harness's one slot).
+    let first = db.claim_next_job("2026-06-23T00:02:00Z").await.unwrap();
+    assert_eq!(first.expect("j1 is claimable").id, "j1");
+
+    // The second claim finds nothing claimable — j2's harness is at its cap — and
+    // reconciles j2's display state to `pending` so it reads as deliberately held.
+    assert!(
+        db.claim_next_job("2026-06-23T00:02:01Z")
+            .await
+            .unwrap()
+            .is_none(),
+        "j2 is held back by the harness cap"
+    );
+    let j2 = db.get_job("j2").await.unwrap().unwrap();
+    assert_eq!(j2.state, "pending");
+
+    // Once the in-flight run finishes, the slot frees and the held job is claimable.
+    db.set_job_state("j1", "succeeded", "2026-06-23T00:03:00Z", None, None)
+        .await
+        .unwrap();
+    let released = db.claim_next_job("2026-06-23T00:03:01Z").await.unwrap();
+    assert_eq!(released.expect("j2 released once the slot freed").id, "j2");
+}
+
+#[tokio::test]
+async fn claim_skips_a_capped_harness_for_another_that_has_room() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.set_harness_max_parallelism("claude", Some(1), "2026-06-23T00:00:00Z")
+        .await
+        .unwrap();
+    // Two Claude jobs (older) and one Codex job (newest); Claude is capped at 1.
+    db.enqueue_job(new_job_h("a", "2026-06-23T00:00:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("b", "2026-06-23T00:01:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("c", "2026-06-23T00:02:00Z", "codex"))
+        .await
+        .unwrap();
+
+    // `a` fills Claude's only slot.
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:03:00Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "a"
+    );
+    // The next claim skips the now-capped Claude job `b` and takes the uncapped
+    // Codex job `c` instead, even though `b` enqueued first.
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:03:01Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "c"
+    );
+    // `b` is left visibly held back.
+    assert_eq!(db.get_job("b").await.unwrap().unwrap().state, "pending");
+}
+
+#[tokio::test]
+async fn claim_is_unlimited_without_a_configured_cap() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // No cap configured for claude, so both jobs are claimable back-to-back.
+    db.enqueue_job(new_job_h("j1", "2026-06-23T00:00:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j2", "2026-06-23T00:01:00Z", "claude"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:02:00Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "j1"
+    );
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:02:01Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "j2"
+    );
+}
+
+#[tokio::test]
+async fn set_harness_max_parallelism_upserts_and_clears() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.set_harness_max_parallelism("claude", Some(3), "2026-06-23T00:00:00Z")
+        .await
+        .unwrap();
+    let rows = db.list_harness_configs().await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].harness_slug, "claude");
+    assert_eq!(rows[0].max_parallelism, Some(3));
+
+    // Upsert the same harness to a new value.
+    db.set_harness_max_parallelism("claude", Some(5), "2026-06-23T00:01:00Z")
+        .await
+        .unwrap();
+    let rows = db.list_harness_configs().await.unwrap();
+    assert_eq!(rows.len(), 1, "upsert, not a second row");
+    assert_eq!(rows[0].max_parallelism, Some(5));
+
+    // Clearing the limit keeps the row but stores NULL (no limit).
+    db.set_harness_max_parallelism("claude", None, "2026-06-23T00:02:00Z")
+        .await
+        .unwrap();
+    let rows = db.list_harness_configs().await.unwrap();
+    assert_eq!(rows[0].max_parallelism, None);
+}
+
 #[tokio::test]
 async fn set_job_state_records_terminal_detail_and_record_id() {
     let db = Db::connect_in_memory().await.unwrap();

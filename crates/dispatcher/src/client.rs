@@ -74,8 +74,14 @@ fn body_suffix(body: &str) -> String {
 pub enum JobState {
     /// Enqueued, awaiting a dispatcher to claim it.
     Queued,
+    /// Enqueued but held back because the run's harness is at its configured
+    /// maximum parallelism (the backend decides this; the dispatcher never claims
+    /// such a job).
+    Pending,
     /// Claimed by the dispatcher; the driver Job is being created.
     Dispatched,
+    /// The driver pod is up and running the pre-run container setup.
+    Starting,
     /// The driver is executing the run.
     Running,
     /// The run produced a record.

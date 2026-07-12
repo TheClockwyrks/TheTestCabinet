@@ -93,6 +93,18 @@ function categoryLabel(testType: string): string {
   return CATEGORY_LABELS[testType] ?? formatSlug(testType);
 }
 
+// The status label for an in-progress run's live phase. "queued"/"starting" carry
+// an ellipsis (work is pending and will proceed on its own); "pending" is a
+// deliberate hold (the harness is at its parallelism cap), shown without one so it
+// reads as a settled state rather than imminent progress.
+const ACTIVE_STATE_LABEL: Readonly<Record<InProgressRun["state"], string>> = {
+  queued: "queued…",
+  pending: "pending",
+  starting: "starting…",
+  running: "running…",
+  failed: "failed",
+};
+
 // A muted em-dash placeholder for a cell an in-progress run can't fill yet (it
 // has no metrics or timestamps until it finishes). `numeric` right-aligns it to
 // match the finished figure it stands in for.
@@ -368,8 +380,8 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     },
     renderActive: (run) => (
       <span className={styles.rating} data-label="Status">
-        <span className={styles.activeStatus}>
-          {run.state === "failed" ? "failed" : "running…"}
+        <span className={styles.activeStatus} data-state={run.state}>
+          {ACTIVE_STATE_LABEL[run.state]}
         </span>
       </span>
     ),

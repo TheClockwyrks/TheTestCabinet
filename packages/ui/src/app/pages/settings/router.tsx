@@ -2,18 +2,19 @@ import { Navigate, Route } from "react-router";
 import { routePatterns, routes } from "../../routes";
 import { AppearancePage } from "./AppearancePage";
 import { ConnectionsPage } from "./ConnectionsPage";
-import { HarnessAuthPage } from "./HarnessAuthPage";
+import { HarnessesPage } from "./HarnessesPage";
 
-// Routes owned by the settings section: the Appearance, Connections, and
-// Authentication tabs, each its own URL so a tab is linkable, plus a bare
-// `/settings` that redirects to Appearance (the first tab). Appearance is purely
-// visual (sun + event-feed style) and works everywhere, so it — and the
-// `/settings` redirect — mount on every host, including the static site.
-// Connections drives the backend/worker contexts the static site does not
-// provide, so it mounts only when the host can execute runs. Authentication
-// manages the local cluster's harness credentials, so it mounts only on a host
-// that supplies the harness-auth capability (the desktop app). Returned as a
-// fragment so the app's single <Routes> stitches every section's routes together.
+// Routes owned by the settings section: the Appearance, Connections, and Harnesses
+// tabs, each its own URL so a tab is linkable, plus a bare `/settings` that
+// redirects to Appearance (the first tab). Appearance is purely visual (sun +
+// event-feed style) and works everywhere, so it — and the `/settings` redirect —
+// mount on every host, including the static site. Connections drives the
+// backend/worker contexts the static site does not provide, so it mounts only when
+// the host can execute runs. Harnesses tunes per-harness settings — max parallelism
+// (backend-backed, on any executing console) and, on the desktop app, the local
+// cluster's harness credentials — so it mounts wherever either is possible.
+// Returned as a fragment so the app's single <Routes> stitches every section's
+// routes together.
 export function settingsRoutes(canExecute: boolean, hasHarnessAuth: boolean) {
   return (
     <>
@@ -31,10 +32,10 @@ export function settingsRoutes(canExecute: boolean, hasHarnessAuth: boolean) {
           element={<ConnectionsPage />}
         />
       )}
-      {hasHarnessAuth && (
+      {(canExecute || hasHarnessAuth) && (
         <Route
-          path={routePatterns.settingsAuth}
-          element={<HarnessAuthPage />}
+          path={routePatterns.settingsHarnesses}
+          element={<HarnessesPage />}
         />
       )}
     </>

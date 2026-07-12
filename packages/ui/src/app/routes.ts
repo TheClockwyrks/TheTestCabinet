@@ -78,7 +78,7 @@ export const routes = {
   settings: (): string => "/settings",
   settingsAppearance: (): string => "/settings/appearance",
   settingsConnections: (): string => "/settings/connections",
-  settingsAuth: (): string => "/settings/authentication",
+  settingsHarnesses: (): string => "/settings/harnesses",
   // Account routes (consoles only; the static site is read-only and never links
   // to them). The account view shows the signed-in user and a sign-out control;
   // login/register are their own pages. `login`/`register` take an optional
@@ -182,7 +182,7 @@ export const routePatterns = {
   settings: "/settings",
   settingsAppearance: "/settings/appearance",
   settingsConnections: "/settings/connections",
-  settingsAuth: "/settings/authentication",
+  settingsHarnesses: "/settings/harnesses",
   account: "/account",
   login: "/login",
   register: "/register",

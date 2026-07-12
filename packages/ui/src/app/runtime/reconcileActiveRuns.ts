@@ -18,7 +18,8 @@ export interface Reconciliation {
 }
 
 // Reconcile the tracked in-progress runs against every worker's authoritative
-// active set (`GET /jobs/active`, which lists queued/dispatched/running jobs).
+// active set (`GET /jobs/active`, which lists every in-flight job — queued,
+// pending, dispatched, starting, or running).
 //
 // The completion push (`GET /notifications`, SSE) is deliberately live-only: the
 // backend replays no backlog, so a completion that fires while the push channel is

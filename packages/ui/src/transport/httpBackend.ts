@@ -19,6 +19,7 @@ import type {
   AuthResult,
   BackendIdentity,
   Domain,
+  HarnessConfigEntry,
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
@@ -404,6 +405,23 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return postJson<LogoFetchResult>(baseUrl, "/models/logo", { url }, token);
     },
 
+    async listHarnessConfigs(): Promise<HarnessConfigEntry[]> {
+      return getJson<HarnessConfigEntry[]>(baseUrl, "/harness-config");
+    },
+
+    async setHarnessMaxParallelism(
+      slug: string,
+      maxParallelism: number | null,
+      token: string,
+    ): Promise<HarnessConfigEntry[]> {
+      return postJson<HarnessConfigEntry[]>(
+        baseUrl,
+        `/harness-config/${encodeURIComponent(slug)}`,
+        { maxParallelism },
+        token,
+      );
+    },
+
     async seedModelFromRun(runId: string): Promise<ModelSeed> {
       return getJson<ModelSeed>(
         baseUrl,
@@ -587,6 +605,27 @@ function mapJobState(state: string): RunJob["state"] {
   return "running";
 }
 
+// Map a backend job state to the console's coarser in-progress *phase* for the
+// active-run list. `dispatched` (claimed, the driver pod being created) and
+// `starting` (the pod up, running pre-run setup) both read as "starting"; a
+// harness-capped hold reads as "pending", a free-but-unclaimed job as "queued".
+// A terminal job never appears in the active list, so it falls back to "running".
+function mapActiveState(state: string): InProgressRun["state"] {
+  switch (state) {
+    case "queued":
+      return "queued";
+    case "pending":
+      return "pending";
+    case "dispatched":
+    case "starting":
+      return "starting";
+    case "running":
+      return "running";
+    default:
+      return "running";
+  }
+}
+
 // Resolve the artifact service's base URL from the backend's `GET /config`, or
 // null when artifacts are not served separately. Best-effort: a backend that
 // can't be reached resolves null, so pre-publish build/media links are simply
@@ -735,12 +774,14 @@ export function createBackendExec(
     },
 
     async listActiveRuns(): Promise<InProgressRun[]> {
-      // The backend reports its in-flight jobs (queued/dispatched/running) by
-      // launch identity; the row shape (`ActiveJobOut`) is the console's
-      // in-progress run verbatim. A run still queued or dispatched reads as
-      // "running" to the console, which only distinguishes running from failed.
-      const jobs = await getJson<InProgressRun[]>(backendUrl, "/jobs/active");
-      return jobs.map((job) => ({ ...job, state: "running" }));
+      // The backend reports its in-flight jobs by launch identity; the row shape
+      // (`ActiveJobOut`) is the console's in-progress run verbatim except for the
+      // fine-grained `state`, which is mapped to the console's coarser live phases
+      // so a held-back ("pending") or spinning-up ("starting") run reads as such.
+      const jobs = await getJson<
+        (Omit<InProgressRun, "state"> & { state: string })[]
+      >(backendUrl, "/jobs/active");
+      return jobs.map((job) => ({ ...job, state: mapActiveState(job.state) }));
     },
 
     subscribeToNotifications(handlers: NotificationSubscription): () => void {

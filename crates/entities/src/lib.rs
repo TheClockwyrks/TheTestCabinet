@@ -11,6 +11,7 @@
 //! `snapshot_state` holding the snapshot coalescing flags.
 
 pub mod case_reference_build;
+pub mod harness_config;
 pub mod job;
 pub mod model;
 pub mod model_alias;

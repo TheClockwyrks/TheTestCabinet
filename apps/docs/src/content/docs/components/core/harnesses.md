@@ -85,6 +85,32 @@ the harness version recorded for the run. A failed probe — a missing or broken
 binary — aborts the run with a clear error before a session is spent. This probe
 must **never** start a session or take any other action that could incur cost.
 
+## Per-harness configuration
+
+A harness's **identity** — its name, CLI binary, and install command — is static and
+checked in (`harnesses/<slug>/harness.toml` + the code adapter). Separately, an
+operator can tune a few **mutable, per-harness knobs** at run time, stored in the
+backend's `harness_config` table (keyed by slug) and edited from the console's
+**Settings → Harnesses** section. A harness with no row runs fully default.
+
+Today the only knob is **maximum parallelism**: the largest number of runs of a
+harness the Test Cabinet will drive at once (`null` = unlimited). It exists because
+running many instances of some harnesses in parallel is unreliable. The limit is
+enforced by the backend's queue **at claim time**: the backend only hands a
+dispatcher a job whose harness has fewer runs already occupying a slot (`dispatched`,
+`starting`, or `running`) than its limit; any surplus run of that harness is held in
+the **`pending`** state — a run the Test Cabinet _will_ run but is intentionally
+holding back — until an in-flight run of the same harness finishes and frees a slot.
+This per-harness cap composes with the dispatcher's global in-flight cap
+(`TCAB_DISPATCHER_MAX_INFLIGHT`): a run must clear both to start.
+
+The setting is served at `GET /harness-config` (open read; enumerates every harness
+with its current config) and changed at `POST /harness-config/{slug}` (requires a
+bearer token). Because it is backend-backed, it works identically in the web console
+and the desktop app; the neighboring **authentication** controls on the same page are
+host-local to the desktop app (see [Authentication](#authentication)) and are hidden
+in the web console.
+
 ## Authentication
 
 The Test Cabinet authenticates a harness in one of two modes:
