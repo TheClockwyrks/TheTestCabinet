@@ -153,6 +153,10 @@ async function main(): Promise<void> {
         // Cycle the selected damage tower's targeting priority (specs/controls.md).
         game.cycleTargetingSelected();
         break;
+      case "inertPriority":
+        // Toggle the selected damage tower's inert-priority (specs/controls.md).
+        game.toggleInertPrioritySelected();
+        break;
       case "startRound":
         game.startRound();
         break;
@@ -229,6 +233,11 @@ async function main(): Promise<void> {
       if (lower === "t") {
         // Cycle the selected damage tower's targeting priority (specs/controls.md).
         game.cycleTargetingSelected();
+        return;
+      }
+      if (lower === "i") {
+        // Toggle the selected damage tower's inert-priority (specs/controls.md).
+        game.toggleInertPrioritySelected();
         return;
       }
       if (k === "Escape") {

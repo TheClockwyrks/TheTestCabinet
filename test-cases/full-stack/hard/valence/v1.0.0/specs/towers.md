@@ -54,8 +54,17 @@ a board is a set of genuine choices, not a fixed checklist.
   - Ties resolve toward the unit **furthest along** the conduit, so a tower's choice is
     deterministic. Changing priority is free and takes effect immediately; it never changes
     what a unit is *valid* for (see/reach), only which valid unit is chosen.
-- The two **support** auras (Catalyst, Moderator) have **no** targeting priority — they
-  affect **every** valid unit in range at once — so the control does not apply to them.
+- Each damage tower also carries an **inert-priority** toggle (off by default) — the
+  analogue of a camo-priority option. When **on**, the tower fires on **inert matter it can
+  currently see** (revealed by a detector, or seen natively) **before** any other valid
+  target; its chosen targeting priority then orders within the inert group (and, when no
+  visible inert is in range, orders the rest as usual). This lets a Beam or an Array Ionizer
+  — or any tower standing in a Catalyst / Fallout field — be told to **hunt the inert
+  threat first** instead of chipping whatever is furthest along. Toggling it never makes an
+  unseen inert unit targetable; it only reorders the units already **valid** for the tower.
+- The two **support** auras (Catalyst, Moderator) have **no** targeting priority and no
+  inert-priority toggle — they affect **every** valid unit in range at once — so neither
+  control applies to them.
 - **The damage towers aim.** A damage tower's **head rotates to face the unit it is
   firing at** and keeps its last heading while it holds fire. Its sprite is authored so
   the head turns independently of a fixed base (`specs/assets.md`). The two support

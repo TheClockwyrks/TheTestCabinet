@@ -49,6 +49,7 @@ export interface Tower {
   level: 1 | 2 | 3;
   branch: Branch | null; // the branch chosen at tier III (null until then)
   targeting: TargetingMode; // which in-range unit this tower fires at (specs/towers.md); "first" by default
+  prioritizeInert: boolean; // prefer inert matter it can see over other valid targets (specs/towers.md); off by default
   x: number; // freely-placed position on the board
   y: number;
   range: number;

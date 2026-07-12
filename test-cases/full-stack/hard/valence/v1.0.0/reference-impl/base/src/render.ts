@@ -662,14 +662,22 @@ function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, 
   const half = (w - 10) / 2;
   const sellY = by + 42;
 
-  // Targeting priority — damage towers only (the two auras have no single target). Sits
-  // between the stat block and the upgrade controls, clamped so it clears both. Clicking
-  // (or `T`) cycles first → last → nearest → farthest → strongest → weakest
-  // (specs/towers.md, specs/controls.md).
+  // Targeting controls — damage towers only (the two auras have no single target). One row
+  // between the stat block and the upgrade controls, clamped so it clears both with room:
+  // a TARGET selector (click or `T` cycles first → last → nearest → farthest → strongest →
+  // weakest) plus an INERT-priority toggle (click or `I`), the analogue of a camo-priority
+  // toggle — prefer inert matter it can see (specs/towers.md, specs/controls.md).
   if (!def.support) {
+    const rowH = 26;
     const blockTop = t.level === 1 ? by : t.level === 2 ? by - 12 : sellY;
-    const tgtY = Math.min(statBottom + 4, blockTop - 6 - 26);
-    button(ctx, clicks, x, tgtY, w, 26, `TARGET · ${TARGETING_LABEL[t.targeting]}`, "targeting", COL.text2, true);
+    const rowY = Math.min(statBottom + 4, blockTop - 14 - rowH);
+    const inertW = 70;
+    const tgtW = w - inertW - 8;
+    button(ctx, clicks, x, rowY, tgtW, rowH, `TARGET · ${TARGETING_LABEL[t.targeting]}`, "targeting", COL.text2, true);
+    toggle(ctx, clicks, x + tgtW + 8, rowY, inertW, rowH, "INERT", "inertPriority", t.prioritizeInert, COL.catalyst);
+    if (inRect(game.pointerX, game.pointerY, x + tgtW + 8, rowY, inertW, rowH)) {
+      drawTooltip(ctx, "PRIORITIZE INERT", "Fire on inert matter this tower can see before other targets. Off by default.", COL.catalyst, rowY + rowH / 2);
+    }
   }
 
   if (t.level === 1) {
@@ -760,6 +768,19 @@ function button(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y
   ctx.stroke();
   text(ctx, label, x + w / 2, y + h / 2 + 1, 12, enabled ? color : COL.text3, "center", "700");
   if (enabled) clicks.push({ x, y, w, h, action });
+}
+
+// A two-state toggle button: it reads clearly ON (accented, filled) vs OFF (dim), and is
+// always clickable (unlike `button`, which greys out when disabled).
+function toggle(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y: number, w: number, h: number, label: string, action: string, on: boolean, color: string): void {
+  roundRect(ctx, x, y, w, h, 6);
+  ctx.fillStyle = on ? hexA(color, 0.26) : "rgba(255,255,255,0.03)";
+  ctx.fill();
+  ctx.strokeStyle = on ? color : "rgba(255,255,255,0.12)";
+  ctx.lineWidth = on ? 2 : 1.5;
+  ctx.stroke();
+  text(ctx, label, x + w / 2, y + h / 2 + 1, 11, on ? color : COL.text3, "center", "700", 0.5);
+  clicks.push({ x, y, w, h, action });
 }
 
 // A floating info popover, anchored to the LEFT of the build panel (over the board) so it

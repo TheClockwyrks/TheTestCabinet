@@ -43,6 +43,11 @@ The player builds by **freely placing** towers on the board (`specs/board.md`):
   The current priority is shown on the control, applies to that tower only, defaults to
   `first`, and takes effect immediately (`specs/towers.md`). The two support auras have no
   single target, so the control does not appear for them.
+- **Inert priority.** Beside the targeting control, a **damage** tower's inspector shows an
+  **inert-priority** toggle (the analogue of a camo-priority option). Clicking it (or
+  pressing `I`) flips the tower between firing on **inert matter it can see** first and its
+  normal priority; the toggle reads its on/off state clearly, applies to that tower only,
+  and defaults to **off** (`specs/towers.md`). It does not appear for the support auras.
 
 Selecting a tool or tower and reading the shop and inspector is done from the build panel
 (`specs/board.md`); the board itself is where you place, select, and see range.

@@ -389,8 +389,17 @@ export class Game {
       if (this.isValidTarget(s, u)) valid.push(u);
     }
     // Order by this tower's targeting priority (specs/towers.md). The winner is targets[0];
-    // a multi-target volley (Emitter Spread) takes the top `n` in the same order.
-    valid.sort((a, b) => this.targetOrder(t, a, b));
+    // a multi-target volley (Emitter Spread) takes the top `n` in the same order. With
+    // inert-priority on, valid inert units (ones the tower can currently see) sort ahead of
+    // everything else first, then the targeting mode orders within each group.
+    valid.sort((a, b) => {
+      if (t.prioritizeInert) {
+        const ai = this.hasTrait(a, "inert") ? 0 : 1;
+        const bi = this.hasTrait(b, "inert") ? 0 : 1;
+        if (ai !== bi) return ai - bi;
+      }
+      return this.targetOrder(t, a, b);
+    });
     return valid.slice(0, Math.max(1, n));
   }
 
@@ -894,6 +903,7 @@ export class Game {
       level: 1,
       branch: null,
       targeting: "first", // towers default to FIRST; the player can retarget (specs/towers.md)
+      prioritizeInert: false, // opt-in: prefer inert matter it can see (specs/towers.md)
       x,
       y,
       range: s.range,
@@ -979,6 +989,17 @@ export class Game {
   cycleTargetingSelected(): void {
     const t = this.selectedTower;
     if (t) this.cycleTargeting(t);
+  }
+
+  // Toggle whether a damage tower prioritizes inert matter it can see (specs/towers.md) —
+  // the analogue of a camo-priority toggle. Auras have no single target, so it's a no-op.
+  toggleInertPriority(t: Tower): void {
+    if (TOWERS[t.kind].support) return;
+    t.prioritizeInert = !t.prioritizeInert;
+  }
+  toggleInertPrioritySelected(): void {
+    const t = this.selectedTower;
+    if (t) this.toggleInertPriority(t);
   }
 
   cycleSpeed(): void {

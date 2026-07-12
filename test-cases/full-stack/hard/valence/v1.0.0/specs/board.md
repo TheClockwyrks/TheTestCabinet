@@ -176,8 +176,8 @@ icons may be produced sprites). It always shows, from top to bottom:
   tower's type, tier (and chosen **branch**), damage type, live stats, and its
   **upgrade** and **sell** controls — at tier III the upgrade control presents the
   tower's **two branch choices** — plus, for a **damage** tower, a **targeting** control
-  that cycles its targeting priority (`specs/towers.md`, `specs/controls.md`); with a
-  **shop entry hovered**, it
+  that cycles its targeting priority and an **inert-priority** toggle (`specs/towers.md`,
+  `specs/controls.md`); with a **shop entry hovered**, it
   shows that tower's info; with **neither**, it shows the **next-round preview** — the
   coming round's types and what each asks of the board (`specs/matter.md`,
   `specs/flow.md`) — so the player can plan for it.
