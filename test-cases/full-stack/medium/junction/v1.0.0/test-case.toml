@@ -26,8 +26,8 @@ name = "Junction"
 # field, so it sits above the first table.
 type = "full-stack"
 
-# Relative difficulty (easy | medium | hard), surfaced on the site. Junction is hard:
-# it asks for several interacting simulations layered on one grid — a zoned,
+# Relative difficulty (easy | medium | hard), surfaced on the site. Junction is
+# medium: it asks for several interacting simulations layered on one grid — a zoned,
 # self-developing city map; a road/rail transit network that citizens and goods path
 # across, with congestion that builds on overloaded links; power and water utility
 # networks whose supply propagates and gates development; and an RCI demand economy
@@ -35,8 +35,8 @@ type = "full-stack"
 # model to author every sprite, animation, particle effect, and sound the game plays,
 # AND to write that whole simulation in Rust compiled to WebAssembly behind a JS/TS view
 # layer. Interlocking simulations plus a full asset-production pass plus a Rust → wasm
-# core put this well above the catalog's bounded arcade cases.
-difficulty = "hard"
+# core make this a demanding medium case.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["simulation", "2d", "city-builder", "strategy"]

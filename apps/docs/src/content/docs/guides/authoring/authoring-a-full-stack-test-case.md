@@ -19,7 +19,7 @@ review items), and [Full-Stack Tests](/testing/full-stack/overview/) —
 rules.
 
 The worked example is the **Hollowdeep** case
-(`test-cases/full-stack/hard/hollowdeep/v1.0.0/`) — a sealed-colony survival sim
+(`test-cases/full-stack/medium/hollowdeep/v1.0.0/`) — a sealed-colony survival sim
 whose model must draw every sprite, author every particle overlay, and synthesize
 every sound it plays. Read its files alongside this guide; a new case should look
 like it.

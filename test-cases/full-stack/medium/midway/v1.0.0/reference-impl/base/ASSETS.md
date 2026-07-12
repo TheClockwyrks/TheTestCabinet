@@ -9,7 +9,7 @@ the implementation references (`src/assets.ts`). Reproduce them with
 sfx-synth,sfx-sample,music}`; add that dir to `PATH`).
 
 All paths are under
-`test-cases/full-stack/hard/midway/v1.0.0/reference-impl/base/assets/`.
+`test-cases/full-stack/medium/midway/v1.0.0/reference-impl/base/assets/`.
 
 ## Rules (from `specs/assets.md` + `overview.md`)
 

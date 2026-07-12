@@ -82,7 +82,7 @@ regenerates its assets fails wherever the tools are absent.
 
 [Authoring a Full-Stack Test Case](/guides/authoring/authoring-a-full-stack-test-case/)
 is the full procedure; read it before you start. The `hollowdeep` case
-(`test-cases/full-stack/hard/hollowdeep/v1.0.0/`) is the worked example a new case
+(`test-cases/full-stack/medium/hollowdeep/v1.0.0/`) is the worked example a new case
 should resemble.
 
 ## Validate

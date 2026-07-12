@@ -21,8 +21,8 @@ name = "Valence"
 # field, so it sits above the first table.
 type = "full-stack"
 
-# Relative difficulty (easy | medium | hard), surfaced on the site. Valence is hard:
-# it asks for a real-time tower-defense simulation — matter flowing along a chosen map's
+# Relative difficulty (easy | medium | hard), surfaced on the site. Valence is
+# medium: it asks for a real-time tower-defense simulation — matter flowing along a chosen map's
 # paths (an easy single path, a medium branching fork, or a hard set of multiple separate
 # paths, in curved or straight/right-angle styles), free Bloons-style tower placement, a hit-point / damage-type
 # (energy, kinetic, nuclear) / stackable-trait (bonded, heavy, inert) model with seven
@@ -30,9 +30,9 @@ type = "full-stack"
 # inert matter from several sources, a live economy of energy/interest/integrity, and an
 # escalating round campaign with a fragmenting boss — AND, on top of that, for the model to
 # author every sprite, animation, particle effect, and sound the game plays. The
-# interacting simulation plus a full asset-production pass put this well above the
-# catalog's bounded arcade cases.
-difficulty = "hard"
+# interacting simulation plus a full asset-production pass make this a demanding
+# medium case.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["tower-defense", "strategy", "2d", "chemistry"]

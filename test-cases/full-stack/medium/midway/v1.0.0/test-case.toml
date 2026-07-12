@@ -22,16 +22,16 @@ name = "Midway"
 # field, so it sits above the first table.
 type = "full-stack"
 
-# Relative difficulty (easy | medium | hard), surfaced on the site. Midway is hard:
-# it asks for several interacting simulations — a path-and-placement park grid,
+# Relative difficulty (easy | medium | hard), surfaced on the site. Midway is
+# medium: it asks for several interacting simulations — a path-and-placement park grid,
 # desire-driven guest AI with pathfinding and spending, a queue/ride simulation with
 # capacity, throughput, and breakdowns, a pricing/upkeep/wage economy that can go
 # bankrupt, staff who work the park, and a reputation feedback loop that couples the
 # crowd's happiness back to the arrival rate — AND, on top of that, for the model to
 # author every sprite, animation, particle effect, and sound the game plays. Systems
-# that want careful encapsulation plus a full asset-production pass put this well
-# above the catalog's bounded arcade cases.
-difficulty = "hard"
+# that want careful encapsulation plus a full asset-production pass make this a
+# demanding medium case.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["simulation", "2d", "tycoon", "management"]

@@ -1,4 +1,4 @@
-slug = "hollowdeep"
+slug = "holdfast"
 experimental = true
 # The Test Cabinet test case manifest.
 #
@@ -7,9 +7,9 @@ experimental = true
 # checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
 
 # Human-readable display name for this test case.
-name = "Hollowdeep"
+name = "Holdfast"
 
-# Test type. Hollowdeep is a `full-stack` case: an end-to-end (playable-browser-
+# Test type. Holdfast is a `full-stack` case: an end-to-end (playable-browser-
 # game) case with one addition — the model under test must PRODUCE the game's own
 # assets DURING the run, using the asset-generation binaries on the run image's
 # `PATH`, and then build a game that uses them. It is NOT the older two-run pattern
@@ -22,15 +22,15 @@ name = "Hollowdeep"
 # production contract). A root identity field, so it sits above the first table.
 type = "full-stack"
 
-# Relative difficulty (easy | medium | hard), surfaced on the site. Hollowdeep is
-# hard: it asks for several interacting simulations — a dig-able tile world, a
-# diffusing gas economy with buoyancy, a power network, needs-driven delver AI with
-# pathfinding and a job queue, a refine/build/food economy, and a survival-pressure
-# loss condition — AND, on top of that, for the model to author every sprite,
+# Relative difficulty (easy | medium | hard), surfaced on the site. Holdfast is
+# medium: it asks for several interacting simulations — a top-down tile world with
+# resource nodes, needs-and-mood-driven settler AI with skills, a priority job
+# queue and pathfinding, a designate/haul/build/cook/farm economy, a day/night
+# clock, and an escalating threat director that drives ranged raids and a colony-
+# wipe loss condition — AND, on top of that, for the model to author every sprite,
 # animation, particle effect, and sound the game plays. Systems that want careful
-# encapsulation plus a full asset-production pass put this well above the catalog's
-# bounded arcade cases.
-difficulty = "hard"
+# encapsulation plus a full asset-production pass make this a demanding medium case.
+difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["simulation", "2d", "survival", "colony"]
@@ -38,9 +38,9 @@ tags = ["simulation", "2d", "survival", "colony"]
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.
 summary = """
-A side-view sealed-colony survival sim: dig into a sealed underground, keep a \
-handful of delvers breathing against a diffusing air economy, and build power, \
-oxygen, and food before the starting pocket runs out — and the build must \
+A top-down colony survival-management sim: direct a handful of settlers to gather, \
+build, cook, and farm on a single frontier map, keep their needs and mood from \
+breaking, and hold the colony against escalating ranged raids — and the build must \
 produce its own sprites, effects, and audio with the on-PATH asset tools."""
 
 # Site-facing prose describing the case, relative to this version folder. NOT
@@ -60,9 +60,9 @@ changelog = "changelog.md"
 prompt = "prompt.hbs"
 
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
-# stopped. Hollowdeep is a large build — several interacting simulations plus a
-# full asset-production pass through six tools — so it gets eight hours: comfortably
-# more than a healthy build needs while still bounding a runaway session.
+# stopped. Holdfast is a large build — several interacting simulations plus a full
+# asset-production pass through six tools — so it gets eight hours: comfortably more
+# than a healthy build needs while still bounding a runaway session.
 max_runtime_hours = 8
 
 # Starter workspace seeded into the root of every run before the specs. It gives
@@ -92,19 +92,19 @@ init = "npm install && npx playwright install chromium"
 # the review UI plays a produced effect with; core bakes it into the run image and
 # the seeded workspace `package.json` depends on it via its baked-in `file:` path, so
 # the build imports it (its `/canvas` binding) like any other dependency and plays
-# each produced `system.json` by simulating it live. The gas overlays, dig dust, and
-# machine exhaust are all produced `particle-2d` systems played this way; see
-# `specs/assets.md` for the consumption contract. (A root key, so it must sit above
-# the first `[table]` header.)
+# each produced `system.json` by simulating it live. The muzzle flash, blood/impact,
+# fire spread, explosion, and construction dust are all produced `particle-2d`
+# systems played this way; see `specs/assets.md` for the consumption contract. (A
+# root key, so it must sit above the first `[table]` header.)
 packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
-# first is the default. Each seeds the common specs plus its own playable start,
-# seeded to the stable path `specs/mode.md` (so a variant REPLACES the start rather
-# than adding one) and supplies its own `title` menu reference (the main menu differs
-# by variant; `gameplay` and `game-over` are common):
-#   - base — the standard colony start.
+# first is the default. Each seeds the common specs plus its own mode spec (its
+# `specs/mode-<slug>.md` → the stable dest `specs/mode.md`, which REPLACES the mode
+# rather than adding one) and supplies its own `title` menu reference (the main menu
+# lists that variant's start; `gameplay` and `game-over` are common):
+#   - base — the standard frontier start.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
@@ -119,13 +119,14 @@ install = "npm ci"
 build = "npm run build"
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern; the one part that varies
-# per variant — the playable start — is seeded to a stable path, `specs/mode.md`,
-# by each variant (see the variant files), so it is always present. The common
-# specs reference `specs/mode.md` and each other freely and never name a variant.
-# All common specs are plain Markdown, seeded verbatim. A spec's `dest` defaults to
-# its `source` (with a trailing `.hbs` stripped), so these need only name the source
-# they seed.
+# workspace. The specification is decomposed by concern; the mode-specific material
+# is NOT here but is seeded per variant to the stable dest `specs/mode.md` (each
+# variant declares its own `specs/mode-<slug>.md` source → `specs/mode.md`; see the
+# variant files). Because `specs/mode.md` is therefore always present, the common
+# specs reference it freely; and because every variant seeds exactly one mode spec
+# to it, the common specs never mention another variant's mode. All common specs are
+# plain Markdown, seeded verbatim. A spec's `dest` defaults to its `source` (with a
+# trailing `.hbs` stripped), so these need only name the source they seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -133,16 +134,16 @@ source = "specs/overview.md"
 source = "specs/world.md"
 
 [[spec]]
-source = "specs/gas.md"
-
-[[spec]]
-source = "specs/power.md"
-
-[[spec]]
-source = "specs/delvers.md"
+source = "specs/settlers.md"
 
 [[spec]]
 source = "specs/economy.md"
+
+[[spec]]
+source = "specs/combat.md"
+
+[[spec]]
+source = "specs/time.md"
 
 [[spec]]
 source = "specs/controls.md"
@@ -197,14 +198,14 @@ name = "Colony lost"
 dest = "proof/game-over.png"
 
 [[proof]]
-id = "systems"
-name = "Colony systems clip"
-dest = "proof/systems.webm"
+id = "colony"
+name = "Colony work clip"
+dest = "proof/colony.webm"
 
 [[proof]]
-id = "survival"
-name = "Survival pressure clip"
-dest = "proof/survival.webm"
+id = "raid"
+name = "Raid defense clip"
+dest = "proof/raid.webm"
 
 # Reference-similarity checks (opt-in) are intentionally not declared. The
 # reference screenshots are seeded as illustrative examples of the screens, not
@@ -221,12 +222,12 @@ dest = "proof/survival.webm"
 [[domain]]
 id = "simulation"
 name = "Colony Systems"
-description = "The interacting simulations: the dig-able tile world and its resources, the diffusing oxygen/CO2 gas economy with buoyancy and suffocation, the power network and its machines, needs-driven delver AI with pathfinding and a job queue, the refine/build/food economy, and the survival pressure that ends the colony."
+description = "The interacting simulations: the top-down tile world and its resource nodes, needs-and-mood-driven settler AI with skills, the priority job queue and pathfinding, the designate/haul/build/cook/farm economy, the day/night cycle, and the escalating threat director that drives ranged raids, cover, downed settlers, and the colony-wipe loss condition."
 
 [[domain]]
 id = "presentation"
 name = "Presentation & Assets"
-description = "The genuinely tool-produced assets and how the build presents them: the animated delver sprite sheets, the tile/machine/item/icon sprites, the live particle overlays for gas and dust and exhaust, the produced sound effects and music bed, and the in-code HUD dashboard that reads it all at a glance."
+description = "The genuinely tool-produced assets and how the build presents them: the animated settler and raider sprite sheets, the terrain/structure/item/icon sprites, the live combat and construction particle effects, the produced sound effects and music bed, and the in-code HUD dashboard — roster, needs, work-priority grid, stocks, and threat alerts — that reads it all at a glance."
 
 # Reviewer checklist items, common to every variant. The major, observable
 # requirements a reviewer must explicitly check by playing the build — the things
@@ -240,59 +241,59 @@ description = "The genuinely tool-produced assets and how the build presents the
 # --- Colony Systems -------------------------------------------------------------
 [[review_item]]
 id = "tile-world"
-title = "Dig-able tile world"
-text = "The world is a side-view cross-section of solid tiles (dirt, ore, rock) and open space. Queuing a dig marks a tile; a delver walks to it, mines it over time, the tile becomes open space, and it yields a resource (ore from ore tiles). Bedrock at the border cannot be dug."
+title = "Top-down tile world and resource nodes"
+text = "The world is a top-down grid of terrain (soil, fertile ground, rock) with walkable and blocked tiles and scattered resource nodes — trees to chop and ore to mine. Designating a chop or mine sends a settler to work it over time; it yields wood or ore and, for a tree, clears the tile. Rock and the map border block movement and cannot be walked through."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
-proof = "systems"
+proof = "colony"
 
 [[review_item]]
-id = "gas-simulation"
-title = "Gas diffusion and suffocation"
-text = "Open tiles hold breathable oxygen and waste CO2 that diffuse between connected open tiles each tick, with buoyancy (CO2 sinks, oxygen rises). Delvers consume oxygen and exhale CO2; a delver starved of oxygen or drowned in CO2 suffocates. Concentration is shown as a live overlay."
+id = "settler-ai"
+title = "Settler needs, mood, jobs, and pathfinding"
+text = "Each settler has needs (hunger, rest) and a mood that drift over time, skills that affect work speed, and pulls jobs from a PRIORITY QUEUE — chop/mine, haul, build, cook, farm, fight — pathfinding across walkable tiles to reach them. A hungry settler eats, a tired one sleeps, and low mood degrades behavior; two settlers do not both claim the same job."
 weight = 1
 domain = "simulation"
-reference = "gameplay"
-proof = "systems"
-
-[[review_item]]
-id = "power-network"
-title = "Power network and machines"
-text = "Generators produce power that flows along placed wires to machines — an oxygen diffuser that emits O2, and a pump — and an over-drawn network browns out, cutting machines until supply is restored. Power supply and demand are shown in the HUD."
-weight = 1
-domain = "simulation"
-proof = "systems"
-
-[[review_item]]
-id = "delver-jobs"
-title = "Delver needs, jobs, and pathfinding"
-text = "Each delver has needs (oxygen from the environment, stamina, hunger) and pulls jobs from a priority queue — dig, build, operate a machine, harvest food, haul — pathfinding across walkable tiles and ladders to reach them. A delver cannot cross empty space without a floor or ladder."
-weight = 1
-domain = "simulation"
-proof = "systems"
+proof = "colony"
 
 [[review_item]]
 id = "build-economy"
-title = "Resource, build, and food economy"
-text = "Dug ore refines into build material; the player places build orders (walls, floors, ladders, wires, machines) that delvers construct from that material; and a fungus farm must be built and tended so delvers have food to eat. Running out of material blocks construction."
+title = "Work, build, cook, and farm economy"
+text = "The player designates work and places build orders; settlers haul materials and construct walls, doors, beds, a stove, farm plots, and defensive turrets from those materials. Harvested crops are cooked at the stove into meals that settlers eat, and running out of material blocks construction while running out of food starves the colony."
 weight = 1
 domain = "simulation"
-proof = "systems"
+proof = "colony"
 
 [[review_item]]
-id = "survival-pressure"
-title = "Survival pressure and the loss state"
-text = "The starting pocket of oxygen depletes as delvers breathe it, so the colony must build oxygen generation and a food source before it runs out. When every delver has suffocated or starved, the colony is lost — a clear loss state with a restart."
+id = "threat-combat"
+title = "Threat director and ranged combat"
+text = "An escalating threat director sends raids of hostiles on a timer/wealth curve. Combat is ranged: settlers and turrets shoot at raiders and take cover behind walls, which reduce incoming hits. A settler reduced to zero health is downed and bleeds out unless tended, and raiders can be killed or driven off. Raids grow harder as the colony ages and grows."
 weight = 1
 domain = "simulation"
-proof = "survival"
+reference = "gameplay"
+proof = "raid"
+
+[[review_item]]
+id = "day-night"
+title = "Day/night cycle"
+text = "Time advances through a day/night cycle shown on the HUD clock. Daylight and darkness affect the colony — settlers rest at night and work by day, and raids favor certain times — so the cycle is a real pressure on scheduling, not merely a background tint."
+weight = 1
+domain = "simulation"
+proof = "colony"
+
+[[review_item]]
+id = "survival-loss"
+title = "Survival pressure and the loss state"
+text = "The colony must gather, build defenses, and feed itself faster than the raids escalate and its needs run down. When every settler is dead — killed in a raid, bled out, or starved — the colony is lost: a clear loss state showing how many days it survived, with a restart."
+weight = 1
+domain = "simulation"
+proof = "raid"
 
 # --- Presentation & Assets ------------------------------------------------------
 [[review_item]]
-id = "produced-delver-animation"
-title = "Produced, animated delver sheets"
-text = "The delvers are drawn from sprite sheets the build produced with `draw-sheet` — genuine per-frame pixel art — and animate through their actions (at least walk, dig, carry, and idle cycles), not a static dot or an ad-hoc code-drawn figure."
+id = "produced-settler-animation"
+title = "Produced, animated settler and raider sheets"
+text = "The settlers and raiders are drawn from sprite sheets the build produced with `draw-sheet` — genuine per-frame pixel art — and animate through their actions (at least walk, work, fight, and downed cycles), not a static dot or an ad-hoc code-drawn figure."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
@@ -301,33 +302,33 @@ proof = "gameplay"
 [[review_item]]
 id = "produced-world-sprites"
 title = "Produced world sprites"
-text = "The tiles, machines, resource items, and HUD icons are rendered from single sprites the build produced with `draw` — dirt/ore/rock, built walls/floors/ladders/wires, the generator/diffuser/pump, ore and material and fungus items — not flat rectangles or ad-hoc canvas fills."
+text = "The terrain tiles, resource nodes, structures, item icons, and HUD icons are rendered from single sprites the build produced with `draw` — soil/rock/grass, trees and ore, built walls/doors/beds/stove/farm plots/turrets, wood and food and meal items — not flat rectangles or ad-hoc canvas fills."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
-id = "produced-gas-effects"
-title = "Produced particle overlays"
-text = "The oxygen haze, the CO2 plume, the dig dust, and the machine steam/exhaust are all particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated overlays that vary play to play, not a flat tint or a hand-coded effect."
+id = "produced-combat-effects"
+title = "Produced particle effects"
+text = "The muzzle flash, blood/impact spray, fire spread, explosion, and construction dust are all particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated effects that vary play to play, not a flat flash or a hand-coded burst."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
-proof = "systems"
+proof = "raid"
 
 [[review_item]]
 id = "produced-audio"
 title = "Produced sound and music"
-text = "The colony has real audio the build produced with the audio tools: dig/build/alarm sound effects (`sfx-synth` and/or `sfx-sample`) and an ambient underground music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
+text = "The colony has real audio the build produced with the audio tools: gunshot/hit/build-place/raid-alarm sound effects (`sfx-synth` and/or `sfx-sample`) and an ambient/tension music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
 weight = 1
 domain = "presentation"
-proof = "survival"
+proof = "raid"
 
 [[review_item]]
 id = "hud-in-code"
 title = "In-code HUD dashboard"
-text = "The colony dashboard — average oxygen, power supply and demand, food stock, the delver roster and their needs, the cycle clock, and low-oxygen alerts — plus the build palette and all menus and overlays are drawn in code (canvas/DOM); only the small icons within it may be produced sprites."
+text = "The colony dashboard — the resource stocks (wood, food, meals), the settler roster and their needs and mood, the work-priority grid, the day/time clock and speed, and threat/raid warnings — plus the build palette and all menus and overlays are drawn in code (canvas/DOM); only the small icons within it may be produced sprites."
 weight = 1
 domain = "presentation"
 reference = "gameplay"
@@ -337,11 +338,12 @@ proof = "gameplay"
 [[review_item]]
 id = "states-complete"
 title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the live colony with its HUD, pause (resume/restart/quit to menu), and colony-lost (restart/menu) with the cycles survived shown."
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the live colony with its HUD, pause (resume/restart/quit to menu) with speed controls, and colony-lost (restart/menu) with the days survived shown."
 weight = 1
 reference = "title"
 proof = "title"
 
+# --- General (states, window fit) — no domain -----------------------------------
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
