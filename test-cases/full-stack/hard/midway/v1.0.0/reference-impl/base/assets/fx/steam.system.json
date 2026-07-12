@@ -1,0 +1,84 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 1600,
+  "fps": 30,
+  "loop": true,
+  "emitters": [
+    {
+      "name": "vent",
+      "shape": "edge",
+      "position": [
+        64.0,
+        40.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          10.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 16.0
+      },
+      "lifetimeMs": 1350.0,
+      "lifetimeSpread": 220.0,
+      "speed": 24.0,
+      "speedSpread": 7.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 16.0,
+      "seed": 12,
+      "forces": {},
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 0.45,
+          "to": 2.4
+        },
+        "opacityCurve": {
+          "interp": "ease-in-out",
+          "from": 0.72,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#f2efe8",
+            "at": 0.0
+          },
+          {
+            "color": "#cfd4de",
+            "at": 0.5
+          },
+          {
+            "color": "#aeb6c6",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {
+    "drag": 0.9,
+    "turbulence": {
+      "amplitude": 9.0,
+      "scale": 0.05
+    },
+    "wind": [
+      3.0,
+      6.0,
+      0.0
+    ]
+  },
+  "subEmitters": []
+}
