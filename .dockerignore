@@ -59,7 +59,7 @@
 # Lattice case's version folder (see containers/performance/Dockerfile's
 # `COPY test-cases/.../references/training`). It is the one test-case tree a build
 # embeds, so it must survive the allowlist; the path tracks the Dockerfile's COPY.
-!/test-cases/lattice/v1.0.0/references/training
+!/test-cases/performance/hard/lattice/v1.0.0/references/training
 
 # The web service image (deployments/images/web.Dockerfile) is the one NON-cargo
 # service image: it `npm ci`s the npm workspace and `vite build`s the web console
