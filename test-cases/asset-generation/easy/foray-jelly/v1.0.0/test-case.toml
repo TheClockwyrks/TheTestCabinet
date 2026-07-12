@@ -1,5 +1,4 @@
 slug = "foray-jelly"
-experimental = true
 name = "Foray Royal Jelly"
 difficulty = "easy"
 tags = ["sprite-sheet", "item"]

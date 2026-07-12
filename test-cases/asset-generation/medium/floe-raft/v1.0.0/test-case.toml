@@ -1,5 +1,4 @@
 slug = "floe-raft"
-experimental = true
 name = "Floe Raft"
 difficulty = "medium"
 tags = ["sprite-sheet", "prop"]

@@ -1,5 +1,4 @@
 slug = "floe-crosser"
-experimental = true
 name = "Floe Crosser"
 difficulty = "medium"
 tags = ["sprite-sheet", "player"]

@@ -1,5 +1,4 @@
 slug = "lanternjaw"
-experimental = true
 name = "Fathom Lanternjaw"
 difficulty = "hard"
 tags = ["sprite-sheet", "enemy"]

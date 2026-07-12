@@ -1,5 +1,4 @@
 slug = "floe-dogsled"
-experimental = true
 name = "Floe Dogsled"
 difficulty = "medium"
 tags = ["sprite", "hazard"]

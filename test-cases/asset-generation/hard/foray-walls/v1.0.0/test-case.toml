@@ -1,5 +1,4 @@
 slug = "foray-walls"
-experimental = true
 name = "Foray Maze Walls"
 difficulty = "hard"
 tags = ["sprite-sheet", "tileset"]

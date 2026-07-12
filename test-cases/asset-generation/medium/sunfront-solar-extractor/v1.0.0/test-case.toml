@@ -1,4 +1,5 @@
 slug = "sunfront-solar-extractor"
+experimental = true
 name = "Sunfront Solar Extractor"
 difficulty = "medium"
 tags = ["3d", "voxel", "rig", "building"]

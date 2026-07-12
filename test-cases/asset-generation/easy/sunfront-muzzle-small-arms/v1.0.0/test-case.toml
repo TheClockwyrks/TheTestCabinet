@@ -1,4 +1,5 @@
 slug = "sunfront-muzzle-small-arms"
+experimental = true
 name = "Sunfront Small-Arms Muzzle Flash"
 difficulty = "easy"
 tags = ["asset-generation", "particle", "3d", "vfx", "muzzle-flash"]

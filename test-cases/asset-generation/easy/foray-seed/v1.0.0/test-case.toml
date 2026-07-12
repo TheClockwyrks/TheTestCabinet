@@ -1,5 +1,4 @@
 slug = "foray-seed"
-experimental = true
 name = "Foray Seed Cache"
 difficulty = "easy"
 tags = ["sprite", "item"]

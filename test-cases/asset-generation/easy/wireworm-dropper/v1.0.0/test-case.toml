@@ -1,5 +1,4 @@
 slug = "wireworm-dropper"
-experimental = true
 name = "Wireworm Dropper"
 difficulty = "easy"
 tags = ["sprite", "enemy"]

@@ -1,5 +1,4 @@
 slug = "glimmerfin"
-experimental = true
 name = "Fathom Glimmerfin"
 difficulty = "medium"
 tags = ["sprite-sheet", "player"]

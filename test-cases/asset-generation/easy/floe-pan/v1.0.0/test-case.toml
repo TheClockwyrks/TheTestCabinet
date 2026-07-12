@@ -1,5 +1,4 @@
 slug = "floe-pan"
-experimental = true
 name = "Floe Pan"
 difficulty = "easy"
 tags = ["sprite", "prop"]

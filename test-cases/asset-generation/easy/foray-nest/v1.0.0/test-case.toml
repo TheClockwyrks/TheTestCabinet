@@ -1,5 +1,4 @@
 slug = "foray-nest"
-experimental = true
 name = "Foray Nest"
 difficulty = "easy"
 tags = ["sprite", "tile"]
