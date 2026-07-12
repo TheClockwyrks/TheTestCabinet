@@ -21,6 +21,7 @@ import {
   MATTER,
   PROJECTILE_SPEED,
   SLOW_ON_HIT_TIME,
+  TARGETING_ORDER,
   TOTAL_ROUNDS,
   TOWERS,
   UPGRADE_MULT,
@@ -39,6 +40,7 @@ import {
   type DecayEmission,
   type EffStats,
   type MatterType,
+  type TargetingMode,
   type TowerKind,
   type Trait,
 } from "./constants";
@@ -386,8 +388,52 @@ export class Game {
     for (const u of this.unitsInRange(t)) {
       if (this.isValidTarget(s, u)) valid.push(u);
     }
-    valid.sort((a, b) => b.s - a.s); // furthest along first
+    // Order by this tower's targeting priority (specs/towers.md). The winner is targets[0];
+    // a multi-target volley (Emitter Spread) takes the top `n` in the same order.
+    valid.sort((a, b) => this.targetOrder(t, a, b));
     return valid.slice(0, Math.max(1, n));
+  }
+
+  // Compare two valid targets under a tower's targeting mode (lower sorts first = higher
+  // priority). FIRST/LAST order by conduit progress; NEAREST/FARTHEST by straight-line
+  // distance from the tower; STRONGEST/WEAKEST by remaining hit points. All but the
+  // progress modes break ties toward the unit furthest along, so the choice is deterministic.
+  private targetOrder(t: Tower, a: Unit, b: Unit): number {
+    switch (t.targeting) {
+      case "last":
+        return a.s - b.s;
+      case "nearest":
+        return this.towerDist2(t, a) - this.towerDist2(t, b) || b.s - a.s;
+      case "farthest":
+        return this.towerDist2(t, b) - this.towerDist2(t, a) || b.s - a.s;
+      case "strongest":
+        return this.unitHP(b) - this.unitHP(a) || b.s - a.s;
+      case "weakest":
+        return this.unitHP(a) - this.unitHP(b) || b.s - a.s;
+      case "first":
+      default:
+        return b.s - a.s;
+    }
+  }
+
+  // Squared straight-line distance from a tower to a unit's current position on the path,
+  // for NEAREST / FARTHEST targeting (squared is enough for ordering).
+  private towerDist2(t: Tower, u: Unit): number {
+    const p = this.board.sample(u.lane, u.s);
+    const dx = p.x - t.x;
+    const dy = p.y - t.y;
+    return dx * dx + dy * dy;
+  }
+
+  // A unit's remaining hit points, for STRONGEST / WEAKEST targeting: a bonded cluster's
+  // outstanding bond pool plus the atoms it has yet to shed; otherwise its remaining shells.
+  private unitHP(u: Unit): number {
+    if (this.hasTrait(u, "bonded")) {
+      let hp = Math.max(0, u.bondHP);
+      for (let i = u.fragmentsShed; i < u.atoms.length; i++) hp += u.atoms[i]!.shells;
+      return hp;
+    }
+    return Math.max(0, u.shells);
   }
 
   // A tower can act on a unit only if it can SEE it (not inert, or revealed, or the tower
@@ -847,6 +893,7 @@ export class Game {
       kind,
       level: 1,
       branch: null,
+      targeting: "first", // towers default to FIRST; the player can retarget (specs/towers.md)
       x,
       y,
       range: s.range,
@@ -916,6 +963,22 @@ export class Game {
   sellSelected(): void {
     const t = this.selectedTower;
     if (t) this.sell(t);
+  }
+
+  // Set / cycle a damage tower's targeting priority (specs/towers.md, specs/controls.md).
+  // Support auras have no single target, so their targeting is left untouched.
+  setTargeting(t: Tower, mode: TargetingMode): void {
+    if (TOWERS[t.kind].support) return;
+    t.targeting = mode;
+  }
+  cycleTargeting(t: Tower): void {
+    if (TOWERS[t.kind].support) return;
+    const i = TARGETING_ORDER.indexOf(t.targeting);
+    t.targeting = TARGETING_ORDER[(i + 1) % TARGETING_ORDER.length]!;
+  }
+  cycleTargetingSelected(): void {
+    const t = this.selectedTower;
+    if (t) this.cycleTargeting(t);
   }
 
   cycleSpeed(): void {

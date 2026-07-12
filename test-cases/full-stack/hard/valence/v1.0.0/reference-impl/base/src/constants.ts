@@ -92,6 +92,23 @@ export const TOWER_ORDER: TowerKind[] = [
 
 export type Branch = "A" | "B";
 
+// Per-tower targeting priority (specs/towers.md, specs/controls.md): which valid in-range
+// unit a damage tower fires at. FIRST (the default) is the unit furthest along the conduit
+// and LAST the least far — both measured by path PROGRESS. NEAREST / FARTHEST instead rank
+// by straight-line DISTANCE from the tower's own position (independent of path progress).
+// STRONGEST / WEAKEST rank by the most / least remaining hit points. Support auras ignore
+// this — they affect every valid unit in range at once.
+export type TargetingMode = "first" | "last" | "nearest" | "farthest" | "strongest" | "weakest";
+export const TARGETING_ORDER: TargetingMode[] = ["first", "last", "nearest", "farthest", "strongest", "weakest"];
+export const TARGETING_LABEL: Record<TargetingMode, string> = {
+  first: "FIRST",
+  last: "LAST",
+  nearest: "NEAREST",
+  farthest: "FARTHEST",
+  strongest: "STRONGEST",
+  weakest: "WEAKEST",
+};
+
 export interface BranchDef {
   key: Branch;
   name: string; // e.g. "CHARGED"

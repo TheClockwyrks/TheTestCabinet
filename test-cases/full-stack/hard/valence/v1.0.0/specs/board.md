@@ -127,8 +127,10 @@ reaches; a spot far from every path is legal but reaches nothing.
 - A tower's **range** is a radius in logical pixels measured from its **placed position**.
   A unit is targetable while the point it occupies on its path lies within that radius.
 - By default a tower fires at the in-range unit **furthest along** its path toward the
-  collector — the standard "first" target — so it works on the most urgent threat. Splash
-  and aura towers differ as noted in `specs/towers.md`.
+  collector — the standard "first" target — so it works on the most urgent threat. Each
+  damage tower's **targeting priority** is selectable per tower (`first` / `last` /
+  `nearest` / `farthest` / `strongest` / `weakest`) from its inspector (`specs/towers.md`,
+  `specs/controls.md`). Splash and aura towers differ as noted in `specs/towers.md`.
 - A tower fires **automatically** at its fire rate whenever it has a valid target; there
   is no manual trigger. A target is *valid* only if the tower can **see** it (it is not
   inert, or it is revealed, or the tower detects — `specs/matter.md`) **and** the
@@ -173,7 +175,9 @@ icons may be produced sprites). It always shows, from top to bottom:
 - **The inspector** — context-sensitive: with a **built tower selected**, it shows that
   tower's type, tier (and chosen **branch**), damage type, live stats, and its
   **upgrade** and **sell** controls — at tier III the upgrade control presents the
-  tower's **two branch choices** (`specs/towers.md`); with a **shop entry hovered**, it
+  tower's **two branch choices** — plus, for a **damage** tower, a **targeting** control
+  that cycles its targeting priority (`specs/towers.md`, `specs/controls.md`); with a
+  **shop entry hovered**, it
   shows that tower's info; with **neither**, it shows the **next-round preview** — the
   coming round's types and what each asks of the board (`specs/matter.md`,
   `specs/flow.md`) — so the player can plan for it.

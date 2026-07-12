@@ -24,6 +24,7 @@ import {
   STAGE_H,
   STAGE_W,
   STATUS_H,
+  TARGETING_LABEL,
   TOTAL_ROUNDS,
   TOWERS,
   TOWER_ORDER,
@@ -613,7 +614,7 @@ function tagColor(kind: TowerKind): string {
   return DMG_COLOR[def.damageType!];
 }
 
-function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, s: EffStats, level: number, branch: Branch | null, x: number, y: number, w: number): void {
+function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, s: EffStats, level: number, branch: Branch | null, x: number, y: number, w: number): number {
   const def = TOWERS[kind];
   const tier = branch ? `${ROMAN[level - 1]}·${branch === "A" ? def.branchA.name : def.branchB.name}` : ROMAN[level - 1];
   text(ctx, `${def.name} · ${tier}`, x, y + 8, 14, def.color, "left", "700", 0.5);
@@ -650,14 +651,27 @@ function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, s: EffSta
     if (s.heavyBonus > 0) line("VS HEAVY", `+${s.heavyBonus}`, COL.heavy);
     if (s.mark > 0) line("MARK", `+${s.mark} dmg`, COL.beam);
   }
+  return row;
 }
 
 function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, x: number, y: number, w: number, clicks: Clickable[]): void {
-  drawTowerInfo(ctx, t.kind, game.statsOf(t), t.level, t.branch, x, y, w);
+  const statBottom = drawTowerInfo(ctx, t.kind, game.statsOf(t), t.level, t.branch, x, y, w);
   const by = STAGE_H - 58 - 8 - 44 - 40; // sit the controls above the round button
   const def = TOWERS[t.kind];
   const cost = game.upgradeCost(t);
   const half = (w - 10) / 2;
+  const sellY = by + 42;
+
+  // Targeting priority — damage towers only (the two auras have no single target). Sits
+  // between the stat block and the upgrade controls, clamped so it clears both. Clicking
+  // (or `T`) cycles first → last → nearest → farthest → strongest → weakest
+  // (specs/towers.md, specs/controls.md).
+  if (!def.support) {
+    const blockTop = t.level === 1 ? by : t.level === 2 ? by - 12 : sellY;
+    const tgtY = Math.min(statBottom + 4, blockTop - 6 - 26);
+    button(ctx, clicks, x, tgtY, w, 26, `TARGET · ${TARGETING_LABEL[t.targeting]}`, "targeting", COL.text2, true);
+  }
+
   if (t.level === 1) {
     const en = cost != null && game.energy >= cost;
     button(ctx, clicks, x, by, half, 34, `UPGRADE ${cost}`, "upgrade", en ? COL.integrity : COL.text3, en);
@@ -673,10 +687,12 @@ function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, 
     const overB = inRect(game.pointerX, game.pointerY, x + half + 10, by, half, 34);
     if (overA) drawTooltip(ctx, `${def.branchA.name} — TIER III`, def.branchA.blurb, def.color, by + 17);
     else if (overB) drawTooltip(ctx, `${def.branchB.name} — TIER III`, def.branchB.blurb, def.color, by + 17);
-  } else {
+  } else if (def.support) {
+    // Maxed support tower — the title already carries the branch, so a compact MAX marker
+    // is enough. (A damage tower shows its targeting selector in this space instead.)
     text(ctx, `MAX · ${t.branch === "A" ? def.branchA.name : def.branchB.name}`, x, by + 8, 12, def.color, "left", "700", 0.5);
   }
-  button(ctx, clicks, x, by + 42, w, 30, `SELL ${game.sellRefund(t)}`, "sell", COL.energy, true);
+  button(ctx, clicks, x, sellY, w, 30, `SELL ${game.sellRefund(t)}`, "sell", COL.energy, true);
 }
 
 function drawPreview(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {

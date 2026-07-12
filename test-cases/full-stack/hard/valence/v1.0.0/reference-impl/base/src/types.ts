@@ -1,6 +1,6 @@
 // Valence — shared runtime types (the simulation entities and UI intents).
 
-import type { Branch, DamageType, DecayEmission, MatterType, TowerKind, Trait } from "./constants";
+import type { Branch, DamageType, DecayEmission, MatterType, TargetingMode, TowerKind, Trait } from "./constants";
 import type { Lane } from "./board";
 
 export interface AtomSpec {
@@ -48,6 +48,7 @@ export interface Tower {
   kind: TowerKind;
   level: 1 | 2 | 3;
   branch: Branch | null; // the branch chosen at tier III (null until then)
+  targeting: TargetingMode; // which in-range unit this tower fires at (specs/towers.md); "first" by default
   x: number; // freely-placed position on the board
   y: number;
   range: number;

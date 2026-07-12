@@ -37,6 +37,12 @@ The player builds by **freely placing** towers on the board (`specs/board.md`):
   presents the tower's **two branches** and you click the one to take (the tier-III
   identity choice) — `specs/towers.md`. Clicking empty board or pressing `Esc`
   deselects.
+- **Targeting priority.** With a **damage** tower selected, its inspector shows a
+  **targeting** control that **cycles** the tower's targeting priority — `first` → `last`
+  → `nearest` → `farthest` → `strongest` → `weakest` and back — each click (or press `T`).
+  The current priority is shown on the control, applies to that tower only, defaults to
+  `first`, and takes effect immediately (`specs/towers.md`). The two support auras have no
+  single target, so the control does not appear for them.
 
 Selecting a tool or tower and reading the shop and inspector is done from the build panel
 (`specs/board.md`); the board itself is where you place, select, and see range.

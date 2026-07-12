@@ -30,9 +30,32 @@ a board is a set of genuine choices, not a fixed checklist.
 - The five **damage** towers fire at their **fire rate** (shots per second) at a
   **valid** in-range unit. A unit is valid only if the tower can **see** it (it is not
   inert, or it is revealed, or the tower detects) **and** the tower's **damage type can
-  reach** it (energy cannot touch a heavy — `specs/matter.md`). The default target is
-  the valid in-range unit **furthest along** the conduit. A tower with nothing valid in
-  range **holds fire**.
+  reach** it (energy cannot touch a heavy — `specs/matter.md`). Among its valid in-range
+  units the tower chooses one by its **targeting priority** (below). A tower with nothing
+  valid in range **holds fire**.
+
+### Targeting priority (per tower)
+
+- Each **damage** tower carries its own **targeting priority**, chosen by the player and
+  changed at any time from the selected-tower inspector (`specs/controls.md`). It decides
+  **which** valid in-range unit the tower fires at (and, for a multi-target volley like the
+  Emitter's Spread branch, the **order** in which the top targets are picked). Every tower
+  **defaults to `first`**. The six priorities:
+  - **`first`** — the valid unit **furthest along** the conduit (closest to the collector).
+    The default.
+  - **`last`** — the valid unit **least far along** the conduit (nearest the inlet).
+  - **`nearest`** — the valid unit at the **shortest straight-line distance** from the
+    tower's own placed position (independent of path progress).
+  - **`farthest`** — the valid unit at the **greatest straight-line distance** from the
+    tower, still within range.
+  - **`strongest`** — the valid unit with the **most remaining hit points** (a bonded
+    cluster counts its outstanding bond pool plus the atoms it has yet to shed).
+  - **`weakest`** — the valid unit with the **fewest remaining hit points**.
+  - Ties resolve toward the unit **furthest along** the conduit, so a tower's choice is
+    deterministic. Changing priority is free and takes effect immediately; it never changes
+    what a unit is *valid* for (see/reach), only which valid unit is chosen.
+- The two **support** auras (Catalyst, Moderator) have **no** targeting priority — they
+  affect **every** valid unit in range at once — so the control does not apply to them.
 - **The damage towers aim.** A damage tower's **head rotates to face the unit it is
   firing at** and keeps its last heading while it holds fire. Its sprite is authored so
   the head turns independently of a fixed base (`specs/assets.md`). The two support

@@ -149,6 +149,10 @@ async function main(): Promise<void> {
       case "sell":
         game.sellSelected();
         break;
+      case "targeting":
+        // Cycle the selected damage tower's targeting priority (specs/controls.md).
+        game.cycleTargetingSelected();
+        break;
       case "startRound":
         game.startRound();
         break;
@@ -220,6 +224,11 @@ async function main(): Promise<void> {
       }
       if (lower === "s") {
         game.sellSelected();
+        return;
+      }
+      if (lower === "t") {
+        // Cycle the selected damage tower's targeting priority (specs/controls.md).
+        game.cycleTargetingSelected();
         return;
       }
       if (k === "Escape") {
