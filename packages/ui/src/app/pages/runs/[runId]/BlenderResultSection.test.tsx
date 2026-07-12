@@ -19,16 +19,19 @@ vi.mock("./BlenderCharacterViewer", () => ({
     url,
     animationName,
     loop,
+    dofValues = {},
   }: {
     url: string;
     animationName: string | null;
     loop: boolean;
+    dofValues?: Record<string, number>;
   }) => (
     <div
       data-testid="blender-viewer"
       data-url={url}
       data-animation={animationName ?? ""}
       data-loop={String(loop)}
+      data-dofs={JSON.stringify(dofValues)}
     />
   ),
 }));
@@ -84,7 +87,9 @@ describe("BlenderResultSection", () => {
 
     // Every required animation is offered in the picker.
     for (const name of ["idle", "run", "fire"]) {
-      expect(screen.getByRole("button", { name: new RegExp("^" + name) })).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: new RegExp("^" + name) }),
+      ).toBeTruthy();
     }
 
     // The auto-play idle drives the viewer on mount, playing the emitted glTF, looping.
@@ -121,5 +126,85 @@ describe("BlenderResultSection", () => {
     const img = screen.getByRole("img");
     expect(img.getAttribute("src")).toBe("asset/preview-0.png");
     expect(screen.getByRole("button", { name: /^idle/ })).toBeTruthy();
+  });
+
+  it("renders a static prop with no animation picker", async () => {
+    // A `blender-prop` is static: not skinned, no `[model]` animations.
+    await act(async () => {
+      render(
+        <BlenderResultSection view={view({ skinned: false, model: null })} />,
+      );
+    });
+
+    // It reads as a prop, offers no animation buttons, and drives the viewer with no clip.
+    expect(screen.getByRole("heading", { name: "Blender prop" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^idle/ })).toBeNull();
+    const viewer = screen.getByTestId("blender-viewer");
+    expect(viewer.getAttribute("data-url")).toBe("asset/mesh-0.glb");
+    expect(viewer.getAttribute("data-animation")).toBe("");
+  });
+
+  it("renders a rigid mechanism with a native-animation picker", async () => {
+    // A `blender-mechanism` is animated but not skinned: it plays baked glTF
+    // node-hierarchy clips through the same native player.
+    await act(async () => {
+      render(<BlenderResultSection view={view({ skinned: false })} />);
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Blender mechanism" }),
+    ).toBeTruthy();
+    const viewer = screen.getByTestId("blender-viewer");
+    expect(viewer.getAttribute("data-animation")).toBe("idle");
+    expect(screen.getByRole("button", { name: /^fire/ })).toBeTruthy();
+  });
+
+  it("drives required caller DOFs live from the review sliders", async () => {
+    // A turret exposes a `turret_yaw` caller DOF (a rotation about y a game aims). The
+    // section renders a slider defaulted to `rest` and drives the viewer's dofValues live.
+    const turret: ModelSpec = {
+      parts: [],
+      joints: [
+        {
+          name: "turret_yaw",
+          part: "turret_yaw",
+          kind: "rotation",
+          axis: "y",
+          pivot: [0, 0, 0],
+          min: -1,
+          max: 1,
+          rest: 0,
+          drive: "caller",
+        },
+      ],
+      animations: MODEL.animations,
+    };
+    await act(async () => {
+      render(
+        <BlenderResultSection view={view({ skinned: false, model: turret })} />,
+      );
+    });
+
+    // The DOF starts at its rest value and reaches the viewer.
+    const slider = screen.getByRole("slider", { name: /turret_yaw/ });
+    expect(
+      JSON.parse(
+        screen.getByTestId("blender-viewer").getAttribute("data-dofs")!,
+      ),
+    ).toEqual({
+      turret_yaw: 0,
+    });
+
+    // Aiming the slider drives the viewer live — exactly as a game sets the DOF.
+    await act(async () => {
+      fireEvent.change(slider, { target: { value: "0.5" } });
+    });
+    expect(
+      JSON.parse(
+        screen.getByTestId("blender-viewer").getAttribute("data-dofs")!,
+      ),
+    ).toEqual({
+      turret_yaw: 0.5,
+    });
   });
 });

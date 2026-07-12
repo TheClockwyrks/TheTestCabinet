@@ -236,7 +236,9 @@ fn run_image_override_envs_is_exhaustive() {
             | AssetKind::SfxSynth
             | AssetKind::SfxSample
             | AssetKind::Music
-            | AssetKind::BlenderCharacter => {}
+            | AssetKind::BlenderCharacter
+            | AssetKind::BlenderProp
+            | AssetKind::BlenderMechanism => {}
         }
     }
 
@@ -262,6 +264,8 @@ fn run_image_override_envs_is_exhaustive() {
         AssetKind::SfxSample,
         AssetKind::Music,
         AssetKind::BlenderCharacter,
+        AssetKind::BlenderProp,
+        AssetKind::BlenderMechanism,
     ];
 
     // The complete set of override envs every image can resolve: the four

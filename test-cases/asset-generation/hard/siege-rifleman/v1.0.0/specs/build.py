@@ -41,7 +41,8 @@ def load_config():
 
 config = load_config()
 BOUNDS = config["bounds"]                       # {"width": x, "height": y, "depth": z}
-REQUIRED_ANIMATIONS = config["animations"]      # e.g. ["idle", "run", "fire", ...]
+REQUIRED_ANIMATIONS = config["animations"]      # [{"name": "idle", "loop": true, ...}, ...]
+REQUIRED_JOINTS = config["joints"]              # [{"name": "aim_pitch", "axis": "x", ...}, ...]
 
 
 # --- Start from an empty scene ----------------------------------------------
@@ -76,11 +77,15 @@ def build_armature():
 
     TODO: lay out the bone hierarchy an upright, running, firing soldier needs
     (pelvis/spine, head, arms, legs...). You invent the bones, joints, and pivots.
-    You MUST also add an empty `weapon_socket` bone parented to the right hand —
-    it gets NO vertex influence and marks where the game hangs the rifle. Return
-    the armature Object.
+    You MUST also add:
+      * an empty `weapon_socket` bone parented to the right hand — it gets NO vertex
+        influence and marks where the game hangs the rifle; and
+      * an **aim** bone in the upper spine/chest that the head, arms, and weapon socket
+        descend from, so a game can pitch the soldier's aim up and down by rotating it
+        (the `aim_pitch` caller DOF — see tag_interface).
+    Return the armature Object.
     """
-    raise NotImplementedError("TODO: build the armature, including weapon_socket")
+    raise NotImplementedError("TODO: build the armature, including weapon_socket + aim bone")
 
 
 # --- 3. Skin weights --------------------------------------------------------
@@ -95,14 +100,44 @@ def bind_skin_weights(mesh_obj, armature_obj):
     raise NotImplementedError("TODO: bind skin weights")
 
 
-# --- 4. Animations ----------------------------------------------------------
+# --- 4. The game-facing procedural interface --------------------------------
+def tag_interface(armature_obj):
+    """Expose the runtime-drivable interface so a GAME can use the character.
+
+    A game plays the six clips by name (that already works — see author_animation),
+    but it also needs to (a) AIM the soldier and (b) MOUNT a weapon. Both travel in the
+    emitted glTF as node `extras` (via Blender custom properties + `export_extras`):
+
+      * For each caller DOF in REQUIRED_JOINTS (here, `aim_pitch`), tag the bone the game
+        drives — the upper-spine/chest **aim** bone — with a `tcab_joint` custom property
+        so a game finds it by name and clamps its rotation to [min, max]:
+
+            aim_bone["tcab_joint"] = {
+                "name": joint["name"], "kind": joint["kind"], "axis": joint["axis"],
+                "min": joint["min"], "max": joint["max"], "rest": joint["rest"],  # radians
+            }
+
+        Axis is in the EMITTED Y-up glTF frame (pitch is about "x"). Build the bone so
+        the head, arms, and weapon socket ride it and its rest pose is the DOF's `rest`.
+      * Tag the `weapon_socket` bone so a game discovers the attach point by name:
+
+            socket_bone["tcab_socket"] = "weapon_socket"
+
+    TODO: set these custom properties on the relevant bones. (Set them on the Bone /
+    PoseBone data so `export_extras` writes them into the bone node's glTF `extras`.)
+    """
+    raise NotImplementedError("TODO: tag aim_pitch + weapon_socket into the glTF extras")
+
+
+# --- 5. Animations ----------------------------------------------------------
 def author_animation(name):
-    """Author ONE required animation as a Blender Action of F-curve keyframes.
+    """Author ONE required animation CLIP as a Blender Action of F-curve keyframes.
 
     TODO: create an Action named `name` and key the pose bones to realize it, in
     place (the run cycle strides on the spot). See specs/brief.md for what each of
     idle / run / fire / reload / hit / death must read as. Ease the keys so the
-    soldier carries weight. Set loop/hold semantics per the brief.
+    soldier carries weight. Set loop/hold semantics per the brief. These are the clips
+    a game PLAYS by name; do NOT bake the `aim_pitch` DOF into them (the game drives it).
     """
     raise NotImplementedError(f"TODO: author animation {name!r}")
 
@@ -112,15 +147,17 @@ clear_scene()
 mesh_obj = build_body_mesh()
 armature_obj = build_armature()
 bind_skin_weights(mesh_obj, armature_obj)
-for anim_name in REQUIRED_ANIMATIONS:
-    author_animation(anim_name)
+tag_interface(armature_obj)
+for anim in REQUIRED_ANIMATIONS:
+    author_animation(anim["name"])
 
 
 # --- Export -----------------------------------------------------------------
 # The container provides `tcab_blend_export`: it runs bpy.ops.export_scene.gltf
-# (GLB, export_skins + export_animations) to write character.glb and renders the
-# model.png preview, using the output paths from the config. You must reach this
-# call for the run to emit anything.
+# (GLB, export_skins + export_animations + export_extras) to write character.glb and
+# renders the model.png preview, using the output paths from the config. Your skin and
+# clips travel in the glTF, and your `tcab_joint` / `tcab_socket` custom properties export
+# into node `extras` as the game-facing interface. You must reach this call to emit anything.
 import tcab_blend_export
 
 tcab_blend_export.export(config)

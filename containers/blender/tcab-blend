@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# tcab-blend — The Test Cabinet Blender character runner.
+# tcab-blend — The Test Cabinet Blender runner (character / prop / mechanism).
 #
-# It executes the model's `build.py` under HEADLESS Blender, which builds the character
-# (mesh + armature + skin weights + one Action per required animation) and then calls the
-# bundled `tcab_blend_export.export(config)` helper to emit `character.glb` (a skinned,
-# animated glTF 2.0) and render the preview `model.png`.
+# It executes the model's `build.py` under HEADLESS Blender, which builds the asset —
+# a skinned character (mesh + armature + weights + Actions), a rigidly-articulated
+# mechanism (parented objects + node-hierarchy Actions), or a static prop (just geometry)
+# — and then calls the bundled `tcab_blend_export.export(config)` helper to emit the
+# native glTF (`character.glb` or `model.glb`, per the config) and render `model.png`.
 #
-# It is the ONLY sanctioned build path for a `blender-character` run: the emitted
-# `character.glb` is what the validator decodes and a reviewer judges, and the validator
-# re-runs this same command on `build.py` for provenance. Anything produced outside it is
-# discarded.
+# It is the ONLY sanctioned build path for a Blender run: the emitted glTF is what the
+# validator decodes and a reviewer judges, and the validator re-runs this same command on
+# `build.py` for provenance. Anything produced outside it is discarded.
 #
 # Usage:
 #   tcab-blend [CONFIG]     run build.py; CONFIG defaults to ./blender.config.json
@@ -21,7 +21,7 @@
 set -euo pipefail
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-	sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 	exit 0
 fi
 

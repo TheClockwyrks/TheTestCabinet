@@ -204,15 +204,24 @@ export function isAudioAssetKind(kind: AssetKind | null | undefined): boolean {
   return kind != null && AUDIO_ASSET_KINDS.has(kind);
 }
 
-/** Whether an asset kind is a **Blender character** (`blender-character`) — a
- * rigged, animated skinned character authored by driving headless Blender, emitted
- * as a self-contained skinned + animated glTF. Its own catalog family: not a
- * voxel-family kind (it is a real mesh, not a voxel field) even though it, too,
- * renders in 3D. An absent kind reads as false. */
+// The Blender asset kinds. Mirrors `AssetKind::is_blender` on the Rust side: the
+// skinned character, the static prop, and the rigidly-articulated mechanism — all
+// authored by driving headless Blender and emitted as a self-contained native glTF.
+const BLENDER_ASSET_KINDS: ReadonlySet<AssetKind> = new Set<AssetKind>([
+  "blender-character",
+  "blender-prop",
+  "blender-mechanism",
+]);
+
+/** Whether an asset kind is a **Blender** kind (`blender-character`/`blender-prop`/
+ * `blender-mechanism`) — authored by driving headless Blender and emitted as a
+ * self-contained native glTF. Its own catalog family: not a voxel-family kind (it is a
+ * real mesh, not a voxel field) even though it, too, renders in 3D. An absent kind reads
+ * as false. */
 export function isBlenderAssetKind(
   kind: AssetKind | null | undefined,
 ): boolean {
-  return kind === "blender-character";
+  return kind != null && BLENDER_ASSET_KINDS.has(kind);
 }
 
 export interface VersionInfo {

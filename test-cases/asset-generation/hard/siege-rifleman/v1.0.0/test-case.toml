@@ -117,6 +117,23 @@ name = "death"
 loop = false
 auto_play = false
 
+# The CALLER JOINT — the runtime-drivable DOF a game sets each frame to make the soldier
+# AIM up and down (an FPS pitches its ally's upper body toward a target). Unlike the six
+# clips above (which the game PLAYS by name), a caller DOF is what the game DRIVES directly.
+# The model exposes it by building an aim bone/pivot (the upper spine/chest, so the head,
+# arms, and weapon socket ride it) and tagging that node's glTF `extras` with a `tcab_joint`
+# descriptor ({name, kind, axis, min, max, rest}), so a game finds it by name and clamps it.
+# Axis is named in the EMITTED Y-up glTF frame: pitch (nodding up/down) is about the X axis.
+# Limits here are DEGREES (converted to radians in the emitted asset). A caller DOF is NOT
+# animated by the clips; the game overlays it on top of whatever clip is playing.
+[[model.joint]]
+name = "aim_pitch"
+kind = "rotation"
+axis = "x"
+min = -40.0
+max = 40.0
+rest = 0.0
+
 # The self-contained brief, seeded for the run (dest defaults to source).
 [[spec]]
 source = "specs/brief.md"
@@ -227,3 +244,16 @@ there) with a clear silhouette, no out-of-palette colors, and no stray surface d
 the body."""
 weight = 1
 domain = "fidelity"
+
+[[review_item]]
+id = "runtime-aim-and-socket"
+title = "A game can aim it and mount a weapon"
+text = """
+The character is usable by a game at runtime, not just a bag of clips: it exposes an \
+`aim_pitch` caller DOF (an upper-body/chest pitch about the X axis) so a game can point the \
+soldier up and down at a target, and its empty `weapon_socket` bone is a discoverable attach \
+point (in the right hand) where a game hangs a separate weapon. In the review viewer, \
+dragging the `aim_pitch` slider pitches the upper body — head, arms, and the weapon socket \
+riding with it — smoothly and within a believable range, without tearing the skin."""
+weight = 1
+domain = "deformation"

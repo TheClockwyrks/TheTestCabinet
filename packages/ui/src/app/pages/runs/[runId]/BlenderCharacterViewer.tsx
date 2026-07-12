@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useAnimations, useGLTF } from "@react-three/drei";
 import {
   Box3,
   LoopOnce,
   LoopRepeat,
+  Quaternion,
   Vector3,
   type AnimationClip,
   type Group,
+  type Object3D,
 } from "three";
+import type { AxisSpec, JointSpec } from "@test-cabinet/run-record";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import {
   AMBIENT_INTENSITY,
@@ -21,6 +24,45 @@ import {
 } from "./voxelScene";
 import { useViewportWheelLock } from "./useViewportWheelLock";
 import type { VoxelViewMode } from "./VoxelViewer";
+
+/** Stable empty defaults, so a viewer with no procedural interface (the common case, and
+ * every prop) never re-runs the DOF effects on a fresh literal each render. */
+const EMPTY_DOFS: JointSpec[] = [];
+const EMPTY_DOF_VALUES: Record<string, number> = {};
+
+/** The unit vector for a caller DOF's axis, in the emitted glTF frame (Y-up). A DOF is
+ * applied about the driven node's **local** axis, so an off-upright mount still turns
+ * correctly. */
+const AXIS_UNIT: Record<AxisSpec, Vector3> = {
+  x: new Vector3(1, 0, 0),
+  y: new Vector3(0, 1, 0),
+  z: new Vector3(0, 0, 1),
+};
+
+/** One caller DOF resolved against the loaded scene: the node it drives, that node's
+ * authored rest transform (captured once), and the joint contract (axis/kind/rest). */
+interface ResolvedDof {
+  node: Object3D;
+  baseQuat: Quaternion;
+  basePos: Vector3;
+  joint: JointSpec;
+}
+
+/** Find the node a caller DOF drives: the one whose `extras.tcab_joint` name matches
+ * (surfaced by the glTF loader as `userData.tcab_joint`), falling back to a node named
+ * for the DOF. Returns null when the model exposed no matching node (the validator has
+ * already recorded that contract gap). */
+function findDofNode(root: Object3D, joint: JointSpec): Object3D | null {
+  let byTag: Object3D | null = null;
+  let byName: Object3D | null = null;
+  root.traverse((obj) => {
+    const tag = (obj.userData as { tcab_joint?: { name?: string } } | undefined)
+      ?.tcab_joint;
+    if (tag?.name === joint.name && !byTag) byTag = obj;
+    if (obj.name === joint.name && !byName) byName = obj;
+  });
+  return byTag ?? byName;
+}
 
 /**
  * The scene contents inside the {@link Canvas}: the cloned character (recentered to the
@@ -41,6 +83,8 @@ function Character({
   far,
   animationName,
   loop,
+  callerDofs,
+  dofValues,
 }: {
   cloned: Group;
   animations: AnimationClip[];
@@ -49,10 +93,52 @@ function Character({
   far: number;
   animationName: string | null;
   loop: boolean;
+  callerDofs: JointSpec[];
+  dofValues: Record<string, number>;
 }) {
   const rootRef = useRef<Group>(cloned);
   rootRef.current = cloned;
   const { actions } = useAnimations(animations, rootRef);
+
+  // Resolve each caller DOF to the node it drives and snapshot that node's authored rest
+  // transform once, so the runtime value is applied as a delta from rest. Rebuilt only
+  // when the model (clone) or the DOF set changes.
+  const resolvedDofs = useMemo<ResolvedDof[]>(() => {
+    return callerDofs
+      .map((joint) => {
+        const node = findDofNode(cloned, joint);
+        if (!node) return null;
+        return {
+          node,
+          baseQuat: node.quaternion.clone(),
+          basePos: node.position.clone(),
+          joint,
+        } satisfies ResolvedDof;
+      })
+      .filter((d): d is ResolvedDof => d !== null);
+  }, [cloned, callerDofs]);
+
+  // Drive the caller DOFs every frame, AFTER the animation mixer has posed the clip — a
+  // game aiming a turret sets these from its own state, exactly this way. A caller DOF
+  // node is not touched by the required clips (deploy/fire/stow don't move the yaw), so
+  // the two never fight. The value is the absolute DOF value; the delta from `rest` is
+  // applied about the node's LOCAL axis (rotation) or along it (translation).
+  useFrame(() => {
+    for (const { node, baseQuat, basePos, joint } of resolvedDofs) {
+      const value = dofValues[joint.name] ?? joint.rest;
+      const delta = value - joint.rest;
+      const axis = AXIS_UNIT[joint.axis];
+      if (joint.kind === "rotation") {
+        node.quaternion
+          .copy(baseQuat)
+          .multiply(new Quaternion().setFromAxisAngle(axis, delta));
+      } else {
+        node.position
+          .copy(basePos)
+          .add(axis.clone().multiplyScalar(delta).applyQuaternion(baseQuat));
+      }
+    }
+  });
 
   // Place the camera at the raised 3/4 view the rest of the 3D family uses and aim the
   // orbit target at the character (now recentered to the origin), so the first frame
@@ -101,12 +187,15 @@ function Character({
 }
 
 /**
- * Interactive 3D view of a produced **Blender character** (`blender-character`): the
- * emitted skinned + animated glTF, loaded whole and played through a native glTF
- * animation player. Recenters the character to the origin and frames it from a raised
- * 3/4 view (the shared {@link framingFromBounds}/{@link cameraPosition}, so it matches
- * the voxel/skinned viewers) then orbits it; the selected animation (or the idle it
- * auto-plays) drives the baked clips.
+ * Interactive 3D view of a produced **Blender** asset (`blender-character`/`blender-prop`/
+ * `blender-mechanism`): the emitted native glTF, loaded whole and played through a native
+ * glTF animation player. Serves all three members — a skinned character, a rigidly-
+ * articulated mechanism (node-hierarchy clips), and a static prop (no clips: `mode`
+ * `auto-rotate` turntables it). Recenters the model to the origin and frames it from a
+ * raised 3/4 view (the shared {@link framingFromBounds}/{@link cameraPosition}, so it
+ * matches the voxel/skinned viewers) then orbits it; the selected animation (or the idle
+ * it auto-plays) drives the baked clips. `SkeletonUtils.clone` deep-clones a skinned or a
+ * plain object graph alike, so the same path serves the unrigged prop.
  *
  * Default export so it can be `React.lazy`-loaded behind a WebGL/reduced-motion gate
  * (see {@link BlenderResultSection}). Mirrors {@link SkinnedVoxelViewer} for the
@@ -120,6 +209,8 @@ export default function BlenderCharacterViewer({
   enableZoom,
   height = 320,
   label,
+  callerDofs = EMPTY_DOFS,
+  dofValues = EMPTY_DOF_VALUES,
 }: {
   /** Loadable URL of the emitted `character.glb`. */
   url: string;
@@ -135,6 +226,12 @@ export default function BlenderCharacterViewer({
   height?: number;
   /** Accessible name for the canvas. */
   label: string;
+  /** The case's required **caller DOFs** (the game-facing procedural joints), driven
+   * live from {@link dofValues}. Empty for a prop / a case with no procedural interface. */
+  callerDofs?: JointSpec[];
+  /** The current value of each caller DOF by name (radians for a rotation, world units
+   * for a translation). Missing entries hold at the joint's `rest`. */
+  dofValues?: Record<string, number>;
 }) {
   // When zoom is on, keep the wheel from scrolling the page while it zooms the camera.
   const containerRef = useViewportWheelLock<HTMLDivElement>(
@@ -206,6 +303,8 @@ export default function BlenderCharacterViewer({
           far={far}
           animationName={animationName}
           loop={loop}
+          callerDofs={callerDofs}
+          dofValues={dofValues}
         />
         <OrbitControls
           makeDefault

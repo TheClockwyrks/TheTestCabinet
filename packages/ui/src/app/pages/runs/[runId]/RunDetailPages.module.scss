@@ -588,6 +588,34 @@
   color: t.$color-text-muted;
 }
 
+// The Blender caller-DOF ("Game controls") panel: a stack of range sliders beneath the
+// animation picker, each driving one runtime-drivable joint (turret_yaw, aim_pitch) live
+// in the viewer — the review-side proof the emitted glTF is game-controllable.
+.blenderDofControls {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-top: t.$space-sm;
+  padding-top: t.$space-sm;
+  border-top: t.$border-hairline solid t.$color-border;
+  min-width: 0;
+}
+
+.blenderDof {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  input[type="range"] {
+    display: block;
+    inline-size: 100%;
+    min-inline-size: 0;
+    box-sizing: border-box;
+    margin: 0;
+  }
+}
+
 // The active caller joint's slider, shown beneath the picker so posing a joint sits
 // with the control that selected it.
 .voxelSlider {

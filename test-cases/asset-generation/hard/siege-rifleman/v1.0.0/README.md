@@ -74,7 +74,22 @@ the model lays down the F-curve keyframes in a Blender Action at run time. The s
   folds, the body collapses and holds limp on the ground.
 
 The model may add its own extra bones, joints, and animations on top, but must not
-drop or contradict the required six.
+drop or contradict the required six. A game **plays these clips by name** (triggering
+`reload`, `fire`, etc. on demand) — native to the emitted glTF.
+
+## The runtime interface — aim and arm
+
+Beyond the clips, the case fixes the **procedural interface** a game drives, so the
+character is actually usable and not just a bag of clips. Both travel in the emitted
+glTF as node `extras` (Blender custom properties + `export_extras` — no sidecar):
+
+- **`aim_pitch`** — a required `[[model.joint]]` **caller DOF**: the runtime-drivable
+  joint a game sets each frame to pitch the soldier's aim up/down (a rotation about the
+  glTF-frame `x` axis, ±40°). The model builds an aim bone in the upper spine/chest —
+  carrying the head, arms, and weapon socket — and tags it `tcab_joint`, so a game finds
+  it by name and clamps it. In the review viewer a slider aims it live.
+- **`weapon_socket`** — the empty attach bone (right hand), tagged `tcab_socket`, so a
+  game discovers the mount point by name and hangs a separate rifle there.
 
 ## Palette
 
@@ -109,17 +124,22 @@ The `character.glb` the run emits is the authoritative output. Validation is
 
 1. `character.glb` exists and is a well-formed GLB.
 2. It carries a **skin** and at least one mesh (a skinned character is present).
-3. The glTF `animations` are **reconciled** against the required set — each
+3. The glTF `animations` are **reconciled** against the required clip set — each
    required animation must be present and actually animating; a gap is recorded as
    a zero-scored contract note rather than crashing the run.
-4. **Provenance re-run**: `tcab-blend` is re-run on the seeded `build.py` in a
-   clean environment and the re-exported glb's summary (animation-name set, mesh /
-   skin counts) is compared to the run's `character.glb`; divergence is a recorded
-   note (the Blender analogue of the sprite kinds' cheat-divergence), and it
+4. The **caller DOFs** are reconciled: each required `[[model.joint]]` (`aim_pitch`)
+   must be exposed as a node whose `extras.tcab_joint` carries that name with the right
+   kind and axis, so a game can find and drive it. A missing/mis-typed DOF is a
+   recorded contract note (not gated).
+5. **Provenance re-run**: `tcab-blend` is re-run on the seeded `build.py` in a
+   clean environment and the re-exported glb's summary (animation-name set, caller-DOF
+   set, mesh / skin counts) is compared to the run's `character.glb`; divergence is a
+   recorded note (the Blender analogue of the sprite kinds' cheat-divergence), and it
    degrades gracefully if the runner or Blender is absent.
 
-The emitted glTF is rendered and posed in the browser by linear-blend skinning, and
-a reviewer judges it against the brief.
+The emitted glTF is rendered and posed in the browser by linear-blend skinning; the
+reviewer plays each clip and drives the `aim_pitch` DOF with a slider (aiming the
+soldier live, as a game would), and judges it against the brief.
 
 ## Variants
 

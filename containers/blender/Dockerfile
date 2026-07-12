@@ -1,9 +1,11 @@
-# The Blender character run-container image for The Test Cabinet.
+# The Blender run-container image for The Test Cabinet.
 #
-# Every `blender-character` asset-generation run executes in this one image: headless
-# Blender plus the `tcab-blend` runner — the tool a Blender character run uses to build a
-# skinned, rigged, animated character by writing a `build.py` (a `bpy` script) and
-# exporting a standard glTF (see the asset-generation docs under
+# Every Blender asset-generation run executes in this one image — `blender-character`
+# (a skinned, animated character), `blender-prop` (a static hard-surface model), and
+# `blender-mechanism` (a rigidly-articulated model): headless Blender plus the
+# `tcab-blend` runner — the tool a Blender run uses to build its asset by writing a
+# `build.py` (a `bpy` script) and exporting a standard native glTF (see the
+# asset-generation docs under
 # `apps/docs/src/content/docs/testing/asset-generation/blender-binaries.md`).
 #
 # UNLIKE EVERY OTHER RUN IMAGE, this one is NOT built `FROM` the shared base image. The

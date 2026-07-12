@@ -450,19 +450,20 @@ export interface VoxelResultView {
    */
   skinned: boolean;
   /**
-   * Whether this is a **Blender character** run (`blender-character`): the emitted
-   * mesh is a self-contained skinned + animated glTF whose animations are baked into
-   * the file. A Blender run is also `skinned`, but the viewer loads its glTF with a
-   * native glTF player (skeleton + baked clips) rather than posing the mesh from an
-   * inline `rig.json`. `false` for every non-Blender run.
+   * Whether this is a **Blender** run (`blender-character`/`blender-prop`/
+   * `blender-mechanism`): the emitted mesh is a self-contained native glTF whose rig and
+   * animations (if any) are baked into the file. The viewer loads its glTF with a native
+   * glTF player (skeleton and/or baked clips) rather than posing the mesh from an inline
+   * `rig.json`. A character is additionally `skinned`; a static prop and a rigid
+   * mechanism are not. `false` for every non-Blender run.
    */
   blender: boolean;
   /**
-   * The single skinned `mesh.glb` a skinned run emits (the first — and only —
-   * part's mesh), or null for a non-skinned run (or when the host cannot serve it).
-   * Decoded with `parseSkinnedGlb` into the {@link SkinnedMesh} the skinned viewer
-   * poses. For a Blender run this is the emitted `character.glb`, loaded whole by the
-   * native glTF player instead.
+   * The single `.glb` the native/skinned viewer loads whole (the first — and only —
+   * part's mesh), or null otherwise (or when the host cannot serve it). For a skinned
+   * run it is decoded with `parseSkinnedGlb` into the {@link SkinnedMesh} the skinned
+   * viewer poses; for ANY Blender run (character/prop/mechanism) it is the emitted native
+   * glTF (`character.glb` or `model.glb`), loaded whole by the native glTF player.
    */
   skinnedMeshUrl: string | null;
   /**
@@ -721,8 +722,14 @@ export function GalleryDataProvider({
   children: ReactNode;
 }) {
   const full = useMemo<GalleryData>(() => {
-    const { writeups, reviews, proofMediaUrl, assetMediaUrl, testCases, models } =
-      value;
+    const {
+      writeups,
+      reviews,
+      proofMediaUrl,
+      assetMediaUrl,
+      testCases,
+      models,
+    } = value;
     return {
       ...value,
       findReview(runId, override) {
@@ -742,7 +749,10 @@ export function GalleryDataProvider({
       },
       modelForSlug(slug) {
         return models.find(
-          (model) => model.slug === slug || model.modelIds.includes(slug) || model.aliases.includes(slug),
+          (model) =>
+            model.slug === slug ||
+            model.modelIds.includes(slug) ||
+            model.aliases.includes(slug),
         );
       },
       reviewsFor(runId) {
@@ -828,8 +838,10 @@ export function GalleryDataProvider({
         // single part's `.glb` — the viewer decodes and drives by linear-blend
         // skinning rather than posing per-part meshes.
         const skinned = voxel.skinned ?? false;
-        // A Blender character is skinned but carries its animations baked into the
-        // emitted glTF, so the viewer loads it whole with a native glTF player.
+        // A Blender run (`blender-character`/`blender-prop`/`blender-mechanism`) carries
+        // its rig/animations baked into the emitted native glTF, so the viewer loads it
+        // whole with a native glTF player. A character is additionally `skinned`; a prop
+        // (static) and mechanism (rigid) are not.
         const blender = voxel.blender ?? false;
         return {
           // A static model declares neither the required nor the produced rig; an
@@ -837,7 +849,11 @@ export function GalleryDataProvider({
           animated,
           skinned,
           blender,
-          skinnedMeshUrl: skinned ? (parts[0]?.meshUrl ?? null) : null,
+          // The single emitted `.glb` the native/skinned viewer loads whole: a skinned
+          // run's continuous mesh, or ANY Blender run's native glTF (character/prop/
+          // mechanism), which is not flagged `skinned` for a prop/mechanism.
+          skinnedMeshUrl:
+            skinned || blender ? (parts[0]?.meshUrl ?? null) : null,
           rig: voxel.rig ?? null,
           model: voxel.model ?? null,
           parts,

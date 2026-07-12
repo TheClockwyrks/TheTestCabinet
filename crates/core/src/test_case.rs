@@ -497,7 +497,10 @@ struct ManifestVoxel {
 /// at run time the model authors each required animation's motion and may add
 /// further parts, joints, and animations of its own (recorded in `rig.json`) beyond
 /// what this table requires.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+// `ManifestModel` owns `ManifestJoint`, which carries `f64` limit fields and so cannot be
+// `Eq`; the manifest structs are only ever deserialized and resolved, never compared, so
+// `PartialEq` alone suffices.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 struct ManifestModel {
     /// The required animation declarations, as repeated `[[model.animation]]`
     /// tables — the animations the model must author. A case declares **only**
@@ -506,6 +509,38 @@ struct ManifestModel {
     /// joints, and F-curve motion that realize it entirely to the model.
     #[serde(default, rename = "animation")]
     animation: Vec<ManifestAnimation>,
+    /// The required **caller joints**, as repeated `[[model.joint]]` tables — the
+    /// game-facing procedural DOFs a consuming game drives at runtime (a turret's
+    /// `turret_yaw`, a character's `aim_pitch`). Optional. Used today by the **Blender**
+    /// kinds, whose model tags the driven glTF node's `extras` with the DOF descriptor so
+    /// the interface travels in the emitted glTF itself (see
+    /// [`crate::validator`]); the validator reconciles the emitted glTF against this set.
+    /// Empty when a case fixes no procedural interface (only animations).
+    #[serde(default, rename = "joint")]
+    joint: Vec<ManifestJoint>,
+}
+
+/// A single `[[model.joint]]` entry: one **required caller DOF** the game drives at
+/// runtime. A case fixes the DOF's **identity and range** — its `name`, whether it
+/// rotates or translates, the axis, and the `min`/`max`/`rest` limits (rotation limits in
+/// **degrees**, translation limits in world units) — and the model builds a node that
+/// realizes it and tags that node's glTF `extras` so a game can find and clamp it. Unlike
+/// an animation clip (which the game plays), a caller joint is what the game *sets* each
+/// frame from its own state.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestJoint {
+    /// Stable, unique name a game addresses this DOF by (e.g. `turret_yaw`).
+    name: String,
+    /// Whether the DOF rotates or translates the driven node.
+    kind: JointKindSpec,
+    /// The axis the DOF acts about (rotation) or along (translation).
+    axis: AxisSpec,
+    /// Minimum value — **degrees** for a rotation, world units for a translation.
+    min: f64,
+    /// Maximum value (same units as `min`).
+    max: f64,
+    /// The rest / default value, within `[min, max]` (same units as `min`).
+    rest: f64,
 }
 
 /// A single `[[model.animation]]` entry: one **required** animation the model must
@@ -1058,6 +1093,13 @@ pub const BLENDER_CONFIG_DEST: &str = "blender.config.json";
 /// validator decodes it. Not manifest-declared — core provides the path.
 pub const BLENDER_MESH_DEST: &str = "character.glb";
 
+/// The run-workspace-relative path a `blender-prop` / `blender-mechanism` run emits its
+/// native glTF to. Unlike a character (`character.glb`), a prop or mechanism is a generic
+/// game asset, so it is named `model.glb`. The `tcab-blend` runner writes it (the
+/// authoritative, judged output); the validator decodes it. Not manifest-declared — core
+/// provides the path (see [`AssetKind::blender_mesh_dest`]).
+pub const BLENDER_MODEL_MESH_DEST: &str = "model.glb";
+
 /// The run-workspace-relative path core claims for a `ui` case's emitted `ui.json`
 /// (element sizes, nine-slice insets, atlas rectangles). Auto-emitted by the binary,
 /// not manifest-declared.
@@ -1339,6 +1381,24 @@ pub enum AssetKind {
     /// an op-log replay.
     #[serde(rename = "blender-character")]
     BlenderCharacter,
+    /// A static **hard-surface prop** authored by driving headless Blender through a
+    /// `build.py` script — a weapon, crate, pickup, or emplacement. Like every Blender
+    /// kind it writes a `build.py` and runs `tcab-blend`, but it emits a **static**,
+    /// unrigged native glTF (`model.glb`): no armature, no skin, and **no animations**,
+    /// so it declares **no `[model]` table**. Reuses the `[voxel]` table as a bounding
+    /// box. Judged on the emitted glTF (a well-formed static mesh); `build.py` is the
+    /// recorded trace, re-run for provenance.
+    #[serde(rename = "blender-prop")]
+    BlenderProp,
+    /// A **rigidly-articulated mechanism** authored by driving headless Blender through a
+    /// `build.py` script — a turret, blast door, crane, or mech. It emits a native glTF
+    /// (`model.glb`) whose motion is baked as standard **glTF node-hierarchy animations**
+    /// (each part posed about its pivot by parenting, **not** skin deformation and **not**
+    /// a Test-Cabinet `rig.json`), so a game plays the clips natively. Declares a
+    /// `[voxel]` bounding box and a `[model]` table of required animations, reconciled
+    /// against the emitted glTF; `build.py` is re-run for provenance.
+    #[serde(rename = "blender-mechanism")]
+    BlenderMechanism,
 }
 
 impl AssetKind {
@@ -1400,15 +1460,54 @@ impl AssetKind {
         matches!(self, Self::McSkinned | Self::SnSkinned | Self::DcSkinned)
     }
 
-    /// Whether this kind is the **Blender** character kind (`blender-character`): a
-    /// rigged, animated skinned character authored by driving headless Blender through a
-    /// `build.py` script rather than a constrained op-log tool. It is its own category —
-    /// **not** voxel/skinned/meshed/paint/particle/audio — reusing the `[voxel]` table
-    /// as a bounding box and the `[model]` table for its required animations, but
-    /// emitting a standard skinned glTF (`character.glb`) that the validator decodes and
-    /// whose animations it reconciles. Selects the Blender resolve/seed/validate path.
+    /// Whether this kind is a **Blender** kind — the family authored by driving headless
+    /// Blender through a `build.py` script (run by `tcab-blend`) rather than a constrained
+    /// op-log tool, emitting a **native glTF** the validator decodes: the skinned
+    /// `blender-character`, the static `blender-prop`, and the rigidly-articulated
+    /// `blender-mechanism`. It is its own category — **not** voxel/skinned/meshed/paint/
+    /// particle/audio — reusing the `[voxel]` table as a bounding box (and, for the
+    /// animated members, the `[model]` table for required animations). Selects the
+    /// Blender resolve/seed/validate path and the shared `test-cabinet-blender` image. The
+    /// per-member differences (skin, animations, output filename) are drawn by
+    /// [`Self::blender_is_skinned`], [`Self::blender_is_animated`], and
+    /// [`Self::blender_mesh_dest`].
     pub fn is_blender(self) -> bool {
+        matches!(
+            self,
+            Self::BlenderCharacter | Self::BlenderProp | Self::BlenderMechanism
+        )
+    }
+
+    /// Whether this Blender kind emits a **skinned** character — one continuous mesh
+    /// bound to a skeleton and deformed by linear-blend skinning (`blender-character`).
+    /// The prop and mechanism kinds emit a static / rigidly-parented glTF with **no
+    /// skin**, so the validator does not require one and the 3D viewer does not skin.
+    /// `false` for every non-Blender kind.
+    pub fn blender_is_skinned(self) -> bool {
         matches!(self, Self::BlenderCharacter)
+    }
+
+    /// Whether this Blender kind is **animated** — it declares a `[model]` table of
+    /// required animations and its emitted glTF is reconciled against them. True for the
+    /// `blender-character` (skinned clips) and the `blender-mechanism` (rigid glTF
+    /// node-hierarchy clips); **false** for the static `blender-prop`, which declares no
+    /// `[model]` and emits no animations. `false` for every non-Blender kind.
+    pub fn blender_is_animated(self) -> bool {
+        matches!(self, Self::BlenderCharacter | Self::BlenderMechanism)
+    }
+
+    /// The run-workspace-relative path a **Blender** run emits its native glTF to. The
+    /// `blender-character` emits `character.glb`; the `blender-prop` and
+    /// `blender-mechanism` emit a generically-named [`BLENDER_MODEL_MESH_DEST`]
+    /// (`model.glb`) — a native, game-ready glTF that isn't a character. `None` for a
+    /// non-Blender kind. Shared by the seeded tool config (so the runner writes here),
+    /// manifest path-claiming, and the validator (so it reads the same path).
+    pub fn blender_mesh_dest(self) -> Option<&'static str> {
+        match self {
+            Self::BlenderCharacter => Some(BLENDER_MESH_DEST),
+            Self::BlenderProp | Self::BlenderMechanism => Some(BLENDER_MODEL_MESH_DEST),
+            _ => None,
+        }
     }
 
     /// Whether this kind is one of the surface-**meshed** kinds that composite a
@@ -1516,7 +1615,10 @@ impl AssetKind {
             Self::SfxSynth => SFX_SYNTH_CONFIG_DEST,
             Self::SfxSample => SFX_SAMPLE_CONFIG_DEST,
             Self::Music => MUSIC_CONFIG_DEST,
-            Self::BlenderCharacter => BLENDER_CONFIG_DEST,
+            // The whole Blender family reads the same `blender.config.json`.
+            Self::BlenderCharacter | Self::BlenderProp | Self::BlenderMechanism => {
+                BLENDER_CONFIG_DEST
+            }
         }
     }
 }
@@ -3483,18 +3585,20 @@ impl TestCaseCatalog {
                 )
             }
             TestType::AssetGeneration if manifest.asset_kind.is_blender() => {
-                // The Blender character kind. It reuses the `[voxel]` table as a
-                // bounding box (the volume the character must fit within) and the
-                // `[model]` table for its required animations, but it is authored by
-                // driving headless Blender through a `build.py` script rather than a
-                // constrained op-log tool: `[tool].binary` is the `tcab-blend` runner
-                // and `[output].actions` names the authored script (re-run for
-                // provenance), not an operation log. Both are single files — a Blender
-                // character is one mesh — so neither may carry a `{part}` token.
+                // The Blender family (`blender-character`/`blender-prop`/
+                // `blender-mechanism`). All three reuse the `[voxel]` table as a bounding
+                // box (the volume the asset must fit within) and are authored by driving
+                // headless Blender through a `build.py` script rather than a constrained
+                // op-log tool: `[tool].binary` is the `tcab-blend` runner and
+                // `[output].actions` names the authored script (re-run for provenance),
+                // not an operation log. Both are single files — a Blender run emits one
+                // glTF — so neither may carry a `{part}` token. The `[model]` table of
+                // required animations is required for the animated members (character,
+                // mechanism) and FORBIDDEN for the static prop.
                 if manifest.canvas.is_some() || manifest.sheet.is_some() {
                     return Err(invalid(
-                        "a blender-character case declares a [voxel] bounding box, not \
-                         [canvas] or [sheet]"
+                        "a Blender case declares a [voxel] bounding box, not [canvas] or \
+                         [sheet]"
                             .to_string(),
                     ));
                 }
@@ -3504,16 +3608,14 @@ impl TestCaseCatalog {
                     || manifest.audio.is_some()
                 {
                     return Err(invalid(
-                        "a blender-character case declares none of [ui], [material], \
-                         [particle], or [audio]"
+                        "a Blender case declares none of [ui], [material], [particle], or \
+                         [audio]"
                             .to_string(),
                     ));
                 }
 
                 let voxel = manifest.voxel.as_ref().ok_or_else(|| {
-                    invalid(
-                        "the [voxel] table (the character's bounding box) is required".to_string(),
-                    )
+                    invalid("the [voxel] table (the asset's bounding box) is required".to_string())
                 })?;
                 if voxel.width == 0 || voxel.height == 0 || voxel.depth == 0 {
                     return Err(invalid(
@@ -3555,7 +3657,7 @@ impl TestCaseCatalog {
                     )));
                 }
 
-                // A Blender character is a single mesh: neither the preview nor the
+                // A Blender run emits a single glTF: neither the preview nor the
                 // authored-script path may be a `{part}` template.
                 for (label, path) in [
                     ("tool.preview", &tool.preview),
@@ -3563,24 +3665,38 @@ impl TestCaseCatalog {
                 ] {
                     if path.to_string_lossy().contains(PART_TOKEN) {
                         return Err(invalid(format!(
-                            "{label} `{}` must not contain `{PART_TOKEN}` — a blender-character \
-                             case is a single mesh",
+                            "{label} `{}` must not contain `{PART_TOKEN}` — a Blender case emits \
+                             a single glTF",
                             path.display()
                         )));
                     }
                 }
 
-                // The `[model]` rig contract is required: a Blender character is
-                // inherently animated. As with the voxel-family animated kinds it fixes
-                // only the required animations by name; the skeleton and weights are the
-                // model's to invent.
-                let model = manifest.model.as_ref().ok_or_else(|| {
-                    invalid(
-                        "a blender-character case requires a [model] table of required animations"
-                            .to_string(),
-                    )
-                })?;
-                let model = resolve_model(model, &invalid)?;
+                // The `[model]` table of required animations is required for the animated
+                // Blender members (`blender-character` skinned clips, `blender-mechanism`
+                // rigid node-hierarchy clips) and FORBIDDEN for the static `blender-prop`,
+                // which emits an unrigged glTF. As with the voxel-family animated kinds it
+                // fixes only the required animations by name; the skeleton/rig and its
+                // motion are the model's to invent.
+                let model = if manifest.asset_kind.blender_is_animated() {
+                    let model = manifest.model.as_ref().ok_or_else(|| {
+                        invalid(
+                            "an animated Blender case (blender-character/blender-mechanism) \
+                             requires a [model] table of required animations"
+                                .to_string(),
+                        )
+                    })?;
+                    Some(resolve_model(model, &invalid)?)
+                } else {
+                    if manifest.model.is_some() {
+                        return Err(invalid(
+                            "a blender-prop case is static and declares no [model] table (no \
+                             animations)"
+                                .to_string(),
+                        ));
+                    }
+                    None
+                };
 
                 (
                     None,
@@ -3598,7 +3714,7 @@ impl TestCaseCatalog {
                         depth: voxel.depth,
                         background: voxel.background.clone(),
                     }),
-                    Some(model),
+                    model,
                     None,
                     None,
                     None,
@@ -4926,14 +5042,16 @@ impl TestCaseCatalog {
                     }
                     claim(PathBuf::from(MATERIAL_JSON_DEST), "material manifest")?;
                 } else if manifest.asset_kind.is_blender() {
-                    // A blender-character run has no seeded action log: `[output].actions`
-                    // names the `build.py` the model AUTHORS, seeded as the case's own
-                    // spec (its starter stub), so it is already claimed by the spec loop
-                    // above and must NOT be claimed again here. The runner produces the
-                    // preview and the emitted glTF, so claim those to keep a spec off
-                    // them.
+                    // A Blender run has no seeded action log: `[output].actions` names the
+                    // `build.py` the model AUTHORS, seeded as the case's own spec (its
+                    // starter stub), so it is already claimed by the spec loop above and
+                    // must NOT be claimed again here. The runner produces the preview and
+                    // the emitted glTF (`character.glb` for a character, `model.glb` for a
+                    // prop/mechanism), so claim those to keep a spec off them.
                     claim(tool.preview.clone(), "tool preview")?;
-                    claim(PathBuf::from(BLENDER_MESH_DEST), "mesh")?;
+                    if let Some(mesh) = manifest.asset_kind.blender_mesh_dest() {
+                        claim(PathBuf::from(mesh), "mesh")?;
+                    }
                 } else {
                     // The single-file kinds: sprite (single), static voxel/mesh, the
                     // three skinned kinds, particle, and audio.
@@ -5372,9 +5490,69 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
             tracks: Vec::new(),
         });
     }
+
+    // The required **caller joints** — the game-facing procedural DOFs (a turret's
+    // `turret_yaw`). Optional: a case that fixes no procedural interface declares none.
+    // Each resolves to a `Caller`-driven [`JointSpec`]. Rotation limits are authored in
+    // DEGREES for readability and converted to radians here (the stored/emitted/runtime
+    // unit); translation limits are world units, unchanged. The driven node is discovered
+    // at runtime by the DOF `name` (the model tags the node's glTF `extras`), so the
+    // voxel-only `part`/`pivot` fields are not meaningful here: `part` mirrors the DOF
+    // name and `pivot` is zero.
+    let mut joints: Vec<JointSpec> = Vec::with_capacity(model.joint.len());
+    for joint in &model.joint {
+        if joint.name.trim().is_empty() {
+            return Err(invalid("model joint `name` must not be empty".to_string()));
+        }
+        if joints.iter().any(|j| j.name == joint.name) {
+            return Err(invalid(format!(
+                "duplicate model joint name `{}`",
+                joint.name
+            )));
+        }
+        for (label, value) in [("min", joint.min), ("max", joint.max), ("rest", joint.rest)] {
+            if !value.is_finite() {
+                return Err(invalid(format!(
+                    "model joint `{}` {label} must be a finite number",
+                    joint.name
+                )));
+            }
+        }
+        if joint.min > joint.max {
+            return Err(invalid(format!(
+                "model joint `{}` min ({}) must not exceed max ({})",
+                joint.name, joint.min, joint.max
+            )));
+        }
+        if joint.rest < joint.min || joint.rest > joint.max {
+            return Err(invalid(format!(
+                "model joint `{}` rest ({}) must lie within [min, max] = [{}, {}]",
+                joint.name, joint.rest, joint.min, joint.max
+            )));
+        }
+        // Rotation limits are authored in degrees; store radians.
+        let convert = |value: f64| match joint.kind {
+            JointKindSpec::Rotation => value.to_radians(),
+            JointKindSpec::Translation => value,
+        };
+        joints.push(JointSpec {
+            name: joint.name.clone(),
+            part: joint.name.clone(),
+            kind: joint.kind,
+            axis: joint.axis,
+            pivot: [0, 0, 0],
+            min: convert(joint.min),
+            max: convert(joint.max),
+            rest: convert(joint.rest),
+            offset: None,
+            orient: None,
+            drive: DriveKindSpec::Caller,
+        });
+    }
+
     Ok(ModelSpec {
         parts: Vec::new(),
-        joints: Vec::new(),
+        joints,
         animations,
     })
 }

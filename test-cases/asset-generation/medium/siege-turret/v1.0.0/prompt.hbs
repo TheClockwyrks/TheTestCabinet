@@ -1,0 +1,85 @@
+Model, rig, and animate the **Warden automated defense turret**, a *Siege*
+emplacement — as a **rigidly-articulated mechanism** that fits within a
+{{voxel.width}}x{{voxel.height}}x{{voxel.depth}} bounding box, authored by driving
+**headless Blender** through its Python API. You build the turret as **separate
+parented parts** (a fixed base, a rotating yaw housing, an elevating twin-barrel
+gun), **author its animation clips** (deploy/fire/stow) as object motion, and **expose
+the caller DOFs a game aims it with** (turret_yaw, barrel_pitch) — all by writing a
+Blender Python script (`build.py`) and running it.
+
+This test measures **creativity and mechanical craft**, not instruction-following:
+the brief tells you *what the turret is* and *how it must move*, but the parts you
+build, where you place their pivots, and how you shape everything are **entirely
+yours to invent**.
+
+## Rigid, not skinned
+
+This is a **mechanism**: it articulates as **separate rigid parts pivoting about
+their joints** — the housing yaws, the gun elevates, the barrels recoil — with
+**nothing bending or deforming** the way a skinned body would. Build each moving part
+as its **own object**, **parent** it into a hierarchy (base → yaw housing →
+elevating gun → barrels), and animate by keying **object transforms** (rotation /
+location), **not** an armature and skin weights. The export bakes these into standard
+**glTF node animations** a game plays natively.
+
+## How authoring works
+
+The only sanctioned way to build the turret is to **write a Blender Python (`bpy`)
+script and run it through the `tcab-blend` runner** already on your `PATH`.
+`tcab-blend` executes your `build.py` under headless Blender
+(`blender --background --python build.py -- blender.config.json`), then exports the
+animated **`model.glb`** (a standard glTF 2.0 with your parented parts and their
+baked node animations — **no skin**) and renders the preview **`model.png`**. The
+exported `model.glb` is what is **judged**, rendered and scrubbed in a real 3D viewer
+— not the steps your script took. Anything you produce outside `tcab-blend` is
+discarded.
+
+A starter **`build.py`** is already in your workspace. It loads
+`blender.config.json` (the bounding box, the output paths, and the required
+animations), clears the scene, and marks where to build the parted hierarchy and
+each animation, then calls the bundled export helper. Fill it in with the full `bpy`
+API: build the part objects, parent them, set each part's origin at its pivot, and
+author one **Action** per animation with F-curve keyframes on the part objects'
+transforms. Carry color with vertex colors or materials so it survives the export.
+
+Run **`tcab-blend`** whenever you want to build and see your progress — read
+`model.png` after each run — and **you must run it before you finish** so
+`model.glb` is emitted (an un-exported model is scored as empty). Run
+`tcab-blend --help` for its exact usage. Build in **Blender-native space** (+Z up,
+facing -Y; the export converts to the family's +Y-up/+Z-forward glTF, so do **not**
+pre-rotate).
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Fill in `build.py` and run `tcab-blend` until `model.png` matches the brief and the
+turret is complete: a believable Warden defense turret built as separate parented
+parts that articulate rigidly about their joints. Deliver **both** game-facing
+contracts.
+
+**Animation clips** the game plays (Actions keying object transforms, eased so the
+motion carries weight):
+
+- **`deploy`** — a game-triggered one-shot: the turret comes online from a stowed
+  rest (housing rises / unfolds, gun elevates to ready).
+- **`fire`** — a game-triggered one-shot: the barrels recoil back and return, with a
+  small muzzle rise that settles.
+- **`stow`** — a game-triggered one-shot that plays **once and holds**: fold back
+  down to the stowed rest and hold it.
+
+**Caller DOFs** the game drives to aim the turret at runtime (build the node and tag
+it with a `tcab_joint` custom property so the interface exports into the glTF
+`extras` — see the brief for the exact tag):
+
+- **`turret_yaw`** — the housing traverses left/right about the vertical (`y`) axis.
+- **`barrel_pitch`** — the gun elevates up/down about a horizontal (`x`) axis.
+
+The clips must not drive the caller DOFs (the game owns the aim). **Run `tcab-blend`
+before you finish** so `model.glb` is emitted. When you are satisfied, stop: the
+emitted glTF — clips and DOF tags — is your finished submission, and your `build.py`
+is re-run afterward to confirm it reproduces the turret.

@@ -107,6 +107,16 @@
           "const": "blender-character",
           "description": "A rigged, animated **skinned character** authored by driving **headless Blender**\nthrough its Python API — the first Blender-based asset kind. The model writes a\n`build.py` (a `bpy` script) that builds the character mesh, an armature, skin\nweights, and one Action per required animation, then runs the `tcab-blend` runner\nto export a single **`character.glb`** (a standard skinned + animated glTF 2.0)\nplus a `model.png` preview. Unlike the CSG skinned kinds (`mc-skinned` …), there\nis **no operation log**: `build.py` is the recorded authoring trace, re-run for\nprovenance. Declares a `[voxel]` table (reused as the character's bounding box)\nand a `[model]` table (the required animations); judged on the emitted glTF, never\nan op-log replay.",
           "type": "string"
+        },
+        {
+          "const": "blender-prop",
+          "description": "A static **hard-surface prop** authored by driving headless Blender through a\n`build.py` script — a weapon, crate, pickup, or emplacement. Like every Blender\nkind it writes a `build.py` and runs `tcab-blend`, but it emits a **static**,\nunrigged native glTF (`model.glb`): no armature, no skin, and **no animations**,\nso it declares **no `[model]` table**. Reuses the `[voxel]` table as a bounding\nbox. Judged on the emitted glTF (a well-formed static mesh); `build.py` is the\nrecorded trace, re-run for provenance.",
+          "type": "string"
+        },
+        {
+          "const": "blender-mechanism",
+          "description": "A **rigidly-articulated mechanism** authored by driving headless Blender through a\n`build.py` script — a turret, blast door, crane, or mech. It emits a native glTF\n(`model.glb`) whose motion is baked as standard **glTF node-hierarchy animations**\n(each part posed about its pivot by parenting, **not** skin deformation and **not**\na Test-Cabinet `rig.json`), so a game plays the clips natively. Declares a\n`[voxel]` bounding box and a `[model]` table of required animations, reconciled\nagainst the emitted glTF; `build.py` is re-run for provenance.",
+          "type": "string"
         }
       ]
     },

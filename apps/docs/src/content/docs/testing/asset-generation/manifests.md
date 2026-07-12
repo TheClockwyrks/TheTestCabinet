@@ -33,8 +33,9 @@ asset_kind = "sprite"        # "sprite" (one sprite, the default) | "sprite-shee
                              # "dc-model"/"dc-animation" (meshed) — see "Voxel cases" below
                              # | a skinned character: "mc-skinned"/"sn-skinned"/"dc-skinned"
                              # — see "Skinned cases"
-                             # | a Blender-authored skinned character: "blender-character"
-                             # — see "Blender character cases"
+                             # | Blender-authored (headless Blender + tcab-blend):
+                             #   "blender-character" (skinned) | "blender-prop" (static) |
+                             #   "blender-mechanism" (rigid) — see "Blender cases"
                              # | a particle effect: "particle-2d"/"particle-3d" — see "Particle cases"
                              # | audio: "sfx-synth"/"sfx-sample"/"music" — see "Audio cases"
 
@@ -656,19 +657,29 @@ auto_play = false
   interface, and the F-curve animations) automatically; neither is manifest-declared.
   See [The skinned binaries](/testing/asset-generation/skinned-binaries/).
 
-## Blender character cases
+## Blender cases
 
-A **`blender-character`** case produces a rigged, animated [skinned
+The **Blender** kinds — **`blender-character`**, **`blender-prop`**, and
+**`blender-mechanism`** — are authored by driving **headless Blender** through its Python
+API instead of a constrained op-log tool, and each emits a **native glTF** the validator
+decodes (see [Blender binaries](/testing/asset-generation/blender-binaries/)). All three
+share one channel: the model writes a **`build.py`** (a `bpy` script) and runs the
+**`tcab-blend`** runner, which exports the glTF and a `model.png` preview. The emitted
+glTF is the authoritative, judged output; there is **no operation log** — `build.py`
+**is** the recorded authoring trace, re-run for provenance. All three reuse `[voxel]` as a
+**bounding box**. They differ in what they emit and whether they animate:
+
+| `asset_kind`         | rig                          | `[model]`   | emitted glTF    |
+| -------------------- | ---------------------------- | ----------- | --------------- |
+| `blender-character`  | skinned (armature + weights) | **required**| `character.glb` |
+| `blender-mechanism`  | rigid (parented node clips)  | **required**| `model.glb`     |
+| `blender-prop`       | none (static)                | **forbidden** | `model.glb`   |
+
+A **`blender-character`** produces a rigged, animated [skinned
 character](/testing/asset-generation/blender-binaries/) — like the CSG
-[skinned kinds](#skinned-cases), but authored by driving **headless Blender** through its
-Python API instead of a constrained op-log tool. The model writes a **`build.py`** (a
-`bpy` script) that builds the character mesh, an armature it invents, the skin weights,
-an empty `weapon_socket` bone, and one Action per required animation, then runs the
-**`tcab-blend`** runner to export a single **`character.glb`** (a standard skinned +
-animated glTF 2.0) and a `model.png` preview. The emitted glTF is the authoritative,
-judged output; there is **no operation log** — `build.py` **is** the recorded authoring
-trace, re-run for provenance. It reuses `[voxel]` as a **bounding box** and `[model]` for
-its required animations.
+[skinned kinds](#skinned-cases). Its `build.py` builds the character mesh, an armature it
+invents, the skin weights, an empty `weapon_socket` bone, and one Action per required
+animation, exporting a skinned + animated **`character.glb`**:
 
 ```toml
 asset_kind = "blender-character"
@@ -734,10 +745,31 @@ kind   = "script"          # tag it "Script" (not "Spec") on the Inputs tab
   **`kind = "script"`** so the run's **Inputs** tab tags the starter `Script` rather than
   `Spec` — a presentation-only marker that does not change how the file is seeded (see the
   [end-to-end `[[spec]]` reference](/testing/end-to-end/manifests/)).
-- **`[model]` fixes only the required animations** (each a unique `name`, a `loop` flag,
+- **`[model]` fixes the required animations** (each a unique `name`, a `loop` flag,
   and an `auto_play` flag), exactly as for the [skinned cases](#skinned-cases). The
   skeleton, the `weapon_socket` bone, the per-vertex weights, and the keyframes are all
   **model-invented** in `build.py`.
+- **`[model]` also fixes the required caller DOFs** — the runtime-drivable joints a game
+  sets each frame to *aim* the asset (a turret's `turret_yaw`, a character's `aim_pitch`)
+  — as `[[model.joint]]` entries. Each declares a `name`, a `kind` (`rotation` /
+  `translation`), an `axis` (`x`/`y`/`z`, named in the **emitted Y-up glTF frame**), and
+  `min`/`max`/`rest` limits (rotation limits in **degrees**, translation in world units).
+  The model builds the driven node and tags its glTF `extras` with a `tcab_joint`
+  descriptor (via a Blender custom property + `export_extras`), so the interface travels
+  **in the emitted glTF** — read by a game as `userData`, and driven live in the review
+  UI. `[[model.joint]]` is optional (a prop declares none); the clips a game *plays* and
+  the DOFs a game *drives* are the two halves of the game-facing contract. See [Runtime
+  control](/testing/asset-generation/blender-binaries/#runtime-control-caller-dofs-and-node-extras).
+
+  ```toml
+  [[model.joint]]
+  name = "turret_yaw"    # a game drives this by name
+  kind = "rotation"      # "rotation" | "translation"
+  axis = "y"             # in the emitted Y-up glTF frame (yaw=y, pitch=x)
+  min  = -170.0          # degrees (rotation); world units (translation)
+  max  =  170.0
+  rest =  0.0
+  ```
 - **`character.glb` and `model.png` are runner-emitted, not declared.** The skinned,
   animated glTF (`character.glb`) and the preview (`model.png`) are produced by
   `tcab-blend`, never named in the manifest.
@@ -748,6 +780,74 @@ kind   = "script"          # tag it "Script" (not "Spec") on the Inputs tab
   (see [Blender validation](/testing/asset-generation/evaluation/#blender-validation)).
 - The orchestrator seeds a **`blender.config.json`** (the bounding box, the axes, the
   output paths, and the required animation names) the runner and `build.py` read.
+
+### `blender-prop` (static) and `blender-mechanism` (rigid)
+
+The other two Blender kinds are identical in shape — `[voxel]` bounding box, `tcab-blend`
+tool, `build.py` output, the seeded starter stub — and differ from the character only as
+the table above shows:
+
+- A **`blender-prop`** is a **static** hard-surface model (a weapon, crate, pickup). It
+  declares **no `[model]` table** (it is unrigged — no armature, no animations), and its
+  `build.py` just builds geometry. The runner emits **`model.glb`** (a native, unrigged
+  glTF). The validator confirms a well-formed glTF with at least one mesh; there is **no**
+  skin requirement and no animation to reconcile.
+- A **`blender-mechanism`** is a **rigidly-articulated** model (a turret, door, crane).
+  Its `build.py` builds **separate parented parts** and authors motion as **object
+  transforms**, exported as native **glTF node-hierarchy animations** (not skin
+  deformation and not a `rig.json`). It **requires a `[model]`** table of required
+  animations, declared exactly as for the character, and emits **`model.glb`**. The
+  validator reconciles the emitted glTF's animations against the required set (as the
+  character does) but does **not** require a skin.
+
+```toml
+# A static prop: no [model], emits model.glb.
+asset_kind = "blender-prop"
+
+[voxel]
+width  = 8
+height = 16
+depth  = 48
+background = "transparent"
+
+[tool]
+binary  = "tcab-blend"
+preview = "model.png"
+
+[output]
+actions = "build.py"
+# (no [model] — a prop is static)
+```
+
+```toml
+# A rigid mechanism: [model] required (node-hierarchy clips), emits model.glb.
+asset_kind = "blender-mechanism"
+
+[voxel]
+width  = 24
+height = 30
+depth  = 24
+background = "transparent"
+
+[tool]
+binary  = "tcab-blend"
+preview = "model.png"
+
+[output]
+actions = "build.py"
+
+[model]
+
+[[model.animation]]
+name      = "idle"
+loop      = true
+auto_play = true
+
+[[model.animation]]
+name      = "fire"
+loop      = false
+auto_play = false
+```
 
 ## Particle cases
 

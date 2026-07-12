@@ -378,17 +378,29 @@ fn every_stored_manifest_preserves_its_asset_shape() {
                         "{id}: skinned meshed kind lost its [model] rig"
                     );
                 }
-                // The Blender character kind reuses both tables verbatim: `[voxel]`
-                // as the bounding box and `[model]` as the required animations (see
+                // The animated Blender kinds reuse both tables verbatim: `[voxel]` as the
+                // bounding box and `[model]` as the required animations (see
                 // `AssetKind::is_blender`). Both must survive ingest.
-                AssetKind::BlenderCharacter => {
+                AssetKind::BlenderCharacter | AssetKind::BlenderMechanism => {
                     assert!(
                         manifest.voxel.is_some(),
-                        "{id}: blender-character kind lost its [voxel] bounding box"
+                        "{id}: animated Blender kind lost its [voxel] bounding box"
                     );
                     assert!(
                         manifest.model.is_some(),
-                        "{id}: blender-character kind lost its [model] rig"
+                        "{id}: animated Blender kind lost its [model] animations"
+                    );
+                }
+                // A static Blender prop carries only the `[voxel]` bounding box; it
+                // declares no `[model]` (it is unrigged).
+                AssetKind::BlenderProp => {
+                    assert!(
+                        manifest.voxel.is_some(),
+                        "{id}: blender-prop kind lost its [voxel] bounding box"
+                    );
+                    assert!(
+                        manifest.model.is_none(),
+                        "{id}: blender-prop is static and must carry no [model]"
                     );
                 }
                 // The painted (`ui`/`material`), particle, and audio kinds each carry

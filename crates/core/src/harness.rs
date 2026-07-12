@@ -96,10 +96,11 @@ const SFX_SAMPLE_IMAGE_NAME: &str = "test-cabinet-sfx-sample";
 /// instrument bank).
 const MUSIC_IMAGE_NAME: &str = "test-cabinet-music";
 
-/// The image every `blender-character` asset-generation run executes in — a
-/// self-contained `ubuntu:26.04` image (the ONLY run image not built `FROM` the shared
-/// base) carrying headless Blender and the `tcab-blend` runner. See
-/// `containers/blender/Dockerfile` for why it is Ubuntu-based rather than base-derived.
+/// The image every **Blender** asset-generation run executes in (`blender-character`/
+/// `blender-prop`/`blender-mechanism`) — a self-contained `ubuntu:26.04` image (the ONLY
+/// run image not built `FROM` the shared base) carrying headless Blender and the
+/// `tcab-blend` runner. See `containers/blender/Dockerfile` for why it is Ubuntu-based
+/// rather than base-derived.
 const BLENDER_IMAGE_NAME: &str = "test-cabinet-blender";
 /// The name of the adversarial run-container image, used by every adversarial
 /// run. It is the base-wasm image (which supplies the Rust + `wasm32-unknown-unknown`
@@ -331,10 +332,13 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
                 name: MUSIC_IMAGE_NAME,
                 override_env: MUSIC_IMAGE_OVERRIDE_ENV,
             },
-            AssetKind::BlenderCharacter => ImageSpec {
-                name: BLENDER_IMAGE_NAME,
-                override_env: BLENDER_IMAGE_OVERRIDE_ENV,
-            },
+            // The whole Blender family shares one image (headless Blender + `tcab-blend`).
+            AssetKind::BlenderCharacter | AssetKind::BlenderProp | AssetKind::BlenderMechanism => {
+                ImageSpec {
+                    name: BLENDER_IMAGE_NAME,
+                    override_env: BLENDER_IMAGE_OVERRIDE_ENV,
+                }
+            }
         },
         TestType::Adversarial => ImageSpec {
             name: ADVERSARIAL_IMAGE_NAME,

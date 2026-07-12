@@ -1455,7 +1455,7 @@
       "properties": {
         "blender": {
           "default": false,
-          "description": "Whether this is a **Blender character** run (`blender-character`): the emitted\nmesh is a self-contained skinned + animated glTF whose animations are baked\ninto the file itself (glTF animation channels), not authored as `rig.json`\nF-curves. A Blender run is also `skinned`, but the marker tells the 3D viewer\nto load the glTF with a native glTF player (skeleton + baked clips) rather than\nposing the mesh from an inline rig. `false` for every non-Blender run.",
+          "description": "Whether this is a **Blender** run (`blender-character`/`blender-prop`/\n`blender-mechanism`): the emitted mesh is a self-contained **native glTF** whose\nrig and animations (if any) are baked into the file itself (glTF skin + animation\nchannels), not authored as a `rig.json`. The marker tells the 3D viewer to load\nthe glTF with a native glTF player (skeleton and/or baked clips) rather than\nposing the mesh from an inline rig. A `blender-character` is additionally\n`skinned`; a `blender-prop` (static) and `blender-mechanism` (rigid node-hierarchy\nanimations) are **not**. `false` for every non-Blender run.",
           "type": "boolean"
         },
         "detail": {

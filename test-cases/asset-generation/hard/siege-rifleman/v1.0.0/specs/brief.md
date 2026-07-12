@@ -143,7 +143,39 @@ rather than sliding linearly.
 The six animations are the fixed contract — produce them, by exactly these names,
 and do not contradict them (keep the legs planted under `fire`, keep `run` in
 place, hold the last pose under `death`). You may add extra bones, joints, and
-animations of your own on top; you must not drop or contradict these six.
+animations of your own on top; you must not drop or contradict these six. A game
+**plays these clips by name** (triggering `reload`, `fire`, and the rest on demand) —
+that works natively from the emitted glTF; you just have to author them.
+
+## The runtime interface — a game must be able to aim and arm it
+
+A usable character is more than a bag of clips: a game also drives it procedurally and
+mounts a weapon on it. Expose both, so they travel **inside the emitted glTF** as node
+`extras` (Blender custom properties + `export_extras` — no sidecar):
+
+- **`aim_pitch` (a caller DOF)** — the runtime-drivable joint a game **sets each frame**
+  to pitch the soldier's aim up and down (an FPS points its ally at a target). Build an
+  **aim bone** in the upper spine/chest that the head, arms, and `weapon_socket` descend
+  from, and tag it with a `tcab_joint` custom property so a game finds it by name and
+  clamps it:
+
+  ```python
+  aim_bone["tcab_joint"] = {
+      "name": "aim_pitch", "kind": "rotation", "axis": "x",
+      "min": -0.698, "max": 0.698, "rest": 0.0,   # radians (±40°)
+  }
+  ```
+
+  The axis is named in the **emitted Y-up glTF frame** (pitch is about `x`). Rotating the
+  aim bone about that axis must nod the whole upper body — head, arms, and the socketed
+  weapon riding with it — smoothly, without tearing the skin. **Do not** bake `aim_pitch`
+  into the six clips; the game overlays it on top of whatever clip is playing.
+
+- **`weapon_socket` (an attach point)** — already required as an empty bone in the right
+  hand; also tag it `socket_bone["tcab_socket"] = "weapon_socket"` so a game discovers the
+  mount point by name and hangs a separate rifle there.
+
+The exact DOFs to expose are listed in `blender.config.json` (`joints`).
 
 ## How the tool behaves
 

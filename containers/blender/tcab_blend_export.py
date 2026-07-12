@@ -1,12 +1,23 @@
-"""tcab_blend_export — the bundled export step for The Test Cabinet Blender kind.
+"""tcab_blend_export — the bundled export step for The Test Cabinet Blender kinds.
 
-A model's ``build.py`` builds the character in the Blender scene, then calls
+A model's ``build.py`` builds its asset in the Blender scene, then calls
 ``tcab_blend_export.export(config)`` to finish the run. This helper does the two things
-every Blender character run must do the same way, so a case does not have to:
+every Blender run must do the same way, so a case does not have to. It serves the whole
+Blender family with one code path:
 
-1. **Export ``character.glb``** — the whole scene as a single **binary glTF 2.0** with
-   the skin (bones, per-vertex weights, inverse-bind matrices) and every Action baked as
-   a glTF animation. This is the authoritative, judged output; the validator decodes it.
+- ``blender-character`` — a skinned, animated character (armature + weights + Actions);
+- ``blender-mechanism`` — a rigidly-articulated model whose motion is baked as glTF
+  node-hierarchy animations (parented objects posed by Actions, no skin);
+- ``blender-prop`` — a static, unrigged model (no armature, no animations).
+
+The two steps:
+
+1. **Export the glTF** — the whole scene as a single **binary glTF 2.0**. ``export_skins``
+   and ``export_animations`` are always on, so whatever the scene contains travels with
+   it: a skin (bones, per-vertex weights, inverse-bind matrices) and/or glTF animations
+   for the animated kinds, or just static geometry for a prop. This is the authoritative,
+   judged output — a **native**, game-ready glTF the validator decodes. The path comes
+   from the config (``character.glb`` for a character, ``model.glb`` for a prop/mechanism).
 2. **Render ``model.png``** — a preview the reviewer sees, drawn with the CPU Workbench
    engine so it works headless with no GPU (best-effort; a failed render never fails the
    export).
@@ -21,20 +32,27 @@ import bpy
 
 
 def export(config):
-    """Emit ``character.glb`` and render ``model.png`` from the current scene."""
-    mesh_path = os.path.abspath(config.get("mesh", "character.glb"))
+    """Emit the glTF (``mesh``) and render the preview (``model.png``) from the scene."""
+    mesh_path = os.path.abspath(config.get("mesh", "model.glb"))
     preview_path = os.path.abspath(config.get("preview", "model.png"))
 
     _ensure_gltf_addon()
 
-    # A standard skinned + animated binary glTF. `use_selection=False` exports the whole
-    # scene; the skin and animations travel with it so a game gets a ready-to-play,
-    # riggable character.
+    # A standard binary glTF. `use_selection=False` exports the whole scene; whatever it
+    # holds — a skin and/or animations, or just static geometry — travels with it, so a
+    # game gets a ready-to-consume native asset. `export_skins`/`export_animations` are
+    # harmless no-ops when the scene has neither (a static prop). `export_extras=True`
+    # carries each object's / bone's Blender custom properties into the corresponding glTF
+    # node's `extras` — the standard, in-file (no sidecar, no custom extension) channel a
+    # game reads as `userData`. The Blender kinds use it to tag their runtime-drivable
+    # caller DOFs (`tcab_joint`) and the character's attach point (`tcab_socket`), so a
+    # game can find and drive them.
     bpy.ops.export_scene.gltf(
         filepath=mesh_path,
         export_format="GLB",
         export_skins=True,
         export_animations=True,
+        export_extras=True,
         export_yup=True,
         use_selection=False,
     )
@@ -56,7 +74,7 @@ def _ensure_gltf_addon():
 
 
 def _render_preview(preview_path):
-    """Render a headless CPU preview of the character, framed by an auto camera.
+    """Render a headless CPU preview of the asset, framed by an auto camera.
 
     Uses the **Workbench** engine, which renders on the CPU with no GPU or Vulkan — the
     same headless constraint the voxel family's Mesa/lavapipe previews honor.
@@ -69,7 +87,7 @@ def _render_preview(preview_path):
     scene.render.resolution_y = 512
     scene.render.film_transparent = True
 
-    # Draw the character in its own material colors, lit like a turntable. Workbench
+    # Draw the asset in its own material colors, lit like a turntable. Workbench
     # defaults to a flat single "object" color, which renders every palette as one grey
     # mass; keying the shading to MATERIAL means a model's palette shows in the preview
     # without the model having to configure the viewport shading itself.
@@ -101,9 +119,9 @@ def _render_preview(preview_path):
 def _aim_camera_front(camera):
     """Place ``camera`` at a fixed front-3/4 view of the mesh, in Blender-native axes.
 
-    A Blender character is authored **+Z up** and **facing -Y** (Blender's front view),
-    so the front-3/4 camera sits on the -Y (front) side, offset to +X and lifted along
-    +Z, and aims at the mesh's bounding-box center with +Z up — Blender's own
+    A Blender asset is authored **+Z up** and **facing -Y** (Blender's front view), so
+    the front-3/4 camera sits on the -Y (front) side, offset to +X and lifted along +Z,
+    and aims at the mesh's bounding-box center with +Z up — Blender's own
     ``to_track_quat`` convention, which is why building in the native space (rather than
     a pre-rotated +Y-up scene) keeps this framing upright with no per-case camera work.
     """

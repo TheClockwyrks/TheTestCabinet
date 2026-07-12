@@ -49,6 +49,12 @@ Two conventions matter:
   hands to hold a rifle there. Do not model the gun.
 - **Author every animation in place.** The run cycle strides on the spot; a game supplies
   the real travel. Do not move the character across the world in the animations.
+- **Expose the runtime interface.** A game plays your six clips by name (that works
+  natively), but it must also be able to *aim* the soldier and *mount* a weapon. Build an
+  **aim bone** (upper spine/chest, carrying the head/arms/socket) and tag it with a
+  `tcab_joint` custom property (the **`aim_pitch`** caller DOF, a rotation about the
+  glTF-frame `x` axis, ±40°), and tag the `weapon_socket` bone with `tcab_socket` — both
+  export into the glTF `extras`, the self-contained game-facing interface (see the brief).
 
 ## What to read first
 
