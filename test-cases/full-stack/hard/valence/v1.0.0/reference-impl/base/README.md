@@ -22,7 +22,7 @@ genuinely different **forms**, each opened by a different tool:
 Spend energy across an escalating **20-round campaign** that ends in a fragmenting
 **Macromass** boss; survive every round and you win, run out of integrity and you lose.
 
-This directory is the authored **reference implementation** of the case's `standard`
+This directory is the authored **reference implementation** of the case's `base`
 variant (the *Containment* campaign) — the *correct*, ground-truth build the case is
 judged against. It is a self-contained static web app: plain **TypeScript** rendering to
 an **HTML5 canvas**, bundled with **Vite**. No backend, accounts, network calls, or API

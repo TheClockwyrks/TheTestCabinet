@@ -59,10 +59,9 @@ of the two, so a strong build must both simulate and produce well.
 The specification is split across `specs/` by concern: `overview.md`, `map.md`,
 `transit.md`, `utilities.md`, `economy.md`, `controls.md`, `flow.md`, `assets.md` (the
 asset-production contract), `proof.md`, and the mode specs under `specs/modes/`. The
-common specs (everything except the variant-only mode specs) are seeded for every
-variant; each variant adds at most one extra mode spec. The case offers two variants —
-`base` (the standard flat starter valley) and `roughterrain` (a fragmented map of water
-and hills that forces costlier spans to connect and serve the city).
+common specs (everything except the variant-only mode spec) are seeded for every
+variant; the variant seeds its own mode spec. The case offers a single variant —
+`base` (the standard flat starter valley).
 
 The seeded specs and the rendered reference screenshots are copied into a run's
 repository. The reference *source* mockups are not seeded, so a model builds the UI from

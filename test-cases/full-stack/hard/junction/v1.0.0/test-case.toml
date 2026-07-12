@@ -103,18 +103,12 @@ packages = ["@test-cabinet/particle-runtime"]
 # Variants: exactly one runs per run, and its slug is recorded in the run record. Each
 # is declared in its own file under `variants/` and listed here in order — the first is
 # the default. Each seeds the common specs plus its own start spec (to the stable
-# `specs/mode.md` path), supplies its own `title` menu reference (the main menu's start
-# differs per variant; `gameplay` and `game-over` are common), and — for the
-# roughterrain variant — the
-# review item for the harder start it introduces (rolling up to the common `simulation`
-# domain, since it presses the same city systems):
-#   - base         — the standard flat starter valley.
-#   - roughterrain — a fragmented starting map: water and hills break up the buildable
-#                    land and raise the cost of carrying transit and utilities across it.
+# `specs/mode.md` path) and supplies its own `title` menu reference (the main menu's
+# start differs per variant; `gameplay` and `game-over` are common):
+#   - base — the standard flat starter valley.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
-  "variants/roughterrain.toml",
 ]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced

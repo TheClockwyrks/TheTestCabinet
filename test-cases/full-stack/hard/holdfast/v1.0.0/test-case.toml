@@ -103,16 +103,12 @@ packages = ["@test-cabinet/particle-runtime"]
 # Each is declared in its own file under `variants/` and listed here in order — the
 # first is the default. Each seeds the common specs plus its own mode spec (its
 # `specs/mode-<slug>.md` → the stable dest `specs/mode.md`, which REPLACES the mode
-# rather than adding one), supplies its own `title` menu reference (the main menu
-# lists that variant's start; `gameplay` and `game-over` are common), and — for the
-# siegeworks variant — the review item for the harder raids it introduces (rolling
-# up to the common `simulation` domain, since it presses the same threat systems):
-#   - base       — the standard frontier start.
-#   - siegeworks — a harder start: larger raids with sappers that break walls.
+# rather than adding one) and supplies its own `title` menu reference (the main menu
+# lists that variant's start; `gameplay` and `game-over` are common):
+#   - base — the standard frontier start.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
-  "variants/siegeworks.toml",
 ]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced

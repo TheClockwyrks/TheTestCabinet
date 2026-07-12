@@ -37,8 +37,7 @@ variant declares its own menu mockup (see the `[[variant]]` `reference` entries 
 | `game-over` | `game-over.html`      | Colony-lost panel (common).              |
 
 The `title` view has one mockup per variant: `menu-base.html` (`NEW COLONY` / `HOW TO
-PLAY`) and `menu-siegeworks.html` (`SIEGEWORKS` / `HOW TO PLAY`), each listing the single
-start that variant's seeded mode spec (`specs/mode.md`) defines.
+PLAY`), listing the single start the variant's seeded mode spec (`specs/mode.md`) defines.
 
 The `gameplay.html` frame shows the intended look of a live colony under a dusk raid: a
 walled compound with floor, beds, a working stove, farm plots, and a firing turret; tree
@@ -66,7 +65,6 @@ render. Each variant folder holds that variant's full set — the common views p
 reference/screenshots/base/title.png        # from menu-base.html
 reference/screenshots/base/gameplay.png
 reference/screenshots/base/game-over.png
-reference/screenshots/siegeworks/title.png   # from menu-siegeworks.html
 ```
 
 Whichever variant a run selects, its `title.png` is seeded into the run as

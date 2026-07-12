@@ -59,10 +59,9 @@ strong build must both simulate and produce well.
 The specification is split across `specs/` by concern: `overview.md`, `world.md`,
 `gas.md`, `power.md`, `delvers.md`, `economy.md`, `controls.md`, `flow.md`,
 `assets.md` (the asset-production contract), `proof.md`, and the mode specs under
-`specs/modes/`. The common specs (everything except the variant-only mode specs) are
-seeded for every variant; each variant adds at most one extra mode spec. The case offers
-two variants — `base` (the standard colony start) and `deepstart` (a scarcer opening: a
-smaller starting oxygen pocket and no starting material).
+`specs/modes/`. The common specs (everything except the variant-only mode spec) are
+seeded for every variant; the variant seeds its own mode spec. The case offers a single
+variant — `base` (the standard colony start).
 
 The seeded specs and the rendered reference screenshots are copied into a run's
 repository. The reference *source* mockups are not seeded, so a model builds the UI from

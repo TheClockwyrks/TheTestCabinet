@@ -107,17 +107,12 @@ packages = ["@test-cabinet/particle-runtime"]
 # Each is declared in its own file under `variants/` and listed here in order — the
 # first is the default. Each seeds the common specs plus its own campaign start,
 # seeded to the stable path `specs/mode.md` (so a variant REPLACES the start rather
-# than adding one), supplies its own `title` menu reference (the main menu differs by
-# variant; `gameplay` and `game-over` are common), and — for the overload variant —
-# the review item for its scarcer, front-loaded start (rolling up to the common
-# `simulation` domain, since it presses the same reaction systems harder):
-#   - standard — the standard containment campaign.
-#   - overload — a scarcer start: less starting energy and integrity, interest
-#                disabled, and heavy/inert matter arriving several rounds earlier.
+# than adding one) and supplies its own `title` menu reference (the main menu differs
+# by variant; `gameplay` and `game-over` are common):
+#   - base — the standard containment campaign.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
-  "variants/standard.toml",
-  "variants/overload.toml",
+  "variants/base.toml",
 ]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced

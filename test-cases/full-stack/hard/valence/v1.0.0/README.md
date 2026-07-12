@@ -18,7 +18,7 @@ rendered to screenshots and seeded as visual targets, and which proofs and check
 - [`prompt.hbs`](prompt.hbs) — the rendered build instruction.
 - [`reference/`](reference/) — the harness-side visual mockups (source is not seeded;
   the rendered screenshots are).
-- [`variants/`](variants/) — the `standard` and `overload` variants.
+- [`variants/`](variants/) — the `base` variant.
 - [`workspaces/base/`](workspaces/base/) — the starter project seeded at the run root.
 
 See the authoring guide under

@@ -33,9 +33,8 @@ declares its own menu mockup (see the variant `reference` entries in `../variant
 | `gameplay`  | `gameplay.html`       | Live-board frame, mid-round (common).        |
 | `game-over` | `game-over.html`      | Containment-failed panel (common).           |
 
-The `title` view has one mockup per variant: `menu-standard.html` (`CONTAINMENT` /
-`HOW TO PLAY`) and `menu-overload.html` (`OVERLOAD` / `HOW TO PLAY`), matching each
-variant's seeded mode spec.
+The `title` view has one mockup per variant: `menu-base.html` (`CONTAINMENT` /
+`HOW TO PLAY`), matching the variant's seeded mode spec.
 
 The `gameplay.html` frame shows the intended look of a live board: the conduit forking into
 two lanes and rejoining before the collector, towers built at several fixed nodes,
@@ -61,10 +60,9 @@ shared across variants (here, `title`) does not clobber another variant's render
 variant folder holds that variant's full set — the common views plus its own `title` menu:
 
 ```
-reference/screenshots/standard/title.png     # from menu-standard.html
-reference/screenshots/standard/gameplay.png
-reference/screenshots/standard/game-over.png
-reference/screenshots/overload/title.png      # from menu-overload.html
+reference/screenshots/base/title.png     # from menu-base.html
+reference/screenshots/base/gameplay.png
+reference/screenshots/base/game-over.png
 ```
 
 Whichever variant a run selects, its `title.png` is seeded into the run as

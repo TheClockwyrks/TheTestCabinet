@@ -59,11 +59,9 @@ strong build must both simulate and produce well.
 The specification is split across `specs/` by concern: `overview.md`, `world.md`,
 `settlers.md`, `economy.md`, `combat.md`, `time.md`, `controls.md`, `flow.md`, `assets.md`
 (the asset-production contract), and `proof.md` — all seeded for every variant — plus the
-per-variant mode sources `mode-base.md` and `mode-siegeworks.md`. Each variant seeds
-exactly one of those to the stable dest `specs/mode.md`, which the common specs reference;
-the mode spec **replaces** the playable start rather than adding one. The case offers two
-variants — `base` (the standard frontier start) and `siegeworks` (a harder siege: larger
-raids with wall-breaking sappers).
+mode source `mode-base.md`. The variant seeds it to the stable dest `specs/mode.md`, which
+the common specs reference; the mode spec **replaces** the playable start rather than
+adding one. The case offers a single variant — `base` (the standard frontier start).
 
 The seeded specs and the rendered reference screenshots are copied into a run's
 repository. The reference *source* mockups are not seeded, so a model builds the UI from

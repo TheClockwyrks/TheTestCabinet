@@ -1,11 +1,9 @@
 // Valence — the campaign start this build plays (specs/mode.md).
 //
-// THIS FILE IS THE PER-VARIANT DIFFERENCE. The standard "Containment" campaign and
-// the "Overload" campaign share all game code and all produced assets; they differ
-// only in this config: the starting resources, whether interest is paid, and the
-// round each tool-specific matter form is introduced on. Everything else — the
-// board, the decomposition model, the towers, the 20-round progression, scoring,
-// states, and HUD — is common (specs/mode-standard.md).
+// THE CAMPAIGN START IS ISOLATED TO THIS CONFIG: the starting resources, whether
+// interest is paid, and the round each tool-specific matter form is introduced on.
+// Everything else — the board, the decomposition model, the towers, the 20-round
+// progression, scoring, states, and HUD — is common (specs/mode-standard.md).
 
 export interface CampaignMode {
   slug: string;

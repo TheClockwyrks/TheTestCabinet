@@ -35,9 +35,8 @@ variant declares its own menu mockup (see the `[[variant]]` `reference` entries 
 | `gameplay`  | `gameplay.html`       | In-city frame, mid-play (common).        |
 | `game-over` | `game-over.html`      | Bankruptcy panel (common).               |
 
-The `title` view has one mockup per variant: `menu-base.html` (`NEW CITY` / `HOW TO PLAY`)
-and `menu-roughterrain.html`, which inserts the `ROUGH TERRAIN` start between the two,
-matching each variant's seeded mode spec.
+The `title` view has one mockup per variant: `menu-base.html` (`NEW CITY` / `HOW TO PLAY`),
+matching the variant's seeded mode spec.
 
 The `gameplay.html` frame shows the intended look of a live city: a developed downtown of
 the three zones at more than one density tier, a road grid with a rail line and stations,
@@ -64,7 +63,6 @@ render. Each variant folder holds that variant's full set — the common views p
 reference/screenshots/base/title.png         # from menu-base.html
 reference/screenshots/base/gameplay.png
 reference/screenshots/base/game-over.png
-reference/screenshots/roughterrain/title.png  # from menu-roughterrain.html
 ```
 
 Whichever variant a run selects, its `title.png` is seeded into the run as

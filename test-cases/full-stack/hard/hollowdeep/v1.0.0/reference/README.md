@@ -37,8 +37,7 @@ each variant declares its own menu mockup (see the `[[variant]]` `reference` ent
 | `game-over` | `game-over.html`      | Colony-lost panel (common).              |
 
 The `title` view has one mockup per variant: `menu-base.html` (`NEW COLONY` /
-`HOW TO PLAY`) and `menu-deepstart.html`, which inserts the `DEEPSTART` start between the
-two, matching each variant's seeded mode spec.
+`HOW TO PLAY`), matching the variant's seeded mode spec.
 
 The `gameplay.html` frame shows the intended look of a live colony: a dug-out chamber
 with delvers, tiles and machines, the oxygen/CO2 gas overlay (oxygen high, CO2 low), and
@@ -64,7 +63,6 @@ render. Each variant folder holds that variant's full set — the common views p
 reference/screenshots/base/title.png        # from menu-base.html
 reference/screenshots/base/gameplay.png
 reference/screenshots/base/game-over.png
-reference/screenshots/deepstart/title.png    # from menu-deepstart.html
 ```
 
 Whichever variant a run selects, its `title.png` is seeded into the run as
