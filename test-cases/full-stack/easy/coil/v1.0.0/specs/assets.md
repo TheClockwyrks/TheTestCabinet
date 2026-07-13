@@ -1,6 +1,6 @@
 # Coil — Assets you produce (the production contract)
 
-Coil ships with **no** pre-made art or sound. Instead, the run image puts six
+Coil ships with **no** pre-made art or sound. Instead, the current environment puts six
 **asset-generation tools** on your `PATH`, and **you must produce the snake's sprite
 set and the game's audio with those tools — or any other way you prefer — and commit
 the produced files**, then wire them into the game. Everything else the game draws (the
@@ -23,7 +23,7 @@ gives a value it matches them.
 ## The six tools
 
 Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `paint`,
-`texture`, voxel, or mesh tool in this image):
+`texture`, voxel, or mesh tool in the current environment):
 
 | Tool | Produces | Used in Coil for |
 | --- | --- | --- |
@@ -54,8 +54,8 @@ file into your project under **`assets/`**.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or sequenced
   notes and `render` a PCM `.wav`; `music` also emits a portable `.mid` score alongside
   its `.wav`. `sfx-sample` and `music` draw on a **baked sample pack / instrument bank**
-  already in the image (browse it via `list-samples` / the tool's help); a synth from
-  `sfx-synth` needs no pack.
+  already available in the current environment (browse it via `list-samples` /
+  the tool's help); a synth from `sfx-synth` needs no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -142,9 +142,9 @@ the audio tools and play the resulting `.wav`s via the Web Audio API. Land them 
 
 ## What you draw in code (no tool for these)
 
-There is **no** `ui` or `paint` tool in this image, and this case deliberately keeps most
-of the board code-drawn. In the palette from `specs/overview.md`, draw in code
-(canvas/DOM):
+There is **no** `ui` or `paint` tool in the current environment, and this case
+deliberately keeps most of the board code-drawn. In the palette from
+`specs/overview.md`, draw in code (canvas/DOM):
 
 - The **board** — the interior field, its faint per-cell grid, and the **wall border**
   (`specs/playfield.md`).

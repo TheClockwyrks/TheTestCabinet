@@ -1,7 +1,7 @@
 # Coil — Scoring, states, controls, and HUD
 
 This file defines scoring, the game's state machine, controls, audio, the HUD,
-and the behaviors that make good test targets. It refers to the geometry in
+and the key behaviors a reviewer will check. It refers to the geometry in
 `specs/playfield.md`, the simulation in `specs/mechanics.md`, and the playable mode
 in `specs/mode.md`.
 
@@ -90,8 +90,7 @@ The HUD occupies the band above the board (`y` in `[0, 120)`; see
 
 ## Key behaviors
 
-The game must exhibit these behaviors. They make good targets for automated
-tests:
+The game must exhibit these behaviors, and a reviewer will check each of them:
 
 - The snake advances exactly one cell per tick in its current direction and is
   always grid-aligned.

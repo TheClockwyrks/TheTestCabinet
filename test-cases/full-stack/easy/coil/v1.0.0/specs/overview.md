@@ -49,9 +49,9 @@ a tech demo.
 
 - **Renders real graphics.** Draw the game with Canvas 2D, WebGL/WebGPU, or
   positioned DOM elements. A text-only or ASCII rendering does not satisfy this
-  test case.
+  requirement.
 - **Produces its own snake art and audio.** This is a **full-stack** build: the
-  run image puts asset-generation tools on your `PATH`, and you must **produce**
+  current environment puts asset-generation tools on your `PATH`, and you must **produce**
   the snake's sprite set and the game's sound and music with them during the
   build, then bundle the committed files into the game. `specs/assets.md` is the
   authoritative production contract; the board, walls, pellet, and HUD stay drawn

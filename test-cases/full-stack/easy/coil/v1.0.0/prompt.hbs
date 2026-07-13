@@ -16,20 +16,12 @@ sync (see below).
 
 ## What to read first
 
-The full specification is split across the files below, all already present in
-your project. Read every one of them before you start, then implement the game
-they describe as a single, cohesive build:
-
-{{#each specs}}
-- `{{this.path}}`
-{{/each}}
-
-Start with `overview` for the goals, hard requirements, coordinate system, and
-palette; then `playfield`, `mechanics`, and `flow` for the board geometry, the
-game loop, and scoring and states; then `assets` — the contract for the snake
-sprites and the audio **you must produce** — and finally `mode`, the playable
-mode. The specs cross-reference each other by name — treat them as one
-specification.
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, then implement the game
+it describes as a single, cohesive build. Start with `specs/overview.md` for the
+goals, hard requirements, coordinate system, and palette — it lays out how the
+rest of the specification is organized. The specs cross-reference each other by
+name; treat them as one specification.
 
 ## Build requirements
 
@@ -53,7 +45,7 @@ depends on them:
   a relative base such as `base: './'`). `specs/overview.md` states this in full;
   follow it exactly.
 - **You PRODUCE the snake art and audio.** There is **no** pre-made game art or
-  sound in this project. Instead, the run image puts asset-generation tools on your
+  sound in this project. Instead, the current environment puts asset-generation tools on your
   `PATH` — **`draw`** and **`draw-sheet`** (sprites and animated sprite sheets) and
   **`sfx-synth`**, **`sfx-sample`**, and **`music`** (sound and music) — and you
   must **produce the snake's sprite set and the game's audio with these tools
