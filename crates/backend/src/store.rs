@@ -29,7 +29,9 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
+use test_cabinet_core::test_case::{
+    AudioSpec, MaterialSpec, ParticleSpec, UiSpec, version_key,
+};
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 use uuid::Uuid;
 
@@ -698,8 +700,8 @@ impl DefinitionStore {
         Ok(())
     }
 
-    /// List every ingested case slug and its versions, in insertion (mtime) order
-    /// so the newest is listed last per the catalog contract.
+    /// List every ingested case slug and its versions, oldest-first by semantic
+    /// version so the newest is listed last per the catalog contract.
     pub fn list_cases(&self) -> Result<Vec<(String, Vec<String>)>> {
         let cases_root = self.root.join("test-cases");
         let mut out = Vec::new();
@@ -712,28 +714,32 @@ impl DefinitionStore {
         Ok(out)
     }
 
-    /// List the ingested versions for a slug, ordered oldest-first by directory
-    /// modification time so the newest is listed last (matches the catalog
-    /// contract's "newest-listed-last (insertion order)").
+    /// List the ingested versions for a slug, ordered oldest-first by semantic
+    /// version so the newest is listed last (matches the catalog contract's
+    /// "newest-listed-last").
+    ///
+    /// Versions are compared component-wise via [`version_key`] — the same order
+    /// the core filesystem catalog uses — rather than by directory modification
+    /// time. Mtime is not a reliable proxy for version order: a fresh checkout or
+    /// a re-ingest writes/touches version directories in whatever order it walks
+    /// them, so mtime differs between a locally-seeded store and a
+    /// freshly-provisioned one even for identical content. That divergence made
+    /// the "latest version" the store reports (e.g. for the review-plan staleness
+    /// check and the catalog's version dropdown) depend on the environment.
     pub fn list_versions(&self, slug: &str) -> Result<Vec<String>> {
         let slug_dir = self.root.join("test-cases").join(slug);
         if !slug_dir.is_dir() {
             return Ok(Vec::new());
         }
-        let mut versioned: Vec<(std::time::SystemTime, String)> = Vec::new();
+        let mut versions: Vec<String> = Vec::new();
         for name in raw_dir_names(&slug_dir)? {
-            let dir = slug_dir.join(&name);
             if !self.manifest_path(slug, &name).is_file() {
                 continue;
             }
-            let mtime = dir
-                .metadata()
-                .and_then(|m| m.modified())
-                .unwrap_or(std::time::UNIX_EPOCH);
-            versioned.push((mtime, name));
+            versions.push(name);
         }
-        versioned.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-        Ok(versioned.into_iter().map(|(_, name)| name).collect())
+        versions.sort_by(|a, b| version_key(a).cmp(&version_key(b)).then_with(|| a.cmp(b)));
+        Ok(versions)
     }
 
     /// Whether a stored version is flagged **experimental** (its manifest's

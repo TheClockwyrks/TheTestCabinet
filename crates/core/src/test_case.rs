@@ -5309,7 +5309,10 @@ fn read_dir_names(dir: &Path) -> Result<Vec<String>> {
 /// Leading `v` is ignored and dot-separated numeric components are compared
 /// numerically; any non-numeric tail is ignored for ordering. Versions that do
 /// not parse sort before those that do.
-fn version_key(version: &str) -> Vec<u64> {
+///
+/// Public so the backend store orders its ingested versions the same way this
+/// (the authoritative filesystem catalog) does, rather than by directory mtime.
+pub fn version_key(version: &str) -> Vec<u64> {
     version
         .trim_start_matches('v')
         .split('.')

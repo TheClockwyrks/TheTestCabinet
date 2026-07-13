@@ -185,19 +185,35 @@ fn reference_scope_and_view_are_validated() {
 }
 
 #[test]
-fn versions_are_listed_oldest_to_newest_by_mtime() {
+fn versions_are_listed_oldest_to_newest_by_semantic_version() {
     let (_dir, store) = temp_store();
-    // Write v1.0.0 first, then v1.1.0; the newer directory has a later mtime, so
-    // it must be listed last (newest-listed-last per the catalog contract).
+    // Write the *newer* version first so its directory has the *earlier* mtime:
+    // this proves ordering follows the semantic version, not directory mtime.
+    // Mtime order is not a reliable proxy for version order across environments
+    // (a fresh checkout or re-ingest touches version dirs in an arbitrary order),
+    // which is what made the reported "latest version" environment-dependent.
     store
-        .write_manifest(&sample_manifest("snake", "v1.0.0"))
+        .write_manifest(&sample_manifest("snake", "v1.10.0"))
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(20));
     store
-        .write_manifest(&sample_manifest("snake", "v1.1.0"))
+        .write_manifest(&sample_manifest("snake", "v1.9.0"))
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    store
+        .write_manifest(&sample_manifest("snake", "v1.0.0"))
         .unwrap();
     let versions = store.list_versions("snake").unwrap();
-    assert_eq!(versions, vec!["v1.0.0".to_string(), "v1.1.0".to_string()]);
+    // Component-wise: v1.0.0 < v1.9.0 < v1.10.0 (not the lexical v1.10.0 < v1.9.0),
+    // newest listed last per the catalog contract.
+    assert_eq!(
+        versions,
+        vec![
+            "v1.0.0".to_string(),
+            "v1.9.0".to_string(),
+            "v1.10.0".to_string()
+        ]
+    );
 }
 
 #[test]
