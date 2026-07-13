@@ -40,11 +40,11 @@ npm run preview # serve the built dist/ locally
 npm run verify  # build-verification harness (see below)
 ```
 
-`npm run build` produces a fully self-contained static site in `dist/` with `index.html` at
-its root. It bundles the committed produced assets and **does not** invoke the asset tools, so
-it builds anywhere. Vite's `base: "./"` makes every emitted URL page-relative, so `dist/` runs
-correctly whether served at a host root or mounted under a per-run sub-path like
-`/runs/<id>/build/`.
+`npm run build` produces a fully self-contained static site in `dist/` with
+`index.html` at its root. It bundles the committed produced assets and **does
+not** invoke the asset tools, so it builds anywhere. Vite's `base: "./"` makes
+every emitted URL page-relative, so `dist/` runs correctly whether served at a
+host root or mounted under a per-run sub-path like `/runs/<id>/build/`.
 
 ## Verification
 

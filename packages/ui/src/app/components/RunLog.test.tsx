@@ -183,7 +183,7 @@ describe("RunLog", () => {
     // No menu until a row is right-clicked.
     expect(screen.queryByRole("menu", { name: "Run actions" })).toBeNull();
 
-    fireEvent.contextMenu(screen.getAllByRole("link")[0]);
+    fireEvent.contextMenu(screen.getAllByRole("link")[0]!);
 
     const menu = screen.getByRole("menu", { name: "Run actions" });
     expect(menu).toBeInTheDocument();
@@ -200,7 +200,7 @@ describe("RunLog", () => {
   it("disables Open model when the run's model isn't in the catalog", () => {
     // The gallery has no models, so the row's model can't resolve to a page.
     renderLog();
-    fireEvent.contextMenu(screen.getAllByRole("link")[0]);
+    fireEvent.contextMenu(screen.getAllByRole("link")[0]!);
     expect(screen.getByRole("menuitem", { name: "Open model" })).toBeDisabled();
   });
 
@@ -208,7 +208,7 @@ describe("RunLog", () => {
     // canExecute is false in this harness (the read-only static gallery), so the
     // destructive item never appears.
     renderLog();
-    fireEvent.contextMenu(screen.getAllByRole("link")[0]);
+    fireEvent.contextMenu(screen.getAllByRole("link")[0]!);
     expect(screen.queryByRole("menuitem", { name: "Delete run" })).toBeNull();
   });
 
