@@ -381,7 +381,7 @@ export function CoverageConfigPage() {
             </button>
           </div>
 
-          <div className={exec.actions}>
+          <div className={styles.editorActions}>
             <button
               type="button"
               className={exec.primary}

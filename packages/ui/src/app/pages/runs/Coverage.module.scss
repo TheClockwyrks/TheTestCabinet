@@ -173,6 +173,19 @@
   margin-bottom: t.$space-xl;
 }
 
+// The plan editor's action row — its own, not the shared new-run `.actions`, so
+// its spacing can be tuned for this widget. The gap above the buttons is double
+// the standard row gap (so the buttons sit clear of the test-case row), and the
+// row carries no bottom margin so the space below the buttons matches the
+// editor's top padding rather than exceeding it.
+.editorActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-top: calc(#{t.$space-md} * 2);
+}
+
 .chipList {
   list-style: none;
   margin: 0 0 t.$space-md;
