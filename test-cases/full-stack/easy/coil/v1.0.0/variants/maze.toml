@@ -1,0 +1,35 @@
+# Maze mode: the grid-serpent run on a board laced with fixed fatal interior
+# obstacles. Threading the obstacle course is a distinct skill, so it is rated on its
+# own scoring domain alongside the common gameplay and presentation domains. This
+# variant seeds its own single mode spec, its own `title` menu, and the review item
+# that rolls up to the `maze` domain.
+slug = "maze"
+name = "Maze"
+description = "Maze mode: the grid-serpent run on a board laced with fixed fatal interior obstacles to thread."
+
+# This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
+# path the common specs reference). Maze mode; self-contained.
+spec = [{ source = "specs/mode-maze.md", dest = "specs/mode.md" }]
+
+# This variant's three views, all captured from a playable Maze build and served as-is
+# (the former `menu-maze.html` mockup is gone): the title menu (`MAZE` / `HOW TO PLAY`,
+# with the obstacle course dimmed behind it), the in-play board — laced with the fixed,
+# fatal obstacle bars this mode is about — and the game-over panel, through which those
+# bars and the `MAZE` HUD tag are still visible.
+reference = [
+  { view = "title", media = "reference/screenshots/maze/title.png" },
+  { view = "gameplay", media = "reference/screenshots/maze/gameplay.png" },
+  { view = "game-over", media = "reference/screenshots/maze/game-over.png" },
+]
+
+[[domain]]
+id = "maze"
+name = "Maze"
+description = "The Maze mode: fixed fatal interior obstacles the snake must navigate around."
+
+[[review_item]]
+id = "maze-obstacles"
+title = "Fatal obstacles"
+text = "The board carries a fixed course of interior obstacle bars, drawn in the obstacle color, that are fatal on contact exactly like walls; the layout is point-symmetric about the board center, the snake's start row is left clear, and pellets never spawn on an obstacle cell."
+weight = 1
+domain = "maze"
