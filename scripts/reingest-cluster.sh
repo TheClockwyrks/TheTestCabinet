@@ -90,10 +90,20 @@ echo "Re-ingesting ${scope} on ${cluster}/${namespace} (force)…"
 # keeps a render error's message (and a non-2xx exit) from vanishing. The heredoc is
 # unquoted so ${namespace}/${body} expand here, while \$… stays literal for the
 # cluster-side shells.
+#
+# The image-tag parse uses ONLY kubectl + POSIX shell builtins (a `for`/`case` loop and
+# `${img##*:}`) — the command-invoke helper pod is a minimal image without sed/grep/awk,
+# so a pipeline through those tools fails with `sed: not found`.
 remote=$(cat <<REMOTE
 set -e
 REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
-COMMIT="\$(kubectl -n ${namespace} get deploy tcab-backend -o jsonpath='{.spec.template.spec.containers[*].image}' | tr ' ' '\n' | grep tcab-backend | head -n1 | sed 's/.*://')"
+IMAGES="\$(kubectl -n ${namespace} get deploy tcab-backend -o jsonpath='{.spec.template.spec.containers[*].image}')"
+COMMIT=""
+for img in \$IMAGES; do
+  case "\$img" in
+    *tcab-backend:*) COMMIT="\${img##*:}" ;;
+  esac
+done
 [ -n "\$COMMIT" ] || { echo "could not read the backend image tag (commit) from deploy/tcab-backend" >&2; exit 1; }
 echo "ingest: backend image commit \$COMMIT"
 kubectl -n ${namespace} exec deploy/tcab-backend -c ingest -- sh -c 'set -e
