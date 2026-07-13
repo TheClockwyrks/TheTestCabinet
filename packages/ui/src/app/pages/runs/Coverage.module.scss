@@ -75,8 +75,12 @@
 .groupTitle {
   display: flex;
   align-items: baseline;
-  gap: t.$space-sm;
-  color: t.$color-text;
+  // 50% wider than the standard row gap, to separate the (orange) case name from
+  // its muted variant/version.
+  gap: calc(#{t.$space-sm} * 1.5);
+  // The case name takes the theme's orange; the variant/version span below stays
+  // muted via its own color.
+  color: t.$color-accent;
   font-size: t.$font-lg;
 }
 
@@ -104,7 +108,7 @@
 }
 
 .groupBar {
-  display: block;
+  display: flex;
   width: 8rem;
   height: 0.5rem;
   background: t.$color-bg-2;
@@ -112,15 +116,19 @@
   overflow: hidden;
 }
 
-.groupBarFill {
+// The completed (green) and in-flight (amber) segments, laid side by side.
+.groupBarDone {
   display: block;
   height: 100%;
-  background: t.$color-accent;
+  background: t.$color-positive;
   transition: width 0.2s ease;
+}
 
-  .groupProgressDone & {
-    background: t.$color-positive;
-  }
+.groupBarFlight {
+  display: block;
+  height: 100%;
+  background: t.$color-warning;
+  transition: width 0.2s ease;
 }
 
 .groupCount {
@@ -181,22 +189,26 @@
 }
 
 .cellBar {
-  display: block;
+  display: flex;
   height: 0.5rem;
   background: t.$color-bg-2;
   border-radius: t.$radius-sm;
   overflow: hidden;
 }
 
-.cellBarFill {
+// The completed (green) and in-flight (amber) segments, laid side by side.
+.cellBarDone {
   display: block;
   height: 100%;
-  background: t.$color-accent;
+  background: t.$color-positive;
   transition: width 0.2s ease;
+}
 
-  .cellDone & {
-    background: t.$color-positive;
-  }
+.cellBarFlight {
+  display: block;
+  height: 100%;
+  background: t.$color-warning;
+  transition: width 0.2s ease;
 }
 
 .cellCount {
@@ -205,8 +217,11 @@
   white-space: nowrap;
 }
 
-.cellInFlight {
-  color: t.$color-accent;
+// Hold the trigger button's width steady across its "Trigger one" / "Covered"
+// states so the column edge never jumps as cells fill.
+.cellButton {
+  min-width: 7rem;
+  text-align: center;
 }
 
 // The in-page plan editor.

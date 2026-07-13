@@ -208,11 +208,18 @@ export function CoveragePage() {
       else byCase.set(key, { cell0: cell, cells: [cell] });
     }
     return [...byCase.values()].map(({ cell0, cells }) => {
-      const done = cells.reduce((sum, c) => sum + c.completed + c.inFlight, 0);
+      const completed = cells.reduce((sum, c) => sum + c.completed, 0);
+      const inFlight = cells.reduce((sum, c) => sum + c.inFlight, 0);
       const desired = cells.reduce((sum, c) => sum + c.desired, 0);
-      const satisfied = cells.every((c) => c.remaining === 0);
-      const pct = desired > 0 ? Math.min(100, (done / desired) * 100) : 0;
-      return { cell0, cells, done, desired, satisfied, pct };
+      const done = completed + inFlight;
+      // Two stacked segments — completed (green) then in-flight (amber) — clamped
+      // so together they never overrun the bar.
+      const donePct = desired > 0 ? Math.min(100, (completed / desired) * 100) : 0;
+      const flightPct =
+        desired > 0
+          ? Math.min(100 - donePct, (inFlight / desired) * 100)
+          : 0;
+      return { cell0, cells, done, desired, donePct, flightPct };
     });
   }, [coverage]);
 
@@ -293,7 +300,7 @@ export function CoveragePage() {
           </div>
 
           <div className={styles.matrix}>
-            {groups.map(({ cell0, cells, done, desired, satisfied, pct }) => (
+            {groups.map(({ cell0, cells, done, desired, donePct, flightPct }) => (
               <section key={caseKey(cell0)} className={styles.group}>
                 <header className={styles.groupHead}>
                   <span className={styles.groupTitle}>
@@ -315,15 +322,17 @@ export function CoveragePage() {
                       </button>
                     )}
                     <span
-                      className={`${styles.groupProgress} ${
-                        satisfied ? styles.groupProgressDone : ""
-                      }`}
+                      className={styles.groupProgress}
                       title={`${done} of ${desired} runs across all harness/model combinations`}
                     >
                       <span className={styles.groupBar} aria-hidden>
                         <span
-                          className={styles.groupBarFill}
-                          style={{ width: `${pct}%` }}
+                          className={styles.groupBarDone}
+                          style={{ width: `${donePct}%` }}
+                        />
+                        <span
+                          className={styles.groupBarFlight}
+                          style={{ width: `${flightPct}%` }}
                         />
                       </span>
                       <span className={styles.groupCount}>
@@ -336,9 +345,18 @@ export function CoveragePage() {
                   {cells.map((cell) => {
                     const done = cell.completed + cell.inFlight;
                     const satisfied = cell.remaining === 0;
-                    const pct =
+                    // Two stacked segments — completed (green) then in-flight
+                    // (amber) — clamped so together they never overrun the bar.
+                    const donePct =
                       cell.desired > 0
-                        ? Math.min(100, (done / cell.desired) * 100)
+                        ? Math.min(100, (cell.completed / cell.desired) * 100)
+                        : 0;
+                    const flightPct =
+                      cell.desired > 0
+                        ? Math.min(
+                            100 - donePct,
+                            (cell.inFlight / cell.desired) * 100,
+                          )
                         : 0;
                     return (
                       <li
@@ -352,30 +370,26 @@ export function CoveragePage() {
                         </span>
                         <span className={styles.cellBar} aria-hidden>
                           <span
-                            className={styles.cellBarFill}
-                            style={{ width: `${pct}%` }}
+                            className={styles.cellBarDone}
+                            style={{ width: `${donePct}%` }}
+                          />
+                          <span
+                            className={styles.cellBarFlight}
+                            style={{ width: `${flightPct}%` }}
                           />
                         </span>
                         <span className={styles.cellCount}>
                           {done}/{cell.desired}
-                          {cell.inFlight > 0 && (
-                            <span className={styles.cellInFlight}>
-                              {" "}
-                              ({cell.inFlight} in-flight)
-                            </span>
-                          )}
                         </span>
                         <button
-                          className={exec.secondary}
+                          className={`${exec.secondary} ${styles.cellButton}`}
                           type="button"
                           disabled={busy || !canTrigger || satisfied}
-                          onClick={() => triggerCells([cell])}
+                          onClick={() =>
+                            triggerCells([{ ...cell, remaining: 1 }])
+                          }
                         >
-                          {satisfied
-                            ? "Covered"
-                            : cell.remaining === 1
-                              ? "Trigger one"
-                              : `Trigger ${cell.remaining}`}
+                          {satisfied ? "Covered" : "Trigger one"}
                         </button>
                       </li>
                     );
