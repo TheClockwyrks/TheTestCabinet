@@ -6,11 +6,12 @@
 # GH_TOKEN for `gh`, CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID for `wrangler`),
 # synced from the staging Key Vault by the keyvault-csi component.
 #
-# TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the crux of publish decoupling: prod sets
-# NEITHER and relies on the compiled defaults (TheClockwyrks / test-cabinet-runs), so
-# staging MUST set both here or it would publish into the prod org/project. The
+# TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the crux of publish decoupling:
+# core::publish::PublishConfig::from_env requires both (no compiled-in fallback), so
+# every environment names its own targets — prod sets TheClockwyrks / test-cabinet-runs,
+# and staging MUST set its own here or it would publish into the prod org/project. The
 # dispatcher forwards both into every publish Job (PUBLISHER_PASSTHROUGH_VARS), where
-# core::publish::PublishConfig::from_env reads them.
+# from_env reads them.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
