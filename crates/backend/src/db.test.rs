@@ -2176,6 +2176,73 @@ async fn a_claimed_job_no_longer_counts_toward_a_cell() {
     );
 }
 
+/// A provider-routed harness (OpenCode / Kilo Code) launches — and so stores on
+/// both the job and the produced run — its model id with the `openrouter/` prefix
+/// the plan's canonical `combo.model` omits. Coverage must count those against the
+/// *launched* id, or a provider-routed cell reads zero forever (the in-flight badge
+/// never shows and "Trigger" re-launches indefinitely). This pins the invariant the
+/// `coverage` handler relies on by using [`launch_model_id`] the same way it does.
+#[tokio::test]
+async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
+    use test_cabinet_core::model_id::launch_model_id;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    // The canonical model the reviewer pins in their plan, and the prefixed id an
+    // OpenCode job/run is actually launched with and stored under.
+    let canonical = "anthropic/claude-opus-4.8";
+    let launched = launch_model_id(canonical, HarnessSlug::Opencode, None);
+    assert_eq!(launched, "openrouter/anthropic/claude-opus-4.8");
+
+    // A completed OpenCode run and a queued OpenCode job, both stored prefixed.
+    db.push(
+        &run_with_model("r1", &launched, HarnessSlug::Opencode, TokenCounts::default()),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.enqueue_job(NewJob {
+        harness_slug: "opencode".to_string(),
+        model_id: launched.clone(),
+        ..new_job("j1", "2026-06-23T00:00:00Z")
+    })
+    .await
+    .unwrap();
+
+    // Matching against the plan's bare canonical id — the pre-fix behavior — misses
+    // both, because the stored ids carry the prefix.
+    assert_eq!(
+        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "opencode", canonical)
+            .await
+            .unwrap(),
+        0,
+        "the bare canonical id does not match the prefixed stored run",
+    );
+    assert_eq!(
+        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "opencode", canonical)
+            .await
+            .unwrap(),
+        0,
+        "the bare canonical id does not match the prefixed queued job",
+    );
+
+    // Matching against the launched id — what `coverage` now does — counts both.
+    assert_eq!(
+        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "opencode", &launched)
+            .await
+            .unwrap(),
+        1,
+        "the launched id counts the completed run",
+    );
+    assert_eq!(
+        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "opencode", &launched)
+            .await
+            .unwrap(),
+        1,
+        "the launched id counts the in-flight job",
+    );
+}
+
 #[tokio::test]
 async fn unreviewed_lists_completed_runs_with_no_review_and_drops_them_once_reviewed() {
     let db = Db::connect_in_memory().await.unwrap();
