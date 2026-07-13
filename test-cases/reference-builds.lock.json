@@ -1,0 +1,11 @@
+{
+  "staging": {
+    "pong": {
+      "v1.1.0": {
+        "base": "https://f5b32ce5.test-cabinet-references-staging.pages.dev",
+        "gyre": "https://7c969c7e.test-cabinet-references-staging.pages.dev",
+        "multi": "https://a7af56a7.test-cabinet-references-staging.pages.dev"
+      }
+    }
+  }
+}
