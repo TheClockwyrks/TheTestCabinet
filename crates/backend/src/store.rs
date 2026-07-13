@@ -29,9 +29,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::test_case::{
-    AudioSpec, MaterialSpec, ParticleSpec, UiSpec, version_key,
-};
+use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec, version_key};
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 use uuid::Uuid;
 

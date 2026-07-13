@@ -650,7 +650,8 @@ fn voxel_variant_overrides_the_base_volume() {
     );
     let (dir, catalog) = asset_catalog(&manifest);
     fs::write(
-        dir.path().join("asset-generation/medium/sprite/v1.0.0/variants/double.toml"),
+        dir.path()
+            .join("asset-generation/medium/sprite/v1.0.0/variants/double.toml"),
         "slug = \"double\"\nname = \"Double Size\"\n\
          [voxel]\nwidth = 48\nheight = 32\ndepth = 64\nbackground = \"transparent\"\n",
     )
@@ -703,7 +704,8 @@ fn non_voxel_variant_rejects_a_voxel_table() {
     );
     let (dir, catalog) = asset_catalog(&manifest);
     fs::write(
-        dir.path().join("asset-generation/medium/sprite/v1.0.0/variants/big.toml"),
+        dir.path()
+            .join("asset-generation/medium/sprite/v1.0.0/variants/big.toml"),
         "slug = \"big\"\n[voxel]\nwidth = 8\nheight = 8\ndepth = 8\nbackground = \"transparent\"\n",
     )
     .expect("write big variant");
@@ -1788,7 +1790,11 @@ fn a_missing_workspace_directory_is_rejected() {
 /// manifest declaring `slug`. Everything else is the least a version needs to
 /// resolve, so these tests isolate the folder-name-vs-slug behavior.
 fn write_slugged_case(root: &std::path::Path, folder: &str, version: &str, slug: &str) {
-    let dir = root.join("end-to-end").join("easy").join(folder).join(version);
+    let dir = root
+        .join("end-to-end")
+        .join("easy")
+        .join(folder)
+        .join(version);
     fs::create_dir_all(dir.join("variants")).expect("version dir");
     fs::write(dir.join("prompt.hbs"), "Build it.").expect("prompt");
     fs::write(dir.join("changelog.md"), "Introduced.").expect("changelog");
@@ -2238,7 +2244,8 @@ fn a_missing_reference_implementation_directory_is_rejected() {
     let (dir, catalog) =
         catalog_with_manifest("[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"");
     fs::write(
-        dir.path().join("end-to-end/easy/demo/v1.0.0/variants/base.toml"),
+        dir.path()
+            .join("end-to-end/easy/demo/v1.0.0/variants/base.toml"),
         "slug = \"base\"\nreference_implementation = \"reference-impl/gone\"\n",
     )
     .expect("write base variant");

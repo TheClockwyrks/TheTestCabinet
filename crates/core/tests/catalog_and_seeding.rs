@@ -277,7 +277,9 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
         "variants = [\"variants/base.toml\"]\nworkspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n{DEMO_HEAD}"
     );
     let (dir, catalog) = temp_catalog(&manifest, &[("base.toml", VARIANT_BASE_TITLE)]);
-    let workspace = dir.path().join("end-to-end/easy/demo/v1.0.0/workspaces/base");
+    let workspace = dir
+        .path()
+        .join("end-to-end/easy/demo/v1.0.0/workspaces/base");
     std::fs::create_dir_all(&workspace).expect("workspace dir");
     std::fs::write(
         workspace.join("package.json"),

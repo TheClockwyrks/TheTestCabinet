@@ -1373,7 +1373,9 @@ async fn backfill_alias_families_corrects_legacy_rows() {
     ))
     .await
     .unwrap();
-    db.upsert_model_config(legacy("gpt", &["gpt-5.5"])).await.unwrap();
+    db.upsert_model_config(legacy("gpt", &["gpt-5.5"]))
+        .await
+        .unwrap();
 
     // A Claude Code run of the native id is the run evidence for its family.
     db.push(
