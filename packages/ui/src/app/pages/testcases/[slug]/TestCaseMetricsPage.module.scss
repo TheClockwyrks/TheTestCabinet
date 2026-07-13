@@ -1,6 +1,5 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
-@use "../../../styles/halo" as h;
 @use "../../../styles/breakpoints" as bp;
 @use "../../../styles/forms" as f;
 
@@ -13,23 +12,14 @@
   margin: 0;
 }
 
-// The version-scope control row: a muted label, the scope toggle, and (for the
-// `specific` scope) the version picker, wrapping onto a second line on narrow
-// screens.
+// The version-scope control row: the scope toggle and (for the `specific` scope)
+// the version picker, wrapping onto a second line on narrow screens.
 .controls {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: t.$space-sm;
   margin-bottom: t.$space-lg;
-}
-
-.scopeLabel {
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: t.$color-text-muted;
-  @include h.halo;
 }
 
 // Mirrors the header's variant selector so the two read as one family.

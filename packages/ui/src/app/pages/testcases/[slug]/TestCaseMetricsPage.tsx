@@ -184,7 +184,6 @@ function MetricsContent({
     <section className={styles.section}>
       {showScope && (
         <div className={styles.controls}>
-          <span className={styles.scopeLabel}>Versions</span>
           <SegmentedControl
             options={SCOPE_OPTIONS}
             value={scope}
