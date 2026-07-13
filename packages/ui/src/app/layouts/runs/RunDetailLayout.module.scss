@@ -96,6 +96,10 @@
     &::-webkit-scrollbar {
       display: none;
     }
+
+    // Fade the trailing edge so the swipeable strip (here the eight-tab run
+    // page) reads as scrollable rather than clipping METADATA/EVENTS flush.
+    @include s.swipe-fade;
   }
 }
 

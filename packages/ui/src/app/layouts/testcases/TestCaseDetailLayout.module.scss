@@ -124,6 +124,9 @@
     &::-webkit-scrollbar {
       display: none;
     }
+
+    // Fade the trailing edge so the swipeable strip reads as scrollable.
+    @include s.swipe-fade;
   }
 }
 

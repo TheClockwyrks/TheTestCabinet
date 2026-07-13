@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { useCaseRunSummaries } from "../../../data/useRuns";
@@ -370,7 +370,17 @@ function LeaderboardContent({
                 <span className={styles.rank}>{index + 1}</span>
                 <span className={styles.model}>{entry.modelName}</span>
                 {visibleColumns.map((column) => (
-                  <Fragment key={column.id}>{column.render(entry)}</Fragment>
+                  // Each metric cell carries its column label so the board can
+                  // reflow into labelled value lines on a phone (see the mobile
+                  // card rules in the stylesheet); on desktop the label is unused
+                  // and the wrapper is a transparent grid cell.
+                  <span
+                    key={column.id}
+                    className={styles.cell}
+                    data-label={column.label}
+                  >
+                    {column.render(entry)}
+                  </span>
                 ))}
               </div>
             ))}

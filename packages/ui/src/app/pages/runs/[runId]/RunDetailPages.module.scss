@@ -120,6 +120,18 @@
     color: t.$color-text-muted;
     font-weight: 600;
   }
+
+  // On a phone the wider checks tables (Check / Reached / Similarity / Detail)
+  // can't fit their four columns at full padding and the trailing column clips
+  // off the card's right edge. Tighten the cell padding and let cell contents
+  // (including an unbreakable detail token) wrap so every column stays on-screen.
+  @include bp.below(t.$bp-sm) {
+    th,
+    td {
+      padding: t.$space-xs t.$space-sm;
+      overflow-wrap: anywhere;
+    }
+  }
 }
 
 .checkName {

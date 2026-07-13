@@ -277,8 +277,20 @@ a.row {
     overflow-x: visible;
   }
 
-  // The column header is redundant once each cell carries its own label.
-  .head {
+  // The column header is redundant once each cell carries its own label. The
+  // header element carries both `.row` and `.head`; qualify the selector so this
+  // hide out-specifies the `.row { display: flex }` card rule below (equal
+  // specificity would let the later `.row` rule win and leak a ghost header of
+  // bare column labels + sort carets above the cards). Hiding the header also
+  // removes the per-column resize handles it hosts, which are meaningless on
+  // touch.
+  .row.head {
+    display: none;
+  }
+
+  // The column-picker trigger (and any resize affordance) has no place on a
+  // phone: the cards already show every column, and there is nothing to resize.
+  .menuAnchor {
     display: none;
   }
 

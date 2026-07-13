@@ -1,5 +1,6 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/halo" as h;
+@use "../../styles/surfaces" as s;
 @use "../../styles/breakpoints" as bp;
 
 // The runs section's tab bar, mirroring the Settings / About / detail-page tab
@@ -28,6 +29,9 @@
     &::-webkit-scrollbar {
       display: none;
     }
+
+    // Fade the trailing edge so the swipeable strip reads as scrollable.
+    @include s.swipe-fade;
   }
 }
 

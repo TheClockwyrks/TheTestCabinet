@@ -208,8 +208,12 @@ a.row:hover .logo {
     overflow-x: visible;
   }
 
-  // The column header is redundant once each cell carries its own label.
-  .head {
+  // The column header is redundant once each cell carries its own label. The
+  // header element carries both `.row` and `.head`, so qualify the selector to
+  // out-specify the `.row { display: flex }` card rule below — an equal-specificity
+  // `.head` would lose on source order and leak a ghost header of bare column
+  // labels above the cards.
+  .row.head {
     display: none;
   }
 
