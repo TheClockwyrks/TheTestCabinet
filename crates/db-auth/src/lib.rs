@@ -263,8 +263,9 @@ fn spawn_refresher(
                     // alive until its in-flight work finishes, so nothing is cut
                     // off mid-query. We deliberately do NOT call `.close()`.
                     let previous = {
-                        let mut guard =
-                            current.write().expect("Azure AD DB connection lock poisoned");
+                        let mut guard = current
+                            .write()
+                            .expect("Azure AD DB connection lock poisoned");
                         std::mem::replace(&mut *guard, conn)
                     };
                     drop(previous);

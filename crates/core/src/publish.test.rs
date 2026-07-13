@@ -142,10 +142,7 @@ fn from_env_requires_org_and_pages_project() {
         std::env::remove_var("TCAB_GITHUB_ORG");
         std::env::remove_var("TCAB_PAGES_PROJECT");
     }
-    assert!(matches!(
-        PublishConfig::from_env(),
-        Err(Error::Publish(_))
-    ));
+    assert!(matches!(PublishConfig::from_env(), Err(Error::Publish(_))));
 
     // Both set: the org and Pages project come from the environment; the prefix is
     // the fixed compiled-in constant.
@@ -164,10 +161,7 @@ fn from_env_requires_org_and_pages_project() {
         std::env::set_var("TCAB_GITHUB_ORG", "");
         std::env::remove_var("TCAB_PAGES_PROJECT");
     }
-    assert!(matches!(
-        PublishConfig::from_env(),
-        Err(Error::Publish(_))
-    ));
+    assert!(matches!(PublishConfig::from_env(), Err(Error::Publish(_))));
 
     // Restore a clean environment for any test ordering.
     unsafe {
@@ -357,8 +351,8 @@ fn publisher_for(
     std::fs::create_dir_all(&build_dir).expect("build dir");
     // Zero out the propagation-lag delays so the release tests never actually
     // sleep; the retry *count* is preserved so the retry path stays exercised.
-    let publisher = BackendPublisher::new(sample_config(), runner, MockBackend)
-        .with_push_retry(PushRetry {
+    let publisher =
+        BackendPublisher::new(sample_config(), runner, MockBackend).with_push_retry(PushRetry {
             attempts: 5,
             initial_delay: Duration::ZERO,
             backoff: Duration::ZERO,
