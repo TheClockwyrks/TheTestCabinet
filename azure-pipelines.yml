@@ -27,6 +27,7 @@ trigger:
   branches:
     include:
       - master
+      - staging
 
 pr:
   branches:

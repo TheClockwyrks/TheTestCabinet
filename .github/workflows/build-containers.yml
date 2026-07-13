@@ -49,7 +49,7 @@ name: Build containers
 # performance). A newly-added image needs this the first time it is published.
 on:
   push:
-    branches: [master]
+    branches: [master, staging]
     # The asset-generation and adversarial images bake binaries compiled from
     # `crates/` (the `draw`/`draw-sheet` tools, the `voxel`/`voxel-anim` tools, and
     # the Foray CLI + buildkit + reference modules), so a change to those crates

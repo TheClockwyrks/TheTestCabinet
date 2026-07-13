@@ -1,20 +1,29 @@
 name: Deploy docs
 
 # Builds the developer documentation site (apps/docs, an Astro Starlight site)
-# and deploys it to Cloudflare Pages at docs.testcabinet.ai. Unlike the gallery
-# (apps/site) — a git-connected Cloudflare Pages project that Cloudflare builds
-# itself, fetching the backend snapshot at build time — the docs are a pure
-# static build, so they are built here in CI and uploaded with wrangler (a
-# Direct Upload project).
+# and deploys it to Cloudflare Pages. Unlike the gallery (apps/site) — a
+# git-connected Cloudflare Pages project that Cloudflare builds itself, fetching
+# the backend snapshot at build time — the docs are a pure static build, so they
+# are built here in CI and uploaded with wrangler (a Direct Upload project).
 #
-# Runs on pushes to master that touch the docs or this workflow, and on demand.
-# Requires two repository secrets, configured once (see the one-time docs setup
-# at https://docs.testcabinet.ai/development/releasing/#docs-cloudflare-pages-one-time):
+# The deploy target follows the branch, so staging never publishes over the
+# production docs:
+#   - master  → test-cabinet-docs          (production, docs.testcabinet.ai)
+#   - staging → test-cabinet-docs-staging  (the separate staging Pages project)
+# Each is deployed as its own project's *production* build by passing the git
+# branch as --branch, which must match that project's configured production
+# branch: master for test-cabinet-docs, staging for test-cabinet-docs-staging.
+# (A mismatch would land the upload as a preview instead of the live deployment.)
+#
+# Runs on pushes to master or staging that touch the docs or this workflow, and
+# on demand. Requires two repository secrets, configured once (see the one-time
+# docs setup at
+# https://docs.testcabinet.ai/development/releasing/#docs-cloudflare-pages-one-time):
 #   CLOUDFLARE_API_TOKEN   — token with the "Cloudflare Pages: Edit" permission
-#   CLOUDFLARE_ACCOUNT_ID  — the account that owns the Pages project
+#   CLOUDFLARE_ACCOUNT_ID  — the account that owns the Pages projects
 on:
   push:
-    branches: [master]
+    branches: [master, staging]
     paths:
       - "apps/docs/**"
       - ".github/workflows/deploy-docs.yml"
@@ -23,9 +32,10 @@ on:
 permissions:
   contents: read
 
-# Allow one concurrent deployment; let an in-progress run finish.
+# Allow one concurrent deployment per branch (so a staging deploy never queues
+# behind a master deploy or vice versa); let an in-progress run finish.
 concurrency:
-  group: deploy-docs
+  group: deploy-docs-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -39,12 +49,27 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build -w @test-cabinet/docs
+      # Pick the Pages project from the branch this run is on (works for both the
+      # push trigger and a manual dispatch, which reports the branch it was run
+      # from in github.ref_name).
+      - name: Select Cloudflare Pages project
+        id: target
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ "$REF" = "staging" ]; then
+            echo "project=test-cabinet-docs-staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "project=test-cabinet-docs" >> "$GITHUB_OUTPUT"
+          fi
       # `wrangler pages deploy` uploads the static bundle to the Pages project.
-      # `--branch=master` marks this as a production deployment (matching the
-      # project's configured production branch); other branches become previews.
+      # Passing the git branch as `--branch` marks this as a production
+      # deployment of that project when it matches the project's configured
+      # production branch (master for prod, staging for the staging project);
+      # any other branch would become a preview.
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/docs/dist --project-name=test-cabinet-docs --branch=master
+          command: pages deploy apps/docs/dist --project-name=${{ steps.target.outputs.project }} --branch=${{ github.ref_name }}
