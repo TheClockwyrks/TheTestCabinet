@@ -10,8 +10,7 @@
   margin-bottom: t.$space-lg;
 }
 
-// One card. It is a link to the full reviewer surface; an inner button (trigger
-// all missing) stops the click from navigating.
+// One card. It is a link to the full reviewer surface.
 .widget {
   display: flex;
   flex-direction: column;
@@ -25,6 +24,9 @@
 
   &:hover {
     border-color: t.$color-accent;
+    // The card is an anchor; without this the global `a:hover` underline
+    // would re-apply over the base `text-decoration: none`.
+    text-decoration: none;
   }
 }
 
@@ -42,23 +44,5 @@
   strong {
     color: t.$color-text;
     font-size: t.$font-lg;
-  }
-}
-
-.widgetAction {
-  align-self: flex-start;
-  margin-top: t.$space-xs;
-  font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  color: t.$color-bg;
-  background: t.$color-accent;
-  border: none;
-  border-radius: t.$radius-sm;
-  padding: t.$space-2xs t.$space-md;
-  cursor: pointer;
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: default;
   }
 }
