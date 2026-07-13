@@ -2195,7 +2195,12 @@ async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
 
     // A completed OpenCode run and a queued OpenCode job, both stored prefixed.
     db.push(
-        &run_with_model("r1", &launched, HarnessSlug::Opencode, TokenCounts::default()),
+        &run_with_model(
+            "r1",
+            &launched,
+            HarnessSlug::Opencode,
+            TokenCounts::default(),
+        ),
         &links(),
         None,
     )
