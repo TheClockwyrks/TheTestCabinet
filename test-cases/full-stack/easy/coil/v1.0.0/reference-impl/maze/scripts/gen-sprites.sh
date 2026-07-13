@@ -43,7 +43,9 @@ HEAD_OUT='#0f7a45' # head outline (dark green)
 HEAD_HI='#b6ffd2'  # head highlight (baked glow)
 BODY_C='#2fd07a'   # snake body (clearly dimmer than the head)
 BODY_OUT='#12703f' # body outline (dark green)
-BODY_HI='#5fe89e'  # body tube shine
+BODY_HI='#5fe89e'  # body tube shine (glossy centre core)
+NECK2='#3edc80'    # head→body neck blend, nearer the body
+NECK3='#4ee786'    # head→body neck blend, nearer the head
 DARK='#0b0e14'     # mouth interior / eye pupil (stage bg)
 WHITE='#e6edf3'    # eye glint (primary text)
 TONGUE='#ff5c8a'   # a flick of tongue on the wide chomp (pellet color)
@@ -95,12 +97,22 @@ head_frame() {
     Ho=$(ho "$x"); Hf=$((Ho-1)); [ "$Hf" -lt 0 ] && continue
     sc line --frame "$f" --x0 "$x" --y0 $((16-Hf)) --x1 "$x" --y1 $((15+Hf)) --color "$HEAD_C"
   done
-  # 3) top shine along the crown (baked glow), fading back over the neck
-  for x in $(seq 2 22); do
-    Ho=$(ho "$x")
-    sc set-pixel --frame "$f" --x "$x" --y $((16-Ho+2)) --color "$HEAD_HI"
+  # 3) NECK BLEND — grade the back of the head from the body colour up to the head
+  #    colour so it joins the neck without a hard bright step (the front keeps the bright
+  #    head colour, so the leading cell is still clearly distinguishable).
+  local gx gc
+  for gx in $(seq 0 11); do
+    Ho=$(ho "$gx"); Hf=$((Ho-1)); [ "$Hf" -lt 0 ] && continue
+    if   [ "$gx" -le 3 ]; then gc="$BODY_C"
+    elif [ "$gx" -le 7 ]; then gc="$NECK2"
+    else                       gc="$NECK3"; fi
+    sc line --frame "$f" --x0 "$gx" --y0 $((16-Hf)) --x1 "$gx" --y1 $((15+Hf)) --color "$gc"
   done
-  sc fill-circle --frame "$f" --cx 9 --cy 10 --r 2 --color "$HEAD_HI"
+  # glossy centre stripe (symmetric about the tube axis, rows 15-16) over the neck and into
+  # the head — continuous with the body's core shine, and reflection-safe.
+  for gx in $(seq 0 18); do
+    sc fill-rect --frame "$f" --x "$gx" --y 15 --width 1 --height 2 --color "$BODY_HI"
+  done
   # 4) forward-looking eye on the upper-front of the head
   sc fill-circle --frame "$f" --cx 22 --cy 10 --r 3 --color "$HEAD_OUT"
   sc fill-circle --frame "$f" --cx 22 --cy 10 --r 2 --color "$WHITE"
@@ -146,18 +158,19 @@ d() { draw "$@" --config "$CFG" >/dev/null; }
 
 # =============================================================================
 # BODY — a straight HORIZONTAL tube running west<->east (connects W and E edges).
-# Dimmer than the head, with a top shine and a bottom shade for tube volume, and
-# a couple of faint scale ticks.
+# Dimmer than the head. Shaded SYMMETRICALLY about the tube axis (a glossy centre
+# core, no directional top/bottom shine) so a segment looks the same whichever way
+# it is rotated and joins its neighbours with no bright/dark seam.
 # =============================================================================
 newsprite "$SNAKE/body.png"
 d fill-rect --x 0 --y 6  --width 32 --height 20 --color "$BODY_OUT"   # outline band
 d fill-rect --x 0 --y 8  --width 32 --height 16 --color "$BODY_C"     # tube fill
-d fill-rect --x 0 --y 9  --width 32 --height 3  --color "$BODY_HI"    # top shine
-d fill-rect --x 0 --y 22 --width 32 --height 2  --color "$BODY_OUT"   # bottom shade
-# faint scale chevrons (columns), pointing toward the head-ward run
+d fill-rect --x 0 --y 15 --width 32 --height 2  --color "$BODY_HI"    # glossy centre core
+# faint scale chevrons pointing WEST (tail-ward), centred on the tube axis (y15.5) so they
+# don't shift by a pixel when a neighbouring corner is reflected.
 for x in 5 13 21 29; do
-  d line --x0 "$x" --y0 13 --x1 $((x-2)) --y1 16 --color "$BODY_OUT"
-  d line --x0 "$x" --y0 19 --x1 $((x-2)) --y1 16 --color "$BODY_OUT"
+  d line --x0 "$x" --y0 13 --x1 $((x-2)) --y1 15 --color "$BODY_OUT"
+  d line --x0 "$x" --y0 18 --x1 $((x-2)) --y1 16 --color "$BODY_OUT"
 done
 
 # =============================================================================
@@ -172,23 +185,26 @@ d fill-rect --x 6 --y 6 --width 26 --height 20 --color "$BODY_OUT"    # east arm
 d fill-rect --x 6 --y 6 --width 20 --height 26 --color "$BODY_OUT"    # south arm outline
 d fill-rect --x 8 --y 8 --width 24 --height 16 --color "$BODY_C"      # east arm fill
 d fill-rect --x 8 --y 8 --width 16 --height 24 --color "$BODY_C"      # south arm fill
-# tube shine wrapping the inner (SE) curve
-d fill-rect --x 8 --y 9  --width 24 --height 2 --color "$BODY_HI"     # along the top
-d fill-rect --x 9 --y 8  --width 2  --height 24 --color "$BODY_HI"    # along the left
-# soften the outer NW corner and firm up the inner corner
+# glossy core stripe following the L centreline (symmetric about the corner's NW–SE
+# diagonal, so a reflected bend renders identically), continuous with the body core shine.
+d fill-rect --x 16 --y 15 --width 16 --height 2 --color "$BODY_HI"    # head-arm core → east edge
+d fill-rect --x 15 --y 16 --width 2  --height 16 --color "$BODY_HI"   # tail-arm core → south edge
+d fill-rect --x 15 --y 15 --width 2  --height 2  --color "$BODY_HI"   # elbow join
+# soften the outer NW corner and firm up the inner corner (both diagonal-symmetric)
 d set-pixel --x 6 --y 6 --color "$BODY_OUT"
 d fill-circle --cx 24 --cy 24 --r 2 --color "$BODY_OUT"
-# faint scale chevrons, SAME as the straight body but following the L so the scales flow
-# continuously around the bend: along the head-ward (east) arm they point WEST, and along
-# the tail-ward (south) arm they point SOUTH. The renderer maps this canonical corner
-# (east = head opening, south = tail opening) onto each bend, keeping the flow tail-ward.
-for x in 27 31; do
-  d line --x0 "$x" --y0 13 --x1 $((x-2)) --y1 16 --color "$BODY_OUT"
-  d line --x0 "$x" --y0 19 --x1 $((x-2)) --y1 16 --color "$BODY_OUT"
-done
-for y in 25 29; do
-  d line --x0 13 --y0 "$y" --x1 16 --y1 $((y+2)) --color "$BODY_OUT"
-  d line --x0 19 --y0 "$y" --x1 16 --y1 $((y+2)) --color "$BODY_OUT"
+# faint scale chevrons that flow tail-ward continuously around the bend — the head-ward
+# (east) arm points WEST toward the elbow and the tail-ward (south) arm points SOUTH away
+# from it, so along the snake the scales read >>> >>> >>>, never converging (>>> <<<). Each
+# chevron is centred on its arm's tube axis (y15.5 / x15.5) so a reflected bend does not
+# shift it by a pixel.
+for p in 22 28; do
+  # head-ward (east) arm — west-pointing (toward the elbow), centred on y15.5
+  d line --x0 "$p" --y0 13 --x1 $((p-2)) --y1 15 --color "$BODY_OUT"
+  d line --x0 "$p" --y0 18 --x1 $((p-2)) --y1 16 --color "$BODY_OUT"
+  # tail-ward (south) arm — south-pointing (away from the elbow), centred on x15.5
+  d line --x0 13 --y0 "$p" --x1 15 --y1 $((p+2)) --color "$BODY_OUT"
+  d line --x0 18 --y0 "$p" --x1 16 --y1 $((p+2)) --color "$BODY_OUT"
 done
 
 # =============================================================================
@@ -196,21 +212,22 @@ done
 # TAPERS to a point at the EAST tip (tip points +col / east).
 # =============================================================================
 newsprite "$SNAKE/tail.png"
-# outline pass: a solid tapering wedge from the west edge to a point at the east
+# outline pass: a solid tapering wedge from the west edge to a point at the east, the band
+# centred on the tube axis (y15.5) so it aligns with the body segment it follows.
 for x in $(seq 0 28); do
   H=$(( ((28-x)*10 + 14) / 28 ))          # half-height 10 at west → 0 at the tip
-  d line --x0 "$x" --y0 $((16-H)) --x1 "$x" --y1 $((16+H)) --color "$BODY_OUT"
+  d line --x0 "$x" --y0 $((16-H)) --x1 "$x" --y1 $((15+H)) --color "$BODY_OUT"
 done
 # fill pass: inset by the 1px outline
 for x in $(seq 0 26); do
   H=$(( ((28-x)*10 + 14) / 28 ))
-  h=$((H-2)); [ "$h" -lt 0 ] && continue
-  d line --x0 "$x" --y0 $((16-h)) --x1 "$x" --y1 $((16+h)) --color "$BODY_C"
+  h=$((H-1)); [ "$h" -lt 1 ] && continue
+  d line --x0 "$x" --y0 $((16-h)) --x1 "$x" --y1 $((15+h)) --color "$BODY_C"
 done
-# top shine along the taper + a little tip highlight
-for x in $(seq 0 22); do
+# glossy core stripe along the taper (symmetric about the axis), continuous with the body.
+for x in $(seq 0 24); do
   H=$(( ((28-x)*10 + 14) / 28 ))
-  y=$((16-H+2)); [ "$y" -lt 16 ] && d set-pixel --x "$x" --y "$y" --color "$BODY_HI"
+  [ "$H" -ge 2 ] && d fill-rect --x "$x" --y 15 --width 1 --height 2 --color "$BODY_HI"
 done
 
 echo "produced 7 snake sprites: head/{0,1,2,3}.png, body.png, corner.png, tail.png"

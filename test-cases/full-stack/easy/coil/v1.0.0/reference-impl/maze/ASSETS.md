@@ -32,7 +32,9 @@ cross-section as `body.png`** — the full-width `y6..25`/`y8..23` band, flush t
 so the head butts seamlessly against the neck segment behind it (it is **not** a free-floating
 disc); from that neck-width back it swells to a fatter, rounded, blunt-nosed head toward the
 east. Because the connecting band is centred and matches the body, the seam stays continuous
-whichever way the head is rotated.
+whichever way the head is rotated; the back of the head is also **graded from the body colour up
+to the bright head colour**, so there is no hard colour step at the neck while the front stays
+bright and the leading cell is still clearly distinguishable.
 
 - **Frame 0** — resting (mouth closed).
 - **Frames 1, 2, 3** — a bite: the mouth opens, chomps wide, and closes.
@@ -43,9 +45,11 @@ In game the head sprite is rotated to the snake's current facing; the bite (1→
 ### `assets/snake/body.png` — `draw`
 
 A straight body segment authored **horizontal** (a tube running west↔east, connecting the west
-and east edges), with a top shine and a bottom shade for volume and faint **scale chevrons**
-pointing west (tail-ward, since the head is authored east). Clearly dimmer than the head. The
-renderer orients it to the run direction so the chevrons flow toward the tail.
+and east edges), shaded **symmetrically about the tube axis** — a glossy centre core, no
+directional top/bottom shine — with faint **scale chevrons** pointing west (tail-ward, since the
+head is authored east) and centred on the axis. Clearly dimmer than the head. The renderer orients
+it to the run direction so the chevrons flow toward the tail, and the symmetric shading means it
+joins its neighbours with no bright/dark edge seam whichever way it is rotated.
 
 ### `assets/snake/corner.png` — `draw`
 
@@ -56,7 +60,9 @@ south arm) so the scales flow continuously around the bend. Used at every bend; 
 this canonical corner onto each bend by sending its east opening to the head neighbour and its
 south opening to the tail neighbour (a rotation, or a rotation+reflection when the bend turns the
 other way), so a turning snake reads as a continuous coil — head, straights, and corners all
-scaling tail-ward — rather than a staircase of squares.
+scaling tail-ward (`>>> >>>`, never converging) — rather than a staircase of squares. Its shading
+is the same axis-symmetric glossy core following the L, and every chevron is centred on its arm's
+tube axis, so a reflected bend renders with no bright/dark edge seam and no pixel offset.
 
 ### `assets/snake/tail.png` — `draw`
 
