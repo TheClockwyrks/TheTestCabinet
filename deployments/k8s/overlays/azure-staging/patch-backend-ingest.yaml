@@ -33,7 +33,7 @@ spec:
             - |
               set -u
               # Keep in lockstep with kustomization.yaml's image newTag (same git SHA).
-              COMMIT=320297191f77c1401e79fc43e00d809e96a82e96
+              COMMIT=32a551de82dc3237ee32554a71e189a2bc534aa2
               until apk add --no-cache git curl; do
                 echo "ingest: apk add failed, retrying in 5s"; sleep 5
               done
