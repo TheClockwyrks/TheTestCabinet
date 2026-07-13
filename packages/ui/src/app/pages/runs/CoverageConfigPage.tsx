@@ -170,7 +170,10 @@ export function CoverageConfigPage() {
     }
   }
 
-  const versions = sel.cases.find((c) => c.slug === sel.slug)?.versions ?? [];
+  // Catalog versions are oldest-first; show the dropdown newest-first.
+  const versions = [
+    ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
+  ].reverse();
 
   if (!token) {
     return (

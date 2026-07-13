@@ -177,7 +177,10 @@ export function NewRunPage() {
     [sel.cases, testCaseName],
   );
 
-  const versions = sel.cases.find((c) => c.slug === sel.slug)?.versions ?? [];
+  // Catalog versions are oldest-first; show the dropdown newest-first.
+  const versions = [
+    ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
+  ].reverse();
   // Orchestrator selection is limited to the program-building test types — the
   // end-to-end and full-stack game builds, whose multi-session harness runs can
   // be conducted by a non-default orchestrator (e.g. ralph). Every other type
