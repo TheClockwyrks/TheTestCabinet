@@ -88,6 +88,7 @@ are built.
 | [Gallery](/components/site/overview/) (`apps/site`) | `test-cabinet-site` | `testcabinet.ai` (apex) | Cloudflare (git-connected) |
 | [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
 | Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | `tcab publish` → `wrangler` |
+| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler` |
 
 The docs and per-run builds are **Direct Upload** projects — built elsewhere and
 pushed with `wrangler` — while the gallery is **git-connected**: Cloudflare clones
@@ -178,3 +179,31 @@ Cloudflare credentials it uses (see
 [CLI Authentication](/components/cli/overview/#authentication)); there is no
 shared infrastructure to configure beyond those credentials, and because builds
 are served from `pages.dev` they need no custom DNS.
+
+## Reference implementations (Cloudflare Pages, one-time)
+
+A [reference implementation](/components/core/results/#reference-implementations) —
+a test-case variant's authored, correct static build — is deployed out-of-band by
+`tcab publish-reference` to its own Cloudflare Pages project, the case-variant
+analogue of a per-run build. The full operator workflow, prerequisites, and the
+non-experimental **release gate** (every reference-capable case must ship a
+reference by the release that makes it non-experimental) live in
+[Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/).
+
+- In the Cloudflare dashboard, create a **Direct Upload** Pages project named
+  `test-cabinet-references` (the name the CLI deploys to; it is not configurable).
+  It needs no custom domain — each variant is served from the `*.pages.dev` URL
+  `wrangler` reports, under a per-variant branch alias
+  (`<slug>-<version-with-dots-as-dashes>-<variant>`), and the served URL is read
+  back from `wrangler` rather than constructed.
+- It reuses the same `CLOUDFLARE_API_TOKEN` (*Cloudflare Pages: Edit*) and
+  `CLOUDFLARE_ACCOUNT_ID` as the docs deploy. The
+  [`publish-reference.yml`](/guides/devops/publishing-a-reference-implementation/#from-ci)
+  `workflow_dispatch` job additionally needs the `TCAB_BACKEND_URL` and
+  `TCAB_TOKEN` repository secrets to record each deployed URL on the backend.
+
+> **Staging note.** The CLI currently hardcodes the `test-cabinet-references`
+> project name (unlike per-run builds, which read `TCAB_PAGES_PROJECT` from the
+> environment), so a separate staging project is not yet selectable from
+> `tcab publish-reference`. Wiring a project-name override is required before a
+> `test-cabinet-references-staging` project can be targeted.

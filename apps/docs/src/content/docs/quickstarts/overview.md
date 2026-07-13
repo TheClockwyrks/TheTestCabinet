@@ -91,6 +91,8 @@ API key.
   in the app (display name, aliases, logo, description).
 - [Publish a Run](/quickstarts/devops/publish-a-run/) — push, review, and publish a run
   to public hosting and the gallery.
+- [Publish a Reference](/quickstarts/devops/publish-a-reference/) — deploy a case
+  variant's authored reference implementation to Cloudflare Pages and record it.
 - [Roll Production Service Images](/quickstarts/devops/roll-prod-service-images/) —
   promote the latest CI-built service images to the prod cluster by re-pinning the
   overlay.
