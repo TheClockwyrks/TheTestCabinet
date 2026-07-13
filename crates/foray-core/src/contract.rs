@@ -71,8 +71,9 @@ pub struct Action {
 }
 
 impl Action {
-    /// All `Stop` — the safe fallback the host uses when a controller forfeits
-    /// (the match still advances so a replay is produced).
+    /// All `Stop` — the safe fallback a *controller* returns when it cannot decide
+    /// (see the controller SDK). The host does not substitute this on a forfeit: the
+    /// forfeited tick is never played, so it has no action to stand in for.
     pub fn all_stop() -> Action {
         Action {
             moves: (0..3)

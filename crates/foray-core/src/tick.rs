@@ -36,9 +36,9 @@ use crate::config::{Rules, Simulation};
 use crate::contract::Action;
 use crate::state::{Ended, MatchResult, MatchState, Role};
 
-/// Advance `state` by one tick, applying `red`'s and `blue`'s actions. The
-/// actions are assumed already contract-valid (the host validates and substitutes
-/// `Action::all_stop` on a forfeit before calling this); this function only ever
+/// Advance `state` by one tick, applying `red`'s and `blue`'s actions. The actions
+/// are assumed already contract-valid (the host validates before calling this, and
+/// never advances the tick a controller forfeited on); this function only ever
 /// *clamps* blocked moves, it never rejects.
 ///
 /// Returns the [`MatchResult`] if this tick ended the match, else `None`. Calling

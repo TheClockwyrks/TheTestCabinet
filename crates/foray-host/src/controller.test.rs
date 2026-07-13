@@ -48,6 +48,32 @@ const TRAP_WAT: &str = r#"
     (unreachable)))
 "#;
 
+/// A controller that plays a legal all-`Stop` for [`PLAYED_TICKS`] ticks and then
+/// traps — a forfeit in the *middle* of a match rather than on the first invoke. The
+/// call counter is a mutable global, which survives across invocations because the
+/// host holds one `Store`/`Instance` per controller for the whole match.
+fn traps_after_playing_controller() -> Vec<u8> {
+    wat::parse_str(&TRAPS_AFTER_PLAYING_WAT.replace("$PLAYED", &PLAYED_TICKS.to_string()))
+        .expect("the trap-after-playing controller assembles")
+}
+
+/// How many ticks [`traps_after_playing_controller`] plays before it traps.
+const PLAYED_TICKS: u32 = 3;
+
+const TRAPS_AFTER_PLAYING_WAT: &str = r#"
+(module
+  (memory (export "memory") 1)
+  (global $calls (mut i32) (i32.const 0))
+  (data (i32.const 0) "{\22moves\22:[{\22agent\22:0,\22dir\22:\22Stop\22},{\22agent\22:1,\22dir\22:\22Stop\22},{\22agent\22:2,\22dir\22:\22Stop\22}]}")
+  (func (export "alloc") (param $len i32) (result i32) (i32.const 4096))
+  (func (export "tick") (param $ptr i32) (param $len i32) (result i64)
+    (global.set $calls (i32.add (global.get $calls) (i32.const 1)))
+    ;; The first $PLAYED calls answer legally; the next one traps.
+    (if (i32.gt_u (global.get $calls) (i32.const $PLAYED))
+      (then (unreachable)))
+    (i64.or (i64.shl (i64.const 0) (i64.const 32)) (i64.const 86))))
+"#;
+
 /// A controller whose action JSON parses but is contract-invalid: it names only a
 /// single agent (id 0), so the team's other two owned agents are missing — a
 /// forfeit per the contract's structural check, not a clamp.
@@ -135,8 +161,48 @@ fn a_trapping_controller_forfeits_and_the_match_still_produces_a_replay() {
     let replay = summary.replay;
     assert_eq!(replay.result.ended, Ended::Forfeit);
     assert_eq!(replay.result.winner, Some(Team::Blue));
-    // The forfeit happens on the very first tick, so exactly one tick was recorded.
-    assert_eq!(replay.ticks.len(), 1);
+    // Red trapped when asked for its very first action, so the match ended before a
+    // single tick was played: zero ticks transpired and zero were recorded. The log
+    // carries only the ticks that were *played*, never the one a controller died on.
+    assert_eq!(replay.result.ticks, 0);
+    assert_eq!(replay.ticks.len(), 0);
+    replay.reconstruct().expect("a forfeit replay reconstructs");
+}
+
+#[test]
+fn a_mid_match_forfeit_records_only_the_ticks_that_were_played() {
+    let setup = test_setup();
+    let board = board_for(&setup);
+    // Red plays legally for PLAYED_TICKS ticks, then traps on the next invoke.
+    let summary = run_match(
+        &traps_after_playing_controller(),
+        &stop_controller(),
+        board,
+        &setup,
+    )
+    .expect("the match runs");
+
+    let forfeit = summary.forfeit.as_ref().expect("a forfeit was recorded");
+    // Red answered PLAYED_TICKS times, so those ticks advanced; it then trapped when
+    // asked for the *next* action, which is the tick the match forfeits on.
+    assert_eq!(forfeit.tick, PLAYED_TICKS);
+
+    let replay = summary.replay;
+    assert_eq!(replay.result.ended, Ended::Forfeit);
+    assert_eq!(replay.result.winner, Some(Team::Blue));
+
+    // The regression this pins: the forfeited tick is neither played nor recorded, so
+    // the log holds exactly the ticks that transpired. The recorder used to push that
+    // tick and then bail before advancing it, leaving the log one longer than the
+    // result claimed — and browser playback, which steps every recorded tick, then ran
+    // a tick the engine never did, banking seeds for the surviving colony that the
+    // recorded score never counted.
+    assert_eq!(replay.result.ticks, PLAYED_TICKS);
+    assert_eq!(replay.ticks.len() as u32, PLAYED_TICKS);
+
+    // Reconstruction now re-derives a forfeit's score/kills/tick count and checks them
+    // against the committed result (only `winner`/`ended` are taken on trust), so this
+    // also proves the recorded score is the score at the moment of the forfeit.
     replay.reconstruct().expect("a forfeit replay reconstructs");
 }
 

@@ -1030,6 +1030,70 @@ fn reconstruction_detects_drift_against_a_tampered_result() {
     );
 }
 
+/// A forfeit replay built from the scripted match: the host stops part-way through
+/// and declares a winner, so the log holds only the ticks that were played and the
+/// committed score is the score those ticks produce. `mutate` tampers with the
+/// committed result so a test can assert reconstruction catches the disagreement.
+fn forfeit_replay(mutate: impl FnOnce(&mut MatchResult)) -> Replay {
+    let (board, ticks, _) = scripted_match();
+    let played = ticks.len() / 2;
+    let ticks: Vec<TickInput> = ticks.into_iter().take(played).collect();
+
+    // Replay the truncated log to find the state the match forfeited in.
+    let mut game = Match::new(board, rules(), header("r", "b").sim);
+    for input in &ticks {
+        game.step(&input.red, &input.blue);
+    }
+    let mut result = MatchResult {
+        winner: Some(Team::Blue),
+        score: game.state.score,
+        kills: game.state.kills,
+        ended: Ended::Forfeit,
+        ticks: game.state.tick,
+    };
+    mutate(&mut result);
+    Replay::record(header("r", "b"), ticks, result)
+}
+
+#[test]
+fn a_forfeit_replay_reconstructs_when_its_log_produces_the_committed_state() {
+    let replay = forfeit_replay(|_| {});
+    replay
+        .reconstruct()
+        .expect("an honest forfeit replay reconstructs");
+}
+
+#[test]
+fn reconstruction_detects_drift_in_a_forfeit_replays_score() {
+    // Only `winner`/`ended` are the host's to declare on a forfeit; the score, kills
+    // and tick count are the rules' output and must stay re-derivable from the log.
+    // These were once trusted wholesale, so a forfeit replay bypassed the drift check
+    // entirely — a playback engine could diverge on one and nothing would notice.
+    let replay = forfeit_replay(|result| result.score.blue += 7);
+    let err = replay
+        .reconstruct()
+        .expect_err("a forfeit replay with an impossible score drifts");
+    assert!(
+        matches!(err, ReplayError::Drift(_)),
+        "the mismatch is reported as drift"
+    );
+}
+
+#[test]
+fn reconstruction_detects_a_forfeit_replay_whose_tick_count_disagrees_with_its_log() {
+    // The precise shape of the recorder bug this guards: a result claiming a different
+    // number of ticks than the log actually holds (it used to hold one *more* than the
+    // match played, the tick the forfeiting controller died on).
+    let replay = forfeit_replay(|result| result.ticks += 1);
+    let err = replay
+        .reconstruct()
+        .expect_err("a forfeit replay whose tick count disagrees with its log drifts");
+    assert!(
+        matches!(err, ReplayError::Drift(_)),
+        "the mismatch is reported as drift"
+    );
+}
+
 #[test]
 fn reconstruction_is_deterministic_across_runs() {
     let (_, ticks, result) = scripted_match();
