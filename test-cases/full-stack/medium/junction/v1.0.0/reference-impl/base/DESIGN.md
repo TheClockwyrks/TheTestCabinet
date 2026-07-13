@@ -256,7 +256,7 @@ developed tile is **refused** until it is bulldozed (`README`).
 | `RAIL_SPEED_MULT` | 2.0 | a station-to-station leg is this much faster than road |
 | `VEHICLE_CAP_ON_SCREEN` | 220 | render budget — aggregate flow, sample vehicles to draw |
 
-Congestion colouring on the traffic overlay ramps `load/cap` from clear →
+Congestion coloring on the traffic overlay ramps `load/cap` from clear →
 `congest #ff7a3c` → `alert #ff5a52` (`specs/transit.md`).
 
 ### 3.6 Utilities (`specs/utilities.md`)
@@ -290,7 +290,7 @@ Budget: `START_TREASURY = 30000`, `DEBT_LIMIT = -20000`, `TAX_DEFAULT = 0.09`,
 
 - **Pollution field** (per tick): sources add `POLL_EMIT` (industry) and
   `0.15·max(0,load/cap−1)` (congested roads); then diffuse with `POLL_DIFFUSE = 0.12` to
-  4-neighbours and decay `POLL_DECAY = 0.04`; clamp `[0,100]`.
+  4-neighbors and decay `POLL_DECAY = 0.04`; clamp `[0,100]`.
 - **Land value** (per tile, recomputed each tick, `0..1`): `base 0.35` `+ amenity`
   (water/park within radius 4, up to `+0.30`) `+ 0.15` if powered+watered+access `+ 0.10`
   near a station `− 0.6·(pollution/100)` `− up to 0.25` for adjacent congestion; clamp.
@@ -378,12 +378,12 @@ Everything is drawn in logical 1280×720 space; `main.ts` fits it to the window
 - **City view `y ∈ [64,656]`, full width** — the top-down camera onto the tile map.
   Draw order: terrain fill → pollution/land overlay tint (if toggled) → zoned lots →
   developed **building sprites** by `(zone,tier)` → **road/rail/station** sprites (road
-  shape chosen from neighbours) → **wire/pipe** sprites → **plant/source** 2×2 sprites →
+  shape chosen from neighbors) → **wire/pipe** sprites → **plant/source** 2×2 sprites →
   **live pollution haze** particles → **vehicles** (interpolated, animated sheets) +
   **signal** sheets at junctions → traffic/utility overlay (if toggled) → selection/hover
   cursor, tool ghost + drag rectangle, illegal-placement refusal cue.
 - **Bottom HUD strip `y ∈ [656,720]`** — **RCI meters** (three vertical bars R/C/I, filled
-  by demand, labelled by letter and colour) toward the left; a divider; the **build
+  by demand, labelled by letter and color) toward the left; a divider; the **build
   palette** (tool buttons: `RES COM IND ROAD RAIL STATN PWR WIRE WTR PIPE RAZE`, active one
   highlighted, each with its produced glyph icon) toward the right; the **cost readout**
   (active tool name + `$N/tile` or total) at the far right; a compact **tax stepper**

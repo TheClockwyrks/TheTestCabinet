@@ -30,7 +30,7 @@ is unchanged; only the authoring tool is constrained.
 ## Palette
 
 All colors are from `specs/overview.md`. Sprites are **pixel art**: drawn at native size on
-a transparent (straight-alpha) canvas and sampled **nearest-neighbour**
+a transparent (straight-alpha) canvas and sampled **nearest-neighbor**
 (`imageSmoothingEnabled=false`). Each zone must read by **form** as well as hue; roads vs
 rail, and wire vs pipe, must be visibly distinct.
 
@@ -68,7 +68,7 @@ the spec's allowance — no sprite needed.
 ### 1.2 Transit tiles
 
 Road drawn so tiles connect into continuous roads; `src/assets.ts` `roadSprite(mask)`
-selects by the 4-neighbour road bitmask.
+selects by the 4-neighbor road bitmask.
 
 | Output path | Tool | Size | Palette | Description |
 | --- | --- | --- | --- | --- |

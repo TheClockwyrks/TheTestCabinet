@@ -17,7 +17,6 @@ autotile
 autotiled
 autotiles
 deadzone
-defence
 despawn
 despawns
 keybinds
@@ -323,7 +322,6 @@ ctrls
 Bloons
 stackable
 chippable
-travelling
 
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
 PRNG
@@ -332,10 +330,6 @@ STATN
 landvalue
 Menlo
 Consolas
-neighbour
-neighbours
-colour
-colouring
 tunables
 mult
 openrouter
@@ -362,7 +356,6 @@ prio
 rity
 pathable
 subemitter
-behaviour
 headlessly
 accum
 lerp
