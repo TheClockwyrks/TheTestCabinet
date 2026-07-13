@@ -1,0 +1,29 @@
+[package]
+name = "test-cabinet-db-auth"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "test_cabinet_db_auth"
+path = "src/lib.rs"
+
+[dependencies]
+# SeaORM is the connection type the backend and auth service already hold; this
+# crate hands them a `DatabaseConnection` built with a Microsoft Entra access
+# token as the Postgres password, transparently rebuilt as the token rotates.
+sea-orm = { workspace = true }
+# The token endpoint call (federated client-credentials) and the JSON response.
+# rustls (from the workspace feature set) avoids a system OpenSSL dependency.
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# `tokio::spawn` + `tokio::time` drive the background pool-refresh loop, and the
+# federated token file is read with `tokio::fs`.
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

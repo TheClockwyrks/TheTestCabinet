@@ -53,6 +53,11 @@ pub struct Config {
     /// The database connection URL (`TCAB_BACKEND_DATABASE_URL`). The scheme picks
     /// the backend: `sqlite://…` (local/dev) or `postgres://…` (deployment).
     pub database_url: String,
+    /// Whether to authenticate to Postgres with a Microsoft Entra managed-identity
+    /// token instead of a password (`TCAB_BACKEND_DB_AZURE_AD`, truthy to enable).
+    /// When set, `database_url` must be a passwordless `postgres://` URL naming the
+    /// Entra Postgres role as its username. Defaults to `false` (password / SQLite).
+    pub db_azure_ad: bool,
     /// Path to the repo checkout ingested on `POST /ingest` (`TCAB_BACKEND_CHECKOUT`).
     pub checkout: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
@@ -127,6 +132,7 @@ impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind = env_or("TCAB_BACKEND_BIND", DEFAULT_BIND);
         let database_url = env_or("TCAB_BACKEND_DATABASE_URL", DEFAULT_DATABASE_URL);
+        let db_azure_ad = truthy("TCAB_BACKEND_DB_AZURE_AD");
         let checkout = PathBuf::from(require("TCAB_BACKEND_CHECKOUT")?);
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
         let auth_url = env_or("TCAB_BACKEND_AUTH_URL", DEFAULT_AUTH_URL);
@@ -157,6 +163,7 @@ impl Config {
         Ok(Self {
             bind,
             database_url,
+            db_azure_ad,
             checkout,
             store,
             auth_url,

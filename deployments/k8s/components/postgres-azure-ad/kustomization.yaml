@@ -1,0 +1,43 @@
+# Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
+# backend + auth service — the opt-in conversion of the components/postgres shape
+# from a password-in-the-connection-string to Azure AD token auth.
+#
+# Layered onto an environment overlay via its `components:` list, AFTER
+# components/postgres (it patches the two Deployments that component adds). It:
+#
+#   1. Adds a workload-identity ServiceAccount per service (tcab-backend, tcab-auth),
+#      each federated to a per-workload user-assigned managed identity that is a
+#      mapped Postgres role on that service's database (serviceaccounts.yaml).
+#   2. Patches each Deployment to run under that ServiceAccount, carry the
+#      `azure.workload.identity/use: "true"` pod label (so the azure-workload-identity
+#      webhook projects the federated token + AZURE_* env), and set
+#      TCAB_<svc>_DB_AZURE_AD=true so the service mints an Entra access token as the
+#      Postgres password instead of reading one from the connection string.
+#
+# The connection-string Secret (tcab-backend-database-url / tcab-auth-database-url in
+# Key Vault) must ALSO be switched to the passwordless form — `postgres://<role>@host
+# :5432/<db>?sslmode=require`, username = the managed identity's mapped Postgres role,
+# no password. See components/postgres/secrets.postgres.example.yaml.
+#
+# ─────────────────────────────────────────────────────────────────────────────────
+# CUTOVER ORDERING — this component only works once the pods run an image that
+# contains the db-auth code (backend/auth `connect_azure_ad`). Turning it on against
+# an OLDER image, or before the in-DB role + passwordless Secret exist, breaks the
+# service's database login. To convert an environment:
+#   1. Roll the backend + auth images to a build that includes db-auth.
+#   2. Create the in-DB Entra principals + grants (deployment runbook SQL, run from a
+#      pod in-cluster — the servers are private).
+#   3. Switch the Key Vault DB-URL secrets to the passwordless form and restart
+#      tcab-keyvault-sync so the K8s Secrets re-materialise.
+#   4. Add this component to the overlay's `components:` list and re-apply the overlay.
+# The bake-in clientIDs below are PROD's identities; overlays/azure-staging patches
+# them to the staging identities (patch-db-workload-identity.yaml).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - serviceaccounts.yaml
+
+patches:
+  - path: patch-backend.yaml
+  - path: patch-auth.yaml

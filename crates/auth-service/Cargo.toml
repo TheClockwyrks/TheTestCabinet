@@ -19,6 +19,11 @@ path = "src/lib.rs"
 # every client deserializes. The auth service does not depend on the rest of core
 # at runtime — only these wire types.
 test-cabinet-core = { path = "../core" }
+# Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
+# deployment — mints a token as the Postgres password and rotates the pool.
+# Engaged only when `TCAB_AUTH_DB_AZURE_AD` is truthy; the default password /
+# SQLite path never touches it.
+test-cabinet-db-auth = { path = "../db-auth" }
 test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
 
 serde = { workspace = true }
