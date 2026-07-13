@@ -218,9 +218,13 @@
 }
 
 // Hold the trigger button's width steady across its "Trigger one" / "Covered"
-// states so the column edge never jumps as cells fill.
+// states so the column edge never jumps as cells fill. Sized to the wider
+// "Trigger one" label exactly: in the monospace `--ttc-font`, 11 chars == 11ch,
+// plus the shared button's 1.5rem side padding and 1px borders (border-box). A
+// plain rem min-width has to be guessed against the font's advance and silently
+// fails to engage if it undershoots.
 .cellButton {
-  min-width: 7rem;
+  min-width: calc(11ch + #{t.$space-lg} * 2 + #{t.$border-hairline} * 2);
   text-align: center;
 }
 
