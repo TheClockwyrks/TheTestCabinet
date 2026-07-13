@@ -694,11 +694,37 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
         }
         let from = entry.path();
         let to = dst.join(&name);
-        if entry.file_type()?.is_dir() {
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            // `entry.file_type()` (from `read_dir`) never follows the link, so a
+            // symlink is handled here before the dir/file split below. Recreate it
+            // as a symlink rather than dereferencing it: `std::fs::copy` follows the
+            // link and errors on a symlink-to-directory ("the source path is neither
+            // a regular file nor a symlink to a regular file") — e.g. a
+            // reference-impl's `node_modules/@test-cabinet/voxel-runtime` link.
+            copy_symlink(&from, &to)?;
+        } else if file_type.is_dir() {
             copy_tree(&from, &to)?;
         } else {
             std::fs::copy(&from, &to)?;
         }
+    }
+    Ok(())
+}
+
+/// Recreate the symlink at `from` at the new location `to`, preserving its target
+/// verbatim. The target is kept as-is (typically relative to the link's own
+/// directory) so the recreated link resolves the same way the original did. Mirrors
+/// `core`'s `copy_symlink`.
+fn copy_symlink(from: &Path, to: &Path) -> Result<()> {
+    let target = std::fs::read_link(from)?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target, to)?;
+    #[cfg(windows)]
+    if from.is_dir() {
+        std::os::windows::fs::symlink_dir(&target, to)?;
+    } else {
+        std::os::windows::fs::symlink_file(&target, to)?;
     }
     Ok(())
 }
