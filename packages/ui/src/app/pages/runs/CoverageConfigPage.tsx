@@ -129,12 +129,40 @@ export function CoverageConfigPage() {
     );
   }
 
+  // A plan is only savable once it declares at least one combination and one
+  // case — anything less is not a coverage plan, just an empty form, and saving
+  // it would leave the dashboard reporting the plan as empty.
+  const savable = combinations.length > 0 && cases.length > 0;
+
   async function onSave() {
-    if (!backend?.putReviewPlan || !token) return;
+    if (!backend?.putReviewPlan || !token || !savable) return;
     setBusy(true);
     setError(null);
     try {
       await backend.putReviewPlan({ runsPerCell, cases, combinations }, token);
+      navigate(routes.runCoverage());
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  // Clear the saved plan entirely, back to the empty state. Guarded behind a
+  // confirmation since it discards every declared combination and case.
+  async function onReset() {
+    if (!backend?.putReviewPlan || !token) return;
+    if (
+      !window.confirm(
+        "Reset your review plan? This clears every declared combination and " +
+          "case. This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await backend.putReviewPlan(EMPTY_PLAN, token);
       navigate(routes.runCoverage());
     } catch (e) {
       setError(String(e));
@@ -357,7 +385,7 @@ export function CoverageConfigPage() {
             <button
               type="button"
               className={exec.primary}
-              disabled={busy}
+              disabled={busy || !savable}
               onClick={onSave}
             >
               {busy ? "Saving…" : "Save plan"}
@@ -369,6 +397,14 @@ export function CoverageConfigPage() {
               onClick={() => navigate(routes.runCoverage())}
             >
               Cancel
+            </button>
+            <button
+              type="button"
+              className={exec.danger}
+              disabled={busy}
+              onClick={onReset}
+            >
+              Reset plan
             </button>
           </div>
         </section>

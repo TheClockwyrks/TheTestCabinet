@@ -276,7 +276,7 @@ export function CoveragePage() {
               <strong>{coverage.runsMissing}</strong> runs missing
             </span>
             <button
-              className={exec.primary}
+              className={`${exec.primary} ${styles.summaryTrigger}`}
               type="button"
               disabled={busy || !canTrigger || coverage.runsMissing === 0}
               onClick={() => triggerCells(deficientCells)}
@@ -346,7 +346,11 @@ export function CoveragePage() {
                           disabled={busy || !canTrigger || satisfied}
                           onClick={() => triggerCells([cell])}
                         >
-                          {satisfied ? "Covered" : `Trigger ${cell.remaining}`}
+                          {satisfied
+                            ? "Covered"
+                            : cell.remaining === 1
+                              ? "Trigger one"
+                              : `Trigger ${cell.remaining}`}
                         </button>
                       </li>
                     );

@@ -43,6 +43,12 @@
   }
 }
 
+// Push the "trigger all missing" action to the far right of the summary strip,
+// away from the stats it acts on.
+.summaryTrigger {
+  margin-left: auto;
+}
+
 .matrix {
   display: flex;
   flex-direction: column;

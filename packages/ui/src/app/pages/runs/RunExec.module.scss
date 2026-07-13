@@ -245,7 +245,8 @@
 }
 
 .primary,
-.secondary {
+.secondary,
+.danger {
   font-family: var(--ttc-font);
   font-size: t.$font-md;
   padding: t.$space-sm t.$space-lg;
@@ -272,6 +273,17 @@
 
   &:hover:not(:disabled) {
     border-color: t.$color-accent;
+  }
+}
+
+// A destructive action (e.g. resetting the review plan): reads like the
+// secondary button until hover, where it takes on the negative cue.
+.danger {
+  background: s.$panel-bg;
+  color: t.$color-negative;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-negative;
   }
 }
 
