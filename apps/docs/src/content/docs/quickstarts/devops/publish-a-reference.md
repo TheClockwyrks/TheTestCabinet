@@ -59,7 +59,7 @@ on the next `reingest-cluster.sh`, which is what lands each URL on the variant's
 ## From CI
 
 `publish-reference.yml` (`workflow_dispatch`) builds, deploys, and commits the
-lockfile once the repository is mirrored to GitHub. **Dispatch it on `master` to
+lockfile. **Dispatch it on `master` to
 publish prod, `staging` for staging** — the environment is derived from the branch.
 You still run `reingest-cluster.sh` afterward. See
 [the guide](/guides/devops/publishing-a-reference-implementation/#from-ci).

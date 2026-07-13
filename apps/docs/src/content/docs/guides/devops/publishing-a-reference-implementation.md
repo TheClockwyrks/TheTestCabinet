@@ -157,7 +157,7 @@ file has not caught up.
 
 The same flow is wired as an on-demand GitHub Actions job,
 `.github/workflows/publish-reference.yml` (`workflow_dispatch`), so the build +
-deploy + lockfile commit happen off your laptop. **The target environment is derived
+deploy + lockfile commit happen off your machine. **The target environment is derived
 from the branch** — dispatch it on `master` to publish prod, on `staging` to publish
 staging; any other branch is refused. Its inputs are `slug` (required), `version`
 (blank = newest), and `variant` (blank = every variant that declares a reference). It
@@ -166,8 +166,7 @@ builds and deploys, then **commits and pushes the lockfile** back to the branch.
 does **not** re-ingest — that step is still yours to run (it needs VPN/az access the
 runner does not have), so after the workflow pushes, run
 `scripts/reingest-cluster.sh --env <env>`. A `publish-reference` concurrency group
-serializes runs, and like the other deploy workflows it is dormant until the
-repository is mirrored to GitHub.
+serializes runs.
 
 ## Reference implementation vs. reference mockup
 

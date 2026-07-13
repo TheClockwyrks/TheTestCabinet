@@ -33,7 +33,7 @@ GitOps pipeline — adapt them rather than applying them blind.
 ## Topology
 
 ```
-          OpenVPN client (operator laptop)  ──▶  resolves *.testcabinet.ai
+          OpenVPN client (operator machine)  ──▶  resolves *.testcabinet.ai
                  │                                via private DNS → internal LB IP
                  ▼
    ingress-nginx (internal LB, private VNet IP, VPN-only)   TLS: cert-manager (LE)
@@ -552,7 +552,7 @@ package registries a run needs.
 By default the services are `ClusterIP`-only and the web console isn't served
 in-cluster at all — an operator runs `apps/web` locally against a
 `kubectl port-forward`ed backend. That works for one operator at a debugging
-laptop, but not for a team. The
+machine, but not for a team. The
 [`components/internal-ingress`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/internal-ingress)
 kustomize component closes that gap by serving the console in-cluster and exposing
 it plus the four services over an **internal-only** ingress-nginx, so operators
@@ -614,7 +614,7 @@ prerequisite (see [the runbook](#internal-ingress-prerequisites-controllers-dns-
 A second sharp edge the overlay fixes: the backend advertises the artifact and arena
 base URLs to the console (via `GET /config`), and the base sets those to
 cluster-internal DNS (`http://tcab-artifacts:8790` / `http://tcab-arena:8791`), which
-a laptop on the VPN cannot resolve — so artifact and arena media would break even
+a machine on the VPN cannot resolve — so artifact and arena media would break even
 with everything else routed. The `azure-prod` overlay therefore patches:
 
 - the backend's `TCAB_ARTIFACTS_PUBLIC_URL` → `https://artifacts.tcab.testcabinet.ai` and
