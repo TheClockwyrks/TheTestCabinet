@@ -85,6 +85,50 @@
   font-size: t.$font-sm;
 }
 
+// The right side of a case's header row: the optional staleness pill followed by
+// the case-wide progress rollup, kept together and pushed to the far right by the
+// header's space-between.
+.groupRight {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+// The case-wide progress: a bar over every combination's runs, plus its
+// done/desired count. Mirrors the per-cell bar but reads as the row's summary.
+.groupProgress {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.groupBar {
+  display: block;
+  width: 8rem;
+  height: 0.5rem;
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+.groupBarFill {
+  display: block;
+  height: 100%;
+  background: t.$color-accent;
+  transition: width 0.2s ease;
+
+  .groupProgressDone & {
+    background: t.$color-positive;
+  }
+}
+
+.groupCount {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
 // The "v1.2.0 → v1.3.0 ↑" pill: shown when the pinned version is stale, and a
 // one-click bump to the newest ingested version.
 .staleBadge {

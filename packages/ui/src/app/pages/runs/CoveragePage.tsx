@@ -193,7 +193,8 @@ export function CoveragePage() {
   );
 
   // The matrix grouped by case (outer axis), each group carrying its cells (inner
-  // axis, one per combination) and its resolved staleness from any cell.
+  // axis, one per combination), its resolved staleness from any cell, and the
+  // case-wide progress rolled up across every combination (done vs desired).
   const groups = useMemo(() => {
     if (!coverage) return [];
     const byCase = new Map<
@@ -206,7 +207,13 @@ export function CoveragePage() {
       if (group) group.cells.push(cell);
       else byCase.set(key, { cell0: cell, cells: [cell] });
     }
-    return [...byCase.values()];
+    return [...byCase.values()].map(({ cell0, cells }) => {
+      const done = cells.reduce((sum, c) => sum + c.completed + c.inFlight, 0);
+      const desired = cells.reduce((sum, c) => sum + c.desired, 0);
+      const satisfied = cells.every((c) => c.remaining === 0);
+      const pct = desired > 0 ? Math.min(100, (done / desired) * 100) : 0;
+      return { cell0, cells, done, desired, satisfied, pct };
+    });
   }, [coverage]);
 
   const deficientCells = useMemo(
@@ -286,7 +293,7 @@ export function CoveragePage() {
           </div>
 
           <div className={styles.matrix}>
-            {groups.map(({ cell0, cells }) => (
+            {groups.map(({ cell0, cells, done, desired, satisfied, pct }) => (
               <section key={caseKey(cell0)} className={styles.group}>
                 <header className={styles.groupHead}>
                   <span className={styles.groupTitle}>
@@ -295,17 +302,35 @@ export function CoveragePage() {
                       {cell0.variant} · {cell0.version}
                     </span>
                   </span>
-                  {cell0.stale && (
-                    <button
-                      className={styles.staleBadge}
-                      type="button"
-                      disabled={busy}
-                      title={`A newer version (${cell0.latestVersion}) is ingested. Bump the pin.`}
-                      onClick={() => bumpCase(cell0)}
+                  <span className={styles.groupRight}>
+                    {cell0.stale && (
+                      <button
+                        className={styles.staleBadge}
+                        type="button"
+                        disabled={busy}
+                        title={`A newer version (${cell0.latestVersion}) is ingested. Bump the pin.`}
+                        onClick={() => bumpCase(cell0)}
+                      >
+                        {cell0.version} → {cell0.latestVersion} ↑
+                      </button>
+                    )}
+                    <span
+                      className={`${styles.groupProgress} ${
+                        satisfied ? styles.groupProgressDone : ""
+                      }`}
+                      title={`${done} of ${desired} runs across all harness/model combinations`}
                     >
-                      {cell0.version} → {cell0.latestVersion} ↑
-                    </button>
-                  )}
+                      <span className={styles.groupBar} aria-hidden>
+                        <span
+                          className={styles.groupBarFill}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </span>
+                      <span className={styles.groupCount}>
+                        {done}/{desired}
+                      </span>
+                    </span>
+                  </span>
                 </header>
                 <ul className={styles.cellList}>
                   {cells.map((cell) => {
