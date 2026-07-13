@@ -428,20 +428,9 @@ build_one() {
 # The full set of images, in dependency order (base first — every other image is
 # `FROM` it). With no arguments the script builds all of them; with arguments it
 # builds only the named subset.
-ALL_NAMES=(
-	base
-	base-wasm
-	full-stack-2d
-	sprite sprite-sheet
-	voxel voxel-animation
-	mc mc-animation sn sn-animation dc dc-animation
-	ui material
-	mc-skinned sn-skinned dc-skinned
-	blender
-	particle-2d particle-3d
-	sfx-synth sfx-sample music
-	adversarial performance
-)
+# The canonical image list lives in image-names.sh so build.sh and the manifest job
+# in build-containers.yml can't drift (see that script's header).
+mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).

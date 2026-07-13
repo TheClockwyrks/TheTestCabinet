@@ -44,9 +44,9 @@ name: Build containers
 #
 # One-time setup: after the first successful push, set EACH published package's
 # visibility to Public in the org's GHCR package settings so unauthenticated runners
-# can pull them — one `test-cabinet-<name>` package per name in the `manifest` job's
-# loop below (base, every asset-generation kind including blender, adversarial, and
-# performance). A newly-added image needs this the first time it is published.
+# can pull them — one `test-cabinet-<name>` package per name in containers/image-names.sh
+# (base, every asset-generation kind including blender, adversarial, and performance).
+# A newly-added image needs this the first time it is published.
 on:
   push:
     branches: [master, staging]
@@ -138,8 +138,9 @@ jobs:
       # build.sh (no args) builds EVERY run image — base, every asset-generation kind
       # including blender, adversarial, and performance — natively for this runner's
       # architecture, pushes them to IMAGE_REGISTRY under the arch-suffixed tag, and
-      # prints their pinned digests. The `manifest` job's loop below must list the same
-      # set so each gets fused into its multi-arch `:latest`/`:<sha>`.
+      # prints their pinned digests. Both build.sh and the `manifest` job below take
+      # their image set from containers/image-names.sh, so each built image is
+      # guaranteed to get fused into its multi-arch `:latest`/`:<sha>`.
       # The registry namespace is the repository owner, lowercased (GHCR requires
       # lowercase), which is the resolver's default for the canonical repo. Only the
       # arch tag is written here; the bare `:latest` manifest list is created by the
@@ -179,6 +180,10 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      # Needed only for containers/image-names.sh — the single source of truth for the
+      # image set this job fuses (kept in lockstep with build.sh's ALL_NAMES).
+      - uses: actions/checkout@v6
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -195,7 +200,9 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          for name in base sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned blender particle-2d particle-3d sfx-synth sfx-sample music adversarial performance; do
+          # The image set comes from containers/image-names.sh, the same list build.sh
+          # builds from — so a newly-added image can never be built-but-never-fused.
+          while read -r name; do
             repo="$registry/test-cabinet-$name"
             echo "==> assembling $repo:latest + $repo:$GIT_SHA from :latest-amd64 + :latest-arm64"
             docker buildx imagetools create \
@@ -203,4 +210,4 @@ jobs:
               -t "$repo:$GIT_SHA" \
               "$repo:latest-amd64" "$repo:latest-arm64"
             docker buildx imagetools inspect "$repo:$GIT_SHA"
-          done
+          done < <(./containers/image-names.sh)
