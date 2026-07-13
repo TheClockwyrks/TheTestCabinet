@@ -1,5 +1,5 @@
-# Catalog ingest sidecar (azure-staging) — identical to azure-prod EXCEPT it clones the
-# `v0.5.0` branch the staging images are built from, not the default branch.
+# Catalog ingest sidecar (azure-staging) — identical to azure-prod EXCEPT the pinned
+# commit differs (each env ingests the commit ITS images were built from).
 #
 # The shipped base `tcab-ingest` CronJob cannot work in this deployment (the
 # default-deny NetworkPolicy blocks a standalone pod from reaching tcab-backend:8787,
@@ -10,10 +10,13 @@
 # needed. It runs a ONE-SHOT ingest on backend start to self-heal the ephemeral
 # (emptyDir) store after a reschedule, then idles.
 #
-# BRANCH: staging must ingest the SAME branch its service images were built from, or the
-# backend serves a catalog its code version doesn't match. The staging images are built
-# off `v0.5.0`; the public staging gallery builds off the `staging` branch separately —
-# if those diverge, the gallery and the backend can show different catalogs.
+# COMMIT: ingest the EXACT commit the service images were built from, so the served
+# catalog always matches the deployed code — never a branch tip (which can run ahead of
+# the built images) and never a release tag like `v0.5.0` that does not exist while the
+# release is still being tested on staging. CI tags every image with its git SHA, so
+# this pin MUST equal this overlay's image `newTag` in kustomization.yaml; re-pin both
+# together at every roll. (`scripts/reingest-cluster.sh` reads the deployed image's tag
+# so the manual re-ingest matches whatever is running without a second copy of the SHA.)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,25 +32,29 @@ spec:
           args:
             - |
               set -u
-              BRANCH=v0.5.0
+              # Keep in lockstep with kustomization.yaml's image newTag (same git SHA).
+              COMMIT=320297191f77c1401e79fc43e00d809e96a82e96
               until apk add --no-cache git curl; do
                 echo "ingest: apk add failed, retrying in 5s"; sleep 5
               done
               REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
               CHECKOUT=/state/checkout
-              # One-shot: clone the catalog branch the backend ingests from, then trigger
-              # a single ingest. No periodic loop. `git fetch` the live checkout if one
-              # already survives a lone sidecar restart, else clone the branch.
+              # One-shot: check out the pinned commit the backend ingests from, then
+              # trigger a single ingest. No periodic loop. Fetch the commit by SHA
+              # (reachable from a branch, so GitHub serves it) into the live checkout if
+              # one survives a lone sidecar restart, else init a fresh one.
               if [ -d "$CHECKOUT/.git" ]; then
-                echo "ingest: refreshing checkout ($BRANCH)"
-                git -C "$CHECKOUT" fetch --depth 1 origin "$BRANCH" \
+                echo "ingest: fetching commit $COMMIT"
+                git -C "$CHECKOUT" fetch --depth 1 "$REPO" "$COMMIT" \
                   && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
                   || echo "ingest: fetch failed"
               else
-                echo "ingest: cloning catalog branch $BRANCH into $CHECKOUT"
-                rm -rf "$CHECKOUT" \
-                  && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
-                  || echo "ingest: clone failed"
+                echo "ingest: checking out commit $COMMIT into $CHECKOUT"
+                rm -rf "$CHECKOUT" && mkdir -p "$CHECKOUT" \
+                  && git -C "$CHECKOUT" init -q \
+                  && git -C "$CHECKOUT" fetch --depth 1 "$REPO" "$COMMIT" \
+                  && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
+                  || echo "ingest: checkout failed"
               fi
               echo "ingest: waiting for backend healthz"
               until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done

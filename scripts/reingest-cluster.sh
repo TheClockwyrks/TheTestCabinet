@@ -37,8 +37,11 @@
 #   scripts/reingest-cluster.sh --env staging carom       # scope to one case slug
 #   scripts/reingest-cluster.sh --env prod carom coil     # scope to several
 #
-# The cluster, namespace, and the git ref the backend checkout tracks all come from
-# scripts/lib/env.sh for the chosen env.
+# The cluster and namespace come from scripts/lib/env.sh for the chosen env. The git
+# commit to ingest is NOT configured here: it is read off the running backend
+# Deployment's image tag (CI tags every image with its git SHA), so the re-ingest
+# always serves the exact commit the deployed code was built from — matching the
+# overlay's pinned ingest sidecar, with no second copy of the SHA to drift.
 set -euo pipefail
 
 # Resolve the target environment from a REQUIRED --env <prod|staging> (scripts/lib/env.sh);
@@ -79,21 +82,27 @@ fi
 echo "Re-ingesting ${scope} on ${cluster}/${namespace} (force)…"
 
 # The remote script runs cluster-side in an `az aks command invoke` helper pod. It
-# execs the backend's `ingest` sidecar to refresh the checkout, then triggers ingest.
-# The JSON body is passed as a positional arg to the innermost `sh` (`$1`) rather than
-# interpolated into the script text, so its quotes never collide with the surrounding
-# shells. `--fail-with-body` keeps a render error's message (and a non-2xx exit) from
-# vanishing. The heredoc is unquoted so ${namespace}/${body} expand here, while \$…
-# stays literal for the cluster-side shells.
+# first reads the commit the backend is running (its image tag == the git SHA CI built
+# it from), then execs the backend's `ingest` sidecar to fetch that exact commit and
+# trigger ingest. The commit, the JSON body, and the repo URL are passed as positional
+# args to the innermost `sh` (`$1`/`$2`/`$3`) rather than interpolated into the script
+# text, so their contents never collide with the surrounding shells. `--fail-with-body`
+# keeps a render error's message (and a non-2xx exit) from vanishing. The heredoc is
+# unquoted so ${namespace}/${body} expand here, while \$… stays literal for the
+# cluster-side shells.
 remote=$(cat <<REMOTE
 set -e
+REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
+COMMIT="\$(kubectl -n ${namespace} get deploy tcab-backend -o jsonpath='{.spec.template.spec.containers[*].image}' | tr ' ' '\n' | grep tcab-backend | head -n1 | sed 's/.*://')"
+[ -n "\$COMMIT" ] || { echo "could not read the backend image tag (commit) from deploy/tcab-backend" >&2; exit 1; }
+echo "ingest: backend image commit \$COMMIT"
 kubectl -n ${namespace} exec deploy/tcab-backend -c ingest -- sh -c 'set -e
-echo "ingest: refreshing /state/checkout"
-git -C /state/checkout fetch --depth 1 origin ${TCAB_INGEST_REF}
+echo "ingest: fetching commit \$1 into /state/checkout"
+git -C /state/checkout fetch --depth 1 "\$3" "\$1"
 git -C /state/checkout reset --hard FETCH_HEAD
 echo "ingest: triggering forced re-ingest"
-curl -sS --fail-with-body -X POST http://127.0.0.1:8787/ingest -H "content-type: application/json" --data "\$1"
-echo' sh '${body}'
+curl -sS --fail-with-body -X POST http://127.0.0.1:8787/ingest -H "content-type: application/json" --data "\$2"
+echo' sh "\$COMMIT" '${body}' "\$REPO"
 REMOTE
 )
 

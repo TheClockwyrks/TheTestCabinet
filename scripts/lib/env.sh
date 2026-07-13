@@ -36,10 +36,10 @@ tcab_env_resolve() {
       TCAB_CLUSTER="testcabinet-prod-westus2-aks"
       TCAB_RG="testcabinet-prod-westus2-rg"
       TCAB_NAMESPACE="tcab-prod"
-      # The git ref the backend's in-pod ingest checkout tracks (see each overlay's
-      # patch-backend-ingest.yaml). Prod deploys the default branch; staging deploys
-      # the current release-candidate branch, so this changes per release.
-      TCAB_INGEST_REF="HEAD"
+      # NOTE: the git commit the backend ingests is no longer configured here — it is
+      # read off the running backend Deployment's image tag by reingest-cluster.sh (and
+      # pinned in each overlay's patch-backend-ingest.yaml), so it can never drift from
+      # the deployed code.
       # The artifact service's PUBLIC (internal-ingress) read URL for this env.
       TCAB_ARTIFACTS_PUBLIC_URL="https://artifacts.tcab.testcabinet.ai"
       ;;
@@ -48,7 +48,6 @@ tcab_env_resolve() {
       TCAB_CLUSTER="testcabinet-staging-westus2-aks"
       TCAB_RG="testcabinet-staging-westus2-rg"
       TCAB_NAMESPACE="tcab-staging"
-      TCAB_INGEST_REF="v0.5.0"
       TCAB_ARTIFACTS_PUBLIC_URL="https://artifacts.staging.tcab.testcabinet.ai"
       ;;
     "")
