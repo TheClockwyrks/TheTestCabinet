@@ -300,6 +300,11 @@ a.row {
   .row {
     display: flex;
     flex-direction: column;
+    // Reset the desktop grid's `align-items: center`: in a column flex it would
+    // center every line as a content-width block, floating the labels and values
+    // in the middle of the card with ragged gutters. Stretch them to the full
+    // card width so each labelled line reads left-aligned.
+    align-items: stretch;
     gap: t.$space-xs;
     padding: t.$space-md;
     white-space: normal;

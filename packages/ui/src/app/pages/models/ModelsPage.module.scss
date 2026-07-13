@@ -222,6 +222,9 @@ a.row:hover .logo {
   .row {
     display: flex;
     flex-direction: column;
+    // Reset the desktop grid's `align-items: center` so the stacked lines fill
+    // the card width and read left-aligned instead of floating centered.
+    align-items: stretch;
     grid-template-columns: none;
     gap: t.$space-xs;
     min-width: 0;
