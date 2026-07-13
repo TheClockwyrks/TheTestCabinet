@@ -1,0 +1,75 @@
+# Catalog ingest sidecar (azure-staging) — identical to azure-prod EXCEPT it clones the
+# `v0.5.0` branch the staging images are built from, not the default branch.
+#
+# The shipped base `tcab-ingest` CronJob cannot work in this deployment (the
+# default-deny NetworkPolicy blocks a standalone pod from reaching tcab-backend:8787,
+# and it clones into its own emptyDir the backend never reads). This co-locates ingest
+# INSIDE the backend pod as a sidecar: it shares the `state` volume (writing the
+# /state/checkout the backend ingests) and calls POST /ingest over localhost — intra-pod
+# traffic, so the NetworkPolicy never applies and no service token / extra route is
+# needed. It runs a ONE-SHOT ingest on backend start to self-heal the ephemeral
+# (emptyDir) store after a reschedule, then idles.
+#
+# BRANCH: staging must ingest the SAME branch its service images were built from, or the
+# backend serves a catalog its code version doesn't match. The staging images are built
+# off `v0.5.0`; the public staging gallery builds off the `staging` branch separately —
+# if those diverge, the gallery and the backend can show different catalogs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-backend
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: ingest
+          image: alpine:3
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              BRANCH=v0.5.0
+              until apk add --no-cache git curl; do
+                echo "ingest: apk add failed, retrying in 5s"; sleep 5
+              done
+              REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
+              CHECKOUT=/state/checkout
+              # One-shot: clone the catalog branch the backend ingests from, then trigger
+              # a single ingest. No periodic loop. `git fetch` the live checkout if one
+              # already survives a lone sidecar restart, else clone the branch.
+              if [ -d "$CHECKOUT/.git" ]; then
+                echo "ingest: refreshing checkout ($BRANCH)"
+                git -C "$CHECKOUT" fetch --depth 1 origin "$BRANCH" \
+                  && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
+                  || echo "ingest: fetch failed"
+              else
+                echo "ingest: cloning catalog branch $BRANCH into $CHECKOUT"
+                rm -rf "$CHECKOUT" \
+                  && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
+                  || echo "ingest: clone failed"
+              fi
+              echo "ingest: waiting for backend healthz"
+              until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
+              n=0
+              until curl -fsS -X POST http://127.0.0.1:8787/ingest \
+                     -H 'content-type: application/json' -d '{}' >/dev/null; do
+                n=$((n + 1))
+                if [ "$n" -ge 10 ]; then
+                  echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-cluster.sh --env staging)"
+                  break
+                fi
+                echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10
+              done
+              [ "$n" -lt 10 ] && echo "ingest: triggered ok"
+              exec sleep infinity
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi

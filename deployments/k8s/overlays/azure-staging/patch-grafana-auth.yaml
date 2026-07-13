@@ -1,0 +1,38 @@
+# Lock down Grafana before the internal ingress exposes it — identical to azure-prod.
+#
+# The observability component runs the grafana/otel-lgtm all-in-one, whose image ships
+# Grafana with ANONYMOUS ADMIN and the login form hidden. That is safe behind a
+# kubectl-gated port-forward, but this overlay ALSO exposes Grafana at
+# grafana.staging.tcab.testcabinet.ai over the internal ingress, so this patch flips
+# Grafana to authenticated access and sets the admin credentials from the
+# tcab-grafana-admin Secret (materialised from the staging Key Vault by keyvault-csi).
+# Both the `grafana-admin-user` and `grafana-admin-password` vault secrets MUST exist
+# before this overlay is applied, or the CSI mount fails (all-or-nothing) and this pod
+# stays in CreateContainerConfigError — fail-closed, which is correct.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tcab-lgtm
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: lgtm
+          env:
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+            - name: GF_AUTH_DISABLE_LOGIN_FORM
+              value: "false"
+            - name: GF_AUTH_BASIC_ENABLED
+              value: "true"
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-grafana-admin
+                  key: admin-user
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-grafana-admin
+                  key: admin-password
