@@ -49,6 +49,10 @@
 #
 # Override the target with BACKEND_URL (default http://127.0.0.1:8787):
 #   BACKEND_URL=http://127.0.0.1:8787 scripts/reingest.sh carom
+#
+# This targets a directly-reachable backend URL (local dev, or a port-forward). To
+# re-ingest a DEPLOYED environment's private backend on AKS, use
+# `scripts/reingest-cluster.sh --env <prod|staging>` instead.
 set -euo pipefail
 
 backend="${BACKEND_URL:-http://127.0.0.1:8787}"

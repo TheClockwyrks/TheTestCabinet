@@ -17,7 +17,7 @@
 # It deliberately does NOT re-ingest on a schedule: a periodic force re-ingest
 # rewrites every version and briefly leaves each one manifest-less, 404-ing any run
 # that resolves its version mid-cycle. Catalog changes are published on demand with
-# `scripts/reingest-prod.sh` (a force re-ingest, kept safe by the backend's atomic
+# `scripts/reingest-cluster.sh --env prod` (a force re-ingest, kept safe by the backend's atomic
 # version swap). The base CronJob is suspended in patch-suspend-ingest-cronjob.yaml.
 #
 # Targets kind: Deployment because the postgres component converts the backend
@@ -70,7 +70,7 @@ spec:
                      -H 'content-type: application/json' -d '{}' >/dev/null; do
                 n=$((n + 1))
                 if [ "$n" -ge 10 ]; then
-                  echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-prod.sh)"
+                  echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-cluster.sh --env prod)"
                   break
                 fi
                 echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10

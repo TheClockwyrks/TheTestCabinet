@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish test-case catalog changes to the REMOTE (prod) backend on AKS, on demand.
+# Publish test-case catalog changes to a REMOTE (prod/staging) backend on AKS, on demand.
 #
 # The in-pod ingest sidecar ingests only once, on backend start, to self-heal the
 # ephemeral (emptyDir) definition store after a pod reschedule. It does NOT re-ingest
@@ -25,18 +25,34 @@
 # re-ingest here — no pod restart / rebuild-from-empty needed. A scan scoped to slug
 # args never prunes (it hasn't seen the whole catalog); target by slug or folder name.
 #
-# Usage:
-#   scripts/reingest-prod.sh                 # force re-ingest every case
-#   scripts/reingest-prod.sh carom            # scope to one case slug
-#   scripts/reingest-prod.sh carom coil      # scope to several
+# Usage (the target environment is REQUIRED):
+#   scripts/reingest-cluster.sh --env prod                # force re-ingest every case
+#   scripts/reingest-cluster.sh --env staging carom       # scope to one case slug
+#   scripts/reingest-cluster.sh --env prod carom coil     # scope to several
 #
-# Override the target cluster (defaults match the prod westus2 AKS):
-#   RESOURCE_GROUP=… CLUSTER=… NAMESPACE=… scripts/reingest-prod.sh
+# The cluster, namespace, and the git ref the backend checkout tracks all come from
+# scripts/lib/env.sh for the chosen env.
 set -euo pipefail
 
-resource_group="${RESOURCE_GROUP:-testcabinet-prod-westus2-rg}"
-cluster="${CLUSTER:-testcabinet-prod-westus2-aks}"
-namespace="${NAMESPACE:-tcab-prod}"
+# Resolve the target environment from a REQUIRED --env <prod|staging> (scripts/lib/env.sh);
+# any remaining args are case slugs. No default, so a re-ingest can never silently hit prod.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+env=""
+slugs=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env) env="${2:-}"; shift 2 ;;
+    --env=*) env="${1#*=}"; shift ;;
+    *) slugs+=("$1"); shift ;;
+  esac
+done
+# shellcheck source=scripts/lib/env.sh
+source "${script_dir}/lib/env.sh"
+tcab_env_resolve "$env" || exit $?
+if (( ${#slugs[@]} )); then set -- "${slugs[@]}"; else set --; fi
+resource_group="$TCAB_RG"
+cluster="$TCAB_CLUSTER"
+namespace="$TCAB_NAMESPACE"
 
 # Build the ingest request body. With no slugs, scan everything; otherwise restrict
 # the scan to the given slugs. Always force, so an unchanged version string (the store
@@ -66,7 +82,7 @@ remote=$(cat <<REMOTE
 set -e
 kubectl -n ${namespace} exec deploy/tcab-backend -c ingest -- sh -c 'set -e
 echo "ingest: refreshing /state/checkout"
-git -C /state/checkout fetch --depth 1 origin HEAD
+git -C /state/checkout fetch --depth 1 origin ${TCAB_INGEST_REF}
 git -C /state/checkout reset --hard FETCH_HEAD
 echo "ingest: triggering forced re-ingest"
 curl -sS --fail-with-body -X POST http://127.0.0.1:8787/ingest -H "content-type: application/json" --data "\$1"

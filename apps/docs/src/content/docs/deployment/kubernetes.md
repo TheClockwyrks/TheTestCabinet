@@ -593,7 +593,7 @@ internal LB IP:
    on the AKS `azure-keyvault-secrets-provider` add-on, the driver polls Key Vault and
    reconciles updated values into the synced Secrets on its own (~2m), so a refreshed
    credential reaches the cluster without a restart. Enable it once per cluster with
-   [`scripts/enable-secret-rotation.sh`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/scripts/enable-secret-rotation.sh)
+   [`scripts/enable-secret-rotation.sh --env <prod|staging>`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/scripts/enable-secret-rotation.sh)
    — it's AKS add-on config, not a Kubernetes object, so it can't live in the overlay.
    Adding a brand-new key to a Secret still needs `kubectl delete secret <name> &&
    kubectl rollout restart deploy/tcab-keyvault-sync`.)
