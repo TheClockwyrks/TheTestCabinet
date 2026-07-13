@@ -19,3 +19,12 @@ reference = [
   { view = "gameplay", media = "reference/screenshots/base/gameplay.png" },
   { view = "game-over", media = "reference/screenshots/base/game-over.png" },
 ]
+
+# The authored, *correct* playable build of this variant — the Classic-mode reference-impl.
+# A directory (resolved against the version folder) holding a buildable web project, built
+# with this case's install/build commands and deployed like a published run build, then shown
+# on the case's "Reference" tab. It is **never seeded into a run**. This is a full-stack case,
+# so this build also PRODUCED its own snake sprites and audio during authoring (committed under
+# `reference-impl/base/assets/`); the build itself only loads them, so `npm ci && npm run build`
+# is self-contained. Its three reference screenshots above were captured from this very build.
+reference_implementation = "reference-impl/base"
