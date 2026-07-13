@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   ReviewPlan,
@@ -59,6 +59,17 @@ export function CoverageConfigPage() {
 
   // The add-a-case picker reuses the catalog cursor (case → version → variant).
   const sel = useCatalog();
+
+  // The catalog arrives in slug order, but the dropdown labels each option with
+  // the display name — so sort by resolved display name to keep the list
+  // alphabetical as shown (otherwise e.g. "Carom" slots in where "pong" sits).
+  const sortedCases = useMemo(
+    () =>
+      [...sel.cases].sort((a, b) =>
+        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+      ),
+    [sel.cases, testCaseName],
+  );
 
   // Load the plan and the model catalog once signed in. The catalog feeds the
   // model picker (same source as the new-run form).
@@ -338,7 +349,7 @@ export function CoverageConfigPage() {
                 value={sel.slug}
                 onChange={(e) => sel.setSlug(e.target.value)}
               >
-                {sel.cases.map((c) => (
+                {sortedCases.map((c) => (
                   <option key={c.slug} value={c.slug}>
                     {testCaseName(c.slug)}
                   </option>
