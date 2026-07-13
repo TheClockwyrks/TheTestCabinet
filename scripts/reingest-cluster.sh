@@ -37,11 +37,11 @@
 #   scripts/reingest-cluster.sh --env staging carom       # scope to one case slug
 #   scripts/reingest-cluster.sh --env prod carom coil     # scope to several
 #
-# The cluster and namespace come from scripts/lib/env.sh for the chosen env. The git
-# commit to ingest is NOT configured here: it is read off the running backend
-# Deployment's image tag (CI tags every image with its git SHA), so the re-ingest
-# always serves the exact commit the deployed code was built from — matching the
-# overlay's pinned ingest sidecar, with no second copy of the SHA to drift.
+# The cluster, namespace, and the catalog branch the backend ingests from all come
+# from scripts/lib/env.sh for the chosen env (staging → `staging`, prod → `master`).
+# The branch tip is fetched, so a re-ingest picks up whatever catalog + reference-build
+# lockfile changes have been pushed — that on-demand refresh is what this script is for.
+# The service CODE version is pinned separately by the overlay's image newTag.
 set -euo pipefail
 
 # Resolve the target environment from a REQUIRED --env <prod|staging> (scripts/lib/env.sh);
@@ -82,37 +82,22 @@ fi
 echo "Re-ingesting ${scope} on ${cluster}/${namespace} (force)…"
 
 # The remote script runs cluster-side in an `az aks command invoke` helper pod. It
-# first reads the commit the backend is running (its image tag == the git SHA CI built
-# it from), then execs the backend's `ingest` sidecar to fetch that exact commit and
-# trigger ingest. The commit, the JSON body, and the repo URL are passed as positional
-# args to the innermost `sh` (`$1`/`$2`/`$3`) rather than interpolated into the script
-# text, so their contents never collide with the surrounding shells. `--fail-with-body`
-# keeps a render error's message (and a non-2xx exit) from vanishing. The heredoc is
-# unquoted so ${namespace}/${body} expand here, while \$… stays literal for the
-# cluster-side shells.
-#
-# The image-tag parse uses ONLY kubectl + POSIX shell builtins (a `for`/`case` loop and
-# `${img##*:}`) — the command-invoke helper pod is a minimal image without sed/grep/awk,
-# so a pipeline through those tools fails with `sed: not found`.
+# execs the backend's `ingest` sidecar to refresh the checkout to the catalog branch
+# tip, then triggers ingest. The branch and the JSON body are passed as positional args
+# to the innermost `sh` (`$1`/`$2`) rather than interpolated into the script text, so
+# their contents never collide with the surrounding shells. `--fail-with-body` keeps a
+# render error's message (and a non-2xx exit) from vanishing. The heredoc is unquoted so
+# ${namespace}/${body}/${TCAB_INGEST_BRANCH} expand here, while \$… stays literal for the
+# cluster-side shells. `origin` is the remote the sidecar's clone set up.
 remote=$(cat <<REMOTE
 set -e
-REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
-IMAGES="\$(kubectl -n ${namespace} get deploy tcab-backend -o jsonpath='{.spec.template.spec.containers[*].image}')"
-COMMIT=""
-for img in \$IMAGES; do
-  case "\$img" in
-    *tcab-backend:*) COMMIT="\${img##*:}" ;;
-  esac
-done
-[ -n "\$COMMIT" ] || { echo "could not read the backend image tag (commit) from deploy/tcab-backend" >&2; exit 1; }
-echo "ingest: backend image commit \$COMMIT"
 kubectl -n ${namespace} exec deploy/tcab-backend -c ingest -- sh -c 'set -e
-echo "ingest: fetching commit \$1 into /state/checkout"
-git -C /state/checkout fetch --depth 1 "\$3" "\$1"
+echo "ingest: refreshing /state/checkout to origin/\$1"
+git -C /state/checkout fetch --depth 1 origin "\$1"
 git -C /state/checkout reset --hard FETCH_HEAD
 echo "ingest: triggering forced re-ingest"
 curl -sS --fail-with-body -X POST http://127.0.0.1:8787/ingest -H "content-type: application/json" --data "\$2"
-echo' sh "\$COMMIT" '${body}' "\$REPO"
+echo' sh "${TCAB_INGEST_BRANCH}" '${body}'
 REMOTE
 )
 

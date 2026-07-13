@@ -66,9 +66,8 @@ patches:
   - path: patch-web-config.yaml
   # Lock down Grafana (identical to prod) before the ingress exposes it.
   - path: patch-grafana-auth.yaml
-  # Catalog ingest sidecar in the backend pod (checks out the exact commit the staging
-  # images are built from — its COMMIT is kept == the images' newTag below) + suspend
-  # the superseded base CronJob.
+  # Catalog ingest sidecar in the backend pod (tracks the `staging` branch tip so pushed
+  # catalog/reference changes refresh on demand) + suspend the superseded base CronJob.
   - path: patch-backend-ingest.yaml
   - path: patch-suspend-ingest-cronjob.yaml
   # Repoint the keyvault-csi SecretProviderClass + sync SA at the staging vault +
@@ -130,12 +129,12 @@ patches:
         path: /spec/tls/0/hosts/0
         value: grafana.staging.tcab.testcabinet.ai
 
-# Pin ALL service images to ONE git-sha so they version together. Currently
-# 32a551de82dc3237ee32554a71e189a2bc534aa2 (the v0.5.0 candidate on `staging`
-# carrying the reference-build pull model + the pinned-commit ingest fix). Keep the
-# ingest sidecar's COMMIT in patch-backend-ingest.yaml equal to this. The
-# run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
-# patch-dispatcher-driver-image.yaml (a different cadence — do NOT bump it here).
+# Pin ALL service images (the CODE) to ONE git-sha so they version together. Currently
+# 32a551de82dc3237ee32554a71e189a2bc534aa2 (the v0.5.0 candidate on `staging` carrying
+# the reference-build pull model). This pins CODE only — the catalog is ingested from
+# the `staging` branch tip separately (patch-backend-ingest.yaml). The run-container
+# images are pinned SEPARATELY via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml
+# (a different cadence — do NOT bump it here).
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend

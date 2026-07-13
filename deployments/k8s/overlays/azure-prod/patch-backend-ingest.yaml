@@ -20,12 +20,12 @@
 # `scripts/reingest-cluster.sh --env prod` (a force re-ingest, kept safe by the backend's atomic
 # version swap). The base CronJob is suspended in patch-suspend-ingest-cronjob.yaml.
 #
-# COMMIT: ingest the EXACT commit the service images were built from, so the served
-# catalog always matches the deployed code rather than master's tip (which runs ahead
-# of the built images between a merge and a roll). CI tags every image with its git
-# SHA, so this pin MUST equal this overlay's image `newTag` in kustomization.yaml;
-# re-pin both together at every roll. (`scripts/reingest-cluster.sh` reads the deployed
-# image's tag so the manual re-ingest matches whatever is running.)
+# BRANCH: ingest the `master` branch TIP, so a fresh pod and `scripts/reingest-cluster.sh`
+# pick up pushed test-case edits and reference-build lockfile updates on demand — that
+# on-demand catalog refresh (no roll) is the whole point of the ingest. The service CODE
+# version is pinned separately by this overlay's image `newTag`; reingest right after a
+# roll keeps the catalog and code aligned (master only advances on merges). Keep BRANCH
+# == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
 #
 # Targets kind: Deployment because the postgres component converts the backend
 # StatefulSet to a Deployment; the strategic-merge patch appends the `ingest`
@@ -47,29 +47,26 @@ spec:
           args:
             - |
               set -u
-              # Keep in lockstep with kustomization.yaml's image newTag (same git SHA).
-              COMMIT=b3c2b32239a21aa9a324d58313a1d56361a25bcd
+              # Keep == TCAB_INGEST_BRANCH in scripts/lib/env.sh (the branch reingest fetches).
+              BRANCH=master
               until apk add --no-cache git curl; do
                 echo "ingest: apk add failed, retrying in 5s"; sleep 5
               done
               REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
               CHECKOUT=/state/checkout
-              # One-shot: check out the pinned commit the backend ingests from, then
-              # trigger a single ingest. No periodic loop — see the header. Fetch the
-              # commit by SHA (reachable from a branch, so GitHub serves it) into the live
-              # checkout if one survives a lone sidecar restart, else init a fresh one.
+              # One-shot: check out the catalog branch tip, then trigger a single ingest.
+              # No periodic loop — see the header. Refresh the live checkout if one
+              # survives a lone sidecar restart, else clone the branch fresh.
               if [ -d "$CHECKOUT/.git" ]; then
-                echo "ingest: fetching commit $COMMIT"
-                git -C "$CHECKOUT" fetch --depth 1 "$REPO" "$COMMIT" \
+                echo "ingest: refreshing checkout ($BRANCH)"
+                git -C "$CHECKOUT" fetch --depth 1 origin "$BRANCH" \
                   && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
                   || echo "ingest: fetch failed"
               else
-                echo "ingest: checking out commit $COMMIT into $CHECKOUT"
-                rm -rf "$CHECKOUT" && mkdir -p "$CHECKOUT" \
-                  && git -C "$CHECKOUT" init -q \
-                  && git -C "$CHECKOUT" fetch --depth 1 "$REPO" "$COMMIT" \
-                  && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
-                  || echo "ingest: checkout failed"
+                echo "ingest: cloning catalog branch $BRANCH into $CHECKOUT"
+                rm -rf "$CHECKOUT" \
+                  && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
+                  || echo "ingest: clone failed"
               fi
               echo "ingest: waiting for backend healthz"
               until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
