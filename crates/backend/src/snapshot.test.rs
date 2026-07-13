@@ -241,7 +241,8 @@ async fn snapshot_has_index_runs_per_run_and_case_objects() {
 
 #[tokio::test]
 async fn snapshot_emits_the_composed_model_catalog() {
-    use crate::api::ModelOut;
+    use crate::api::{AliasOut, ModelOut};
+    use test_cabinet_core::run_record::HarnessFamily;
 
     let (_tmp, store) = empty_store();
     let model = ModelOut {
@@ -253,7 +254,10 @@ async fn snapshot_emits_the_composed_model_catalog() {
         description: None,
         logo_svg: None,
         covered_model_ids: vec![],
-        aliases: vec!["anthropic/claude-opus-4.8".to_string()],
+        aliases: vec![AliasOut {
+            slug: "anthropic/claude-opus-4.8".to_string(),
+            harness_family: HarnessFamily::Openrouter,
+        }],
         price: None,
         price_history: vec![],
         context_length: None,

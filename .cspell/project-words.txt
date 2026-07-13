@@ -338,3 +338,7 @@ colour
 colouring
 tunables
 mult
+openrouter
+svgl
+uncurated
+scaffolder

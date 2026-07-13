@@ -142,6 +142,11 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // idempotent, so a restart or a shared deployment database is a safe no-op.
     let prices = test_cabinet_core::OpenRouterPrices::new();
     crate::bootstrap::seed_models_if_empty(&db).await?;
+    if let Err(err) = crate::bootstrap::backfill_alias_families(&db).await {
+        // Best-effort: a stale harness family only mis-filters a run form's model
+        // dropdown, never blocks startup.
+        tracing::warn!(error = %err, "skipping model-alias harness-family backfill");
+    }
     if let Err(err) = crate::bootstrap::normalize_free_runs(&db, &prices).await {
         // Never block startup on this best-effort normalization.
         tracing::warn!(error = %err, "skipping :free run normalization");

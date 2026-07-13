@@ -83,6 +83,76 @@ impl HarnessSlug {
             HarnessSlug::Pi => "pi",
         }
     }
+
+    /// The [`HarnessFamily`] this harness belongs to — the model-slug namespace it
+    /// draws from. The three provider-native harnesses (Claude Code, Codex,
+    /// Antigravity) are each their own family; every OpenRouter-routed harness
+    /// shares the single [`HarnessFamily::Openrouter`] family, because a slug added
+    /// for one of them (an OpenRouter id) is usable with all of them. A drift test
+    /// keeps the OpenRouter arm in step with [`Self::routes_through_openrouter`].
+    pub fn family(self) -> HarnessFamily {
+        match self {
+            HarnessSlug::Claude => HarnessFamily::Claude,
+            HarnessSlug::Codex => HarnessFamily::Codex,
+            HarnessSlug::Antigravity => HarnessFamily::Antigravity,
+            HarnessSlug::Cline
+            | HarnessSlug::Goose
+            | HarnessSlug::Kilo
+            | HarnessSlug::Opencode
+            | HarnessSlug::Pi => HarnessFamily::Openrouter,
+        }
+    }
+}
+
+/// A family of harnesses that share a model-slug namespace — the set of model ids
+/// usable with them.
+///
+/// A slug is only meaningful to the harnesses that speak its namespace: a Claude
+/// Code slug (`claude-opus-4-8`) means nothing to Codex, and an OpenRouter slug
+/// (`anthropic/claude-opus-4.8`) only resolves through the OpenRouter-routed
+/// harnesses. So a curated model's slugs are each tagged with the family they
+/// belong to (see the model catalog's aliases), which lets a run form offer only
+/// the slugs the selected harness can actually launch. Every [`HarnessSlug`] maps
+/// to exactly one family via [`HarnessSlug::family`]; the OpenRouter-routed
+/// harnesses collapse into one family because they all take OpenRouter ids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum HarnessFamily {
+    /// Anthropic Claude Code — provider-native Anthropic model ids.
+    Claude,
+    /// OpenAI Codex — provider-native OpenAI model ids.
+    Codex,
+    /// Google Antigravity — provider-native Google model ids.
+    Antigravity,
+    /// Every OpenRouter-routed harness (Cline, Goose, Kilo, OpenCode, Pi): its
+    /// slugs are OpenRouter ids (`provider/model`).
+    Openrouter,
+}
+
+impl HarnessFamily {
+    /// All families, in catalog order.
+    pub const ALL: [HarnessFamily; 4] = [
+        HarnessFamily::Claude,
+        HarnessFamily::Codex,
+        HarnessFamily::Antigravity,
+        HarnessFamily::Openrouter,
+    ];
+
+    /// The wire slug for this family, matching the serde representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HarnessFamily::Claude => "claude",
+            HarnessFamily::Codex => "codex",
+            HarnessFamily::Antigravity => "antigravity",
+            HarnessFamily::Openrouter => "openrouter",
+        }
+    }
+
+    /// Parse a wire slug back into a family, or `None` for an unrecognized value.
+    pub fn from_wire(slug: &str) -> Option<HarnessFamily> {
+        HarnessFamily::ALL.into_iter().find(|f| f.as_str() == slug)
+    }
 }
 
 /// The subject of a run: what was run, with what, against which model.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import type { ModelInput } from "../../../client/types";
+import type { HarnessFamily, ModelAlias, ModelInput } from "../../../client/types";
+import { FAMILIES } from "../../data/families";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { ModelLogoPicker } from "../../components/ModelLogoPicker";
@@ -26,6 +27,19 @@ function openrouterSlugFromUrl(url: string | null): string {
   if (!url) return "";
   const prefix = "https://openrouter.ai/";
   return url.startsWith(prefix) ? url.slice(prefix.length) : "";
+}
+
+// A fresh, empty alias row. New rows default to the Others / OpenRouter family —
+// the namespace shared by every OpenRouter-routed harness, and the one most
+// slugs belong to.
+function blankAlias(): ModelAlias {
+  return { slug: "", harnessFamily: "openrouter" };
+}
+
+// Ensure a prefilled/seeded alias list always has at least one row so the
+// repeatable control never collapses to nothing.
+function withAtLeastOneRow(aliases: ModelAlias[]): ModelAlias[] {
+  return aliases.length > 0 ? aliases : [blankAlias()];
 }
 
 // The add/edit model configuration form — one component covering three entry
@@ -55,8 +69,10 @@ export function ModelConfigPage() {
 
   const [name, setName] = useState("");
   // Always at least one alias row so the repeatable list never collapses to
-  // nothing; empty rows are dropped on submit.
-  const [aliases, setAliases] = useState<string[]>([""]);
+  // nothing; rows with a blank slug are dropped on submit. Each row pairs a slug
+  // with the harness family it is usable with (a new row defaults to Others /
+  // OpenRouter, the broadest namespace).
+  const [aliases, setAliases] = useState<ModelAlias[]>([blankAlias()]);
   const [provider, setProvider] = useState("");
   const [logoSvg, setLogoSvg] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState("");
@@ -77,7 +93,7 @@ export function ModelConfigPage() {
     if (!editing || prefilledRef.current || !existing) return;
     prefilledRef.current = true;
     setName(existing.name);
-    setAliases(existing.aliases.length > 0 ? existing.aliases : [""]);
+    setAliases(withAtLeastOneRow(existing.aliases));
     setProvider(existing.provider);
     setLogoSvg(existing.logoSvg);
     setDescription(existing.description ?? "");
@@ -92,9 +108,11 @@ export function ModelConfigPage() {
   useEffect(() => {
     if (editing || seededRef.current) return;
     if (!fromRun) {
-      // A bare `/models/new`, optionally pre-claiming a single known id.
+      // A bare `/models/new`, optionally pre-claiming a single known id. The
+      // family is unknown here, so the row defaults to Others / OpenRouter; the
+      // operator retags it before saving if the id is a native slug.
       seededRef.current = true;
-      if (alias) setAliases([alias]);
+      if (alias) setAliases([{ slug: alias, harnessFamily: "openrouter" }]);
       return;
     }
     if (!config) return;
@@ -106,7 +124,7 @@ export function ModelConfigPage() {
         // curator writes the display name.
         setSlug(seed.slug);
         setProvider(seed.provider);
-        setAliases(seed.aliases.length > 0 ? seed.aliases : [""]);
+        setAliases(withAtLeastOneRow(seed.aliases));
         setOpenrouterSlug(seed.openrouterSlug ?? "");
       })
       .catch((e) => setSeedError(String(e)));
@@ -148,16 +166,22 @@ export function ModelConfigPage() {
 
   const canSave = name.trim().length > 0 && !busy;
 
-  const setAlias = (index: number, value: string) =>
-    setAliases((prev) => prev.map((a, i) => (i === index ? value : a)));
-  const addAlias = () => setAliases((prev) => [...prev, ""]);
+  const setAliasSlug = (index: number, slug: string) =>
+    setAliases((prev) => prev.map((a, i) => (i === index ? { ...a, slug } : a)));
+  const setAliasFamily = (index: number, harnessFamily: HarnessFamily) =>
+    setAliases((prev) =>
+      prev.map((a, i) => (i === index ? { ...a, harnessFamily } : a)),
+    );
+  const addAlias = () => setAliases((prev) => [...prev, blankAlias()]);
   const removeAlias = (index: number) =>
     setAliases((prev) =>
       prev.length > 1 ? prev.filter((_, i) => i !== index) : prev,
     );
 
   const onSave = async () => {
-    const cleanAliases = aliases.map((a) => a.trim()).filter(Boolean);
+    const cleanAliases = aliases
+      .map((a) => ({ ...a, slug: a.slug.trim() }))
+      .filter((a) => a.slug);
     const submittedSlug = (editing ? slug : slug || slugify(name)).trim();
     const input: ModelInput = {
       slug: submittedSlug,
@@ -249,7 +273,7 @@ export function ModelConfigPage() {
         </label>
 
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>OpenRouter slug</span>
+          <span className={styles.fieldLabel}>OpenRouter slug (for pricing)</span>
           <input
             className={styles.input}
             value={openrouterSlug}
@@ -259,20 +283,41 @@ export function ModelConfigPage() {
         </label>
       </div>
 
-      {/* Aliases: the canonical model ids this entry claims — a repeatable list
-          that always keeps at least one row. */}
+      {/* Aliases: the canonical model ids this entry claims, each paired with the
+          harness family it is usable with — a repeatable list that always keeps at
+          least one row. */}
       <div className={styles.aliasBlock}>
-        <span className={styles.fieldLabel}>Model ids (aliases)</span>
+        <span className={styles.fieldLabel}>Model ids by harness family</span>
+        <span className={styles.fieldHint}>
+          Pair each model id with the harness family it works with — a Claude Code
+          slug (e.g. <code>claude-opus-4-8</code>) under Claude Code, an OpenRouter
+          slug (e.g. <code>anthropic/claude-opus-4.8</code>) under Others. The run
+          form offers a harness only the slugs in its family.
+        </span>
         <ul className={styles.aliasList}>
-          {aliases.map((value, index) => (
+          {aliases.map((entry, index) => (
             <li key={index} className={styles.aliasRow}>
               <input
                 className={styles.input}
-                value={value}
-                onChange={(e) => setAlias(index, e.target.value)}
+                value={entry.slug}
+                onChange={(e) => setAliasSlug(index, e.target.value)}
                 placeholder="e.g. claude-opus-4-8"
                 aria-label={`Model id ${index + 1}`}
               />
+              <select
+                className={styles.aliasFamily}
+                value={entry.harnessFamily}
+                onChange={(e) =>
+                  setAliasFamily(index, e.target.value as HarnessFamily)
+                }
+                aria-label={`Harness family for model id ${index + 1}`}
+              >
+                {FAMILIES.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.displayName}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 className={styles.aliasRemove}

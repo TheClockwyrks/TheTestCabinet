@@ -122,7 +122,7 @@ fn main() -> Result<()> {
         TsModule {
             file: "index.ts",
             decls: ts_decls![&cfg;
-                rr::HarnessSlug, rr::RunState, rr::AuthMode, rr::RunEnvironment, rr::RunTooling,
+                rr::HarnessSlug, rr::HarnessFamily, rr::RunState, rr::AuthMode, rr::RunEnvironment, rr::RunTooling,
                 tc::TestType, tc::AssetKind, rr::RunSubject, m::TokenCounts, m::Cost, m::RunMetrics,
                 tc::MediaKind, val::ProofResult, val::CheckResult, val::StepResult,
                 val::AssetGenResult, val::AssetFrameResult, tc::SheetSpec, tc::SheetSequence,
@@ -186,9 +186,9 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 berr::ErrorBody, berr::ErrorEnvelope, bapi::CatalogCase, bapi::CatalogResponse,
                 bapi::VersionsResponse,
-                bapi::ModelCatalogResponse, bapi::ModelOut, bapi::ModelPricesOut,
-                bapi::PriceObservationOut, bapi::ModelConfigInput, bapi::ModelSeedOut,
-                bapi::LogoFetchInput, bapi::LogoFetchOut,
+                bapi::ModelCatalogResponse, bapi::AliasOut, bapi::ModelOut, bapi::ModelPricesOut,
+                bapi::PriceObservationOut, bapi::AliasInput, bapi::ModelConfigInput,
+                bapi::ModelSeedOut, bapi::LogoFetchInput, bapi::LogoFetchOut,
             ],
         },
         // The backend's run-queue control plane (the `/jobs` namespace) — what

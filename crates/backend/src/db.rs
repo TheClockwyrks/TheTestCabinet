@@ -26,10 +26,10 @@ use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
-use test_cabinet_core::run_record::{HarnessSlug, RunLinks, RunRecord};
+use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug, RunLinks, RunRecord};
 use test_cabinet_entities::{
-    case_reference_build, harness_config, job, model, model_alias, model_price, publish_job, review,
-    review_plan, run, run_link, snapshot_state, tournament,
+    case_reference_build, harness_config, job, model, model_alias, model_price, publish_job,
+    review, review_plan, run, run_link, snapshot_state, tournament,
 };
 
 use crate::error::Result;
@@ -1517,8 +1517,7 @@ impl Db {
         // Is a harness under its configured cap right now, given `active` already in
         // flight? Absent from `caps` means unlimited.
         let under_cap = |harness: &str, active: i64| -> bool {
-            caps.get(harness)
-                .is_none_or(|&max| active < i64::from(max))
+            caps.get(harness).is_none_or(|&max| active < i64::from(max))
         };
 
         // Walk the waiting jobs oldest-first: claim the first whose harness is under
@@ -1542,7 +1541,9 @@ impl Db {
             if claimed.is_none() && has_room {
                 // Claim this one: it now occupies a slot for its harness, so bump the
                 // count for the reconcile of any later same-harness jobs.
-                *active_by_harness.entry(job.harness_slug.clone()).or_insert(0) += 1;
+                *active_by_harness
+                    .entry(job.harness_slug.clone())
+                    .or_insert(0) += 1;
                 let mut active_model = job.into_active_model();
                 active_model.state = Set("dispatched".to_string());
                 active_model.updated_at = Set(now.to_string());
@@ -1892,13 +1893,25 @@ impl Db {
     }
 }
 
+/// One canonical model id a curated model claims, with the harness family it is
+/// usable with. The `alias` string is globally unique across all models; the
+/// `family` tags which harnesses can launch it (see [`HarnessFamily`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AliasEntry {
+    /// The canonical model id (globally unique).
+    pub alias: String,
+    /// The harness family this slug is usable with.
+    pub family: HarnessFamily,
+}
+
 /// A curated model configuration and the canonical run-record ids it covers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredModel {
     /// The curated `model` row.
     pub config: model::Model,
-    /// The canonical model ids this config claims, sorted.
-    pub aliases: Vec<String>,
+    /// The canonical model ids this config claims, each with its harness family,
+    /// sorted by id.
+    pub aliases: Vec<AliasEntry>,
 }
 
 /// The write payload for [`Db::upsert_model_config`].
@@ -1911,8 +1924,9 @@ pub struct ModelConfigWrite {
     pub provider_logo_svg: Option<String>,
     pub description_md: Option<String>,
     pub openrouter_slug: Option<String>,
-    /// The canonical model ids this config claims (at least one).
-    pub aliases: Vec<String>,
+    /// The canonical model ids this config claims, each with its harness family
+    /// (at least one).
+    pub aliases: Vec<AliasEntry>,
     /// RFC 3339 timestamp for the created/updated stamp.
     pub now: String,
 }
@@ -1929,6 +1943,18 @@ pub struct PriceWrite {
     pub released_at: Option<String>,
 }
 
+/// Project a stored `model_alias` row into an [`AliasEntry`], parsing its
+/// `harness_family` wire slug and falling back to [`HarnessFamily::Openrouter`]
+/// for an unrecognized value (the migration default, and the harmless choice for
+/// a slug the current build does not know a family for).
+fn alias_entry(row: model_alias::Model) -> AliasEntry {
+    let family = HarnessFamily::from_wire(&row.harness_family).unwrap_or(HarnessFamily::Openrouter);
+    AliasEntry {
+        alias: row.alias,
+        family,
+    }
+}
+
 /// The model catalog store: curated config, its aliases, and observed prices.
 impl Db {
     /// Every curated model config with its aliases, ordered by slug.
@@ -1937,19 +1963,20 @@ impl Db {
             .order_by_asc(model::Column::Slug)
             .all(&self.conn)
             .await?;
-        let mut alias_map: std::collections::HashMap<String, Vec<String>> =
+        let mut alias_map: std::collections::HashMap<String, Vec<AliasEntry>> =
             std::collections::HashMap::new();
         for alias in model_alias::Entity::find().all(&self.conn).await? {
+            let model_slug = alias.model_slug.clone();
             alias_map
-                .entry(alias.model_slug)
+                .entry(model_slug)
                 .or_default()
-                .push(alias.alias);
+                .push(alias_entry(alias));
         }
         Ok(configs
             .into_iter()
             .map(|config| {
                 let mut aliases = alias_map.remove(&config.slug).unwrap_or_default();
-                aliases.sort();
+                aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
                 StoredModel { config, aliases }
             })
             .collect())
@@ -1960,14 +1987,14 @@ impl Db {
         let Some(config) = model::Entity::find_by_id(slug).one(&self.conn).await? else {
             return Ok(None);
         };
-        let mut aliases: Vec<String> = model_alias::Entity::find()
+        let mut aliases: Vec<AliasEntry> = model_alias::Entity::find()
             .filter(model_alias::Column::ModelSlug.eq(slug))
             .all(&self.conn)
             .await?
             .into_iter()
-            .map(|alias| alias.alias)
+            .map(alias_entry)
             .collect();
-        aliases.sort();
+        aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
         Ok(Some(StoredModel { config, aliases }))
     }
 
@@ -1981,16 +2008,16 @@ impl Db {
         // Reject an alias that another curated model already owns (the alias
         // column is globally unique; catch it before the constraint fires so the
         // caller gets a clean 409 naming the offending id).
-        for alias in &write.aliases {
+        for entry in &write.aliases {
             if let Some(existing) = model_alias::Entity::find()
-                .filter(model_alias::Column::Alias.eq(alias.clone()))
+                .filter(model_alias::Column::Alias.eq(entry.alias.clone()))
                 .one(&txn)
                 .await?
                 && existing.model_slug != write.slug
             {
                 return Err(crate::error::BackendError::Conflict(format!(
-                    "model id `{alias}` is already claimed by model `{}`",
-                    existing.model_slug
+                    "model id `{}` is already claimed by model `{}`",
+                    entry.alias, existing.model_slug
                 )));
             }
         }
@@ -2033,11 +2060,12 @@ impl Db {
             .filter(model_alias::Column::ModelSlug.eq(write.slug.clone()))
             .exec(&txn)
             .await?;
-        for alias in write.aliases {
+        for entry in write.aliases {
             model_alias::Entity::insert(model_alias::ActiveModel {
                 id: Set(uuid::Uuid::new_v4().to_string()),
                 model_slug: Set(write.slug.clone()),
-                alias: Set(alias),
+                alias: Set(entry.alias),
+                harness_family: Set(entry.family.as_str().to_string()),
             })
             .exec(&txn)
             .await?;
@@ -2135,6 +2163,36 @@ impl Db {
             .one(&self.conn)
             .await?
             .and_then(|m| m.openrouter_slug))
+    }
+
+    /// Every `(id, alias, harness_family)` triple across all curated models. Used
+    /// by the startup backfill that corrects the harness family of aliases created
+    /// before the `harness_family` column existed.
+    pub async fn all_alias_families(&self) -> Result<Vec<(String, String, HarnessFamily)>> {
+        Ok(model_alias::Entity::find()
+            .all(&self.conn)
+            .await?
+            .into_iter()
+            .map(|row| {
+                let family = HarnessFamily::from_wire(&row.harness_family)
+                    .unwrap_or(HarnessFamily::Openrouter);
+                (row.id, row.alias, family)
+            })
+            .collect())
+    }
+
+    /// Set the harness family of a single alias row by its id. Used by the startup
+    /// backfill; a no-op set costs nothing because the caller only writes rows whose
+    /// family actually changed.
+    pub async fn set_alias_family(&self, id: &str, family: HarnessFamily) -> Result<()> {
+        model_alias::ActiveModel {
+            id: Set(id.to_string()),
+            harness_family: Set(family.as_str().to_string()),
+            ..Default::default()
+        }
+        .update(&self.conn)
+        .await?;
+        Ok(())
     }
 
     /// Whether any stored run is a candidate for `:free` normalization — an

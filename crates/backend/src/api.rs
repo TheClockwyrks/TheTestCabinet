@@ -38,8 +38,8 @@ pub use jobs::{
     StatusUpdate,
 };
 pub use models::{
-    LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput, ModelOut, ModelPricesOut,
-    ModelSeedOut, PriceObservationOut, compose_catalog,
+    AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
+    ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
 pub use review_plan::{CoverageCell, CoverageMatrix, ReviewPlan, ReviewPlanCase, ReviewPlanCombo};
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};

@@ -24,6 +24,21 @@ export type HarnessSlug =
   | "pi";
 
 /**
+ * A family of harnesses that share a model-slug namespace — the set of model ids
+ * usable with them.
+ *
+ * A slug is only meaningful to the harnesses that speak its namespace: a Claude
+ * Code slug (`claude-opus-4-8`) means nothing to Codex, and an OpenRouter slug
+ * (`anthropic/claude-opus-4.8`) only resolves through the OpenRouter-routed
+ * harnesses. So a curated model's slugs are each tagged with the family they
+ * belong to (see the model catalog's aliases), which lets a run form offer only
+ * the slugs the selected harness can actually launch. Every [`HarnessSlug`] maps
+ * to exactly one family via [`HarnessSlug::family`]; the OpenRouter-routed
+ * harnesses collapse into one family because they all take OpenRouter ids.
+ */
+export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
+
+/**
  * The terminal state of a run — the single axis that decides publishability and
  * how a run scores. Classified objectively at the point a run ends: a clean
  * harness exit splits into [`Completed`](RunState::Completed) vs

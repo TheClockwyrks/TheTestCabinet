@@ -9,6 +9,7 @@ import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { harnesses } from "../../data/harnesses";
+import { familyOf, modelForHarness } from "../../data/families";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import {
   OPENROUTER_PROVIDER,
@@ -526,7 +527,13 @@ function PlanEditor({
           <select
             className={exec.select}
             value={addHarness}
-            onChange={(e) => setAddHarness(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              // Remap the pending model to the new harness's family, so a slug
+              // the new harness can't launch isn't silently carried over.
+              setAddModel((m) => modelForHarness(models, m, next));
+              setAddHarness(next);
+            }}
           >
             {harnesses.map((h) => (
               <option key={h.slug} value={h.slug}>
@@ -541,6 +548,7 @@ function PlanEditor({
             value={addModel}
             onChange={setAddModel}
             models={models}
+            harnessFamily={familyOf(addHarness)}
             inputClassName={exec.input}
             placeholder="model id (e.g. claude-opus-4-8)"
           />

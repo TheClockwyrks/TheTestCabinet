@@ -2,7 +2,7 @@ use super::*;
 use test_cabinet_core::metrics::RunMetrics;
 use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
-    HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
+    HarnessFamily, HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
 };
 use test_cabinet_core::validation::ValidationSummary;
 
@@ -1235,6 +1235,19 @@ async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
 use std::collections::HashMap;
 use test_cabinet_core::metrics::{Cost, TokenCounts, TokenPrices};
 
+/// Tag a test alias with a plausible family (OpenRouter for a `provider/model`
+/// id, Claude for a bare native id — enough for the CRUD tests here).
+fn test_alias(alias: &str) -> AliasEntry {
+    AliasEntry {
+        alias: alias.to_string(),
+        family: if alias.contains('/') {
+            HarnessFamily::Openrouter
+        } else {
+            HarnessFamily::Claude
+        },
+    }
+}
+
 /// A model-config write with the common fields defaulted.
 fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
     ModelConfigWrite {
@@ -1245,7 +1258,7 @@ fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
         provider_logo_svg: None,
         description_md: None,
         openrouter_slug: aliases.first().map(|a| a.to_string()),
-        aliases: aliases.iter().map(|a| a.to_string()).collect(),
+        aliases: aliases.iter().map(|a| test_alias(a)).collect(),
         now: "2026-07-09T00:00:00Z".to_string(),
     }
 }
@@ -1278,9 +1291,25 @@ async fn model_config_crud_and_alias_conflict() {
 
     let got = db.get_model_config("opus").await.unwrap().unwrap();
     assert_eq!(got.config.display_name, "Claude Opus 4.8");
+    let alias_slugs: Vec<&str> = got.aliases.iter().map(|a| a.alias.as_str()).collect();
     assert_eq!(
-        got.aliases,
+        alias_slugs,
         vec!["anthropic/claude-opus-4.8", "claude-opus-4-8"]
+    );
+    // The family round-trips through the store.
+    assert_eq!(
+        got.aliases
+            .iter()
+            .find(|a| a.alias == "claude-opus-4-8")
+            .map(|a| a.family),
+        Some(HarnessFamily::Claude)
+    );
+    assert_eq!(
+        got.aliases
+            .iter()
+            .find(|a| a.alias == "anthropic/claude-opus-4.8")
+            .map(|a| a.family),
+        Some(HarnessFamily::Openrouter)
     );
 
     // A second model claiming an alias the first owns is a conflict.
@@ -1300,7 +1329,7 @@ async fn model_config_crud_and_alias_conflict() {
     // Updating the same model replaces its alias set and keeps created_at.
     db.upsert_model_config(ModelConfigWrite {
         display_name: "Opus (renamed)".to_string(),
-        aliases: vec!["claude-opus-4-8".to_string()],
+        aliases: vec![test_alias("claude-opus-4-8")],
         now: "2026-08-01T00:00:00Z".to_string(),
         ..model_write("opus", "ignored", &[])
     })
@@ -1309,11 +1338,88 @@ async fn model_config_crud_and_alias_conflict() {
     let updated = db.get_model_config("opus").await.unwrap().unwrap();
     assert_eq!(updated.config.display_name, "Opus (renamed)");
     assert_eq!(updated.config.created_at, "2026-07-09T00:00:00Z");
-    assert_eq!(updated.aliases, vec!["claude-opus-4-8"]);
+    assert_eq!(
+        updated.aliases,
+        vec![AliasEntry {
+            alias: "claude-opus-4-8".to_string(),
+            family: HarnessFamily::Claude,
+        }]
+    );
 
     assert!(db.delete_model_config("opus").await.unwrap());
     assert!(db.get_model_config("opus").await.unwrap().is_none());
     assert!(!db.delete_model_config("opus").await.unwrap());
+}
+
+#[tokio::test]
+async fn backfill_alias_families_corrects_legacy_rows() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // Simulate legacy rows created before the harness_family column: every alias
+    // carries the migration's `openrouter` default, even the native ones.
+    let legacy = |slug: &str, aliases: &[&str]| ModelConfigWrite {
+        aliases: aliases
+            .iter()
+            .map(|a| AliasEntry {
+                alias: a.to_string(),
+                family: HarnessFamily::Openrouter,
+            })
+            .collect(),
+        ..model_write(slug, slug, &[])
+    };
+    db.upsert_model_config(legacy(
+        "opus",
+        &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+    ))
+    .await
+    .unwrap();
+    db.upsert_model_config(legacy("gpt", &["gpt-5.5"])).await.unwrap();
+
+    // A Claude Code run of the native id is the run evidence for its family.
+    db.push(
+        &run_with_model(
+            "r1",
+            "claude-opus-4-8",
+            HarnessSlug::Claude,
+            TokenCounts::default(),
+        ),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let fixed = crate::bootstrap::backfill_alias_families(&db)
+        .await
+        .unwrap();
+    assert_eq!(fixed, 2, "the two native slugs were corrected");
+
+    let family_of = |stored: &StoredModel, slug: &str| {
+        stored
+            .aliases
+            .iter()
+            .find(|a| a.alias == slug)
+            .map(|a| a.family)
+    };
+    let opus = db.get_model_config("opus").await.unwrap().unwrap();
+    // Native id corrected from run evidence; OpenRouter id left as-is.
+    assert_eq!(
+        family_of(&opus, "claude-opus-4-8"),
+        Some(HarnessFamily::Claude)
+    );
+    assert_eq!(
+        family_of(&opus, "anthropic/claude-opus-4.8"),
+        Some(HarnessFamily::Openrouter)
+    );
+    // No run for gpt-5.5, so the structural rule (`gpt` prefix) classifies it.
+    let gpt = db.get_model_config("gpt").await.unwrap().unwrap();
+    assert_eq!(family_of(&gpt, "gpt-5.5"), Some(HarnessFamily::Codex));
+
+    // Idempotent: a second pass corrects nothing.
+    let again = crate::bootstrap::backfill_alias_families(&db)
+        .await
+        .unwrap();
+    assert_eq!(again, 0);
 }
 
 #[tokio::test]

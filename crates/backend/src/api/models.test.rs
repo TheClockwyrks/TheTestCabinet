@@ -1,6 +1,18 @@
 use super::*;
 use test_cabinet_entities::model;
 
+/// A canonical id carries the OpenRouter family when it has a `provider/`
+/// segment, and its native family otherwise — enough for these composition tests.
+fn test_family(alias: &str) -> HarnessFamily {
+    if alias.contains('/') {
+        HarnessFamily::Openrouter
+    } else if alias.starts_with("gpt") {
+        HarnessFamily::Codex
+    } else {
+        HarnessFamily::Claude
+    }
+}
+
 fn config(slug: &str, name: &str, provider: &str, aliases: &[&str]) -> StoredModel {
     StoredModel {
         config: model::Model {
@@ -14,7 +26,13 @@ fn config(slug: &str, name: &str, provider: &str, aliases: &[&str]) -> StoredMod
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
         },
-        aliases: aliases.iter().map(|a| a.to_string()).collect(),
+        aliases: aliases
+            .iter()
+            .map(|a| AliasEntry {
+                alias: a.to_string(),
+                family: test_family(a),
+            })
+            .collect(),
     }
 }
 
@@ -80,6 +98,19 @@ fn curated_model_absorbs_its_runs_and_derived_models_appear() {
         opus.openrouter_url.as_deref(),
         Some("https://openrouter.ai/claude-opus-4-8")
     );
+    // Each alias carries the family it is usable with: the native Claude Code id
+    // under the Claude family, the OpenRouter id under the OpenRouter family.
+    let family_of = |slug: &str| {
+        opus.aliases
+            .iter()
+            .find(|a| a.slug == slug)
+            .map(|a| a.harness_family)
+    };
+    assert_eq!(family_of("claude-opus-4-8"), Some(HarnessFamily::Claude));
+    assert_eq!(
+        family_of("anthropic/claude-opus-4.8"),
+        Some(HarnessFamily::Openrouter)
+    );
 
     let derived = catalog
         .iter()
@@ -89,6 +120,10 @@ fn curated_model_absorbs_its_runs_and_derived_models_appear() {
     assert_eq!(derived.name, "deepseek/deepseek-v4");
     assert_eq!(derived.provider, "deepseek");
     assert!(derived.price.is_none());
+    // A derived entry's alias family comes from the harness that reported it (an
+    // OpenCode run here → the OpenRouter family).
+    assert_eq!(derived.aliases.len(), 1);
+    assert_eq!(derived.aliases[0].harness_family, HarnessFamily::Openrouter);
 }
 
 #[test]
@@ -115,11 +150,30 @@ fn guess_provider_reads_prefix() {
 
 #[test]
 fn normalize_aliases_strips_prefix_and_dedups() {
+    let input = |slug: &str, family: HarnessFamily| AliasInput {
+        slug: slug.to_string(),
+        harness_family: family,
+    };
     let got = normalize_aliases(&[
-        "  openrouter/anthropic/claude-opus-4.8  ".to_string(),
-        "anthropic/claude-opus-4.8".to_string(),
-        "".to_string(),
-        "claude-opus-4-8".to_string(),
+        input(
+            "  openrouter/anthropic/claude-opus-4.8  ",
+            HarnessFamily::Openrouter,
+        ),
+        input("anthropic/claude-opus-4.8", HarnessFamily::Openrouter),
+        input("", HarnessFamily::Openrouter),
+        input("claude-opus-4-8", HarnessFamily::Claude),
     ]);
-    assert_eq!(got, vec!["anthropic/claude-opus-4.8", "claude-opus-4-8"]);
+    assert_eq!(
+        got,
+        vec![
+            AliasEntry {
+                alias: "anthropic/claude-opus-4.8".to_string(),
+                family: HarnessFamily::Openrouter,
+            },
+            AliasEntry {
+                alias: "claude-opus-4-8".to_string(),
+                family: HarnessFamily::Claude,
+            },
+        ]
+    );
 }

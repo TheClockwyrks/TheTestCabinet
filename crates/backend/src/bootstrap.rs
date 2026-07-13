@@ -7,7 +7,7 @@
 //! track OpenRouter's — including promotional pricing — without the removed
 //! `tcab catalog` step.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,9 +17,9 @@ use time::format_description::well_known::Rfc3339;
 use test_cabinet_core::metrics::TokenPrices;
 use test_cabinet_core::model_id::{canonical_model_id, openrouter_price_id};
 use test_cabinet_core::pricing::{ModelDetails, OpenRouterPrices};
-use test_cabinet_core::run_record::HarnessSlug;
+use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug};
 
-use crate::db::{Db, ModelConfigWrite, PriceWrite};
+use crate::db::{AliasEntry, Db, ModelConfigWrite, PriceWrite};
 use crate::error::Result;
 use crate::model_seed::SEED_MODELS;
 
@@ -45,13 +45,91 @@ pub async fn seed_models_if_empty(db: &Db) -> Result<()> {
             description_md: (!seed.description_md.is_empty())
                 .then(|| seed.description_md.to_string()),
             openrouter_slug: seed.openrouter_slug.map(str::to_string),
-            aliases: seed.aliases.iter().map(|a| a.to_string()).collect(),
+            // The seed store is empty, so there is no run evidence yet; the
+            // structural rule classifies every seed id unambiguously (a bare
+            // `claude-*`/`gpt-*` to its native family, every `provider/model`
+            // OpenRouter id to the OpenRouter family).
+            aliases: seed
+                .aliases
+                .iter()
+                .map(|alias| AliasEntry {
+                    alias: alias.to_string(),
+                    family: infer_alias_family(alias, None),
+                })
+                .collect(),
             now: now.clone(),
         })
         .await?;
     }
     tracing::info!(count = SEED_MODELS.len(), "seeded curated model catalog");
     Ok(())
+}
+
+/// Correct the harness family of curated aliases created before the
+/// `harness_family` column existed (they carry the migration's `openrouter`
+/// default). Idempotent: it computes each alias's true family from run evidence
+/// (which harness family actually launched it) and a structural fallback, and
+/// writes only the rows whose family differs — so a steady state converges and a
+/// re-run is a no-op. Native-harness slugs (`claude-opus-4-8`, `gpt-5.5`) are the
+/// rows this fixes; the OpenRouter `provider/model` slugs already hold the correct
+/// default. Best-effort caller: a failure is logged, never fatal.
+pub async fn backfill_alias_families(db: &Db) -> Result<usize> {
+    // canonical id -> the distinct harness families that launched it, from runs.
+    let mut run_families: HashMap<String, HashSet<HarnessFamily>> = HashMap::new();
+    for (model_id, harness_slug) in db.distinct_run_models().await? {
+        let harness = parse_harness(&harness_slug);
+        run_families
+            .entry(canonical_model_id(&model_id, harness))
+            .or_default()
+            .insert(harness.family());
+    }
+
+    let mut fixed = 0usize;
+    for (id, alias, current) in db.all_alias_families().await? {
+        let inferred = infer_alias_family(&alias, run_families.get(&alias));
+        if inferred != current {
+            db.set_alias_family(&id, inferred).await?;
+            fixed += 1;
+        }
+    }
+    if fixed > 0 {
+        tracing::info!(fixed, "backfilled harness family for curated model aliases");
+    }
+    Ok(fixed)
+}
+
+/// Infer the harness family a canonical model id belongs to.
+///
+/// Run evidence wins when unambiguous: if runs launched this exact canonical id
+/// under a single family, that is authoritative. Otherwise a structural rule
+/// reads the id: an OpenRouter id carries a `provider/` segment; a bare id is a
+/// provider-native slug, classified by its provider prefix (`gpt`/`o<n>`/`codex`
+/// → Codex, `claude` → Claude, `gemini` → Antigravity), with everything else
+/// defaulting to OpenRouter.
+fn infer_alias_family(alias: &str, run_families: Option<&HashSet<HarnessFamily>>) -> HarnessFamily {
+    if let Some(families) = run_families
+        && families.len() == 1
+    {
+        return *families.iter().next().expect("len == 1");
+    }
+    if alias.contains('/') {
+        return HarnessFamily::Openrouter;
+    }
+    let low = alias.to_ascii_lowercase();
+    let is_openai = low.starts_with("gpt")
+        || low.starts_with("codex")
+        || low.starts_with("o1")
+        || low.starts_with("o3")
+        || low.starts_with("o4");
+    if is_openai {
+        HarnessFamily::Codex
+    } else if low.starts_with("claude") {
+        HarnessFamily::Claude
+    } else if low.starts_with("gemini") {
+        HarnessFamily::Antigravity
+    } else {
+        HarnessFamily::Openrouter
+    }
 }
 
 /// Re-associate any legacy `:free`-tagged runs to their base model and re-price
