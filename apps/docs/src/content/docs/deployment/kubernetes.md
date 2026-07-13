@@ -475,6 +475,17 @@ Per environment:
 To roll back, re-comment the component, restore the password-form vault secrets,
 and re-apply — password auth is left enabled on the server throughout.
 
+Once **both** environments are cut over and verified on Entra auth, disable
+password auth entirely to remove the fallback and the shared-password blast radius
+(this is a one-way step — confirm passwordless works first):
+
+```sh
+az postgres flexible-server update -g <rg> -n <server> \
+  --password-auth Disabled --microsoft-entra-auth Enabled
+```
+
+The `tcabadmin` password and the password-form vault DB-URLs can then be retired.
+
 ### Ingesting definitions
 
 The backend serves the catalog from the checkout at `TCAB_BACKEND_CHECKOUT`,
