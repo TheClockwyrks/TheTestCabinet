@@ -30,3 +30,17 @@ fn deploy_branch_joins_slug_version_and_variant() {
 fn deploy_branch_leaves_a_dotless_version_untouched() {
     assert_eq!(deploy_branch("pong", "v2", "base"), "pong-v2-base");
 }
+
+#[test]
+fn references_pages_project_selects_by_env() {
+    // The required `--env` picks the Pages project; prod and staging are distinct
+    // so a staging publish never lands in front of the public gallery.
+    assert_eq!(
+        references_pages_project(DeployEnv::Prod),
+        "test-cabinet-references"
+    );
+    assert_eq!(
+        references_pages_project(DeployEnv::Staging),
+        "test-cabinet-references-staging"
+    );
+}

@@ -64,13 +64,16 @@ including:
   have an operator publish. Requires a logged-in account.
 - **`publish-reference`** — deploy a case's
   [reference implementations](/components/core/results/#reference-implementations)
-  and record their URLs: `tcab publish-reference <slug> [<version>] [--variant <slug>]
-  [--all-variants]`. For each targeted variant that declares a
+  and record their URLs: `tcab publish-reference --env <prod|staging> <slug>
+  [<version>] [--variant <slug>] [--all-variants]`. The required `--env` selects
+  the Cloudflare Pages project (prod's `test-cabinet-references` or staging's
+  `test-cabinet-references-staging`); it has no default, so a publish can never
+  silently target prod. For each targeted variant that declares a
   [`reference_implementation`](/testing/end-to-end/manifests/), it runs the case
   `[build]` install then build in that directory, scrubs the output with the same
   secret-redaction pass the [publisher](/components/core/results/#secret-redaction)
-  uses, deploys the static build to Cloudflare Pages
-  (`wrangler pages deploy <out> --project-name test-cabinet-references
+  uses, deploys the static build to that Pages project
+  (`wrangler pages deploy <out> --project-name <project>
   --branch <slug>-<version-with-dots-as-dashes>-<variant>`), reads the served URL
   back from `wrangler`'s output (Cloudflare truncates long subdomains, so the URL
   is parsed rather than constructed), and PUTs it to the backend's authenticated

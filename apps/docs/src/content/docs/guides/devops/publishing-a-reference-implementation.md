@@ -14,12 +14,13 @@ into a run — handing a model the answer would defeat the case — so it is dep
 The one command is `tcab publish-reference`. It builds each targeted variant's
 reference project with the case's own [`[build]` commands](/testing/end-to-end/manifests/),
 scrubs the output with the same [secret-redaction](/components/core/results/#secret-redaction)
-pass the run publisher uses, deploys the static build to the `test-cabinet-references`
-Cloudflare Pages project, reads the served URL back from `wrangler` (Cloudflare
-truncates long subdomains, so the URL is parsed, never constructed), and records
-it on the backend so the Reference tab can embed it. This mirrors the run
-publisher — see [Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/)
-for the run-build analogue.
+pass the run publisher uses, deploys the static build to the reference Cloudflare
+Pages project for the environment you name (see [`--env`](#choose-an-environment)),
+reads the served URL back from `wrangler` (Cloudflare truncates long subdomains, so
+the URL is parsed, never constructed), and records it on the backend so the
+Reference tab can embed it. This mirrors the run publisher — see
+[Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/) for the
+run-build analogue.
 
 ## Which cases get a reference
 
@@ -53,11 +54,28 @@ half needs (see [CLI Authentication](/components/cli/overview/#authentication)):
   `wrangler pages deploy`.
 - **Node / npm**, so the case's `[build]` install and build commands run.
 - **A logged-in account** (`tcab login`) or a `TCAB_TOKEN` override, and
-  **`TCAB_BACKEND_URL`** pointing at the backend that records the URL. Recording
-  goes through the same bearer auth as the ingest/publish write paths.
-- **The `test-cabinet-references` Cloudflare Pages project must exist.** It is a
-  Direct Upload project created once in the Cloudflare dashboard; see
+  **`TCAB_BACKEND_URL`** pointing at the backend for the environment you publish
+  to (see [`--env`](#choose-an-environment)). Recording goes through the same
+  bearer auth as the ingest/publish write paths.
+- **The target Cloudflare Pages project must exist** — `test-cabinet-references`
+  for prod, `test-cabinet-references-staging` for staging. Each is a Direct Upload
+  project created once in the Cloudflare dashboard; see
   [Releasing → Reference implementations](/development/releasing/#reference-implementations-cloudflare-pages-one-time).
+
+## Choose an environment
+
+`--env` is **required** and has no default, so a publish can never silently target
+prod — the same convention the operator shell scripts (e.g.
+`scripts/upload-subscription-creds.sh`) use for their `--env`. It selects the
+Cloudflare Pages project the build deploys to:
+
+- `--env prod` → the `test-cabinet-references` project.
+- `--env staging` → the `test-cabinet-references-staging` project.
+
+It selects **only** the Pages project. The deployed URL is recorded against
+whatever `TCAB_BACKEND_URL`/`TCAB_TOKEN` point at, so when publishing staging
+references, point those at the staging backend — otherwise a staging build's URL
+lands in the prod catalog.
 
 ## Publish
 
@@ -66,7 +84,7 @@ directories, and the branch alias each would deploy under — without building,
 deploying, or recording anything (and needing none of the credentials above):
 
 ```sh
-tcab publish-reference <slug> [<version>] --dry-run
+tcab publish-reference --env prod <slug> [<version>] --dry-run
 ```
 
 Then publish for real. With no selector it publishes **every variant that declares
@@ -74,10 +92,10 @@ a reference** for the resolved version; `<version>` defaults to the case's
 **newest** version when omitted:
 
 ```sh
-tcab publish-reference carom                      # all variants, newest version
-tcab publish-reference carom v1.1.0               # all variants, that version
-tcab publish-reference carom v1.1.0 --variant base   # exactly one variant
-tcab publish-reference carom --all-variants       # explicit form of the default
+tcab publish-reference --env prod carom                    # all variants, newest version
+tcab publish-reference --env prod carom v1.1.0             # all variants, that version
+tcab publish-reference --env prod carom v1.1.0 --variant base   # exactly one variant
+tcab publish-reference --env staging carom --all-variants  # explicit default, to staging
 ```
 
 `--variant X` targets exactly one variant and **errors if that variant declares no
@@ -92,7 +110,7 @@ For each targeted variant the command:
    directory, producing the static site in the same `dist/`, `build/`, or `out/`
    a run's build uses.
 2. Scrubs the built tree with the run publisher's secret-redaction pass.
-3. Deploys it to `test-cabinet-references` under the branch alias
+3. Deploys it to the `--env` project under the branch alias
    `<slug>-<version-with-dots-as-dashes>-<variant>` (for example
    `carom-v1-1-0-base`) and reads the served URL back from `wrangler`.
 4. `PUT`s that URL to the backend's authenticated reference-build endpoint, which
@@ -104,13 +122,13 @@ For each targeted variant the command:
 
 The same command is wired as an on-demand GitHub Actions job,
 `.github/workflows/publish-reference.yml` (`workflow_dispatch`), so a reference
-can be (re)published without a local toolchain. Its inputs are `slug` (required),
-`version` (blank = newest), and `variant` (blank = every variant that declares a
-reference). It reads `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
-`TCAB_BACKEND_URL`, and `TCAB_TOKEN` from repository secrets, and a
-`publish-reference` concurrency group serializes runs so two never race the same
-Pages project. Like the other deploy workflows it is dormant until the repository
-is mirrored to GitHub.
+can be (re)published without a local toolchain. Its inputs are `environment`
+(`prod`/`staging`, for `--env`), `slug` (required), `version` (blank = newest), and
+`variant` (blank = every variant that declares a reference). It reads
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TCAB_BACKEND_URL`, and
+`TCAB_TOKEN` from repository secrets, and a `publish-reference` concurrency group
+serializes runs so two never race the same Pages project. Like the other deploy
+workflows it is dormant until the repository is mirrored to GitHub.
 
 ## Reference implementation vs. reference mockup
 

@@ -16,10 +16,12 @@
 //!    `[build]` *install* then *build* commands **from the reference-impl
 //!    directory** (not a seeded run repo), so the static site lands in the same
 //!    `dist/`|`build/`|`out/` a run's build uses ([`find_build_output`]).
-//! 3. Deploy that static output to the `test-cabinet-references` Cloudflare Pages
-//!    project under a per-variant branch alias, scrubbing any leaked secret from
-//!    the built tree first and reading the served URL back out of `wrangler`'s
-//!    output — never constructing it — via the shared [`deploy_pages_build`].
+//! 3. Deploy that static output to the reference Cloudflare Pages project for the
+//!    required `--env` (prod's `test-cabinet-references` or staging's
+//!    `test-cabinet-references-staging`) under a per-variant branch alias,
+//!    scrubbing any leaked secret from the built tree first and reading the served
+//!    URL back out of `wrangler`'s output — never constructing it — via the shared
+//!    [`deploy_pages_build`].
 //! 4. `PUT` the deployed URL to the backend's authenticated reference-build
 //!    endpoint, which upserts the `case_reference_build` row the site's Reference
 //!    tab reads from.
@@ -37,14 +39,28 @@ use test_cabinet_core::{
     Variant, deploy_pages_build, find_build_output,
 };
 
-use crate::cli::PublishReferenceArgs;
+use crate::cli::{DeployEnv, PublishReferenceArgs};
 use crate::config;
 
-/// The Cloudflare Pages project every reference implementation deploys to. Each
-/// targeted variant is deployed under its own branch alias (see
+/// The production Cloudflare Pages project reference implementations deploy to.
+/// Each targeted variant is deployed under its own branch alias (see
 /// [`deploy_branch`]); the served URL is read back from `wrangler`, never
 /// constructed, exactly as the run publisher does for its per-run project.
-const REFERENCES_PAGES_PROJECT: &str = "test-cabinet-references";
+const REFERENCES_PAGES_PROJECT_PROD: &str = "test-cabinet-references";
+
+/// The staging Cloudflare Pages project, the pre-release mirror of prod. Selected
+/// by `--env staging` so a reference can be vetted on staging before it lands in
+/// front of the public gallery.
+const REFERENCES_PAGES_PROJECT_STAGING: &str = "test-cabinet-references-staging";
+
+/// The Cloudflare Pages project for a deployment environment. The environment is a
+/// required flag (see [`DeployEnv`]) so a publish can never silently target prod.
+fn references_pages_project(env: DeployEnv) -> &'static str {
+    match env {
+        DeployEnv::Prod => REFERENCES_PAGES_PROJECT_PROD,
+        DeployEnv::Staging => REFERENCES_PAGES_PROJECT_STAGING,
+    }
+}
 
 /// `tcab publish-reference` — build, deploy, and record the reference
 /// implementation(s) for a case's targeted variant(s).
@@ -63,11 +79,15 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // likewise an error (there is nothing to publish).
     let targets = select_targets(&test_case, args.variant.as_deref(), args.all_variants)?;
 
+    // The required `--env` selects the Pages project; there is no default, so a
+    // publish can never silently land in prod.
+    let project = references_pages_project(args.env);
+
     println!(
         "tcab publish-reference: {}@{} -> {} ({} variant(s))",
         test_case.slug,
         test_case.version,
-        REFERENCES_PAGES_PROJECT,
+        project,
         targets.len(),
     );
 
@@ -109,6 +129,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
             &runner,
             &test_case,
             variant,
+            project,
             &build.install,
             &build.build,
         )
@@ -140,6 +161,7 @@ async fn publish_one(
     runner: &SystemCommandRunner,
     test_case: &TestCaseVersion,
     variant: &Variant,
+    project: &str,
     install: &str,
     build: &str,
 ) -> Result<()> {
@@ -174,7 +196,7 @@ async fn publish_one(
     // literal host is not constructible up front).
     let branch = deploy_branch(&test_case.slug, &test_case.version, &variant.slug);
     println!("  {} — deploying (branch {branch})", variant.slug);
-    let url = deploy_pages_build(runner, &out, REFERENCES_PAGES_PROJECT, &branch)
+    let url = deploy_pages_build(runner, &out, project, &branch)
         .await
         .with_context(|| {
             format!(

@@ -18,7 +18,8 @@ policy are in
 - `wrangler` is on `PATH` with `CLOUDFLARE_API_TOKEN` (*Cloudflare Pages: Edit*)
   and `CLOUDFLARE_ACCOUNT_ID` set, and Node/npm are available for the case
   `[build]`.
-- The `test-cabinet-references` Pages project exists
+- The target Pages project exists — `test-cabinet-references` (prod) or
+  `test-cabinet-references-staging` (staging)
   ([one-time setup](/development/releasing/#reference-implementations-cloudflare-pages-one-time)).
 - The case is **non-experimental** and its type supports a reference
   (end-to-end or full-stack). See the guide's
@@ -27,11 +28,13 @@ policy are in
 ## Publish
 
 ```sh
-tcab publish-reference <slug> [<version>] --dry-run   # show the plan, no credentials needed
-tcab publish-reference <slug>                         # all variants, newest version
-tcab publish-reference <slug> <version> --variant base   # exactly one variant
+tcab publish-reference --env prod <slug> [<version>] --dry-run   # show the plan, no credentials needed
+tcab publish-reference --env prod <slug>                         # all variants, newest version
+tcab publish-reference --env prod <slug> <version> --variant base   # exactly one variant
 ```
 
+`--env` (`prod` or `staging`) is **required** — it selects the Cloudflare Pages
+project and has no default, so a publish never silently targets prod.
 `<version>` defaults to the newest version. With no selector, every variant that
 declares a [`reference_implementation`](/testing/end-to-end/manifests/) is
 published; `--variant X` targets one and errors if it has no reference. A
@@ -41,10 +44,10 @@ but does not abort the rest.
 ## What it does
 
 For each targeted variant: runs the case `[build]` install + build from the
-reference-impl directory, scrubs secrets from the output, deploys it to
-`test-cabinet-references` under a `<slug>-<version>-<variant>` branch alias, reads
-the served URL back from `wrangler`, and records it on the backend — where it
-surfaces as the variant's `referenceBuild` and the case page's **Reference** tab.
+reference-impl directory, scrubs secrets from the output, deploys it to the
+`--env` Pages project under a `<slug>-<version>-<variant>` branch alias, reads the
+served URL back from `wrangler`, and records it on the backend — where it surfaces
+as the variant's `referenceBuild` and the case page's **Reference** tab.
 
 ## From CI
 

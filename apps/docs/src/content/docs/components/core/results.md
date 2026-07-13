@@ -69,11 +69,12 @@ Two properties keep it honest:
   the variant's `reference_implementation` directory with the case `[build]`
   commands, runs the **same secret-redaction scrubber** the run
   [publisher](#secret-redaction) uses over the output, and deploys it to
-  Cloudflare Pages — its own `test-cabinet-references` project, on a branch named
-  `<slug>-<version-with-dots-as-dashes>-<variant>` — exactly the way a published
-  run's build is deployed to Pages. Cloudflare truncates long subdomains, so the
-  served URL is **read back** from `wrangler`'s output rather than constructed,
-  then recorded on the backend.
+  Cloudflare Pages — its own references project (a required `--env` selects prod's
+  `test-cabinet-references` or staging's `test-cabinet-references-staging`), on a
+  branch named `<slug>-<version-with-dots-as-dashes>-<variant>` — exactly the way a
+  published run's build is deployed to Pages. Cloudflare truncates long subdomains,
+  so the served URL is **read back** from `wrangler`'s output rather than
+  constructed, then recorded on the backend.
 
 The backend keeps these URLs in a dedicated `case_reference_build` table keyed by
 `(slug, version, variant)`, written through an authenticated endpoint

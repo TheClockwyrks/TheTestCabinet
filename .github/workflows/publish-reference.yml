@@ -28,6 +28,14 @@ name: Publish reference implementation
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Deploy target: which Cloudflare Pages project the reference lands in."
+        required: true
+        type: choice
+        default: prod
+        options:
+          - prod
+          - staging
       slug:
         description: "Test case slug (e.g. carom)"
         required: true
@@ -74,12 +82,18 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TCAB_BACKEND_URL: ${{ secrets.TCAB_BACKEND_URL }}
           TCAB_TOKEN: ${{ secrets.TCAB_TOKEN }}
+          ENVIRONMENT: ${{ inputs.environment }}
           SLUG: ${{ inputs.slug }}
           VERSION: ${{ inputs.version }}
           VARIANT: ${{ inputs.variant }}
         run: |
           set -euo pipefail
-          args=("$SLUG")
+          # `--env` selects the Cloudflare Pages project (prod vs staging) and is
+          # required, so the publish can never silently target prod. NOTE: it does
+          # not switch the backend — TCAB_BACKEND_URL/TCAB_TOKEN above must already
+          # point at the environment being published for the URL to be recorded on
+          # the right catalog.
+          args=(--env "$ENVIRONMENT" "$SLUG")
           if [ -n "$VERSION" ]; then
             args+=("$VERSION")
           fi

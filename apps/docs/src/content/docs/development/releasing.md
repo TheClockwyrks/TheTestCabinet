@@ -190,20 +190,24 @@ non-experimental **release gate** (every reference-capable case must ship a
 reference by the release that makes it non-experimental) live in
 [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/).
 
-- In the Cloudflare dashboard, create a **Direct Upload** Pages project named
-  `test-cabinet-references` (the name the CLI deploys to; it is not configurable).
-  It needs no custom domain — each variant is served from the `*.pages.dev` URL
-  `wrangler` reports, under a per-variant branch alias
+- In the Cloudflare dashboard, create two **Direct Upload** Pages projects:
+  `test-cabinet-references` (prod) and `test-cabinet-references-staging` (staging).
+  `tcab publish-reference` picks between them with its **required** `--env`
+  flag — `--env prod` deploys to the former, `--env staging` to the latter — so a
+  publish can never silently land in front of the public gallery. Neither needs a
+  custom domain: each variant is served from the `*.pages.dev` URL `wrangler`
+  reports, under a per-variant branch alias
   (`<slug>-<version-with-dots-as-dashes>-<variant>`), and the served URL is read
   back from `wrangler` rather than constructed.
-- It reuses the same `CLOUDFLARE_API_TOKEN` (*Cloudflare Pages: Edit*) and
+- Both reuse the same `CLOUDFLARE_API_TOKEN` (*Cloudflare Pages: Edit*) and
   `CLOUDFLARE_ACCOUNT_ID` as the docs deploy. The
   [`publish-reference.yml`](/guides/devops/publishing-a-reference-implementation/#from-ci)
-  `workflow_dispatch` job additionally needs the `TCAB_BACKEND_URL` and
-  `TCAB_TOKEN` repository secrets to record each deployed URL on the backend.
+  `workflow_dispatch` job takes an `environment` input (`prod`/`staging`) for
+  `--env`, and additionally needs the `TCAB_BACKEND_URL` and `TCAB_TOKEN`
+  repository secrets to record each deployed URL on the backend.
 
-> **Staging note.** The CLI currently hardcodes the `test-cabinet-references`
-> project name (unlike per-run builds, which read `TCAB_PAGES_PROJECT` from the
-> environment), so a separate staging project is not yet selectable from
-> `tcab publish-reference`. Wiring a project-name override is required before a
-> `test-cabinet-references-staging` project can be targeted.
+> **`--env` selects the Pages project only, not the backend.** It picks where the
+> static build is *deployed*; the deployed URL is still recorded against whatever
+> `TCAB_BACKEND_URL`/`TCAB_TOKEN` point at. When publishing staging references,
+> point those at the staging backend so the URL lands in the staging catalog
+> rather than prod's.
