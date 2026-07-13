@@ -99,7 +99,9 @@ function rowNames(): string[] {
   return screen
     .getAllByRole("link")
     .map((link) => link.textContent ?? "")
-    .map((text) => ["Alpha", "Beta", "Gamma"].find((n) => text.includes(n)) ?? "");
+    .map(
+      (text) => ["Alpha", "Beta", "Gamma"].find((n) => text.includes(n)) ?? "",
+    );
 }
 
 describe("RunLog", () => {
@@ -176,12 +178,53 @@ describe("RunLog", () => {
     expect(rowNames()).toEqual(["Gamma", "Alpha", "Beta"]);
   });
 
+  it("opens a per-run menu on a row right-click", () => {
+    renderLog();
+    // No menu until a row is right-clicked.
+    expect(screen.queryByRole("menu", { name: "Run actions" })).toBeNull();
+
+    fireEvent.contextMenu(screen.getAllByRole("link")[0]);
+
+    const menu = screen.getByRole("menu", { name: "Run actions" });
+    expect(menu).toBeInTheDocument();
+    for (const label of [
+      "Open in new tab",
+      "Open test case",
+      "Open model",
+      "Copy link",
+    ]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it("disables Open model when the run's model isn't in the catalog", () => {
+    // The gallery has no models, so the row's model can't resolve to a page.
+    renderLog();
+    fireEvent.contextMenu(screen.getAllByRole("link")[0]);
+    expect(screen.getByRole("menuitem", { name: "Open model" })).toBeDisabled();
+  });
+
+  it("omits Delete run where deletion isn't allowed (the static site)", () => {
+    // canExecute is false in this harness (the read-only static gallery), so the
+    // destructive item never appears.
+    renderLog();
+    fireEvent.contextMenu(screen.getAllByRole("link")[0]);
+    expect(screen.queryByRole("menuitem", { name: "Delete run" })).toBeNull();
+  });
+
   it("locks the last visible column so the table can't be emptied", () => {
     renderLog();
     fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
 
     // Hide every default-visible column but one; the survivor's box then locks.
-    for (const label of ["TEST", "HARNESS", "VARIANT", "MODEL", "TOKENS", "COST"]) {
+    for (const label of [
+      "TEST",
+      "HARNESS",
+      "VARIANT",
+      "MODEL",
+      "TOKENS",
+      "COST",
+    ]) {
       fireEvent.click(screen.getByRole("checkbox", { name: label }));
     }
     const survivor = screen.getByRole("checkbox", { name: "RATING" });
@@ -203,24 +246,28 @@ describe("sortStateToQuery", () => {
       sort: "testCase",
       dir: "asc",
     });
-    expect(sortStateToQuery({ columnId: "timestamp", direction: "desc" })).toEqual(
-      { sort: "date", dir: "desc" },
-    );
-    expect(sortStateToQuery({ columnId: "duration", direction: "asc" })).toEqual({
+    expect(
+      sortStateToQuery({ columnId: "timestamp", direction: "desc" }),
+    ).toEqual({ sort: "date", dir: "desc" });
+    expect(
+      sortStateToQuery({ columnId: "duration", direction: "asc" }),
+    ).toEqual({
       sort: "runtime",
       dir: "asc",
     });
-    expect(sortStateToQuery({ columnId: "category", direction: "desc" })).toEqual(
-      { sort: "testType", dir: "desc" },
-    );
+    expect(
+      sortStateToQuery({ columnId: "category", direction: "desc" }),
+    ).toEqual({ sort: "testType", dir: "desc" });
   });
 
   it("falls back to date/desc for a column with no server key", () => {
     // VERSION has no server-side sort; the header still highlights, the query
     // falls back to the default order.
-    expect(sortStateToQuery({ columnId: "version", direction: "asc" })).toEqual({
-      sort: "date",
-      dir: "desc",
-    });
+    expect(sortStateToQuery({ columnId: "version", direction: "asc" })).toEqual(
+      {
+        sort: "date",
+        dir: "desc",
+      },
+    );
   });
 });

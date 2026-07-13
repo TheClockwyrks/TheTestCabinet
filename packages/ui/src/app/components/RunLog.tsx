@@ -1,5 +1,5 @@
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import { Fragment, useMemo, useRef } from "react";
+import { Fragment, useMemo, useRef, type MouseEvent } from "react";
 import { Link } from "react-router";
 import type { RunSort, SortDir } from "../../client/clients";
 import type { InProgressRun } from "../../client/types";
@@ -7,6 +7,7 @@ import { describeRunState } from "../data/runState";
 import { useTestCaseName } from "../data/useTestCaseName";
 import { useTestCaseType } from "../data/useTestCaseType";
 import { ColumnMenu, type ColumnMenuHandle } from "./ColumnMenu";
+import { RunContextMenu, type RunContextMenuHandle } from "./RunContextMenu";
 import { SortableHeaderCell } from "./SortableHeaderCell";
 import {
   columnsForScope,
@@ -160,14 +161,17 @@ interface RunLogProps {
 // Runs tab. Columns are user-resizable (drag the header boundaries) and sortable
 // (click a header to cycle ascending → descending → default), and any column can
 // be shown or hidden via the picker (the ▦ button or a header right-click) —
-// category/timestamp/duration merely start hidden. Rendering lives here so every page stays
-// pixel-identical; the caller owns enrichment, sorting, slicing, and paging via
-// useRunTable.
+// category/timestamp/duration merely start hidden. Right-clicking a finished row
+// opens a per-run menu (open in a new tab, jump to the test case or model, copy
+// the run's link, and — on the consoles — delete an unpublished run). Rendering
+// lives here so every page stays pixel-identical; the caller owns enrichment,
+// sorting, slicing, and paging via useRunTable.
 export function RunLog({ rows, active = [], controls }: RunLogProps) {
   const { scope, columns, sort, cycleSort, isVisible, toggle } = controls;
   const testCaseName = useTestCaseName();
   const testCaseType = useTestCaseType();
   const menuRef = useRef<ColumnMenuHandle>(null);
+  const rowMenuRef = useRef<RunContextMenuHandle>(null);
 
   // The columns actually rendered this pass: the scope's set minus any the user
   // has hidden. Both the header and every row map over this, so they stay in
@@ -240,9 +244,23 @@ export function RunLog({ rows, active = [], controls }: RunLogProps) {
           </Link>
         ))}
         {rows.map((row) => (
-          <RunRow key={row.summary.id} row={row} columns={visible} ctx={ctx} />
+          <RunRow
+            key={row.summary.id}
+            row={row}
+            columns={visible}
+            ctx={ctx}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              rowMenuRef.current?.openAt(
+                event.clientX,
+                event.clientY,
+                row.summary,
+              );
+            }}
+          />
         ))}
       </div>
+      <RunContextMenu ref={rowMenuRef} />
     </div>
   );
 }
@@ -251,10 +269,12 @@ function RunRow({
   row,
   columns,
   ctx,
+  onContextMenu,
 }: {
   row: EnrichedRun;
   columns: readonly RunColumn[];
   ctx: RunRenderContext;
+  onContextMenu: (event: MouseEvent) => void;
 }) {
   // A failed run (any non-completed tier) is listed inline so the failure can be
   // inspected, marked with the same negative styling an active row uses; its
@@ -265,6 +285,7 @@ function RunRow({
       to={routes.runDetail(row.summary.id)}
       className={styles.row}
       data-failed={failed ? "" : undefined}
+      onContextMenu={onContextMenu}
     >
       {columns.map((column) => (
         <Fragment key={column.id}>{column.render(row, ctx)}</Fragment>

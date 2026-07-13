@@ -101,3 +101,11 @@ export function useWorkers(): WorkersContextValue {
   }
   return ctx;
 }
+
+// The workers context if one is mounted, else null — for components that render
+// on both the consoles and the static site (which mounts no `WorkersProvider`)
+// and must degrade gracefully rather than throw. Console-only components should
+// use {@link useWorkers}, which asserts the provider is present.
+export function useOptionalWorkers(): WorkersContextValue | null {
+  return useContext(WorkersContext);
+}
