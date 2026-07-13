@@ -23,19 +23,17 @@ name: Publish reference implementation
 #                            reference builds (honored via the CLI's TCAB_TOKEN
 #                            override, so no interactive `tcab login` is needed)
 #
+# The target environment is NOT a free input: it is derived from the branch the
+# workflow is dispatched on — `master` publishes to prod, `staging` publishes to
+# staging — and any other branch is refused. This makes a branch/target mismatch
+# impossible (you cannot publish prod references off a feature branch, or staging
+# off master).
+#
 # Dormant until the repository is mirrored to GitHub (the same condition as the
 # other deploy/release workflows).
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Deploy target: which Cloudflare Pages project the reference lands in."
-        required: true
-        type: choice
-        default: prod
-        options:
-          - prod
-          - staging
       slug:
         description: "Test case slug (e.g. carom)"
         required: true
@@ -60,6 +58,20 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     steps:
+      # Derive the target environment from the dispatch branch and refuse anything
+      # other than master/staging. Runs first so a wrong branch fails before the
+      # expensive checkout + build.
+      - name: Resolve environment from branch
+        id: env
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            master)  echo "environment=prod"    >> "$GITHUB_OUTPUT" ;;
+            staging) echo "environment=staging" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::publish-reference may only run on 'master' (-> prod) or 'staging' (-> staging); got '${GITHUB_REF_NAME}'."
+              exit 1 ;;
+          esac
       - uses: actions/checkout@v6
       # Node provides npm (the case's `[build]` install/build) and wrangler (the
       # Cloudflare Pages deploy the CLI shells out to).
@@ -82,7 +94,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TCAB_BACKEND_URL: ${{ secrets.TCAB_BACKEND_URL }}
           TCAB_TOKEN: ${{ secrets.TCAB_TOKEN }}
-          ENVIRONMENT: ${{ inputs.environment }}
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
           SLUG: ${{ inputs.slug }}
           VERSION: ${{ inputs.version }}
           VARIANT: ${{ inputs.variant }}
