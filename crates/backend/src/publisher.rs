@@ -70,6 +70,17 @@ impl Publisher {
         artifacts_url: Option<String>,
         coalesce: Duration,
     ) -> Self {
+        // Publishing is enabled (R2 is configured) but no site deploy hook is set:
+        // every publish will upload the snapshot to R2 yet never trigger the
+        // Cloudflare Pages rebuild, so the public gallery silently stays on its last
+        // build. Surface it once at startup — this is otherwise an invisible skip in
+        // `upload_snapshot` (see `TCAB_SITE_DEPLOY_HOOK_URL` in config.rs).
+        if r2.is_some() && deploy_hook_url.is_none() {
+            tracing::warn!(
+                "R2 is configured but TCAB_SITE_DEPLOY_HOOK_URL is unset; snapshots \
+                 will upload to R2 but the gallery site will not be redeployed"
+            );
+        }
         Self {
             inner: Arc::new(PublisherInner {
                 db,
@@ -239,6 +250,12 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .db
         .mark_uploaded(&uploaded_at, run_count as i64)
         .await?;
+
+    // One line per completed refresh recording whether the gallery deploy hook
+    // fired. `deploy_hook_fired` is false whenever no hook is configured (R2-only)
+    // or R2 itself is off — so this is the log to check when a publish uploaded the
+    // snapshot to R2 but the public gallery never rebuilt.
+    tracing::info!(run_count, deploy_hook_fired, "snapshot refresh complete");
 
     Ok(RefreshOutcome {
         run_count,
