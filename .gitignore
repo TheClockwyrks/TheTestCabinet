@@ -132,6 +132,8 @@ web_modules/
 .env.dispatcher
 .env.artifacts
 .env.site
+.env.staging
+.env.prod
 .env.development.local
 .env.test.local
 .env.production.local
