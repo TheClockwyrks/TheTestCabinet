@@ -5987,6 +5987,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "test-cabinet-core",
+ "test-cabinet-db-auth",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -6020,6 +6021,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "test-cabinet-core",
+ "test-cabinet-db-auth",
  "test-cabinet-entities",
  "test-cabinet-migration",
  "test-cabinet-telemetry",
@@ -6082,6 +6084,19 @@ dependencies = [
  "uuid",
  "wat",
  "which",
+]
+
+[[package]]
+name = "test-cabinet-db-auth"
+version = "0.0.0"
+dependencies = [
+ "reqwest 0.12.28",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

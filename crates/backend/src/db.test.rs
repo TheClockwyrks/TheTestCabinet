@@ -130,7 +130,7 @@ async fn a_record_that_no_longer_deserializes_is_skipped_not_fatal() {
             Expr::value(r#"{"id":"legacy","schema":"from-before-a-contract-change"}"#),
         )
         .filter(run::Column::Id.eq("legacy"))
-        .exec(&db.conn)
+        .exec(&db.conn())
         .await
         .unwrap();
 
@@ -1562,7 +1562,7 @@ fn record_with_metrics(id: &str) -> RunRecord {
 /// Read the lifted sort/filter columns off the raw `run` row.
 async fn lifted(db: &Db, id: &str) -> run::Model {
     run::Entity::find_by_id(id.to_string())
-        .one(db.connection())
+        .one(&db.connection())
         .await
         .unwrap()
         .expect("the run row exists")
@@ -1646,7 +1646,7 @@ async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
         active.cost_comparable = Set(None);
         active.rating = Set(None);
         active.review_count = Set(0);
-        active.update(db.connection()).await.unwrap();
+        active.update(&db.connection()).await.unwrap();
     }
 
     let filled = db.backfill_sort_columns().await.unwrap();

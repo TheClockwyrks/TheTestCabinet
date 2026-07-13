@@ -40,6 +40,13 @@ components:
   # below (patch-web-config.yaml / patch-backend-public-urls.yaml). The ingress-nginx
   # + cert-manager controllers are a Helm-installed cluster prerequisite (task-4).
   - ../../components/internal-ingress
+  # Passwordless (Microsoft Entra managed-identity) Postgres auth for backend + auth.
+  # COMMENTED until the prod CUTOVER, which is gated on the v0.5.0 image roll (the
+  # service pins above still carry db-auth-less images). Turning it on requires that
+  # image, the in-DB Entra roles, and the passwordless DB-URL Secret; prod's DB-auth
+  # identity clientIDs are baked into the component, so no per-env patch is needed.
+  # See components/postgres-azure-ad and the deployment runbook for the cutover order.
+  # - ../../components/postgres-azure-ad
 
 # TCAB_DRIVER_IMAGE is an env value, not a container image: field, so the images
 # transformer can't reach it — patch it to match the driver image.

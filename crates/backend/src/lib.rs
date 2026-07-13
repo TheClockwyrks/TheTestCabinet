@@ -84,11 +84,15 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     }
 
     let store = DefinitionStore::open(&config.store)?;
-    let db = Db::connect(&config.database_url).await?;
+    let db = if config.db_azure_ad {
+        Db::connect_azure_ad(&config.database_url).await?
+    } else {
+        Db::connect(&config.database_url).await?
+    };
     // Apply the schema before serving. The migration is idempotent, so an
     // already-migrated store (a restart, or a shared deployment database) is a
     // no-op beyond the version check.
-    test_cabinet_migration::Migrator::up(db.connection(), None).await?;
+    test_cabinet_migration::Migrator::up(&db.connection(), None).await?;
 
     // Backfill the run row's sort/filter columns for any rows that predate them
     // (the migration stamps them with defaults; this fills the real record- and

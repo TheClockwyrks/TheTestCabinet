@@ -17,10 +17,31 @@ use crate::entity::{token, user};
 
 /// The SeaORM-backed account store.
 pub struct Db {
-    conn: DatabaseConnection,
+    handle: ConnHandle,
+}
+
+/// How the store reaches its database: a fixed connection (SQLite, or a
+/// password-authenticated `postgres://` URL), or a Microsoft Entra
+/// managed-identity connection whose token — and therefore whose underlying pool —
+/// rotates in the background.
+enum ConnHandle {
+    /// A connection built once from the URL. Cheap to clone (an `Arc` to the pool).
+    Static(DatabaseConnection),
+    /// A passwordless Azure AD connection; the current pool is read per query.
+    AzureAd(std::sync::Arc<test_cabinet_db_auth::AzureAdDb>),
 }
 
 impl Db {
+    /// The current SeaORM connection, as a cheap clone. Every query goes through
+    /// this so that, under Azure AD auth, work runs on the pool built with the
+    /// freshest token.
+    fn conn(&self) -> DatabaseConnection {
+        match &self.handle {
+            ConnHandle::Static(conn) => conn.clone(),
+            ConnHandle::AzureAd(db) => db.connection(),
+        }
+    }
+
     /// Connect to the store at `url`, choosing the backend by URL scheme. For a
     /// SQLite **file** URL the parent directory is created first and WAL +
     /// foreign-key pragmas are applied; both are no-ops for PostgreSQL.
@@ -34,7 +55,23 @@ impl Db {
         }
         let conn = Database::connect(ConnectOptions::new(url.to_owned())).await?;
         apply_sqlite_pragmas(&conn).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            handle: ConnHandle::Static(conn),
+        })
+    }
+
+    /// Connect to a managed-PostgreSQL store using Microsoft Entra managed-identity
+    /// (passwordless) authentication. `url` must name the Entra Postgres role as
+    /// its username and carry no password; the access token is minted from the
+    /// pod's Workload Identity and the pool is rebuilt as it rotates. See
+    /// [`test_cabinet_db_auth`].
+    pub async fn connect_azure_ad(url: &str) -> Result<Self, sea_orm::DbErr> {
+        let db = test_cabinet_db_auth::AzureAdDb::connect(url)
+            .await
+            .map_err(|err| sea_orm::DbErr::Custom(format!("Azure AD Postgres auth: {err}")))?;
+        Ok(Self {
+            handle: ConnHandle::AzureAd(std::sync::Arc::new(db)),
+        })
     }
 
     /// Open an in-memory SQLite store with the schema migrated in (used by tests).
@@ -49,12 +86,16 @@ impl Db {
         let conn = Database::connect(opts).await?;
         apply_sqlite_pragmas(&conn).await?;
         crate::migration::Migrator::up(&conn, None).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            handle: ConnHandle::Static(conn),
+        })
     }
 
     /// The underlying connection, for the startup migration in [`crate::build`].
-    pub fn connection(&self) -> &DatabaseConnection {
-        &self.conn
+    /// Returns a cheap clone of the current pool (owned, so it is valid across a
+    /// background refresh under Azure AD auth).
+    pub fn connection(&self) -> DatabaseConnection {
+        self.conn()
     }
 
     /// Find an account by its unique login handle.
@@ -64,7 +105,7 @@ impl Db {
     ) -> Result<Option<user::Model>, sea_orm::DbErr> {
         user::Entity::find()
             .filter(user::Column::Username.eq(username))
-            .one(&self.conn)
+            .one(&self.conn())
             .await
     }
 
@@ -77,7 +118,7 @@ impl Db {
             password_hash: Set(model.password_hash),
             created_at: Set(model.created_at),
         }
-        .insert(&self.conn)
+        .insert(&self.conn())
         .await?;
         Ok(())
     }
@@ -91,7 +132,7 @@ impl Db {
             created_at: Set(model.created_at),
             expires_at: Set(model.expires_at),
         }
-        .insert(&self.conn)
+        .insert(&self.conn())
         .await?;
         Ok(())
     }
@@ -106,7 +147,7 @@ impl Db {
     ) -> Result<Option<user::Model>, sea_orm::DbErr> {
         let Some(token) = token::Entity::find()
             .filter(token::Column::TokenHash.eq(token_hash))
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
@@ -119,7 +160,7 @@ impl Db {
         {
             return Ok(None);
         }
-        token.find_related(user::Entity).one(&self.conn).await
+        token.find_related(user::Entity).one(&self.conn()).await
     }
 
     /// Revoke a token by its hash, returning how many rows were deleted (`0` when
@@ -127,7 +168,7 @@ impl Db {
     pub async fn delete_token(&self, token_hash: &str) -> Result<u64, sea_orm::DbErr> {
         let result = token::Entity::delete_many()
             .filter(token::Column::TokenHash.eq(token_hash))
-            .exec(&self.conn)
+            .exec(&self.conn())
             .await?;
         Ok(result.rows_affected)
     }

@@ -380,6 +380,112 @@ The backend `Service` is `ClusterIP` with no `Ingress` — the dispatcher, the
 artifact service, and operators reach it in-cluster, and its outbound R2 and
 deploy-hook calls need no inbound exposure.
 
+### Passwordless Postgres auth (Microsoft Entra)
+
+By default the connection string carries a password
+(`postgres://user:password@host/db`), a long-lived shared secret in Key Vault. The
+`azure-*` overlays can instead authenticate **passwordless**, as a per-workload
+**user-assigned managed identity**, via the opt-in
+[`components/postgres-azure-ad`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/deployments/k8s/components/postgres-azure-ad)
+conversion. There is no password: the pod authenticates with Azure Workload
+Identity and the service ([`test-cabinet-db-auth`](https://github.com/TheClockwyrks/TheTestCabinet/tree/master/crates/db-auth))
+mints a short-lived Microsoft Entra access token for the
+`https://ossrdbms-aad.database.windows.net` resource and uses it *as* the Postgres
+password. Because that token lasts ~1 hour and Postgres only checks it at
+connection time, the service rebuilds its connection pool on a timer with a fresh
+token, so new physical connections always present a valid one; in-flight queries on
+the old pool drain naturally. It is toggled by `TCAB_BACKEND_DB_AZURE_AD` /
+`TCAB_AUTH_DB_AZURE_AD` (which the component sets), and the connection string
+switches to the passwordless form `postgres://<role>@host:5432/<db>?sslmode=require`
+(username = the identity's mapped in-DB role, **no** password).
+
+Each service gets its own identity and its own least-privileged in-DB role:
+`tcab-backend-db-<env>` on the backend database, `tcab-auth-db-<env>` on the auth
+database. The `tcab-keyvault-sync` identity is unrelated — it reads Key Vault, not
+Postgres.
+
+**One-time control-plane setup** (per environment; already done for staging and
+prod — recorded here so it can be reproduced or audited):
+
+```sh
+# 1. A user-assigned managed identity per workload.
+az identity create -n tcab-backend-db-<env> -g <rg> -l westus2
+az identity create -n tcab-auth-db-<env>    -g <rg> -l westus2
+
+# 2. Federate each to its Kubernetes ServiceAccount subject (cluster OIDC issuer).
+ISSUER=$(az aks show -g <rg> -n <cluster> --query oidcIssuerProfile.issuerUrl -o tsv)
+az identity federated-credential create --name tcab-backend-sa \
+  --identity-name tcab-backend-db-<env> -g <rg> --issuer "$ISSUER" \
+  --subject system:serviceaccount:tcab-<env>:tcab-backend \
+  --audiences api://AzureADTokenExchange
+az identity federated-credential create --name tcab-auth-sa \
+  --identity-name tcab-auth-db-<env> -g <rg> --issuer "$ISSUER" \
+  --subject system:serviceaccount:tcab-<env>:tcab-auth \
+  --audiences api://AzureADTokenExchange
+
+# 3. Enable Entra auth on the server (leave password auth on for the cutover), and
+#    set an Entra admin able to create the in-DB principals.
+az postgres flexible-server update -g <rg> -n <server> \
+  --microsoft-entra-auth Enabled --password-auth Enabled
+az postgres flexible-server microsoft-entra-admin create -g <rg> -s <server> \
+  --object-id <operator-object-id> --display-name <operator-upn> --type User
+```
+
+**In-DB principals + grants.** The servers are **private** (no public access), so
+this SQL must run from *inside* the cluster (e.g. a one-off psql pod, or
+`az aks command invoke`), authenticated as the Entra admin above — fetch the admin
+token with `az account get-access-token --resource https://ossrdbms-aad.database.windows.net`
+and pass it as `PGPASSWORD`. Run it once per database, substituting each identity's
+**object (principal) id**:
+
+```sql
+-- On the backend database (tcab_backend), as the Entra admin:
+SELECT pgaadauth_create_principal_with_oid(
+  'tcab-backend-db-<env>', '<backend-identity-object-id>', 'service', false, false);
+GRANT CONNECT ON DATABASE tcab_backend TO "tcab-backend-db-<env>";
+GRANT USAGE, CREATE ON SCHEMA public TO "tcab-backend-db-<env>";
+GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA public TO "tcab-backend-db-<env>";
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "tcab-backend-db-<env>";
+-- Future objects the migration creates as tcabadmin stay reachable:
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL ON TABLES    TO "tcab-backend-db-<env>";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL ON SEQUENCES TO "tcab-backend-db-<env>";
+```
+
+Repeat on `tcab_auth` for `tcab-auth-db-<env>`. The object ids as provisioned:
+`tcab-backend-db-staging` `2a3ced7d-9476-43e4-ad60-8e0426e34bcf`,
+`tcab-auth-db-staging` `018baf38-0dbe-4c94-9b21-23115f4f9ec1`,
+`tcab-backend-db-prod` `71b6b5cf-0731-4510-982a-8582cfa1e210`,
+`tcab-auth-db-prod` `d51d06ca-ef9b-4940-b58b-8d9ac643f028`.
+
+**Cutover order.** The conversion only works once the pods run an image containing
+the db-auth code, so it is gated on the v0.5.0 service-image roll (staging first).
+Per environment:
+
+1. Roll the backend + auth images to a build that includes `test-cabinet-db-auth`.
+2. Run the in-DB principal SQL above (both databases).
+3. Switch the Key Vault `tcab-backend-database-url` / `tcab-auth-database-url`
+   secrets to the passwordless form (same object names/keys, new value), then
+   `kubectl rollout restart deploy/tcab-keyvault-sync` so the K8s Secrets
+   re-materialise.
+4. Uncomment `../../components/postgres-azure-ad` (and, for staging,
+   `patch-db-workload-identity.yaml`) in the overlay and re-apply it.
+
+To roll back, re-comment the component, restore the password-form vault secrets,
+and re-apply — password auth is left enabled on the server throughout.
+
+Once **both** environments are cut over and verified on Entra auth, disable
+password auth entirely to remove the fallback and the shared-password blast radius
+(this is a one-way step — confirm passwordless works first):
+
+```sh
+az postgres flexible-server update -g <rg> -n <server> \
+  --password-auth Disabled --microsoft-entra-auth Enabled
+```
+
+The `tcabadmin` password and the password-form vault DB-URLs can then be retired.
+
 ### Ingesting definitions
 
 The backend serves the catalog from the checkout at `TCAB_BACKEND_CHECKOUT`,
@@ -398,7 +504,10 @@ backend, or — pointed at a managed database via `TCAB_AUTH_DATABASE_URL` — r
 a plain `Deployment`. It renders nothing, holds no third-party secret (only
 Argon2id password hashes), and has no egress. The example is
 [`deployments/k8s/base/auth.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/auth.yaml);
-point the backend at it with `TCAB_BACKEND_AUTH_URL=http://tcab-auth:8789`.
+point the backend at it with `TCAB_BACKEND_AUTH_URL=http://tcab-auth:8789`. On the
+managed-PostgreSQL overlays it uses its own database and, like the backend, can
+authenticate passwordless via its own managed identity — see
+[Passwordless Postgres auth](#passwordless-postgres-auth-microsoft-entra).
 
 ## NetworkPolicy
 

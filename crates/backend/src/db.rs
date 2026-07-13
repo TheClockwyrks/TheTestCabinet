@@ -161,10 +161,30 @@ const SNAPSHOT_STATE_ID: i32 = 1;
 
 /// The SeaORM-backed store.
 pub struct Db {
-    conn: DatabaseConnection,
+    handle: ConnHandle,
+}
+
+/// How the store reaches its database: a fixed connection (SQLite, or a
+/// password-authenticated `postgres://` URL), or a Microsoft Entra
+/// managed-identity connection whose token — and therefore whose underlying pool —
+/// rotates in the background.
+enum ConnHandle {
+    /// A connection built once from the URL. Cheap to clone (an `Arc` to the pool).
+    Static(DatabaseConnection),
+    /// A passwordless Azure AD connection; the current pool is read per query.
+    AzureAd(std::sync::Arc<test_cabinet_db_auth::AzureAdDb>),
 }
 
 impl Db {
+    /// The current SeaORM connection, as a cheap clone. Every query and
+    /// transaction goes through this so that, under Azure AD auth, work runs on
+    /// the pool built with the freshest token.
+    fn conn(&self) -> DatabaseConnection {
+        match &self.handle {
+            ConnHandle::Static(conn) => conn.clone(),
+            ConnHandle::AzureAd(db) => db.connection(),
+        }
+    }
     /// Connect to the store at `url`, choosing the backend by URL scheme
     /// (`sqlite://…` or `postgres://…`). For a SQLite **file** URL the parent
     /// directory is created first (so a fresh deployment works) and WAL +
@@ -179,7 +199,23 @@ impl Db {
         }
         let conn = Database::connect(ConnectOptions::new(url.to_owned())).await?;
         Self::apply_sqlite_pragmas(&conn).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            handle: ConnHandle::Static(conn),
+        })
+    }
+
+    /// Connect to a managed-PostgreSQL store using Microsoft Entra managed-identity
+    /// (passwordless) authentication. `url` must name the Entra Postgres role as
+    /// its username and carry no password; the access token is minted from the
+    /// pod's Workload Identity and the connection pool is rebuilt as it rotates.
+    /// See [`test_cabinet_db_auth`].
+    pub async fn connect_azure_ad(url: &str) -> Result<Self> {
+        let db = test_cabinet_db_auth::AzureAdDb::connect(url)
+            .await
+            .map_err(|err| sea_orm::DbErr::Custom(format!("Azure AD Postgres auth: {err}")))?;
+        Ok(Self {
+            handle: ConnHandle::AzureAd(std::sync::Arc::new(db)),
+        })
     }
 
     /// Open an in-memory SQLite store with the schema migrated in (used by tests).
@@ -194,12 +230,16 @@ impl Db {
         let conn = Database::connect(opts).await?;
         Self::apply_sqlite_pragmas(&conn).await?;
         test_cabinet_migration::Migrator::up(&conn, None).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            handle: ConnHandle::Static(conn),
+        })
     }
 
     /// The underlying connection, for the startup migration in [`crate::build`].
-    pub fn connection(&self) -> &DatabaseConnection {
-        &self.conn
+    /// Returns a cheap clone of the current pool (owned, so it stays valid across a
+    /// background refresh under Azure AD auth).
+    pub fn connection(&self) -> DatabaseConnection {
+        self.conn()
     }
 
     /// Apply the SQLite-only pragmas. WAL is required by the Litestream backup
@@ -232,7 +272,7 @@ impl Db {
         record.links = links.clone();
         let record_json = serde_json::to_string(&record)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let existing = run::Entity::find_by_id(record.id.clone()).one(&txn).await?;
         let newly_pushed = existing.is_none();
@@ -337,7 +377,7 @@ impl Db {
         let ratings_json = serde_json::to_string(&review.ratings)?;
         let checklist_json = serde_json::to_string(&review.checklist)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -420,7 +460,7 @@ impl Db {
     /// stored. Idempotent: re-publishing an already-published run preserves its
     /// original `published_at`. Stamps `published_at` on the first publish.
     pub async fn publish(&self, run_id: &str, published_at: &str) -> Result<PublishRunOutcome> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -462,7 +502,7 @@ impl Db {
     /// with `run_id` is stored. Because only an unpublished run can be deleted, the
     /// run is not in the public snapshot and no refresh is needed.
     pub async fn delete_run(&self, run_id: &str) -> Result<()> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -501,7 +541,7 @@ impl Db {
     /// Fetch one stored run by id (published or pending).
     pub async fn get_run(&self, id: &str) -> Result<Option<StoredRun>> {
         let run = run::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?;
         let Some(run) = run else {
             return Ok(None);
@@ -526,7 +566,7 @@ impl Db {
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -594,7 +634,7 @@ impl Db {
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -631,7 +671,7 @@ impl Db {
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -674,7 +714,7 @@ impl Db {
     ) -> Result<(Vec<StoredRun>, usize)> {
         // The same predicate drives both the COUNT and the page; count first (no
         // limit/offset), then order + window the page.
-        let total = summary_query(filter).count(&self.conn).await? as usize;
+        let total = summary_query(filter).count(&self.conn()).await? as usize;
 
         let order = match dir {
             SortDir::Asc => Order::Asc,
@@ -686,7 +726,7 @@ impl Db {
             .order_by(run::Column::Id, order)
             .limit(limit as u64)
             .offset(offset as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let runs = self.assemble(rows).await?;
@@ -712,7 +752,7 @@ impl Db {
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -735,7 +775,7 @@ impl Db {
             .filter(run::Column::TestCaseSlug.eq(slug.to_string()))
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         self.assemble(rows).await
     }
@@ -748,7 +788,7 @@ impl Db {
             .filter(run::Column::Published.eq(true))
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         self.assemble(rows).await
     }
@@ -767,7 +807,7 @@ impl Db {
             .column(run::Column::TestCaseVersion)
             .distinct()
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         Ok(rows.into_iter().collect())
     }
@@ -776,7 +816,7 @@ impl Db {
     pub async fn run_count(&self) -> Result<i64> {
         Ok(run::Entity::find()
             .filter(run::Column::Published.eq(true))
-            .count(&self.conn)
+            .count(&self.conn())
             .await? as i64)
     }
 
@@ -792,7 +832,7 @@ impl Db {
         let mut link_map: std::collections::HashMap<String, run_link::Model> =
             run_link::Entity::find()
                 .filter(run_link::Column::RunId.is_in(ids.clone()))
-                .all(&self.conn)
+                .all(&self.conn())
                 .await?
                 .into_iter()
                 .map(|link| (link.run_id.clone(), link))
@@ -804,7 +844,7 @@ impl Db {
             .filter(review::Column::RunId.is_in(ids))
             .order_by_asc(review::Column::ReviewedAt)
             .order_by_asc(review::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         for review in reviews {
             let run_id = review.run_id.clone();
@@ -862,7 +902,7 @@ impl Db {
     ) -> Result<PublishOutcome> {
         let record_json = serde_json::to_string(record)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let existing_published_at = tournament::Entity::find_by_id(record.id.clone())
             .one(&txn)
             .await?
@@ -903,7 +943,7 @@ impl Db {
     /// Fetch one stored tournament by id.
     pub async fn get_tournament(&self, id: &str) -> Result<Option<StoredTournament>> {
         tournament::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .map(stored_tournament)
             .transpose()
@@ -925,7 +965,7 @@ impl Db {
             .order_by_desc(tournament::Column::PublishedAt)
             .order_by_desc(tournament::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut tournaments = rows
@@ -945,7 +985,7 @@ impl Db {
     /// row has never been written.
     pub async fn snapshot_state(&self) -> Result<SnapshotState> {
         let state = snapshot_state::Entity::find_by_id(SNAPSHOT_STATE_ID)
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .map(|model| SnapshotState {
                 dirty: model.dirty,
@@ -963,7 +1003,7 @@ impl Db {
     /// Mark the snapshot dirty (a publish has landed). Coalescing reads this to
     /// decide whether a refresh is needed.
     pub async fn mark_dirty(&self) -> Result<()> {
-        set_dirty(&self.conn).await
+        set_dirty(&self.conn()).await
     }
 
     /// Record a successful upload: clear the dirty flag and stamp the upload time
@@ -984,7 +1024,7 @@ impl Db {
                 ])
                 .to_owned(),
         )
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1119,7 +1159,7 @@ impl Db {
     /// than being silently dropped.
     pub async fn get_review_plan(&self, user_id: &str) -> Result<Option<crate::api::ReviewPlan>> {
         let Some(row) = review_plan::Entity::find_by_id(user_id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
@@ -1158,7 +1198,7 @@ impl Db {
                 ])
                 .to_owned(),
         )
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1181,7 +1221,7 @@ impl Db {
             .filter(run::Column::Variant.eq(variant))
             .filter(run::Column::HarnessSlug.eq(harness))
             .filter(run::Column::ModelId.eq(model))
-            .count(&self.conn)
+            .count(&self.conn())
             .await?)
     }
 
@@ -1205,7 +1245,7 @@ impl Db {
             .filter(job::Column::Variant.eq(variant))
             .filter(job::Column::HarnessSlug.eq(harness))
             .filter(job::Column::ModelId.eq(model))
-            .count(&self.conn)
+            .count(&self.conn())
             .await?)
     }
 }
@@ -1469,7 +1509,7 @@ impl Db {
             created_at: Set(new.created_at.clone()),
             updated_at: Set(new.created_at),
         })
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1493,7 +1533,7 @@ impl Db {
     pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
         use std::collections::HashMap;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         // The per-harness parallelism limits (harnesses with no configured limit are
         // absent → unlimited).
@@ -1567,7 +1607,7 @@ impl Db {
 
     /// Every stored per-harness config row (harnesses with no overrides are absent).
     pub async fn list_harness_configs(&self) -> Result<Vec<harness_config::Model>> {
-        Ok(harness_config::Entity::find().all(&self.conn).await?)
+        Ok(harness_config::Entity::find().all(&self.conn()).await?)
     }
 
     /// Set (or clear, with `None`) a harness's maximum parallelism, upserting its
@@ -1592,7 +1632,7 @@ impl Db {
                 ])
                 .to_owned(),
         )
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1611,7 +1651,7 @@ impl Db {
         now: &str,
         detail: &str,
     ) -> Result<Option<job::Model>> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let candidate = job::Entity::find_by_id(id.to_string())
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .one(&txn)
@@ -1647,7 +1687,7 @@ impl Db {
     ) -> Result<Option<job::Model>> {
         let Some(model) = job::Entity::find_by_id(id.to_string())
             .filter(job::Column::State.ne("canceled"))
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
@@ -1661,13 +1701,13 @@ impl Db {
         if let Some(record_id) = record_id {
             active.record_id = Set(Some(record_id.to_string()));
         }
-        Ok(Some(active.update(&self.conn).await?))
+        Ok(Some(active.update(&self.conn()).await?))
     }
 
     /// Fetch one job by id.
     pub async fn get_job(&self, id: &str) -> Result<Option<job::Model>> {
         Ok(job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?)
     }
 
@@ -1688,7 +1728,7 @@ impl Db {
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(detail))
             .filter(job::Column::State.is_in(REAPABLE_STATES))
-            .exec(&self.conn)
+            .exec(&self.conn())
             .await?;
         Ok(result.rows_affected)
     }
@@ -1702,7 +1742,7 @@ impl Db {
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 }
@@ -1721,12 +1761,12 @@ impl Db {
     /// gate [`Db::publish`] does.
     pub async fn ensure_publishable(&self, run_id: &str) -> Result<()> {
         let run = run::Entity::find_by_id(run_id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .ok_or_else(|| {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
-        gate_publishable(&self.conn, run_id, &run.run_state).await
+        gate_publishable(&self.conn(), run_id, &run.run_state).await
     }
 
     /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to
@@ -1743,7 +1783,7 @@ impl Db {
             created_at: Set(new.created_at.clone()),
             updated_at: Set(new.created_at),
         })
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1753,7 +1793,7 @@ impl Db {
     /// select-then-update runs in one transaction, exactly like
     /// [`Db::claim_next_job`], so two dispatchers cannot claim the same publish job.
     pub async fn claim_next_publish_job(&self, now: &str) -> Result<Option<publish_job::Model>> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let candidate = publish_job::Entity::find()
             .filter(publish_job::Column::State.eq("queued"))
             .order_by_asc(publish_job::Column::CreatedAt)
@@ -1775,7 +1815,7 @@ impl Db {
     /// Fetch one publish job by id.
     pub async fn get_publish_job(&self, id: &str) -> Result<Option<publish_job::Model>> {
         Ok(publish_job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?)
     }
 
@@ -1792,7 +1832,7 @@ impl Db {
         detail: Option<&str>,
     ) -> Result<Option<publish_job::Model>> {
         let Some(model) = publish_job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
@@ -1803,7 +1843,7 @@ impl Db {
         if let Some(detail) = detail {
             active.detail = Set(Some(detail.to_string()));
         }
-        Ok(Some(active.update(&self.conn).await?))
+        Ok(Some(active.update(&self.conn()).await?))
     }
 
     /// Finalize a **succeeded** publish: in one transaction, attach the links the
@@ -1826,7 +1866,7 @@ impl Db {
         playable_build: Option<&str>,
         now: &str,
     ) -> Result<PublishRunOutcome> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -1961,11 +2001,11 @@ impl Db {
     pub async fn list_model_configs(&self) -> Result<Vec<StoredModel>> {
         let configs = model::Entity::find()
             .order_by_asc(model::Column::Slug)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         let mut alias_map: std::collections::HashMap<String, Vec<AliasEntry>> =
             std::collections::HashMap::new();
-        for alias in model_alias::Entity::find().all(&self.conn).await? {
+        for alias in model_alias::Entity::find().all(&self.conn()).await? {
             let model_slug = alias.model_slug.clone();
             alias_map
                 .entry(model_slug)
@@ -1984,12 +2024,12 @@ impl Db {
 
     /// A single curated model config with its aliases, or `None`.
     pub async fn get_model_config(&self, slug: &str) -> Result<Option<StoredModel>> {
-        let Some(config) = model::Entity::find_by_id(slug).one(&self.conn).await? else {
+        let Some(config) = model::Entity::find_by_id(slug).one(&self.conn()).await? else {
             return Ok(None);
         };
         let mut aliases: Vec<AliasEntry> = model_alias::Entity::find()
             .filter(model_alias::Column::ModelSlug.eq(slug))
-            .all(&self.conn)
+            .all(&self.conn())
             .await?
             .into_iter()
             .map(alias_entry)
@@ -2003,7 +2043,7 @@ impl Db {
     /// [`BackendError::Conflict`](crate::error::BackendError::Conflict) when any
     /// alias is already claimed by a *different* curated model.
     pub async fn upsert_model_config(&self, write: ModelConfigWrite) -> Result<()> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         // Reject an alias that another curated model already owns (the alias
         // column is globally unique; catch it before the constraint fires so the
@@ -2079,7 +2119,7 @@ impl Db {
     /// was removed. The model's runs and price history are untouched, so it may
     /// reappear as a derived (uncurated) catalog entry.
     pub async fn delete_model_config(&self, slug: &str) -> Result<bool> {
-        let deleted = model::Entity::delete_by_id(slug).exec(&self.conn).await?;
+        let deleted = model::Entity::delete_by_id(slug).exec(&self.conn()).await?;
         Ok(deleted.rows_affected > 0)
     }
 
@@ -2092,7 +2132,7 @@ impl Db {
             .column(run::Column::HarnessSlug)
             .distinct()
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 
@@ -2106,7 +2146,7 @@ impl Db {
             .filter(run::Column::Published.eq(true))
             .distinct()
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 
@@ -2116,7 +2156,7 @@ impl Db {
             .filter(model_price::Column::ModelId.eq(model_id))
             .order_by_desc(model_price::Column::ObservedAt)
             .order_by_desc(model_price::Column::Id)
-            .one(&self.conn)
+            .one(&self.conn())
             .await?)
     }
 
@@ -2132,7 +2172,7 @@ impl Db {
             context_length: Set(write.context_length),
             released_at: Set(write.released_at),
         })
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -2144,7 +2184,7 @@ impl Db {
             .order_by_asc(model_price::Column::ModelId)
             .order_by_asc(model_price::Column::ObservedAt)
             .order_by_asc(model_price::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 
@@ -2154,13 +2194,13 @@ impl Db {
     pub async fn openrouter_slug_for_alias(&self, alias: &str) -> Result<Option<String>> {
         let Some(row) = model_alias::Entity::find()
             .filter(model_alias::Column::Alias.eq(alias))
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
         };
         Ok(model::Entity::find_by_id(row.model_slug)
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .and_then(|m| m.openrouter_slug))
     }
@@ -2170,7 +2210,7 @@ impl Db {
     /// before the `harness_family` column existed.
     pub async fn all_alias_families(&self) -> Result<Vec<(String, String, HarnessFamily)>> {
         Ok(model_alias::Entity::find()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?
             .into_iter()
             .map(|row| {
@@ -2190,7 +2230,7 @@ impl Db {
             harness_family: Set(family.as_str().to_string()),
             ..Default::default()
         }
-        .update(&self.conn)
+        .update(&self.conn())
         .await?;
         Ok(())
     }
@@ -2206,7 +2246,7 @@ impl Db {
             .column(run::Column::HarnessSlug)
             .filter(run::Column::ModelId.contains(":"))
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         Ok(rows.iter().any(|(model_id, harness_slug)| {
             parse_harness_slug(harness_slug).routes_through_openrouter() && model_id.contains(':')
@@ -2225,7 +2265,7 @@ impl Db {
         &self,
         base_prices: &std::collections::HashMap<String, TokenPrices>,
     ) -> Result<usize> {
-        let rows = run::Entity::find().all(&self.conn).await?;
+        let rows = run::Entity::find().all(&self.conn()).await?;
         let mut rewritten = 0usize;
         for row in rows {
             let harness = parse_harness_slug(&row.harness_slug);
@@ -2257,7 +2297,7 @@ impl Db {
             // Keep the lifted cost column in step with the record's recomputed cost.
             active.cost_comparable = Set(comparable);
             active.record_json = Set(record_json);
-            active.update(&self.conn).await?;
+            active.update(&self.conn()).await?;
             rewritten += 1;
         }
         Ok(rewritten)
@@ -2279,7 +2319,7 @@ impl Db {
     pub async fn backfill_sort_columns(&self) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::TestType.eq(""))
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         if rows.is_empty() {
             return Ok(0);
@@ -2291,7 +2331,7 @@ impl Db {
             std::collections::HashMap::new();
         let reviews = review::Entity::find()
             .filter(review::Column::RunId.is_in(ids))
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         for review in reviews {
             let run_id = review.run_id.clone();
@@ -2318,7 +2358,7 @@ impl Db {
             active.cost_comparable = Set(lifted.cost_comparable);
             active.rating = Set(rating);
             active.review_count = Set(review_count);
-            active.update(&self.conn).await?;
+            active.update(&self.conn()).await?;
             backfilled += 1;
         }
         Ok(backfilled)
@@ -2364,7 +2404,7 @@ impl Db {
             ])
             .to_owned(),
         )
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -2381,7 +2421,7 @@ impl Db {
         Ok(case_reference_build::Entity::find()
             .filter(case_reference_build::Column::Slug.eq(slug))
             .filter(case_reference_build::Column::Version.eq(version))
-            .all(&self.conn)
+            .all(&self.conn())
             .await?
             .into_iter()
             .map(|row| (row.variant, row.url))
@@ -2402,7 +2442,7 @@ impl Db {
             version.to_string(),
             variant.to_string(),
         ))
-        .one(&self.conn)
+        .one(&self.conn())
         .await?
         .map(|row| row.url))
     }
