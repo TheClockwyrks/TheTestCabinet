@@ -1,28 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import type {
   CoverageCell,
   CoverageMatrix,
   ReviewPlan,
-  ReviewPlanCombo,
 } from "@test-cabinet/run-record/review-plan";
 import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
-import type { Model } from "../../../client/types";
-import { harnesses } from "../../data/harnesses";
-import { familyOf, modelForHarness } from "../../data/families";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
-import {
-  OPENROUTER_PROVIDER,
-  PROVIDERS,
-  harnessUsesProvider,
-  resolveLaunchModel,
-} from "../../data/providers";
-import { ModelCombobox } from "../../components/ModelCombobox";
+import { OPENROUTER_PROVIDER, resolveLaunchModel } from "../../data/providers";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
+import { routes } from "../../routes";
 import { RunsTabs } from "./RunsTabs";
 import { launchBatch, type LaunchItem } from "./launchBatch";
 import exec from "./RunExec.module.scss";
@@ -99,8 +90,6 @@ export function CoveragePage() {
 
   const [coverage, setCoverage] = useState<CoverageMatrix | null>(null);
   const [savedPlan, setSavedPlan] = useState<ReviewPlan | null>(null);
-  const [models, setModels] = useState<Model[]>([]);
-  const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,8 +105,8 @@ export function CoveragePage() {
     setCoverage(cov);
   }, [backend, token]);
 
-  // Load the plan, its coverage, and the model catalog once signed in. The model
-  // catalog feeds the plan editor's model picker (same source as the new-run form).
+  // Load the plan and its coverage once signed in. Editing the plan itself lives
+  // on its own page (`/runs/coverage/config`), so the dashboard only reads.
   useEffect(() => {
     if (!backend || !token) {
       setLoading(false);
@@ -140,12 +129,6 @@ export function CoveragePage() {
         if (!active) return;
         setError(String(e));
         setLoading(false);
-      });
-    backend
-      .listModels()
-      .then((ms) => active && setModels(ms))
-      .catch(() => {
-        /* optional; the editor's model field stays free-text */
       });
     return () => {
       active = false;
@@ -250,14 +233,10 @@ export function CoveragePage() {
           command="--runs/coverage"
           comment={<>// what still needs running</>}
         />
-        {!editing && (
-          <button
-            className={exec.secondary}
-            type="button"
-            onClick={() => setEditing(true)}
-          >
+        {coverage && coverage.cellsTotal > 0 && (
+          <Link className={exec.secondary} to={routes.runCoverageConfig()}>
             Edit plan
-          </button>
+          </Link>
         )}
       </div>
 
@@ -271,46 +250,19 @@ export function CoveragePage() {
         </p>
       )}
 
-      {editing && savedPlan && (
-        <PlanEditor
-          initial={savedPlan}
-          models={models}
-          busy={busy}
-          onCancel={() => setEditing(false)}
-          onSave={async (plan) => {
-            if (!backend?.putReviewPlan) return;
-            setBusy(true);
-            setError(null);
-            try {
-              await backend.putReviewPlan(plan, token);
-              setSavedPlan(plan);
-              setEditing(false);
-              await reloadCoverage();
-            } catch (e) {
-              setError(String(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
-      )}
-
       {loading ? (
         <p className={styles.empty}>Loading coverage…</p>
       ) : !coverage || coverage.cellsTotal === 0 ? (
-        !editing && (
+        <div className={styles.emptyState}>
           <p className={styles.empty}>
-            Your review plan is empty.{" "}
-            <button
-              className={exec.secondary}
-              type="button"
-              onClick={() => setEditing(true)}
-            >
-              Set up your plan
-            </button>{" "}
-            to declare the cases and harness/model combinations to cover.
+            Your review plan is empty. Set it up to declare the cases and
+            harness/model combinations you want covered, and this dashboard will
+            show what still needs running.
           </p>
-        )
+          <Link className={exec.primary} to={routes.runCoverageConfig()}>
+            Set up your plan
+          </Link>
+        </div>
       ) : (
         <>
           <div className={styles.summary}>
@@ -406,276 +358,5 @@ export function CoveragePage() {
         </>
       )}
     </PageLayout>
-  );
-}
-
-// The in-page plan editor: a runs-per-cell target, a repeatable list of
-// harness+model combinations, and a list of version-pinned test cases (added
-// through a single case picker, reusing the catalog cursor). Saving hands the
-// assembled plan up to the page, which persists it.
-function PlanEditor({
-  initial,
-  models,
-  busy,
-  onSave,
-  onCancel,
-}: {
-  initial: ReviewPlan;
-  models: Model[];
-  busy: boolean;
-  onSave: (plan: ReviewPlan) => void;
-  onCancel: () => void;
-}) {
-  const testCaseName = useTestCaseName();
-  const [runsPerCell, setRunsPerCell] = useState(
-    Math.max(1, initial.runsPerCell || 1),
-  );
-  const [cases, setCases] = useState(initial.cases);
-  const [combinations, setCombinations] = useState(initial.combinations);
-
-  // The add-a-combination picker.
-  const [addHarness, setAddHarness] = useState(harnesses[0]?.slug ?? "");
-  const [addModel, setAddModel] = useState("");
-  const [addProvider, setAddProvider] = useState(OPENROUTER_PROVIDER);
-
-  // The add-a-case picker reuses the catalog cursor (case → version → variant).
-  const sel = useCatalog();
-
-  const harnessName = (slug: string) =>
-    harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
-
-  function addCombination() {
-    if (!addHarness || !addModel) return;
-    const combo: ReviewPlanCombo = {
-      harness: addHarness as ReviewPlanCombo["harness"],
-      model: addModel,
-      ...(harnessUsesProvider(addHarness) ? { provider: addProvider } : {}),
-    };
-    setCombinations((prev) => [...prev, combo]);
-    setAddModel("");
-  }
-
-  function addCase() {
-    if (!sel.slug || !sel.version || !sel.variant) return;
-    // Skip an exact duplicate so the same cell is not declared twice.
-    setCases((prev) =>
-      prev.some(
-        (c) =>
-          c.slug === sel.slug &&
-          c.version === sel.version &&
-          c.variant === sel.variant,
-      )
-        ? prev
-        : [
-            ...prev,
-            { slug: sel.slug, version: sel.version, variant: sel.variant },
-          ],
-    );
-  }
-
-  const versions = sel.cases.find((c) => c.slug === sel.slug)?.versions ?? [];
-
-  return (
-    <section className={styles.editor}>
-      <p className={exec.sectionLabel}>Review plan</p>
-
-      <label className={exec.runCountField}>
-        <span className={exec.fieldLabel}>Runs per cell</span>
-        <input
-          className={exec.input}
-          type="number"
-          min={1}
-          max={100}
-          step={1}
-          value={runsPerCell}
-          onChange={(e) => {
-            const n = Math.floor(Number(e.target.value));
-            setRunsPerCell(Number.isFinite(n) && n >= 1 ? Math.min(n, 100) : 1);
-          }}
-        />
-      </label>
-
-      <p className={exec.sectionLabel}>Harness / model combinations</p>
-      {combinations.length > 0 && (
-        <ul className={styles.chipList}>
-          {combinations.map((combo, i) => (
-            <li
-              key={`${combo.harness}:${combo.model}:${i}`}
-              className={styles.chip}
-            >
-              <span>
-                {harnessName(combo.harness)} · {combo.model}
-                {combo.provider ? ` · ${combo.provider}` : ""}
-              </span>
-              <button
-                type="button"
-                className={exec.comboRemove}
-                aria-label="Remove combination"
-                onClick={() =>
-                  setCombinations((prev) => prev.filter((_, j) => j !== i))
-                }
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className={exec.comboRow}>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Harness</span>
-          <select
-            className={exec.select}
-            value={addHarness}
-            onChange={(e) => {
-              const next = e.target.value;
-              // Remap the pending model to the new harness's family, so a slug
-              // the new harness can't launch isn't silently carried over.
-              setAddModel((m) => modelForHarness(models, m, next));
-              setAddHarness(next);
-            }}
-          >
-            {harnesses.map((h) => (
-              <option key={h.slug} value={h.slug}>
-                {h.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={`${exec.field} ${exec.comboFieldWide}`}>
-          <span className={exec.fieldLabel}>Model</span>
-          <ModelCombobox
-            value={addModel}
-            onChange={setAddModel}
-            models={models}
-            harnessFamily={familyOf(addHarness)}
-            inputClassName={exec.input}
-            placeholder="model id (e.g. claude-opus-4-8)"
-          />
-        </label>
-        {harnessUsesProvider(addHarness) && (
-          <label className={`${exec.field} ${exec.comboField}`}>
-            <span className={exec.fieldLabel}>Provider</span>
-            <select
-              className={exec.select}
-              value={addProvider}
-              onChange={(e) => setAddProvider(e.target.value)}
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <button
-          type="button"
-          className={exec.secondary}
-          onClick={addCombination}
-          disabled={!addHarness || !addModel}
-        >
-          + Add
-        </button>
-      </div>
-
-      <p className={exec.sectionLabel}>Test cases</p>
-      {cases.length > 0 && (
-        <ul className={styles.chipList}>
-          {cases.map((c, i) => (
-            <li
-              key={`${c.slug}@${c.version}@${c.variant}`}
-              className={styles.chip}
-            >
-              <span>
-                {testCaseName(c.slug)} · {c.variant} · {c.version}
-              </span>
-              <button
-                type="button"
-                className={exec.comboRemove}
-                aria-label="Remove case"
-                onClick={() =>
-                  setCases((prev) => prev.filter((_, j) => j !== i))
-                }
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className={exec.comboRow}>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Test case</span>
-          <select
-            className={exec.select}
-            value={sel.slug}
-            onChange={(e) => sel.setSlug(e.target.value)}
-          >
-            {sel.cases.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {testCaseName(c.slug)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Version</span>
-          <select
-            className={exec.select}
-            value={sel.version}
-            onChange={(e) => sel.setVersion(e.target.value)}
-          >
-            {versions.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Variant</span>
-          <select
-            className={exec.select}
-            value={sel.variant}
-            onChange={(e) => sel.setVariant(e.target.value)}
-            disabled={!sel.versionInfo}
-          >
-            {(sel.versionInfo?.variants ?? []).map((v) => (
-              <option key={v.slug} value={v.slug}>
-                {v.name} ({v.slug})
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className={exec.secondary}
-          onClick={addCase}
-          disabled={!sel.slug || !sel.version || !sel.variant}
-        >
-          + Add
-        </button>
-      </div>
-
-      <div className={exec.actions}>
-        <button
-          type="button"
-          className={exec.primary}
-          disabled={busy}
-          onClick={() => onSave({ runsPerCell, cases, combinations })}
-        >
-          {busy ? "Saving…" : "Save plan"}
-        </button>
-        <button
-          type="button"
-          className={exec.secondary}
-          disabled={busy}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-      </div>
-    </section>
   );
 }

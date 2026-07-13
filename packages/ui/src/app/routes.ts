@@ -96,6 +96,9 @@ export const routes = {
   // unreviewed-runs worklist. Both are console-only reviewer surfaces the static
   // site never links to. Static segments beside `/runs/:runId`, like `/runs/new`.
   runCoverage: (): string => "/runs/coverage",
+  // The review-plan editor, its own URL (a static segment under the coverage
+  // dashboard) so setting up or revising the plan is linkable and reloadable.
+  runCoverageConfig: (): string => "/runs/coverage/config",
   runUnreviewed: (): string => "/runs/unreviewed",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
@@ -189,6 +192,9 @@ export const routePatterns = {
   runs: "/runs",
   runFailures: "/runs/failures",
   runCoverage: "/runs/coverage",
+  // The plan editor lives one segment deeper; it is more specific than
+  // `/runs/coverage`, so react-router ranks it above the dashboard route.
+  runCoverageConfig: "/runs/coverage/config",
   runUnreviewed: "/runs/unreviewed",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",

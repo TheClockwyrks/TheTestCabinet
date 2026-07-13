@@ -7,6 +7,21 @@
   @include h.halo;
 }
 
+// The empty-plan call to action: the explanatory line stacked over a single
+// primary action, so the "set up your plan" affordance reads as its own button
+// rather than a link buried mid-sentence.
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: t.$space-md;
+
+  .empty {
+    margin: 0;
+    max-width: 42rem;
+  }
+}
+
 // The rollup strip above the matrix: covered-cell and missing-run stats plus the
 // "trigger all missing" action.
 .summary {
@@ -161,14 +176,55 @@
   gap: t.$space-sm;
 }
 
+// An added combination/case reads as a pill: fully-rounded ends (a large radius
+// resolves to the pill shape at any height), so a row of them looks like tags
+// rather than boxed cards.
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: t.$space-sm;
-  padding: t.$space-2xs t.$space-sm;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-sm t.$space-2xs t.$space-md;
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
+  border-radius: 999px;
   color: t.$color-text;
   font-size: t.$font-sm;
+}
+
+// The chip's remove control: a bare glyph (no border or fill of its own) that
+// brightens to the negative cue on hover, so it reads as an inline "x" on the
+// pill rather than a nested button.
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 t.$space-2xs;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-negative;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+// The add-a-combination / add-a-case row on the plan editor. It already sits
+// inside the editor widget, so — unlike the batch-launch row on the new-run form
+// — it draws no panel of its own: just the fields laid out inline, aligned to
+// their bottom edge with the "+ Add" button.
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-bottom: t.$space-md;
 }

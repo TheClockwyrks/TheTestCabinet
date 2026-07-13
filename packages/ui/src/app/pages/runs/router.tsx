@@ -3,6 +3,7 @@ import { routePatterns } from "../../routes";
 import { RunsPage } from "./RunsPage";
 import { RunFailuresPage } from "./RunFailuresPage";
 import { CoveragePage } from "./CoveragePage";
+import { CoverageConfigPage } from "./CoverageConfigPage";
 import { UnreviewedPage } from "./UnreviewedPage";
 import { NewRunPage } from "./NewRunPage";
 import { RunEventsPage } from "./[runId]/RunEventsPage";
@@ -41,6 +42,12 @@ export function runsRoutes(canExecute: boolean) {
           outrank the `/runs/:runId` dynamic route. */}
       {canExecute && (
         <Route path={routePatterns.runCoverage} element={<CoveragePage />} />
+      )}
+      {canExecute && (
+        <Route
+          path={routePatterns.runCoverageConfig}
+          element={<CoverageConfigPage />}
+        />
       )}
       {canExecute && (
         <Route
