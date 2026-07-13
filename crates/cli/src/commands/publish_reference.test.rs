@@ -1,10 +1,10 @@
 //! Unit tests for `tcab publish-reference` pure helpers.
 //!
-//! The build/deploy/record path drives real `sh`/`wrangler`/network and is
-//! exercised through the shared `core` seams (`deploy_pages_build`,
-//! `put_reference_build`) and their own tests; here we pin the pure logic this
-//! command adds — the branch-alias derivation — leaving the clap surface to
-//! `cli.test.rs`.
+//! The build/deploy path drives real `sh`/`wrangler`/network and is exercised
+//! through the shared `core` seam (`deploy_pages_build`) and its own tests, and the
+//! lockfile write is covered by `core`'s `reference_lock` tests; here we pin the
+//! pure logic this command adds — the Pages-project selection and the branch-alias
+//! derivation — leaving the clap surface to `cli.test.rs`.
 
 use super::*;
 

@@ -185,9 +185,14 @@ are served from `pages.dev` they need no custom DNS.
 A [reference implementation](/components/core/results/#reference-implementations) —
 a test-case variant's authored, correct static build — is deployed out-of-band by
 `tcab publish-reference` to its own Cloudflare Pages project, the case-variant
-analogue of a per-run build. The full operator workflow, prerequisites, and the
-non-experimental **release gate** (every reference-capable case must ship a
-reference by the release that makes it non-experimental) live in
+analogue of a per-run build. Unlike a per-run build, its served URL is **not** pushed
+to the backend: the backends are private (VPN-only), so `publish-reference` writes
+the URL into a committed lockfile (`test-cases/reference-builds.lock.json`) and the
+backend **ingests** it from its own checkout on the next
+[`scripts/reingest-cluster.sh`](/deployment/overview/) — the same pull path that
+refreshes catalog edits. The full operator workflow, prerequisites, and the non-experimental
+**release gate** (every reference-capable case must ship a reference by the release
+that makes it non-experimental) live in
 [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/).
 
 - In the Cloudflare dashboard, create two **Direct Upload** Pages projects:
@@ -200,14 +205,16 @@ reference by the release that makes it non-experimental) live in
   (`<slug>-<version-with-dots-as-dashes>-<variant>`), and the served URL is read
   back from `wrangler` rather than constructed.
 - Both reuse the same `CLOUDFLARE_API_TOKEN` (*Cloudflare Pages: Edit*) and
-  `CLOUDFLARE_ACCOUNT_ID` as the docs deploy. The
+  `CLOUDFLARE_ACCOUNT_ID` as the docs deploy — the **only** secrets involved, since
+  there is no backend push. The
   [`publish-reference.yml`](/guides/devops/publishing-a-reference-implementation/#from-ci)
-  `workflow_dispatch` job takes an `environment` input (`prod`/`staging`) for
-  `--env`, and additionally needs the `TCAB_BACKEND_URL` and `TCAB_TOKEN`
-  repository secrets to record each deployed URL on the backend.
+  `workflow_dispatch` job derives its environment from the branch (`master` → prod,
+  `staging` → staging), deploys, and commits the updated lockfile back to the branch
+  (so it needs `contents: write`). It does not re-ingest — an operator runs
+  `scripts/reingest-cluster.sh --env <env>` from a VPN/az machine afterward.
 
-> **`--env` selects the Pages project only, not the backend.** It picks where the
-> static build is *deployed*; the deployed URL is still recorded against whatever
-> `TCAB_BACKEND_URL`/`TCAB_TOKEN` point at. When publishing staging references,
-> point those at the staging backend so the URL lands in the staging catalog
-> rather than prod's.
+> **One lockfile, both environments.** Prod and staging deploy to different Pages
+> projects, so the committed lockfile holds a URL per environment, keyed by env
+> first. Each backend reads only its own environment's entries, selected by its
+> `TCAB_ENV` (`prod`/`staging`), so the one file serves both without a per-branch
+> divergence.

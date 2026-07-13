@@ -9,6 +9,13 @@
 # refresh the backend's checkout and force a re-ingest. The backend swaps each version
 # into place atomically, so this is safe to run while runs are executing.
 #
+# This same re-ingest also reconciles reference-implementation build URLs: the
+# backend reads the committed test-cases/reference-builds.lock.json, takes the
+# entries for its own TCAB_ENV, and makes its case_reference_build table match them
+# (upsert + prune). So after `tcab publish-reference` deploys a reference and you
+# commit + push the lockfile, this is the command that lands it on the site's
+# Reference tab — the pull half of the reference-publish flow.
+#
 # It drives the cluster with `az aks command invoke`, so it needs only an
 # authenticated `az` (no local kubeconfig or port-forward). The invoked command execs
 # into the backend pod's `ingest` sidecar — which already carries git + curl and

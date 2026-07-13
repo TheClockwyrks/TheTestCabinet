@@ -11,16 +11,22 @@ case page's **Reference** tab. Unlike a run's playable build it is **never seede
 into a run — handing a model the answer would defeat the case — so it is deployed
 **out-of-band by a person**, which is what this guide covers.
 
-The one command is `tcab publish-reference`. It builds each targeted variant's
-reference project with the case's own [`[build]` commands](/testing/end-to-end/manifests/),
-scrubs the output with the same [secret-redaction](/components/core/results/#secret-redaction)
-pass the run publisher uses, deploys the static build to the reference Cloudflare
-Pages project for the environment you name (see [`--env`](#choose-an-environment)),
+`tcab publish-reference` builds each targeted variant's reference project with the
+case's own [`[build]` commands](/testing/end-to-end/manifests/), scrubs the output
+with the same [secret-redaction](/components/core/results/#secret-redaction) pass
+the run publisher uses, deploys the static build to the reference Cloudflare Pages
+project for the environment you name (see [`--env`](#choose-an-environment)), and
 reads the served URL back from `wrangler` (Cloudflare truncates long subdomains, so
-the URL is parsed, never constructed), and records it on the backend so the
-Reference tab can embed it. This mirrors the run publisher — see
-[Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/) for the
-run-build analogue.
+the URL is parsed, never constructed).
+
+It then **records that URL in a committed lockfile** — it does *not* push it to the
+backend. This is a **pull** model: the prod/staging backends are private (VPN-only)
+and can't be pushed to, so the deployed URL is written into
+`test-cases/reference-builds.lock.json`, committed, and the backend picks it up by
+**ingesting its own git checkout** — the same pull path
+[`scripts/reingest-cluster.sh`](#refresh-the-backend) that refreshes catalog edits.
+So publishing a reference is three operator steps: **deploy** (`tcab
+publish-reference`), **commit + push** the lockfile, and **re-ingest**.
 
 ## Which cases get a reference
 
@@ -45,37 +51,40 @@ verified before the release goes out.
 
 ## Prerequisites
 
-Publishing a reference needs the same hosting + auth the run publisher's operator
-half needs (see [CLI Authentication](/components/cli/overview/#authentication)):
+Building and deploying is all `tcab publish-reference` needs — it never talks to the
+backend, so there is **no login, token, or backend URL** to configure:
 
 - **`wrangler` on `PATH`**, authenticated with `CLOUDFLARE_API_TOKEN` (a token
   carrying the *Cloudflare Pages: Edit* permission) and `CLOUDFLARE_ACCOUNT_ID`
   for the account that owns the Pages project. The command shells out to
   `wrangler pages deploy`.
 - **Node / npm**, so the case's `[build]` install and build commands run.
-- **A logged-in account** (`tcab login`) or a `TCAB_TOKEN` override, and
-  **`TCAB_BACKEND_URL`** pointing at the backend for the environment you publish
-  to (see [`--env`](#choose-an-environment)). Recording goes through the same
-  bearer auth as the ingest/publish write paths.
 - **The target Cloudflare Pages project must exist** — `test-cabinet-references`
   for prod, `test-cabinet-references-staging` for staging. Each is a Direct Upload
   project created once in the Cloudflare dashboard; see
   [Releasing → Reference implementations](/development/releasing/#reference-implementations-cloudflare-pages-one-time).
+- **A checkout you can commit and push** — the deployed URL lands in
+  `test-cases/reference-builds.lock.json`, which you commit.
+- For the [re-ingest](#refresh-the-backend), an authenticated `az` (the same
+  requirement as [`scripts/reingest-cluster.sh`](/development/running/)), run from a
+  VPN/az machine.
 
 ## Choose an environment
 
 `--env` is **required** and has no default, so a publish can never silently target
 prod — the same convention the operator shell scripts (e.g.
-`scripts/upload-subscription-creds.sh`) use for their `--env`. It selects the
-Cloudflare Pages project the build deploys to:
+`scripts/upload-subscription-creds.sh`) use for their `--env`. It selects two things
+in lockstep:
 
-- `--env prod` → the `test-cabinet-references` project.
-- `--env staging` → the `test-cabinet-references-staging` project.
+- `--env prod` → deploys to the `test-cabinet-references` project and records under
+  the `prod` key of the lockfile.
+- `--env staging` → deploys to `test-cabinet-references-staging` and records under
+  the `staging` key.
 
-It selects **only** the Pages project. The deployed URL is recorded against
-whatever `TCAB_BACKEND_URL`/`TCAB_TOKEN` point at, so when publishing staging
-references, point those at the staging backend — otherwise a staging build's URL
-lands in the prod catalog.
+The single committed lockfile holds a URL **per environment** (prod and staging
+deploy to different Pages projects, so a variant has a different URL in each). Each
+backend reads only its own environment's key — selected by its `TCAB_ENV` — when it
+ingests, so one file correctly serves both.
 
 ## Publish
 
@@ -113,22 +122,52 @@ For each targeted variant the command:
 3. Deploys it to the `--env` project under the branch alias
    `<slug>-<version-with-dots-as-dashes>-<variant>` (for example
    `carom-v1-1-0-base`) and reads the served URL back from `wrangler`.
-4. `PUT`s that URL to the backend's authenticated reference-build endpoint, which
-   upserts the `case_reference_build` row keyed by `(slug, version, variant)`. The
-   version's API response and the public snapshot then carry the variant's
-   `referenceBuild` URL, and the case page shows the **Reference** tab.
+4. Writes that URL into `test-cases/reference-builds.lock.json` under the `--env`
+   key. Existing entries (other environments, cases, and versions) are preserved,
+   and a re-deploy overwrites the variant's URL in place.
+
+The lockfile write is the only side effect that outlives the command; the URL does
+not reach any backend until you re-ingest.
+
+## Refresh the backend
+
+Commit the lockfile and push it to the branch the target environment tracks
+(`master` for prod, `staging` for staging), then re-ingest so the backend reads it:
+
+```sh
+git add test-cases/reference-builds.lock.json
+git commit -m "chore(references): record carom reference builds for prod"
+git push
+scripts/reingest-cluster.sh --env prod
+```
+
+The re-ingest [`git fetch`es the backend's checkout and forces a
+re-ingest](/development/running/); the backend then loads the lockfile, reads the
+entries for **its own `TCAB_ENV`**, and reconciles its `case_reference_build` table
+to match — upserting each URL and pruning any it no longer lists (the lockfile is
+the source of truth). The version's API response and the public snapshot then carry
+each variant's `referenceBuild` URL, and the case page shows the **Reference** tab.
+Nothing is pushed *to* the backend at any point; it only ever reads its own checkout.
+
+A **missing** lockfile (not committed yet) or an environment **absent** from it
+leaves the table untouched — the backend never wipes references just because the
+file has not caught up.
 
 ## From CI
 
-The same command is wired as an on-demand GitHub Actions job,
-`.github/workflows/publish-reference.yml` (`workflow_dispatch`), so a reference
-can be (re)published without a local toolchain. Its inputs are `environment`
-(`prod`/`staging`, for `--env`), `slug` (required), `version` (blank = newest), and
-`variant` (blank = every variant that declares a reference). It reads
-`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TCAB_BACKEND_URL`, and
-`TCAB_TOKEN` from repository secrets, and a `publish-reference` concurrency group
-serializes runs so two never race the same Pages project. Like the other deploy
-workflows it is dormant until the repository is mirrored to GitHub.
+The same flow is wired as an on-demand GitHub Actions job,
+`.github/workflows/publish-reference.yml` (`workflow_dispatch`), so the build +
+deploy + lockfile commit happen off your laptop. **The target environment is derived
+from the branch** — dispatch it on `master` to publish prod, on `staging` to publish
+staging; any other branch is refused. Its inputs are `slug` (required), `version`
+(blank = newest), and `variant` (blank = every variant that declares a reference). It
+needs only `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (no backend secrets),
+builds and deploys, then **commits and pushes the lockfile** back to the branch. It
+does **not** re-ingest — that step is still yours to run (it needs VPN/az access the
+runner does not have), so after the workflow pushes, run
+`scripts/reingest-cluster.sh --env <env>`. A `publish-reference` concurrency group
+serializes runs, and like the other deploy workflows it is dormant until the
+repository is mirrored to GitHub.
 
 ## Reference implementation vs. reference mockup
 

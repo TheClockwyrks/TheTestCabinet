@@ -1980,77 +1980,87 @@ async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
 }
 
 #[tokio::test]
-async fn reference_build_upserts_in_place_and_reads_back_per_variant() {
+async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
     let db = Db::connect_in_memory().await.unwrap();
 
-    // A triple with no deployed build reads back as absent, both singly and in the
-    // per-version map.
-    assert_eq!(
-        db.reference_build("carom", "v1.0.1", "base").await.unwrap(),
-        None
+    let entry = |slug: &str, version: &str, variant: &str, url: &str| ReferenceBuildEntry {
+        slug: slug.to_string(),
+        version: version.to_string(),
+        variant: variant.to_string(),
+        url: url.to_string(),
+    };
+
+    // Reconciling an empty desired set against an empty table changes nothing.
+    assert!(
+        !db.sync_reference_builds(&[], "2026-07-13T00:00:00Z")
+            .await
+            .unwrap()
     );
     assert!(
-        db.reference_builds_for_version("carom", "v1.0.1")
+        db.reference_builds_for_version("carom", "v1.1.0")
             .await
             .unwrap()
             .is_empty()
     );
 
-    // First deploy records the URL for the variant.
-    db.upsert_reference_build(
-        "carom",
-        "v1.0.1",
-        "base",
-        "https://carom-base.example.pages.dev",
-        "2026-07-09T00:00:00Z",
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        db.reference_build("carom", "v1.0.1", "base").await.unwrap(),
-        Some("https://carom-base.example.pages.dev".to_string())
+    // First reconcile records two variants and reports a change.
+    let desired = vec![
+        entry("carom", "v1.1.0", "base", "https://base.example.pages.dev"),
+        entry("carom", "v1.1.0", "gyre", "https://gyre.example.pages.dev"),
+    ];
+    assert!(
+        db.sync_reference_builds(&desired, "2026-07-13T00:00:00Z")
+            .await
+            .unwrap()
     );
-
-    // A re-deploy of the SAME triple upserts the URL in place (composite PK), it
-    // does not accumulate a second row.
-    db.upsert_reference_build(
-        "carom",
-        "v1.0.1",
-        "base",
-        "https://carom-base-2.example.pages.dev",
-        "2026-07-09T01:00:00Z",
-    )
-    .await
-    .unwrap();
-
-    // A different variant of the same version is an independent row.
-    db.upsert_reference_build(
-        "carom",
-        "v1.0.1",
-        "tight",
-        "https://carom-tight.example.pages.dev",
-        "2026-07-09T02:00:00Z",
-    )
-    .await
-    .unwrap();
-
     let map = db
-        .reference_builds_for_version("carom", "v1.0.1")
+        .reference_builds_for_version("carom", "v1.1.0")
         .await
         .unwrap();
     assert_eq!(map.len(), 2);
     assert_eq!(
         map.get("base").map(String::as_str),
-        Some("https://carom-base-2.example.pages.dev")
-    );
-    assert_eq!(
-        map.get("tight").map(String::as_str),
-        Some("https://carom-tight.example.pages.dev")
+        Some("https://base.example.pages.dev")
     );
 
-    // A different version does not see this version's rows.
+    // Re-running with the identical set is a no-op — no change, so no snapshot refresh.
     assert!(
-        db.reference_builds_for_version("carom", "v1.0.0")
+        !db.sync_reference_builds(&desired, "2026-07-13T01:00:00Z")
+            .await
+            .unwrap()
+    );
+
+    // A moved URL plus a dropped variant reconciles in place: base's URL updates and
+    // gyre is pruned (absent from the new desired set — the lockfile is authoritative).
+    let desired = vec![entry(
+        "carom",
+        "v1.1.0",
+        "base",
+        "https://base-2.example.pages.dev",
+    )];
+    assert!(
+        db.sync_reference_builds(&desired, "2026-07-13T02:00:00Z")
+            .await
+            .unwrap()
+    );
+    let map = db
+        .reference_builds_for_version("carom", "v1.1.0")
+        .await
+        .unwrap();
+    assert_eq!(map.len(), 1, "gyre pruned");
+    assert_eq!(
+        map.get("base").map(String::as_str),
+        Some("https://base-2.example.pages.dev")
+    );
+
+    // Reconciling to an empty set prunes everything that remains.
+    assert!(
+        db.sync_reference_builds(&[], "2026-07-13T03:00:00Z")
+            .await
+            .unwrap()
+    );
+    assert!(
+        db.reference_builds_for_version("carom", "v1.1.0")
             .await
             .unwrap()
             .is_empty()

@@ -76,11 +76,16 @@ including:
   (`wrangler pages deploy <out> --project-name <project>
   --branch <slug>-<version-with-dots-as-dashes>-<variant>`), reads the served URL
   back from `wrangler`'s output (Cloudflare truncates long subdomains, so the URL
-  is parsed rather than constructed), and PUTs it to the backend's authenticated
-  reference-build endpoint. Unlike a run's build, a reference implementation is
-  **never seeded** and is deployed out-of-band by a person — this command is that
-  step; it is also wired as a `workflow_dispatch` GitHub Actions job. Requires a
-  logged-in account.
+  is parsed rather than constructed), and **writes it into the committed
+  `test-cases/reference-builds.lock.json`** under the `--env` key. It does not
+  contact the backend: the private backends **ingest** that lockfile from their own
+  checkout on the next `scripts/reingest-cluster.sh`, which upserts the
+  `case_reference_build` table the version response and public snapshot read.
+  Because the command only writes a local file, it needs no backend URL or login —
+  just `wrangler`. Unlike a run's build, a reference implementation is **never
+  seeded** and is deployed out-of-band by a person — this command is that step; it
+  is also wired as a `workflow_dispatch` GitHub Actions job that commits the
+  lockfile.
 - **`harnesses`** — inspect the supported agent harnesses.
 
 ## Authentication

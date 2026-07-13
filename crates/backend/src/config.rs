@@ -58,6 +58,13 @@ pub struct Config {
     /// When set, `database_url` must be a passwordless `postgres://` URL naming the
     /// Entra Postgres role as its username. Defaults to `false` (password / SQLite).
     pub db_azure_ad: bool,
+    /// The deployment environment name (`TCAB_ENV`; `prod`/`staging`/`local`/…,
+    /// default `local` — the same value telemetry labels spans with). It selects
+    /// which environment's entries this backend reads from the committed
+    /// reference-builds lockfile at ingest: prod and staging deploy references to
+    /// different Cloudflare Pages projects, so the one shared lockfile holds a
+    /// URL per environment and each backend takes only its own.
+    pub env: String,
     /// Path to the repo checkout ingested on `POST /ingest` (`TCAB_BACKEND_CHECKOUT`).
     pub checkout: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
@@ -131,6 +138,7 @@ impl Config {
     /// and the deploy-hook fire. Production deployments supply the full set.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind = env_or("TCAB_BACKEND_BIND", DEFAULT_BIND);
+        let env = env_or("TCAB_ENV", "local");
         let database_url = env_or("TCAB_BACKEND_DATABASE_URL", DEFAULT_DATABASE_URL);
         let db_azure_ad = truthy("TCAB_BACKEND_DB_AZURE_AD");
         let checkout = PathBuf::from(require("TCAB_BACKEND_CHECKOUT")?);
@@ -162,6 +170,7 @@ impl Config {
 
         Ok(Self {
             bind,
+            env,
             database_url,
             db_azure_ad,
             checkout,

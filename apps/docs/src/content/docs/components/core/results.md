@@ -74,12 +74,18 @@ Two properties keep it honest:
   branch named `<slug>-<version-with-dots-as-dashes>-<variant>` — exactly the way a
   published run's build is deployed to Pages. Cloudflare truncates long subdomains,
   so the served URL is **read back** from `wrangler`'s output rather than
-  constructed, then recorded on the backend.
+  constructed, then written into a committed lockfile.
 
-The backend keeps these URLs in a dedicated `case_reference_build` table keyed by
-`(slug, version, variant)`, written through an authenticated endpoint
-(`PUT /test-cases/{slug}/versions/{version}/reference-builds/{variant}`, guarded by
-the same bearer auth as the ingest/publish write paths). A version's
+Recording the URL follows a **pull** model, not a push: the remote backends are
+private (VPN-only), so nothing off-cluster can `PUT` to them. Instead
+`publish-reference` writes each URL into a committed lockfile,
+`test-cases/reference-builds.lock.json`, keyed **by environment first** (`prod` and
+`staging` deploy to different Pages projects, so a variant has a URL per
+environment). The backend **ingests** that lockfile from its own git checkout on the
+next re-ingest (`scripts/reingest-cluster.sh`, the same path that refreshes catalog
+edits), reads the entries for its own `TCAB_ENV`, and **reconciles** the dedicated
+`case_reference_build` table (keyed by `(slug, version, variant)`) to match —
+upserting each URL and pruning any the lockfile no longer lists. A version's
 `GET /test-cases/{slug}/versions/{version}` response carries each variant's
 `referenceBuild` URL, and the public snapshot serializes it as each variant's
 `referenceBuild` field, so the console can surface it. On the case page it appears

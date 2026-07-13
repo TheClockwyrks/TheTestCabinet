@@ -1,27 +1,28 @@
 name: Publish reference implementation
 
 # Builds and deploys a test-case variant's reference implementation — the
-# authored, correct static build of a case-variant — and records its served URL
-# on the backend so the site's Reference tab can embed it. This is the
-# case-variant analogue of publishing a run's playable build, and it runs the
-# very same `tcab publish-reference` subcommand an operator would run by hand.
+# authored, correct static build of a case-variant — and records its served URL in
+# the committed reference-builds lockfile (the case-variant analogue of publishing
+# a run's playable build).
 #
-# On-demand only: a reference is (re)published deliberately, per case/version,
-# not on every push. The subcommand builds each targeted variant's
+# On-demand only: a reference is (re)published deliberately, per case/version, not
+# on every push. `tcab publish-reference` builds each targeted variant's
 # `reference_impl` project with the case's own `[build]` commands, deploys the
-# static output to the `test-cabinet-references` Cloudflare Pages project (reading
-# the served URL back from wrangler, never constructing it), and PUTs that URL to
-# the backend's authenticated reference-build endpoint.
+# static output to the environment's Cloudflare Pages project (reading the served
+# URL back from wrangler, never constructing it), and writes each URL into
+# `test-cases/reference-builds.lock.json`. This workflow then commits and pushes
+# that lockfile back to the branch.
 #
-# Requires these repository secrets (the same hosting + auth the run publisher
-# needs):
+# It does NOT touch the backend. The backends are private (VPN-only) and ingest the
+# lockfile from their own git checkout — the pull model. After this workflow pushes,
+# an operator runs `scripts/reingest-cluster.sh --env <env>` from a VPN/az-
+# authenticated machine to have the backend reconcile its `case_reference_build`
+# table (the site's Reference tab source). This workflow cannot do that step.
+#
+# Requires these repository secrets:
 #   CLOUDFLARE_API_TOKEN   — token with the "Cloudflare Pages: Edit" permission,
 #                            read from the environment by wrangler
 #   CLOUDFLARE_ACCOUNT_ID  — the account that owns the Pages project
-#   TCAB_BACKEND_URL       — the backend's base URL (where the URL is recorded)
-#   TCAB_TOKEN             — a bearer token for an account allowed to write
-#                            reference builds (honored via the CLI's TCAB_TOKEN
-#                            override, so no interactive `tcab login` is needed)
 #
 # The target environment is NOT a free input: it is derived from the branch the
 # workflow is dispatched on — `master` publishes to prod, `staging` publishes to
@@ -46,8 +47,10 @@ on:
         required: false
         default: ""
 
+# `contents: write` so the job can commit and push the updated lockfile back to the
+# branch it was dispatched on.
 permissions:
-  contents: read
+  contents: write
 
 # One reference publish at a time so two runs never race the same Pages project.
 concurrency:
@@ -85,26 +88,23 @@ jobs:
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
       - name: Build tcab
         run: cargo build --release --locked -p test-cabinet-cli
-      # Build the targeted variant(s), deploy to Cloudflare Pages, and record the
-      # URL(s) on the backend. `--version`/`--variant` are optional inputs, so the
-      # positional version and the `--variant` flag are only appended when set.
+      # Build the targeted variant(s), deploy to Cloudflare Pages, and write the
+      # served URL(s) into the reference-builds lockfile. `--version`/`--variant` are
+      # optional inputs, so the positional version and the `--variant` flag are only
+      # appended when set.
       - name: Publish reference implementation
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          TCAB_BACKEND_URL: ${{ secrets.TCAB_BACKEND_URL }}
-          TCAB_TOKEN: ${{ secrets.TCAB_TOKEN }}
           ENVIRONMENT: ${{ steps.env.outputs.environment }}
           SLUG: ${{ inputs.slug }}
           VERSION: ${{ inputs.version }}
           VARIANT: ${{ inputs.variant }}
         run: |
           set -euo pipefail
-          # `--env` selects the Cloudflare Pages project (prod vs staging) and is
-          # required, so the publish can never silently target prod. NOTE: it does
-          # not switch the backend — TCAB_BACKEND_URL/TCAB_TOKEN above must already
-          # point at the environment being published for the URL to be recorded on
-          # the right catalog.
+          # `--env` (derived from the branch above) selects the Cloudflare Pages
+          # project and the lockfile key. The command only writes the lockfile; it
+          # never contacts the backend.
           args=(--env "$ENVIRONMENT" "$SLUG")
           if [ -n "$VERSION" ]; then
             args+=("$VERSION")
@@ -113,3 +113,25 @@ jobs:
             args+=(--variant "$VARIANT")
           fi
           ./target/release/tcab publish-reference "${args[@]}"
+      # Commit the updated lockfile back to the branch. The backend picks it up on
+      # the next `scripts/reingest-cluster.sh --env <env>` (which an operator runs
+      # from a VPN/az machine — this workflow can't reach the private backend).
+      - name: Commit and push the reference-builds lockfile
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+          SLUG: ${{ inputs.slug }}
+        run: |
+          set -euo pipefail
+          lock=test-cases/reference-builds.lock.json
+          # `git status --porcelain` catches both a modified and a first-time
+          # (untracked) lockfile; an unchanged re-publish leaves nothing to commit.
+          if [ -z "$(git status --porcelain -- "$lock")" ]; then
+            echo "No lockfile change (references already recorded) — nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$lock"
+          git commit -m "chore(references): record ${SLUG} reference build(s) for ${ENVIRONMENT}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "::notice::Pushed ${lock}. Now run 'scripts/reingest-cluster.sh --env ${ENVIRONMENT}' from a VPN/az-authenticated machine to refresh the backend."

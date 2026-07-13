@@ -10,15 +10,12 @@ use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
 use test_cabinet_core::{
     AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec, shippable_package_description,
 };
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 
-use crate::auth::AuthUser;
 use crate::error::ApiError;
 use crate::store::{
     StoredContract, StoredManifest, StoredMatch, StoredReplay, StoredSandbox, StoredSimulation,
@@ -90,49 +87,6 @@ pub async fn resolve_version(
         .await
         .map_err(ApiError::from)?;
     Ok(Json(version_response(&manifest, &reference_builds)?))
-}
-
-/// `PUT /test-cases/{slug}/versions/{version}/reference-builds/{variant}` — record
-/// the deployed URL of a variant's authored reference implementation. Requires a
-/// bearer token (the same guard the ingest/publish write paths use), because it
-/// mutates the served catalog.
-///
-/// This is the out-of-band write half of the reference-implementation feature: the
-/// `tcab publish-reference` CLI builds and deploys the variant's static site
-/// (Cloudflare Pages), reads the served URL back, and PUTs it here. The backend
-/// never builds or deploys anything — it only remembers the URL and surfaces it on
-/// the version response and the public snapshot. The upsert is idempotent on
-/// `(slug, version, variant)`, so a re-deploy replaces the URL in place.
-#[tracing::instrument(
-    name = "test_cases.put_reference_build",
-    skip(state, _user, body),
-    fields(slug = %slug, version = %version, variant = %variant),
-    err(Debug),
-)]
-pub async fn put_reference_build(
-    State(state): State<AppState>,
-    Path((slug, version, variant)): Path<(String, String, String)>,
-    _user: AuthUser,
-    Json(body): Json<ReferenceBuildBody>,
-) -> Result<StatusCode, ApiError> {
-    let url = body.url.trim();
-    if url.is_empty() {
-        return Err(ApiError::unprocessable(
-            "referenceBuild.url must be non-empty",
-        ));
-    }
-    let now = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))?;
-    state
-        .db
-        .upsert_reference_build(&slug, &version, &variant, url, &now)
-        .await
-        .map_err(ApiError::from)?;
-    // The public snapshot folds each variant's reference-build URL onto its case
-    // metadata, so a newly-recorded (or re-deployed) URL must be re-exported.
-    state.publisher.queue_refresh();
-    Ok(StatusCode::OK)
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/artifacts/{path...}` — one seeded
@@ -709,19 +663,6 @@ struct VariantOut {
     /// `case_reference_build` table — never resolved from the manifest and never
     /// seeded into a run.
     reference_build: Option<String>,
-}
-
-/// The body of `PUT /test-cases/{slug}/versions/{version}/reference-builds/{variant}`:
-/// the deployed URL of a variant's authored reference implementation, recorded by
-/// `tcab publish-reference` after it builds and hosts the static site.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ReferenceBuildBody {
-    /// The absolute (https) URL the reference build is served at. Cloudflare Pages
-    /// truncates long branch subdomains, so the CLI reads the served URL back from
-    /// `wrangler` output rather than constructing it, and PUTs the exact value here.
-    pub url: String,
 }
 
 #[derive(Serialize)]

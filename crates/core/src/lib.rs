@@ -34,6 +34,7 @@ pub mod publish;
 pub mod publish_job_api;
 pub mod redact;
 pub mod reference;
+pub mod reference_lock;
 pub mod review;
 pub mod run_record;
 pub mod seeding;

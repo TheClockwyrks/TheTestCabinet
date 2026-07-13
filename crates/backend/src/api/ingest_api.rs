@@ -11,6 +11,9 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, Ingestor};
@@ -48,6 +51,12 @@ pub async fn ingest(
     let checkout = state.config.checkout.clone();
     let store = state.store.clone();
 
+    // Reconcile the reference-build table from the committed lockfile before the
+    // definition scan. It reads the same freshly-fetched checkout and is independent
+    // of the version scan, so it runs identically for both response framings (the
+    // streamed scan below only reports on definitions).
+    reconcile_reference_builds(&state).await?;
+
     // The whole-catalog prune must never drop a definition a run still references, so
     // fetch that protected set here (async, before the blocking scan) and hand it to
     // the ingestor. Cheap and harmless on a partial scan, which does not prune.
@@ -68,6 +77,50 @@ pub async fn ingest(
     .map_err(ApiError::from)?;
 
     Ok(Json(IngestResponse::from(report)).into_response())
+}
+
+/// Reconcile `case_reference_build` from the committed reference-builds lockfile to
+/// this backend's environment, queuing a snapshot refresh when the set changes.
+///
+/// This is the ingest half of the reference-implementation **pull** model: rather
+/// than a client pushing a URL to a (private, VPN-only) backend, `tcab
+/// publish-reference` commits each deployed URL into
+/// `test-cases/reference-builds.lock.json`, and the backend — which git-fetches its
+/// checkout before ingesting — reads the entries for its own `TCAB_ENV` and makes
+/// the table match them. This runs on the same pull path
+/// (`scripts/reingest-cluster.sh`) that refreshes definitions.
+///
+/// A **missing** lockfile means it has not been committed yet, so the table is left
+/// untouched (never wiped). An env **absent** from an existing lockfile likewise
+/// leaves the table alone; a present-but-empty env reconciles to empty.
+async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
+    let path = state
+        .config
+        .checkout
+        .join("test-cases")
+        .join(REFERENCE_LOCK_FILENAME);
+    let Some(lock) = ReferenceLock::load(&path)
+        .map_err(|e| ApiError::internal(format!("reading {}: {e}", path.display())))?
+    else {
+        return Ok(());
+    };
+    let Some(desired) = lock.entries_for_env(&state.config.env) else {
+        return Ok(());
+    };
+    let now = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))?;
+    let changed = state
+        .db
+        .sync_reference_builds(&desired, &now)
+        .await
+        .map_err(ApiError::from)?;
+    if changed {
+        // The public snapshot folds each variant's reference-build URL onto its case
+        // metadata, so a changed set must be re-exported.
+        state.publisher.queue_refresh();
+    }
+    Ok(())
 }
 
 /// True when the request asks for the streamed NDJSON progress feed.

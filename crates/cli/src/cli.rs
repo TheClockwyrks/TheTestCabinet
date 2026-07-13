@@ -346,6 +346,19 @@ pub enum DeployEnv {
     Staging,
 }
 
+impl DeployEnv {
+    /// The canonical environment name — the accepted flag value, the key the
+    /// reference-builds lockfile groups by, and the backend's `TCAB_ENV` value it
+    /// selects its entries with. Keeping these in one place keeps the three in
+    /// lockstep.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DeployEnv::Prod => "prod",
+            DeployEnv::Staging => "staging",
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct PublishReferenceArgs {

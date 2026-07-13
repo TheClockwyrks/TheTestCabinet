@@ -25,6 +25,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::metrics::{Cost, TokenPrices};
+use test_cabinet_core::reference_lock::ReferenceBuildEntry;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug, RunLinks, RunRecord};
 use test_cabinet_entities::{
@@ -2428,23 +2429,68 @@ impl Db {
             .collect())
     }
 
-    /// The reference-build URL of a single `(slug, version, variant)` triple, or
-    /// `None` when the variant has no reference implementation deployed. The
-    /// single-row lookup the record endpoint reads back.
-    pub async fn reference_build(
+    /// Reconcile the **entire** reference-build table to `desired` — the complete set
+    /// of deployed reference URLs for this backend's environment, read from the
+    /// committed reference-builds lockfile at ingest (see [`crate::api::ingest`]).
+    /// Every triple in `desired` is upserted; every stored triple absent from
+    /// `desired` is removed. The lockfile is the single source of truth, so this
+    /// makes the table match it exactly — the pull-model replacement for the former
+    /// per-variant write endpoint.
+    ///
+    /// Returns whether the table actually changed, so the caller can skip a redundant
+    /// snapshot refresh when a re-ingest finds the lockfile already in sync.
+    pub async fn sync_reference_builds(
         &self,
-        slug: &str,
-        version: &str,
-        variant: &str,
-    ) -> Result<Option<String>> {
-        Ok(case_reference_build::Entity::find_by_id((
-            slug.to_string(),
-            version.to_string(),
-            variant.to_string(),
-        ))
-        .one(&self.conn())
-        .await?
-        .map(|row| row.url))
+        desired: &[ReferenceBuildEntry],
+        now: &str,
+    ) -> Result<bool> {
+        // Snapshot the current rows so the table is touched only where it differs; an
+        // unchanged re-ingest then neither writes nor forces a snapshot rebuild.
+        let current: std::collections::HashMap<(String, String, String), String> =
+            case_reference_build::Entity::find()
+                .all(&self.conn())
+                .await?
+                .into_iter()
+                .map(|row| ((row.slug, row.version, row.variant), row.url))
+                .collect();
+        let desired_keys: std::collections::HashSet<(String, String, String)> = desired
+            .iter()
+            .map(|e| (e.slug.clone(), e.version.clone(), e.variant.clone()))
+            .collect();
+
+        let mut changed = false;
+
+        // Upsert triples that are new or whose served URL moved.
+        for entry in desired {
+            let key = (
+                entry.slug.clone(),
+                entry.version.clone(),
+                entry.variant.clone(),
+            );
+            if current.get(&key).map(String::as_str) != Some(entry.url.as_str()) {
+                self.upsert_reference_build(
+                    &entry.slug,
+                    &entry.version,
+                    &entry.variant,
+                    &entry.url,
+                    now,
+                )
+                .await?;
+                changed = true;
+            }
+        }
+
+        // Remove triples the lockfile no longer lists.
+        for key in current.keys() {
+            if !desired_keys.contains(key) {
+                case_reference_build::Entity::delete_by_id(key.clone())
+                    .exec(&self.conn())
+                    .await?;
+                changed = true;
+            }
+        }
+
+        Ok(changed)
     }
 }
 
