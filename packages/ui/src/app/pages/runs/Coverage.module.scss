@@ -99,7 +99,8 @@
 .groupProgress {
   display: flex;
   align-items: center;
-  gap: t.$space-sm;
+  // Match the per-cell row's label/bar/count spacing (`.cell` uses `$space-md`).
+  gap: t.$space-md;
 }
 
 .groupBar {
