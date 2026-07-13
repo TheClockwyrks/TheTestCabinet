@@ -24,9 +24,11 @@ Assets are loaded through Vite import globs so every URL resolves relative to th
 under any base path (`vite.config.ts` sets `base: "./"`) — never a root-absolute
 `/assets/...` URL. `src/assets.ts` uses:
 
-- `import.meta.glob("../assets/**/*.png", { eager: true, query: "?url", import: "default" })`
+- `import.meta.glob("../assets/**/*.png",
+  { eager: true, query: "?url", import: "default" })`
 - `import.meta.glob("../assets/fx/*.system.json", { eager: true, import: "default" })`
-- `import.meta.glob("../assets/audio/*.wav", { eager: true, query: "?url", import: "default" })`
+- `import.meta.glob("../assets/audio/*.wav",
+  { eager: true, query: "?url", import: "default" })`
 
 All pixel-art PNGs sample nearest-neighbor (`imageSmoothingEnabled = false`). Palette
 values are **exactly** `specs/overview.md`.

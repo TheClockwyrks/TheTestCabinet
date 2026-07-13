@@ -117,7 +117,8 @@ export interface Tile {
   region: number;        // path-graph connected-component id (for fast reachability)
 }
 
-export interface Camera { x: number; y: number; zoom: number; } // top-left world px, zoom 0.75..1.5
+// top-left world px, zoom 0.75..1.5
+export interface Camera { x: number; y: number; zoom: number; }
 
 export interface World {
   cols: number; rows: number;         // COLS x ROWS (64 x 44)
@@ -198,7 +199,9 @@ export interface Staff {
 }
 
 // ---- Scenery ----------------------------------------------------------------
-export interface Scenery { id: number; kind: SceneryKind; col: number; row: number; w: number; h: number; }
+export interface Scenery {
+  id: number; kind: SceneryKind; col: number; row: number; w: number; h: number;
+}
 
 // ---- Economy ----------------------------------------------------------------
 export interface Ledger {
@@ -216,7 +219,10 @@ export type Cue = "coin" | "ding" | "alarm" | "crowd" | "music";
 
 export type GameState = "title" | "howto" | "playing" | "paused" | "gameover";
 export type ToolKind = "path" | "build" | "staff" | "price" | "demolish";
-export interface Clickable { x: number; y: number; w: number; h: number; action: string; payload?: string; disabled?: boolean; }
+export interface Clickable {
+  x: number; y: number; w: number; h: number; action: string;
+  payload?: string; disabled?: boolean;
+}
 ```
 
 The `Game` (`sim.ts`) holds: `world`, `guests`, `staff`, `attractions`, `scenery`,

@@ -108,7 +108,8 @@ export interface Tile {
   oreRich: number;            // ore tiles: units of ore this tile yields (>=1); else 0
 }
 
-export interface Camera { x: number; y: number; zoom: number; } // world-pixel top-left + zoom
+// world-pixel top-left + zoom
+export interface Camera { x: number; y: number; zoom: number; }
 
 export interface World {
   w: number; h: number;               // WORLD_W, WORLD_H (tiles)
@@ -175,11 +176,15 @@ export type GameState = "title" | "howto" | "playing" | "paused" | "gameover";
 export type Tool = "dig" | "build" | "cancel";
 
 export type FxKind = "dust" | "steam" | "oxygen" | "co2";
-export interface FxEvent { kind: "dust" | "steam"; x: number; y: number; } // one-shot/loop world-px
+// one-shot/loop world-px
+export interface FxEvent { kind: "dust" | "steam"; x: number; y: number; }
 export type Cue = "dig" | "build" | "alarm" | "machine";
 export interface Milestone { text: string; life: number; } // non-blocking toast
 
-export interface Clickable { x: number; y: number; w: number; h: number; action: string; payload?: string; disabled?: boolean; }
+export interface Clickable {
+  x: number; y: number; w: number; h: number; action: string;
+  payload?: string; disabled?: boolean;
+}
 ```
 
 `priorityBoost` + the per-kind priority order (`jobs.ts`, §4) realize the controls-spec

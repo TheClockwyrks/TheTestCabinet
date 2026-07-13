@@ -142,7 +142,8 @@ export interface Notification {      // brief, non-blocking HUD toast (specs/flo
   text: string; age: number; ttl: number; tone: "info" | "good" | "alert";
 }
 
-export interface Signal { col: number; row: number; phase: number; }  // animated junction signal
+// animated junction signal
+export interface Signal { col: number; row: number; phase: number; }
 ```
 
 ### 2.4 Aggregate / economy state (`GameStats`, recomputed per month settle)
@@ -255,8 +256,8 @@ developed tile is **refused** until it is bulldozed (`README`).
 | `RAIL_SPEED_MULT` | 2.0 | a station-to-station leg is this much faster than road |
 | `VEHICLE_CAP_ON_SCREEN` | 220 | render budget — aggregate flow, sample vehicles to draw |
 
-Congestion colouring on the traffic overlay ramps `load/cap` from clear → `congest
-#ff7a3c` → `alert #ff5a52` (`specs/transit.md`).
+Congestion colouring on the traffic overlay ramps `load/cap` from clear →
+`congest #ff7a3c` → `alert #ff5a52` (`specs/transit.md`).
 
 ### 3.6 Utilities (`specs/utilities.md`)
 

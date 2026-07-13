@@ -1,14 +1,15 @@
 # Junction
 
-**Junction** is a top-down **transit-and-utility city builder** for the browser. Looking
-straight down on a bounded tile map, you **zone** buildable land Residential / Commercial /
-Industrial, lay **roads and one rail line with stations**, and run **power** (plant + wires)
-and **water** (source + pipes). Zoned tiles **develop themselves** — but only where they
-have **road access + power + water + demand** — growing through **three density tiers**, then
-**abandoning** when a precondition is lost. Citizens and goods **path across** the network;
-overloaded links **congest** and slow every trip; industry and jams emit **pollution** that
-lowers **land value** and suppresses nearby growth. A **budget** settles every in-game
-**month**: tax income vs. upkeep.
+**Junction** is a top-down **transit-and-utility city builder** for the browser.
+Looking straight down on a bounded tile map, you **zone** buildable land Residential /
+Commercial / Industrial, lay **roads and one rail line with stations**, and run
+**power** (plant + wires) and **water** (source + pipes). Zoned tiles **develop
+themselves** — but only where they have **road access + power + water + demand** —
+growing through **three density tiers**, then **abandoning** when a precondition is
+lost. Citizens and goods **path across** the network; overloaded links **congest** and
+slow every trip; industry and jams emit **pollution** that lowers **land value** and
+suppresses nearby growth. A **budget** settles every in-game **month**: tax income vs.
+upkeep.
 
 Junction is **open-ended** — there is no win state. The "score" is your **peak population**
 and the **number of months you stay solvent**. The one lose condition is **bankruptcy**:
@@ -75,10 +76,11 @@ systems (pollution haze, construction dust, milestone fireworks) are played live
 
 ### Values fixed by this implementation (spec leaves them to us)
 
-`START_TREASURY = $30,000`, `DEBT_LIMIT = −$20,000`, `TAX_DEFAULT = 9%`. **Zoning cost**
-`$10/tile` with **no upkeep**. **Walk distance** for road access `WALK_TILES = 3`. Bulldoze
-**refunds 40%** of a tile's capital cost. **Re-zoning a developed tile is refused** until it
-is bulldozed. See [`DESIGN.md`](DESIGN.md) §3 for the full tuning table.
+`START_TREASURY = $30,000`, `DEBT_LIMIT = −$20,000`, `TAX_DEFAULT = 9%`.
+**Zoning cost** `$10/tile` with **no upkeep**. **Walk distance** for road access
+`WALK_TILES = 3`. Bulldoze **refunds 40%** of a tile's capital cost. **Re-zoning
+a developed tile is refused** until it is bulldozed. See
+[`DESIGN.md`](DESIGN.md) §3 for the full tuning table.
 
 ## Develop, build, and run
 

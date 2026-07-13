@@ -55,11 +55,13 @@ front; `sim.ts`, `jobs.ts`, `combat.ts`, `world.ts`, `pathfind.ts`, `render.ts`,
 
 ```ts
 // constants.ts — enums shared everywhere
-export type TerrainKind = "soil" | "grass" | "rock";           // rock is impassable scenery + border
+// rock is impassable scenery + border
+export type TerrainKind = "soil" | "grass" | "rock";
 export type NodeKind = "tree" | "ore";
 export type StructureKind =
   | "wall" | "door" | "floor" | "bed" | "stove" | "farm" | "turret";
-export type WorkType = "gather" | "haul" | "build" | "cook" | "farm" | "fight"; // work-priority columns
+// work-priority columns
+export type WorkType = "gather" | "haul" | "build" | "cook" | "farm" | "fight";
 ```
 
 ```ts
@@ -67,7 +69,8 @@ export type WorkType = "gather" | "haul" | "build" | "cook" | "farm" | "fight"; 
 export interface Tile {
   x: number; y: number;               // tile coords (0..59, 0..43)
   terrain: TerrainKind;
-  node: ResourceNode | null;          // one node may sit on ground; blocks the tile until cleared
+  // one node may sit on ground; blocks the tile until cleared
+  node: ResourceNode | null;
   structure: Structure | null;        // one built structure; blocks per its kind
   designated: null | "chop" | "mine"; // active designation overlay on a node
   // Derived, recomputed by world.ts when the tile changes:
@@ -78,7 +81,8 @@ export interface Tile {
 
 export interface ResourceNode {
   kind: NodeKind;
-  hp: number;                          // work remaining (seconds of work * skill), counts down
+  // work remaining (seconds of work * skill), counts down
+  hp: number;
   maxHp: number;
   claimedBy: number | null;            // settler id currently working it (one worker only)
   workAnim: number;                    // seconds, drives the dust puff cadence
@@ -87,12 +91,14 @@ export interface ResourceNode {
 export interface Structure {
   kind: StructureKind;
   tx: number; ty: number;
-  hp: number; maxHp: number;           // turret/wall integrity (raiders damage turrets in base)
+  // turret/wall integrity (raiders damage turrets in base)
+  hp: number; maxHp: number;
   built: boolean;                      // false while a ghost/blueprint awaiting construction
   progress: number;                    // 0..1 construction progress
   costPaid: boolean;                   // material deducted at placement (see economy)
   // stove / farm / turret working state:
-  active: boolean;                     // stove cooking, turret has a target (drives on/off sprite)
+  // stove cooking, turret has a target (drives on/off sprite)
+  active: boolean;
   cropStage: 0 | 1 | 2;                // farm: 0 empty/sown, 1 growing, 2 ripe
   growth: number;                      // farm: 0..1 toward ripe (advances in daylight)
   cooldown: number;                    // turret: seconds to next shot
@@ -178,11 +184,15 @@ export type ResourceKind = "wood" | "ore" | "crops" | "meals";
 export interface Stock { wood: number; ore: number; crops: number; meals: number; }
 
 // A dropped resource pile on the ground (a gather result awaiting a haul).
-export interface Drop { id: number; tx: number; ty: number; res: ResourceKind; amount: number; }
+export interface Drop {
+  id: number; tx: number; ty: number; res: ResourceKind; amount: number;
+}
 
 // Combat is resolved on the tick; a shot is drawn as a brief tracer + muzzle/impact fx,
 // not a slow homing projectile (see §6). This records the tracer to draw for ~120 ms.
-export interface Tracer { x0: number; y0: number; x1: number; y1: number; life: number; hostile: boolean; }
+export interface Tracer {
+  x0: number; y0: number; x1: number; y1: number; life: number; hostile: boolean;
+}
 
 export type GameState = "title" | "howto" | "playing" | "paused" | "gameover";
 export type Phase = "day" | "dusk" | "night" | "dawn";     // time-of-day phase (§7)
@@ -194,7 +204,10 @@ export type Cue = "gunshot" | "hit" | "build" | "alarm";   // ambient + music ha
 // A milestone / event toast (non-blocking notification, §8).
 export interface Toast { text: string; life: number; }
 
-export interface Clickable { x: number; y: number; w: number; h: number; action: string; payload?: string; disabled?: boolean; }
+export interface Clickable {
+  x: number; y: number; w: number; h: number; action: string;
+  payload?: string; disabled?: boolean;
+}
 ```
 
 ### 2.4 Tool / build state and the mode config
@@ -205,7 +218,8 @@ export type Tool = "none" | "designate" | "cancel" | "build";
 export interface StartConfig {          // mode.ts exports MODE: StartConfig
   crew: number;                         // 3
   stock: Stock;                         // { wood:120, ore:0, crops:0, meals:8 }
-  mapSeed: number;                      // deterministic world gen seed for the reference map
+  // deterministic world gen seed for the reference map
+  mapSeed: number;
 }
 ```
 
@@ -393,8 +407,8 @@ Supporting (mirrors valence, dev-only, excluded from the build):
   via the `window.__holdfast` hooks (§9).
 - `sim/` — an optional headless deterministic **balance harness** (`npx tsx sim/run.ts`)
   asserting the survival goals: a do-nothing colony is overrun within a few raids; a
-  competent controller (gather → wall + turret + food chain → man the wall) survives past a
-  target day count. Same role as valence's `sim/`.
+  competent controller (gather → wall + turret + food chain → man the wall) survives
+  past a target day count. Same role as valence's `sim/`.
 - `vendor/particle-runtime/` — vendored prebuilt `@test-cabinet/particle-runtime` so a plain
   `npm ci` resolves it outside the monorepo (as valence does).
 
@@ -433,14 +447,14 @@ Supporting (mirrors valence, dev-only, excluded from the build):
   rotate. Designations show a corner-bracket overlay; ghosts a translucent sprite (red if
   illegal). The **day/night overlay** is a cooling blue multiply whose alpha follows `time`
   (never fully black); the colony's built lights and muzzle flashes read through it.
-- **Bottom strip** left: one **roster card** per living settler — name, four thin need bars
-  (hunger, rest, mood, health in the health color), current activity label, and standout
-  skills on hover/selection. Right: the **build palette / tool bar** — designate, cancel, and
-  each structure (produced glyph + name + cost, greyed if unaffordable) — plus a **WORK GRID**
-  button, the speed/pause controls, and mute.
-- **Work-priority grid** panel (opened from the bottom HUD): rows = settlers, columns =
-  `Gather · Haul · Build · Cook · Farm · Fight`; each cell cycles priority `0 (off) .. 4` on
-  click. Settlers pull jobs respecting it (§4 `jobs.ts`).
+- **Bottom strip** left: one **roster card** per living settler — name, four thin need
+  bars (hunger, rest, mood, health in the health color), current activity label, and
+  standout skills on hover/selection. Right: the **build palette / tool bar** —
+  designate, cancel, and each structure (produced glyph + name + cost, greyed if
+  unaffordable) — plus a **WORK GRID** button, the speed/pause controls, and mute.
+- **Work-priority grid** panel (opened from the bottom HUD): rows = settlers,
+  columns = `Gather · Haul · Build · Cook · Farm · Fight`; each cell cycles priority
+  `0 (off) .. 4` on click. Settlers pull jobs respecting it (§4 `jobs.ts`).
 
 **Game-state machine** (`GameState`):
 
