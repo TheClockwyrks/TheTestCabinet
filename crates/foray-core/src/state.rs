@@ -11,7 +11,7 @@
 //! Storing the role would let it drift from position; deriving it makes the
 //! "roles flip at the border" rule unfalsifiable.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -204,6 +204,13 @@ pub struct MatchState {
     pub red_jelly: BTreeSet<Pos>,
     /// Active royal-jelly nodes on Blue's half.
     pub blue_jelly: BTreeSet<Pos>,
+    /// Consumed jelly nodes on Red's half regrowing at their own tile, with the
+    /// ticks left before they do. A node is in exactly one of `red_jelly` (active)
+    /// or here (regrowing), never both — so the *active* sets stay the single
+    /// source of truth for what a raider can eat and what the board draws.
+    pub red_jelly_regrowing: BTreeMap<Pos, u32>,
+    /// Consumed jelly nodes on Blue's half regrowing at their own tile.
+    pub blue_jelly_regrowing: BTreeMap<Pos, u32>,
     /// Banked score.
     pub score: Score,
     /// Tags inflicted per colony so far — the running kill count, carried into
@@ -251,6 +258,8 @@ impl MatchState {
             blue_caches,
             red_jelly: board.initial_jelly(Team::Red).iter().copied().collect(),
             blue_jelly: board.initial_jelly(Team::Blue).iter().copied().collect(),
+            red_jelly_regrowing: BTreeMap::new(),
+            blue_jelly_regrowing: BTreeMap::new(),
             score: Score::default(),
             kills: Kills::default(),
             result: None,
@@ -286,6 +295,14 @@ impl MatchState {
         match team {
             Team::Red => &mut self.red_jelly,
             Team::Blue => &mut self.blue_jelly,
+        }
+    }
+
+    /// Mutable access to the regrowing (consumed) jelly nodes on `team`'s half.
+    pub fn jelly_regrowing_mut(&mut self, team: Team) -> &mut BTreeMap<Pos, u32> {
+        match team {
+            Team::Red => &mut self.red_jelly_regrowing,
+            Team::Blue => &mut self.blue_jelly_regrowing,
         }
     }
 

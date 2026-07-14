@@ -668,9 +668,10 @@ fn soldier_tags_enemy_raider_scattering_load_and_respawning_it() {
 }
 
 #[test]
-fn immune_raider_cannot_be_tagged() {
+fn an_immune_raider_survives_a_soldier_and_kills_it() {
     let board = open_board();
     let mut game = Match::new(board, rules(), sim());
+    // Blue 0 raids Red's half carrying a load, with jelly active.
     let blue0 = game
         .state
         .agents
@@ -680,6 +681,7 @@ fn immune_raider_cannot_be_tagged() {
     blue0.pos = Pos::new(2, 1);
     blue0.carrying = 2;
     blue0.immune_ticks = 5; // jelly immunity
+    // A Red soldier stands on the very same tile — in v1 this was a clean tag.
     let red0 = game
         .state
         .agents
@@ -703,10 +705,119 @@ fn immune_raider_cannot_be_tagged() {
     );
     assert_eq!(blue0.carrying, 2, "an immune raider keeps its load");
     assert_eq!(blue0.immune_ticks, 4, "immunity decrements by one per tick");
+
+    // …and the soldier is the one that dies: jelly kills, it does not merely shield.
+    // This is what breaks a defender parked on a cache.
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    assert_eq!(
+        red0.pos,
+        game.board.nest(Team::Red),
+        "the soldier is tagged by the immune raider and respawns at its nest"
+    );
+    assert_eq!(
+        game.state.kills,
+        Kills { red: 0, blue: 1 },
+        "the kill is credited to the immune raider's colony"
+    );
+}
+
+#[test]
+fn two_immune_ants_cannot_kill_each_other() {
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    // An immune Blue raider meets an immune Red soldier (a Red raider that ate
+    // jelly and ran home is still immune, so this pairing is reachable in play).
+    let blue0 = game
+        .state
+        .agents
+        .iter_mut()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    blue0.pos = Pos::new(2, 1);
+    blue0.immune_ticks = 5;
+    let red0 = game
+        .state
+        .agents
+        .iter_mut()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    red0.pos = Pos::new(2, 1);
+    red0.immune_ticks = 5;
+
+    game.step(&stop(), &stop());
+
+    let blue0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    assert_eq!(blue0.pos, Pos::new(2, 1), "neither immune ant is respawned");
+    assert_eq!(red0.pos, Pos::new(2, 1), "neither immune ant is respawned");
     assert_eq!(
         game.state.kills,
         Kills::default(),
-        "an immune raider that cannot be tagged is not a kill"
+        "jelly cancels out — an immune ant cannot kill another immune ant"
+    );
+}
+
+#[test]
+fn a_soldier_and_an_immune_raider_kill_each_other_in_the_same_tick() {
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    // One Red soldier on a tile with TWO Blue raiders: one immune, one not. The
+    // soldier tags the plain raider while the immune one tags the soldier — both
+    // die this tick. This is the case that would go order-dependent if tags were
+    // applied as they were found rather than from one snapshot.
+    let tile = Pos::new(2, 1);
+    for agent in game.state.agents.iter_mut() {
+        match (agent.team, agent.id) {
+            (Team::Red, 0) => agent.pos = tile,
+            (Team::Blue, 0) => {
+                agent.pos = tile;
+                agent.immune_ticks = 5;
+            }
+            (Team::Blue, 1) => agent.pos = tile,
+            _ => {}
+        }
+    }
+
+    game.step(&stop(), &stop());
+
+    let at = |team: Team, id: u32| -> Pos {
+        game.state
+            .agents
+            .iter()
+            .find(|a| a.team == team && a.id == id)
+            .unwrap()
+            .pos
+    };
+    assert_eq!(
+        at(Team::Red, 0),
+        game.board.nest(Team::Red),
+        "the soldier dies to the immune raider"
+    );
+    assert_eq!(
+        at(Team::Blue, 1),
+        game.board.nest(Team::Blue),
+        "the plain raider dies to the soldier, in the same tick"
+    );
+    assert_eq!(at(Team::Blue, 0), tile, "the immune raider is untouched");
+    assert_eq!(
+        game.state.kills,
+        Kills { red: 1, blue: 1 },
+        "both colonies are credited one kill"
     );
 }
 
@@ -764,6 +875,100 @@ fn jelly_grants_immunity_and_blocks_a_following_tag() {
         .find(|a| a.team == Team::Blue && a.id == 0)
         .unwrap();
     assert_eq!(blue0.pos, Pos::new(2, 1), "jelly immunity blocks the tag");
+}
+
+#[test]
+fn a_consumed_jelly_node_regrows_at_its_own_tile() {
+    let board = open_board();
+    let mut rules = rules();
+    rules.jelly_respawn_ticks = 5;
+    let mut game = Match::new(board, rules, sim());
+    let node = Pos::new(2, 1);
+    let blue0 = game
+        .state
+        .agents
+        .iter_mut()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    blue0.pos = Pos::new(3, 1);
+    game.state.red_jelly.insert(node);
+
+    game.step(&stop(), &move_one(0, Dir::W)); // eat it
+    assert!(
+        !game.state.red_jelly.contains(&node),
+        "the node is spent the tick it is eaten"
+    );
+
+    // It is spent, not gone: it comes back at the SAME tile, so the jelly layout is
+    // fixed for the whole match and a controller can plan around the cycle.
+    for _ in 0..(rules.jelly_respawn_ticks - 1) {
+        assert!(
+            !game.state.red_jelly.contains(&node),
+            "the node stays spent while it regrows"
+        );
+        game.step(&stop(), &stop());
+    }
+    assert!(
+        game.state.red_jelly.contains(&node),
+        "the node regrows at its own tile after jelly_respawn_ticks"
+    );
+    assert!(
+        game.state.red_jelly_regrowing.is_empty(),
+        "a regrown node is no longer pending — it is in exactly one of the two"
+    );
+}
+
+#[test]
+fn a_returning_carrier_banks_before_an_immune_enemy_can_kill_it() {
+    // Banking runs before tagging, which only matters now that soldiers are
+    // killable. Blue 0 carries 2 seeds home across the border onto Blue's half,
+    // where an immune Red raider is waiting on the landing tile. Blue must still
+    // score: were it tagged first, its load — taken from RED's half — would scatter
+    // onto BLUE's half, silently converting Red's seeds into Blue's and breaking
+    // both seed conservation and the sweep condition.
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    for agent in game.state.agents.iter_mut() {
+        match (agent.team, agent.id) {
+            // On Red's half at (3,1), carrying, one step from home at (4,1).
+            (Team::Blue, 0) => {
+                agent.pos = Pos::new(3, 1);
+                agent.carrying = 2;
+            }
+            // An immune Red raider squatting on Blue's landing tile.
+            (Team::Red, 0) => {
+                agent.pos = Pos::new(4, 1);
+                agent.immune_ticks = 5;
+            }
+            _ => {}
+        }
+    }
+    let red_caches_before = game.state.red_caches.len();
+
+    game.step(&stop(), &move_one(0, Dir::E)); // Blue 0: (3,1) -> (4,1), crossing home
+
+    assert_eq!(game.state.score.blue, 2, "the carrier banks its load");
+    let blue0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    assert_eq!(
+        blue0.pos,
+        game.board.nest(Team::Blue),
+        "and is then killed by the immune raider, having already scored"
+    );
+    assert_eq!(blue0.carrying, 0, "the banked load is gone, not dropped");
+    assert_eq!(
+        game.state.red_caches.len(),
+        red_caches_before,
+        "no seed is conjured onto Red's half by the kill"
+    );
+    assert!(
+        game.state.blue_caches.is_empty(),
+        "and none is scattered onto Blue's half — the seeds were banked, not dropped"
+    );
 }
 
 // ---------------------------------------------------------------------------

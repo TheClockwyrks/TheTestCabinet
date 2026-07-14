@@ -58,10 +58,17 @@ pub struct Rules {
     /// rather than freezing entirely.
     #[serde(default = "default_min_speed")]
     pub min_speed: u32,
-    /// Jelly immunity window `J`: ticks of tag-immunity granted by a royal-jelly
-    /// node.
+    /// Jelly immunity window `J`: ticks of immunity granted by a royal-jelly node.
+    /// While it lasts the eater cannot be tagged *and* tags any non-immune enemy it
+    /// meets — see [`crate::tick`] for the single rule both halves fall out of.
     #[serde(default = "default_jelly_immunity_ticks")]
     pub jelly_immunity_ticks: u32,
+    /// Ticks a consumed royal-jelly node takes to grow back at the same tile.
+    /// Jelly is the only counter to a defender parked on a cache (an immune raider
+    /// walks through it), so it has to be *renewable*: a one-shot node lets a
+    /// camper deny a seed for the rest of the match once both nodes are spent.
+    #[serde(default = "default_jelly_respawn_ticks")]
+    pub jelly_respawn_ticks: u32,
 }
 
 fn default_move_resolution() -> u32 {
@@ -79,6 +86,9 @@ fn default_min_speed() -> u32 {
 fn default_jelly_immunity_ticks() -> u32 {
     40
 }
+fn default_jelly_respawn_ticks() -> u32 {
+    1_200
+}
 
 impl Default for Rules {
     fn default() -> Rules {
@@ -88,6 +98,7 @@ impl Default for Rules {
             light_load: default_light_load(),
             min_speed: default_min_speed(),
             jelly_immunity_ticks: default_jelly_immunity_ticks(),
+            jelly_respawn_ticks: default_jelly_respawn_ticks(),
         }
     }
 }

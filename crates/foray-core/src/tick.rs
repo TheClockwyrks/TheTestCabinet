@@ -17,19 +17,35 @@
 //!    each heads home) resolves, since no tag is at stake.
 //! 2. **Eating.** A raider that ends the tick on an enemy seed cache consumes it
 //!    into its carried load.
-//! 3. **Tagging.** A soldier sharing a tile with an enemy raider on the
-//!    soldier's own half tags it: the raider respawns at its nest and its carried
-//!    load scatters onto the maze at the tag tile as recoverable caches. A raider
-//!    with `immune_ticks > 0` cannot be tagged.
-//! 4. **Banking.** A raider that crossed back onto its own half this tick adds
+//! 3. **Banking.** A raider that crossed back onto its own half this tick adds
 //!    its entire load to the team score and resets the load to zero.
-//! 5. **Jelly.** A raider that ends the tick on an active royal-jelly node
-//!    consumes it and gains `J` ticks of immunity.
+//! 4. **Tagging.** Two enemies sharing a tile settle it. Because a role is decided
+//!    purely by which half the tile is on, a shared tile is *always* one soldier
+//!    (whose half it is) against one enemy raider — there is no other pairing. The
+//!    outcome turns only on royal jelly:
+//!    - **both immune** — nothing happens;
+//!    - **exactly one immune** — the immune one tags the other;
+//!    - **neither immune** — the soldier tags the raider.
 //!
-//! Then immunity decrements and win conditions are checked. Because tagging
-//! precedes banking, a raider caught on the border seam loses its load rather
-//! than banking it; because eating precedes tagging, a raider can be tagged on
-//! the very tile it just ate — both are intentional.
+//!    So an immune ant cannot be killed, and kills any non-immune enemy it meets.
+//!    A tagged ant respawns at its nest; a tagged *raider* also scatters its carried
+//!    load onto the maze at the tag tile as recoverable caches.
+//! 5. **Jelly.** A raider that ends the tick on an active royal-jelly node consumes
+//!    it and gains `J` ticks of immunity. The node then **regrows at the same tile**
+//!    after `jelly_respawn_ticks`, so the counter to a parked defender is renewable.
+//!
+//! Then immunity decrements and win conditions are checked.
+//!
+//! Two orderings are load-bearing. **Eating precedes tagging**, so a raider can be
+//! tagged on the very tile it just ate — intentional. **Banking precedes tagging**,
+//! so an ant that reaches home banks before it can be killed there. That ordering is
+//! inert under the v1 rules (only raiders were taggable, and a raider is by
+//! definition *not* on its own half, so the two phases could never touch the same
+//! agent) but it is essential now that soldiers are killable: a raider crossing home
+//! is a soldier the instant it lands, and it still holds its load until banking. Tag
+//! it first and an immune enemy could kill a returning carrier whose load came from
+//! the *other* half — which would scatter those seeds onto the wrong side, quietly
+//! breaking seed conservation and with it the sweep condition.
 
 use crate::board::{Board, Pos, Team};
 use crate::config::{Rules, Simulation};
@@ -67,9 +83,10 @@ pub fn advance(
 
     movement(board, state, red, blue, rules);
     eating(board, state);
-    tagging(board, state);
     banking(board, state, &was_on_own_half);
+    tagging(board, state);
     jelly(board, state, rules);
+    regrow_jelly(state);
 
     // Immunity ticks down once per tick, after all phases that read it.
     for agent in &mut state.agents {
@@ -202,47 +219,69 @@ fn eating(board: &Board, state: &mut MatchState) {
     }
 }
 
-/// Phase 3 — tagging. A soldier co-located with an enemy raider on the soldier's
-/// own half respawns that raider and scatters its load.
+/// Phase 4 — tagging. Settle every tile two enemies share, under the one rule the
+/// module doc spells out: an immune ant cannot be killed, and kills any non-immune
+/// enemy it meets; absent jelly, the soldier kills the raider.
 fn tagging(board: &Board, state: &mut MatchState) {
-    // Collect tags first (reads), then apply (writes), so the set of taggers and
-    // victims is decided from one consistent snapshot. A raider can be tagged by
-    // at most one soldier per tick; once respawned it is no longer co-located.
-    let mut to_respawn: Vec<(usize, Pos, Team, u32)> = Vec::new(); // (idx, tag tile, raider team, load)
+    // Decide every tag from ONE read-only snapshot, then apply. This is what makes
+    // simultaneous kills order-independent: a soldier sharing a tile with both an
+    // immune raider and a plain one kills the plain raider *and* dies to the immune
+    // one, in the same tick. Applying as we went would let whichever agent we
+    // happened to visit first respawn out from under the other — an agent-ordering
+    // dependency, which in a replay-reconstructed engine is a silent desync.
+    let mut to_respawn: Vec<(usize, Pos, Team, Role, u32)> = Vec::new();
 
     for victim_idx in 0..state.agents.len() {
         let victim = &state.agents[victim_idx];
-        if victim.role(board) != Role::Raider || victim.immune_ticks > 0 {
-            continue; // only an exposed enemy raider is taggable
+        // Jelly is absolute protection: an immune ant is never a victim.
+        if victim.immune_ticks > 0 {
+            continue;
         }
-        // Is any enemy soldier sharing this tile? The soldier must be on its own
-        // half — which is exactly the victim's current (enemy-to-the-victim) half.
-        let tagged = state.agents.iter().any(|s| {
-            s.team != victim.team && s.role(board) == Role::Soldier && s.pos == victim.pos
+        let victim_role = victim.role(board);
+        // Any enemy on this tile is, by the positional role rule, the opposite role
+        // to the victim. A raider falls to *any* enemy soldier there; a soldier
+        // falls only to an enemy raider carrying active jelly.
+        let tagged = state.agents.iter().any(|other| {
+            if other.team == victim.team || other.pos != victim.pos {
+                return false;
+            }
+            match victim_role {
+                Role::Raider => true,
+                Role::Soldier => other.immune_ticks > 0,
+            }
         });
         if tagged {
-            to_respawn.push((victim_idx, victim.pos, victim.team, victim.carrying));
+            to_respawn.push((
+                victim_idx,
+                victim.pos,
+                victim.team,
+                victim_role,
+                victim.carrying,
+            ));
         }
     }
 
-    for &(_, _, raider_team, _) in &to_respawn {
-        // The taggers are the raider's opponents (the soldiers on this half); each
-        // respawned raider is one kill credited to that defending colony.
-        state.kills.add(raider_team.opponent(), 1);
+    for &(_, _, victim_team, _, _) in &to_respawn {
+        // Every tag is one kill credited to the colony that did the tagging — the
+        // victim's opponent, whichever role each side was playing.
+        state.kills.add(victim_team.opponent(), 1);
     }
 
-    for (idx, tag_tile, raider_team, load) in to_respawn {
-        // Scatter the dropped load onto the maze as recoverable caches on the
-        // defender's territory (the half the raid happened on). Each carried seed
-        // becomes a cache; they pile onto the tag tile (a set, so a single tile
-        // holds at most one cache — extra load beyond one seed re-enters as the
-        // single recoverable cache at that tile, matching tile-locked caches).
-        let defender_half = raider_team.opponent();
-        if load > 0 {
+    for (idx, tag_tile, victim_team, victim_role, load) in to_respawn {
+        // Only a raider can be holding anything worth dropping. A soldier's load is
+        // always zero here because banking runs first (see the module doc), so a
+        // returning carrier has already scored — there is no case where a soldier
+        // dies holding seeds it took from the *other* half.
+        if victim_role == Role::Raider && load > 0 {
+            // Scatter the dropped load onto the maze as recoverable caches on the
+            // defender's territory (the half the raid happened on). Each carried
+            // seed becomes a cache; they lay out from the tag tile (a set, so a
+            // single tile holds at most one cache — matching tile-locked caches).
+            let defender_half = victim_team.opponent();
             scatter_dropped_load(board, state, defender_half, tag_tile, load);
         }
-        // Respawn the raider at its nest with nothing carried; reset its charge.
-        let nest = board.nest(raider_team);
+        // Respawn the tagged ant at its nest with nothing carried; reset its charge.
+        let nest = board.nest(victim_team);
         let agent = &mut state.agents[idx];
         agent.pos = nest;
         agent.carrying = 0;
@@ -318,7 +357,7 @@ fn banking(board: &Board, state: &mut MatchState, was_on_own_half: &[bool]) {
 }
 
 /// Phase 5 — jelly. A raider ending on an active jelly node consumes it for `J`
-/// ticks of immunity.
+/// ticks of immunity, and the node begins regrowing at that same tile.
 fn jelly(board: &Board, state: &mut MatchState, rules: &Rules) {
     for i in 0..state.agents.len() {
         let agent = &state.agents[i];
@@ -330,8 +369,33 @@ fn jelly(board: &Board, state: &mut MatchState, rules: &Rules) {
         let pos = agent.pos;
         if state.jelly(enemy_half).contains(&pos) {
             state.jelly_mut(enemy_half).remove(&pos);
+            // The node is spent, not gone: it regrows at its own tile. A node is in
+            // exactly one of the active set or the regrowing map, never both.
+            state
+                .jelly_regrowing_mut(enemy_half)
+                .insert(pos, rules.jelly_respawn_ticks);
             // Set, not add: the overview grants a fresh `J`-tick window.
             state.agents[i].immune_ticks = rules.jelly_immunity_ticks;
+        }
+    }
+}
+
+/// Count the regrowing jelly nodes down and return the ripe ones to the active set.
+/// A `jelly_respawn_ticks` of zero means a node comes back the very next tick; the
+/// node always returns to the tile it was eaten from, so the board's jelly layout is
+/// fixed for the whole match and a controller can plan around it.
+fn regrow_jelly(state: &mut MatchState) {
+    for team in [Team::Red, Team::Blue] {
+        let mut ripe: Vec<Pos> = Vec::new();
+        for (pos, remaining) in state.jelly_regrowing_mut(team).iter_mut() {
+            *remaining = remaining.saturating_sub(1);
+            if *remaining == 0 {
+                ripe.push(*pos);
+            }
+        }
+        for pos in ripe {
+            state.jelly_regrowing_mut(team).remove(&pos);
+            state.jelly_mut(team).insert(pos);
         }
     }
 }
