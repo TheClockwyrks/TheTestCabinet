@@ -257,7 +257,7 @@ menu chrome is drawn in code** (canvas/DOM), in the palette from
 
 - The entire **status bar** and **build panel** — Charge, Grid Integrity, the wave
   indicator and build-phase countdown, the **scrap-press** control (STAMP, its 18
-  cost, and the remaining stamps of the 5-per-level allowance), the
+  cost, and the remaining stamps of the 7-per-level allowance), the
   **selected-component inspector** (type, quality tier, live stats, and the SLAG /
   SELL / COMBINE / targeting controls), the **next-wave preview**, and the
   wave/speed/mute controls (`specs/board.md`, `specs/flow.md`, `specs/build.md`).

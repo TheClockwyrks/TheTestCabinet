@@ -123,7 +123,7 @@ export const TIER_NAME: Record<Tier, string> = {
 };
 // Damage multiplier by tier (steep, so combining always pays). Index 0 is unused padding.
 export const QUALITY_MULT: number[] = [0, 1.0, 2.2, 5.0, 11, 24];
-export const RANGE_PER_TIER = 6; // range += 6 px per tier above T1
+export const RANGE_PER_TIER = 2; // range += 2 px per tier above T1
 export const MAX_TIER: Tier = 5; // Tesla-Prime is the apex — cannot combine further
 
 // ---- Targeting (specs/towers.md, specs/controls.md) ----------------------------
@@ -150,11 +150,11 @@ export interface ComponentDef {
 }
 
 export const COMPONENTS: Record<ComponentType, ComponentDef> = {
-  capacitor: { type: "capacitor", name: "CAPACITOR", role: "Balanced single-target zap", color: COL.capacitor, range: 110, fireRate: 1.6, dmg: 8, splashT1: 0, splashPerTier: 0 },
-  coil: { type: "coil", name: "COIL", role: "Chain-lightning — leaps to nearby units", color: COL.coil, range: 120, fireRate: 1.1, dmg: 6, splashT1: 0, splashPerTier: 0 },
-  emitter: { type: "emitter", name: "EMITTER", role: "Rapid low-damage spark; anti-swarm", color: COL.emitter, range: 95, fireRate: 4.5, dmg: 2, splashT1: 0, splashPerTier: 0 },
-  arcnode: { type: "arcnode", name: "ARC-NODE", role: "Area discharge — damages everything near impact", color: COL.arcnode, range: 105, fireRate: 0.9, dmg: 7, splashT1: 45, splashPerTier: 5 },
-  discharge: { type: "discharge", name: "DISCHARGE RIG", role: "Slow, long-range heavy bolt; anti-tank", color: COL.discharge, range: 170, fireRate: 0.5, dmg: 22, splashT1: 0, splashPerTier: 0 },
+  capacitor: { type: "capacitor", name: "CAPACITOR", role: "Balanced single-target zap", color: COL.capacitor, range: 80, fireRate: 1.6, dmg: 8, splashT1: 0, splashPerTier: 0 },
+  coil: { type: "coil", name: "COIL", role: "Chain-lightning — leaps to nearby units", color: COL.coil, range: 88, fireRate: 1.1, dmg: 6, splashT1: 0, splashPerTier: 0 },
+  emitter: { type: "emitter", name: "EMITTER", role: "Rapid low-damage spark; anti-swarm", color: COL.emitter, range: 70, fireRate: 4.5, dmg: 2, splashT1: 0, splashPerTier: 0 },
+  arcnode: { type: "arcnode", name: "ARC-NODE", role: "Area discharge — damages everything near impact", color: COL.arcnode, range: 78, fireRate: 0.9, dmg: 7, splashT1: 45, splashPerTier: 5 },
+  discharge: { type: "discharge", name: "DISCHARGE RIG", role: "Slow, long-range heavy bolt; anti-tank", color: COL.discharge, range: 130, fireRate: 0.5, dmg: 22, splashT1: 0, splashPerTier: 0 },
 };
 
 // Coil chain (specs/towers.md §5.3): the bolt leaps to the nearest not-yet-hit unit
@@ -203,7 +203,7 @@ export function deriveStats(type: ComponentType, tier: Tier): CompStats {
 }
 
 // ---- The scrap-press build loop (specs/build.md §6) ----------------------------
-export const BUILDS_PER_LEVEL = 5; // fixed 5-stamp allowance per level (constant across difficulty)
+export const BUILDS_PER_LEVEL = 7; // fixed 7-stamp allowance per level (constant across difficulty)
 export const STAMP_COST = 18; // Charge per press pull
 
 // Type roll: uniform 20% each (specs/build.md §6.2).
@@ -249,11 +249,11 @@ export interface LoadDef {
 }
 
 export const LOAD: Record<LoadType, LoadDef> = {
-  mote: { type: "mote", label: "MOTE", baseHp: 30, speed: 60, flies: false, bounty: 3, leak: 1, radius: 10, boss: false },
-  spark: { type: "spark", label: "SPARK", baseHp: 18, speed: 120, flies: false, bounty: 3, leak: 1, radius: 8, boss: false },
+  mote: { type: "mote", label: "MOTE", baseHp: 44, speed: 60, flies: false, bounty: 3, leak: 1, radius: 10, boss: false },
+  spark: { type: "spark", label: "SPARK", baseHp: 27, speed: 120, flies: false, bounty: 3, leak: 1, radius: 8, boss: false },
   slug: { type: "slug", label: "SLUG", baseHp: 180, speed: 38, flies: false, bounty: 7, leak: 2, radius: 13, boss: false },
-  cluster: { type: "cluster", label: "CLUSTER", baseHp: 10, speed: 72, flies: false, bounty: 2, leak: 1, radius: 7, boss: false },
-  filament: { type: "filament", label: "FILAMENT", baseHp: 55, speed: 85, flies: true, bounty: 6, leak: 1, radius: 9, boss: false },
+  cluster: { type: "cluster", label: "CLUSTER", baseHp: 16, speed: 72, flies: false, bounty: 2, leak: 1, radius: 7, boss: false },
+  filament: { type: "filament", label: "FILAMENT", baseHp: 74, speed: 85, flies: true, bounty: 6, leak: 1, radius: 9, boss: false },
   dynamo: { type: "dynamo", label: "DYNAMO", baseHp: 1500, speed: 30, flies: false, bounty: 90, leak: 5, radius: 20, boss: true },
 };
 
@@ -294,9 +294,9 @@ export interface DifficultyDef {
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
-  easy: { key: "easy", label: "EASY", waves: 20, baseMult: 0.85, k: 0.15, milestones: [10, 20], note: "Shorter siege, gentler HP ramp." },
-  medium: { key: "medium", label: "MEDIUM", waves: 30, baseMult: 1.0, k: 0.2, milestones: [15, 30], note: "The reference balance." },
-  hard: { key: "hard", label: "HARD", waves: 40, baseMult: 1.15, k: 0.26, milestones: [20, 40], note: "Dozens of waves, a steep HP climb." },
+  easy: { key: "easy", label: "EASY", waves: 20, baseMult: 0.9, k: 0.2, milestones: [10, 20], note: "Shorter siege, gentler HP ramp." },
+  medium: { key: "medium", label: "MEDIUM", waves: 30, baseMult: 1.0, k: 0.26, milestones: [15, 30], note: "The reference balance." },
+  hard: { key: "hard", label: "HARD", waves: 40, baseMult: 1.15, k: 0.33, milestones: [20, 40], note: "Dozens of waves, a steep HP climb." },
 };
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard"];

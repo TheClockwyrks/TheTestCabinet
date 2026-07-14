@@ -41,11 +41,11 @@ scales across waves.
 
 | Type | Trait | Base HP | Speed | Flies? | Bounty | Leak |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Mote** | baseline charge unit | 30 | 60 | no | 3 | 1 |
-| **Spark** | fast, fragile | 18 | 120 | no | 3 | 1 |
+| **Mote** | baseline charge unit | 44 | 60 | no | 3 | 1 |
+| **Spark** | fast, fragile | 27 | 120 | no | 3 | 1 |
 | **Slug** | slow, capacitive tank | 180 | 38 | no | 7 | 2 |
-| **Cluster** | tiny, arrives in dense packs | 10 | 72 | no | 2 | 1 |
-| **Filament** | **flyer** — ignores the maze | 55 | 85 | **yes** | 6 | 1 |
+| **Cluster** | tiny, arrives in dense packs | 16 | 72 | no | 2 | 1 |
+| **Filament** | **flyer** — ignores the maze | 74 | 85 | **yes** | 6 | 1 |
 | **Dynamo** | **boss** — overload core | 1500 | 30 | no | 90 | 5 |
 
 - **Mote** — the standard unit; everything else is a variation on it. The bulk of
@@ -86,9 +86,9 @@ HP(w) = baseHP × baseMult × (1 + k × (w − 1))
 - `baseHP` is the unit's base HP from the roster above.
 - `baseMult` and `k` are set by the chosen **difficulty** and are the **only**
   things difficulty changes about a unit (`specs/modes.md`). On **Medium** they are
-  the reference values `baseMult = 1.0` and `k = 0.20`; **Easy** is gentler
-  (`baseMult = 0.85`, `k = 0.15`) and **Hard** steeper (`baseMult = 1.15`,
-  `k = 0.26`). The full table lives in `specs/modes.md`.
+  the reference values `baseMult = 1.0` and `k = 0.26`; **Easy** is gentler
+  (`baseMult = 0.9`, `k = 0.2`) and **Hard** steeper (`baseMult = 1.15`,
+  `k = 0.33`). The full table lives in `specs/modes.md`.
 - Wave 1 (`w = 1`) yields `baseHP × baseMult`; each later wave adds `k` of that base
   per wave, so HP climbs linearly across the run. A Hard late wave therefore towers
   far above a Medium one, which — along with more waves supplying more kill income at
