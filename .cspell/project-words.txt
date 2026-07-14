@@ -371,3 +371,31 @@ arcnode
 integ
 tchip
 targ
+# Deepcore (Motherload-style dig-and-build full-stack case): fiction + coined ore/material names.
+deepcore
+vhera
+motherload
+coreshell
+deepstone
+rockbed
+resonite
+cryenite
+pyronium
+ferron
+cuprite
+argenite
+voltite
+adamite
+jetpack
+jetpacks
+jetpacking
+unminable
+diggable
+dropship
+knockback
+permadeath
+# Deepcore reference-mockup CSS identifiers (harness-side only).
+activatable
+bpanel
+retarget
+xtal
