@@ -1,0 +1,196 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 340,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "glow",
+      "shape": "point",
+      "position": [
+        64.0,
+        66.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 5,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 180.0,
+      "lifetimeSpread": 40.0,
+      "speed": 20.0,
+      "speedSpread": 10.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 2,
+      "forces": {
+        "drag": 4.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.4,
+          "to": 0.2
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffa63a",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "plume",
+      "shape": "point",
+      "position": [
+        64.0,
+        66.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 16,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 320.0,
+      "lifetimeSpread": 90.0,
+      "speed": 92.0,
+      "speedSpread": 32.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "coneAngle": 28.0,
+      "seed": 9,
+      "forces": {
+        "gravity": 40.0,
+        "drag": 2.2
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffcf4a",
+            "at": 0.4
+          },
+          {
+            "color": "#ffa63a",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.1
+      }
+    },
+    {
+      "name": "sparks",
+      "shape": "point",
+      "position": [
+        64.0,
+        66.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 10,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 260.0,
+      "lifetimeSpread": 80.0,
+      "speed": 150.0,
+      "speedSpread": 60.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "coneAngle": 42.0,
+      "seed": 21,
+      "forces": {
+        "gravity": 120.0,
+        "drag": 1.8
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.4,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffcf4a",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.14
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}
