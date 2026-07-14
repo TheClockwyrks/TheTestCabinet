@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!--
+  Hollowdeep — colony-lost reference mockup.
+  Canonical view slug: game-over
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Colony lost).
+  Objects in .colony use field-local coordinates (top = field row * 24).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hollowdeep — Colony Lost</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim slice of the fallen colony behind the panel. -->
+      <div class="colony">
+        <div class="region stone dim" style="--c: 0; --r: 20; --w: 54; --h: 5"></div>
+        <div class="region open dim" style="--c: 8; --r: 8; --w: 26; --h: 8"></div>
+        <div class="region dim" style="--c: 8; --r: 15; --w: 26; --h: 1;
+             background: var(--steel-2); border-top: 3px solid var(--steel)"></div>
+        <!-- The chamber has flooded with CO2 and the oxygen is gone. -->
+        <div class="gas co2 dim" style="--c: 8; --r: 8; --w: 26; --h: 7"></div>
+        <div class="machine dim" style="--c: 12; --r: 13">&#9881;</div>
+        <div class="machine diffuser dim" style="--c: 24; --r: 13">O&#8322;</div>
+        <div class="delver dim" style="left: 360px; top: 402px"></div>
+        <div class="delver dim" style="left: 540px; top: 402px"></div>
+      </div>
+
+      <div class="overlay"></div>
+
+      <div class="panel">
+        <p class="panel-eyebrow">THE AIR RAN OUT</p>
+        <h2 class="panel-title">COLONY LOST</h2>
+        <p class="panel-stat">SURVIVED 12 CYCLES</p>
+        <p class="panel-sub">38 TILES DUG &nbsp;&middot;&nbsp; 0 DELVERS LEFT</p>
+        <nav class="menu">
+          <div class="menu-item selected">TRY AGAIN</div>
+          <div class="menu-item">MENU</div>
+        </nav>
+      </div>
+    </div>
+  </body>
+</html>

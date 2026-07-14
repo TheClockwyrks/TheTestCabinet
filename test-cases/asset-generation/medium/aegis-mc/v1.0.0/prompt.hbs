@@ -1,0 +1,51 @@
+Sculpt the **Aegis**, a colossal six-legged war-fortress standing at rest,
+as a **3D mesh** in a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}} volume using only the `mc` Marching Cubes tool.
+
+## How meshing works
+
+The only way to shape the surface is the `mc` binary already on your `PATH`. You
+build the model by calling it **one operation at a time**, and the ordered
+operations you issue are your submission (the mesh is extracted to `mesh.glb`).
+
+`mc` maintains a **continuous signed-distance field** and extracts a triangle mesh
+from its surface. You shape that field by
+**compositing solid primitives** — union material in with `add-sphere` /
+`add-box` / `add-ellipsoid` / `add-cylinder`, carve it away with the matching
+`subtract-*` primitives, blend joins with `--blend`, and reflect/shift/duplicate/
+recolor the whole field with `mirror` / `translate` / `copy` / `replace-color`.
+Each primitive carries an **opaque** `#rrggbb` color — there is no transparency.
+Marching Cubes meshes on a **coarse** grid, so the surface reads chunky and
+**faceted**; detail finer than the grid is lost.
+
+The field starts **empty**. Each call only appends the operation to its op log and
+renders nothing; run `mc render` when you want to see the model — it extracts the
+surface to `mesh.glb` and draws the preview PNG `model.png`. An empty log is already
+in place at `{{workspace}}`; you produce the preview and mesh yourself by running
+`mc render`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+mc add-box --x 2 --y 2 --z 3 --width 4 --height 3 --depth 5 --color "#c69a4b"
+```
+
+Run `mc --help` to list every operation and `mc <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Run
+`mc render` to (re)draw `model.png`, then read it** to see the extracted surface and
+decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Composite the fortress up operation by operation until the mesh in `model.png`
+matches the brief — a heavily armored citadel standing on six thick
+articulated legs, a big main turret with a long forward cannon, a side turret out on
+each sponson, and a sensor vane above, cleanly symmetric about its centerplane.
+**Before you finish, run `mc render`** so the geometry (`mesh.glb`) the result is
+built from is emitted — an unrendered model is scored as empty. When you are
+satisfied, stop: the recorded operations are your finished submission.

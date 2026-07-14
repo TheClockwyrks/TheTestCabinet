@@ -1,0 +1,11 @@
+# The double-size variant: the same Lance sculpted in a volume with each extent
+# doubled from the case's base 26x74x30. Its `[voxel]` OVERRIDES the case volume for
+# runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 52
+height = 148
+depth = 60
+background = "transparent"

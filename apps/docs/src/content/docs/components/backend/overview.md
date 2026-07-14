@@ -33,7 +33,11 @@ The backend serves two kinds of client, as described in
 Concretely, the backend holds:
 
 - **Test case definitions.** Test cases are authored in the repository's
-  `test-cases/` folder; a finished version is published to the backend, which
+  `test-cases/` folder (organized as
+  `test-cases/<type>/<difficulty>/<slug>/<version>/`, where the type and
+  difficulty grouping levels are organizational — a case's identity, type, and
+  difficulty come from its `test-case.toml` manifest); a finished version is
+  published to the backend, which
   then holds the canonical copy a runner resolves at run time. The repository is
   the editing source; the backend is the distribution source. The on-disk format
   is unchanged by this — publishing caches a version, it does not transform it.
@@ -172,7 +176,9 @@ through environment variables — its bind address (`TCAB_BACKEND_BIND`), databa
 connection URL (`TCAB_BACKEND_DATABASE_URL`), definition store
 (`TCAB_BACKEND_STORE`), the repository checkout it ingests from
 (`TCAB_BACKEND_CHECKOUT`), the snapshot coalescing window
-(`TCAB_SNAPSHOT_COALESCE_MS`), and its R2 (`TCAB_R2_*`) and deploy-hook
+(`TCAB_SNAPSHOT_COALESCE_MS`), whether experimental (still-being-iterated-on) test
+cases are offered to the UI (`TCAB_BACKEND_ALLOW_EXPERIMENTAL`, truthy to enable;
+default hidden), and its R2 (`TCAB_R2_*`) and deploy-hook
 (`TCAB_SITE_DEPLOY_HOOK_URL`) credentials, and the
 [auth service](/components/auth/overview/) it verifies bearer tokens against
 (`TCAB_BACKEND_AUTH_URL`, default `http://127.0.0.1:8789`). The backend binds to

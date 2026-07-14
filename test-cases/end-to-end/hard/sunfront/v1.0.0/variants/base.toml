@@ -1,0 +1,14 @@
+# The default (and only) Sunfront variant: the standard Skirmish match on the one
+# fixed front. Listed first in the case manifest's `variants`, so it is the
+# default. It supplies the `title` view's menu mockup; `gameplay` and `game-over`
+# are common. Every path here resolves against the version folder, exactly like
+# the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard Skirmish match: one human against the AI on the fixed front."
+reference = [{ view = "title", path = "reference/menu-base.html" }]
+
+# The authored, correct reference implementation for this variant (a Vite + three.js
+# build under reference-impl/base). Resolves against the version folder like every
+# other path here.
+reference_implementation = "reference-impl/base"

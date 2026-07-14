@@ -37,6 +37,7 @@ Read the doc first; the code location is where the implementation lives.
 | Site (public static gallery) | [`components/site/overview.md`](apps/docs/src/content/docs/components/site/overview.md) | `apps/site/` |
 | UI library (`@test-cabinet/ui`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `packages/ui/` |
 | Voxel runtime (`@test-cabinet/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `packages/voxel-runtime/` |
+| Particle runtime (`@test-cabinet/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/` |
 | Docs site | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md) | `apps/docs/` |
 
 **Naming gotcha:** the docs call the desktop app the **Tauri app** and the
@@ -90,7 +91,7 @@ Task-oriented walkthroughs:
   author a test case, create a variant, publish a run, review a run.
 - Longer guides:
   [`guides/`](apps/docs/src/content/docs/guides/) — including
-  [first-time setup](apps/docs/src/content/docs/guides/first-time-setup.md) for a
+  [first-time setup](apps/docs/src/content/docs/guides/setup/first-time-setup.md) for a
   machine that will actually run test cases (container runtime, run-container
   image, credentials).
 
@@ -111,20 +112,27 @@ Task-oriented walkthroughs:
 
 ## Definitions & assets
 
-- **Test cases:** [`test-cases/`](test-cases/) — each case is versioned
-  (e.g. `test-cases/carom/v1.0.0/`) with its `test-case.toml` manifest, specs,
-  prompt, and reference mockups. The test types and their manifest formats are
+- **Test cases:** [`test-cases/`](test-cases/) — organized by two grouping
+  levels, the test **type** and **difficulty**, then the case slug and version
+  (e.g. `test-cases/end-to-end/easy/carom/v1.0.0/`) with its `test-case.toml`
+  manifest, specs, prompt, and reference mockups. The grouping directories are
+  organizational only; a case's identity, type, and difficulty come from its
+  manifest. The test types and their manifest formats are
   documented under
   [`testing/`](apps/docs/src/content/docs/testing/) — today's cases are the
   [end-to-end](apps/docs/src/content/docs/testing/end-to-end/) type, whose
   manifest format is at
   [`testing/end-to-end/manifests.md`](apps/docs/src/content/docs/testing/end-to-end/manifests.md).
-- **Models:** [`models/`](models/) — one `<model>.toml` + `<model>.md` per
-  model. Add or refresh with `scripts/add-model.mjs` + `tcab catalog`; the steps
-  are documented in
-  [`quickstarts/add-or-update-a-model.md`](apps/docs/src/content/docs/quickstarts/add-or-update-a-model.md)
+- **Models:** the model catalog is **owned by the backend** (SeaORM `model` /
+  `model_alias` / `model_price` tables), served at `GET /models`, and baked into
+  the public R2 snapshot as `models.json`. There is no `models/` directory. Any
+  model with a recorded run appears automatically (derived); curated models
+  (display name, aliases, provider, svgl logo, description, OpenRouter slug) are
+  edited **in the app** (web console / desktop Models section, requires sign-in) —
+  no `tcab catalog`, `scripts/add-model.mjs`, or recompile. The steps are in
+  [`quickstarts/add-or-update-a-model.md`](apps/docs/src/content/docs/quickstarts/devops/add-or-update-a-model.md)
   (and the fuller
-  [`guides/adding-or-updating-a-model.md`](apps/docs/src/content/docs/guides/adding-or-updating-a-model.md)).
+  [`guides/adding-or-updating-a-model.md`](apps/docs/src/content/docs/guides/devops/adding-or-updating-a-model.md)).
 - **Harnesses:** [`harnesses/`](harnesses/) — one `harness.toml` per harness
   (`harnesses/<slug>/`) declaring its name, CLI binary, and the command that
   installs the CLI into the run container at run time. See

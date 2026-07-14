@@ -1,0 +1,23 @@
+{
+  "name": "@test-cabinet/voxel-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Vendored, prebuilt copy of @test-cabinet/voxel-runtime — the framework-agnostic voxel rig posing/clip playback core plus its three.js binding — so this reference implementation installs and builds with a plain `npm ci` outside the monorepo. Byte-for-byte the library's compiled output (the type-only `@test-cabinet/run-record` rig-contract import, erased at build, is inlined in contract.d.ts); the game loads each entity's rig.json + meshes/*.glb through its public API (`parseGlb`, `poseRig`, `sampleAnimation`) and `/three` binding (`buildPartGeometry`, `VoxelRig`) exactly as a real run does.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./three": {
+      "types": "./dist/three/index.d.ts",
+      "default": "./dist/three/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
+}

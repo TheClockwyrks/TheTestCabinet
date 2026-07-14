@@ -87,7 +87,10 @@ fn resolves_carom_from_its_manifest() {
         .expect("resolve latest carom by folder name");
     assert_eq!(version.slug, "pong");
     // The prompt template and the decomposed common specs are resolved from the
-    // manifest. Every variant seeds the overview spec and the standard mode.
+    // manifest. Every variant seeds the overview spec and the common modes spec;
+    // the obstacle and ball rules that differ per variant are seeded from each
+    // variant's own file (to the stable `specs/obstacles.md` and `specs/balls.md`
+    // paths the common specs reference).
     assert!(version.prompt_path.ends_with("prompt.hbs"));
     assert!(
         version
@@ -100,8 +103,8 @@ fn resolves_carom_from_its_manifest() {
         version
             .common_specs
             .iter()
-            .any(|spec| spec.dest == Path::new("specs/modes/standard.md")),
-        "the standard mode should be common to every variant"
+            .any(|spec| spec.dest == Path::new("specs/modes.md")),
+        "the modes spec should be common to every variant"
     );
     // Site-facing metadata is surfaced from the manifest. Carom declares all of
     // it, including a site-facing description that is resolved but never seeded.
@@ -127,17 +130,20 @@ fn resolves_carom_from_its_manifest() {
             .is_some_and(|s| s.contains("paddle duel")),
         "the inline site-facing summary should be surfaced from the manifest"
     );
-    // Four variants are offered: base (standard only), frenzy, multi, and gyre.
+    // Three variants are offered: base (fixed obstacles, one ball), multi (three
+    // independent balls), and gyre (swaying, rotating obstacles).
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
-    assert_eq!(variant_slugs, ["base", "frenzy", "multi", "gyre"]);
-    // The frenzy variant adds the frenzy mode spec on top of the common specs.
-    let frenzy = version.variant("frenzy").expect("frenzy variant");
+    assert_eq!(variant_slugs, ["base", "multi", "gyre"]);
+    // The multi variant seeds its own ball rules on top of the common specs,
+    // replacing the single ball at the stable `specs/balls.md` path the common
+    // specs reference.
+    let multi = version.variant("multi").expect("multi variant");
     assert!(
-        frenzy
+        multi
             .specs
             .iter()
-            .any(|spec| spec.dest == Path::new("specs/modes/frenzy.md")),
-        "frenzy should add the frenzy mode spec"
+            .any(|spec| spec.dest == Path::new("specs/balls.md")),
+        "multi should seed its ball rules to specs/balls.md"
     );
     // The `gameplay` and `game-over` views are common to every variant; the
     // `title` view is variant-specific because the main menu differs per variant,
@@ -150,24 +156,26 @@ fn resolves_carom_from_its_manifest() {
         .collect();
     assert_eq!(common_views, ["gameplay", "game-over"]);
     assert!(
-        frenzy.references.iter().any(|v| v.view == "title"),
-        "frenzy should declare its own title reference"
+        multi.references.iter().any(|v| v.view == "title"),
+        "multi should declare its own title reference"
     );
     // The full reference set for a variant is the common references plus its own,
     // so every variant still offers the three views — with its variant-specific
     // title menu.
-    let frenzy_views: Vec<String> = version
-        .references_for(frenzy)
+    let multi_views: Vec<String> = version
+        .references_for(multi)
         .iter()
         .map(|v| v.view.clone())
         .collect();
-    assert_eq!(frenzy_views, ["gameplay", "game-over", "title"]);
-    // Validation is opt-in: the manifest declares a single title check, with an
-    // explicit display name. Its `title` baseline resolves per variant.
-    assert_eq!(version.checks.len(), 1);
-    assert_eq!(version.checks[0].view, "title");
-    assert_eq!(version.checks[0].name, "Title Screen");
-    assert_eq!(version.checks[0].reference_view, "title");
+    assert_eq!(multi_views, ["gameplay", "game-over", "title"]);
+    // Validation is opt-in, and this version declares no reference-similarity
+    // checks: the reference screenshots are seeded as illustrative examples of the
+    // screens rather than layouts to reproduce, so every screen is left to the
+    // model's design and reviewed by a human rather than scored against a baseline.
+    assert!(
+        version.checks.is_empty(),
+        "carom declares no opt-in reference-similarity checks"
+    );
 }
 
 #[test]
@@ -259,6 +267,109 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
     assert!(seeded.path.join(".git").is_dir());
 }
 
+#[test]
+fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
+    // A demo case that declares `packages` and ships a workspace `package.json`
+    // depending on the runtime library via the in-repo relative `file:` path the
+    // seeder vendors it to, plus a `.gitignore` that ignores `dist/` (as every
+    // real case does for its own build output).
+    let manifest = format!(
+        "variants = [\"variants/base.toml\"]\nworkspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n{DEMO_HEAD}"
+    );
+    let (dir, catalog) = temp_catalog(&manifest, &[("base.toml", VARIANT_BASE_TITLE)]);
+    let workspace = dir
+        .path()
+        .join("end-to-end/easy/demo/v1.0.0/workspaces/base");
+    std::fs::create_dir_all(&workspace).expect("workspace dir");
+    std::fs::write(
+        workspace.join("package.json"),
+        r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:./.tcab/packages/@test-cabinet/particle-runtime"}}"#,
+    )
+    .expect("workspace package.json");
+    std::fs::write(workspace.join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
+
+    // A fake host package store: particle-runtime (with a `dist/`) depending on
+    // run-record via the relative sibling `file:` the staging script writes, so the
+    // vendoring closure must follow the edge and copy run-record too.
+    let store = tempfile::tempdir().expect("store dir");
+    let pr = store.path().join("@test-cabinet/particle-runtime");
+    let rr = store.path().join("@test-cabinet/run-record");
+    std::fs::create_dir_all(pr.join("dist")).expect("pr dist");
+    std::fs::create_dir_all(rr.join("dist")).expect("rr dist");
+    std::fs::write(
+        pr.join("package.json"),
+        r#"{"name":"@test-cabinet/particle-runtime","version":"0.0.0","dependencies":{"@test-cabinet/run-record":"file:../run-record"}}"#,
+    )
+    .expect("pr manifest");
+    std::fs::write(pr.join("dist/index.js"), "// runtime").expect("pr dist file");
+    std::fs::write(
+        rr.join("package.json"),
+        r#"{"name":"@test-cabinet/run-record","version":"0.0.0"}"#,
+    )
+    .expect("rr manifest");
+    std::fs::write(rr.join("dist/index.js"), "// types").expect("rr dist file");
+
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve demo");
+    let base = version.variant("base").expect("base variant");
+    let specs = version.seeded_specs(base);
+    let seed_base = tempfile::tempdir().expect("seed base");
+    let seeder = FsRepoSeeder::with_package_store(seed_base.path(), store.path());
+    let seeded = seeder
+        .seed(&SeedRequest {
+            test_case: &version,
+            variant: base,
+            specs: &specs,
+            workspace: version.workspace_for(base),
+            references: &[],
+            live_preview: None,
+        })
+        .expect("seed demo");
+
+    // The declared package and its transitive `@test-cabinet` closure are vendored
+    // into the repo at the path the case's `package.json` depends on.
+    let vendor = seeded.path.join(".tcab/packages/@test-cabinet");
+    assert!(
+        vendor.join("particle-runtime/package.json").is_file(),
+        "the declared package is vendored"
+    );
+    assert!(
+        vendor.join("run-record/package.json").is_file(),
+        "the transitive @test-cabinet dependency is vendored too"
+    );
+    let vendored_dist = vendor.join("particle-runtime/dist/index.js");
+    assert!(vendored_dist.is_file(), "the package's dist is vendored");
+
+    // The workspace `package.json` is seeded verbatim — the seeder never rewrites it.
+    let pkg = std::fs::read_to_string(seeded.path.join("package.json")).expect("read package.json");
+    assert!(pkg.contains("file:./.tcab/packages/@test-cabinet/particle-runtime"));
+
+    // The vendored tree is in the initial commit, dist included: the case's
+    // `.gitignore` ignores `dist/`, so this only holds if seeding force-adds
+    // `.tcab/`. Without it the published repo would be missing the package code.
+    let tracked = git_tracked_files(&seeded.path);
+    assert!(
+        tracked.contains(".tcab/packages/@test-cabinet/particle-runtime/dist/index.js"),
+        "the vendored dist must be committed despite the `dist/` gitignore rule; tracked:\n{tracked}"
+    );
+    assert!(
+        tracked.contains(".tcab/packages/@test-cabinet/run-record/package.json"),
+        "the whole vendored closure is committed"
+    );
+}
+
+/// The newline-joined list of files git tracks in `repo` (its `git ls-files`), for
+/// asserting what the seeder's initial commit captured.
+fn git_tracked_files(repo: &Path) -> String {
+    let output = std::process::Command::new("git")
+        .args(["-C"])
+        .arg(repo)
+        .args(["ls-files"])
+        .output()
+        .expect("run git ls-files");
+    assert!(output.status.success(), "git ls-files failed");
+    String::from_utf8(output.stdout).expect("utf8 ls-files")
+}
+
 /// Materialize a throwaway catalog holding a single `demo@v1.0.0` whose manifest
 /// is `manifest`, alongside the handful of source files the manifests below
 /// reference (a prompt, one spec, and three reference mockups). Each entry in
@@ -270,7 +381,14 @@ fn temp_catalog(
     variant_files: &[(&str, &str)],
 ) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
-    let version = dir.path().join("demo").join("v1.0.0");
+    // The catalog groups cases as `<type>/<difficulty>/<slug>/<version>/`; the demo
+    // manifest is a default (end-to-end) `easy` case.
+    let version = dir
+        .path()
+        .join("end-to-end")
+        .join("easy")
+        .join("demo")
+        .join("v1.0.0");
     std::fs::create_dir_all(version.join("reference")).expect("create version dir");
     std::fs::create_dir_all(version.join("variants")).expect("create variants dir");
     std::fs::write(version.join("test-case.toml"), manifest).expect("write manifest");
@@ -702,7 +820,7 @@ fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
             "four-directions",
             &["walk-down", "walk-up", "walk-left", "walk-right"],
         ),
-        ("lanternjaw", "lure-bob-tell", &["lure-bob"]),
+        ("lanternjaw", "jellyfish-disguise", &["disguise"]),
         (
             "glimmerfin",
             "four-directions",
@@ -713,7 +831,7 @@ fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
             "chomp",
             &["graze-down", "graze-up", "graze-left", "graze-right"],
         ),
-        ("sonar-pulse", "expanding-wavefront", &["pulse"]),
+        ("drifter", "sway-loop", &["drift"]),
         (
             "flare-bloom",
             "charge-to-bloom",

@@ -1,0 +1,151 @@
+slug = "sunfront-scarab-hatchery"
+experimental = true
+name = "Sunfront Scarab Hatchery"
+difficulty = "medium"
+tags = ["voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Scarab Hatchery: an opaque-voxel squat \
+hive-mound whose central hatch iris slowly turns and a side vent bobs, each a \
+looping decorative auto-play animation the model authors, built and rigged one \
+recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt and rig the SAME hatchery at three sizes — `base` (this
+# case's volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 60
+height = 40
+depth = 60
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each part
+# the model defines), the authoritative output each part's regenerated model is
+# rebuilt from. The composited rig rides in `rig.json`, so it is not named here.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton it needs and is judged on whether it works out the right pieces,
+# attaches them where they belong, and animates them convincingly. What is fixed is
+# the set of NAMED ANIMATIONS the model must author (a game plays them by name) and
+# whether each is a game-triggered playable or a self-playing idle. The model authors
+# each animation's F-curves at run time with `voxel-anim`
+# `define-animation`/`add-keyframe`; `rig.json` is pre-seeded with these declarations
+# so the contract exists from the first operation.
+[model]
+
+# `hatch_turn` — the central iris hatch's sweep. A self-playing idle that turns the
+# hatch crowning the mound continuously about its vertical axis, on its own, with no
+# caller — a slowly rotating iris.
+[[model.animation]]
+name = "hatch_turn"
+loop = true
+auto_play = true
+
+# `vent_bob` — the side vent's bob. A self-playing idle that lifts the exhaust vent
+# up off its seat and settles it back, continuously, on its own.
+[[model.animation]]
+name = "vent_bob"
+loop = true
+auto_play = true
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected
+# size. The seeded dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Scarab \
+Hatchery and animates correctly — a squat, wide hive-mound clustered with hatch \
+cells whose central iris hatch slowly turns and whose side vent bobs, each a \
+looping decorative auto-play animation the model authors, while the base stays put, \
+with a clear solar-amber energy accent and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-hatchery"
+title = "Reads as a hive-mound hatchery"
+text = """
+From more than one angle the model reads unmistakably as a squat, wide Duneforged \
+hatchery: a low domed hive-mound of brass-and-sandstone masonry clustered with \
+hatch cells, a central iris hatch crowning it, and a vent set into its side. It is \
+a building, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Hatch turns and vent bobs on their own"
+text = """
+The animated elements cycle on their own via their self-playing animations. Playing \
+`hatch_turn`, the central iris hatch crowning the mound rotates smoothly and \
+continuously through a full turn about its vertical axis, like a slowly turning iris. \
+Playing `vent_bob`, the side vent rises up off its seat and settles back, looping \
+continuously. Both read as steady, weight-carrying motion — eased, not a flat linear \
+slide — with no geometry tearing away from its mount across the cycle."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "base-fixed"
+title = "The mound stays put; only the moving parts move"
+text = """
+The hive-mound body is the fixed base of the building: it stays put, never carried \
+along by the turning hatch or the bobbing vent. When `hatch_turn` plays the hatch \
+turns while the rest of the mound holds; when `vent_bob` plays the vent bobs while \
+the rest of the mound holds. Nothing but the moving elements moves."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Hatch and vent stay attached"
+text = """
+The moving elements stay attached to the mound across their whole range of motion: \
+the iris hatch meets the crown of the mound where it is mounted, and the vent meets \
+the mound's side, with no gap and never floating free or detaching as the hatch turns \
+under `hatch_turn` and the vent bobs under `vent_bob`."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze masonry, \
+sandstone panels, iron mechanisms, and the solar-amber energy accent) with a clear \
+amber glow in the hatch cells, no out-of-palette colors, and no stray voxels \
+drifting off the parts."""
+weight = 1
+domain = "fidelity"

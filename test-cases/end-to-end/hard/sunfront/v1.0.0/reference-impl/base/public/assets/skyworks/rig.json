@@ -1,0 +1,146 @@
+{
+  "parts": [
+    {
+      "name": "pad",
+      "pivot": [
+        35,
+        0,
+        35
+      ]
+    },
+    {
+      "name": "mast",
+      "parent": "pad",
+      "pivot": [
+        35,
+        15,
+        35
+      ]
+    },
+    {
+      "name": "turbine",
+      "parent": "mast",
+      "pivot": [
+        35,
+        47,
+        35
+      ]
+    },
+    {
+      "name": "door",
+      "parent": "pad",
+      "pivot": [
+        35,
+        21,
+        55
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "turbine_yaw",
+      "part": "turbine",
+      "kind": "rotation",
+      "axis": "y",
+      "pivot": [
+        35,
+        47,
+        35
+      ],
+      "min": -6.5,
+      "max": 6.5,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "door_lift",
+      "part": "door",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        35,
+        21,
+        55
+      ],
+      "min": 0.0,
+      "max": 14.0,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "turbine_spin",
+      "periodMs": 1600,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "turbine_yaw",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 533,
+              "value": 2.0944,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1067,
+              "value": 4.1888,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1600,
+              "value": 6.2832,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "launch_door_raise",
+      "periodMs": 6000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "door_lift",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 1000,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2500,
+              "value": 14.0,
+              "interp": "constant"
+            },
+            {
+              "tMs": 4500,
+              "value": 14.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 6000,
+              "value": 0.0,
+              "interp": "constant"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

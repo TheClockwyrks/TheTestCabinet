@@ -1,0 +1,161 @@
+slug = "sunfront-sentinel-foundry"
+experimental = true
+name = "Sunfront Sentinel Foundry"
+difficulty = "medium"
+tags = ["voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Sentinel Foundry: an opaque-voxel casting works — a wide, \
+open-fronted hall where a gantry-slung crucible tips and pours glowing molten metal \
+into a casting bed while great bellows breathe beside it, each a self-playing animation \
+while the hall stays put — painted cell by cell with the `voxel-anim` tool, one recorded \
+operation at a time. It melts and pours metal; it does not hammer or stamp. The model \
+invents whatever parts and joints it needs; the fixed contract is two self-playing \
+animations it must author — a `crucible_pour` and a `bellows_breathe` — the reviewer can \
+play back."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME foundry at three sizes — `base` (this case's
+# volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 72
+height = 56
+depth = 72
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton it needs and is judged on whether it works out the right pieces,
+# attaches them where they belong, and animates them convincingly. What is fixed is
+# the set of NAMED ANIMATIONS the model must author (a game plays them by name) and
+# whether each is a game-triggered playable or a self-playing idle. The model authors
+# each animation's F-curves at run time with `voxel-anim
+# define-animation`/`add-keyframe`; `rig.json` is pre-seeded with these declarations
+# so the contract exists from the first operation.
+[model]
+
+# `crucible_pour` — the CASTING POUR. A self-playing idle that tips the crucible forward
+# on its trunnions, pours molten metal into the casting bed, holds, and rights back
+# level, on its own, so the foundry runs without any caller.
+[[model.animation]]
+name = "crucible_pour"
+loop = true
+auto_play = true
+
+# `bellows_breathe` — the BELLOWS. A self-playing idle that squeezes the great bellows
+# shut and draws them back open in a slow breath, on its own, so the foundry runs without
+# any caller.
+[[model.animation]]
+name = "bellows_breathe"
+loop = true
+auto_play = true
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected size
+# (`{{voxel.width}}`×`{{voxel.height}}`×`{{voxel.depth}}`). The seeded dest drops
+# the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Sentinel \
+Foundry and runs correctly — a wide, open-fronted casting hall whose gantry crucible \
+tips and pours molten metal into a casting bed while its flank bellows breathe on \
+their own self-playing animations and the hall stays put, with a clear molten-amber \
+energy accent and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-casting-hall"
+title = "Reads as a casting foundry"
+text = """
+From more than one angle the model reads unmistakably as a Duneforged casting works: \
+a wide, low, open-fronted masonry hall with a gantry-slung crucible brimming with \
+molten metal over a casting bed, and great bellows on its flank. It reads as a \
+foundry that melts and pours metal — not a tall stamping tower, and not an abstract \
+stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Crucible pours and bellows breathe on their own"
+text = """
+The two moving elements cycle on their own, continuously, while the hall stands \
+still: playing `crucible_pour` tips the crucible forward on its trunnions, pours a \
+stream of molten metal down into the casting bed, holds, and rights it back level, \
+and playing `bellows_breathe` squeezes the great bellows shut and draws them back \
+open. The motion carries weight — the full crucible eases through its tip rather than \
+snapping, and the bellows breathe at a steady rate that loops seamlessly. Across each \
+cycle no part of the crucible or the bellows tears away or clips into the hall; each \
+moves as one solid piece about a single clean axis."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "base-fixed"
+title = "Hall stays put; only the moving parts move"
+text = """
+The masonry casting hall and its foundation are the fixed base of the works: they \
+stay put, never carried along by the crucible or the bellows. When `crucible_pour` \
+plays, the crucible tips and pours while the hall holds; when `bellows_breathe` \
+plays, the bellows work while the hall holds. Nothing but the two moving elements \
+moves."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Crucible and bellows stay attached"
+text = """
+Each moving element stays attached to the hall across its full range of motion: the \
+crucible stays hung on its gantry trunnions as it tips and rights, and the bellows \
+stay seated on the flank at their mouth as they squeeze and draw, with no gap and \
+never floating free or detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze masonry, sandstone \
+panels, iron mechanisms, and the solar-amber and solar-hot molten accents) with a \
+clear, glowing molten amber at the crucible, pour stream, and casting bed, no \
+out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

@@ -4,6 +4,11 @@
       "description": "The state a driver reports for a job via `POST /jobs/{id}/status`.",
       "oneOf": [
         {
+          "const": "starting",
+          "description": "The driver pod has come up and is running the pre-run setup (connecting to\nthe container runtime, materializing the served definition) — the run is not\nyet executing the harness, but it will as soon as setup finishes.",
+          "type": "string"
+        },
+        {
           "const": "running",
           "description": "Execution has begun.",
           "type": "string"

@@ -29,6 +29,7 @@ impl BackendClient for StubBackend {
         Ok(TestCaseVersion {
             slug: slug.to_string(),
             version: version.to_string(),
+            experimental: false,
             name: "Pong".to_string(),
             difficulty: "easy".to_string(),
             tags: vec![],
@@ -63,6 +64,7 @@ impl BackendClient for StubBackend {
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
+                kind: Default::default(),
             }],
             common_workspace: vec![WorkspaceFile {
                 source_path: std::path::PathBuf::from("workspaces/base/package.json"),
@@ -82,6 +84,7 @@ impl BackendClient for StubBackend {
                 review_items: vec![],
                 domains: vec![],
                 voxel: None,
+                reference_impl: None,
             }],
             common_references: vec![ReferenceView {
                 view: "title".to_string(),
@@ -631,4 +634,41 @@ async fn resolve_version_carries_voxel_volume_and_rig() {
     assert_eq!(model.parts.len(), 2);
     assert_eq!(model.joints.len(), 1);
     assert_eq!(model.joints[0].name, "turret_yaw");
+}
+
+#[tokio::test]
+async fn resolve_version_decodes_object_shaped_packages() {
+    // The backend serves each shipped package as a `{ name, description }` object
+    // (the description is gallery-only). If the client decodes `packages` as bare
+    // strings, the whole body fails with "error decoding response body" and every
+    // case that declares `packages` — all full-stack cases do — refuses to resolve.
+    // Keep the name, drop the description.
+    let body = serde_json::json!({
+        "slug": "junction",
+        "version": "v1.0.0",
+        "name": "Junction",
+        "difficulty": "hard",
+        "tags": ["simulation"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 3600,
+        "testType": "full-stack",
+        "packages": [
+            { "name": "@test-cabinet/particle-runtime", "description": "produced-effect runtime" }
+        ],
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("junction", "v1.0.0")
+        .await
+        .expect("resolve version");
+
+    assert_eq!(version.packages, vec!["@test-cabinet/particle-runtime"]);
 }

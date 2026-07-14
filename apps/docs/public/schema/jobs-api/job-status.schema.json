@@ -9,8 +9,18 @@
           "type": "string"
         },
         {
+          "const": "pending",
+          "description": "Enqueued, but intentionally held back: the run's harness is already at its\nconfigured maximum parallelism, so the backend will not hand it to a\ndispatcher until an in-flight run of the same harness finishes. Distinct from\n`queued` (which is free to be claimed the moment a dispatcher has capacity) so\nan operator can see a run is deliberately waiting rather than merely next in\nline.",
+          "type": "string"
+        },
+        {
           "const": "dispatched",
           "description": "Claimed by the dispatcher; the driver Job is being created.",
+          "type": "string"
+        },
+        {
+          "const": "starting",
+          "description": "The driver pod is up and running the pre-run setup (connecting to the\ncontainer runtime, materializing the definition) — not yet executing the\nharness, but it will as soon as setup finishes.",
           "type": "string"
         },
         {

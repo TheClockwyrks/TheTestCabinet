@@ -1,0 +1,375 @@
+slug = "valence"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Valence"
+
+# Test type. Valence is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. It is NOT the older two-run pattern where a
+# separate asset-gen run makes an asset a later game merely consumes; here one model
+# both produces the art/effects/audio and builds the game around it. The `full-stack`
+# type schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
+# exactly six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
+# with one of them (`specs/assets.md` is the production contract). A root identity
+# field, so it sits above the first table.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Valence is
+# medium: it asks for a real-time tower-defense simulation — matter flowing along a chosen map's
+# paths (an easy single path, a medium branching fork, or a hard set of multiple separate
+# paths, in curved or straight/right-angle styles), free Bloons-style tower placement, a hit-point / damage-type
+# (energy, kinetic, nuclear) / stackable-trait (bonded, heavy, inert) model with seven
+# general-purpose towers each choosing one of two upgrade branches, detection of camo-like
+# inert matter from several sources, a live economy of energy/interest/integrity, and an
+# escalating round campaign with a fragmenting boss — AND, on top of that, for the model to
+# author every sprite, animation, particle effect, and sound the game plays. The
+# interacting simulation plus a full asset-production pass make this a demanding
+# medium case.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["tower-defense", "strategy", "2d", "chemistry"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A chemistry-themed tower defense: pick a map — a single path, a branching fork of \
+lanes, or multiple separate paths — and freely place towers beside its conduits to \
+break unstable matter down before it reaches the collector — chip bonded clusters \
+open, crack energy-immune heavies with kinetic or nuclear damage, and detect \
+camouflaged inert matter — with seven general-purpose towers and branching upgrades, \
+while producing every sprite, effect, and sound with the on-PATH asset tools."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT seeded
+# into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder),
+# recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run (with
+# the seeded specs and the selected variant) and handed to the model as the build
+# instruction. Injects absolute in-container paths via template variables. The
+# harness auto-prepends the standing full-stack asset-quality preamble to the
+# rendered prompt, so this template does NOT restate a global quality directive.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Valence is a large build — a real-time TD simulation with a multi-phase
+# decomposition model plus a full asset-production pass through six tools — so it
+# gets eight hours: comfortably more than a healthy build needs while still bounding
+# a runaway session.
+max_runtime_hours = 8
+
+# Starter workspace seeded into the root of every run before the specs. It gives the
+# model a baseline project to build on: a `package.json` that pins `playwright` as a
+# dev dependency and declares the produced-effect runtime (`packages`, below) as a
+# baked-in `file:` dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded and
+# before the harness starts. `npm install` — NOT `npm ci` — because `packages`
+# injects the `@test-cabinet/particle-runtime` `file:` dependency this build plays
+# its produced particle systems with, so the lockfile is completed at seed time; the
+# same command downloads the Playwright Chromium build (the base image ships the OS
+# libraries Chromium links against, but not the browser binary), so the model can
+# build and verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the
+# whole point of a full-stack case: the model PRODUCES the game's art, effects, and
+# audio itself, during the run, with the six binaries on the run image's `PATH` (see
+# `type` above and `specs/assets.md`). The `reference/` mockups below are
+# harness-side visual targets rendered via `[[reference]]`, not seeded game assets.
+
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# the review UI plays a produced effect with; core bakes it into the run image and
+# the seeded workspace `package.json` depends on it via its baked-in `file:` path, so
+# the build imports it (its `/canvas` binding) like any other dependency and plays
+# each produced `system.json` by simulating it live. The damage/decomposition bursts (the
+# strip spark, the bond-snap shards, the split flash, the neutralize burst, the reveal pulse)
+# and tower muzzle effects are all produced `particle-2d` systems played this way;
+# see `specs/assets.md` for the consumption contract. (A root key, so it must sit
+# above the first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order — the
+# first is the default. Each seeds the common specs plus its own campaign start,
+# seeded to the stable path `specs/mode.md` (so a variant REPLACES the start rather
+# than adding one) and supplies its own `title` menu reference (the main menu differs
+# by variant; `gameplay` and `game-over` are common):
+#   - base — the standard containment campaign.
+# This list is a root key, so it must sit above the first `[table]` header below.
+variants = [
+  "variants/base.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern; the one part that varies per
+# variant — the campaign start — is seeded to a stable path, `specs/mode.md`, by each
+# variant (see the variant files), so it is always present. The common specs
+# reference `specs/mode.md` and each other freely and never name a variant. All
+# common specs are plain Markdown, seeded verbatim. A spec's `dest` defaults to its
+# `source` (with a trailing `.hbs` stripped), so these need only name the source they
+# seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/board.md"
+
+[[spec]]
+source = "specs/matter.md"
+
+[[spec]]
+source = "specs/towers.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+# The asset-production contract: every asset the game needs, which of the six
+# on-PATH binaries produces it, where it lands in the workspace, and how it is wired
+# into the build. Seeded for every variant so the produced-asset review items and
+# this spec stay in lockstep. This is the defining spec of a full-stack case.
+[[spec]]
+source = "specs/assets.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact paths
+# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
+# entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup the harness renders to a screenshot and seeds as a visual target. The
+# `title` view is variant-specific (declared per variant) because the menu differs by
+# variant; `gameplay` and `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest` path
+# (relative to the run workspace root) the build must write a screenshot or `.webm`
+# clip to; `specs/proof.md` instructs the build to produce them at exactly these
+# paths. Validation records whether each turned up (informational). The media kind is
+# inferred from the extension: `.png` is an image, `.webm` a video (the format
+# Playwright records natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Live board"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Containment failed"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "systems"
+name = "Decomposition clip"
+dest = "proof/systems.webm"
+
+[[proof]]
+id = "pressure"
+name = "Late-round pressure clip"
+dest = "proof/pressure.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The reference
+# screenshots are seeded as illustrative examples of the screens, not layouts to
+# reproduce, so menus and screens are left to the model's design and are reviewed by
+# a human rather than scored against a baseline. The automated load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — flawless simulation cannot mask
+# crude, un-produced art, and gorgeous produced art cannot mask matter that does not
+# decompose. Domains are case-level; an individual review item rolls up to one
+# through its optional `domain`, while a general item (states, window fit) omits it.
+[[domain]]
+id = "simulation"
+name = "Reaction Systems"
+description = "The interacting real-time systems: the map select and its maps (an easy single path, a medium branching fork of lanes, a hard set of multiple separate paths — curved or straight/right-angle), matter flowing along a chosen map's paths and distributed across them, free Bloons-style tower placement (off the paths, no overlap) and automatic targeting, the hit-point / damage-type / stackable-trait model (any tower chips a bonded cluster's bond pool into a spray of atoms; only kinetic or nuclear damage cracks an energy-immune heavy; inert matter is untargetable until detected), the seven general-purpose towers with their two-branch upgrades, the catalyst reveal/excite aura and the moderator slow, the energy/interest/integrity economy, and the escalating round campaign with its fragmenting boss."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "The genuinely tool-produced assets and how the build presents them: the atom, bonded-cluster, heavy, inert, and boss matter sprites (with their shell / bond-integrity / hit-point / reveal reads), the animated orbiting-electron and boss cycles, the seven tower sprites across their tiers and branches, the damage-type-colored projectiles, the path tracks (curved and straight/right-angle), the live particle bursts, the produced sound effects and reactor music bed, and the in-code HUD, map-select previews, and build panel that read it all at a glance — including whether a player can tell at speed what each unit on screen demands (chip its bonds / kinetic-nuclear / detect it)."
+
+# Reviewer checklist items, common to every variant. The major, observable
+# requirements a reviewer must explicitly check by playing the build — the things
+# validation cannot judge and that are easy to miss. Reporter-side material: never
+# seeded into a run, so the model never sees the checklist; each restates a
+# requirement the seeded specification already states. A variant adds its own items
+# (see its variant file). Each item is worth `weight` points toward the run's score;
+# the reviewer records a pass/fail verdict for each before the run can be published.
+# The per-domain ratings stay the reviewer's call.
+
+# --- Reaction Systems -----------------------------------------------------------
+[[review_item]]
+id = "maps-and-paths"
+title = "Multiple maps with distinct path topologies"
+text = "A MAP SELECT lets the player choose among several fixed, hand-authored maps that differ in topology — at least an easy SINGLE PATH, a medium BRANCHING fork of lanes, and a hard set of MULTIPLE SEPARATE paths — and in path style (at least one map's paths are smooth curves, at least one map's are straight lines with right-angle corners). Matter enters at each inlet, is distributed across the map's path(s) so every path carries traffic and each must be defended, and leaks at a collector. Maps are chosen, not per-game random layouts, and every map plays the same rounds/economy — the topology, not the numbers, is the difficulty."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "free-placement"
+title = "Free tower placement and targeting"
+text = "Towers are placed FREELY at arbitrary board positions, Bloons-style — not snapped to a grid and not at fixed nodes — refused only when the footprint would sit on a path, overlap another tower, or fall out of bounds (or be unaffordable). Each covers the nearby path(s) within its range, and a built tower automatically fires at valid in-range matter with no manual trigger. A tower beside a shared/branch stretch reaches both lanes; one beside a single lane reaches one."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "bonds-as-health"
+title = "Bonds are extra health any tower chips"
+text = "A bonded cluster wraps its atoms in an outer bond pool that ANY damage type chips through — not a single bond-breaker tower — shedding free atoms as a spray as it depletes. Kinetic damage (the Cleaver) chews bonds fastest, but an energy or nuclear tower opens the same cluster too, just slower."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "hit-points-damage-types"
+title = "Hit points and damage types"
+text = "Every unit's electron shells are its hit points — a regular atom is one unit type carrying 1–6 electrons (its layers, Bloons-style) on two shells, up to 2 inner and 4 outer, each electron one hit point, so a bigger atom takes more hits and visibly sheds an electron as it is stripped — and a shot strips shells until the unit is neutralized and pays its energy. Damage comes in three types — energy, kinetic, nuclear — colored on the projectile; a unit's traits, not a per-tower form-lock, decide which damage reaches it."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "heavy-kinetic-nuclear"
+title = "Heavies take kinetic or nuclear only"
+text = "A heavy is immune to energy damage; only kinetic or nuclear cracks it — so several towers can (the Cleaver, the Reactor, or a Beam's Disruptor branch), not one — and, being a radioactive isotope, it decays as it is worn down, shedding alpha (6-electron) and beta (2-electron) atoms and transmuting into lighter isotopes until it reaches a stable nucleus. A board with no kinetic and no nuclear damage cannot stop the heavies and starts leaking."
+weight = 1
+domain = "simulation"
+proof = "systems"
+
+[[review_item]]
+id = "detection-and-slow"
+title = "Detection from several sources, and the slow"
+text = "Inert matter is untargetable until a DETECTOR reveals it, and detection comes from several sources — a Catalyst aura, a Reactor's Fallout zone, an Ionizer's Array branch, or a Beam natively — not one tower. A Moderator slows matter for pacing (heavies resist, the boss is immune). Traits stack late, so a cloaked heavy needs both detection and kinetic/nuclear."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "branch-upgrades"
+title = "Two-branch tower upgrades"
+text = "Each of the seven towers upgrades through three tiers, and at tier III commits to one of two distinct BRANCHES (an identity choice, e.g. an Ionizer's Array with detection vs its Overcharge chain), applied on top of a generic tier-II bump. The choice is real and both branches are worth taking; a tower visibly reads as upgraded and as which branch it took."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "economy-rounds"
+title = "Economy, integrity, and the round campaign"
+text = "Neutralized matter pays energy, a cleared round pays a bonus, and banked energy earns interest between rounds; energy builds and upgrades towers. Matter that reaches the collector costs integrity, and reaching zero integrity loses the game. The game is a fixed run of escalating rounds ending in a fragmenting boss; surviving them all wins."
+weight = 1
+domain = "simulation"
+proof = "pressure"
+
+[[review_item]]
+id = "pause-in-place"
+title = "Pause in place, distinct from the pause menu"
+text = "The game can be paused IN PLACE — freezing all ticks (matter, fire, decomposition, the economy, and any build countdown) while the board stays fully interactive, with NO menu shown — via a status-bar pause control and, once a round is live, `Space`; the paused state is clearly indicated, and towers can still be placed, upgraded, and sold on the still board before resuming. This is separate from the `Esc` pause menu, which also freezes the game but covers it with the Resume/Restart/Quit menu; `Esc` opens that menu even when already paused in place."
+weight = 1
+domain = "simulation"
+proof = "gameplay"
+
+# --- Presentation & Assets ------------------------------------------------------
+[[review_item]]
+id = "produced-matter-sprites"
+title = "Produced, animated matter"
+text = "The atoms, bonded clusters, inert matter, heavy isotopes, and the boss are drawn from sprites the build produced with `draw`/`draw-sheet` — nucleus orbs with two electron shells (a regular atom carries 1–6 electrons, up to 2 inner and 4 outer), ball-and-stick clusters, a dense radioactive isotope, a sealed/shrouded inert atom — the traits reading clearly (including stacked ones like a cloaked isotope), and the atoms visibly animate (an orbiting-electron cycle that sheds an electron as the atom is stripped, plus the boss's unstable motion), not static dots or ad-hoc code-drawn circles."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-tower-sprites"
+title = "Produced tower sprites across tiers and branches"
+text = "The seven towers (Emitter, Ionizer, Cleaver, Reactor, Beam, Catalyst, Moderator), the damage-type-colored projectiles, and the path tracks, inlet, and collector are rendered from sprites the build produced with `draw`, and a tower's sprite visibly changes as it is upgraded through its tiers and reads as which tier-III branch it took — not flat rectangles or ad-hoc canvas fills."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-decomposition-fx"
+title = "Produced particle bursts"
+text = "The strip spark, the bond-snap shards, the split flash, and the neutralize burst are particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated bursts fired at the moment of each event, not a flat flash or a hand-coded effect."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "produced-audio"
+title = "Produced sound and music"
+text = "The board has real audio the build produced with the audio tools: shot/strip, bond-snap, nuclear-crack, neutralize, build, and leak-alarm sound effects (`sfx-synth` and/or `sfx-sample`) and a tense reactor music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
+weight = 1
+domain = "presentation"
+proof = "pressure"
+
+[[review_item]]
+id = "readable-at-speed"
+title = "Readable matter, HUD, and build panel"
+text = "A player can tell at a glance — even at fast speed — what each unit on screen demands (chip its bonds vs bring kinetic/nuclear vs detect it, and the stacked-trait combos), read energy, integrity, the round number and its progress, and read the shop and the selected-tower inspector (damage type, tier, branch). The HUD, build panel, placement cues, range previews, map-select previews, and menus are drawn in code; only their small icons may be produced sprites."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+# --- General (states, window fit) — no domain -----------------------------------
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu, map select (choose one of the maps, or back to the menu), how-to-play, the live board with its HUD and build panel, pause (resume/restart/quit to menu), containment-failed (defeat), and victory after the final round — each end screen showing the rounds survived, with a way to play again (on the same map) and to the menu."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the full board, the top status bar, the right build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1

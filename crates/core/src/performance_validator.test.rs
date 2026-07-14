@@ -37,6 +37,7 @@ fn base_variant() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     }
 }
 
@@ -98,6 +99,7 @@ fn performance_version(root: PathBuf, module_rel: &str, case: PerformanceCase) -
     TestCaseVersion {
         slug: "performance-factorio".to_string(),
         version: "v1.0.0".to_string(),
+        experimental: false,
         name: "Lattice".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),

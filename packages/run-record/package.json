@@ -27,6 +27,10 @@
       "types": "./dist/jobs-api.d.ts",
       "default": "./dist/jobs-api.js"
     },
+    "./review-plan": {
+      "types": "./dist/review-plan.d.ts",
+      "default": "./dist/review-plan.js"
+    },
     "./backend-api": {
       "types": "./dist/backend-api.d.ts",
       "default": "./dist/backend-api.js"

@@ -1,0 +1,103 @@
+Write the **controller** for **Foray**, a territorial maze-raiding contest between
+two ant colonies. You are not building an application — you are writing the
+*intelligence* that drives one colony's three agents, compiled to WebAssembly and
+pitted head-to-head against an opponent controller. Once compiled, your controller
+runs on its own with no model in the loop, so all of the strategy has to live in
+the code you ship.
+
+Your project root is `{{workspace}}`. A complete starter is already in place
+there; build your controller on top of it.
+
+## How it works
+
+Foray is a capture-the-flag-style game on a mirror-symmetric maze. Each agent is a
+**soldier** (defender) on its own half and a **raider** (forager) on the enemy
+half — its role flips at the border. Raiders eat the enemy's seed caches and bank
+them by carrying them home; soldiers tag enemy raiders, sending them back to their
+nest and dropping their load. Two rules make Foray its own game: a raider's speed
+**degrades with its load** (carry weight), and eating **royal jelly** grants the
+eater tag-immunity (not the inverse). Read the specs for the exact rules — your
+controller has to reason about both twists to win.
+
+Your controller is invoked **once per tick** with your colony's observation (the
+`world`) and must return the moves for your three agents (the `action`). The
+observation and the action are the only channel to the game; you never see or
+touch authoritative state.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## Your starting point
+
+The workspace at `{{workspace}}` is a small Cargo project — just the controller
+crate. Everything you build *against* and run *with* is provided by the run
+environment, not vendored here:
+
+- `controller/src/lib.rs` — the controller you fill in. It builds and runs as-is,
+  but it is the floor (a trivial legal move per agent); replace it. You write a
+  single `fn decide(world: &World) -> Action` and the `controller!` macro wires it
+  to the wasm ABI — see `specs/contract.md`.
+- The game engine (`foray-core` — the `World`/`Action` contract types, identical to
+  what the harness scores you against) and the SDK (`foray-controller-sdk` — the
+  ABI plumbing plus maze helpers: a passability grid, a BFS, and a legal-action
+  builder) are provided under `$FORAY_HOME/buildkit` and are already wired up as
+  your controller's path dependencies. You build against them; do not edit them.
+- The `foray` CLI is **preinstalled** on your `PATH` — run it as `foray simulate …`
+  to play your controller against a baseline (see `specs/baselines.md`). It hosts
+  the same engine the harness scores with, so a local win means what a scored win
+  means.
+- The three baseline controllers live under `$FORAY_HOME/references/` as a pre-built
+  `.wasm` plus readable Rust source, and the shipped board is at
+  `$FORAY_HOME/maps/mirror-32x16.toml`. The baselines are worked examples of reading
+  the `world` and returning an `action`; opponents to dismantle, not templates to
+  copy. (`$FORAY_HOME` is `/opt/foray`.)
+
+## How to build
+
+Your controller compiles to a `wasm32-unknown-unknown` **core module**:
+
+```bash
+cargo build --release --target wasm32-unknown-unknown -p controller
+```
+
+This emits `target/wasm32-unknown-unknown/release/controller.wasm` — the exact
+artifact the harness loads and scores. Keep the crate named `controller` with
+crate-type `cdylib` so that path is stable. The wasm target is already installed.
+
+## What to deliver
+
+A controller that **beats the baselines comfortably** — decisively beating
+`border-soldier`, the canonical scoring opponent, on the shipped map — and that
+plays the actual game: it balances offense and defense across its three agents tick
+by tick, times each bank against carry weight rather than over-loading, and spends
+royal jelly to run a heavy load home through a defended border. A controller ported
+straight from a published capture-the-flag strategy will over-load and ignore
+jelly's inversion, and lose; the work of this case is to play *Foray*, not generic
+CTF.
+
+Iterate locally with the preinstalled `foray` CLI: run your controller against
+`$FORAY_HOME/references/border-soldier.wasm` (and the other two, and a few seeds),
+watch the result and the replay, and refine until you win clearly. The CLI prints
+the winner, the score, the outcome, and — if a controller forfeits — *which* one
+and *why* (fuel, memory, a trap, or a contract-invalid action), so a self-inflicted
+loss is easy to diagnose. Stay inside the per-tick fuel and memory limits in
+`specs/sandbox.md` — a controller that traps, runs out of fuel, or returns an
+invalid action forfeits. When `cargo build --release --target
+wasm32-unknown-unknown -p controller` produces a `controller.wasm` that beats the
+baselines, you are done; the module is your submission.
+
+## Commit your work
+
+Your project root is a **git repository** — it was initialized before you
+started, with the starter crate in its first commit. The wasm module is your
+scored submission, but the **source you wrote is published as this run's public
+repository**, so work you leave uncommitted is not published. When your
+controller beats the baselines, commit everything: run `git add -A` then
+`git commit`, and confirm `git status` reports a clean working tree with nothing
+uncommitted or untracked. The `.gitignore` already excludes `/target/` (the
+harness rebuilds the controller from source), so a clean tree does not mean
+committing build output — but it does mean committing your `controller/` sources,
+`Cargo.toml`, and `Cargo.lock`.

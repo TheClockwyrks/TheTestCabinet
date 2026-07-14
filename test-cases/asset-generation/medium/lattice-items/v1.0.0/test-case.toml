@@ -1,0 +1,161 @@
+slug = "lattice-items"
+experimental = true
+name = "Lattice Items"
+difficulty = "medium"
+tags = ["sprite-sheet", "item"]
+summary = """
+Draw the Lattice item icon set — eight distinct factory items that ride the \
+belts (iron/copper/steel plates, iron/copper ore, stone, an iron gear wheel, and \
+an electronic circuit) — as a 16x16 sprite sheet, one item per frame, produced \
+one drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# Each frame is its own 16x16 transparent canvas (a separate file). Belt items are
+# sub-tile (roughly half a tile at 32 px/tile), so each icon gets a tiny 16x16
+# frame; fixing the frame size keeps every run comparable.
+[canvas]
+width = 16
+height = 16
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 16x16 file holding one item icon —
+# and the single showcase sequence a reviewer flips through.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+# A slow cycle through all eight icons so a reviewer can flip through the whole
+# set in order. The frames are eight distinct static items, not an animation.
+[[sheet.sequence]]
+slug = "showcase"
+name = "Item showcase"
+frames = [0, 1, 2, 3, 4, 5, 6, 7]
+fps = 3
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated sheet realizes the eight Lattice item icons — \
+each frame unmistakable as its named item at 16x16, the eight mutually \
+distinguishable, and a consistent outline, lighting, and palette discipline \
+binding the set into one cohesive icon family."""
+
+[[review_item]]
+id = "named-item-reads"
+title = "Each frame reads as its named item"
+text = """
+At 16x16 each frame is instantly recognizable as the item the brief assigns it — \
+frame 0 a flat iron plate, 1 a copper plate, 2 a steel plate, 3 a cluster of iron \
+ore, 4 copper ore, 5 a stone, 6 a toothed iron gear wheel with a central hole, 7 \
+a green electronic circuit board with traces and contacts — by silhouette and \
+color alone, with no surrounding context."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "mutually-distinguishable"
+title = "The eight are mutually distinguishable"
+text = """
+No two icons read alike: the smooth flat plates (frames 0–2) are clearly distinct \
+from the rough lumpy ores and stone (frames 3–5), and both are clearly distinct \
+from the toothed gear ring (frame 6) and the green circuit board (frame 7). The \
+three plates are told apart by tone, and the ores/stone by color, so a reviewer \
+flipping the showcase never mistakes one item for another."""
+sequences = ["showcase"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "plates-distinct"
+title = "Plates told apart by tone"
+text = """
+The three metal plates share one flat plate silhouette but are unmistakable by \
+tone alone: frame 0 a neutral blue-grey iron, frame 1 a warm orange copper, frame \
+2 a brighter, cooler steel with a faint sheen band. None is mistaken for another \
+or for an ore."""
+frames = [0, 1, 2]
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "consistent-family"
+title = "Consistent outline and lighting"
+text = """
+Every icon carries the same dark outline color and the same simple top-left \
+light direction (highlight up-left, shadow down-right), so the eight read as one \
+cohesive icon family rather than eight unrelated drawings."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-discipline"
+title = "Per-icon palette adherence"
+text = """
+Each icon uses only the colors the brief assigns it (plus the shared outline), \
+with no off-palette colors and no anti-aliased or stray-pixel fringe around the \
+silhouette — the drawing is regenerated pixel-for-pixel, so a halo of in-between \
+colors counts against it."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "centred-margin"
+title = "Centred with a small margin"
+text = """
+Each icon is centred in its own 16x16 frame with roughly a one-pixel margin — \
+filling most of the frame, neither tiny in a corner nor clipped at the edge."""
+weight = 1
+domain = "fidelity"

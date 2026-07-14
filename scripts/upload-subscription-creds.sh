@@ -40,21 +40,37 @@
 #
 # Prerequisites: `az` logged in with rights to set secrets on the vault; `jq`; the
 # harness CLIs already signed in on this machine; and the keyvault-csi component
-# already lists these objects (it does once deployments/k8s/overlays/azure-prod is
-# applied).
+# already lists these objects (it does once deployments/k8s/overlays/azure-prod or
+# azure-staging is applied).
 #
-# Usage:
-#   scripts/upload-subscription-creds.sh
+# Usage (the target environment is REQUIRED):
+#   scripts/upload-subscription-creds.sh --env prod
+#   scripts/upload-subscription-creds.sh --env staging
 #
-# Overridable via env (defaults shown):
-#   VAULT=testcabinet-clockwyrks
+# The Key Vault for the chosen env comes from scripts/lib/env.sh. The credential file
+# paths are still overridable via env (defaults shown):
 #   CODEX_AUTH=$HOME/.codex/auth.json
 #   CLAUDE_CONFIG=$HOME/.claude.json
 #   CLAUDE_CREDS=$HOME/.claude/.credentials.json
 #   CLAUDE_JSON_DROP_KEYS=projects,cachedGrowthBookFeatures,cachedExperimentFeatures
 set -euo pipefail
 
-VAULT="${VAULT:-testcabinet-clockwyrks}"
+# Resolve the target environment from a REQUIRED --env <prod|staging>. The vault name
+# comes from scripts/lib/env.sh (the single source of truth); no default, so an upload
+# can never silently hit prod.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+env=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env) env="${2:-}"; shift 2 ;;
+    --env=*) env="${1#*=}"; shift ;;
+    *) echo "unknown argument: $1 (usage: $0 --env <prod|staging>)" >&2; exit 2 ;;
+  esac
+done
+# shellcheck source=scripts/lib/env.sh
+source "${script_dir}/lib/env.sh"
+tcab_env_resolve "$env" || exit $?
+VAULT="$TCAB_VAULT"
 CODEX_AUTH="${CODEX_AUTH:-$HOME/.codex/auth.json}"
 CLAUDE_CONFIG="${CLAUDE_CONFIG:-$HOME/.claude.json}"
 CLAUDE_CREDS="${CLAUDE_CREDS:-$HOME/.claude/.credentials.json}"

@@ -1,0 +1,43 @@
+Draw the **Foray nest**, a 16x16 colony home-tile sprite, using only the drawing
+tool.
+
+The nest is a **colony's home tile** in *Foray*, a top-down ant-colony raiding
+game — the spawn mound a raider banks its seed at, seen from directly above. You
+are drawing the *nest tile*, in neutral grey so it can be recolored per colony.
+
+## How drawing works
+
+The only way to make a mark is the `draw` binary already on your `PATH`. It is
+the sole channel: you build the sprite by calling it **one operation at a time**,
+and the ordered list of operations you issue — recorded to `actions.json` — is
+the **authoritative output that is scored**, not the pixels on disk. An image
+produced any other way (writing a PNG directly, editing `canvas.png` by hand) is
+discarded and flagged; only the recorded operations count.
+
+After each call the binary re-renders the current image to `canvas.png` and
+appends the operation to `actions.json`. A blank starting canvas and an empty log
+are already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+draw fill-circle --cx 8 --cy 8 --r 7 --color "#6a6a6a"
+```
+
+Run `draw --help` to list every operation and `draw <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`canvas.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the nest sprite up operation by operation until the image in `canvas.png`
+matches the brief — a centered, roughly symmetric domed mound drawn in neutral
+grey, built up in concentric rings with a clear dark entrance hole and a bright
+accent ring at its center. When you are satisfied, stop: the recorded
+`actions.json` is your finished submission.

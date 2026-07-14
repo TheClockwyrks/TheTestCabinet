@@ -136,6 +136,46 @@ contract gap. The reviewer scores how well the skin **deforms** — an elbow tha
 without tearing, a stride that reads as a walking creature — with the 3D viewer posing
 the rig by linear-blend skinning.
 
+## Blender validation
+
+A [Blender](/testing/asset-generation/blender-binaries/) run
+(`blender-character`/`blender-prop`/`blender-mechanism`) is validated like a skinned run —
+the emitted file is authoritative and nothing is regenerated for scoring — but its file is
+a **native glTF** the model's `build.py` exported through headless Blender, not a
+tool-emitted `mesh.glb` + `rig.json`. The validator **decodes the emitted glTF**
+(`character.glb` for a character, `model.glb` for a prop/mechanism): it confirms the glTF
+is well-formed and carries at least one mesh, and then applies the per-kind contract:
+
+- a **`blender-character`** must **also** carry a **skin** (a skeleton-bound mesh — bones,
+  per-vertex weights, inverse-bind matrices), and its glTF **named animations** are
+  reconciled against the case's [required set](/testing/asset-generation/manifests/#blender-cases);
+- a **`blender-mechanism`** reconciles its named animations the same way but is **rigid**,
+  so **no skin is required** (its motion is glTF node-hierarchy clips, not skinning);
+- a **`blender-prop`** is **static** — no skin and no animations to reconcile — so only
+  the well-formed-mesh check applies.
+
+Each required animation must be present and actually animate (carry channels); a missing
+one is recorded as a zero-scored contract gap rather than a crash. The animated kinds also
+carry a **runtime-drivable interface** — the [caller
+DOFs](/testing/asset-generation/blender-binaries/#runtime-control-caller-dofs-and-node-extras)
+a game sets each frame to aim the asset (`turret_yaw`, `aim_pitch`). Each required
+`[[model.joint]]` must be exposed as a node whose `extras.tcab_joint` tag carries that name
+with the right kind and axis; a missing or mis-typed DOF is another recorded contract gap.
+(Triggering an animation *clip* — `reload`, `fire` — needs nothing beyond the named glTF
+animation; it is *driving* a DOF that the `extras` tag makes possible.) Because a Blender
+run's rig lives **in the glTF itself** — its skin and/or animations, plus the DOF tags in
+node `extras` — there is no separate `rig.json`; the browser viewer plays the glTF-native
+animations (skinning a character, posing a mechanism's parts) **and drives each caller DOF
+from a slider** (aiming it live, as a game would), or turntables a static prop.
+
+In place of the sprite kinds' cheat-divergence check, a Blender run has a **provenance
+re-run**: the validator re-runs the authored `build.py` through `tcab-blend` in a clean
+scratch copy and compares the re-exported glTF's summary (mesh/skin counts, animation
+names, and caller-DOF set) to the run's emitted glTF. A divergence — a script that does not
+reproduce the asset it exported — is **recorded, not gated** (exactly as cheat-divergence
+is), and a host without Blender simply skips it. This is what makes `build.py` a genuine,
+reproducible authoring trace rather than an unverifiable wrapper around a pre-made asset.
+
 ## Particle validation
 
 A [particle](/testing/asset-generation/particle-binaries/) run
@@ -181,9 +221,11 @@ the log. Every other kind is judged on its **emitted data** and is not policed t
 way: a [`ui`](#ui-validation) or [`material`](#material-validation) run (whose
 authoritative output is the emitted image/maps, not a replay of its operations), and
 a [voxel](#voxel-validation), [skinned](#skinned-characters),
-[particle](#particle-validation), or [audio](#audio-validation) run, are each scored
+[Blender character](#blender-validation), [particle](#particle-validation), or
+[audio](#audio-validation) run, are each scored
 on the image, geometry, maps, effect, clip, and preview they emit — whatever produced
-them.
+them. (A Blender run's [provenance re-run](#blender-validation) is a separate, recorded
+signal, analogous to this one but on the authored `build.py`.)
 
 ## Review
 

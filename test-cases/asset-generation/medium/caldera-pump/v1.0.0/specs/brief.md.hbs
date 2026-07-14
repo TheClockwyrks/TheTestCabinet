@@ -1,0 +1,136 @@
+# Caldera Pump — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera Pump, the Holdfast's walking-beam engine — a
+broad brass frame carrying a great iron rocking beam pivoted at its center, one end
+weighted by a counterweight and the other driving a piston rod into the ground, with a long
+intake snorkel reaching out to the deep water beside it and a flywheel turning on the frame
+— as a 3D voxel model with a rig a game can pose at runtime. Build it with `voxel-anim`
+(painting opaque cells one operation at a time) as a rigged model that reads unmistakably as
+this beam engine, ticks over slowly on its own, and see-saws its beam hard when it is
+pumping. There is no target model to copy.
+
+This test measures creativity and craft, not instruction-following. The brief fixes what
+the Pump is and how it must move; it deliberately does not hand you a parts list, joint
+placements, or pose angles — working out the pieces a walking-beam engine whose beam rocks
+needs, where they attach, and how they articulate is the test. Invent the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the Pump, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the Pump's front face looks toward `z = {{voxel.maxZ}}` (the front). Up is +y.
+- The Pump is a **static engine founded on the ground**: its broad frame sits flat on the
+  ground at `y = 0` and does not move. The beam swings in a vertical plane; the **intake
+  snorkel reaches out to one side** toward the water, so the model is deliberately **not
+  fully mirror-symmetric** — that reaching snorkel is intended.
+- The Pump is deliberately **broad and low-slung** — a wide frame carrying the beam across
+  it, not a tall or narrow one. It reads as brass-and-iron machinery; nothing about it should
+  read as a creature or as a building.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same volume's
+  coordinates, positioned where the part sits on the assembled Pump (the beam already
+  pivoted on the frame, the counterweight already at one end, the piston rod already at the
+  other, the snorkel already reaching out to the side).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Brass — primary plating | `#c8a24a` |
+| Brass dark — shadow, underside | `#8a6d2e` |
+| Iron — mechanisms, pipework, recesses | `#3a3836` |
+| Accent fitting — verdigris (the accent region) | `#2f7d72` |
+
+Do **not** use steel `#b8bcc2`, gold `#ffce54`, or white `#dfeaea` anywhere on the model.
+Those are the colors a game paints onto Holdfast accent fittings at run time (see *The
+accent region*); baking any of them into the model corrupts the recolor the build runs on
+every accent voxel.
+
+## What the Pump is (and what is yours to invent)
+
+Fixed — the Pump must read unmistakably as all of these:
+
+- A **broad brass frame** founded flat on the ground, carrying the beam across it. Its
+  shadowed seams and undersides are brass dark.
+- A **great iron rocking beam** pivoted at its center on the frame, swinging in a vertical
+  plane — the Pump's defining feature. It is a heavy see-sawing arm, not a small lever.
+- A **counterweight** at one end of the beam and a **piston rod** at the other end that
+  drives down into the ground, so the beam rocks the weight up as the rod drives down and
+  back (see the animations).
+- A **long intake snorkel** running from the frame out to one side, reaching toward the deep
+  water the Pump drinks from — a pipe arm clearly reaching off the frame.
+- A **flywheel** turning on the frame — a wheel that spins as the engine runs.
+
+Everything else is yours to invent — the exact silhouette and proportions of the frame and
+beam, how the counterweight and piston rod are shaped, how the snorkel reaches out, how the
+flywheel is mounted, and how you break the Pump into rig parts. Nothing here prescribes a
+shape; the test rewards a bold, characterful design that is unmistakably the Pump and
+animates convincingly.
+
+The Pump is a **structure of the Holdfast — brass-and-iron machinery, not a creature**. The
+tell is the great rocking BEAM, the turning FLYWHEEL, and the reaching SNORKEL: a static
+walking-beam engine founded on the ground, with nothing about it reading as a creature.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time by finding every voxel of one reserved color and
+repainting it. The fluid structures do not upgrade, so the Pump's accent is **always**
+painted to brass dark — but the build runs that recolor **unconditionally** on load, so the
+region must still be authored exactly right. That reserved color is the **verdigris accent**
+`#2f7d72`, and it is what makes the contract work:
+
+- Sculpt the **counterweight at the beam's end** and the **rim of the flywheel** — and only
+  those — in `#2f7d72`.
+- Use `#2f7d72` **nowhere else** on the model. Not a stray voxel, not a highlight, not a
+  seam. Every voxel of it is treated as accent fitting.
+- Each accent element must be a **clean, unbroken run** — the counterweight a solid mass, the
+  flywheel rim a continuous ring — and clearly **visible from more than one angle**.
+
+Everything else — the frame, the beam arm, the piston rod, the snorkel, the flywheel hub,
+the recesses — keeps its own color and is never repainted. Get this wrong and the Pump
+recolors wrong on load.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author the
+motion). Author each with `voxel-anim define-animation` then `add-keyframe`, choosing the
+period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion reads right — a slow tick-over at idle and a heavy, weighty stroke when pumping.
+
+- **`idle`** — ticking over, not delivering (a self-playing idle, `loop = true`,
+  `auto_play = true`). The flywheel turns slowly and the beam sits **nearly level, barely
+  rocking**, so the Pump reads as an engine on standby, not working. It cycles on its own
+  with no caller. Only the flywheel and the slight beam motion play; the frame and snorkel
+  stay fixed. It loops seamlessly.
+- **`pump`** — working (a game-triggered playable, `loop = true`). The beam **rocks through
+  its full stroke, see-sawing hard** — the counterweight rising and falling, the piston rod
+  driving down and up with real weight, and the flywheel spinning fast. This plays only while
+  the Pump is delivering water, so it must read **unmistakably as working, plainly distinct
+  from the slow idle**. The frame stays planted.
+
+You may add your own extra parts, joints, or animations on top of this (for example a
+trembling of the snorkel), but you must not drop or contradict the required `idle` and
+`pump` animations, by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on your
+`PATH`. Define your own parts with `define-part` (giving each a parent and a pivot), sculpt
+each by selecting it with `--part <name>`, set pivots with `set-pivot`, place joints with
+`define-joint`, and author the two animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
+mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation; run
+`voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png` previews)
+between calls to judge each part against this brief — that the beam pivots on the frame's
+center, the counterweight and piston rod hang at its ends, the snorkel reaches out to the
+side, the flywheel sits on the frame, and the two animations read with the right contrast
+between ticking over and working. Run `voxel-anim render` before you finish so it emits the
+per-part `.glb` geometry your result is built from — an unrendered part scores as empty
+(`voxel-anim render --component <part>` renders one part; `voxel-anim render --time <ms>
+--animation <name>` renders the model posed at that instant to check the motion).

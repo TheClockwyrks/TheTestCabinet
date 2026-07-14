@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{ASSET_QUALITY_PREAMBLE, render_prompt, render_spec};
+use super::{ASSET_QUALITY_PREAMBLE, FULL_STACK_PREAMBLE, render_prompt, render_spec};
 use crate::test_case::{BuildCommands, SpecFile, TestCaseVersion, TestType, Variant};
 
 /// A minimal resolved version pointing at `prompt_path`, with a single common
@@ -16,6 +16,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
     TestCaseVersion {
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
+        experimental: false,
         name: "Carom".to_string(),
         difficulty: "easy".to_string(),
         tags: vec![],
@@ -50,6 +51,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         common_specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/overview.md"),
             dest: PathBuf::from("specs/overview.md"),
+            kind: Default::default(),
         }],
         common_workspace: vec![],
         init: None,
@@ -73,6 +75,7 @@ fn frenzy() -> Variant {
         specs: vec![SpecFile {
             source_path: PathBuf::from("/host/specs/modes/frenzy.md"),
             dest: PathBuf::from("specs/modes/frenzy.md"),
+            kind: Default::default(),
         }],
         workspace: None,
         references: vec![],
@@ -80,6 +83,7 @@ fn frenzy() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     }
 }
 
@@ -124,6 +128,25 @@ fn asset_generation_prompts_open_with_the_quality_preamble() {
 }
 
 #[test]
+fn full_stack_prompts_open_with_the_full_stack_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    let version = version_with_prompt_typed(prompt, TestType::FullStack);
+    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+
+    // A full-stack case opens with its own standing directive — not the
+    // asset-generation one — and the authored template still renders after it.
+    assert!(
+        out.starts_with(FULL_STACK_PREAMBLE),
+        "a full-stack prompt must open with the full-stack preamble",
+    );
+    assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
+    assert!(out.contains("Build in /work."));
+}
+
+#[test]
 fn non_asset_prompts_have_no_quality_preamble() {
     let dir = tempfile::tempdir().expect("temp dir");
     let prompt = dir.path().join("prompt.hbs");
@@ -155,6 +178,7 @@ fn strict_mode_rejects_unknown_variables() {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     };
     assert!(
         render_prompt(&version, &variant).is_err(),

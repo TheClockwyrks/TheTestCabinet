@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::preview::AssetPreview;
-use test_cabinet_core::run_record::RunRecord;
+use test_cabinet_core::run_record::{RunRecord, RunState};
 // The job-API wire shapes shared with the dispatcher, driver, and the queue's
 // Rust clients live in `core` (so neither must depend on this crate) — both the
 // request shapes the driver/dispatcher speak and the server **output** shapes a
@@ -96,6 +96,9 @@ pub async fn launch(
             harness_slug: body.harness.as_str().to_string(),
             model_id: body.model.clone(),
             job_token,
+            // A console launch is the initial attempt; the backend re-enqueues any
+            // automatic retries with an incremented `attempt`.
+            attempt: 0,
             created_at: now,
         })
         .await
@@ -109,9 +112,10 @@ pub async fn launch(
     Ok((StatusCode::ACCEPTED, Json(ack)).into_response())
 }
 
-/// `GET /jobs/active` — the runs still in flight (queued, dispatched, or
-/// running), each described by the identity captured at enqueue. The console
-/// seeds its in-progress list from this so a run it is watching survives a reload.
+/// `GET /jobs/active` — the runs still in flight (queued, pending, dispatched,
+/// starting, or running), each described by the identity captured at enqueue. The
+/// console seeds its in-progress list from this so a run it is watching survives a
+/// reload — including runs held back (`pending`) or still spinning up (`starting`).
 pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobOut>>, ApiError> {
     let jobs = state.db.active_jobs().await.map_err(ApiError::from)?;
     Ok(Json(
@@ -144,8 +148,9 @@ pub async fn status(
 /// `POST /jobs/{id}/cancel` — request cancellation of an in-flight run. Requires a
 /// bearer token (the launching account, the same gate as `POST /jobs`).
 ///
-/// A job still in a non-terminal state (`queued`, `dispatched`, or `running`) is
-/// atomically moved to the terminal `canceled` state and its live stream is closed,
+/// A job still in a non-terminal state (`queued`, `pending`, `dispatched`,
+/// `starting`, or `running`) is atomically moved to the terminal `canceled` state
+/// and its live stream is closed,
 /// so every watching console's monitor reflects the end at once. The
 /// [driver](crate) polls its own job's state while it runs, so it observes the
 /// cancellation, drops the in-flight harness exec, tears its sandbox down, and
@@ -296,6 +301,7 @@ pub async fn ingest_preview(
 /// `POST /jobs/{id}/status` — the driver advances the job's state. Authenticated
 /// by the per-job token.
 ///
+/// `starting` records that the driver pod is up and running the pre-run setup;
 /// `running` records that execution began. `succeeded` carries the produced
 /// [`RunRecord`] — persisted to the `run` store **regardless of outcome**
 /// (completed, unevaluable, or a model failure that produced a record), using the
@@ -327,9 +333,23 @@ pub async fn update_status(
         return Ok(StatusCode::NO_CONTENT);
     }
 
+    // Whether this job had *already* reached a terminal state before this update.
+    // The auto-retry decision below keys off it: a retry is considered only the
+    // first time a job crosses into a terminal state, so a duplicate or late
+    // terminal report from a still-winding-down driver cannot fire a second retry.
+    let already_terminal = JobState::from_db(&job.state).is_terminal();
+
     let now = now_rfc3339()?;
 
     match update.state {
+        DriverState::Starting => {
+            state
+                .db
+                .set_job_state(&id, "starting", &now, None, None)
+                .await
+                .map_err(ApiError::from)?;
+            Ok(StatusCode::NO_CONTENT)
+        }
         DriverState::Running => {
             state
                 .db
@@ -354,6 +374,13 @@ pub async fn update_status(
                 &state,
                 Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
             );
+            // A `failed` report carries the driver's classified terminal state on the
+            // failure record it built (`Infrastructure` — our infra broke — or
+            // `TimedOut` — the model never converged). When no record could be built
+            // at all, the failure was severe enough that it is our infrastructure.
+            let terminal_state =
+                terminal_run_state(update.record.as_ref(), RunState::Infrastructure);
+            maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Succeeded => {
@@ -373,9 +400,111 @@ pub async fn update_status(
                 &state,
                 Notification::completed(&id, job_summary(&job), &record_id),
             );
+            // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
+            // model claimed done but the build won't load) — the record carries which.
+            let terminal_state = terminal_run_state(Some(record), RunState::Completed);
+            maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
             Ok(StatusCode::NO_CONTENT)
         }
     }
+}
+
+/// The default `retryCount` when a launch request omits it: one retry after a
+/// failure, so the total attempts allowed is `1 + retry_count` = 2.
+const DEFAULT_RETRY_COUNT: u32 = 1;
+
+/// The largest `retryCount` honored, clamping an absurd request so a run cannot
+/// re-enqueue itself an unbounded number of times.
+const MAX_RETRY_COUNT: u32 = 10;
+
+/// Read the terminal [`RunState`] a driver reported: the produced/partial record's
+/// own `status.state` when it built one, else `fallback` (the state that best
+/// describes a report that carried no record — `Infrastructure` for a `failed`
+/// report, `Completed` for a `succeeded` one, though a succeeded report always
+/// carries its record).
+fn terminal_run_state(record: Option<&RunRecord>, fallback: RunState) -> RunState {
+    record.map(|record| record.status.state).unwrap_or(fallback)
+}
+
+/// The `retryCount` a job's stored launch request asks for, defaulting to
+/// [`DEFAULT_RETRY_COUNT`] when absent (or the request cannot be parsed) and clamped
+/// to [`MAX_RETRY_COUNT`].
+fn retry_count_of(request_json: &str) -> u32 {
+    serde_json::from_str::<LaunchBody>(request_json)
+        .ok()
+        .and_then(|body| body.retry_count)
+        .unwrap_or(DEFAULT_RETRY_COUNT)
+        .min(MAX_RETRY_COUNT)
+}
+
+/// Whether a terminal run in `state` should be automatically retried. Only a
+/// failure the Test Cabinet (or a catastrophic build) is responsible for is
+/// retried — [`RunState::Infrastructure`] (our infra broke) or
+/// [`RunState::Catastrophic`] (the harness ran clean but the build won't load). A
+/// [`RunState::TimedOut`] or [`RunState::Completed`] outcome is the model's, not a
+/// fault to retry (and a user cancel never reaches the terminal transition here).
+fn is_retryable(state: RunState) -> bool {
+    matches!(state, RunState::Infrastructure | RunState::Catastrophic)
+}
+
+/// Auto-retry a run that just reached a terminal failure: if the outcome is
+/// [retryable](is_retryable) and the job still has attempts left, re-enqueue a fresh
+/// attempt of the same launch request.
+///
+/// The retry is a brand-new `queued` job — a fresh id and per-job token (minted like
+/// [`launch`]), the original `request_json` cloned verbatim (so it carries the same
+/// `retryCount`), and `attempt = job.attempt + 1`. The dispatcher re-claims it
+/// unchanged, so no dispatcher change is needed.
+///
+/// Two guards keep the chain finite: `already_terminal` skips a duplicate/late
+/// terminal report (the decision is made only the first time a job goes terminal),
+/// and the strictly-monotonic `attempt` bounded by the request's `retryCount` means
+/// the chain always terminates.
+async fn maybe_enqueue_retry(
+    state: &AppState,
+    job: &job::Model,
+    terminal_state: RunState,
+    already_terminal: bool,
+) -> Result<(), ApiError> {
+    if already_terminal || !is_retryable(terminal_state) {
+        return Ok(());
+    }
+    let retry_count = retry_count_of(&job.request_json);
+    let attempt = job.attempt + 1;
+    // `attempt` is 1-based over the retries: attempt 1 is the first retry, so the
+    // chain stops once it would exceed `retryCount` retries.
+    if attempt as u32 > retry_count {
+        return Ok(());
+    }
+
+    let retry_id = Uuid::new_v4().to_string();
+    let job_token = Uuid::new_v4().to_string();
+    let now = now_rfc3339()?;
+    state
+        .db
+        .enqueue_job(crate::db::NewJob {
+            id: retry_id.clone(),
+            request_json: job.request_json.clone(),
+            test_case_slug: job.test_case_slug.clone(),
+            test_case_version: job.test_case_version.clone(),
+            variant: job.variant.clone(),
+            harness_slug: job.harness_slug.clone(),
+            model_id: job.model_id.clone(),
+            job_token,
+            attempt,
+            created_at: now,
+        })
+        .await
+        .map_err(ApiError::from)?;
+    tracing::info!(
+        parent_job = %job.id,
+        retry_job = %retry_id,
+        attempt,
+        retry_count,
+        terminal_state = ?terminal_state,
+        "re-enqueued an automatic retry of a failed run"
+    );
+    Ok(())
 }
 
 /// Persist a produced run record to the `run` store, using the events the relay
@@ -395,13 +524,45 @@ async fn persist_record(
                 .map_err(|e| ApiError::internal(format!("serializing relayed events: {e}")))?,
         )
     };
+
+    // Store the model id with any trailing OpenRouter `:free`-style variant tag
+    // stripped, so a free-tagged run groups under its base model rather than
+    // splitting off a phantom entry. The run's cost is already computed against
+    // the base price by the driver, so only the identity needs normalizing here.
+    let mut record = record.clone();
+    normalize_record_model_id(&mut record);
+
     let links = record.links.clone();
     state
         .db
-        .push(record, &links, events_json.as_deref())
+        .push(&record, &links, events_json.as_deref())
         .await
         .map_err(ApiError::from)?;
+
+    // Record the model's current price on completion, off the request path: a
+    // detached best-effort task so an OpenRouter fetch never delays or fails the
+    // driver's status report.
+    let db = std::sync::Arc::clone(&state.db);
+    let prices = state.prices.clone();
+    let model_id = record.subject.model_id.clone();
+    let harness = record.subject.harness_slug;
+    tokio::spawn(async move {
+        crate::bootstrap::observe_completion(&db, &prices, &model_id, harness).await;
+    });
+
     Ok(record.id.clone())
+}
+
+/// Strip a trailing OpenRouter variant tag (for example `:free`) from a run's
+/// model id when the harness routes through OpenRouter, so the stored identity
+/// matches the base model. A no-op for provider-native harnesses and untagged ids.
+fn normalize_record_model_id(record: &mut RunRecord) {
+    let harness = record.subject.harness_slug;
+    if harness.routes_through_openrouter()
+        && let Some((base, _tag)) = record.subject.model_id.rsplit_once(':')
+    {
+        record.subject.model_id = base.to_string();
+    }
 }
 
 /// Persist the record the driver produced if it managed to produce one, returning
@@ -637,3 +798,7 @@ pub struct VerifyTokenBody {
 // The server output shapes `LaunchAck`, `JobState`, `ActiveJobOut`, and
 // `JobStatusOut` are shared with the queue's Rust clients, so they live in
 // `core::job_api` and are re-exported at the top of this module.
+
+#[cfg(test)]
+#[path = "jobs.test.rs"]
+mod tests;

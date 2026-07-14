@@ -1,0 +1,23 @@
+{
+  "name": "sunfront",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Sunfront — a real-time 3D tug-of-war where you build spawner structures that stamp out waves of solar automatons, counter the enemy through the fog, and raze their base. Runs entirely in the browser.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "test": "node test/run.mjs && node test/effects.run.mjs"
+  },
+  "dependencies": {
+    "@test-cabinet/particle-runtime": "file:vendor/particle-runtime",
+    "@test-cabinet/voxel-runtime": "file:vendor/voxel-runtime",
+    "three": "~0.182.0"
+  },
+  "devDependencies": {
+    "@types/three": "~0.182.0",
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

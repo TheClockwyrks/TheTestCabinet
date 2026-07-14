@@ -196,6 +196,40 @@ fn run_state_serializes_snake_case() {
 }
 
 #[test]
+fn family_openrouter_arm_matches_routing() {
+    // The OpenRouter *family* must contain exactly the harnesses that route
+    // through OpenRouter — the two are the same partition of the harness set, so
+    // the run form's family filter and the pricing canonicalizer never disagree.
+    for harness in HarnessSlug::ALL {
+        assert_eq!(
+            harness.family() == HarnessFamily::Openrouter,
+            harness.routes_through_openrouter(),
+            "family/routing mismatch for {harness:?}",
+        );
+    }
+    // The three native harnesses map to their own distinct families.
+    assert_eq!(HarnessSlug::Claude.family(), HarnessFamily::Claude);
+    assert_eq!(HarnessSlug::Codex.family(), HarnessFamily::Codex);
+    assert_eq!(
+        HarnessSlug::Antigravity.family(),
+        HarnessFamily::Antigravity
+    );
+}
+
+#[test]
+fn harness_family_wire_round_trips() {
+    for family in HarnessFamily::ALL {
+        assert_eq!(HarnessFamily::from_wire(family.as_str()), Some(family));
+        // Serde and `as_str` agree on the wire form.
+        assert_eq!(
+            serde_json::to_value(family).unwrap(),
+            Value::from(family.as_str()),
+        );
+    }
+    assert_eq!(HarnessFamily::from_wire("nope"), None);
+}
+
+#[test]
 fn run_state_publishability() {
     assert!(RunState::Completed.is_publishable());
     assert!(RunState::Catastrophic.is_publishable());

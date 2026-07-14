@@ -63,6 +63,24 @@ pointed at. A worker that can't be reached or doesn't report a backend is shown
 as *unverified* rather than blocked, so an unreachable health probe degrades
 gracefully instead of locking the worker out.
 
+## Bounded run loading
+
+The console does **not** drain the whole cabinet into memory. Its run and model
+list pages are **server-paged**: each page issues a
+[`GET /runs?fields=summary`](/components/backend/api/#get-runs) query in the
+numbered-offset mode (`offset` + `limit`), driving the numbered pager off the
+returned `total`. Search, the page-scoped filter (a model id on the model-runs
+page, a case slug elsewhere), and column-header sort are sent as query params, so
+filtering and sorting happen in the backend, not client-side; changing any of them
+re-queries and resets to page 0, and produced/in-progress runs the worker holds
+locally are pinned to page 0. The home page fetches a recent window, and the
+case-scoped leaderboard and metrics views fetch one bounded, case-scoped summary
+set. Only a run's **detail** page loads that run's full
+[record](/components/core/run-records/) (and its reviews),
+[lazily](/components/backend/api/#get-runsid), one run at a time. Lightweight
+[`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) cards back
+every list, card, leaderboard, and metric.
+
 ## Deployment
 
 Like the [public site](/components/site/overview/), the web console is a fully

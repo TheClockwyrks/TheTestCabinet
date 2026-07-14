@@ -1,0 +1,152 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 3200,
+  "fps": 30,
+  "loop": true,
+  "emitters": [
+    {
+      "name": "haze",
+      "shape": "disc",
+      "position": [
+        64.0,
+        46.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 26.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 9.0
+      },
+      "lifetimeMs": 2600.0,
+      "lifetimeSpread": 500.0,
+      "speed": 12.0,
+      "speedSpread": 6.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 70.0,
+      "seed": 21,
+      "forces": {
+        "gravity": -4.0,
+        "drag": 1.6,
+        "turbulence": {
+          "amplitude": 6.0,
+          "scale": 0.02
+        },
+        "wind": [
+          9.0,
+          0.0,
+          0.0
+        ]
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.7,
+          "to": 2.1
+        },
+        "opacityCurve": {
+          "interp": "ease-in-out",
+          "from": 0.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#b3a883",
+            "at": 0.0
+          },
+          {
+            "color": "#8a7d5a",
+            "at": 0.5
+          },
+          {
+            "color": "#6a5f43",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "wisp",
+      "shape": "disc",
+      "position": [
+        64.0,
+        40.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 20.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 5.0
+      },
+      "lifetimeMs": 2200.0,
+      "lifetimeSpread": 400.0,
+      "speed": 8.0,
+      "speedSpread": 4.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 120.0,
+      "seed": 34,
+      "forces": {
+        "gravity": 5.0,
+        "drag": 2.2,
+        "turbulence": {
+          "amplitude": 5.0,
+          "scale": 0.03
+        },
+        "wind": [
+          6.0,
+          0.0,
+          0.0
+        ]
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.5,
+          "to": 1.5
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.55,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#8a7d5a",
+            "at": 0.0
+          },
+          {
+            "color": "#6a5f43",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

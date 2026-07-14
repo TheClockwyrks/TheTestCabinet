@@ -1,8 +1,10 @@
 //! Test case catalog: slugs, versions, and resolution.
 //!
 //! See `docs/testing/end-to-end/overview.md`. Test cases live under a top-level `test-cases/`
-//! folder laid out as `test-cases/<slug>/<version>/`. Each version is
-//! self-contained and immutable.
+//! folder laid out as `test-cases/<type>/<difficulty>/<slug>/<version>/` — the
+//! `<type>` and `<difficulty>` levels group the catalog for browsing on disk; a
+//! case's identity, type, and difficulty are declared in its manifest, not
+//! inferred from its location. Each version is self-contained and immutable.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -75,6 +77,16 @@ struct Manifest {
     /// required and which are forbidden.
     #[serde(default, rename = "type")]
     test_type: TestType,
+    /// Whether this version is **experimental** — still being iterated on and not
+    /// yet ready to have runs published for it. Applies to every test type.
+    /// Defaults to `false` so a case is treated as ready unless it opts in.
+    /// The backend hides experimental versions from every outward-facing surface
+    /// (the console catalog and version resolution) unless the deployment opts in
+    /// via `TCAB_BACKEND_ALLOW_EXPERIMENTAL`, so on a deployment that has not
+    /// enabled them an experimental case is invisible — and thus never run or
+    /// published. Carried onto the resolved [`TestCaseVersion::experimental`].
+    #[serde(default)]
+    experimental: bool,
     /// Within an asset-generation case, whether the model draws a single sprite or
     /// a sprite sheet (a grid of animation frames). Defaults to
     /// [`AssetKind::Sprite`] so existing single-sprite manifests — none of which
@@ -181,15 +193,19 @@ struct Manifest {
     /// Asset files or directories, relative to the version folder (seeded).
     #[serde(default)]
     assets: Vec<PathBuf>,
-    /// The Test Cabinet runtime libraries this case's build should be able to
-    /// `import` — the repo's own `@test-cabinet/*` packages, named by npm name
-    /// (for example `@test-cabinet/particle-runtime`). Each is baked into the run
-    /// image and injected into the workspace `package.json` as a `file:`
-    /// dependency at seed time, so a game consumes a produced asset that needs a
-    /// runtime to play it (a particle `system.json`, a voxel rig) as an ordinary
-    /// installed dependency. End-to-end only; each name must be one of
-    /// [`SHIPPABLE_PACKAGES`], and the case must ship a `package.json` in its
-    /// workspace. `None`/empty requests no packages.
+    /// The Test Cabinet runtime libraries this case's build `import`s — the repo's
+    /// own `@test-cabinet/*` packages, named by npm name (for example
+    /// `@test-cabinet/particle-runtime`). Each is baked into the run image under
+    /// [`TCAB_PACKAGES_DIR`], and the case's own workspace `package.json` already
+    /// declares it as the matching `file:` dependency (see
+    /// [`tcab_package_file_dep`]) — the harness does not modify `package.json`, so
+    /// the shipped file must be correct for the run environment on its own. A game
+    /// then consumes a produced asset that needs a runtime to play it (a particle
+    /// `system.json`, a voxel rig) as an ordinary installed dependency. This key is
+    /// the declaration the harness validates that `package.json` against: end-to-end
+    /// only, each name one of [`SHIPPABLE_PACKAGES`], and each declared as its
+    /// `file:` dependency in the workspace `package.json`. `None`/empty requests no
+    /// packages.
     #[serde(default)]
     packages: Vec<String>,
     /// The variants this case offers, each as a path to a standalone variant
@@ -481,7 +497,10 @@ struct ManifestVoxel {
 /// at run time the model authors each required animation's motion and may add
 /// further parts, joints, and animations of its own (recorded in `rig.json`) beyond
 /// what this table requires.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+// `ManifestModel` owns `ManifestJoint`, which carries `f64` limit fields and so cannot be
+// `Eq`; the manifest structs are only ever deserialized and resolved, never compared, so
+// `PartialEq` alone suffices.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 struct ManifestModel {
     /// The required animation declarations, as repeated `[[model.animation]]`
     /// tables — the animations the model must author. A case declares **only**
@@ -490,6 +509,38 @@ struct ManifestModel {
     /// joints, and F-curve motion that realize it entirely to the model.
     #[serde(default, rename = "animation")]
     animation: Vec<ManifestAnimation>,
+    /// The required **caller joints**, as repeated `[[model.joint]]` tables — the
+    /// game-facing procedural DOFs a consuming game drives at runtime (a turret's
+    /// `turret_yaw`, a character's `aim_pitch`). Optional. Used today by the **Blender**
+    /// kinds, whose model tags the driven glTF node's `extras` with the DOF descriptor so
+    /// the interface travels in the emitted glTF itself (see
+    /// [`crate::validator`]); the validator reconciles the emitted glTF against this set.
+    /// Empty when a case fixes no procedural interface (only animations).
+    #[serde(default, rename = "joint")]
+    joint: Vec<ManifestJoint>,
+}
+
+/// A single `[[model.joint]]` entry: one **required caller DOF** the game drives at
+/// runtime. A case fixes the DOF's **identity and range** — its `name`, whether it
+/// rotates or translates, the axis, and the `min`/`max`/`rest` limits (rotation limits in
+/// **degrees**, translation limits in world units) — and the model builds a node that
+/// realizes it and tags that node's glTF `extras` so a game can find and clamp it. Unlike
+/// an animation clip (which the game plays), a caller joint is what the game *sets* each
+/// frame from its own state.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ManifestJoint {
+    /// Stable, unique name a game addresses this DOF by (e.g. `turret_yaw`).
+    name: String,
+    /// Whether the DOF rotates or translates the driven node.
+    kind: JointKindSpec,
+    /// The axis the DOF acts about (rotation) or along (translation).
+    axis: AxisSpec,
+    /// Minimum value — **degrees** for a rotation, world units for a translation.
+    min: f64,
+    /// Maximum value (same units as `min`).
+    max: f64,
+    /// The rest / default value, within `[min, max]` (same units as `min`).
+    rest: f64,
 }
 
 /// A single `[[model.animation]]` entry: one **required** animation the model must
@@ -633,6 +684,12 @@ struct ManifestSpec {
     /// path so rarely differs from the source that stating both is just noise.
     #[serde(default)]
     dest: Option<PathBuf>,
+    /// The role this seeded file plays (`spec` — the default — or `script`).
+    /// Presentation only: it changes how the Inputs surfaces tag the file, not how
+    /// it is seeded. Set `kind = "script"` for an executable starter the model
+    /// edits and runs (for example the Blender case's `build.py`).
+    #[serde(default)]
+    kind: SpecKind,
 }
 
 /// A standalone variant manifest, parsed from its own file listed in the case
@@ -696,6 +753,20 @@ struct ManifestVariant {
     /// non-voxel case is rejected.
     #[serde(default)]
     voxel: Option<ManifestVoxel>,
+    /// Optional **reference implementation**: a directory, relative to the version
+    /// folder, holding a buildable static web project that is the *correct*
+    /// implementation of this variant. Unlike every other path a variant names,
+    /// this one is **never seeded into a run** — handing a model the finished game
+    /// would defeat the test. Instead it is built out-of-band (with the case's
+    /// existing `[build]` install/build commands, run from this directory, the
+    /// static output landing in the same `dist/`|`build/`|`out/` a run's build
+    /// produces) and deployed like a published run build, then shown on the case's
+    /// "Reference" tab as the authored answer. The value is a bare directory path;
+    /// resolution validates it exists and stays inside the version folder. `None`
+    /// leaves the variant with no reference build. It is the case-variant analogue
+    /// of a run record's `links.playableBuild`.
+    #[serde(default)]
+    reference_implementation: Option<PathBuf>,
 }
 
 /// A single `[[reference]]` entry in the manifest.
@@ -782,11 +853,37 @@ struct ManifestReviewItem {
     frames: Vec<u32>,
     /// How many points this item is worth toward the run's score (an academic
     /// test's per-question marks). **Required** and must be greater than zero.
+    /// When the item declares `sub_items`, this weight is split evenly across
+    /// them (each sub-item is worth `weight / sub_items.len()` points).
     weight: u32,
     /// Optional scoring domain this item belongs to. Must name a declared
     /// `[[domain]]`. `None` for a general item that belongs to no single domain.
     #[serde(default)]
     domain: Option<String>,
+    /// Optional name-only sub-items breaking this item into independently graded
+    /// points (an academic question's "2a", "2b"). When present, the reviewer
+    /// records a pass/fail per sub-item instead of one for the item as a whole,
+    /// and the item's `weight` is split evenly across them. Declared as an inline
+    /// array of `{ id, title }` tables (or repeated `[[review_item.sub_item]]`
+    /// tables).
+    #[serde(default, rename = "sub_item", alias = "sub_items")]
+    sub_items: Vec<ManifestSubReviewItem>,
+}
+
+/// A single name-only sub-item of a `[[review_item]]`: an independently graded
+/// point within the item, carrying only an id (which keys its verdict) and a
+/// title (its heading in the reviewer UI). It has no prose of its own — the
+/// parent item's `text` is the shared context, and the sub-item's title names
+/// the specific point.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestSubReviewItem {
+    /// Stable slug identifying this sub-item within its parent item. The verdict
+    /// recorded against it is keyed by the composite `<item id>.<sub-item id>`
+    /// (see [`ReviewItem::sub_item_verdict_id`]).
+    id: String,
+    /// The short heading shown for this sub-item in the reviewer UI (a
+    /// synthesized letter is prefixed at display time).
+    title: String,
 }
 
 /// A single `[[domain]]` entry in the manifest: one scoring domain a reviewer
@@ -806,35 +903,133 @@ struct ManifestDomain {
 /// The manifest file name expected in every version folder.
 const MANIFEST_FILE: &str = "test-case.toml";
 
-/// The in-container directory the shippable Test Cabinet packages are baked into
-/// (see `containers/README.md`). A case that declares `packages` has each named
-/// package injected into its workspace `package.json` as a `file:` dependency
-/// pointing under this directory, so a game consumes it as an ordinary installed
-/// dependency without knowing the path.
+/// The host **package store** the shippable Test Cabinet packages are baked into
+/// on the driver image (which seeds runs — see `containers/README.md`). At seed
+/// time a `packages`-declaring case's requested libraries are copied out of this
+/// store and **vendored into the run repository** under [`TCAB_VENDOR_DIR`], so the
+/// produced tree is self-contained. This is a build-host path, never referenced by
+/// the produced game.
 pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 
+/// The in-repository directory a `packages`-declaring case's runtime libraries are
+/// vendored into at seed time (relative to the run root). The case's workspace
+/// `package.json` depends on each via an in-repo relative `file:` path pointing
+/// here (see [`tcab_package_file_dep`]), so the dependency resolves identically
+/// wherever the tree lives — the run container, the validation host, and any clone
+/// of the published repository — with no absolute path to break when it moves.
+pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
+
+/// One of the Test Cabinet's own `@test-cabinet/*` runtime libraries a case may
+/// ship into a run via the manifest's `packages` key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShippablePackage {
+    /// The npm package name a case declares in `packages` (for example
+    /// `@test-cabinet/particle-runtime`).
+    pub name: &'static str,
+    /// A short, human-readable description of what the package does, surfaced in
+    /// the Inputs UI beside the case's declared packages. This is **UI-only**: it
+    /// is never seeded into a run, so it can name what a build uses the library
+    /// for. The single source of truth for the description of every shippable
+    /// package.
+    pub description: &'static str,
+}
+
 /// The Test Cabinet's own `@test-cabinet/*` runtime libraries an end-to-end case
-/// may request via the manifest's `packages` key. Each is baked into the run
-/// image under [`TCAB_PACKAGES_DIR`] and injected into the seeded workspace
-/// `package.json` at seed time, so a built game can `import` it to play a produced
-/// asset (a particle `system.json`, a voxel rig) the same way the in-repo viewers
-/// do.
+/// may request via the manifest's `packages` key. Each is baked into the host
+/// package store ([`TCAB_PACKAGES_DIR`]) and, at seed time, vendored into the run
+/// repository under [`TCAB_VENDOR_DIR`], which the case's workspace `package.json`
+/// declares as an in-repo relative `file:` dependency, so a built game can
+/// `import` it to play a produced asset (a particle `system.json`, a voxel rig)
+/// the same way the in-repo viewers do.
 ///
-/// This list is the allowlist a case's `packages` names are validated against. It
-/// **must stay in lockstep** with the shippable list in
-/// `scripts/stage-tcab-packages.mjs`, which bakes exactly these into the image:
-/// a name here but not there resolves to a missing dependency at run time, and a
-/// name there but not here can never be requested.
-pub const SHIPPABLE_PACKAGES: &[&str] = &[
-    "@test-cabinet/particle-runtime",
-    "@test-cabinet/voxel-runtime",
+/// This list is the allowlist a case's `packages` names are validated against
+/// (see [`is_shippable_package`]), and it also carries each package's UI-only
+/// description (see [`shippable_package_description`]). Its **names** **must stay
+/// in lockstep** with the shippable list in `scripts/stage-tcab-packages.mjs`,
+/// which bakes exactly these into the image: a name here but not there resolves to
+/// a missing dependency at run time, and a name there but not here can never be
+/// requested. (The descriptions are UI metadata and live only here.)
+pub const SHIPPABLE_PACKAGES: &[ShippablePackage] = &[
+    ShippablePackage {
+        name: "@test-cabinet/particle-runtime",
+        description: "The particle runtime the review UI plays produced effects with. A build \
+                      imports its `/canvas` binding to load a seeded particle `system.json` and \
+                      simulate it live on a canvas, so a produced burst plays the same way the \
+                      gallery plays it.",
+    },
+    ShippablePackage {
+        name: "@test-cabinet/voxel-runtime",
+        description: "The voxel runtime the review UI poses and renders a produced voxel rig \
+                      with. A build imports it to load a produced rig and play its authored \
+                      animations in-game the same way the gallery's viewer does.",
+    },
 ];
 
+/// Whether `name` is one of the [`SHIPPABLE_PACKAGES`] a case may declare.
+pub fn is_shippable_package(name: &str) -> bool {
+    SHIPPABLE_PACKAGES.iter().any(|pkg| pkg.name == name)
+}
+
+/// The UI-only description of a shippable package, or `None` if `name` is not a
+/// shippable package. Used to surface a declared package's purpose in the Inputs
+/// UI without seeding the text into the run.
+pub fn shippable_package_description(name: &str) -> Option<&'static str> {
+    SHIPPABLE_PACKAGES
+        .iter()
+        .find(|pkg| pkg.name == name)
+        .map(|pkg| pkg.description)
+}
+
+/// The names of every [`SHIPPABLE_PACKAGES`] entry, joined for an error message
+/// that lists the valid `packages` values.
+pub fn shippable_package_names() -> String {
+    SHIPPABLE_PACKAGES
+        .iter()
+        .map(|pkg| pkg.name)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The `package.json` dependency spec that resolves a shippable package to its
-/// baked-in copy — a `file:` path under [`TCAB_PACKAGES_DIR`]. Used by the seeder
-/// when injecting a declared package into the workspace `package.json`.
+/// vendored copy — an in-repo relative `file:` path under [`TCAB_VENDOR_DIR`]. A
+/// package-declaring case's workspace `package.json` must depend on the package
+/// via exactly this spec; resolution validates the shipped file against it, and
+/// the seeder vendors the package to the matching path so `npm install`/`npm ci`
+/// resolve it wherever the produced tree ends up.
 pub(crate) fn tcab_package_file_dep(name: &str) -> String {
-    format!("file:{TCAB_PACKAGES_DIR}/{name}")
+    format!("file:./{TCAB_VENDOR_DIR}/{name}")
+}
+
+/// Read the union of a workspace `package.json`'s `dependencies` and
+/// `devDependencies` as name → version-spec pairs, for validating that a
+/// package-declaring case ships the `file:` dependency it says it does. A missing
+/// or non-object `dependencies`/`devDependencies` contributes nothing; a
+/// dependency present in both is read from `dependencies`. Returns the invalid
+/// detail string (for the caller to wrap into an [`Error::InvalidTestCase`]) if
+/// the file is unreadable, not valid JSON, or not a JSON object.
+fn read_package_dependencies(
+    package_json: &Path,
+) -> std::result::Result<std::collections::BTreeMap<String, String>, String> {
+    let raw = fs::read_to_string(package_json).map_err(|err| {
+        format!("could not read workspace `package.json` to validate `packages`: {err}")
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|err| format!("workspace `package.json` is not valid JSON: {err}"))?;
+    if !value.is_object() {
+        return Err("workspace `package.json` must be a JSON object".to_string());
+    }
+    let mut deps = std::collections::BTreeMap::new();
+    // devDependencies first so a name in both is overwritten by `dependencies`.
+    for field in ["devDependencies", "dependencies"] {
+        if let Some(map) = value.get(field).and_then(|v| v.as_object()) {
+            for (name, spec) in map {
+                if let Some(spec) = spec.as_str() {
+                    deps.insert(name.clone(), spec.to_string());
+                }
+            }
+        }
+    }
+    Ok(deps)
 }
 
 /// The run-workspace-relative path the orchestrator seeds an asset-generation
@@ -887,6 +1082,23 @@ pub const SFX_SYNTH_CONFIG_DEST: &str = "sfx-synth.config.json";
 pub const SFX_SAMPLE_CONFIG_DEST: &str = "sfx-sample.config.json";
 /// The config path the `music` binary reads.
 pub const MUSIC_CONFIG_DEST: &str = "music.config.json";
+
+/// The run-workspace-relative path the orchestrator seeds a `blender-character` case's
+/// tool configuration to (bounds, output paths, and the required animation names the
+/// `build.py` reads). Read by the `tcab-blend` runner.
+pub const BLENDER_CONFIG_DEST: &str = "blender.config.json";
+
+/// The run-workspace-relative path a `blender-character` run emits its skinned, animated
+/// glTF to. The `tcab-blend` runner writes it (the authoritative, judged output); the
+/// validator decodes it. Not manifest-declared — core provides the path.
+pub const BLENDER_MESH_DEST: &str = "character.glb";
+
+/// The run-workspace-relative path a `blender-prop` / `blender-mechanism` run emits its
+/// native glTF to. Unlike a character (`character.glb`), a prop or mechanism is a generic
+/// game asset, so it is named `model.glb`. The `tcab-blend` runner writes it (the
+/// authoritative, judged output); the validator decodes it. Not manifest-declared — core
+/// provides the path (see [`AssetKind::blender_mesh_dest`]).
+pub const BLENDER_MODEL_MESH_DEST: &str = "model.glb";
 
 /// The run-workspace-relative path core claims for a `ui` case's emitted `ui.json`
 /// (element sizes, nine-slice insets, atlas rectangles). Auto-emitted by the binary,
@@ -987,8 +1199,10 @@ pub struct TestCase {
 /// The type of a test case: which class of capability it measures and which
 /// manifest tables it declares.
 ///
-/// Today four types exist in code: the original [`Self::EndToEnd`] (build a
-/// working program), [`Self::AssetGeneration`] (drive a drawing tool toward a
+/// Today five types exist in code: the original [`Self::EndToEnd`] (build a
+/// working program), [`Self::FullStack`] (build a working program *and* produce
+/// its own assets with the asset-generation binaries, which are on `PATH` in the
+/// full-stack run image), [`Self::AssetGeneration`] (drive a drawing tool toward a
 /// target image), [`Self::Adversarial`] (write a wasm controller pitted
 /// head-to-head against a baseline), and [`Self::Performance`] (write a wasm
 /// engine scored on correctness plus the fuel it burns). The type is the explicit
@@ -1003,6 +1217,14 @@ pub enum TestType {
     /// Build a working program judged by running it (the only type until now).
     #[default]
     EndToEnd,
+    /// Build a working program that must also **produce its own assets** during the
+    /// run, using the asset-generation binaries (`draw`, `draw-sheet`, `particle-2d`,
+    /// `sfx-synth`, `sfx-sample`, `music`, …) baked onto `PATH` in the full-stack run
+    /// image. Behaves like [`Self::EndToEnd`] in every other respect — it releases a
+    /// source repo, has a `[build]` table, may declare `packages`, and is judged by
+    /// running the built program — but selects the full-stack image instead of the
+    /// bare base image. See `docs/testing/full-stack/`.
+    FullStack,
     /// Produce a graphical asset by driving a drawing tool one operation at a
     /// time; the recorded operations are the authoritative output.
     AssetGeneration,
@@ -1025,6 +1247,7 @@ impl TestType {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::EndToEnd => "end-to-end",
+            Self::FullStack => "full-stack",
             Self::AssetGeneration => "asset-generation",
             Self::Adversarial => "adversarial",
             Self::Performance => "performance",
@@ -1146,6 +1369,36 @@ pub enum AssetKind {
     /// `[audio]` table (naming its `instrument_bank`). Judged on the emitted
     /// `clip.wav` (and portable `clip.mid`).
     Music,
+    /// A rigged, animated **skinned character** authored by driving **headless Blender**
+    /// through its Python API — the first Blender-based asset kind. The model writes a
+    /// `build.py` (a `bpy` script) that builds the character mesh, an armature, skin
+    /// weights, and one Action per required animation, then runs the `tcab-blend` runner
+    /// to export a single **`character.glb`** (a standard skinned + animated glTF 2.0)
+    /// plus a `model.png` preview. Unlike the CSG skinned kinds (`mc-skinned` …), there
+    /// is **no operation log**: `build.py` is the recorded authoring trace, re-run for
+    /// provenance. Declares a `[voxel]` table (reused as the character's bounding box)
+    /// and a `[model]` table (the required animations); judged on the emitted glTF, never
+    /// an op-log replay.
+    #[serde(rename = "blender-character")]
+    BlenderCharacter,
+    /// A static **hard-surface prop** authored by driving headless Blender through a
+    /// `build.py` script — a weapon, crate, pickup, or emplacement. Like every Blender
+    /// kind it writes a `build.py` and runs `tcab-blend`, but it emits a **static**,
+    /// unrigged native glTF (`model.glb`): no armature, no skin, and **no animations**,
+    /// so it declares **no `[model]` table**. Reuses the `[voxel]` table as a bounding
+    /// box. Judged on the emitted glTF (a well-formed static mesh); `build.py` is the
+    /// recorded trace, re-run for provenance.
+    #[serde(rename = "blender-prop")]
+    BlenderProp,
+    /// A **rigidly-articulated mechanism** authored by driving headless Blender through a
+    /// `build.py` script — a turret, blast door, crane, or mech. It emits a native glTF
+    /// (`model.glb`) whose motion is baked as standard **glTF node-hierarchy animations**
+    /// (each part posed about its pivot by parenting, **not** skin deformation and **not**
+    /// a Test-Cabinet `rig.json`), so a game plays the clips natively. Declares a
+    /// `[voxel]` bounding box and a `[model]` table of required animations, reconciled
+    /// against the emitted glTF; `build.py` is re-run for provenance.
+    #[serde(rename = "blender-mechanism")]
+    BlenderMechanism,
 }
 
 impl AssetKind {
@@ -1205,6 +1458,56 @@ impl AssetKind {
     /// and animated, but single-file.
     pub fn is_skinned(self) -> bool {
         matches!(self, Self::McSkinned | Self::SnSkinned | Self::DcSkinned)
+    }
+
+    /// Whether this kind is a **Blender** kind — the family authored by driving headless
+    /// Blender through a `build.py` script (run by `tcab-blend`) rather than a constrained
+    /// op-log tool, emitting a **native glTF** the validator decodes: the skinned
+    /// `blender-character`, the static `blender-prop`, and the rigidly-articulated
+    /// `blender-mechanism`. It is its own category — **not** voxel/skinned/meshed/paint/
+    /// particle/audio — reusing the `[voxel]` table as a bounding box (and, for the
+    /// animated members, the `[model]` table for required animations). Selects the
+    /// Blender resolve/seed/validate path and the shared `test-cabinet-blender` image. The
+    /// per-member differences (skin, animations, output filename) are drawn by
+    /// [`Self::blender_is_skinned`], [`Self::blender_is_animated`], and
+    /// [`Self::blender_mesh_dest`].
+    pub fn is_blender(self) -> bool {
+        matches!(
+            self,
+            Self::BlenderCharacter | Self::BlenderProp | Self::BlenderMechanism
+        )
+    }
+
+    /// Whether this Blender kind emits a **skinned** character — one continuous mesh
+    /// bound to a skeleton and deformed by linear-blend skinning (`blender-character`).
+    /// The prop and mechanism kinds emit a static / rigidly-parented glTF with **no
+    /// skin**, so the validator does not require one and the 3D viewer does not skin.
+    /// `false` for every non-Blender kind.
+    pub fn blender_is_skinned(self) -> bool {
+        matches!(self, Self::BlenderCharacter)
+    }
+
+    /// Whether this Blender kind is **animated** — it declares a `[model]` table of
+    /// required animations and its emitted glTF is reconciled against them. True for the
+    /// `blender-character` (skinned clips) and the `blender-mechanism` (rigid glTF
+    /// node-hierarchy clips); **false** for the static `blender-prop`, which declares no
+    /// `[model]` and emits no animations. `false` for every non-Blender kind.
+    pub fn blender_is_animated(self) -> bool {
+        matches!(self, Self::BlenderCharacter | Self::BlenderMechanism)
+    }
+
+    /// The run-workspace-relative path a **Blender** run emits its native glTF to. The
+    /// `blender-character` emits `character.glb`; the `blender-prop` and
+    /// `blender-mechanism` emit a generically-named [`BLENDER_MODEL_MESH_DEST`]
+    /// (`model.glb`) — a native, game-ready glTF that isn't a character. `None` for a
+    /// non-Blender kind. Shared by the seeded tool config (so the runner writes here),
+    /// manifest path-claiming, and the validator (so it reads the same path).
+    pub fn blender_mesh_dest(self) -> Option<&'static str> {
+        match self {
+            Self::BlenderCharacter => Some(BLENDER_MESH_DEST),
+            Self::BlenderProp | Self::BlenderMechanism => Some(BLENDER_MODEL_MESH_DEST),
+            _ => None,
+        }
     }
 
     /// Whether this kind is one of the surface-**meshed** kinds that composite a
@@ -1312,6 +1615,10 @@ impl AssetKind {
             Self::SfxSynth => SFX_SYNTH_CONFIG_DEST,
             Self::SfxSample => SFX_SAMPLE_CONFIG_DEST,
             Self::Music => MUSIC_CONFIG_DEST,
+            // The whole Blender family reads the same `blender.config.json`.
+            Self::BlenderCharacter | Self::BlenderProp | Self::BlenderMechanism => {
+                BLENDER_CONFIG_DEST
+            }
         }
     }
 }
@@ -1396,6 +1703,27 @@ pub struct ProofFile {
     pub dest: PathBuf,
 }
 
+/// What role a seeded spec file plays, so a reader can tell an instruction the
+/// model reads from an executable starter it edits and runs.
+///
+/// This is a **presentation** distinction only — every kind is seeded identically
+/// (copied to its `dest`) and the harness treats them the same. It exists so the
+/// Inputs surfaces can tag a starter script (for example the Blender case's
+/// `build.py`, whose `dest` deliberately coincides with `[output].actions`)
+/// distinctly from a prose spec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum SpecKind {
+    /// A specification the model reads — prose (a brief) or any other guidance.
+    /// The default when a `[[spec]]` entry declares no `kind`.
+    #[default]
+    Spec,
+    /// An executable starter file the model edits in place and runs, seeded as the
+    /// case's own trace (for example a `bpy` `build.py`). Surfaced as "Script".
+    Script,
+}
+
 /// A spec file seeded into a run.
 ///
 /// Each spec is copied from its [`Self::source_path`] on the host into the run's
@@ -1411,6 +1739,10 @@ pub struct SpecFile {
     /// Destination path relative to the run's workspace root, where the spec is
     /// seeded and where the rendered prompt points the model.
     pub dest: PathBuf,
+    /// The role this seeded file plays, driving how the Inputs surfaces tag it
+    /// (a prose "Spec" vs an executable "Script"). Presentation only.
+    #[serde(default)]
+    pub kind: SpecKind,
 }
 
 /// A single starter file copied into a run's workspace from a test case's
@@ -2062,6 +2394,18 @@ pub struct Variant {
     /// Resolve the effective volume for a variant with
     /// [`TestCaseVersion::voxel_for`].
     pub voxel: Option<VoxelSpec>,
+    /// The reference implementation's source directory on the host, when this
+    /// variant declares a `reference_implementation`: an absolute path inside the
+    /// version folder holding a buildable static web project that is the *correct*
+    /// build of this variant. Stored as a resolved host path exactly like a
+    /// [`ReferenceView::source_path`] or a workspace source is — and, like a
+    /// reference mockup's source, it is **never seeded into a run**: it is the
+    /// authored answer the "Reference" tab shows, not model input. The build and
+    /// deploy that turn it into a hosted URL happen out-of-band (see the CLI's
+    /// `publish-reference` subcommand), so nothing here reads its contents; the
+    /// path is carried purely so the publisher knows which directory to build.
+    /// `None` when the variant declares no reference implementation.
+    pub reference_impl: Option<PathBuf>,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -2197,14 +2541,65 @@ pub struct ReviewItem {
     #[serde(default)]
     pub frames: Vec<u32>,
     /// How many points this item is worth toward the run's score. Always greater
-    /// than zero. A run earns this item's weight when the reviewer marks it
-    /// `pass`, and none when they mark it `fail`; the run's score is the earned
-    /// weight over the total declared weight (see [`crate::review::score`]).
+    /// than zero. When the item has no [`Self::sub_items`], a run earns this whole
+    /// weight when the reviewer marks it `pass` and none when they mark it `fail`.
+    /// When it has sub-items, the weight is split evenly across them and the item
+    /// earns the fraction of it that passed. Either way, the run's score is the
+    /// earned weight over the total declared weight (see [`crate::review::score`]).
     pub weight: u32,
     /// The scoring [`Domain`] this item belongs to (by id), or `None` for a
     /// general item that belongs to no single domain. Used to group the score
     /// breakdown by domain in the reviewer and verdict UIs.
     pub domain: Option<String>,
+    /// Name-only sub-items breaking this item into independently graded points.
+    /// Empty for an item graded as a whole (the common case). When non-empty, the
+    /// reviewer records a pass/fail per sub-item rather than one for the item, and
+    /// the item's [`Self::weight`] is split evenly across them; each sub-item's
+    /// verdict is keyed by the composite [`Self::sub_item_verdict_id`].
+    #[serde(default)]
+    pub sub_items: Vec<SubReviewItem>,
+}
+
+impl ReviewItem {
+    /// The verdict id for one of this item's sub-items: the composite
+    /// `<item id>.<sub-item id>`. This is the id a reviewer's [`ReviewVerdict`]
+    /// carries for the sub-item, so a sub-item's verdict is an ordinary verdict
+    /// (no new wire shape) whose id names the point within the item. Mirrored by
+    /// `subItemVerdictId` in `packages/ui/src/ratings.ts`.
+    ///
+    /// [`ReviewVerdict`]: crate::review::ReviewVerdict
+    pub fn sub_item_verdict_id(item_id: &str, sub_item_id: &str) -> String {
+        format!("{item_id}.{sub_item_id}")
+    }
+
+    /// The verdict ids a reviewer must record for this item: the item's own id
+    /// when it is graded as a whole, or one composite id per sub-item when it
+    /// declares [`Self::sub_items`]. This is the set of ids that must appear in a
+    /// review's checklist for the item to be fully addressed, and the ids scoring
+    /// looks up. Mirrored by `verdictIdsForItem` in `packages/ui/src/ratings.ts`.
+    pub fn verdict_ids(&self) -> Vec<String> {
+        if self.sub_items.is_empty() {
+            vec![self.id.clone()]
+        } else {
+            self.sub_items
+                .iter()
+                .map(|sub| Self::sub_item_verdict_id(&self.id, &sub.id))
+                .collect()
+        }
+    }
+}
+
+/// A name-only sub-item of a [`ReviewItem`]: one independently graded point
+/// within the item, carrying only an id and a title. See
+/// [`ManifestSubReviewItem`] for the manifest shape and the semantics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubReviewItem {
+    /// Stable slug identifying this sub-item within its parent item; part of the
+    /// composite verdict id (see [`ReviewItem::sub_item_verdict_id`]).
+    pub id: String,
+    /// The short heading shown for this sub-item in the reviewer UI.
+    pub title: String,
 }
 
 /// A scoring domain a test case declares.
@@ -2265,7 +2660,7 @@ pub struct TestCaseVersion {
     /// entry into a newest-first changelog. This is **not** seeded into runs.
     #[serde(default)]
     pub changelog_path: PathBuf,
-    /// The version folder on the host: `test-cases/<slug>/<version>/`.
+    /// The version folder on the host: `test-cases/<type>/<difficulty>/<slug>/<version>/`.
     pub root: PathBuf,
     /// Host path to the prompt template handed to the harness. Rendered through
     /// Handlebars with the run's workspace and seeded spec paths.
@@ -2281,6 +2676,14 @@ pub struct TestCaseVersion {
     /// run record branch on.
     #[serde(default)]
     pub test_type: TestType,
+    /// Whether this version is **experimental** — still being iterated on and not
+    /// yet ready to have runs published for it. Carried verbatim from the
+    /// manifest's `experimental` flag; defaults to `false`. Outward-facing backend
+    /// surfaces hide experimental versions unless the deployment opts in (see
+    /// [`Manifest`]'s `experimental` documentation), so the flag acts purely as a
+    /// visibility filter and has no effect on how a run executes.
+    #[serde(default)]
+    pub experimental: bool,
     /// The commands the validator runs to build the produced implementation into
     /// a served static site (from the manifest's `[build]` table). `Some` for an
     /// end-to-end case, `None` for any other type. Kept as a top-level optional
@@ -2370,10 +2773,11 @@ pub struct TestCaseVersion {
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,
     /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this
-    /// case's build consumes, from the manifest's `packages` key. Each is injected
-    /// into the seeded workspace `package.json` as a `file:` dependency resolving
-    /// under [`TCAB_PACKAGES_DIR`]. Empty when the case declares none. Validated
-    /// against [`SHIPPABLE_PACKAGES`] at resolution.
+    /// case's build consumes, from the manifest's `packages` key. The case's
+    /// workspace `package.json` declares each as a `file:` dependency resolving
+    /// under [`TCAB_PACKAGES_DIR`]; the harness does not modify that file. Empty
+    /// when the case declares none. Validated against [`SHIPPABLE_PACKAGES`], and
+    /// that the shipped `package.json` declares each, at resolution.
     pub packages: Vec<String>,
     /// The variants this case offers, in declared order. At least one is always
     /// present.
@@ -2509,7 +2913,12 @@ impl TestCaseVersion {
 /// Resolves test case slugs and versions against an on-disk catalog.
 ///
 /// The catalog is the `test-cases/` directory laid out as
-/// `test-cases/<slug>/<version>/`.
+/// `test-cases/<type>/<difficulty>/<slug>/<version>/`. The `<type>` and
+/// `<difficulty>` levels only group the tree for on-disk browsing; discovery
+/// walks their shape but never reads meaning into their names — a case's
+/// identity, type, and difficulty all come from its manifest. Internally a
+/// "folder" is therefore the `<type>/<difficulty>/<slug>` path (relative to the
+/// root) that directly holds a case's version subfolders.
 #[derive(Debug, Clone)]
 pub struct TestCaseCatalog {
     /// Root of the catalog (the `test-cases/` directory).
@@ -2539,7 +2948,7 @@ impl TestCaseCatalog {
         // before it resolves — rather than silently.
         let mut cases: Vec<TestCase> = Vec::new();
         let mut owner: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        for folder in read_dir_names(&self.root)? {
+        for folder in self.case_folders()? {
             let versions = self.version_names(&folder)?;
             if versions.is_empty() {
                 continue;
@@ -2626,24 +3035,50 @@ impl TestCaseCatalog {
         Ok(identity.slug)
     }
 
-    /// Resolve a requested id — the case's slug, or (for operator convenience, e.g.
-    /// targeting a re-ingest) its folder name — to the folder that holds it.
-    ///
-    /// A folder named exactly `id` wins immediately: it covers the common case where
-    /// the slug equals the folder name, and lets a rename's new folder be targeted by
-    /// name, both without scanning. Otherwise the folders are scanned for one whose
-    /// declared slug is `id`. The returned folder's declared slug is the identity,
-    /// regardless of which of the two the caller passed.
-    fn folder_for(&self, id: &str) -> Result<String> {
-        if self.root.join(id).is_dir() {
-            return Ok(id.to_string());
+    /// The relative paths (from the catalog root) of every case folder — the
+    /// `<type>/<difficulty>/<slug>` directories that directly hold a case's version
+    /// subfolders. The two grouping levels are organizational only, so this walk
+    /// cares about the tree's *shape*, not the names' meaning; non-directory and
+    /// hidden entries at any level are ignored, so a stray file (a `.DS_Store`, a
+    /// top-level README) never derails discovery. The returned path uses `/`
+    /// separators and joins onto the root to reach the folder.
+    fn case_folders(&self) -> Result<Vec<String>> {
+        let mut folders = Vec::new();
+        for type_dir in read_dir_names(&self.root)? {
+            let type_path = self.root.join(&type_dir);
+            for difficulty_dir in read_dir_names(&type_path)? {
+                let difficulty_path = type_path.join(&difficulty_dir);
+                for case_dir in read_dir_names(&difficulty_path)? {
+                    folders.push(format!("{type_dir}/{difficulty_dir}/{case_dir}"));
+                }
+            }
         }
-        for folder in read_dir_names(&self.root)? {
-            let versions = self.version_names(&folder)?;
-            if let Some(newest) = versions.first()
-                && self.read_slug(&folder, newest)? == id
+        Ok(folders)
+    }
+
+    /// Resolve a requested id — the case's slug, or (for operator convenience, e.g.
+    /// targeting a re-ingest) its folder name — to the `<type>/<difficulty>/<slug>`
+    /// folder that holds it.
+    ///
+    /// A folder whose full relative path or final `<slug>` component is exactly `id`
+    /// wins immediately: it covers the common case where the slug equals the folder
+    /// name, and lets a rename's new folder be targeted by name, both without parsing
+    /// a manifest. Otherwise the folders are scanned for one whose declared slug is
+    /// `id`. The returned folder's declared slug is the identity, regardless of which
+    /// of the two the caller passed.
+    fn folder_for(&self, id: &str) -> Result<String> {
+        let folders = self.case_folders()?;
+        for folder in &folders {
+            let name = folder.rsplit('/').next().unwrap_or(folder.as_str());
+            if folder == id || name == id {
+                return Ok(folder.clone());
+            }
+        }
+        for folder in &folders {
+            if let Some(newest) = self.version_names(folder)?.first()
+                && self.read_slug(folder, newest)? == id
             {
-                return Ok(folder);
+                return Ok(folder.clone());
             }
         }
         Err(Error::TestCaseNotFound {
@@ -2732,7 +3167,7 @@ impl TestCaseCatalog {
         // `[build]` table on one is a mistake worth rejecting rather than ignoring.
         let test_type = manifest.test_type;
         let build = match test_type {
-            TestType::EndToEnd => {
+            TestType::EndToEnd | TestType::FullStack => {
                 let build = manifest
                     .build
                     .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
@@ -2894,7 +3329,11 @@ impl TestCaseCatalog {
                     dest.display()
                 )));
             }
-            Ok(SpecFile { source_path, dest })
+            Ok(SpecFile {
+                source_path,
+                dest,
+                kind: spec.kind,
+            })
         };
 
         let mut common_specs = Vec::with_capacity(manifest.specs.len());
@@ -2964,7 +3403,10 @@ impl TestCaseCatalog {
             Option<ParticleSpec>,
             Option<AudioSpec>,
         ) = match test_type {
-            TestType::EndToEnd | TestType::Adversarial | TestType::Performance => {
+            TestType::EndToEnd
+            | TestType::FullStack
+            | TestType::Adversarial
+            | TestType::Performance => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
                 {
                     return Err(invalid(
@@ -3113,6 +3555,143 @@ impl TestCaseCatalog {
                     if manifest.model.is_some() {
                         return Err(invalid(
                             "a static voxel case (a `*-model` kind) declares no [model] table"
+                                .to_string(),
+                        ));
+                    }
+                    None
+                };
+
+                (
+                    None,
+                    Some(ToolSpec {
+                        binary: tool.binary.clone(),
+                        preview: tool.preview.clone(),
+                    }),
+                    Some(OutputSpec {
+                        actions: output.actions.clone(),
+                    }),
+                    None,
+                    Some(VoxelSpec {
+                        width: voxel.width,
+                        height: voxel.height,
+                        depth: voxel.depth,
+                        background: voxel.background.clone(),
+                    }),
+                    model,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
+            TestType::AssetGeneration if manifest.asset_kind.is_blender() => {
+                // The Blender family (`blender-character`/`blender-prop`/
+                // `blender-mechanism`). All three reuse the `[voxel]` table as a bounding
+                // box (the volume the asset must fit within) and are authored by driving
+                // headless Blender through a `build.py` script rather than a constrained
+                // op-log tool: `[tool].binary` is the `tcab-blend` runner and
+                // `[output].actions` names the authored script (re-run for provenance),
+                // not an operation log. Both are single files — a Blender run emits one
+                // glTF — so neither may carry a `{part}` token. The `[model]` table of
+                // required animations is required for the animated members (character,
+                // mechanism) and FORBIDDEN for the static prop.
+                if manifest.canvas.is_some() || manifest.sheet.is_some() {
+                    return Err(invalid(
+                        "a Blender case declares a [voxel] bounding box, not [canvas] or \
+                         [sheet]"
+                            .to_string(),
+                    ));
+                }
+                if manifest.ui.is_some()
+                    || manifest.material.is_some()
+                    || manifest.particle.is_some()
+                    || manifest.audio.is_some()
+                {
+                    return Err(invalid(
+                        "a Blender case declares none of [ui], [material], [particle], or \
+                         [audio]"
+                            .to_string(),
+                    ));
+                }
+
+                let voxel = manifest.voxel.as_ref().ok_or_else(|| {
+                    invalid("the [voxel] table (the asset's bounding box) is required".to_string())
+                })?;
+                if voxel.width == 0 || voxel.height == 0 || voxel.depth == 0 {
+                    return Err(invalid(
+                        "bounding-box width, height, and depth must be greater than zero"
+                            .to_string(),
+                    ));
+                }
+                test_cabinet_model_core::PreviewBackground::parse(&voxel.background).map_err(
+                    |err| {
+                        invalid(format!(
+                            "bounding-box background `{}`: {err}",
+                            voxel.background
+                        ))
+                    },
+                )?;
+
+                let tool = manifest
+                    .tool
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [tool] table is required".to_string()))?;
+                if tool.binary.trim().is_empty() {
+                    return Err(invalid("tool.binary must not be empty".to_string()));
+                }
+                if escapes_folder(&tool.preview) {
+                    return Err(invalid(format!(
+                        "tool preview `{}` escapes the run workspace",
+                        tool.preview.display()
+                    )));
+                }
+
+                let output = manifest
+                    .output
+                    .as_ref()
+                    .ok_or_else(|| invalid("the [output] table is required".to_string()))?;
+                if escapes_folder(&output.actions) {
+                    return Err(invalid(format!(
+                        "output actions `{}` escapes the run workspace",
+                        output.actions.display()
+                    )));
+                }
+
+                // A Blender run emits a single glTF: neither the preview nor the
+                // authored-script path may be a `{part}` template.
+                for (label, path) in [
+                    ("tool.preview", &tool.preview),
+                    ("output.actions", &output.actions),
+                ] {
+                    if path.to_string_lossy().contains(PART_TOKEN) {
+                        return Err(invalid(format!(
+                            "{label} `{}` must not contain `{PART_TOKEN}` — a Blender case emits \
+                             a single glTF",
+                            path.display()
+                        )));
+                    }
+                }
+
+                // The `[model]` table of required animations is required for the animated
+                // Blender members (`blender-character` skinned clips, `blender-mechanism`
+                // rigid node-hierarchy clips) and FORBIDDEN for the static `blender-prop`,
+                // which emits an unrigged glTF. As with the voxel-family animated kinds it
+                // fixes only the required animations by name; the skeleton/rig and its
+                // motion are the model's to invent.
+                let model = if manifest.asset_kind.blender_is_animated() {
+                    let model = manifest.model.as_ref().ok_or_else(|| {
+                        invalid(
+                            "an animated Blender case (blender-character/blender-mechanism) \
+                             requires a [model] table of required animations"
+                                .to_string(),
+                        )
+                    })?;
+                    Some(resolve_model(model, &invalid)?)
+                } else {
+                    if manifest.model.is_some() {
+                        return Err(invalid(
+                            "a blender-prop case is static and declares no [model] table (no \
+                             animations)"
                                 .to_string(),
                         ));
                     }
@@ -3499,7 +4078,7 @@ impl TestCaseCatalog {
         // it. `build.module` (validated above) is the wasm artifact the validator
         // loads for either type.
         let (contract, sandbox, simulation, r#match, replay, cases) = match test_type {
-            TestType::EndToEnd | TestType::AssetGeneration => {
+            TestType::EndToEnd | TestType::FullStack | TestType::AssetGeneration => {
                 if manifest.contract.is_some()
                     || manifest.sandbox.is_some()
                     || manifest.simulation.is_some()
@@ -3560,10 +4139,12 @@ impl TestCaseCatalog {
                 common_specs.push(SpecFile {
                     source_path: world_source,
                     dest: world.clone(),
+                    kind: SpecKind::Spec,
                 });
                 common_specs.push(SpecFile {
                     source_path: action_source,
                     dest: action.clone(),
+                    kind: SpecKind::Spec,
                 });
 
                 let sandbox = manifest
@@ -3723,10 +4304,12 @@ impl TestCaseCatalog {
                 common_specs.push(SpecFile {
                     source_path: input_source,
                     dest: input.clone(),
+                    kind: SpecKind::Spec,
                 });
                 common_specs.push(SpecFile {
                     source_path: output_source,
                     dest: output.clone(),
+                    kind: SpecKind::Spec,
                 });
 
                 let sandbox = manifest
@@ -3895,34 +4478,60 @@ impl TestCaseCatalog {
             .collect();
 
         // Packages: the Test Cabinet runtime libraries this case's build consumes.
-        // They are consumed by a built game, so only an end-to-end case may request
-        // them; each name must be one this repo actually ships into the run image
-        // (see [`SHIPPABLE_PACKAGES`]); and because the dependency is injected into
-        // the workspace's root `package.json` at seed time, the case must ship one.
+        // They are consumed by a built game, so only a case that builds a program —
+        // an end-to-end or full-stack case — may declare them, and each name must be
+        // one this repo actually ships into the run image (see [`SHIPPABLE_PACKAGES`]).
+        // The harness does not modify the shipped `package.json`; the case's own
+        // workspace `package.json` must already depend on each declared package via
+        // its baked-in `file:` spec (see [`tcab_package_file_dep`]). Validate that
+        // here so a misconfigured manifest fails at resolution rather than leaving the
+        // model to discover the missing dependency at run time.
         if !manifest.packages.is_empty() {
-            if test_type != TestType::EndToEnd {
+            if !matches!(test_type, TestType::EndToEnd | TestType::FullStack) {
                 return Err(invalid(
-                    "`packages` is only valid for an end-to-end case".to_string(),
+                    "`packages` is only valid for an end-to-end or full-stack case".to_string(),
                 ));
             }
+            let package_json = common_workspace
+                .iter()
+                .find(|file| file.dest == Path::new("package.json"))
+                .ok_or_else(|| {
+                    invalid(
+                        "a case that declares `packages` must ship a workspace containing a \
+                         `package.json` at its root (the file that declares the dependency)"
+                            .to_string(),
+                    )
+                })?;
+            let declared = match read_package_dependencies(&package_json.source_path) {
+                Ok(declared) => declared,
+                Err(detail) => return Err(invalid(detail)),
+            };
             for package in &manifest.packages {
-                if !SHIPPABLE_PACKAGES.contains(&package.as_str()) {
+                if !is_shippable_package(package) {
                     return Err(invalid(format!(
                         "package `{package}` is not a shippable Test Cabinet package; \
                          valid names are: {}",
-                        SHIPPABLE_PACKAGES.join(", ")
+                        shippable_package_names()
                     )));
                 }
-            }
-            let ships_package_json = common_workspace
-                .iter()
-                .any(|file| file.dest == Path::new("package.json"));
-            if !ships_package_json {
-                return Err(invalid(
-                    "a case that declares `packages` must ship a workspace containing a \
-                     package.json at its root (the file the dependency is injected into)"
-                        .to_string(),
-                ));
+                let expected = tcab_package_file_dep(package);
+                match declared.get(package) {
+                    Some(spec) if spec == &expected => {}
+                    Some(spec) => {
+                        return Err(invalid(format!(
+                            "package `{package}` is declared in the workspace `package.json` as \
+                             `{spec}`, but must be `{expected}` so it resolves to its baked-in \
+                             copy in the run image"
+                        )));
+                    }
+                    None => {
+                        return Err(invalid(format!(
+                            "package `{package}` is declared in `packages` but is not a \
+                             dependency of the workspace `package.json`; add \
+                             `\"{package}\": \"{expected}\"` to its dependencies"
+                        )));
+                    }
+                }
             }
         }
 
@@ -4135,6 +4744,31 @@ impl TestCaseCatalog {
                         }
                     }
                 }
+                // Sub-items break the item into independently graded points. Each
+                // needs a non-empty id (it keys the sub-item's verdict) and title
+                // (its heading), and the ids must be unique within the item so a
+                // recorded sub-item verdict is unambiguous.
+                let mut seen_sub_ids = std::collections::BTreeSet::new();
+                for sub in &item.sub_items {
+                    if sub.id.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "review_item `{}` has a sub-item with an empty `id`",
+                            item.id
+                        )));
+                    }
+                    if sub.title.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "review_item `{}` sub-item `{}` has an empty `title`",
+                            item.id, sub.id
+                        )));
+                    }
+                    if !seen_sub_ids.insert(&sub.id) {
+                        return Err(invalid(format!(
+                            "review_item `{}` declares two sub-items with the same id `{}`",
+                            item.id, sub.id
+                        )));
+                    }
+                }
                 Ok(ReviewItem {
                     id: item.id.clone(),
                     title: item.title.clone(),
@@ -4145,6 +4779,14 @@ impl TestCaseCatalog {
                     frames: item.frames.clone(),
                     weight: item.weight,
                     domain: item.domain.clone(),
+                    sub_items: item
+                        .sub_items
+                        .iter()
+                        .map(|sub| SubReviewItem {
+                            id: sub.id.clone(),
+                            title: sub.title.clone(),
+                        })
+                        .collect(),
                 })
             };
 
@@ -4193,6 +4835,30 @@ impl TestCaseCatalog {
             // for this variant rather than layering on top of it.
             let workspace = match &variant.workspace {
                 Some(dir) => Some(resolve_workspace(dir, "variant workspace")?),
+                None => None,
+            };
+
+            // A variant's reference implementation, when declared, is the authored
+            // *correct* build shown on the case's "Reference" tab. It is a buildable
+            // directory inside the version folder, validated to exist here so a typo
+            // fails resolution rather than a later out-of-band deploy. Crucially it
+            // is resolved but **never seeded**: it takes no part in the seed-dest
+            // `claim`s below (it is neither a spec, a workspace file, an asset, a
+            // reference screenshot, nor a proof), so the finished game never lands in
+            // a run tree. The resolved host path is carried on the `Variant` purely
+            // so the publisher knows which directory to build and deploy.
+            let reference_impl = match &variant.reference_implementation {
+                Some(dir) => {
+                    let path = resolve_inside(dir, "variant reference implementation")?;
+                    if !path.is_dir() {
+                        return Err(invalid(format!(
+                            "variant `{}` reference implementation `{}` is not a directory",
+                            variant.slug,
+                            dir.display()
+                        )));
+                    }
+                    Some(path)
+                }
                 None => None,
             };
 
@@ -4375,6 +5041,17 @@ impl TestCaseCatalog {
                         claim(map_path(&tool.preview, map), "map preview")?;
                     }
                     claim(PathBuf::from(MATERIAL_JSON_DEST), "material manifest")?;
+                } else if manifest.asset_kind.is_blender() {
+                    // A Blender run has no seeded action log: `[output].actions` names the
+                    // `build.py` the model AUTHORS, seeded as the case's own spec (its
+                    // starter stub), so it is already claimed by the spec loop above and
+                    // must NOT be claimed again here. The runner produces the preview and
+                    // the emitted glTF (`character.glb` for a character, `model.glb` for a
+                    // prop/mechanism), so claim those to keep a spec off them.
+                    claim(tool.preview.clone(), "tool preview")?;
+                    if let Some(mesh) = manifest.asset_kind.blender_mesh_dest() {
+                        claim(PathBuf::from(mesh), "mesh")?;
+                    }
                 } else {
                     // The single-file kinds: sprite (single), static voxel/mesh, the
                     // three skinned kinds, particle, and audio.
@@ -4411,16 +5088,22 @@ impl TestCaseCatalog {
             for item in &variant.review_items {
                 review_items.push(resolve_review_item(item, &effective_domains)?);
             }
-            // The common items and the variant's own are recorded under one id
-            // each; two items sharing an id would make a recorded verdict
-            // ambiguous, so a collision is rejected.
+            // Each verdict a reviewer records is keyed by an id (the item's own,
+            // or a composite `<item>.<sub-item>` when the item has sub-items); two
+            // that collide would make a recorded verdict ambiguous, so a collision
+            // across the common items and the variant's own is rejected. Expanding
+            // to verdict ids also catches a sub-item id colliding with a plain
+            // item id.
             let mut seen_ids = std::collections::BTreeSet::new();
             for item in common_review_items.iter().chain(review_items.iter()) {
-                if !seen_ids.insert(&item.id) {
-                    return Err(invalid(format!(
-                        "variant `{}` declares two review items with the same id `{}`",
-                        variant.slug, item.id
-                    )));
+                for verdict_id in item.verdict_ids() {
+                    if !seen_ids.insert(verdict_id.clone()) {
+                        return Err(invalid(format!(
+                            "variant `{}` declares two review items (or sub-items) resolving to \
+                             the same verdict id `{}`",
+                            variant.slug, verdict_id
+                        )));
+                    }
                 }
             }
 
@@ -4467,6 +5150,7 @@ impl TestCaseCatalog {
                 review_items,
                 domains: variant_domains,
                 voxel,
+                reference_impl,
             });
         }
 
@@ -4523,6 +5207,7 @@ impl TestCaseCatalog {
             prompt_path,
             max_runtime_seconds: crate::runtime_hours_to_seconds(manifest.max_runtime_hours),
             test_type,
+            experimental: manifest.experimental,
             build,
             canvas,
             tool,
@@ -4586,10 +5271,11 @@ impl TestCaseCatalog {
 /// lowercase letters and digits, with single hyphens only *between* segments (no
 /// leading, trailing, or doubled hyphens).
 ///
-/// A slug is used unescaped as a filesystem directory name (both the catalog and
-/// the definition store lay cases out as `test-cases/<slug>/<version>/`) and as a
-/// URL path segment, so it is constrained to a portable, unambiguous charset. Every
-/// existing case's folder name already satisfies this.
+/// A slug is used unescaped as a filesystem directory name (the catalog lays cases
+/// out as `test-cases/<type>/<difficulty>/<slug>/<version>/` and the definition
+/// store as `test-cases/<slug>/<version>/`) and as a URL path segment, so it is
+/// constrained to a portable, unambiguous charset. Every existing case's folder name
+/// already satisfies this.
 pub fn is_valid_slug(slug: &str) -> bool {
     !slug.is_empty()
         && slug.split('-').all(|segment| {
@@ -4623,7 +5309,10 @@ fn read_dir_names(dir: &Path) -> Result<Vec<String>> {
 /// Leading `v` is ignored and dot-separated numeric components are compared
 /// numerically; any non-numeric tail is ignored for ordering. Versions that do
 /// not parse sort before those that do.
-fn version_key(version: &str) -> Vec<u64> {
+///
+/// Public so the backend store orders its ingested versions the same way this
+/// (the authoritative filesystem catalog) does, rather than by directory mtime.
+pub fn version_key(version: &str) -> Vec<u64> {
     version
         .trim_start_matches('v')
         .split('.')
@@ -4804,9 +5493,69 @@ fn resolve_model(model: &ManifestModel, invalid: &impl Fn(String) -> Error) -> R
             tracks: Vec::new(),
         });
     }
+
+    // The required **caller joints** — the game-facing procedural DOFs (a turret's
+    // `turret_yaw`). Optional: a case that fixes no procedural interface declares none.
+    // Each resolves to a `Caller`-driven [`JointSpec`]. Rotation limits are authored in
+    // DEGREES for readability and converted to radians here (the stored/emitted/runtime
+    // unit); translation limits are world units, unchanged. The driven node is discovered
+    // at runtime by the DOF `name` (the model tags the node's glTF `extras`), so the
+    // voxel-only `part`/`pivot` fields are not meaningful here: `part` mirrors the DOF
+    // name and `pivot` is zero.
+    let mut joints: Vec<JointSpec> = Vec::with_capacity(model.joint.len());
+    for joint in &model.joint {
+        if joint.name.trim().is_empty() {
+            return Err(invalid("model joint `name` must not be empty".to_string()));
+        }
+        if joints.iter().any(|j| j.name == joint.name) {
+            return Err(invalid(format!(
+                "duplicate model joint name `{}`",
+                joint.name
+            )));
+        }
+        for (label, value) in [("min", joint.min), ("max", joint.max), ("rest", joint.rest)] {
+            if !value.is_finite() {
+                return Err(invalid(format!(
+                    "model joint `{}` {label} must be a finite number",
+                    joint.name
+                )));
+            }
+        }
+        if joint.min > joint.max {
+            return Err(invalid(format!(
+                "model joint `{}` min ({}) must not exceed max ({})",
+                joint.name, joint.min, joint.max
+            )));
+        }
+        if joint.rest < joint.min || joint.rest > joint.max {
+            return Err(invalid(format!(
+                "model joint `{}` rest ({}) must lie within [min, max] = [{}, {}]",
+                joint.name, joint.rest, joint.min, joint.max
+            )));
+        }
+        // Rotation limits are authored in degrees; store radians.
+        let convert = |value: f64| match joint.kind {
+            JointKindSpec::Rotation => value.to_radians(),
+            JointKindSpec::Translation => value,
+        };
+        joints.push(JointSpec {
+            name: joint.name.clone(),
+            part: joint.name.clone(),
+            kind: joint.kind,
+            axis: joint.axis,
+            pivot: [0, 0, 0],
+            min: convert(joint.min),
+            max: convert(joint.max),
+            rest: convert(joint.rest),
+            offset: None,
+            orient: None,
+            drive: DriveKindSpec::Caller,
+        });
+    }
+
     Ok(ModelSpec {
         parts: Vec::new(),
-        joints: Vec::new(),
+        joints,
         animations,
     })
 }

@@ -1,0 +1,15 @@
+# The default variant: the standard Trench dive only, with no extra mode spec on
+# top of the always-present `specs/modes/standard.md`. Listed first in the case
+# manifest's `variants`, so it is the default. Every path resolves against the
+# version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard Trench dive only."
+
+# The main menu lists a different set of modes per variant, so each variant
+# supplies its own `title` reference; `gameplay` and `game-over` are common.
+reference = [{ view = "title", path = "reference/menu-base.html" }]
+
+# The authored reference implementation for the Fathom lineage now lives on the
+# current version, `test-cases/fathom/v1.1.0/`, with one build per variant
+# (`base` and `kindle`); this older version no longer carries its own.

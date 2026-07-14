@@ -52,6 +52,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         orchestrator,
         max_runtime_seconds: args.max_runtime.map(runtime_hours_to_seconds),
         auth_mode: args.auth_mode.clone(),
+        retry_count: args.retry_count,
     };
 
     println!(
@@ -249,7 +250,9 @@ fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
 fn state_label(state: JobState) -> &'static str {
     match state {
         JobState::Queued => "queued",
+        JobState::Pending => "pending",
         JobState::Dispatched => "dispatched",
+        JobState::Starting => "starting",
         JobState::Running => "running",
         JobState::Succeeded => "succeeded",
         JobState::Failed => "failed",

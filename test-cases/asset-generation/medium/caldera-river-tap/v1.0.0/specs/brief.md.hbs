@@ -1,0 +1,130 @@
+# Caldera River Tap — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera River Tap, the smallest, lowest waterworks of the
+Holdfast — a low brass sluice gate spanning a river channel, a weir with a liftable gate in
+an iron frame, with an undershot paddle wheel turning in the flow beside it — as a 3D voxel
+model with a rig a game can pose at runtime. Build it with `voxel-anim` (painting opaque
+cells one operation at a time) as a rigged model that reads unmistakably as this simple
+weir, turns its paddle wheel gently on its own, and lifts its gate to draw water on demand.
+There is no target model to copy.
+
+This test measures creativity and craft, not instruction-following. The brief fixes what
+the River Tap is and how it must move; it deliberately does not hand you a parts list, joint
+placements, or pose angles — working out the pieces a sluice gate and paddle wheel need,
+where they attach, and how they articulate is the test. Invent the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the Tap, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the Tap's front face looks toward `z = {{voxel.maxZ}}` (the front), and the river
+  channel runs across the width (x). Up is +y.
+- The Tap is a **static structure founded on the ground**: its frame sits flat on the ground
+  at `y = 0`, spanning the channel, and does not move. Build the sluice gate and frame regular
+  about the vertical centerplane; the **paddle wheel sits to one side**, beside the gate, so
+  the model is deliberately **not fully mirror-symmetric** — that offset wheel is intended.
+- The Tap is deliberately **small and low** — the smallest, lowest structure of the roster, a
+  low weir hugging the channel, never tall or bulky. Nothing about it should read as powered,
+  heavy, or machine-like beyond a simple gate and wheel.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same volume's
+  coordinates, positioned where the part sits on the assembled Tap (the gate already seated
+  in the frame, the paddle wheel already beside it in the channel).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Brass — primary plating | `#c8a24a` |
+| Brass dark — shadow, underside | `#8a6d2e` |
+| Iron — mechanisms, pipework, recesses | `#3a3836` |
+| Accent fitting — verdigris (the accent region) | `#2f7d72` |
+
+Do **not** use steel `#b8bcc2`, gold `#ffce54`, or white `#dfeaea` anywhere on the model.
+Those are the colors a game paints onto Holdfast accent fittings at run time (see *The
+accent region*); baking any of them into the model corrupts the recolor the build runs on
+every accent voxel.
+
+## What the River Tap is (and what is yours to invent)
+
+Fixed — the River Tap must read unmistakably as all of these:
+
+- A **low brass sluice gate** spanning a river channel — a **weir** with a **liftable gate**
+  held in an **iron frame** across the channel, low and hugging the ground. Its shadowed
+  seams and undersides are brass dark.
+- A **liftable gate** in the frame that lifts to let water through and lowers to hold it back
+  (see the animations).
+- An **undershot paddle wheel** turning in the flow beside the gate — a bladed wheel set low
+  in the channel, driven by the water passing under it.
+
+Everything else is yours to invent — the exact silhouette and proportions of the frame and
+gate, how the weir is shaped, how many blades the paddle wheel carries and how it is mounted,
+and how you break the Tap into rig parts. Nothing here prescribes a shape; the test rewards a
+bold, characterful design that is unmistakably the River Tap and animates convincingly.
+
+The River Tap is a **structure of the Holdfast — brass-and-iron machinery, not a creature**.
+The tell is the low SLUICE GATE and the undershot PADDLE WHEEL: it is the smallest and
+lowest structure, a simple gravity-fed weir founded on the ground, with nothing about it
+reading as powered, heavy, tall, or alive.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time by finding every voxel of one reserved color and
+repainting it. The fluid structures do not upgrade, so the River Tap's accent is **always**
+painted to brass dark — but the build runs that recolor **unconditionally** on load, so the
+region must still be authored exactly right. That reserved color is the **verdigris accent**
+`#2f7d72`, and it is what makes the contract work:
+
+- Sculpt the **sluice gate frame** — and only it — in `#2f7d72`.
+- Use `#2f7d72` **nowhere else** on the model. Not a stray voxel, not a highlight, not a
+  seam. Every voxel of it is treated as accent fitting.
+- The frame must be **one clean, unbroken run** around the gate, and clearly **visible from
+  more than one angle**.
+
+Everything else — the weir, the gate itself, the paddle wheel, the recesses — keeps its own
+color and is never repainted. Get this wrong and the Tap recolors wrong on load.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author the
+motion). Author each with `voxel-anim define-animation` then `add-keyframe`, choosing the
+period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion reads right — a gentle turn at idle and a steady draw when it is working, never heavy.
+
+- **`idle`** — sitting in the current (a self-playing idle, `loop = true`,
+  `auto_play = true`). The paddle wheel turns **gently** in the current and the gate stays
+  still, so the Tap reads as sitting in the river rather than drawing. It cycles on its own
+  with no caller. Only the paddle wheel turns; the gate, frame, and weir stay fixed. It loops
+  seamlessly.
+- **`draw`** — drawing water (a game-triggered playable, `loop = true`). The sluice gate
+  **lifts** within its frame and the paddle wheel **spins up** as water is drawn through the
+  weir, cycling steadily. This plays while the Tap is drawing, so it reads as **active but
+  simple — gravity-fed, never heavy or powered** — plainly distinct from the gentle idle. The
+  frame and weir stay planted.
+
+You may add your own extra parts, joints, or animations on top of this (for example a drip
+at the gate), but you must not drop or contradict the required `idle` and `draw` animations,
+by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on your
+`PATH`. Define your own parts with `define-part` (giving each a parent and a pivot), sculpt
+each by selecting it with `--part <name>`, set pivots with `set-pivot`, place joints with
+`define-joint`, and author the two animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
+mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation; run
+`voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png` previews)
+between calls to judge each part against this brief — that the gate seats in the frame across
+the channel, the paddle wheel sits low in the flow beside it, the frame reads as one unbroken
+run, and the two animations read with the right contrast between sitting and drawing. Run
+`voxel-anim render` before you finish so it emits the per-part `.glb` geometry your result is
+built from — an unrendered part scores as empty (`voxel-anim render --component <part>`
+renders one part; `voxel-anim render --time <ms> --animation <name>` renders the model posed
+at that instant to check the motion).

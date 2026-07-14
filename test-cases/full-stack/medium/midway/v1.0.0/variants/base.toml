@@ -1,0 +1,26 @@
+# The default variant: the standard park start. Seeds the standard mode spec to the
+# stable `specs/mode.md` dest that the common specs reference. Listed first in the case
+# manifest's `variants`, so it is the default. Every path resolves against the version
+# folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard park start."
+
+# The varying start is seeded per variant at the common `specs/mode.md` path the other
+# specs reference, so the model sees a single, self-contained mode spec. Base seeds the
+# standard park start.
+spec = [{ source = "specs/mode-classic.md", dest = "specs/mode.md" }]
+
+# The main menu start differs per variant, so each variant supplies its own `title`
+# reference; `gameplay` and `game-over` are common.
+reference = [{ view = "title", path = "reference/menu-base.html" }]
+
+# The authored, *correct* static build of this variant — the case-variant analogue of a
+# run's playable build. A bare directory path (resolved against the version folder)
+# holding a buildable web project, built with this case's `[build]` install/build
+# commands and deployed like a published run build via `tcab publish-reference`, then
+# shown on the case's "Reference" tab. It is **never seeded into a run**. This is a
+# full-stack case, so this build also PRODUCED its own art, effects, and audio during
+# authoring (committed under `reference-impl/base/assets/`); the build itself only
+# loads them, so `npm ci && npm run build` is self-contained.
+reference_implementation = "reference-impl/base"

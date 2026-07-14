@@ -33,8 +33,8 @@ use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
     MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec, PerformanceCase,
     ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec, SheetSpec,
-    SimulationSpec, SpecFile, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant,
-    VoxelSpec, WorkspaceFile,
+    SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType,
+    ToolSpec, UiSpec, Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1406,7 +1406,7 @@ struct VersionBody {
     init: Option<String>,
     assets: Vec<AssetBody>,
     #[serde(default)]
-    packages: Vec<String>,
+    packages: Vec<PackageBody>,
     variants: Vec<VariantBody>,
     common_references: Vec<ReferenceBody>,
     #[serde(default)]
@@ -1450,6 +1450,11 @@ impl VersionBody {
             prompt_path: PathBuf::from("prompt.hbs"),
             max_runtime_seconds: self.max_runtime_seconds,
             test_type: self.test_type,
+            // The wire response omits `experimental` — it is purely a
+            // backend-side visibility filter, and a version the backend served
+            // for a run is one it already decided is visible — so a remotely
+            // resolved version is always treated as non-experimental here.
+            experimental: false,
             build: self.build.map(|build| BuildCommands {
                 install: build.install,
                 build: build.build,
@@ -1507,7 +1512,7 @@ impl VersionBody {
                 .iter()
                 .map(|a| PathBuf::from(&a.source))
                 .collect(),
-            packages: self.packages,
+            packages: self.packages.into_iter().map(|p| p.name).collect(),
             variants: self
                 .variants
                 .into_iter()
@@ -1528,6 +1533,13 @@ impl VersionBody {
                         .collect(),
                     domains: variant.domains,
                     voxel: variant.voxel,
+                    // A backend-driven run never carries a reference implementation:
+                    // it is a host source directory that is deployed out-of-band, is
+                    // never seeded, and takes no part in executing a run, so the
+                    // wire `VariantBody` omits it entirely. The resolved `Variant`
+                    // records `None` — the publisher, not the driver, resolves it
+                    // from the on-disk case definition.
+                    reference_impl: None,
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),
@@ -1567,6 +1579,7 @@ fn spec_from(spec: &SpecBody) -> SpecFile {
     SpecFile {
         source_path: PathBuf::from(&spec.source),
         dest: PathBuf::from(&spec.dest),
+        kind: spec.kind,
     }
 }
 
@@ -1594,6 +1607,14 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
         frames: item.frames,
         weight: item.weight,
         domain: item.domain,
+        sub_items: item
+            .sub_items
+            .into_iter()
+            .map(|sub| SubReviewItem {
+                id: sub.id,
+                title: sub.title,
+            })
+            .collect(),
     }
 }
 
@@ -1734,6 +1755,11 @@ struct SpecBody {
     #[allow(dead_code)]
     #[serde(default)]
     template: bool,
+    /// The seeded file's role (`spec`/`script`), carried through to the resolved
+    /// [`SpecFile`] so the Inputs surfaces can tag it. Presentation only; defaults
+    /// to `spec` when the backend omits it.
+    #[serde(default)]
+    kind: SpecKind,
 }
 
 #[derive(Deserialize)]
@@ -1741,6 +1767,17 @@ struct AssetBody {
     source: String,
     #[allow(dead_code)]
     dest: String,
+}
+
+/// One shipped runtime package as the backend serves it: the npm `name` a run
+/// injects as a `file:` dep, plus a UI-only `description`. Only the name flows
+/// into [`TestCaseVersion`]; the description is ignored here (it is gallery-facing).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PackageBody {
+    name: String,
+    #[allow(dead_code)]
+    description: String,
 }
 
 #[derive(Deserialize)]
@@ -1800,6 +1837,17 @@ struct ReviewItemBody {
     weight: u32,
     #[serde(default)]
     domain: Option<String>,
+    #[serde(default)]
+    sub_items: Vec<SubReviewItemBody>,
+}
+
+/// A name-only sub-item of a [`ReviewItemBody`] in the wire shape: an
+/// independently graded point carrying only its id and title.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubReviewItemBody {
+    id: String,
+    title: String,
 }
 
 #[derive(Deserialize)]

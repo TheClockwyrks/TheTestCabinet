@@ -1,0 +1,9 @@
+{
+  "name": "fathom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fathom — a bioluminescent deep-sea maze chase that runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

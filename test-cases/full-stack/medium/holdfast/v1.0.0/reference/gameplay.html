@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<!--
+  Holdfast — in-colony reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system,
+  visual design), ../specs/world.md (terrain, nodes, camera), ../specs/combat.md
+  (the raid, cover, effects), ../specs/flow.md (the HUD dashboard), and
+  ../specs/assets.md (these are stand-ins for PRODUCED sprites, animations, and
+  particle effects).
+
+  The map layout, structures, and settler/raider positions vary at runtime; this
+  frame is a representative moment (a raid at dusk) for a soft palette/layout
+  comparison, not a strict pixel match. Objects inside .colony use FIELD-LOCAL
+  coordinates (a tile at field row r sits at top = r * 24; the field itself starts
+  at stage y=64). People use field-local pixels (left/top).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Holdfast — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- ================= Top HUD: colony vitals ======================= -->
+      <div class="topbar">
+        <div class="stock"><span class="dot wood"></span><span class="lbl"><span class="k">WOOD</span><span class="v">62</span></span></div>
+        <div class="stock"><span class="dot ore"></span><span class="lbl"><span class="k">ORE</span><span class="v">18</span></span></div>
+        <div class="stock"><span class="dot crop"></span><span class="lbl"><span class="k">CROPS</span><span class="v">11</span></span></div>
+        <div class="stock"><span class="dot meal"></span><span class="lbl"><span class="k">MEALS</span><span class="v food">7</span></span></div>
+
+        <div class="spacer"></div>
+
+        <div class="threat-chip">&#9888; RAID &mdash; 3 HOSTILES</div>
+        <div class="clock">
+          <span class="day">DAY 6</span>
+          <span class="tod">DUSK &nbsp; &#9654;&#9654; 2x</span>
+        </div>
+      </div>
+
+      <!-- ================= Colony view (top-down camera) ================ -->
+      <div class="colony">
+        <!-- Rock outcrops that shape the map, and a fertile grass patch. -->
+        <div class="region rock" style="--c: 0; --r: 0; --w: 6; --h: 5"></div>
+        <div class="region rock" style="--c: 48; --r: 0; --w: 6; --h: 4"></div>
+        <div class="region rock" style="--c: 0; --r: 21; --w: 12; --h: 4"></div>
+        <div class="region grass" style="--c: 29; --r: 14; --w: 13; --h: 7"></div>
+
+        <!-- Built floor inside the walled compound. -->
+        <div class="region" style="--c: 11; --r: 7; --w: 9; --h: 6; background: var(--floor)"></div>
+
+        <!-- Compound walls (facing the incoming raid to the right), with a door. -->
+        <div class="region" style="--c: 10; --r: 6; --w: 11; --h: 1;
+             background: linear-gradient(180deg, var(--built), var(--built-2)); border: 1px solid #9c7a4f"></div>
+        <div class="region" style="--c: 10; --r: 13; --w: 11; --h: 1;
+             background: linear-gradient(180deg, var(--built), var(--built-2)); border: 1px solid #9c7a4f"></div>
+        <div class="region" style="--c: 10; --r: 7; --w: 1; --h: 6;
+             background: linear-gradient(180deg, var(--built), var(--built-2)); border: 1px solid #9c7a4f"></div>
+        <div class="region" style="--c: 20; --r: 7; --w: 1; --h: 2;
+             background: linear-gradient(180deg, var(--built), var(--built-2)); border: 1px solid #9c7a4f"></div>
+        <div class="region" style="--c: 20; --r: 11; --w: 1; --h: 2;
+             background: linear-gradient(180deg, var(--built), var(--built-2)); border: 1px solid #9c7a4f"></div>
+        <div class="cell door" style="--c: 20; --r: 9"></div>
+        <div class="cell door" style="--c: 20; --r: 10"></div>
+
+        <!-- Furniture inside the compound: beds and a working stove. -->
+        <div class="build bed" style="--c: 12; --r: 8">&#9636;</div>
+        <div class="build bed" style="--c: 12; --r: 9">&#9636;</div>
+        <div class="build stove on" style="--c: 17; --r: 11">&#9832;</div>
+
+        <!-- A turret on the wall corner, firing at the raid. -->
+        <div class="turret firing" style="--c: 21; --r: 6"></div>
+
+        <!-- Farm plots on the grass patch; two rows are ripe. -->
+        <div class="farm ripe" style="--c: 31; --r: 15"></div>
+        <div class="farm ripe" style="--c: 32; --r: 15"></div>
+        <div class="farm" style="--c: 33; --r: 15"></div>
+        <div class="farm" style="--c: 31; --r: 16"></div>
+        <div class="farm" style="--c: 32; --r: 16"></div>
+        <div class="farm" style="--c: 33; --r: 16"></div>
+
+        <!-- A tree stand being chopped, and an ore vein designated for mining. -->
+        <div class="node tree" style="--c: 39; --r: 8"></div>
+        <div class="node tree" style="--c: 40; --r: 8"></div>
+        <div class="node tree" style="--c: 39; --r: 9"></div>
+        <div class="node tree" style="--c: 41; --r: 9"></div>
+        <div class="node ore" style="--c: 46; --r: 12"></div>
+        <div class="node ore" style="--c: 47; --r: 12"></div>
+        <div class="node ore" style="--c: 46; --r: 13"></div>
+        <div class="designate" style="--c: 46; --r: 12"></div>
+        <div class="designate" style="--c: 47; --r: 12"></div>
+        <div class="designate" style="--c: 46; --r: 13"></div>
+
+        <!-- Raiders advancing from the right toward the compound. -->
+        <div class="person raider" style="left: 720px; top: 195px"></div>
+        <div class="person raider" style="left: 792px; top: 243px"></div>
+        <div class="person raider" style="left: 864px; top: 219px"></div>
+
+        <!-- Settlers: two firing from behind the wall, one chopping the tree. -->
+        <div class="person settler" style="left: 456px; top: 195px"></div>
+        <div class="person settler" style="left: 456px; top: 243px"></div>
+        <div class="person settler" style="left: 936px; top: 210px"></div>
+
+        <!-- A settler downed at the doorway, bleeding out (a rescue crisis). -->
+        <div class="person settler downed" style="left: 498px; top: 243px"></div>
+
+        <!-- Produced particle effects: muzzle flashes, a tracer, a hit spray,
+             and construction dust at the tree being chopped. -->
+        <div class="tracer" style="left: 480px; top: 205px; width: 236px"></div>
+        <div class="fx muzzle" style="left: 470px; top: 192px"></div>
+        <div class="fx muzzle" style="left: 706px; top: 240px"></div>
+        <div class="fx blood" style="left: 780px; top: 236px"></div>
+        <div class="fx dust" style="left: 930px; top: 204px"></div>
+
+        <!-- A dusk lighting wash over the map (see ../specs/time.md). -->
+        <div class="night"></div>
+      </div>
+
+      <!-- ================= Bottom HUD: roster + build palette =========== -->
+      <div class="bottombar">
+        <div class="roster">
+          <div class="crew">
+            <span class="face"></span>
+            <div class="needs">
+              <div class="needbar"><span class="hu" style="width: 61%"></span></div>
+              <div class="needbar"><span class="re" style="width: 48%"></span></div>
+              <div class="needbar"><span class="mo" style="width: 66%"></span></div>
+              <span class="job">FIGHTING</span>
+            </div>
+          </div>
+          <div class="crew">
+            <span class="face"></span>
+            <div class="needs">
+              <div class="needbar"><span class="hu" style="width: 74%"></span></div>
+              <div class="needbar"><span class="re" style="width: 55%"></span></div>
+              <div class="needbar"><span class="mo" style="width: 52%"></span></div>
+              <span class="job">FIGHTING</span>
+            </div>
+          </div>
+          <div class="crew">
+            <span class="face"></span>
+            <div class="needs">
+              <div class="needbar"><span class="hu" style="width: 40%"></span></div>
+              <div class="needbar"><span class="re" style="width: 70%"></span></div>
+              <div class="needbar"><span class="mo" style="width: 58%"></span></div>
+              <span class="job">CHOPPING</span>
+            </div>
+          </div>
+          <div class="crew">
+            <span class="face hurt"></span>
+            <div class="needs">
+              <div class="needbar"><span class="low" style="width: 15%"></span></div>
+              <div class="needbar"><span class="re" style="width: 44%"></span></div>
+              <div class="needbar"><span class="low" style="width: 20%"></span></div>
+              <span class="job">DOWNED</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="palette">
+          <div class="tool selected">&#9935;</div>
+          <div class="tool">&#9639;</div>
+          <div class="tool">&#127968;</div>
+          <div class="tool">&#9876;</div>
+          <div class="tool">&#10005;</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

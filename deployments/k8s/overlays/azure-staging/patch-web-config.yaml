@@ -1,0 +1,25 @@
+# Set the in-cluster web console's runtime config to the staging internal-ingress https
+# hostnames (mirrors azure-prod, staging hosts).
+#
+# The single tcab-web image is environment-agnostic (one build per git-sha), so the
+# backend + auth URLs are injected at RUNTIME via env: the image's entrypoint
+# `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__). The components/web
+# Deployment (pulled in by the internal-ingress component) ships these env keys with
+# empty defaults; this patches them to the staging https names the ingress routes. The
+# console learns the artifacts/arena URLs from the backend's GET /config, repointed in
+# patch-backend-public-urls.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-web
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: web
+          env:
+            - name: TCAB_WEB_BACKEND_URL
+              value: "https://api.staging.tcab.testcabinet.ai"
+            - name: TCAB_WEB_AUTH_URL
+              value: "https://auth.staging.tcab.testcabinet.ai"

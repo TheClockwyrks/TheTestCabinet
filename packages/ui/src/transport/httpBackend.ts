@@ -19,10 +19,14 @@ import type {
   AuthResult,
   BackendIdentity,
   Domain,
+  HarnessConfigEntry,
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
+  LogoFetchResult,
   Model,
+  ModelInput,
+  ModelSeed,
   ProgressCallback,
   PublishProgress,
   PublishResult,
@@ -32,8 +36,10 @@ import type {
   RunJob,
   RunNotification,
   RunPage,
+  RunSummaryPage,
   Specification,
   SpecDocument,
+  SpecRole,
   StoredReview,
   StoredRun,
   TestCase,
@@ -46,13 +52,21 @@ import type {
   ModelSpec,
   RunRecord,
 } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type {
+  CoverageMatrix,
+  ReviewPlan,
+} from "@test-cabinet/run-record/review-plan";
 import {
   delJson,
+  delVoid,
   getJson,
   getJsonStreamed,
   getText,
   joinUrl,
   postJson,
+  putJson,
+  putVoid,
 } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
@@ -89,6 +103,16 @@ interface SpecDescriptor {
   source: string;
   dest: string;
   template?: boolean;
+  // The seeded file's role (`spec`/`script`), so the Inputs tab can tag it. Absent
+  // on a backend that predates the field; treated as "spec".
+  kind?: SpecRole;
+}
+
+// A runtime package the case ships into its runs, as the version endpoint reports
+// it: its npm name and the UI-only description of what it provides.
+interface PackageDescriptor {
+  name: string;
+  description: string;
 }
 
 // A reference in a resolved version: the view it depicts, how it is produced
@@ -117,6 +141,9 @@ interface ResolvedVersion {
   // carried through verbatim so the catalog can split Sprite vs Voxel tabs.
   assetKind?: AssetKind | null;
   commonSpecs?: SpecDescriptor[];
+  // The runtime packages this case ships into every run (case-level), each with a
+  // UI-only description. Absent on a backend that predates the field.
+  packages?: PackageDescriptor[];
   commonReviewItems?: ReviewItem[];
   // References every variant shares (rendered from the `_common` scope).
   commonReferences?: ReferenceDescriptor[];
@@ -143,6 +170,10 @@ interface ResolvedVersion {
     // The variant's own additive scoring domains (rated only when this variant is
     // selected, on top of the case's common ones).
     domains?: Domain[];
+    // The absolute URL of this variant's reference implementation, recorded in the
+    // backend's `case_reference_build` table. Null when the variant declares none;
+    // absent on a backend that predates the field.
+    referenceBuild?: string | null;
   }[];
 }
 
@@ -174,6 +205,18 @@ interface StoredRunResponse {
 interface RunPageResponse {
   runs: StoredRunResponse[];
   nextBefore?: string | null;
+}
+
+// `GET /runs?fields=summary`: a page of bounded run summary cards plus the same
+// `nextBefore` cursor as `RunPageResponse`. The cards are the backend's
+// `RunSummary` contract shape verbatim (camelCase), so they pass through
+// unmapped; only the cursor is renamed to the transport-neutral `nextCursor`.
+// `total` is present only on the numbered-pager (offset) path — the count of all
+// matching rows ignoring the page window; the cursor path omits it.
+interface RunSummaryPageResponse {
+  runs: RunSummary[];
+  nextBefore?: string | null;
+  total?: number | null;
 }
 
 // The backend serves the record with its links already populated, so the run's
@@ -240,6 +283,9 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
         assetKind: r.assetKind ?? null,
+        // Case-level runtime packages (shared by every variant), each with a
+        // UI-only description. Absent on a backend that predates the field.
+        packages: r.packages ?? [],
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
         model: r.model ?? null,
@@ -271,6 +317,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
           domains: [...(r.domains ?? []), ...(v.domains ?? [])],
+          // The variant's reference-implementation build URL, carried through
+          // verbatim (already an absolute Cloudflare Pages URL — the backend
+          // records exactly what `tcab publish-reference` deployed). Null when the
+          // variant declares none.
+          referenceBuild: v.referenceBuild ?? null,
         })),
       };
     },
@@ -295,6 +346,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             baseUrl,
             `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/artifacts/${d.source}`,
           ),
+          kind: (d.kind ?? "spec") as SpecRole,
         })),
       );
       return {
@@ -322,10 +374,74 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async listModels(): Promise<Model[]> {
-      // The backend HTTP contract defines no model catalog endpoint; the run
-      // screen treats the model id as free text, so report none. The gallery's
-      // rich model metadata comes from the bundled curated catalog instead.
-      return [];
+      // The merged model catalog: curated configs ⋃ models derived from recorded
+      // runs, each with its observed price history.
+      const body = await getJson<{ models: Model[] }>(baseUrl, "/models");
+      return body.models;
+    },
+
+    async createModel(input: ModelInput, token: string): Promise<Model> {
+      return postJson<Model>(baseUrl, "/models", input, token);
+    },
+
+    async updateModel(
+      slug: string,
+      input: ModelInput,
+      token: string,
+    ): Promise<Model> {
+      return putJson<Model>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteModel(slug: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/models/${encodeURIComponent(slug)}`, token);
+    },
+
+    async fetchModelLogo(url: string, token: string): Promise<LogoFetchResult> {
+      return postJson<LogoFetchResult>(baseUrl, "/models/logo", { url }, token);
+    },
+
+    async listHarnessConfigs(): Promise<HarnessConfigEntry[]> {
+      return getJson<HarnessConfigEntry[]>(baseUrl, "/harness-config");
+    },
+
+    async setHarnessMaxParallelism(
+      slug: string,
+      maxParallelism: number | null,
+      token: string,
+    ): Promise<HarnessConfigEntry[]> {
+      return postJson<HarnessConfigEntry[]>(
+        baseUrl,
+        `/harness-config/${encodeURIComponent(slug)}`,
+        { maxParallelism },
+        token,
+      );
+    },
+
+    async seedModelFromRun(runId: string): Promise<ModelSeed> {
+      return getJson<ModelSeed>(
+        baseUrl,
+        `/models/seed?runId=${encodeURIComponent(runId)}`,
+      );
+    },
+
+    async getReviewPlan(token: string): Promise<ReviewPlan> {
+      // The backend returns an empty plan (runsPerCell 0, no cases/combinations)
+      // when the account has saved none, so the caller never has to special-case
+      // absence. Bearer-scoped to the signed-in reviewer.
+      return getJson<ReviewPlan>(baseUrl, "/review-plan", token);
+    },
+
+    async putReviewPlan(plan: ReviewPlan, token: string): Promise<void> {
+      await putVoid(baseUrl, "/review-plan", plan, token);
+    },
+
+    async getCoverage(token: string): Promise<CoverageMatrix> {
+      return getJson<CoverageMatrix>(baseUrl, "/review-plan/coverage", token);
     },
 
     async listRuns(opts): Promise<RunPage> {
@@ -340,6 +456,32 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return {
         runs: body.runs.map(toStoredRun),
         nextCursor: body.nextBefore ?? null,
+      };
+    },
+
+    async listRunSummaries(opts): Promise<RunSummaryPage> {
+      // Always the summary projection. Every provided param is forwarded (omitting
+      // the undefined ones); an `offset` (even 0) selects the backend's
+      // numbered-pager path, which is the only one that returns `total`.
+      const params = new URLSearchParams({ fields: "summary" });
+      if (opts?.before) params.set("before", opts.before);
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      if (opts?.state) params.set("state", opts.state);
+      if (opts?.testCase) params.set("testCase", opts.testCase);
+      if (opts?.model) params.set("model", opts.model);
+      if (opts?.harness) params.set("harness", opts.harness);
+      if (opts?.q) params.set("q", opts.q);
+      if (opts?.sort) params.set("sort", opts.sort);
+      if (opts?.dir) params.set("dir", opts.dir);
+      const body = await getJson<RunSummaryPageResponse>(
+        baseUrl,
+        `/runs?${params.toString()}`,
+      );
+      return {
+        summaries: body.runs,
+        nextCursor: body.nextBefore ?? null,
+        total: body.total ?? null,
       };
     },
 
@@ -463,6 +605,27 @@ function mapJobState(state: string): RunJob["state"] {
   return "running";
 }
 
+// Map a backend job state to the console's coarser in-progress *phase* for the
+// active-run list. `dispatched` (claimed, the driver pod being created) and
+// `starting` (the pod up, running pre-run setup) both read as "starting"; a
+// harness-capped hold reads as "pending", a free-but-unclaimed job as "queued".
+// A terminal job never appears in the active list, so it falls back to "running".
+function mapActiveState(state: string): InProgressRun["state"] {
+  switch (state) {
+    case "queued":
+      return "queued";
+    case "pending":
+      return "pending";
+    case "dispatched":
+    case "starting":
+      return "starting";
+    case "running":
+      return "running";
+    default:
+      return "running";
+  }
+}
+
 // Resolve the artifact service's base URL from the backend's `GET /config`, or
 // null when artifacts are not served separately. Best-effort: a backend that
 // can't be reached resolves null, so pre-publish build/media links are simply
@@ -572,6 +735,7 @@ export function createBackendExec(
         ...(config.maxRuntimeOverride != null
           ? { maxRuntimeSeconds: config.maxRuntimeOverride }
           : {}),
+        ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
       };
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
@@ -610,12 +774,14 @@ export function createBackendExec(
     },
 
     async listActiveRuns(): Promise<InProgressRun[]> {
-      // The backend reports its in-flight jobs (queued/dispatched/running) by
-      // launch identity; the row shape (`ActiveJobOut`) is the console's
-      // in-progress run verbatim. A run still queued or dispatched reads as
-      // "running" to the console, which only distinguishes running from failed.
-      const jobs = await getJson<InProgressRun[]>(backendUrl, "/jobs/active");
-      return jobs.map((job) => ({ ...job, state: "running" }));
+      // The backend reports its in-flight jobs by launch identity; the row shape
+      // (`ActiveJobOut`) is the console's in-progress run verbatim except for the
+      // fine-grained `state`, which is mapped to the console's coarser live phases
+      // so a held-back ("pending") or spinning-up ("starting") run reads as such.
+      const jobs = await getJson<
+        (Omit<InProgressRun, "state"> & { state: string })[]
+      >(backendUrl, "/jobs/active");
+      return jobs.map((job) => ({ ...job, state: mapActiveState(job.state) }));
     },
 
     subscribeToNotifications(handlers: NotificationSubscription): () => void {

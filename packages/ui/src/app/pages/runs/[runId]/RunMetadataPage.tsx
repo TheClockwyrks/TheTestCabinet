@@ -1,14 +1,15 @@
 import { MetricTile } from "@test-cabinet/ui";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { BUILT_IN_ORCHESTRATORS } from "../../../data/orchestrators";
+import { formatTimestamp } from "../../../format";
 import { RunValidationSection } from "./RunValidationSection";
 import styles from "./RunDetailPages.module.scss";
 
-// The Metadata tab (`/runs/:runId/metadata`): the run's environment (sourced from
-// inside the container) plus a link to the published source repo, followed by the
-// validation widget. A run only appears here once it has completed, so no status
-// is shown. Validation used to be its own tab; it now lives beneath the run info
-// under a "Validation" heading.
+// The Metadata tab (`/runs/:runId/metadata`): when the run started, the run's
+// environment (sourced from inside the container), and a link to the published
+// source repo, followed by the validation widget. A run only appears here once it
+// has completed, so no status is shown. Validation used to be its own tab; it now
+// lives beneath the run info under a "Validation" heading.
 export function RunMetadataPage() {
   return (
     <RunDetailLayout tab="metadata">
@@ -19,6 +20,11 @@ export function RunMetadataPage() {
             <section className={styles.section}>
               <h3 className={styles.sectionLabel}>Run info</h3>
               <div className={styles.metricsGrid3}>
+                <MetricTile
+                  label="Started"
+                  value={formatTimestamp(run.startedAt)}
+                  title={run.startedAt}
+                />
                 <MetricTile label="Operating system" value={environment.os} />
                 <MetricTile
                   label="Container image"

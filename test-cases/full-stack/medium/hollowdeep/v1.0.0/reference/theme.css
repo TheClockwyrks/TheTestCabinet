@@ -1,0 +1,511 @@
+/*
+ * Hollowdeep — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Hollowdeep test case.
+ * Every mockup is authored on a fixed 1280x720 logical stage so the testing
+ * harness can render and screenshot them at a 1280x720 viewport. Colors,
+ * positions, and type below are the source of truth referenced by the seeded
+ * specs under ../specs/.
+ *
+ * Stage geometry (matches ../specs/overview.md):
+ *   - 1280x720 stage; top HUD y[0,64] (colony vitals), colony view y[64,656]
+ *     (a camera onto the tile world), bottom HUD y[656,720] (delver roster +
+ *     build palette).
+ *   - Tiles are 24x24 logical px (--t). Objects inside .colony use FIELD-LOCAL
+ *     coordinates: the colony view starts at stage y=64, so a tile at world
+ *     row r that the camera shows at stage y=Y has top = Y - 64.
+ *
+ * These mockups depict the colony with simple CSS stand-ins for the tiles,
+ * machines, delvers, and gas overlays. In the real build those are PRODUCED
+ * assets (sprites, animated sheets, and live particle systems) — see
+ * ../specs/assets.md; here they are only visual targets for layout, palette,
+ * and type.
+ */
+
+:root {
+  --rock: #12100c;      /* deep rock / void (background) */
+  --dirt: #4a3524;      /* dirt tile */
+  --dirt-2: #402d1f;    /* dirt shade variation */
+  --ore: #d9a441;       /* ore vein */
+  --stone: #2b2620;     /* rock / bedrock */
+  --open: #191410;      /* open (dug) space */
+  --steel: #566073;     /* built structure (walls, floors) */
+  --steel-2: #3c4557;   /* built structure shade */
+  --ladder: #c9862f;    /* ladder / wire */
+  --oxygen: #47e0c8;    /* oxygen (breathable air) */
+  --co2: #b6c24a;       /* CO2 (waste gas) */
+  --power: #ffcb52;     /* power / energy */
+  --food: #7cd45a;      /* food / fungus */
+  --delver: #e08a3c;    /* delver suit */
+  --visor: #7fdfff;     /* delver helmet glow */
+  --alert: #ff5a52;     /* alert / danger */
+  --panel: #1b1712;     /* panels / overlays */
+  --text: #ece6db;      /* primary text */
+  --text-dim: #a89e8d;  /* secondary text */
+  --text-faint: #6b6355;/* tertiary / hints */
+
+  --t: 24px;            /* tile size */
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--rock);
+}
+
+/* The fixed logical stage. All coordinates are in 1280x720 logical pixels. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  font-family: var(--mono);
+  color: var(--text);
+  background-color: var(--rock);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Top HUD strip: colony vitals dashboard (y[0,64]) ------------------ */
+.topbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 22px;
+  background: linear-gradient(180deg, #201a13, var(--panel));
+  border-bottom: 1px solid #2c2419;
+  z-index: 5;
+}
+
+.vital {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 82px;
+}
+.vital .k {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+}
+.vital .v {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+.vital .v.good { color: var(--oxygen); }
+.vital .v.warn { color: var(--power); }
+.vital .v.bad { color: var(--alert); }
+.vital .v.food { color: var(--food); }
+
+/* A small labeled meter used in the top bar (oxygen, power). */
+.meter {
+  width: 92px;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(168, 158, 141, 0.16);
+  overflow: hidden;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+.meter > span.ox { background: var(--oxygen); box-shadow: 0 0 8px rgba(71, 224, 200, 0.6); }
+.meter > span.pw { background: var(--power); box-shadow: 0 0 8px rgba(255, 203, 82, 0.6); }
+.meter > span.co { background: var(--co2); }
+
+.spacer { flex: 1; }
+
+.clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.clock .cycle { font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+.clock .speed { font-size: 11px; letter-spacing: 3px; color: var(--text-dim); }
+
+/* A prominent alert chip in the top bar. */
+.alert-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(255, 90, 82, 0.14);
+  border: 1px solid rgba(255, 90, 82, 0.5);
+  color: var(--alert);
+  font-size: 12px;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+/* ---- Colony view: the tile world under the camera (y[64,656]) ---------- */
+.colony {
+  position: absolute;
+  left: 0;
+  top: 64px;
+  width: 1280px;
+  height: 592px;
+  overflow: hidden;
+  /* solid earth fill with a faint 24px tile grid over it */
+  background-color: var(--dirt);
+  background-image:
+    linear-gradient(0deg, rgba(0, 0, 0, 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.22) 1px, transparent 1px),
+    linear-gradient(180deg, var(--dirt), var(--dirt-2));
+  background-size: var(--t) var(--t), var(--t) var(--t), 100% 100%;
+}
+
+/* A rectangular region of a given tile kind, sized in tiles via --w/--h and
+ * placed at a tile origin via --c/--r (column/row from the field's top-left). */
+.region {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(var(--w) * var(--t));
+  height: calc(var(--h) * var(--t));
+}
+.region.open {
+  background: var(--open);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+}
+.region.stone { background: var(--stone); }
+.region.ore {
+  background: var(--dirt);
+  background-image: radial-gradient(3px 3px at 6px 8px, var(--ore) 60%, transparent 62%),
+    radial-gradient(3px 3px at 16px 15px, var(--ore) 60%, transparent 62%),
+    radial-gradient(2px 2px at 11px 4px, var(--ore) 60%, transparent 62%);
+  background-size: var(--t) var(--t);
+}
+
+/* A single tile-sized element placed at column --c, row --r. */
+.cell {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+}
+.cell.floor {
+  background: var(--steel-2);
+  border-top: 3px solid var(--steel);
+}
+.cell.wall {
+  background: var(--steel-2);
+  border: 1px solid var(--steel);
+}
+.cell.ladder {
+  background: transparent;
+  border-left: 4px solid var(--ladder);
+  border-right: 4px solid var(--ladder);
+  box-shadow: inset 0 6px 0 -4px var(--ladder), inset 0 14px 0 -4px var(--ladder),
+    inset 0 22px 0 -4px var(--ladder);
+}
+.cell.wire {
+  background: transparent;
+}
+.cell.wire::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 100%;
+  height: 4px;
+  background: var(--ladder);
+  box-shadow: 0 0 6px rgba(201, 134, 47, 0.7);
+}
+
+/* Dig designation overlay on a marked solid tile. */
+.dig {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: var(--t);
+  height: var(--t);
+  border: 1px dashed var(--power);
+  background: rgba(255, 203, 82, 0.14);
+}
+.dig::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-top: 2px solid rgba(255, 203, 82, 0.7);
+  transform: rotate(45deg);
+}
+
+/* Machines — 2x2-tile stand-ins with a label and a glow when running. */
+.machine {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(2 * var(--t));
+  height: calc(2 * var(--t));
+  border-radius: 5px;
+  background: linear-gradient(180deg, var(--steel), var(--steel-2));
+  border: 1px solid #6b7690;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--text);
+}
+.machine.on { box-shadow: 0 0 16px rgba(255, 203, 82, 0.55); border-color: var(--power); }
+.machine.diffuser.on { box-shadow: 0 0 16px rgba(71, 224, 200, 0.6); border-color: var(--oxygen); }
+
+/* Delver — a small suited figure (a body + helmet) placed at a stage pixel. */
+.delver {
+  position: absolute;
+  width: 16px;
+  height: 22px;
+  background: var(--delver);
+  border-radius: 4px 4px 3px 3px;
+  box-shadow: 0 0 8px rgba(224, 138, 60, 0.4);
+}
+.delver::before { /* helmet */
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: -6px;
+  width: 10px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--visor);
+  box-shadow: 0 0 8px rgba(127, 223, 255, 0.8);
+}
+
+/* Gas overlays — soft translucent fields. Oxygen collects high, CO2 low. */
+.gas {
+  position: absolute;
+  left: calc(var(--c) * var(--t));
+  top: calc(var(--r) * var(--t));
+  width: calc(var(--w) * var(--t));
+  height: calc(var(--h) * var(--t));
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.gas.oxygen {
+  background: radial-gradient(ellipse at 50% 30%, rgba(71, 224, 200, 0.5), rgba(71, 224, 200, 0.12) 70%, transparent);
+}
+.gas.co2 {
+  background: linear-gradient(0deg, rgba(182, 194, 74, 0.55), rgba(182, 194, 74, 0.14) 65%, transparent);
+}
+
+/* ---- Bottom HUD strip: delver roster + build palette (y[656,720]) ------ */
+.bottombar {
+  position: absolute;
+  left: 0;
+  top: 656px;
+  width: 1280px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 18px;
+  background: linear-gradient(0deg, #201a13, var(--panel));
+  border-top: 1px solid #2c2419;
+  z-index: 5;
+}
+
+.roster {
+  display: flex;
+  gap: 10px;
+}
+.crew {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #2c2419;
+}
+.crew .face {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--visor);
+  box-shadow: 0 0 6px rgba(127, 223, 255, 0.7);
+}
+.crew .needs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.crew .job {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+.needbar {
+  width: 64px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(168, 158, 141, 0.16);
+  overflow: hidden;
+}
+.needbar > span { display: block; height: 100%; border-radius: 2px; }
+.needbar > span.ox { background: var(--oxygen); }
+.needbar > span.st { background: var(--power); }
+.needbar > span.hu { background: var(--food); }
+.needbar > span.low { background: var(--alert); }
+
+.palette {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.tool {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #2c2419;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-dim);
+}
+.tool.selected {
+  border-color: var(--power);
+  color: var(--text);
+  box-shadow: 0 0 12px rgba(255, 203, 82, 0.4);
+}
+
+/* ---- Menus / overlays -------------------------------------------------- */
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* HOLLOWDEEP title: an earth-to-oxygen gradient across the letters. */
+.title {
+  font-size: 104px;
+  font-weight: 700;
+  letter-spacing: 16px;
+  margin: 0 0 0 16px;
+  background: linear-gradient(90deg, var(--ore), var(--oxygen));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 20px rgba(217, 164, 65, 0.25))
+    drop-shadow(0 0 20px rgba(71, 224, 200, 0.2));
+}
+
+.tagline {
+  font-size: 20px;
+  letter-spacing: 12px;
+  margin: 14px 0 54px 10px;
+  color: var(--text-dim);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.menu-item {
+  font-size: 28px;
+  letter-spacing: 9px;
+  color: var(--text-dim);
+}
+.menu-item.selected {
+  color: var(--text);
+}
+.menu-item.selected::before {
+  content: "\25B8  ";
+  color: var(--power);
+}
+.menu-item.selected::after {
+  content: "  \25C2";
+  color: var(--oxygen);
+}
+
+.hint {
+  position: absolute;
+  bottom: 30px;
+  width: 100%;
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 7px;
+  color: var(--text-faint);
+  z-index: 10;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 6, 4, 0.8);
+  z-index: 8;
+}
+
+.panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 52px 48px 44px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid #2c2419;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+}
+.panel-eyebrow {
+  font-size: 17px;
+  letter-spacing: 9px;
+  color: var(--alert);
+  margin: 0 0 12px;
+}
+.panel-title {
+  font-size: 48px;
+  font-weight: 700;
+  letter-spacing: 7px;
+  margin: 0 0 22px;
+  background: linear-gradient(90deg, var(--ore), var(--alert));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.panel-stat {
+  font-size: 30px;
+  letter-spacing: 6px;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.panel-sub {
+  font-size: 17px;
+  letter-spacing: 4px;
+  margin: 0 0 34px;
+  color: var(--text-dim);
+}
+
+/* Dimmed field furniture shown behind a menu or panel. */
+.dim {
+  opacity: 0.4;
+  filter: saturate(0.85);
+}

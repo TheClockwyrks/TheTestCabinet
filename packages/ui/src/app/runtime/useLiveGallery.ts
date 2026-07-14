@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   NotSupportedError,
   type BackendClient,
@@ -14,12 +14,16 @@ import type {
   VersionInfo,
 } from "../../client/types";
 import { frameReviews } from "../data/frameReview";
+import { toRunSummary } from "../data/runSummary";
+import { toModelSummary, type ModelSummary } from "../data/models";
 import type {
   ArenaApi,
   CatalogStatus,
   GalleryDataInput,
   HarnessAuthApi,
+  RunDetail,
 } from "../data/galleryContext";
+import type { RunQuery, RunQueryResult } from "../data/runQuery";
 import type {
   ChangelogEntry,
   SeededInput,
@@ -29,58 +33,50 @@ import { useRunsRuntime } from "./runsRuntime";
 
 // The shared live gallery data source for the consoles (web and desktop). It is
 // written against the BackendClient/WorkerClient interfaces alone, so the two
-// apps differ only in the transports behind those contexts. The published
-// gallery (runs, test cases) comes from the active backend; produced-but-
-// unpublished runs come from the active worker and are flagged local so they
-// read as unpublished and become editable on the Verdict tab. It re-reads
-// produced runs whenever the runs runtime bumps its refresh token (e.g. a
-// launched run finishes). Operations a transport doesn't support are treated as
-// "none" so the rest of the gallery still renders.
+// apps differ only in the transports behind those contexts. The published gallery
+// is no longer drained whole: pages fetch a page at a time through
+// {@link queryRunSummaries} (the backend's numbered offset endpoint), so this only
+// reads the small produced-but-unpublished worklist from the active worker (flagged
+// local so it reads as unpublished and becomes editable on the Verdict tab, and
+// pinned ahead of the queried published window). The catalog (test cases, models)
+// still comes from the active backend. It re-reads produced runs whenever the runs
+// runtime bumps its refresh token (e.g. a launched run finishes). Operations a
+// transport doesn't support are treated as "none" so the rest of the gallery still
+// renders.
 
-// Cap the published-run pagination so a misbehaving backend can't loop forever.
-const MAX_PAGES = 100;
-
-interface AssembledRuns {
-  runs: RunRecord[];
+// The produced (local) runs the worker holds, assembled for the gallery. Unlike
+// the published set — which now arrives as lightweight summary cards over the wire
+// — the worker's produced worklist is small and local, so its full records are
+// read whole: their summaries are derived here and their reviews/writeups kept for
+// the local run-detail pages (published runs get reviews from the lazy `readRun`).
+interface ProducedRuns {
+  summaries: RunSummary[];
   localIds: Set<string>;
   writeups: Record<string, string>;
   reviews: Record<string, StoredReview[]>;
 }
 
-function emptyRuns(): AssembledRuns {
-  return { runs: [], localIds: new Set(), writeups: {}, reviews: {} };
+function emptyProduced(): ProducedRuns {
+  return { summaries: [], localIds: new Set(), writeups: {}, reviews: {} };
 }
 
-// Map a backend StoredRun (published or produced) into the gallery's run +
-// review shapes. The record already carries populated links. A run can carry more
-// than one review now; the individual reviews are kept for the detail page, and
-// an aggregate writeup (worst rating per domain, strictest checklist) is framed
-// for the cards/leaderboard/badges that read one writeup per run.
-function ingest(stored: StoredRun, into: AssembledRuns, local: boolean): void {
-  into.runs.push(stored.record);
-  if (local) into.localIds.add(stored.id);
+// Map a produced (local) StoredRun into the gallery's summary + review shapes. The
+// record already carries populated links. A run can carry more than one review
+// now; the individual reviews are kept for the detail page, and an aggregate
+// writeup (worst rating per domain, strictest checklist) is framed for the
+// cards/leaderboard/badges that read one writeup per run. The bounded summary card
+// is derived from the record + reviews (mirroring the published summary index).
+function ingest(stored: StoredRun, into: ProducedRuns): void {
+  into.localIds.add(stored.id);
   const reviews = stored.reviews ?? [];
   if (reviews.length > 0) into.reviews[stored.id] = reviews;
   const framed = frameReviews(reviews);
   if (framed !== null) into.writeups[stored.id] = framed;
+  into.summaries.push(toRunSummary(stored.record, reviews));
 }
 
-async function fetchPublishedRuns(
-  backend: BackendClient,
-): Promise<AssembledRuns> {
-  const acc = emptyRuns();
-  let before: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page += 1) {
-    const { runs, nextCursor } = await backend.listRuns({ before });
-    for (const run of runs) ingest(run, acc, false);
-    if (!nextCursor || runs.length === 0) break;
-    before = nextCursor;
-  }
-  return acc;
-}
-
-async function fetchProducedRuns(worker: WorkerClient): Promise<AssembledRuns> {
-  const acc = emptyRuns();
+async function fetchProducedRuns(worker: WorkerClient): Promise<ProducedRuns> {
+  const acc = emptyProduced();
   try {
     // `listRuns` is the worker's full produced worklist: every pushed-but-
     // unpublished run, whatever its terminal state — completed (awaiting review),
@@ -91,7 +87,7 @@ async function fetchProducedRuns(worker: WorkerClient): Promise<AssembledRuns> {
     // (`listFailures`) is read by the Publish-failures page directly, so it is not
     // merged here (it would duplicate the unpublished failures and pull in the
     // published ones).
-    for (const run of await worker.listRuns()) ingest(run, acc, true);
+    for (const run of await worker.listRuns()) ingest(run, acc);
   } catch (e) {
     // A worker that can't enumerate produced runs simply contributes none.
     if (!(e instanceof NotSupportedError)) throw e;
@@ -115,6 +111,7 @@ async function fetchSeededInputs(
     return spec.specs.map((s) => ({
       path: s.dest,
       kind: "text" as const,
+      role: s.kind ?? "spec",
       text: s.body,
     }));
   } catch {
@@ -142,6 +139,9 @@ async function toTestCaseSummary(
         info.version,
         v.slug,
       ),
+      // Case-level runtime packages ride on the resolved version; every variant of
+      // the case ships the same set, so carry them onto each variant summary.
+      packages: info.packages ?? [],
       referenceScreenshots: v.references.map((r) => ({
         view: r.view,
         kind: r.kind,
@@ -157,6 +157,10 @@ async function toTestCaseSummary(
         frames: item.frames ?? [],
         weight: item.weight,
         domain: item.domain ?? null,
+        subItems: (item.subItems ?? []).map((sub) => ({
+          id: sub.id,
+          title: sub.title,
+        })),
       })),
       // The variant's effective scoring domains (common + its own), already
       // merged on the resolved VariantInfo — the set a run of this variant is
@@ -166,6 +170,10 @@ async function toTestCaseSummary(
         name: d.name,
         description: d.description,
       })),
+      // The reference-implementation build URL the backend records for this
+      // variant, or null when it declares none. Drives whether the case-detail
+      // Reference tab appears for the selected variant.
+      referenceBuild: v.referenceBuild ?? null,
     })),
   );
   return {
@@ -245,7 +253,7 @@ export function useLiveGallery(
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
 
-  const [runs, setRuns] = useState<RunRecord[]>([]);
+  const [producedSummaries, setProducedSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
   const [writeups, setWriteups] = useState<Record<string, string>>({});
   const [reviews, setReviews] = useState<Record<string, StoredReview[]>>({});
@@ -256,6 +264,8 @@ export function useLiveGallery(
   // reached, distinct from a reachable-but-empty catalog.
   const [testCasesStatus, setTestCasesStatus] =
     useState<CatalogStatus>("loading");
+  const [models, setModels] = useState<ModelSummary[]>([]);
+  const [modelsStatus, setModelsStatus] = useState<CatalogStatus>("loading");
 
   const workerClient = worker?.client ?? null;
   const workerUrl = worker?.url ?? null;
@@ -302,29 +312,26 @@ export function useLiveGallery(
     let active = true;
     setRunsLoading(true);
     (async () => {
-      const published = backend
-        ? await fetchPublishedRuns(backend).catch(() => emptyRuns())
-        : emptyRuns();
+      // Only the small produced (local) worklist is read here; the published set is
+      // paged over the wire by each page through `queryRunSummaries`, never drained.
       const produced = workerClient
-        ? await fetchProducedRuns(workerClient).catch(() => emptyRuns())
-        : emptyRuns();
+        ? await fetchProducedRuns(workerClient).catch(() => emptyProduced())
+        : emptyProduced();
       if (!active) return;
-      // Produced (local) runs lead; published runs follow, minus any the worker
-      // also holds locally (the local copy wins on id collision).
-      const merged = [
-        ...produced.runs,
-        ...published.runs.filter((r) => !produced.localIds.has(r.id)),
-      ];
-      setRuns(merged);
+      // The produced (local) cards, which a paged page pins ahead of the queried
+      // published window (the backend's numbered listing never returns them — they
+      // are unpublished). Only the local runs contribute reviews/writeups here;
+      // published runs get their reviews from the lazy `readRun` per-detail fetch.
+      setProducedSummaries(produced.summaries);
       setLocalIds(produced.localIds);
-      setWriteups({ ...published.writeups, ...produced.writeups });
-      setReviews({ ...published.reviews, ...produced.reviews });
+      setWriteups(produced.writeups);
+      setReviews(produced.reviews);
       setRunsLoading(false);
     })();
     return () => {
       active = false;
     };
-  }, [backend, workerClient, refreshToken]);
+  }, [workerClient, refreshToken]);
 
   useEffect(() => {
     // No backend configured is the same broken state as an unreachable one: the
@@ -352,6 +359,52 @@ export function useLiveGallery(
     };
   }, [backend]);
 
+  // The model catalog, from the backend `GET /models`. Re-fetched when the runs
+  // runtime bumps its refresh token, so a model created/edited/deleted in the
+  // config UI (which requests a refresh) reappears without a reload.
+  useEffect(() => {
+    if (!backend) {
+      setModels([]);
+      setModelsStatus("error");
+      return;
+    }
+    let active = true;
+    setModelsStatus("loading");
+    backend
+      .listModels()
+      .then((ms) => {
+        if (!active) return;
+        setModels(ms.map(toModelSummary));
+        setModelsStatus("ready");
+      })
+      .catch(() => {
+        if (!active) return;
+        setModels([]);
+        setModelsStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [backend, refreshToken]);
+
+  // Answer one page of a filtered/sorted/windowed summary query from the backend's
+  // numbered-pager endpoint. Forcing an `offset` (defaulting to 0) selects the
+  // backend's offset path, so it returns the matching `total` used to size the
+  // console's pager. Only published runs are listed here; a page pins the console's
+  // produced summaries separately. With no backend configured the query resolves
+  // empty.
+  const queryRunSummaries = useCallback(
+    async (query: RunQuery): Promise<RunQueryResult> => {
+      if (!backend) return { summaries: [], total: 0 };
+      const { summaries, total } = await backend.listRunSummaries({
+        ...query,
+        offset: query.offset ?? 0,
+      });
+      return { summaries, total: total ?? summaries.length };
+    },
+    [backend],
+  );
+
   // Resolve a run's recorded events by origin: a produced (local) run's streams
   // come from the worker (events + raw, off its output directory); any other run
   // is a published one read from the backend (TTC events only). A transport that
@@ -376,20 +429,27 @@ export function useLiveGallery(
     [backend, workerClient, localIds],
   );
 
-  // Resolve a single run's record by id for a run the loaded list doesn't carry
+  // Resolve a single run's detail by id for a run the loaded list doesn't carry
   // (an infrastructure failure, in no worklist; or a run off the current page).
   // A produced (local) run is read from its worker, any other from the backend;
-  // both expose the run store's `GET /runs/{id}`, which serves a stored run
-  // whatever its state. A transport that can't reach it resolves to null so the
-  // detail page falls back cleanly to its "no run found" state.
+  // both expose the run store's `GET /runs/{id}`, which serves a stored run — its
+  // record and every review — whatever its state. The reviews travel with the
+  // record (the same `StoredReview` shape `ingest` reads) so the detail layer
+  // frames the verdict from these rather than the console's global reviews map. A
+  // transport that can't reach it resolves to null so the detail page falls back
+  // cleanly to its "no run found" state.
   const readRun = useCallback(
-    async (runId: string): Promise<RunRecord | null> => {
+    async (runId: string): Promise<RunDetail | null> => {
+      const toDetail = (stored: StoredRun): RunDetail => ({
+        record: stored.record,
+        reviews: stored.reviews ?? [],
+      });
       try {
         if (localIds.has(runId) && workerClient) {
-          return (await workerClient.readRun(runId)).record;
+          return toDetail(await workerClient.readRun(runId));
         }
-        if (backend) return (await backend.readRun(runId)).record;
-        if (workerClient) return (await workerClient.readRun(runId)).record;
+        if (backend) return toDetail(await backend.readRun(runId));
+        if (workerClient) return toDetail(await workerClient.readRun(runId));
         return null;
       } catch (e) {
         if (e instanceof NotSupportedError) return null;
@@ -400,14 +460,17 @@ export function useLiveGallery(
   );
 
   return {
-    runs,
+    producedSummaries,
     localIds,
     writeups,
     reviews,
     runsLoading,
     testCases,
     testCasesStatus,
+    models,
+    modelsStatus,
     canExecute: true,
+    queryRunSummaries,
     fetchRunEvents,
     readRun,
     proofMediaUrl,

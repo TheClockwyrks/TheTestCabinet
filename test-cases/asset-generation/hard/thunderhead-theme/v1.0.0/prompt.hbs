@@ -1,0 +1,48 @@
+Compose the **Thunderhead main-menu theme**, a long, grand, clean-looping
+main-title music piece, using only the sequencer tool.
+
+It is the theme for *Thunderhead*, a real-time fleet-command game fought across an
+endless cloud sea: it plays over the **title screen** while the player sits at the
+menu, so it must be a **grand, cinematic overture** — sweeping and evocative,
+serious and stirring — that sets the mood of a cold, high war over the clouds. It
+is **3 to 5 minutes** long, must **develop** across that length rather than repeat
+one idea, is **not** tied to any single power, and must **loop cleanly**. You
+sequence it note by note as instrument tracks over the `gm-lite` instrument bank.
+
+## How the tool works
+
+The only way to make sound is the `music` binary already on your `PATH`. It is the
+sole channel: you build the piece by calling it **one operation at a time**, and the
+ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, not any file you write by hand. Anything
+produced another way is discarded and flagged.
+
+Each operation is an ordinary subcommand with flags: set the tempo and meter,
+`define-track` an instrument from the `gm-lite` bank, `add-note` the events, and
+`set-track-fx` for gain, pan, and reverb. Unlike a drawing tool, `music` does
+**not** re-render after every call — rendering is a separate step. Run
+**`music render`** to mix the piece to `music.wav`, draw the waveform + spectrogram +
+**piano-roll** preview at `{{workspace}}`, and emit the portable `music.mid` score.
+You cannot hear the clip, so **read the preview after you render** to judge your
+progress — and on a piece this long, render often and check the whole arc. A
+config, an empty log, and the `gm-lite` bank are already in place at `{{workspace}}`.
+
+Run `music --help` to list every operation and `music <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. Inspect the
+instruments the `gm-lite` bank offers before naming them on your tracks; which
+voices you use is your choice.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Sequence the overture up operation by operation — tempo and meter, the tracks and
+their notes, the arc and its development, the mix — rendering to check the
+piano-roll and waveform as you go, until it matches the brief: a grand, cinematic,
+faction-neutral main-menu theme that grows across three-to-five minutes and loops
+cleanly, stereo, within the 300000 ms cap. When you are satisfied, stop: the
+recorded `actions.json` is your finished submission.

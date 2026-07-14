@@ -19,6 +19,7 @@ import { GifDownloadButton } from "./GifDownloadButton";
 import { encodeVoxelGif } from "./voxelGif";
 import { panelBackground, gifFilename } from "./previewDownload";
 import { SkinnedResultSection } from "./SkinnedResultSection";
+import { BlenderResultSection } from "./BlenderResultSection";
 import type { VoxelViewMode } from "./VoxelViewer";
 import styles from "./RunDetailPages.module.scss";
 
@@ -680,6 +681,10 @@ function VoxelAnimationResult({ view }: { view: VoxelResultView }) {
  * when the run carries `validation.voxel`.
  */
 export function VoxelResultSection({ view }: { view: VoxelResultView }) {
+  // A Blender character is a self-contained skinned + animated glTF: it is loaded whole
+  // and played by a native glTF animation player, not posed from an inline rig. (It is
+  // also `skinned`, so this branch precedes the skinning path below.)
+  if (view.blender) return <BlenderResultSection view={view} />;
   // A skinned run is one continuous mesh deformed by linear-blend skinning, so it is
   // posed through the skinning API rather than the rigid per-part path.
   if (view.skinned) return <SkinnedResultSection view={view} />;

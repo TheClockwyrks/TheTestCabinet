@@ -1,0 +1,7 @@
+# The only variant, listed first in the case manifest's `variants`. It declares no
+# `[voxel]`, so it inherits the case's volume (16x16x16) — there is no size variation
+# for this case. Every path here resolves against the version folder, exactly like
+# the main manifest.
+slug = "base"
+name = "Base"
+spec = []

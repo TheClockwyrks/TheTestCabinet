@@ -1,0 +1,90 @@
+Build **Caldera**, a real-time strategy tower-defense played over a procedurally
+generated hex caldera, rendered in real-time 3D and running entirely in the browser.
+
+Your project root is `{{workspace}}`. Create the game there.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins **Playwright** as a dev dependency. Its dependencies have already been
+installed for you — `node_modules/` is populated and Playwright's headless
+**Chromium** is downloaded — so you can build and verify right away. Build on this
+project rather than replacing it: keep the `package.json`, add your framework,
+bundler, and a `build` script on top of it, and keep the lockfile in sync (see
+below).
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## Build requirements
+
+Deliver a complete, polished, playable game, not a tech demo. The **hard
+requirements** — real 3D rendering (WebGL/WebGPU) at an interactive frame rate from
+a tilted RTS camera, no backend or credentials, self-contained code-built geometry
+with procedural-noise terrain (no art files), the palette and type, a `README.md`,
+and the game states — are stated in full in `specs/overview.md` (and the files it
+points to). That specification is authoritative; build to it rather than to a
+summary here. Two things bear restating, because the harness depends on them:
+
+- **The fixed build/serve interface.** The project stays a **Node project** built
+  with only Node.js and npm-installed dependencies. Extend the provided
+  `package.json` at `{{workspace}}` and **commit a `package-lock.json`** (run
+  `npm install` after you change dependencies so the lockfile matches). `npm ci`
+  then `npm run build` must produce the static site — with no other manual step —
+  into one of `dist/`, `build/`, or `out/` at the project root, with an
+  `index.html` at the root of that directory. Serving that directory as-is must run
+  the game, and it must work **at any base path** (it is played back from a per-run
+  sub-path, so any URL the build constructs at runtime must be page-relative — never
+  a leading `/`; for a bundler, set a relative base such as `base: './'`).
+  `specs/overview.md` states this in full; follow it exactly.
+- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
+  screenshots that are **illustrative examples** of the title, in-game HUD, and end
+  screens — not targets to reproduce. They show one way the screens can look; design
+  your own menus and layout from the specification, which is authoritative for the
+  palette, type, and every menu and navigation path. The images only illustrate the
+  intended look. The in-game reference is **HUD-only**; you render the 3D caldera
+  itself for real in WebGL/WebGPU.
+
+## Verify before you finish
+
+Your project has **Playwright** and a headless **Chromium** installed as project
+dependencies, plus network access — use them to verify your build, do not just
+assume it works. Before you consider the task complete:
+
+- Produce the **static production build** and serve it locally, then open it in
+  Chromium with Playwright and confirm it **loads with no console errors** and no
+  uncaught exceptions, showing the title screen.
+- **Drive the game** — from the title choose **PLAY**, pick a starting wave, then
+  build a working water-to-steam network to power a tower or two, let a wave arrive,
+  pan/rotate/zoom the tilted camera — and **screenshot** the title, in-game, and end
+  screens. Verify each against the specs, treating the matching image in
+  `reference/` as an example of the intended look only (not a layout to match), and
+  fix what does not follow the specification before finishing.
+- **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
+  screenshots (including the **terrain close-up**, the **fluid-network overlay**, and
+  the **wireframe** frame) and the short assault clip, each written to the precise
+  `proof/` path that spec names. These are required deliverables of the finished
+  build, not a private check. Do not invent a different folder or filename, and do
+  not skip the `.webm` clip.
+
+Use the project's own Playwright: import it from your project (for example
+`import { chromium } from "playwright"`) or run the project-local CLI with
+`npx playwright`. There is **no** global Playwright on `PATH` — it lives in your
+project's `node_modules`, like any other dependency. Launch Chromium with the
+`--no-sandbox` argument — this container has no Chromium sandbox, so a default
+launch will fail.
+
+## Commit your work
+
+Your project root is a **git repository** — it was initialized before you started,
+with the starter files in its first commit. Your finished implementation is
+published directly from this repository's commits, so work you leave uncommitted is
+**not** published. When the build is complete and verified, commit everything: run
+`git add -A` then `git commit`, and confirm `git status` reports a clean working
+tree with nothing uncommitted or untracked. A `.gitignore` already excludes
+`node_modules/` and the build output (`dist/`/`build/`/`out/`), so a clean tree does
+not mean committing those — but it does mean committing your source, your
+`package-lock.json`, your `README.md`, and the `proof/` artifacts.

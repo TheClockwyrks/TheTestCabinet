@@ -1,0 +1,374 @@
+slug = "junction"
+experimental = true
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Junction"
+
+# Test type. Junction is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. It is NOT the older two-run pattern where a
+# separate asset-gen run makes an asset a later game merely consumes; here one model
+# both produces the art/effects/audio and builds the game around it. The `full-stack`
+# type schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
+# exactly six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
+# with one of them (`specs/assets.md` is the production contract). On top of that, this
+# case REQUIRES the model to author the game's core simulation in Rust and compile it to
+# WebAssembly during the run — the full-stack-2d image is built on the base-wasm layer,
+# so the Rust → wasm toolchain is on `PATH` — committing the `.wasm` as a build input the
+# Node-only build consumes (`specs/simulation.md` is that contract). A root identity
+# field, so it sits above the first table.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Junction is
+# medium: it asks for several interacting simulations layered on one grid — a zoned,
+# self-developing city map; a road/rail transit network that citizens and goods path
+# across, with congestion that builds on overloaded links; power and water utility
+# networks whose supply propagates and gates development; and an RCI demand economy
+# with a real budget that ends the game in bankruptcy — AND, on top of that, for the
+# model to author every sprite, animation, particle effect, and sound the game plays,
+# AND to write that whole simulation in Rust compiled to WebAssembly behind a JS/TS view
+# layer. Interlocking simulations plus a full asset-production pass plus a Rust → wasm
+# core make this a demanding medium case.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["simulation", "2d", "city-builder", "strategy"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A top-down transit-and-utility city builder: zone land for homes, shops, and \
+industry, lay the roads and rail that carry citizens to work, and run the power and \
+water that let it all grow — keep traffic flowing and the budget solvent or the city \
+goes bankrupt — with the whole simulation authored in Rust and run as WebAssembly, and \
+the build producing its own sprites, effects, and audio with the on-PATH asset tools."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder),
+# recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run (with
+# the seeded specs and the selected variant) and handed to the model as the build
+# instruction. Injects absolute in-container paths via template variables. The harness
+# auto-prepends the standing full-stack asset-quality preamble to the rendered prompt,
+# so this template does NOT restate a global quality directive.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Junction is a large build — several interacting simulations on one grid
+# authored in Rust → wasm, plus a full asset-production pass through six tools — so it
+# gets eight hours: comfortably more than a healthy build needs while still bounding a
+# runaway session.
+max_runtime_hours = 8
+
+# Starter workspace seeded into the root of every run before the specs. It gives the
+# model a baseline project to build on: a `package.json` that pins `playwright` as a
+# dev dependency and declares the produced-effect runtime (`packages`, below) as a
+# baked-in `file:` dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded and
+# before the harness starts. `npm install` — NOT `npm ci` — because `packages` injects
+# the `@test-cabinet/particle-runtime` `file:` dependency this build plays its produced
+# particle systems with, so the lockfile is completed at seed time; the same command
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the whole
+# point of a full-stack case: the model PRODUCES the game's art, effects, and audio
+# itself, during the run, with the six binaries on the run image's `PATH` (see `type`
+# above and `specs/assets.md`). The `reference/` mockups below are harness-side visual
+# targets rendered via `[[reference]]`, not seeded game assets.
+
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# the review UI plays a produced effect with; core bakes it into the run image and the
+# seeded workspace `package.json` depends on it via its baked-in `file:` path, so the
+# build imports it (its `/canvas` binding) like any other dependency and plays each
+# produced `system.json` by simulating it live. The pollution haze, construction dust,
+# and milestone fireworks are all produced `particle-2d` systems played this way; see
+# `specs/assets.md` for the consumption contract. (A root key, so it must sit above the
+# first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record. Each
+# is declared in its own file under `variants/` and listed here in order — the first is
+# the default. Each seeds the common specs plus its own start spec (to the stable
+# `specs/mode.md` path) and supplies its own `title` menu reference (the main menu's
+# start differs per variant; `gameplay` and `game-over` are common):
+#   - base — the standard flat starter valley.
+# This list is a root key, so it must sit above the first `[table]` header below.
+variants = [
+  "variants/base.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
+# The specification is decomposed by concern so the varying start can be seeded per
+# variant: each variant seeds its own start spec to the stable `specs/mode.md` path (see
+# the variant files), which is therefore always present and which the common specs
+# reference by that name. The common specs never name a variant. All common specs are
+# plain Markdown, seeded verbatim. A spec's `dest` defaults to its `source` (with a
+# trailing `.hbs` stripped), so these need only name the source they seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/map.md"
+
+[[spec]]
+source = "specs/transit.md"
+
+[[spec]]
+source = "specs/utilities.md"
+
+[[spec]]
+source = "specs/economy.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+# The simulation-core contract: the city's deterministic simulation must be authored in
+# Rust and compiled to WebAssembly during the run, then driven from the JS/TS front end;
+# the compiled `.wasm` is committed as a build input (npm build stays Node-only). Seeded
+# for every variant so the `rust-wasm-core` review item and this spec stay in lockstep.
+# This — alongside `specs/assets.md` — is a defining requirement of THIS full-stack case:
+# the full-stack-2d image is built on the base-wasm layer, so the Rust → wasm toolchain
+# is on `PATH` during the run.
+[[spec]]
+source = "specs/simulation.md"
+
+# The asset-production contract: every asset the game needs, which of the six on-PATH
+# binaries produces it, where it lands in the workspace, and how it is wired into the
+# build. Seeded for every variant so the produced-asset review items and this spec stay
+# in lockstep. This is the defining spec of a full-stack case.
+[[spec]]
+source = "specs/assets.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact paths
+# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
+# entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML mockup
+# the harness renders to a screenshot and seeds as a visual target. The `title` view is
+# variant-specific (declared per variant) because the menu differs by variant;
+# `gameplay` and `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest` path
+# (relative to the run workspace root) the build must write a screenshot or `.webm`
+# clip to; `specs/proof.md` instructs the build to produce them at exactly these paths.
+# Validation records whether each turned up (informational). The media kind is inferred
+# from the extension: `.png` is an image, `.webm` a video (the format Playwright
+# records natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "City dashboard"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Bankruptcy"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "systems"
+name = "City systems clip"
+dest = "proof/systems.webm"
+
+[[proof]]
+id = "crisis"
+name = "Budget crisis clip"
+dest = "proof/crisis.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — flawless simulation cannot mask
+# crude, un-produced art, and gorgeous produced art cannot mask a city that does not
+# simulate. Domains are case-level; an individual review item rolls up to one through
+# its optional `domain`, while a general item (states, window fit) omits it.
+[[domain]]
+id = "simulation"
+name = "City Systems"
+description = "The interacting simulations on one grid — authored in Rust and run as WebAssembly (specs/simulation.md): the zoned, self-developing city map with its density tiers, pollution, and land value; the road/rail transit network citizens and goods path across, with congestion that builds on overloaded links; the power and water utility networks whose supply propagates and gates development; and the RCI demand economy with a real budget that ends the game in bankruptcy."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "The genuinely tool-produced assets and how the build presents them: the zone/building/road/rail/station and utility sprites at their density tiers, the animated sprite sheets for signals and construction and vehicles, the live particle overlays for pollution and construction dust and milestone fireworks, the produced sound effects and city music bed, and the in-code HUD dashboard — RCI meters, budget, utility balances, traffic overlay, and alerts — that reads it all at a glance."
+
+# Reviewer checklist items, common to every variant. The major, observable
+# requirements a reviewer must explicitly check by playing the build — the things
+# validation cannot judge and that are easy to miss. Reporter-side material: never
+# seeded into a run, so the model never sees the checklist; each restates a requirement
+# the seeded specification already states. A variant adds its own items (see its
+# variant file). Each item is worth `weight` points toward the run's score; the
+# reviewer records a pass/fail verdict for each before the run can be published. The
+# per-domain ratings stay the reviewer's call.
+
+# --- City Systems ---------------------------------------------------------------
+[[review_item]]
+id = "zoning-development"
+title = "Zoning and self-development"
+text = "The player paints land as residential, commercial, or industrial zones; zoned tiles that have road access and utilities then develop buildings on their own, growing through density tiers as demand and access allow, and abandon (dilapidate) when demand, access, or services are lost. Undeveloped and de-zoned land stays empty."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "transit-congestion"
+title = "Transit network and congestion"
+text = "The player lays roads and at least one rail/metro line with stations; citizens and goods path across the connected network from home to work and shops, and links carrying more trips than their capacity visibly congest — traffic slows, trips take longer, and the overload is shown on a traffic overlay. Rail relieves road load along its corridor."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "utility-networks"
+title = "Power and water networks"
+text = "The player places power generation and water sources and carries their supply across the map along wires and pipes; supply propagates through the connected network, and a zone reached by both power and water can develop while an unserved or under-supplied zone stalls or abandons. Over-drawing a network leaves part of the city unserved, shown in the HUD."
+weight = 1
+domain = "simulation"
+proof = "systems"
+
+[[review_item]]
+id = "demand-and-growth"
+title = "RCI demand and growth economy"
+text = "Residential, commercial, and industrial demand rise and fall in response to the city's state (jobs create housing demand, homes and shops create industrial and commercial demand, oversupply suppresses it), shown as live RCI meters, and the city grows toward the demand it can service. Growth is capped by what the transit and utility networks can actually carry."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "budget-and-bankruptcy"
+title = "Budget and the bankruptcy loss state"
+text = "A real budget runs the city: tax income scales with population and prosperity, while roads, rail, utilities, and services charge ongoing upkeep, so an over-built or under-populated city loses money each period. The treasury can be driven negative, and a city that stays insolvent past its credit goes bankrupt — a clear loss state with the final tally and a restart."
+weight = 1
+domain = "simulation"
+proof = "crisis"
+
+[[review_item]]
+id = "feedback-loops"
+title = "Pollution and land-value feedback"
+text = "Industry and heavy traffic emit pollution that spreads to nearby tiles and lowers their land value; low land value and unmet demand hold residential and commercial development down or push it to abandon, while clean, well-served, well-connected land develops to higher tiers. These feedback loops make balancing the three zones against transit, utilities, and pollution the actual game."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+# The defining implementation requirement of this case: the simulation is authored in
+# Rust → WebAssembly, not JS/TS (specs/simulation.md). This is a SOURCE-inspection item —
+# the reviewer checks the published run's repository, not just the running build — so it
+# declares no `reference` or `proof` media (no screenshot demonstrates a wasm core).
+[[review_item]]
+id = "rust-wasm-core"
+title = "Core simulation in Rust/WebAssembly"
+text = "The city's deterministic simulation — the tile world, development, transit, utilities, the economy, and the tools and state that drive them — is authored in Rust and compiled to a committed `.wasm` the JS/TS front end drives (not re-implemented in JS/TS). The build is self-contained: `npm ci && npm run build` succeeds Node-only and does not invoke `cargo`/`wasm-pack` (the committed `.wasm` is a build input). The front end is a view/I-O layer only, and the sim is deterministic and touches no DOM/Canvas/Audio directly."
+weight = 1
+domain = "simulation"
+
+# --- Presentation & Assets ------------------------------------------------------
+[[review_item]]
+id = "produced-city-sprites"
+title = "Produced city sprites"
+text = "The zone buildings at each density tier, the road/rail/station tiles, the power and water tiles (plants, wires, pipes, towers), and the vehicles are rendered from single sprites the build produced with `draw` — genuine per-sprite pixel art per zone and tier — not flat colored rectangles or ad-hoc canvas fills."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-animation-sheets"
+title = "Produced, animated sprite sheets"
+text = "At least a couple of things animate from sprite sheets the build produced with `draw-sheet` — genuine per-frame pixel art — for example a traffic-signal / level-crossing cycle and a building-under-construction sequence, and/or vehicle variants — not static sprites and not an ad-hoc code-drawn figure."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-particle-effects"
+title = "Produced particle overlays"
+text = "The industrial/traffic pollution haze, the construction dust at a building going up, and the celebratory milestone fireworks are all particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated overlays that vary play to play, not a flat tint or a hand-coded effect."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "produced-audio"
+title = "Produced sound and music"
+text = "The city has real audio the build produced with the audio tools: build/place, notification chime, and alert sound effects (`sfx-synth` and/or `sfx-sample`) and a calm ambient city music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
+weight = 1
+domain = "presentation"
+proof = "crisis"
+
+[[review_item]]
+id = "hud-in-code"
+title = "In-code HUD dashboard"
+text = "The city dashboard — the treasury and per-period balance, the population, the RCI demand meters, the power and water supply-vs-demand balances, the date/clock and speed, and alerts — plus the build palette, the traffic and utility overlays, and all menus and panels are drawn in code (canvas/DOM); only the small icons within it may be produced sprites."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+# --- General (states, window fit) — no domain -----------------------------------
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the live city with its HUD, pause (resume/restart/quit to menu), and bankruptcy (restart/menu) with the final tally shown."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the full city view, both HUD strips, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1

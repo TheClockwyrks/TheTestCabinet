@@ -54,7 +54,7 @@ name: Build service images
 # (see deployments/k8s/base/secrets.example.yaml).
 on:
   push:
-    branches: [master]
+    branches: [master, staging]
     # The Rust images compile the backend/auth/dispatcher/driver/artifacts crates
     # (and their workspace dependencies) from source, so any change under crates/ or
     # to the workspace manifests must rebuild them — not just a change to the
@@ -170,6 +170,14 @@ jobs:
           context: .
           file: ${{ matrix.image.dockerfile }}
           platforms: linux/${{ matrix.arch.name }}
+          # Stamp the provenance commit into the binary. The build context omits
+          # `.git` (the repo-root .dockerignore is an allowlist that never
+          # re-includes it), so crates/core/build.rs can't resolve it from git; pass
+          # the commit in so run records attribute to this build rather than
+          # recording an "unknown" commit. Harmless for the non-Rust web image, which
+          # declares no such ARG.
+          build-args: |
+            TCAB_BUILD_COMMIT=${{ github.sha }}
           tags: ${{ steps.registry.outputs.ref }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=service-${{ matrix.image.name }}-${{ matrix.arch.name }}

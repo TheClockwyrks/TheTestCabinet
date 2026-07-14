@@ -7,6 +7,8 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { HarnessFamily } from "./index";
+
 /**
  * The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
  * a human-readable message.
@@ -23,3 +25,183 @@ export type CatalogCase = { slug: string; versions: Array<string> };
 export type CatalogResponse = { testCases: Array<CatalogCase> };
 
 export type VersionsResponse = { slug: string; versions: Array<string> };
+
+/**
+ * `GET /models` — the merged model catalog.
+ */
+export type ModelCatalogResponse = { models: Array<ModelOut> };
+
+/**
+ * One canonical model id a catalog entry claims, with the harness family it is
+ * usable with. The run form filters the models it offers a harness by matching
+ * the harness's family against these.
+ */
+export type AliasOut = {
+  /**
+   * The canonical model id (an OpenRouter id like `anthropic/claude-opus-4.8`,
+   * or a provider-native id like `claude-opus-4-8`).
+   */
+  slug: string;
+  /**
+   * The harness family this slug is usable with.
+   */
+  harnessFamily: HarnessFamily;
+};
+
+/**
+ * One catalog entry: a curated model merged with its runs and price history, or
+ * a model derived from runs with no curated config.
+ */
+export type ModelOut = {
+  /**
+   * The curated slug, or the canonical model id for a derived model.
+   */
+  slug: string;
+  /**
+   * The display name (a derived model uses its canonical id).
+   */
+  name: string;
+  /**
+   * The provider (guessed from the id for a derived model).
+   */
+  provider: string;
+  /**
+   * Whether this entry has curated config, as opposed to being derived from
+   * runs alone.
+   */
+  curated: boolean;
+  /**
+   * `https://openrouter.ai/<slug>` when the model is on OpenRouter, else null.
+   */
+  openrouterUrl: string | null;
+  /**
+   * Curated description markdown, or null.
+   */
+  description: string | null;
+  /**
+   * The curated, sanitized provider-logo SVG, or null.
+   */
+  logoSvg: string | null;
+  /**
+   * The raw `subject.modelId` strings from runs this entry absorbs — what the
+   * console matches a run against.
+   */
+  coveredModelIds: Array<string>;
+  /**
+   * The canonical model ids this entry claims, each tagged with the harness
+   * family it is usable with (so a run form can offer only the slugs the
+   * selected harness can launch).
+   */
+  aliases: Array<AliasOut>;
+  /**
+   * The latest observed comparable price, or null when none is recorded.
+   */
+  price: ModelPricesOut | null;
+  /**
+   * The observed price history, ascending, consecutive-equal deduped.
+   */
+  priceHistory: Array<PriceObservationOut>;
+  /**
+   * The latest observed context window in tokens, or null.
+   */
+  contextLength: number | null;
+  /**
+   * The latest observed release date (RFC 3339), or null.
+   */
+  releasedAt: string | null;
+};
+
+/**
+ * A comparable per-token price triple.
+ */
+export type ModelPricesOut = {
+  uncachedInput: number | null;
+  cachedInput: number | null;
+  output: number | null;
+};
+
+/**
+ * One price observation in a model's history.
+ */
+export type PriceObservationOut = {
+  observedAt: string;
+  prices: ModelPricesOut;
+};
+
+/**
+ * One slug ↔ harness-family pairing in a config write. The operator supplies a
+ * slug and picks the harness family it belongs to; a model with slugs across
+ * several families carries one entry per (slug, family).
+ */
+export type AliasInput = {
+  /**
+   * The canonical model id (the `openrouter/` routing prefix is stripped on
+   * write so it matches a run's canonical id).
+   */
+  slug: string;
+  /**
+   * The harness family this slug is usable with.
+   */
+  harnessFamily: HarnessFamily;
+};
+
+/**
+ * The `POST /models` / `PUT /models/{slug}` request body.
+ */
+export type ModelConfigInput = {
+  /**
+   * The curated slug (used on create; the path wins on update).
+   */
+  slug: string;
+  name: string;
+  provider: string;
+  /**
+   * The canonical model ids this model covers, each paired with the harness
+   * family it is usable with (at least one).
+   */
+  aliases: Array<AliasInput>;
+  openrouterSlug: string | null;
+  description: string | null;
+  /**
+   * The stored provider-logo SVG (already fetched via `POST /models/logo`).
+   */
+  logoSvg: string | null;
+  /**
+   * The svgl.app URL the logo was fetched from, kept for reference.
+   */
+  providerLogoUrl: string | null;
+};
+
+/**
+ * The `GET /models/seed` response: a blank-form seed derived from a run.
+ */
+export type ModelSeedOut = {
+  /**
+   * Suggested slug (the canonical id), which the operator may change.
+   */
+  slug: string;
+  /**
+   * Empty — the operator must set a display name explicitly.
+   */
+  name: string;
+  /**
+   * Provider guessed from the model id, possibly empty.
+   */
+  provider: string;
+  /**
+   * Suggested aliases (the canonical and raw forms), deduped, each tagged with
+   * the family of the harness the seed run used.
+   */
+  aliases: Array<AliasOut>;
+  /**
+   * The canonical id as an OpenRouter slug, when it looks like one.
+   */
+  openrouterSlug: string | null;
+};
+
+/**
+ * The `POST /models/logo` request/response.
+ */
+export type LogoFetchInput = { url: string };
+
+export type LogoFetchOut = { logoSvg: string };

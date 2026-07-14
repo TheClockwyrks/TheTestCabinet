@@ -1,0 +1,43 @@
+Draw the **Spectra Prism**, a 64x64 enemy boss-drone sprite, using only the
+drawing tool.
+
+The Prism is the **two-band boss drone** — the large anchor of a wave in
+*Spectra*, a two-band formation shooter — an outer shell of one band around an
+inner core of the opposite band. You are drawing the *enemy*, never the player's
+ship.
+
+## How drawing works
+
+The only way to make a mark is the `draw` binary already on your `PATH`. It is
+the sole channel: you build the sprite by calling it **one operation at a time**,
+and the ordered list of operations you issue — recorded to `actions.json` — is
+the **authoritative output that is scored**, not the pixels on disk. An image
+produced any other way (writing a PNG directly, editing `canvas.png` by hand) is
+discarded and flagged; only the recorded operations count.
+
+After each call the binary re-renders the current image to `canvas.png` and
+appends the operation to `actions.json`. A blank starting canvas and an empty log
+are already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+draw fill-circle --cx 32 --cy 32 --r 22 --color "#34e2ff"
+```
+
+Run `draw --help` to list every operation and `draw <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`canvas.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the Prism sprite up operation by operation until the image in `canvas.png`
+matches the brief — a thick cyan shell ring around a magenta core, the two bands
+carrying the ring and diamond glyphs, at boss scale. When you are satisfied, stop:
+the recorded `actions.json` is your finished submission.

@@ -12,7 +12,7 @@ use crate::test_case::{
 
 /// The committed Foray case folder, where the baseline `references/*.wasm` live.
 fn case_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases/foray/v1.0.0")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases/adversarial/hard/foray/v1.0.0")
 }
 
 /// A Foray version rooted at the real case, with a low `max_ticks` so a match
@@ -21,6 +21,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
     TestCaseVersion {
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
+        experimental: false,
         name: "Foray".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),

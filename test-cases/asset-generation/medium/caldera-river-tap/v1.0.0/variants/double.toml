@@ -1,0 +1,11 @@
+# The double-size variant: the same River Tap sculpted in a volume with each extent
+# doubled from the case's base 28x26x28. Its `[voxel]` OVERRIDES the case volume for
+# runs of this variant, and the brief is rendered at these dimensions.
+slug = "double"
+name = "Double Size"
+
+[voxel]
+width = 56
+height = 52
+depth = 56
+background = "transparent"

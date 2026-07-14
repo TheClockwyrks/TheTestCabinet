@@ -7,6 +7,40 @@
   font-family: var(--ttc-font);
 }
 
+// The page header row: the prompt header on the left, the gated "+ Add model"
+// action pinned to the right on the same line, wrapping under the header on a
+// narrow viewport. Mirrors the Runs page's header/action layout.
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+// An outlined accent action, brightening on hover — the same neon-affordance
+// treatment the run controls use, sized to sit on the prompt line.
+.addButton {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: t.$space-sm t.$space-lg;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-accent;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: transparent;
+  @include h.halo;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: none;
+    background: color-mix(in srgb, t.$color-accent 14%, transparent);
+    box-shadow: var(--ttc-glow);
+  }
+}
+
 // Positioning context for the column-picker trigger, hung off the panel's
 // top-right corner outside the scroll region so it never scrolls away.
 .wrap {
@@ -174,8 +208,12 @@ a.row:hover .logo {
     overflow-x: visible;
   }
 
-  // The column header is redundant once each cell carries its own label.
-  .head {
+  // The column header is redundant once each cell carries its own label. The
+  // header element carries both `.row` and `.head`, so qualify the selector to
+  // out-specify the `.row { display: flex }` card rule below — an equal-specificity
+  // `.head` would lose on source order and leak a ghost header of bare column
+  // labels above the cards.
+  .row.head {
     display: none;
   }
 
@@ -184,6 +222,9 @@ a.row:hover .logo {
   .row {
     display: flex;
     flex-direction: column;
+    // Reset the desktop grid's `align-items: center` so the stacked lines fill
+    // the card width and read left-aligned instead of floating centered.
+    align-items: stretch;
     grid-template-columns: none;
     gap: t.$space-xs;
     min-width: 0;

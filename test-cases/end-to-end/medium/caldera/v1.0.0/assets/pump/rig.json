@@ -1,0 +1,359 @@
+{
+  "parts": [
+    {
+      "name": "frame",
+      "pivot": [
+        20,
+        0,
+        20
+      ]
+    },
+    {
+      "name": "beam",
+      "parent": "frame",
+      "pivot": [
+        20,
+        27,
+        20
+      ]
+    },
+    {
+      "name": "counterweight",
+      "parent": "beam",
+      "pivot": [
+        20,
+        27,
+        20
+      ]
+    },
+    {
+      "name": "piston_rod",
+      "parent": "frame",
+      "pivot": [
+        32,
+        12,
+        20
+      ]
+    },
+    {
+      "name": "flywheel",
+      "parent": "frame",
+      "pivot": [
+        23,
+        11,
+        30
+      ]
+    },
+    {
+      "name": "snorkel",
+      "parent": "frame",
+      "pivot": [
+        6,
+        6,
+        27
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "beam_rock",
+      "part": "beam",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        20,
+        27,
+        20
+      ],
+      "min": -0.32,
+      "max": 0.32,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "rod_stroke",
+      "part": "piston_rod",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        32,
+        12,
+        20
+      ],
+      "min": -4.0,
+      "max": 4.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "flywheel_spin",
+      "part": "flywheel",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        23,
+        11,
+        30
+      ],
+      "min": -13.0,
+      "max": 13.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "snorkel_shake",
+      "part": "snorkel",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        6,
+        6,
+        27
+      ],
+      "min": -0.06,
+      "max": 0.06,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "idle",
+      "periodMs": 4000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "flywheel_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1000,
+              "value": -1.5708,
+              "interp": "linear"
+            },
+            {
+              "tMs": 2000,
+              "value": -3.1416,
+              "interp": "linear"
+            },
+            {
+              "tMs": 3000,
+              "value": -4.7124,
+              "interp": "linear"
+            },
+            {
+              "tMs": 4000,
+              "value": -6.2832,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "beam_rock",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.045,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1000,
+              "value": -0.045,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2000,
+              "value": 0.045,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3000,
+              "value": -0.045,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 4000,
+              "value": 0.045,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "rod_stroke",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.56,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1000,
+              "value": -0.56,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2000,
+              "value": 0.56,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3000,
+              "value": -0.56,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 4000,
+              "value": 0.56,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pump",
+      "periodMs": 1600,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "beam_rock",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 360,
+              "value": 0.28,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 520,
+              "value": 0.28,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 960,
+              "value": -0.28,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1120,
+              "value": -0.28,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1600,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "rod_stroke",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 360,
+              "value": 3.45,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 520,
+              "value": 3.45,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 960,
+              "value": -3.45,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1120,
+              "value": -3.45,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1600,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "flywheel_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 400,
+              "value": -3.1416,
+              "interp": "linear"
+            },
+            {
+              "tMs": 800,
+              "value": -6.2832,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1200,
+              "value": -9.4248,
+              "interp": "linear"
+            },
+            {
+              "tMs": 1600,
+              "value": -12.5664,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "snorkel_shake",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 520,
+              "value": 0.006,
+              "interp": "ease-in"
+            },
+            {
+              "tMs": 980,
+              "value": -0.03,
+              "interp": "ease-out"
+            },
+            {
+              "tMs": 1220,
+              "value": 0.018,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1600,
+              "value": 0.0,
+              "interp": "bezier"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

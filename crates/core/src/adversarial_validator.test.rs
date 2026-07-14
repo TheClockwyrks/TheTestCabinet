@@ -34,6 +34,7 @@ fn base_variant() -> Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     }
 }
 
@@ -71,6 +72,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
+        experimental: false,
         name: "Foray".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),
@@ -196,7 +198,8 @@ fn a_missing_baseline_opponent_is_a_failed_load() {
 #[test]
 fn validate_writes_a_replay_per_opponent_and_records_them() {
     // The committed Foray case root, where the reference opponents live.
-    let case_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-cases/foray/v1.0.0");
+    let case_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../test-cases/adversarial/hard/foray/v1.0.0");
     let dir = tempfile::tempdir().expect("temp dir");
     let repo = dir.path().join("impl");
     std::fs::create_dir_all(&repo).expect("repo");

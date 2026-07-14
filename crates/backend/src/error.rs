@@ -120,6 +120,11 @@ pub enum BackendError {
     #[error("{0}")]
     Unprocessable(String),
 
+    /// A request conflicts with the resource's current state — e.g. a model alias
+    /// already claimed by a different curated model.
+    #[error("{0}")]
+    Conflict(String),
+
     /// A database operation failed (SQLite or PostgreSQL, via SeaORM).
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
@@ -153,6 +158,7 @@ impl From<BackendError> for ApiError {
             BackendError::NotFound(msg) => ApiError::not_found(msg),
             BackendError::BadRequest(msg) => ApiError::bad_request(msg),
             BackendError::Unprocessable(msg) => ApiError::unprocessable(msg),
+            BackendError::Conflict(msg) => ApiError::conflict(msg),
             other => ApiError::internal(other.to_string()),
         }
     }

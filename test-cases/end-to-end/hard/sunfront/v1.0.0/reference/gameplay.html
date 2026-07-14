@@ -1,0 +1,75 @@
+<!doctype html>
+<!--
+  Sunfront — in-match HUD (common across variants).
+  Rendered by the harness at 1280x720 as the `gameplay` view target. This mockup is
+  HUD-ONLY: it pins the HUD overlay's layout, palette, and type over a neutral dark
+  viewport. The real build renders the WebGL/WebGPU 3D battlefield behind this HUD
+  through a low oblique command camera that shows only a SCROLLED PORTION of the arena
+  — the full width of the sand lane but just the stretch the player has panned to (the
+  armies at the front, air units above the line, the staging yard with placed spawners
+  when scrolled to the player's corner), with the fog hiding the far lane and the enemy
+  yard where the player has no presence. Flat CSS cannot depict that usefully, so it is
+  deliberately not faked here. One example moment mid-match. Values are illustrative.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- The stage is the neutral dark viewport the HUD sits over; the real build
+           renders the 3D battlefield here. -->
+
+      <!-- ================= HUD STRIP ================= -->
+      <div class="hud-strip"></div>
+      <div class="hud-sol">412 <small>+31/s</small></div>
+      <div class="hud-wave">
+        <div class="num">WAVE 6</div>
+        <div class="timer">0:28</div>
+      </div>
+      <div class="hud-base-bar player">
+        <div class="fill" style="left: 0; width: 84%; background: var(--hp-good)"></div>
+        <div class="label">YOUR BASE</div>
+      </div>
+      <div class="hud-base-bar enemy">
+        <div class="fill" style="left: 0; width: 61%; background: var(--hp-good)"></div>
+        <div class="label">ENEMY BASE</div>
+      </div>
+
+      <!-- performance overlay (toggled on) -->
+      <div class="perf">
+        <div><b>FPS</b> 58</div>
+        <div><b>DRAWS</b> 47</div>
+        <div><b>UNITS</b> 36</div>
+      </div>
+
+      <!-- ================= BUILD HUD ================= -->
+      <!-- build palette -->
+      <div class="palette">
+        <h4>BUILD</h4>
+        <div class="item armed"><span>1 Scarab</span><span class="cost">60</span></div>
+        <div class="item"><span>2 Sentinel</span><span class="cost">100</span></div>
+        <div class="item"><span>3 Flakhound</span><span class="cost">150</span></div>
+        <div class="item"><span>4 Lancer</span><span class="cost">180</span></div>
+        <div class="item"><span>5 Bulwark</span><span class="cost">200</span></div>
+        <div class="item"><span>6 Sunhawk</span><span class="cost">240</span></div>
+        <div class="item"><span>7 Bombard</span><span class="cost">280</span></div>
+        <div class="item dim"><span>8 Lumen</span><span class="cost">160</span></div>
+        <div class="item dim"><span>9 Monolith</span><span class="cost">900</span></div>
+        <div class="item"><span>E Solar Extractor</span><span class="cost">180</span></div>
+      </div>
+
+      <!-- selected-structure panel -->
+      <div class="inspect">
+        <div class="name">SENTINEL FOUNDRY</div>
+        <div class="row">Level 2 &middot; +30%</div>
+        <div class="row">Emits: Sentinel</div>
+        <div>
+          <span class="btn">Upgrade 75</span>
+          <span class="btn">Sell 90</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

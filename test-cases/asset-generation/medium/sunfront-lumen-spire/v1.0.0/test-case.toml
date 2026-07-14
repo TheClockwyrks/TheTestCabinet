@@ -1,0 +1,153 @@
+slug = "sunfront-lumen-spire"
+experimental = true
+name = "Sunfront Lumen Spire"
+difficulty = "medium"
+tags = ["voxel", "rig", "building"]
+summary = """
+Sculpt and rig the Sunfront Lumen Spire: a slim opaque-voxel beacon spire \
+painted cell by cell with the `voxel-anim` tool. The model invents whatever parts and \
+joints it needs; the fixed contract is two self-playing animations it must author — a \
+`halo_ring_spin` that turns the halo ring and a `lens_pulse` that bobs the solar lens \
+up and down — while the spire's tower stays fixed, built one recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME beacon spire at three sizes — `base` (this
+# case's volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 46
+height = 90
+depth = 46
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each part
+# the model defines), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. The model authors each
+# animation's F-curves at run time with `voxel-anim define-animation`/`add-keyframe`;
+# `rig.json` is pre-seeded with these declarations so the contract exists from the
+# first operation.
+[model]
+
+# `halo_ring_spin` — the halo sweep. A self-playing idle that turns the halo ring
+# continuously about the spire's vertical axis, on its own, under no caller.
+[[model.animation]]
+name = "halo_ring_spin"
+loop = true
+auto_play = true
+
+# `lens_pulse` — the beacon bob. A self-playing idle that lifts the solar lens off its
+# seat and settles it back down, continuously and on its own, under no caller.
+[[model.animation]]
+name = "lens_pulse"
+loop = true
+auto_play = true
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected size
+# (`{{voxel.width}}`×`{{voxel.height}}`×`{{voxel.depth}}`). The seeded dest drops the
+# `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Lumen Spire \
+and runs correctly — a slim beacon spire whose halo ring spins and solar lens \
+pulses up and down on their own self-playing animations while the tower stays put, with a strong \
+solar-hot energy accent and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-spire"
+title = "Reads as a beacon spire"
+text = """
+From more than one angle the model reads unmistakably as a Duneforged beacon \
+spire: a slim, tall masonry tower crowned with a solar lens and encircled by a \
+halo ring near its top. It is a slender signalling spire, not an abstract stack of \
+boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "elements-cycle"
+title = "Halo ring spins and lens pulses on their own"
+text = """
+Both animated elements cycle on their own via their self-playing animations while the \
+spire's tower stays fixed: `halo_ring_spin` turns the halo ring a full, continuous \
+revolution about the spire's vertical axis, and `lens_pulse` bobs the solar lens \
+straight up off its seat and back down. Across each cycle no part of the ring or lens \
+tears away from its mount or clips into the spire — each moves as one solid piece about \
+the correct axis, and the motion carries weight (an eased bob that hangs at the top and \
+settles softly, a steady spin that never stalls at the wrap) rather than sliding \
+linearly."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "base-fixed"
+title = "Tower stays fixed; only the moving elements move"
+text = """
+Only the animated elements move: the halo ring as it spins and the solar lens as it \
+pulses. The spire tower and its foundation stay put — the fixed root of the machine, \
+never carried along by the ring or the lens. Both `halo_ring_spin` and `lens_pulse` \
+play continuously on their own; nothing but those two elements moves."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Ring and lens stay attached"
+text = """
+The halo ring and the solar lens each stay attached to the spire across their whole \
+range of motion: the ring encircles the spire's crown at its mount as it turns, and the \
+lens meets the spire's tip at its seat as it bobs, with no gap and never floating free \
+or detaching."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze masonry, \
+sandstone panels, iron mechanisms, and the solar-amber and solar-hot energy \
+accents) with a strong solar-hot accent, no out-of-palette colors, and no stray \
+voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

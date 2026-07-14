@@ -178,10 +178,13 @@ numeric score, which are then averaged across reviews for the run.
 
 A test case may declare a reviewer checklist: a list of major, observable
 requirements that every reviewer must explicitly verify by playing the build.
-Each item carries a point **weight**. The [consoles](#web-console) present it as a
-guided review with a completeness gate — every item needs a binary verdict (pass
-/ fail) before a review can be saved or the run published. The checklist is
-reporter-side and is never seeded, so it never reaches the model.
+Each item carries a point **weight**. An item may break into name-only
+**sub-items**, each judged pass/fail on its own, with the item's weight split
+evenly across them (partial credit for a section). The [consoles](#web-console)
+present it as a guided review with a completeness gate — every item, and every
+sub-item, needs a binary verdict (pass / fail) before a review can be saved or the
+run published. The checklist is reporter-side and is never seeded, so it never
+reaches the model.
 
 ## Rig
 
@@ -217,7 +220,9 @@ run at the [backend](#backend) and watch it.
 A [review](#review)'s score is its earned points over the points available: each
 [reviewer-checklist](#reviewer-checklist) item is worth a `weight`, a `pass` earns
 that weight and a `fail` earns none, and the total is the sum of every declared
-item's weight. A run carrying several reviews has a **score that is the average**
+item's weight. An item with **sub-items** instead earns the fraction of its weight
+whose sub-items passed, so a review's earned score can be fractional. A run
+carrying several reviews has a **score that is the average**
 of its reviews' scores. The run's score is shown alongside its overall
 [rating](#rating) and is what the per-case [leaderboard](#leaderboard) ranks on.
 

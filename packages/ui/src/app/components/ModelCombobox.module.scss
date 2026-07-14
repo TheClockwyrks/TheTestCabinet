@@ -1,0 +1,70 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// The combobox positions its dropdown relative to the input, so the wrapper is the
+// positioning context. It fills the field cell it sits in.
+.wrap {
+  position: relative;
+  width: 100%;
+}
+
+// The filtered dropdown: an absolutely-positioned, neon-outlined panel hanging off
+// the input, echoing the column picker's popover so the app's overlays read alike.
+.list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: t.$space-xs;
+  list-style: none;
+  max-height: 18rem;
+  overflow-y: auto;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
+    0 0.5rem 1.5rem color-mix(in srgb, #000 55%, transparent);
+}
+
+.groupHeading {
+  margin: t.$space-xs t.$space-xs 0;
+  padding: 0;
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}
+
+.groupList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// One model row: its display name over its canonical id, so the user recognizes a
+// model by name and confirms the exact id it will launch with.
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+}
+
+.optionActive {
+  background: color-mix(in srgb, t.$color-accent 16%, transparent);
+}
+
+.optionLabel {
+  color: t.$color-text;
+}
+
+.optionId {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}

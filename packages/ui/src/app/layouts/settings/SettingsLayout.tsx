@@ -9,7 +9,7 @@ import styles from "./SettingsLayout.module.scss";
 // The Settings section's tabs. Each is its own route, so which tab reads as
 // active is driven by the page that rendered the layout. Console-only
 // (web/desktop); the static site never mounts these routes.
-export type SettingsTab = "appearance" | "connections" | "authentication";
+export type SettingsTab = "appearance" | "connections" | "harnesses";
 
 interface SettingsLayoutProps {
   /** Which tab the rendering page represents. */
@@ -37,12 +37,12 @@ export function SettingsLayout({ tab, children }: SettingsLayoutProps) {
           },
         ]
       : []),
-    ...(harnessAuth
+    ...(canExecute || harnessAuth
       ? [
           {
-            key: "authentication" as const,
-            label: "Authentication",
-            to: routes.settingsAuth(),
+            key: "harnesses" as const,
+            label: "Harnesses",
+            to: routes.settingsHarnesses(),
           },
         ]
       : []),

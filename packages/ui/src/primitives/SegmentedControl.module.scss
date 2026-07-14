@@ -12,6 +12,13 @@
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   background: s.$panel-bg;
+  // Never exceed the available width: on a phone a four-segment track's
+  // intrinsic min-content (padded labels like "CURRENT VERSION") is wider than
+  // the viewport and would otherwise push the whole page into a horizontal
+  // scroll. Clamp to the container and let `min-width: 0` defeat the flex
+  // min-content floor so the segments compress (and wrap) to fit instead.
+  max-width: 100%;
+  min-width: 0;
 }
 
 // The highlight that slides behind the selected segment. One segment wide,
@@ -44,6 +51,14 @@
   color: t.$color-text-muted;
   cursor: pointer;
   transition: color 0.15s ease;
+
+  // Trim the generous inline padding on phones so the labels need less
+  // compression to fit the clamped track. This primitive's stylesheet can't
+  // reach the app's breakpoint mixin, so the query is inlined at $bp-sm (40rem).
+  @media (max-width: 40rem) {
+    padding-inline: t.$space-sm;
+    letter-spacing: 0.03em;
+  }
 
   &:hover {
     color: t.$color-text;

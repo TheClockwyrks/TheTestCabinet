@@ -6,7 +6,7 @@ This page covers the repository layout and how to build it locally. The Test
 Cabinet is a fully independent, open-source benchmark; it depends only on public
 crates.io and npm packages. For setting up a machine to actually *run* test cases
 (container runtime, run-container image, credentials) see
-[First Time Setup](/guides/first-time-setup/); for running the services locally
+[First Time Setup](/guides/setup/first-time-setup/); for running the services locally
 see [Running](/development/running/); for cutting a release and deploying the
 static sites see [Releasing](/development/releasing/); and for standing up the
 services on real hosts see [Deployment](/deployment/overview/).

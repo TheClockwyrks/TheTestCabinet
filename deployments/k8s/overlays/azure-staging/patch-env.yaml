@@ -1,11 +1,11 @@
-# Retag TCAB_ENV from the base's `prod` to `staging` on every workload (mirrors
-# overlays/staging/patch-env.yaml). Each doc is a strategic-merge patch keyed by the
-# workload name + container; kustomize merges the env list by `name`, so only the
-# named vars are touched.
+# Retag TCAB_ENV from the base's `prod` to `staging` on every workload and point each
+# at the in-cluster Grafana LGTM collector (OTEL_EXPORTER_OTLP_ENDPOINT). Each doc is a
+# strategic-merge patch keyed by the workload name + container; kustomize merges the env
+# list by `name`, so only the named vars are touched.
 #
-# Difference from overlays/staging: backend and auth are `kind: Deployment` here,
-# because components/postgres replaced their StatefulSets — a patch's `kind` must
-# match its target.
+# backend/auth are `kind: Deployment` here (components/postgres replaced their
+# StatefulSets). The backend's client-facing *_PUBLIC_URLs move to the https ingress
+# hostnames in patch-backend-public-urls.yaml, not here.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,10 +22,6 @@ spec:
               value: "staging"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
-            - name: TCAB_ARTIFACTS_PUBLIC_URL
-              value: "http://tcab-artifacts:8790"
-            - name: TCAB_ARENA_PUBLIC_URL
-              value: "http://tcab-arena:8791"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -90,7 +86,7 @@ spec:
               value: "staging"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
-            # The base names sandbox pods in tcab-prod; retag to the staging namespace.
+            # The base names sandbox pods in tcab-prod; retarget to the staging namespace.
             - name: TCAB_K8S_NAMESPACE
               value: "tcab-staging"
             - name: TCAB_DISPATCHER_NAMESPACE

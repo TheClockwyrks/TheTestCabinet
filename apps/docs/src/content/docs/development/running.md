@@ -51,7 +51,7 @@ staging and prod — see [Deployment](/deployment/overview/).
   Docker); on a bare host it is the local daemon. The CLI and desktop app no longer
   need a runtime of their own (the in-cluster driver creates the run's sandbox via
   the Kubernetes API). See [Execution](/components/core/execution/) and
-  [first-time setup](/guides/first-time-setup/).
+  [first-time setup](/guides/setup/first-time-setup/).
 - [`k3d`](https://k3d.io) and `kubectl`, for the service-driven flow — both ship
   in the devcontainer (install them yourself on a bare host).
 - The harness [container images](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md)
@@ -72,8 +72,8 @@ staging and prod — see [Deployment](/deployment/overview/).
 
 For a task-oriented walkthrough of this — bringing the stack up, connecting the
 console, and enqueuing a run — see the guide
-[Running the Local Service Stack](/guides/running-the-local-service-stack/) (or the
-[quickstart](/quickstarts/run-the-local-service-stack/) for just the steps). This
+[Running the Local Service Stack](/guides/development/running-the-local-service-stack/) (or the
+[quickstart](/quickstarts/development/run-the-local-service-stack/) for just the steps). This
 section is the reference the guide sits on top of.
 
 Run execution is now a cluster concern: a run schedules as a per-run **Job**, so

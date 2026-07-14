@@ -1,0 +1,16 @@
+{
+  "name": "carom-gyre",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Carom (Gyre) — a neon paddle duel whose two obstacles sway and spin, so the ball banks off tilted faces.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

@@ -19,9 +19,13 @@ there is no per-pod registration to manage.
 
 The dispatcher runs a single control loop forever:
 
-1. **Claim** the next queued job from the backend (`POST /jobs/next`),
+1. **Claim** the next claimable job from the backend (`POST /jobs/next`),
    authenticating with a shared **service token**. The claim is atomic, so the
-   backend hands each job to exactly one dispatcher.
+   backend hands each job to exactly one dispatcher. The backend — not the
+   dispatcher — enforces each harness's **maximum parallelism** here: it only hands
+   back a job whose harness has fewer than its configured limit of runs already in
+   flight, holding the rest in the `pending` state until a slot frees (see
+   [Harnesses → per-harness configuration](/components/core/harnesses/#per-harness-configuration)).
 2. **Create one driver `Job`** for the claimed run through the Kubernetes API, with
    exactly the environment the [driver](/components/driver/overview/) reads: the
    backend URL, the job id and its per-job token, the serialized launch request,
@@ -31,8 +35,10 @@ The dispatcher runs a single control loop forever:
    Kubernetes `image:` field) — plus the driver pod's own IP from the downward API,
    so the driver can route a sandbox's live-preview frames back to itself.
 3. **Watch** the `Job`s it created, holding at most `TCAB_DISPATCHER_MAX_INFLIGHT`
-   in flight, and **report** any driver-pod death the driver itself could not
-   (`POST /jobs/{id}/status`), reading the dead pod's logs for the failure detail.
+   in flight **across all harnesses** (this global cap composes with the backend's
+   per-harness limit from step 1), and **report** any driver-pod death the driver
+   itself could not (`POST /jobs/{id}/status`), reading the dead pod's logs for the
+   failure detail.
 4. Let each finished `Job` reap itself (`ttlSecondsAfterFinished`).
 
 The dispatcher never executes a run, resolves a definition, or touches a record:

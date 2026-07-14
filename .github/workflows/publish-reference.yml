@@ -1,0 +1,137 @@
+name: Publish reference implementation
+
+# Builds and deploys a test-case variant's reference implementation — the
+# authored, correct static build of a case-variant — and records its served URL in
+# the committed reference-builds lockfile (the case-variant analogue of publishing
+# a run's playable build).
+#
+# On-demand only: a reference is (re)published deliberately, per case/version, not
+# on every push. `tcab publish-reference` builds each targeted variant's
+# `reference_impl` project with the case's own `[build]` commands, deploys the
+# static output to the environment's Cloudflare Pages project (reading the served
+# URL back from wrangler, never constructing it), and writes each URL into
+# `test-cases/reference-builds.lock.json`. This workflow then commits and pushes
+# that lockfile back to the branch.
+#
+# It does NOT touch the backend. The backends are private (VPN-only) and ingest the
+# lockfile from their own git checkout — the pull model. After this workflow pushes,
+# an operator runs `scripts/reingest-cluster.sh --env <env>` from a VPN/az-
+# authenticated machine to have the backend reconcile its `case_reference_build`
+# table (the site's Reference tab source). This workflow cannot do that step.
+#
+# Requires these repository secrets:
+#   CLOUDFLARE_API_TOKEN   — token with the "Cloudflare Pages: Edit" permission,
+#                            read from the environment by wrangler
+#   CLOUDFLARE_ACCOUNT_ID  — the account that owns the Pages project
+#
+# The target environment is NOT a free input: it is derived from the branch the
+# workflow is dispatched on — `master` publishes to prod, `staging` publishes to
+# staging — and any other branch is refused. This makes a branch/target mismatch
+# impossible (you cannot publish prod references off a feature branch, or staging
+# off master).
+#
+# Dormant until the repository is mirrored to GitHub (the same condition as the
+# other deploy/release workflows).
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Test case slug (e.g. carom)"
+        required: true
+      version:
+        description: "Test case version (e.g. v1.0.1). Blank = newest."
+        required: false
+        default: ""
+      variant:
+        description: "Variant slug (e.g. base). Blank = all variants that declare a reference."
+        required: false
+        default: ""
+
+# `contents: write` so the job can commit and push the updated lockfile back to the
+# branch it was dispatched on.
+permissions:
+  contents: write
+
+# One reference publish at a time so two runs never race the same Pages project.
+concurrency:
+  group: publish-reference
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      # Derive the target environment from the dispatch branch and refuse anything
+      # other than master/staging. Runs first so a wrong branch fails before the
+      # expensive checkout + build.
+      - name: Resolve environment from branch
+        id: env
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            master)  echo "environment=prod"    >> "$GITHUB_OUTPUT" ;;
+            staging) echo "environment=staging" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::publish-reference may only run on 'master' (-> prod) or 'staging' (-> staging); got '${GITHUB_REF_NAME}'."
+              exit 1 ;;
+          esac
+      - uses: actions/checkout@v6
+      # Node provides npm (the case's `[build]` install/build) and wrangler (the
+      # Cloudflare Pages deploy the CLI shells out to).
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      # The CLI invokes `wrangler` as a bare command, so it must be on PATH.
+      - name: Install wrangler
+        run: npm install --global wrangler
+      # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
+      - name: Build tcab
+        run: cargo build --release --locked -p test-cabinet-cli
+      # Build the targeted variant(s), deploy to Cloudflare Pages, and write the
+      # served URL(s) into the reference-builds lockfile. `--version`/`--variant` are
+      # optional inputs, so the positional version and the `--variant` flag are only
+      # appended when set.
+      - name: Publish reference implementation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+          SLUG: ${{ inputs.slug }}
+          VERSION: ${{ inputs.version }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          set -euo pipefail
+          # `--env` (derived from the branch above) selects the Cloudflare Pages
+          # project and the lockfile key. The command only writes the lockfile; it
+          # never contacts the backend.
+          args=(--env "$ENVIRONMENT" "$SLUG")
+          if [ -n "$VERSION" ]; then
+            args+=("$VERSION")
+          fi
+          if [ -n "$VARIANT" ]; then
+            args+=(--variant "$VARIANT")
+          fi
+          ./target/release/tcab publish-reference "${args[@]}"
+      # Commit the updated lockfile back to the branch. The backend picks it up on
+      # the next `scripts/reingest-cluster.sh --env <env>` (which an operator runs
+      # from a VPN/az machine — this workflow can't reach the private backend).
+      - name: Commit and push the reference-builds lockfile
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.environment }}
+          SLUG: ${{ inputs.slug }}
+        run: |
+          set -euo pipefail
+          lock=test-cases/reference-builds.lock.json
+          # `git status --porcelain` catches both a modified and a first-time
+          # (untracked) lockfile; an unchanged re-publish leaves nothing to commit.
+          if [ -z "$(git status --porcelain -- "$lock")" ]; then
+            echo "No lockfile change (references already recorded) — nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$lock"
+          git commit -m "chore(references): record ${SLUG} reference build(s) for ${ENVIRONMENT}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "::notice::Pushed ${lock}. Now run 'scripts/reingest-cluster.sh --env ${ENVIRONMENT}' from a VPN/az-authenticated machine to refresh the backend."

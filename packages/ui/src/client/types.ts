@@ -5,6 +5,7 @@
 import type {
   AssetKind,
   AssetSheet,
+  HarnessFamily,
   MediaKind,
   ModelSpec,
   RunRecord,
@@ -24,22 +25,94 @@ import type {
 } from "../ratings";
 
 export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
-export type { MediaKind, TestType };
+export type { HarnessFamily, MediaKind, TestType };
 // The normalized harness event shape is generated from the Rust `HarnessEvent`
 // contract (crates/core/src/event.rs) — the live monitor and the published
 // Events tab both render it. Re-exported here so consumers keep importing it
 // from the shared client types.
 export type { HarnessEvent };
 
-// --- Catalog (served by the backend) ---
+// --- Model catalog (served by the backend `GET /models`) ---
 
+/** A comparable per-token price triple, USD; each member null when unknown. */
+export interface ModelPrices {
+  uncachedInput: number | null;
+  cachedInput: number | null;
+  output: number | null;
+}
+
+/** One observation in a model's price history. */
+export interface PriceObservation {
+  observedAt: string;
+  prices: ModelPrices;
+}
+
+/** One canonical model id a catalog entry claims, tagged with the harness family
+ * it is usable with. Mirrors the backend `AliasOut`. A Claude Code slug
+ * (`claude-opus-4-8`) and an OpenRouter slug (`anthropic/claude-opus-4.8`) for the
+ * same model are two entries under different families, so a run form can offer a
+ * harness only the slugs it can actually launch. */
+export interface ModelAlias {
+  slug: string;
+  harnessFamily: HarnessFamily;
+}
+
+/** One catalog entry: a curated model merged with its runs + price history, or a
+ * model derived from runs alone (`curated: false`). Mirrors the backend `ModelOut`. */
 export interface Model {
   slug: string;
   name: string;
   provider: string;
+  /** Whether this entry has curated config, versus being derived from runs. */
+  curated: boolean;
+  /** `https://openrouter.ai/<slug>` when on OpenRouter, else null. */
+  openrouterUrl: string | null;
+  /** Curated description markdown, or null. */
+  description: string | null;
+  /** The curated, sanitized provider-logo SVG, or null. */
+  logoSvg: string | null;
+  /** The raw run-record `modelId`s this entry absorbs (what a run matches on). */
+  coveredModelIds: string[];
+  /** The canonical model ids this entry claims, each tagged with the harness
+   * family it is usable with. */
+  aliases: ModelAlias[];
+  /** The latest observed comparable price, or null. */
+  price: ModelPrices | null;
+  /** The observed price history, ascending, consecutive-equal deduped. */
+  priceHistory: PriceObservation[];
+  /** The latest observed context window in tokens, or null. */
+  contextLength: number | null;
+  /** The latest observed release date (RFC 3339), or null. */
+  releasedAt: string | null;
+}
+
+/** The `POST /models` / `PUT /models/{slug}` request body. Each alias pairs a slug
+ * with the harness family it is usable with. Mirrors the backend `ModelConfigInput`
+ * (whose `AliasInput` has the same `{ slug, harnessFamily }` shape as `ModelAlias`). */
+export interface ModelInput {
+  slug: string;
+  name: string;
+  provider: string;
+  aliases: ModelAlias[];
   openrouterSlug: string | null;
-  descriptionPath: string | null;
-  modelIds: string[];
+  description: string | null;
+  logoSvg: string | null;
+  providerLogoUrl: string | null;
+}
+
+/** A blank-form seed derived from a run of an unknown model (`GET /models/seed`).
+ * Its aliases are tagged with the family of the harness the seed run used. */
+export interface ModelSeed {
+  slug: string;
+  name: string;
+  provider: string;
+  aliases: ModelAlias[];
+  openrouterSlug: string | null;
+}
+
+/** The `POST /models/logo` result: the fetched, sanitized SVG. */
+export interface LogoFetchResult {
+  logoSvg: string;
 }
 
 export interface TestCase {
@@ -84,6 +157,12 @@ export interface VariantInfo {
   // case's common domains plus this variant's own additive ones — so a run is
   // always rated on exactly the domains that apply to its selected variant.
   domains: Domain[];
+  // The absolute URL of this variant's reference implementation — the correct,
+  // authored static build the backend records in `case_reference_build` and serves
+  // on the resolved version (camelCase `referenceBuild`). Null when the variant
+  // declares no `reference_implementation`, and absent on a backend that predates
+  // the field.
+  referenceBuild?: string | null;
 }
 
 // The 3D voxel-family asset kinds — the two cube kinds, the six surface-meshed
@@ -140,6 +219,26 @@ export function isAudioAssetKind(kind: AssetKind | null | undefined): boolean {
   return kind != null && AUDIO_ASSET_KINDS.has(kind);
 }
 
+// The Blender asset kinds. Mirrors `AssetKind::is_blender` on the Rust side: the
+// skinned character, the static prop, and the rigidly-articulated mechanism — all
+// authored by driving headless Blender and emitted as a self-contained native glTF.
+const BLENDER_ASSET_KINDS: ReadonlySet<AssetKind> = new Set<AssetKind>([
+  "blender-character",
+  "blender-prop",
+  "blender-mechanism",
+]);
+
+/** Whether an asset kind is a **Blender** kind (`blender-character`/`blender-prop`/
+ * `blender-mechanism`) — authored by driving headless Blender and emitted as a
+ * self-contained native glTF. Its own catalog family: not a voxel-family kind (it is a
+ * real mesh, not a voxel field) even though it, too, renders in 3D. An absent kind reads
+ * as false. */
+export function isBlenderAssetKind(
+  kind: AssetKind | null | undefined,
+): boolean {
+  return kind != null && BLENDER_ASSET_KINDS.has(kind);
+}
+
 export interface VersionInfo {
   slug: string;
   version: string;
@@ -177,11 +276,30 @@ export interface VersionInfo {
   // stable slot per declared part as the model sculpts, named from the parts.
   model?: ModelSpec | null;
   maxRuntimeSeconds: number;
+  // The Test Cabinet runtime packages this case ships into every run, each with a
+  // UI-only description. Empty for a case that declares none. Case-level (shared by
+  // every variant), surfaced on the Inputs tab.
+  packages: PackageInfo[];
 }
+
+// A runtime package a case ships into its runs: its npm name and the UI-only
+// description of what it provides (never seeded into a run — it exists only to
+// explain, in the Inputs UI, what the package is for).
+export interface PackageInfo {
+  name: string;
+  description: string;
+}
+
+// The role a seeded file plays, so the Inputs UI can tag an executable starter
+// ("script") distinctly from a prose spec ("spec"). Presentation only.
+export type SpecRole = "spec" | "script";
 
 export interface SpecDocument {
   dest: string;
   body: string;
+  // The seeded file's role, carried so the Inputs tab can tag it. Absent on a
+  // backend that predates the field; treated as "spec".
+  kind?: SpecRole;
 }
 
 export interface Specification {
@@ -212,12 +330,27 @@ export interface ReviewItem {
   // (it applies to the asset as a whole).
   sequences?: string[];
   frames?: number[];
-  // Points this item is worth toward the run's score: a pass earns this weight, a
-  // fail earns none.
+  // Points this item is worth toward the run's score. Graded as a whole (no
+  // sub-items): a pass earns this weight, a fail earns none. With sub-items: the
+  // weight is split evenly across them and the item earns the fraction that
+  // passed.
   weight: number;
   // Optional scoring domain (by id) this item belongs to, or null/undefined for a
   // general item that belongs to no single domain.
   domain?: string | null;
+  // Optional name-only sub-items breaking this item into independently graded
+  // pass/fail points (an academic question's "2a", "2b"). When present, the
+  // reviewer records a verdict per sub-item instead of one for the item; each
+  // sub-item's verdict is keyed by the composite `<item id>.<sub id>` (see
+  // `subItemVerdictId`). Empty/undefined for an item graded as a whole.
+  subItems?: ReviewSubItem[];
+}
+
+// A name-only sub-item of a review item: one independently graded pass/fail
+// point, carrying only its id (which keys its verdict) and its title (a heading).
+export interface ReviewSubItem {
+  id: string;
+  title: string;
 }
 
 // A scoring domain a test case declares; a reviewer rates each independently and
@@ -307,6 +440,10 @@ export interface LaunchConfig {
   // only for the end-to-end test type.
   orchestrator: string;
   maxRuntimeOverride: number | null;
+  // How many times the backend automatically retries this run after a terminal
+  // infrastructure error or catastrophic (won't-load) build. Omit (undefined) to
+  // accept the backend default of 1; a timeout or completed run is never retried.
+  retryCount?: number;
 }
 
 // The terminal outcome of a publish. Publishing is **asynchronous**: the backend
@@ -435,7 +572,22 @@ export interface InProgressRun {
   variant: string;
   harnessSlug: string;
   modelId: string;
-  state: "running" | "failed";
+  // The run's live phase, mapped from the backend's fine-grained job state: still
+  // waiting for a dispatcher slot ("queued"), deliberately held back because its
+  // harness is at its parallelism cap ("pending"), spinning up the driver +
+  // container ("starting"), executing ("running"), or locally observed to have
+  // failed before it dropped out of the active list ("failed").
+  state: "queued" | "pending" | "starting" | "running" | "failed";
+}
+
+// One harness's operator-tunable configuration, as `GET /harness-config` reports it
+// (`slug`, display `name`, and the current knobs). Today the only knob is the
+// maximum number of runs of the harness the Test Cabinet drives at once
+// (`maxParallelism`, null = no limit). Edited from the Harnesses settings section.
+export interface HarnessConfigEntry {
+  slug: string;
+  name: string;
+  maxParallelism: number | null;
 }
 
 // A worker-wide run-completion notification, pushed to the console without

@@ -1,0 +1,50 @@
+Sculpt the **Aegis**, a colossal hard-edged six-legged walking fortress,
+as a static 3D mesh built with the Dual Contouring tool (`dc`), {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}, using
+only that tool.
+
+## How sculpting works
+
+The only way to shape the surface is the `dc` binary already on your `PATH`. Rather
+than placing discrete voxels, you composite a **continuous
+signed-distance field** by calling `dc` **one operation at a time** — unioning
+material in with `add-box` / `add-sphere` / `add-ellipsoid` / `add-cylinder` and
+carving it away with the matching `subtract-*` primitives, each in an opaque
+`#rrggbb` color. `dc` is the **high-fidelity, sharp-feature-preserving** extractor:
+it keeps crisp edges and corners instead of rounding them, and it exposes a
+`--sharp` / `--smooth` tag on primitives (the low-poly and smooth extractors do
+not).
+
+The field starts **empty**. Colors are **opaque** `#rrggbb` — there is no
+transparency. Each call only records the operation and renders nothing; run
+`dc render` when you want to see the model — it composites the field, extracts the
+surface to `mesh.glb`, and draws the preview PNG `model.png`. The recorded operations
+are your submission. An empty log is already in place at
+`{{workspace}}`; you produce the preview and mesh yourself by running `dc render`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+dc add-box --x 2 --y 2 --z 3 --width 4 --height 2 --depth 5 --color "#c69a4b" --sharp
+```
+
+Run `dc --help` to list every operation and `dc <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Run
+`dc render` to (re)draw `model.png`, then read it** to see your progress and decide
+what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the fortress up operation by operation until the model in `model.png` matches
+the brief — a huge armored citadel riding raised on six articulated
+legs, a central forward cannon, a side turret out on each sponson, and a sensor
+vane, all in the crisp hard-surface armor Dual Contouring is made for, cleanly
+symmetric about its centerplane. **Before you finish, run `dc render`** so the
+geometry (`mesh.glb`) the result is built from is emitted — an unrendered model is
+scored as empty. When you are satisfied, stop: the recorded operations are your
+finished submission.

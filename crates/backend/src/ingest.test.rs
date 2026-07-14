@@ -150,6 +150,45 @@ fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
 }
 
 #[test]
+#[cfg(unix)]
+fn copy_tree_recreates_symlinks_including_to_directories() {
+    // A reference-impl's `node_modules` ships relative symlinks, some pointing at
+    // directories (e.g. `@test-cabinet/voxel-runtime -> ../../vendor/...`). These
+    // must be recreated as symlinks rather than dereferenced: `std::fs::copy`
+    // follows the link and errors on a symlink-to-directory ("the source path is
+    // neither a regular file nor a symlink to a regular file"), which used to abort
+    // the whole ingest.
+    let src = TempDir::new().unwrap();
+    write(&src.path().join("pkg/index.js"), "export default 1;");
+    write(
+        &src.path().join("vendor/lib/main.js"),
+        "export const x = 2;",
+    );
+    // A symlink to a file and a symlink to a directory, both relative.
+    std::os::unix::fs::symlink("../pkg/index.js", src.path().join("vendor/link.js")).unwrap();
+    std::os::unix::fs::symlink("vendor/lib", src.path().join("lib-link")).unwrap();
+    let dst = TempDir::new().unwrap();
+
+    copy_tree(src.path(), &dst.path().join("out")).unwrap();
+
+    let out = dst.path().join("out");
+    assert!(out.join("pkg/index.js").exists());
+    assert!(out.join("vendor/lib/main.js").exists());
+    // Both links survive as links (not flattened copies) and resolve within the copy.
+    assert!(
+        std::fs::symlink_metadata(out.join("vendor/link.js"))
+            .unwrap()
+            .is_symlink()
+    );
+    let dir_link = out.join("lib-link");
+    assert!(std::fs::symlink_metadata(&dir_link).unwrap().is_symlink());
+    assert!(
+        dir_link.join("main.js").exists(),
+        "dir symlink resolves in the copy"
+    );
+}
+
+#[test]
 fn stored_manifest_carries_adversarial_specs() {
     // An adversarial case's `[contract]`, `[sandbox]`, `[simulation]`, `[match]`,
     // `[replay]`, and `build.module` must survive into the stored manifest — they
@@ -181,6 +220,59 @@ fn stored_manifest_carries_adversarial_specs() {
         .and_then(|build| build.module)
         .expect("build.module survives ingest");
     assert!(module.ends_with(".wasm"));
+}
+
+#[test]
+fn ingest_tolerates_a_variant_reference_implementation_key() {
+    // A variant that declares `reference_implementation` must ingest cleanly. The
+    // reference implementation is the authored, correct static build, hosted
+    // out-of-band by `tcab publish-reference` and surfaced on the case page's
+    // "Reference" tab — it is never seeded into a run and never built at ingest. So
+    // resolution parses and resolves the key (proving ingest does not choke on it),
+    // while `build_stored_manifest` simply carries the variant through without the
+    // reference-impl host path: the URL lives in the `case_reference_build` table,
+    // not the stored manifest.
+    let dir = TempDir::new().expect("temp dir");
+    // The catalog groups cases as `<type>/<difficulty>/<slug>/<version>/`; this is a
+    // default (end-to-end) `easy` demo case.
+    let version = dir.path().join("end-to-end/easy/demo/v1.0.0");
+    write(&version.join("prompt.hbs"), "Build it.");
+    write(&version.join("changelog.md"), "Introduced.");
+    // A real, buildable reference project would live here; a directory is all
+    // resolution requires (it validates the path is a directory and never reads it).
+    write(
+        &version.join("reference-impl/base/index.html"),
+        "<!doctype html>",
+    );
+    write(
+        &version.join("test-case.toml"),
+        "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n",
+    );
+    write(
+        &version.join("variants/base.toml"),
+        "slug = \"base\"\nreference_implementation = \"reference-impl/base\"\n",
+    );
+
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(dir.path());
+    let resolved = catalog
+        .resolve("demo", "v1.0.0")
+        .expect("resolve tolerates the key");
+    // Resolution recognized and resolved the key onto the variant.
+    assert!(
+        resolved.variants[0].reference_impl.is_some(),
+        "resolution resolves the reference implementation onto the variant",
+    );
+
+    // Ingest tolerates the key: the stored manifest builds, and the variant carries
+    // through (the reference-impl host path is intentionally dropped — it is not part
+    // of the run-facing stored shape).
+    let manifest = build_stored_manifest(&resolved).expect("build tolerates the key");
+    assert_eq!(manifest.variants.len(), 1);
+    assert_eq!(manifest.variants[0].slug, "base");
 }
 
 #[test]
@@ -325,6 +417,31 @@ fn every_stored_manifest_preserves_its_asset_shape() {
                         "{id}: skinned meshed kind lost its [model] rig"
                     );
                 }
+                // The animated Blender kinds reuse both tables verbatim: `[voxel]` as the
+                // bounding box and `[model]` as the required animations (see
+                // `AssetKind::is_blender`). Both must survive ingest.
+                AssetKind::BlenderCharacter | AssetKind::BlenderMechanism => {
+                    assert!(
+                        manifest.voxel.is_some(),
+                        "{id}: animated Blender kind lost its [voxel] bounding box"
+                    );
+                    assert!(
+                        manifest.model.is_some(),
+                        "{id}: animated Blender kind lost its [model] animations"
+                    );
+                }
+                // A static Blender prop carries only the `[voxel]` bounding box; it
+                // declares no `[model]` (it is unrigged).
+                AssetKind::BlenderProp => {
+                    assert!(
+                        manifest.voxel.is_some(),
+                        "{id}: blender-prop kind lost its [voxel] bounding box"
+                    );
+                    assert!(
+                        manifest.model.is_none(),
+                        "{id}: blender-prop is static and must carry no [model]"
+                    );
+                }
                 // The painted (`ui`/`material`), particle, and audio kinds each carry
                 // their own `[ui]`/`[material]`/`[particle]`/`[audio]` table, which the
                 // backend `StoredManifest` now mirrors verbatim (as with the voxel
@@ -369,9 +486,20 @@ fn every_stored_manifest_preserves_its_asset_shape() {
 // --- guarded prune of stale definitions -------------------------------------
 
 /// Write a minimal end-to-end case (no reference mockups, so ingest needs no
-/// browser render) under `<checkout>/test-cases/<folder>/v1.0.0` declaring `slug`.
+/// browser render) under `<checkout>/test-cases/end-to-end/easy/<folder>/v1.0.0`
+/// declaring `slug`. The `<type>/<difficulty>` grouping matches the catalog layout;
+/// this helper's cases are all default (end-to-end) `easy` cases.
 fn write_e2e_case(checkout: &std::path::Path, folder: &str, slug: &str) {
-    let base = checkout.join("test-cases").join(folder).join("v1.0.0");
+    write_e2e_version(checkout, folder, slug, "v1.0.0");
+}
+
+fn write_e2e_version(checkout: &std::path::Path, folder: &str, slug: &str, version: &str) {
+    let base = checkout
+        .join("test-cases")
+        .join("end-to-end")
+        .join("easy")
+        .join(folder)
+        .join(version);
     write(&base.join("prompt.hbs"), "Build it.");
     write(&base.join("changelog.md"), "Introduced.");
     write(&base.join("variants/base.toml"), "slug = \"base\"\n");
@@ -410,7 +538,7 @@ fn whole_catalog_ingest_prunes_a_case_the_checkout_no_longer_declares() {
     assert_eq!(stored_slugs(&store), ["alpha", "beta"]);
 
     // Drop beta from the checkout; a whole-catalog re-ingest prunes it.
-    std::fs::remove_dir_all(checkout.path().join("test-cases/beta")).unwrap();
+    std::fs::remove_dir_all(checkout.path().join("test-cases/end-to-end/easy/beta")).unwrap();
     Ingestor::new(checkout.path(), &store)
         .scan(&IngestRequest::default())
         .unwrap();
@@ -431,7 +559,7 @@ fn prune_spares_a_definition_a_run_still_references() {
 
     // Drop beta from the checkout, but protect it as a published run would: the
     // stale definition is kept so the run stays resolvable.
-    std::fs::remove_dir_all(checkout.path().join("test-cases/beta")).unwrap();
+    std::fs::remove_dir_all(checkout.path().join("test-cases/end-to-end/easy/beta")).unwrap();
     let protected = std::collections::HashSet::from([("beta".to_string(), "v1.0.0".to_string())]);
     Ingestor::new(checkout.path(), &store)
         .with_protected_cases(protected)
@@ -456,7 +584,7 @@ fn a_folder_rename_that_pins_the_slug_overwrites_in_place_without_duplicating() 
     assert_eq!(stored_slugs(&store), ["pong"]);
 
     // Rename the folder pong -> carom but keep `slug = "pong"`.
-    std::fs::remove_dir_all(checkout.path().join("test-cases/pong")).unwrap();
+    std::fs::remove_dir_all(checkout.path().join("test-cases/end-to-end/easy/pong")).unwrap();
     write_e2e_case(checkout.path(), "carom", "pong");
     Ingestor::new(checkout.path(), &store)
         .scan(&IngestRequest::default())
@@ -466,6 +594,35 @@ fn a_folder_rename_that_pins_the_slug_overwrites_in_place_without_duplicating() 
     assert_eq!(stored_slugs(&store), ["pong"]);
     assert!(store.has_version("pong", "v1.0.0"));
     assert!(!store.has_version("carom", "v1.0.0"));
+}
+
+#[test]
+fn a_version_qualified_target_ingests_only_that_version() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_version(checkout.path(), "alpha", "alpha", "v1.0.0");
+    write_e2e_version(checkout.path(), "alpha", "alpha", "v2.0.0");
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+
+    // Target a single version with `slug@version`: the report touches only it, leaving
+    // the case's other versions untouched (a bare `alpha` would expand to both).
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec!["alpha@v1.0.0".to_string()]),
+            force: true,
+            ..Default::default()
+        })
+        .unwrap();
+    let touched: Vec<(&str, &str)> = report
+        .test_case_versions
+        .iter()
+        .map(|v| (v.slug.as_str(), v.version.as_str()))
+        .collect();
+    assert_eq!(touched, [("alpha", "v1.0.0")]);
 }
 
 #[test]
@@ -482,7 +639,7 @@ fn a_partial_scan_never_prunes() {
 
     // Remove beta, then run a scan scoped to alpha only. A partial scan has not seen
     // the whole catalog, so it must not conclude beta is absent.
-    std::fs::remove_dir_all(checkout.path().join("test-cases/beta")).unwrap();
+    std::fs::remove_dir_all(checkout.path().join("test-cases/end-to-end/easy/beta")).unwrap();
     Ingestor::new(checkout.path(), &store)
         .scan(&IngestRequest {
             test_cases: Some(vec!["alpha".to_string()]),

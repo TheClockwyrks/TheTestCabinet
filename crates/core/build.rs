@@ -7,17 +7,37 @@
 //! the exact build of the orchestrator that produced it, alongside the harness
 //! version it drove.
 //!
-//! Everything here is best-effort: when git is unavailable (for example a build
-//! from a source tarball with no repository), no variable is emitted and the
-//! crate falls back to `None`, recording a null commit rather than failing the
-//! build.
+//! The commit is resolved from one of two sources, in order:
+//!
+//!   1. An explicit `TCAB_BUILD_COMMIT` passed into the build environment. The
+//!      containerized service and run-container images build from a context with
+//!      NO `.git` — the repo-root `.dockerignore` is an allowlist that never
+//!      re-includes it — so the git query below finds no repository there. Every
+//!      such build (the driver especially, which stamps the run record) would
+//!      otherwise record a null "unknown" commit, so the image builds pass the
+//!      commit in through this variable instead.
+//!   2. Querying git, for an ordinary `cargo build` in a real checkout.
+//!
+//! Everything here is best-effort: when neither source yields a commit (for
+//! example a build from a source tarball with no repository and no override), no
+//! variable is emitted and the crate falls back to `None`, recording a null
+//! commit rather than failing the build.
 
 use std::process::Command;
 
+/// Build-time environment variable an image build (or any caller lacking a git
+/// checkout) sets to the commit to stamp; takes precedence over the git query.
+const COMMIT_OVERRIDE_VAR: &str = "TCAB_BUILD_COMMIT";
+
 fn main() {
-    if let Some(commit) = git_commit() {
+    if let Some(commit) = build_arg_commit().or_else(git_commit) {
         println!("cargo:rustc-env=TEST_CABINET_COMMIT={commit}");
     }
+
+    // Restamp when the override changes so a rebuilt image picks up the new commit
+    // even when nothing under the source tree did (the git-based rerun paths below
+    // never exist in a `.git`-less container context).
+    println!("cargo:rerun-if-env-changed={COMMIT_OVERRIDE_VAR}");
 
     // Rebuild when the checked-out commit changes so the stamp stays current.
     // These paths are derived from git itself because the crate lives inside a
@@ -26,6 +46,15 @@ fn main() {
     for path in rerun_paths() {
         println!("cargo:rerun-if-changed={path}");
     }
+}
+
+/// The commit supplied through [`COMMIT_OVERRIDE_VAR`], trimmed. `None` when the
+/// variable is unset or empty (so an empty override falls through to git rather
+/// than stamping a blank commit).
+fn build_arg_commit() -> Option<String> {
+    let commit = std::env::var(COMMIT_OVERRIDE_VAR).ok()?;
+    let commit = commit.trim();
+    (!commit.is_empty()).then(|| commit.to_string())
 }
 
 /// The current commit hash, suffixed with `-dirty` when the working tree has

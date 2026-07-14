@@ -1,0 +1,141 @@
+# Caldera Core — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera Core, the Holdfast the whole game defends — a
+broad stepped brass keep, a ziggurat of receding tiers rising to a crowned summit, with
+banners hanging from its upper tiers and a beacon at the very top — as a 3D voxel model
+with a rig a game can pose at runtime. Build it with `voxel-anim` (painting opaque cells
+one operation at a time) as a rigged model that reads unmistakably as this seat of power,
+keeps itself alive on its own, and grinds up into a taller, prouder keep when it is
+upgraded. There is no target model to copy. This is the biggest, most detailed built
+thing of its roster — spend the volume on it.
+
+This test measures creativity and craft, not instruction-following. The brief fixes what
+the Core is and how it must move; it deliberately does not hand you a parts list, joint
+placements, or pose angles — working out the pieces a tiered keep whose banners stir and
+whose tiers rise needs, where they attach, and how they articulate is the test. Invent
+the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the keep, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the keep's front face looks toward `z = {{voxel.maxZ}}` (the front). Up is +y.
+- The Core is a **static building founded on the ground**: its broad base sits flat on the
+  ground at `y = 0` and does not move. Build it symmetric about the lengthwise vertical
+  centerplane — the tiers, the crown, and the beacon centered on it, the banners mirrored
+  left and right.
+- The Core is deliberately **broad and monumental** — it fills most of the width and depth
+  at its base and steps inward as it rises to a crowned summit. It is by far the LARGEST
+  built thing on the field; nothing about it should read as small, slight, or machine-like.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same volume's
+  coordinates, positioned where the part sits on the assembled Core (a tier already stacked
+  on the tier below it, a banner already hung on its upper tier, the beacon already at the
+  summit).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Brass — primary plating | `#c8a24a` |
+| Brass dark — shadow, underside | `#8a6d2e` |
+| Iron — mechanisms, pipework, recesses | `#3a3836` |
+| Accent fitting — verdigris (the accent region) | `#2f7d72` |
+
+Do **not** use steel `#b8bcc2`, gold `#ffce54`, or white `#dfeaea` anywhere on the model.
+Those are the colors a game paints onto the accent at run time to show the Core's upgrade
+level (see *The accent region*); baking any of them in makes a Core that has not yet been
+upgraded look permanently upgraded.
+
+## What the Core is (and what is yours to invent)
+
+Fixed — the Core must read unmistakably as all of these:
+
+- A **broad stepped brass keep**: a ziggurat of receding tiers, wide at the base and
+  stepping inward as it rises, founded flat on the ground and reading as heavy masonry
+  architecture — a seat of power, not a machine. Its shadowed seams and undersides are
+  brass dark.
+- A **crowned summit** at the top of the tiers, ringed by a crown of ironwork or battlement
+  — the seat the beacon stands on.
+- **Banners** hanging from the upper tiers, mirrored left and right, that stir on their own
+  (see the animations).
+- A **beacon** standing at the very top of the summit that turns on its own — the highest
+  point of the whole model.
+
+Everything else is yours to invent — the exact silhouette and proportions, how many tiers
+the keep steps through and how each is massed, how the crown rings the summit, how the
+banners hang, how the beacon is shaped, and how you break the keep into rig parts. Nothing
+here prescribes a shape; the test rewards a bold, characterful design that is unmistakably
+the Core and animates convincingly.
+
+The Core is the **Holdfast the whole game defends — monumental masonry architecture, not a
+machine**. The tell is the STEPPED TIERS, the hanging BANNERS, and the crowning BEACON —
+it is by far the largest built thing on the field, a tiered building rather than a
+machine, and nothing about it reads as small, slight, or machine-like.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time to show the Core's **upgrade level**, by finding
+every voxel of one reserved color and repainting it (brass dark at level 0, then steel,
+then gold, then white-hot at the top level), so one model serves all four levels. That
+reserved color is the **verdigris accent** `#2f7d72`, and it is what makes the contract
+work:
+
+- Sculpt the **crown ring at the summit** and the **trim edging the banners** — and only
+  those — in `#2f7d72`.
+- Use `#2f7d72` **nowhere else** on the model. Not a stray voxel, not a highlight, not a
+  seam. Every voxel of it is treated as accent fitting.
+- Each accent element must be a **clean, unbroken run** — the crown a continuous ring
+  around the summit, the banner trim a continuous edging on each banner — and clearly
+  **visible from more than one angle**, so a player reads the Core's upgrade level at a
+  glance across the battlefield.
+
+Everything else — the tiers, the masonry, the beacon body, the recesses — keeps its own
+color and is never repainted. Get this wrong and every Core in the game looks the same
+level.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author the
+motion). Author each with `voxel-anim define-animation` then `add-keyframe`, choosing the
+period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion reads right — a slow, living stir at idle and a weighty, grinding rise on upgrade.
+
+- **`idle`** — the life of the keep (a self-playing idle, `loop = true`,
+  `auto_play = true`). The beacon at the summit turns and the banners hanging from the
+  upper tiers stir, cycling on their own with no caller, so the Core reads as alive and
+  garrisoned even when nothing is happening. Only the beacon and the banners move; the
+  tiered keep beneath them stays fixed. It loops seamlessly.
+- **`upgrade`** — becoming more powerful (a game-triggered ONE-SHOT, `loop = false`). It
+  plays **once and holds its final pose**, not a loop: the keep's tiers grind and rise, the
+  crown ring lifts and locks, and the beacon flares — a single visible, satisfying moment
+  of the Core becoming more powerful, played the instant the player pays for an upgrade. At
+  the end the keep stands taller and prouder and **holds** that stronger pose; it does not
+  snap back to its start.
+
+You may add your own extra parts, joints, or animations on top of this (for example a slow
+drift of smoke from the beacon), but you must not drop or contradict the required `idle`
+and `upgrade` animations, by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on your
+`PATH`. Define your own parts with `define-part` (giving each a parent and a pivot), sculpt
+each by selecting it with `--part <name>`, set pivots with `set-pivot`, place joints with
+`define-joint`, and author the two animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and a
+mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation; run
+`voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png` previews)
+between calls to judge each part against this brief — that the tiers stack cleanly and step
+inward, the crown rings the summit unbroken, the banners hang on their tiers, the beacon
+stands at the very top, and the animations read with the right weight. Run `voxel-anim
+render` before you finish so it emits the per-part `.glb` geometry your result is built
+from — an unrendered part scores as empty (`voxel-anim render --component <part>` renders
+one part; `voxel-anim render --time <ms> --animation <name>` renders the model posed at
+that instant to check the motion).

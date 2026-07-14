@@ -1,0 +1,145 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 850,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "sparks",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 34,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 420.0,
+      "lifetimeSpread": 110.0,
+      "speed": 230.0,
+      "speedSpread": 70.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 8,
+      "forces": {
+        "drag": 3.0,
+        "radial": 210.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffcf6a",
+            "at": 0.4
+          },
+          {
+            "color": "#ff5a52",
+            "at": 0.8
+          },
+          {
+            "color": "#6b6355",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "smoke",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 20,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 720.0,
+      "lifetimeSpread": 160.0,
+      "speed": 90.0,
+      "speedSpread": 35.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 9,
+      "forces": {
+        "gravity": -25.0,
+        "drag": 2.0,
+        "radial": 80.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 0.7,
+          "to": 1.8
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.9,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffcf6a",
+            "at": 0.0
+          },
+          {
+            "color": "#6b6355",
+            "at": 0.6
+          },
+          {
+            "color": "#6b6355",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

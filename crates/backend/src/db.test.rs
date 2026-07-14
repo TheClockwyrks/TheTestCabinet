@@ -2,7 +2,7 @@ use super::*;
 use test_cabinet_core::metrics::RunMetrics;
 use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
-    HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
+    HarnessFamily, HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
 };
 use test_cabinet_core::validation::ValidationSummary;
 
@@ -130,7 +130,7 @@ async fn a_record_that_no_longer_deserializes_is_skipped_not_fatal() {
             Expr::value(r#"{"id":"legacy","schema":"from-before-a-contract-change"}"#),
         )
         .filter(run::Column::Id.eq("legacy"))
-        .exec(&db.conn)
+        .exec(&db.conn())
         .await
         .unwrap();
 
@@ -486,6 +486,7 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         harness_slug: "claude".to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
         job_token: format!("token-{id}"),
+        attempt: 0,
         created_at: created_at.to_string(),
     }
 }
@@ -535,6 +536,148 @@ async fn claim_takes_the_oldest_queued_job_first() {
     );
     let second = db.claim_next_job("2026-06-23T01:00:01Z").await.unwrap();
     assert_eq!(second.unwrap().id, "newer");
+}
+
+/// A job for a specific harness, otherwise identical to [`new_job`].
+fn new_job_h(id: &str, created_at: &str, harness: &str) -> NewJob {
+    NewJob {
+        harness_slug: harness.to_string(),
+        ..new_job(id, created_at)
+    }
+}
+
+#[tokio::test]
+async fn claim_respects_harness_max_parallelism_and_holds_pending() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Only one Claude run may be in flight at a time.
+    db.set_harness_max_parallelism("claude", Some(1), "2026-06-23T00:00:00Z")
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j1", "2026-06-23T00:00:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j2", "2026-06-23T00:01:00Z", "claude"))
+        .await
+        .unwrap();
+
+    // The first claim takes j1 (now occupying the harness's one slot).
+    let first = db.claim_next_job("2026-06-23T00:02:00Z").await.unwrap();
+    assert_eq!(first.expect("j1 is claimable").id, "j1");
+
+    // The second claim finds nothing claimable — j2's harness is at its cap — and
+    // reconciles j2's display state to `pending` so it reads as deliberately held.
+    assert!(
+        db.claim_next_job("2026-06-23T00:02:01Z")
+            .await
+            .unwrap()
+            .is_none(),
+        "j2 is held back by the harness cap"
+    );
+    let j2 = db.get_job("j2").await.unwrap().unwrap();
+    assert_eq!(j2.state, "pending");
+
+    // Once the in-flight run finishes, the slot frees and the held job is claimable.
+    db.set_job_state("j1", "succeeded", "2026-06-23T00:03:00Z", None, None)
+        .await
+        .unwrap();
+    let released = db.claim_next_job("2026-06-23T00:03:01Z").await.unwrap();
+    assert_eq!(released.expect("j2 released once the slot freed").id, "j2");
+}
+
+#[tokio::test]
+async fn claim_skips_a_capped_harness_for_another_that_has_room() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.set_harness_max_parallelism("claude", Some(1), "2026-06-23T00:00:00Z")
+        .await
+        .unwrap();
+    // Two Claude jobs (older) and one Codex job (newest); Claude is capped at 1.
+    db.enqueue_job(new_job_h("a", "2026-06-23T00:00:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("b", "2026-06-23T00:01:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("c", "2026-06-23T00:02:00Z", "codex"))
+        .await
+        .unwrap();
+
+    // `a` fills Claude's only slot.
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:03:00Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "a"
+    );
+    // The next claim skips the now-capped Claude job `b` and takes the uncapped
+    // Codex job `c` instead, even though `b` enqueued first.
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:03:01Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "c"
+    );
+    // `b` is left visibly held back.
+    assert_eq!(db.get_job("b").await.unwrap().unwrap().state, "pending");
+}
+
+#[tokio::test]
+async fn claim_is_unlimited_without_a_configured_cap() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // No cap configured for claude, so both jobs are claimable back-to-back.
+    db.enqueue_job(new_job_h("j1", "2026-06-23T00:00:00Z", "claude"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job_h("j2", "2026-06-23T00:01:00Z", "claude"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:02:00Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "j1"
+    );
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:02:01Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "j2"
+    );
+}
+
+#[tokio::test]
+async fn set_harness_max_parallelism_upserts_and_clears() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.set_harness_max_parallelism("claude", Some(3), "2026-06-23T00:00:00Z")
+        .await
+        .unwrap();
+    let rows = db.list_harness_configs().await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].harness_slug, "claude");
+    assert_eq!(rows[0].max_parallelism, Some(3));
+
+    // Upsert the same harness to a new value.
+    db.set_harness_max_parallelism("claude", Some(5), "2026-06-23T00:01:00Z")
+        .await
+        .unwrap();
+    let rows = db.list_harness_configs().await.unwrap();
+    assert_eq!(rows.len(), 1, "upsert, not a second row");
+    assert_eq!(rows[0].max_parallelism, Some(5));
+
+    // Clearing the limit keeps the row but stores NULL (no limit).
+    db.set_harness_max_parallelism("claude", None, "2026-06-23T00:02:00Z")
+        .await
+        .unwrap();
+    let rows = db.list_harness_configs().await.unwrap();
+    assert_eq!(rows[0].max_parallelism, None);
 }
 
 #[tokio::test]
@@ -1085,4 +1228,1037 @@ async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
             ("carom".to_string(), "v2.0.0".to_string()),
         ])
     );
+}
+
+// --- Model catalog store ---
+
+use std::collections::HashMap;
+use test_cabinet_core::metrics::{Cost, TokenCounts, TokenPrices};
+
+/// Tag a test alias with a plausible family (OpenRouter for a `provider/model`
+/// id, Claude for a bare native id — enough for the CRUD tests here).
+fn test_alias(alias: &str) -> AliasEntry {
+    AliasEntry {
+        alias: alias.to_string(),
+        family: if alias.contains('/') {
+            HarnessFamily::Openrouter
+        } else {
+            HarnessFamily::Claude
+        },
+    }
+}
+
+/// A model-config write with the common fields defaulted.
+fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
+    ModelConfigWrite {
+        slug: slug.to_string(),
+        display_name: name.to_string(),
+        provider: "Anthropic".to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: aliases.first().map(|a| a.to_string()),
+        aliases: aliases.iter().map(|a| test_alias(a)).collect(),
+        now: "2026-07-09T00:00:00Z".to_string(),
+    }
+}
+
+/// A run record with an explicit model id + harness (and, optionally, token
+/// counts), for the derive/normalize tests.
+fn run_with_model(
+    id: &str,
+    model_id: &str,
+    harness: HarnessSlug,
+    tokens: TokenCounts,
+) -> RunRecord {
+    let mut r = record(id);
+    r.subject.model_id = model_id.to_string();
+    r.subject.harness_slug = harness;
+    r.metrics.tokens = tokens;
+    r
+}
+
+#[tokio::test]
+async fn model_config_crud_and_alias_conflict() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(model_write(
+        "opus",
+        "Claude Opus 4.8",
+        &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+    ))
+    .await
+    .unwrap();
+
+    let got = db.get_model_config("opus").await.unwrap().unwrap();
+    assert_eq!(got.config.display_name, "Claude Opus 4.8");
+    let alias_slugs: Vec<&str> = got.aliases.iter().map(|a| a.alias.as_str()).collect();
+    assert_eq!(
+        alias_slugs,
+        vec!["anthropic/claude-opus-4.8", "claude-opus-4-8"]
+    );
+    // The family round-trips through the store.
+    assert_eq!(
+        got.aliases
+            .iter()
+            .find(|a| a.alias == "claude-opus-4-8")
+            .map(|a| a.family),
+        Some(HarnessFamily::Claude)
+    );
+    assert_eq!(
+        got.aliases
+            .iter()
+            .find(|a| a.alias == "anthropic/claude-opus-4.8")
+            .map(|a| a.family),
+        Some(HarnessFamily::Openrouter)
+    );
+
+    // A second model claiming an alias the first owns is a conflict.
+    let err = db
+        .upsert_model_config(model_write(
+            "sonnet",
+            "Claude Sonnet 5",
+            &["anthropic/claude-opus-4.8"],
+        ))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::BackendError::Conflict(_)),
+        "{err:?}"
+    );
+
+    // Updating the same model replaces its alias set and keeps created_at.
+    db.upsert_model_config(ModelConfigWrite {
+        display_name: "Opus (renamed)".to_string(),
+        aliases: vec![test_alias("claude-opus-4-8")],
+        now: "2026-08-01T00:00:00Z".to_string(),
+        ..model_write("opus", "ignored", &[])
+    })
+    .await
+    .unwrap();
+    let updated = db.get_model_config("opus").await.unwrap().unwrap();
+    assert_eq!(updated.config.display_name, "Opus (renamed)");
+    assert_eq!(updated.config.created_at, "2026-07-09T00:00:00Z");
+    assert_eq!(
+        updated.aliases,
+        vec![AliasEntry {
+            alias: "claude-opus-4-8".to_string(),
+            family: HarnessFamily::Claude,
+        }]
+    );
+
+    assert!(db.delete_model_config("opus").await.unwrap());
+    assert!(db.get_model_config("opus").await.unwrap().is_none());
+    assert!(!db.delete_model_config("opus").await.unwrap());
+}
+
+#[tokio::test]
+async fn backfill_alias_families_corrects_legacy_rows() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // Simulate legacy rows created before the harness_family column: every alias
+    // carries the migration's `openrouter` default, even the native ones.
+    let legacy = |slug: &str, aliases: &[&str]| ModelConfigWrite {
+        aliases: aliases
+            .iter()
+            .map(|a| AliasEntry {
+                alias: a.to_string(),
+                family: HarnessFamily::Openrouter,
+            })
+            .collect(),
+        ..model_write(slug, slug, &[])
+    };
+    db.upsert_model_config(legacy(
+        "opus",
+        &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+    ))
+    .await
+    .unwrap();
+    db.upsert_model_config(legacy("gpt", &["gpt-5.5"]))
+        .await
+        .unwrap();
+
+    // A Claude Code run of the native id is the run evidence for its family.
+    db.push(
+        &run_with_model(
+            "r1",
+            "claude-opus-4-8",
+            HarnessSlug::Claude,
+            TokenCounts::default(),
+        ),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let fixed = crate::bootstrap::backfill_alias_families(&db)
+        .await
+        .unwrap();
+    assert_eq!(fixed, 2, "the two native slugs were corrected");
+
+    let family_of = |stored: &StoredModel, slug: &str| {
+        stored
+            .aliases
+            .iter()
+            .find(|a| a.alias == slug)
+            .map(|a| a.family)
+    };
+    let opus = db.get_model_config("opus").await.unwrap().unwrap();
+    // Native id corrected from run evidence; OpenRouter id left as-is.
+    assert_eq!(
+        family_of(&opus, "claude-opus-4-8"),
+        Some(HarnessFamily::Claude)
+    );
+    assert_eq!(
+        family_of(&opus, "anthropic/claude-opus-4.8"),
+        Some(HarnessFamily::Openrouter)
+    );
+    // No run for gpt-5.5, so the structural rule (`gpt` prefix) classifies it.
+    let gpt = db.get_model_config("gpt").await.unwrap().unwrap();
+    assert_eq!(family_of(&gpt, "gpt-5.5"), Some(HarnessFamily::Codex));
+
+    // Idempotent: a second pass corrects nothing.
+    let again = crate::bootstrap::backfill_alias_families(&db)
+        .await
+        .unwrap();
+    assert_eq!(again, 0);
+}
+
+#[tokio::test]
+async fn price_observations_dedup_and_latest() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let obs = |input: f64, at: &str| PriceWrite {
+        model_id: "x/y".to_string(),
+        observed_at: at.to_string(),
+        uncached_input: Some(input),
+        cached_input: None,
+        output: Some(2.0),
+        context_length: Some(200_000),
+        released_at: None,
+    };
+    db.insert_price_observation(obs(1.0, "2026-01-01T00:00:00Z"))
+        .await
+        .unwrap();
+    db.insert_price_observation(obs(1.5, "2026-01-02T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let latest = db.latest_price("x/y").await.unwrap().unwrap();
+    assert_eq!(latest.uncached_input, Some(1.5));
+    assert_eq!(db.all_model_prices().await.unwrap().len(), 2);
+    assert!(db.latest_price("nope").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn distinct_run_models_returns_pairs() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let z = TokenCounts::default();
+    db.push(
+        &run_with_model("r1", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &run_with_model("r2", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &run_with_model("r3", "gpt-5.5", HarnessSlug::Codex, z),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    let mut pairs = db.distinct_run_models().await.unwrap();
+    pairs.sort();
+    assert_eq!(
+        pairs,
+        vec![
+            ("anthropic/claude-opus-4.8".to_string(), "kilo".to_string()),
+            ("gpt-5.5".to_string(), "codex".to_string()),
+        ]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let tokens = TokenCounts {
+        uncached_input: Some(1_000_000),
+        cached_input: None,
+        output: Some(1_000_000),
+        reasoning: None,
+    };
+    // An OpenRouter-accessed run tagged `:free` with a $0 recorded cost.
+    let mut kilo = run_with_model(
+        "free-run",
+        "deepseek/deepseek-v4:free",
+        HarnessSlug::Kilo,
+        tokens,
+    );
+    kilo.metrics.cost = Cost {
+        comparable: Some(0.0),
+        actual: Some(0.0),
+    };
+    db.push(&kilo, &links(), None).await.unwrap();
+    // A provider-native Codex run whose id happens to contain a colon is left alone.
+    let codex = run_with_model("codex-run", "gpt-5.5:preview", HarnessSlug::Codex, tokens);
+    db.push(&codex, &links(), None).await.unwrap();
+
+    let mut base_prices = HashMap::new();
+    base_prices.insert(
+        "deepseek/deepseek-v4".to_string(),
+        TokenPrices {
+            uncached_input: Some(0.000_002),
+            cached_input: None,
+            output: Some(0.000_006),
+        },
+    );
+    let rewritten = db.normalize_free_model_ids(&base_prices).await.unwrap();
+    assert_eq!(rewritten, 1);
+
+    let run = db.get_run("free-run").await.unwrap().unwrap();
+    assert_eq!(run.record.subject.model_id, "deepseek/deepseek-v4");
+    // Re-priced at the base rate: 1e6 * 2e-6 + 1e6 * 6e-6 = 8.0, not $0.
+    assert_eq!(run.record.metrics.cost.comparable, Some(8.0));
+
+    let codex_run = db.get_run("codex-run").await.unwrap().unwrap();
+    assert_eq!(codex_run.record.subject.model_id, "gpt-5.5:preview");
+
+    // Idempotent: a second pass rewrites nothing.
+    assert_eq!(db.normalize_free_model_ids(&base_prices).await.unwrap(), 0);
+}
+
+/// A run record carrying non-default metrics, for the lifted sort/filter columns.
+/// Total tokens sum to 175; comparable cost is `$1.50`; run time is 42s.
+fn record_with_metrics(id: &str) -> RunRecord {
+    let mut r = record(id);
+    r.subject.test_type = test_cabinet_core::TestType::AssetGeneration;
+    r.metrics = RunMetrics {
+        run_time_seconds: 42.0,
+        tokens: TokenCounts {
+            uncached_input: Some(100),
+            cached_input: Some(20),
+            output: Some(50),
+            reasoning: Some(5),
+        },
+        cost: Cost {
+            comparable: Some(1.5),
+            actual: Some(1.5),
+        },
+    };
+    r
+}
+
+/// Read the lifted sort/filter columns off the raw `run` row.
+async fn lifted(db: &Db, id: &str) -> run::Model {
+    run::Entity::find_by_id(id.to_string())
+        .one(&db.connection())
+        .await
+        .unwrap()
+        .expect("the run row exists")
+}
+
+#[tokio::test]
+async fn push_lifts_the_record_sort_columns_and_starts_unrated() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.test_type, "asset-generation");
+    assert_eq!(row.run_time_seconds, 42.0);
+    assert_eq!(row.total_tokens, 175);
+    assert_eq!(row.cost_comparable, Some(1.5));
+    // A freshly pushed run carries no reviews yet.
+    assert_eq!(row.rating, None);
+    assert_eq!(row.review_count, 0);
+}
+
+#[tokio::test]
+async fn add_review_maintains_the_lifted_rating_and_count() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+
+    // First review (great) sets the aggregate; the count reaches one.
+    db.add_review("r1", &review_by("u1", Rating::Great))
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("great"));
+    assert_eq!(row.review_count, 1);
+
+    // A second, harsher review drags the aggregate to the worst rating.
+    db.add_review("r1", &review_by("u2", Rating::Scuffed))
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("scuffed"));
+    assert_eq!(row.review_count, 2);
+
+    // Re-pushing the run refreshes the record-derived columns but preserves the
+    // review-derived aggregate (a re-push carries no reviews).
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+    let row = lifted(&db, "r1").await;
+    assert_eq!(row.rating.as_deref(), Some("scuffed"));
+    assert_eq!(row.review_count, 2);
+    assert_eq!(row.total_tokens, 175);
+}
+
+#[tokio::test]
+async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+    db.add_review("r1", &review_by("u1", Rating::Great))
+        .await
+        .unwrap();
+    db.add_review("r1", &review_by("u2", Rating::Scuffed))
+        .await
+        .unwrap();
+    // A second run with no reviews, to prove the null-rating path is backfilled too.
+    db.push(&record_with_metrics("r2"), &links(), None)
+        .await
+        .unwrap();
+
+    // Simulate rows that predate the sort columns: reset every lifted value to the
+    // migration's defaults (empty test_type is the "un-backfilled" sentinel).
+    for id in ["r1", "r2"] {
+        let mut active = lifted(&db, id).await.into_active_model();
+        active.test_type = Set(String::new());
+        active.run_time_seconds = Set(0.0);
+        active.total_tokens = Set(0);
+        active.cost_comparable = Set(None);
+        active.rating = Set(None);
+        active.review_count = Set(0);
+        active.update(&db.connection()).await.unwrap();
+    }
+
+    let filled = db.backfill_sort_columns().await.unwrap();
+    assert_eq!(filled, 2);
+
+    let r1 = lifted(&db, "r1").await;
+    assert_eq!(r1.test_type, "asset-generation");
+    assert_eq!(r1.run_time_seconds, 42.0);
+    assert_eq!(r1.total_tokens, 175);
+    assert_eq!(r1.cost_comparable, Some(1.5));
+    assert_eq!(r1.rating.as_deref(), Some("scuffed"));
+    assert_eq!(r1.review_count, 2);
+
+    let r2 = lifted(&db, "r2").await;
+    assert_eq!(r2.total_tokens, 175);
+    assert_eq!(r2.rating, None);
+    assert_eq!(r2.review_count, 0);
+
+    // Idempotent: a second pass finds nothing un-backfilled.
+    assert_eq!(db.backfill_sort_columns().await.unwrap(), 0);
+}
+
+// --- list_summaries: filter / free-text / sort / offset + total ---------------
+
+/// Push an unpublished run with the given identity columns and token count (cost
+/// `Some(1.0)`, no review) for the filter/free-text tests. Left unpublished so the
+/// tests can query it via the [`SummaryState::Unpublished`] slice.
+async fn seed_ident(
+    db: &Db,
+    id: &str,
+    test_case: &str,
+    model: &str,
+    harness: HarnessSlug,
+    variant: &str,
+    tokens: u64,
+) {
+    let mut r = record(id);
+    r.subject.test_case_slug = test_case.to_string();
+    r.subject.model_id = model.to_string();
+    r.subject.harness_slug = harness;
+    r.subject.variant = variant.to_string();
+    r.metrics.run_time_seconds = 1.0;
+    r.metrics.tokens = TokenCounts {
+        uncached_input: Some(tokens),
+        cached_input: None,
+        output: None,
+        reasoning: None,
+    };
+    r.metrics.cost = Cost {
+        comparable: Some(1.0),
+        actual: Some(1.0),
+    };
+    db.push(&r, &links(), None).await.unwrap();
+}
+
+/// Push an unpublished `pong`/`m`/claude/`base` run varying only the sort metrics:
+/// token count, comparable cost (`None` = unknown), and rating (`None` = unrated,
+/// otherwise one review at that rating). For the sort/offset/total tests.
+async fn seed_metric(db: &Db, id: &str, tokens: u64, cost: Option<f64>, rating: Option<Rating>) {
+    let mut r = record(id);
+    r.subject.test_case_slug = "pong".to_string();
+    r.subject.model_id = "m".to_string();
+    r.subject.variant = "base".to_string();
+    r.metrics.run_time_seconds = 1.0;
+    r.metrics.tokens = TokenCounts {
+        uncached_input: Some(tokens),
+        cached_input: None,
+        output: None,
+        reasoning: None,
+    };
+    r.metrics.cost = Cost {
+        comparable: cost,
+        actual: cost,
+    };
+    db.push(&r, &links(), None).await.unwrap();
+    if let Some(rating) = rating {
+        db.add_review(id, &review_by("u1", rating)).await.unwrap();
+    }
+}
+
+/// The `SummaryFilter` for the unpublished slice (where these tests seed).
+fn unpublished_filter() -> SummaryFilter {
+    SummaryFilter {
+        state: SummaryState::Unpublished,
+        ..SummaryFilter::default()
+    }
+}
+
+/// The run ids of an assembled page, in order.
+fn run_ids(runs: &[StoredRun]) -> Vec<String> {
+    runs.iter().map(|run| run.record.id.clone()).collect()
+}
+
+/// A [`Db::list_summaries`] call over the unpublished slice with the given filter,
+/// sort, and direction (no paging), returning just the ordered run ids.
+async fn summary_ids(
+    db: &Db,
+    filter: &SummaryFilter,
+    sort: SummarySort,
+    dir: SortDir,
+) -> Vec<String> {
+    let (runs, _) = db.list_summaries(filter, sort, dir, 50, 0).await.unwrap();
+    run_ids(&runs)
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_test_case_model_and_harness() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // pong/sonnet/claude, pong/opus/codex, snake/sonnet/claude — distinct axes.
+    seed_ident(&db, "a", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(&db, "b", "pong", "opus", HarnessSlug::Codex, "base", 20).await;
+    seed_ident(&db, "c", "snake", "sonnet", HarnessSlug::Claude, "base", 30).await;
+
+    // test_case narrows to the two pong runs.
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        ..unpublished_filter()
+    };
+    let (runs, total) = db
+        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&runs), ["a", "b"]);
+    assert_eq!(total, 2);
+
+    // model narrows to the two sonnet runs.
+    let filter = SummaryFilter {
+        model: Some("sonnet".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c"]
+    );
+
+    // harness narrows to the single codex run.
+    let filter = SummaryFilter {
+        harness: Some("codex".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+
+    // Filters AND together: pong AND sonnet is just `a`.
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        model: Some("sonnet".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_free_text_matches_across_fields_case_insensitively() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_ident(&db, "a", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(&db, "b", "snake", "opus", HarnessSlug::Codex, "hard", 20).await;
+    seed_ident(&db, "c", "tetris", "haiku", HarnessSlug::Claude, "base", 30).await;
+
+    let q = |text: &str| SummaryFilter {
+        q: Some(text.to_string()),
+        ..unpublished_filter()
+    };
+
+    // Model column, matched case-insensitively ("OP" -> opus).
+    assert_eq!(
+        summary_ids(&db, &q("OP"), SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+    // Variant column.
+    assert_eq!(
+        summary_ids(&db, &q("hard"), SummarySort::Tokens, SortDir::Asc).await,
+        ["b"]
+    );
+    // Harness column, across two runs.
+    assert_eq!(
+        summary_ids(&db, &q("claude"), SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c"]
+    );
+    // Test-case column.
+    assert_eq!(
+        summary_ids(&db, &q("tetris"), SummarySort::Tokens, SortDir::Asc).await,
+        ["c"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_by_tokens_and_reverses_with_dir() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "a", 10, Some(1.0), None).await;
+    seed_metric(&db, "b", 30, Some(1.0), None).await;
+    seed_metric(&db, "c", 20, Some(1.0), None).await;
+
+    let filter = unpublished_filter();
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c", "b"]
+    );
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Desc).await,
+        ["b", "c", "a"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_cost_with_unknown_cost_last_in_both_directions() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "hi", 1, Some(3.0), None).await;
+    seed_metric(&db, "lo", 1, Some(1.0), None).await;
+    seed_metric(&db, "no", 1, None, None).await;
+    seed_metric(&db, "mid", 1, Some(2.0), None).await;
+
+    let filter = unpublished_filter();
+    // Ascending by cost, unknown-cost NULL pinned last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Cost, SortDir::Asc).await,
+        ["lo", "mid", "hi", "no"]
+    );
+    // Descending by cost, unknown-cost NULL STILL last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Cost, SortDir::Desc).await,
+        ["hi", "mid", "lo", "no"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_rating_by_tier_with_unrated_last() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "flaw", 1, Some(1.0), Some(Rating::Flawless)).await;
+    seed_metric(&db, "scuf", 1, Some(1.0), Some(Rating::Scuffed)).await;
+    seed_metric(&db, "unr", 1, Some(1.0), None).await;
+    seed_metric(&db, "grea", 1, Some(1.0), Some(Rating::Great)).await;
+
+    let filter = unpublished_filter();
+    // Ascending by tier rank: best (flawless) first, unrated NULL last.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Rating, SortDir::Asc).await,
+        ["flaw", "grea", "scuf", "unr"]
+    );
+    // Descending by tier rank: worst (scuffed) first, unrated NULL STILL last —
+    // proving NULLs are pinned, not merely lexically ordered.
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Rating, SortDir::Desc).await,
+        ["scuf", "grea", "flaw", "unr"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Five runs with strictly increasing token counts -> a deterministic order.
+    for (i, id) in ["a", "b", "c", "d", "e"].iter().enumerate() {
+        seed_metric(&db, id, (i as u64 + 1) * 10, Some(1.0), None).await;
+    }
+
+    // Page 2 (offset 2, limit 2) of the ascending-by-tokens order is [c, d]; the
+    // total reflects every matching row, not the page size.
+    let (page, total) = db
+        .list_summaries(
+            &unpublished_filter(),
+            SummarySort::Tokens,
+            SortDir::Asc,
+            2,
+            2,
+        )
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&page), ["c", "d"]);
+    assert_eq!(total, 5);
+
+    // The tail page is short but the total is unchanged.
+    let (tail, total) = db
+        .list_summaries(
+            &unpublished_filter(),
+            SummarySort::Tokens,
+            SortDir::Asc,
+            2,
+            4,
+        )
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&tail), ["e"]);
+    assert_eq!(total, 5);
+}
+
+#[tokio::test]
+async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Six pong runs and two snake runs; a filtered-and-paged pong query reports
+    // total 6 (the filtered count) even though the page holds only 2.
+    for i in 0..6 {
+        seed_ident(
+            &db,
+            &format!("p{i}"),
+            "pong",
+            "m",
+            HarnessSlug::Claude,
+            "base",
+            i,
+        )
+        .await;
+    }
+    for i in 0..2 {
+        seed_ident(
+            &db,
+            &format!("s{i}"),
+            "snake",
+            "m",
+            HarnessSlug::Claude,
+            "base",
+            i,
+        )
+        .await;
+    }
+
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        ..unpublished_filter()
+    };
+    let (page, total) = db
+        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 2, 0)
+        .await
+        .unwrap();
+    assert_eq!(page.len(), 2);
+    assert_eq!(total, 6);
+}
+
+#[tokio::test]
+async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let entry = |slug: &str, version: &str, variant: &str, url: &str| ReferenceBuildEntry {
+        slug: slug.to_string(),
+        version: version.to_string(),
+        variant: variant.to_string(),
+        url: url.to_string(),
+    };
+
+    // Reconciling an empty desired set against an empty table changes nothing.
+    assert!(
+        !db.sync_reference_builds(&[], "2026-07-13T00:00:00Z")
+            .await
+            .unwrap()
+    );
+    assert!(
+        db.reference_builds_for_version("carom", "v1.1.0")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // First reconcile records two variants and reports a change.
+    let desired = vec![
+        entry("carom", "v1.1.0", "base", "https://base.example.pages.dev"),
+        entry("carom", "v1.1.0", "gyre", "https://gyre.example.pages.dev"),
+    ];
+    assert!(
+        db.sync_reference_builds(&desired, "2026-07-13T00:00:00Z")
+            .await
+            .unwrap()
+    );
+    let map = db
+        .reference_builds_for_version("carom", "v1.1.0")
+        .await
+        .unwrap();
+    assert_eq!(map.len(), 2);
+    assert_eq!(
+        map.get("base").map(String::as_str),
+        Some("https://base.example.pages.dev")
+    );
+
+    // Re-running with the identical set is a no-op — no change, so no snapshot refresh.
+    assert!(
+        !db.sync_reference_builds(&desired, "2026-07-13T01:00:00Z")
+            .await
+            .unwrap()
+    );
+
+    // A moved URL plus a dropped variant reconciles in place: base's URL updates and
+    // gyre is pruned (absent from the new desired set — the lockfile is authoritative).
+    let desired = vec![entry(
+        "carom",
+        "v1.1.0",
+        "base",
+        "https://base-2.example.pages.dev",
+    )];
+    assert!(
+        db.sync_reference_builds(&desired, "2026-07-13T02:00:00Z")
+            .await
+            .unwrap()
+    );
+    let map = db
+        .reference_builds_for_version("carom", "v1.1.0")
+        .await
+        .unwrap();
+    assert_eq!(map.len(), 1, "gyre pruned");
+    assert_eq!(
+        map.get("base").map(String::as_str),
+        Some("https://base-2.example.pages.dev")
+    );
+
+    // Reconciling to an empty set prunes everything that remains.
+    assert!(
+        db.sync_reference_builds(&[], "2026-07-13T03:00:00Z")
+            .await
+            .unwrap()
+    );
+    assert!(
+        db.reference_builds_for_version("carom", "v1.1.0")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+// ---- Reviewer coverage plans + counts -------------------------------------
+
+/// A one-case, one-combination plan matching the default `record`/`new_job` cell
+/// (pong v1.0.0 base × claude/claude-sonnet-4-5), with the given per-cell target.
+fn sample_plan(runs_per_cell: u32) -> crate::api::ReviewPlan {
+    crate::api::ReviewPlan {
+        runs_per_cell,
+        cases: vec![crate::api::ReviewPlanCase {
+            slug: "pong".to_string(),
+            version: "v1.0.0".to_string(),
+            variant: "base".to_string(),
+        }],
+        combinations: vec![crate::api::ReviewPlanCombo {
+            harness: HarnessSlug::Claude,
+            model: "claude-sonnet-4-5".to_string(),
+            provider: None,
+        }],
+    }
+}
+
+#[tokio::test]
+async fn review_plan_round_trips_and_upserts() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(
+        db.get_review_plan("u1").await.unwrap().is_none(),
+        "no plan saved yet"
+    );
+
+    db.put_review_plan("u1", &sample_plan(3), "2026-07-11T00:00:00Z")
+        .await
+        .unwrap();
+    let got = db.get_review_plan("u1").await.unwrap().expect("plan saved");
+    assert_eq!(got.runs_per_cell, 3);
+    assert_eq!(got.cases.len(), 1);
+    assert_eq!(got.cases[0].slug, "pong");
+    assert_eq!(got.combinations[0].model, "claude-sonnet-4-5");
+
+    // A second save for the same account upserts in place (one row per account).
+    db.put_review_plan("u1", &sample_plan(5), "2026-07-11T01:00:00Z")
+        .await
+        .unwrap();
+    let updated = db.get_review_plan("u1").await.unwrap().unwrap();
+    assert_eq!(updated.runs_per_cell, 5);
+
+    // A different account has its own (absent) plan.
+    assert!(db.get_review_plan("u2").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // A completed run and a queued job for the same cell.
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let completed = db
+        .count_completed_runs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+        .await
+        .unwrap();
+    assert_eq!(completed, 1, "the one completed run counts");
+
+    let in_flight = db
+        .count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+        .await
+        .unwrap();
+    assert_eq!(in_flight, 1, "the queued job counts as in-flight");
+
+    // A different model shares nothing: neither count sees it.
+    assert_eq!(
+        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "claude", "other-model")
+            .await
+            .unwrap(),
+        0
+    );
+    // A different pinned version is a different cell.
+    assert_eq!(
+        db.count_completed_runs_for_cell("pong", "v2.0.0", "base", "claude", "claude-sonnet-4-5")
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn a_claimed_job_no_longer_counts_toward_a_cell() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(
+        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+            .await
+            .unwrap(),
+        1,
+        "queued counts"
+    );
+    // Claiming moves it to `dispatched` — still in-flight.
+    db.claim_next_job("2026-06-23T00:00:05Z").await.unwrap();
+    assert_eq!(
+        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+            .await
+            .unwrap(),
+        1,
+        "dispatched still counts"
+    );
+}
+
+/// A provider-routed harness (OpenCode / Kilo Code) launches — and so stores on
+/// both the job and the produced run — its model id with the `openrouter/` prefix
+/// the plan's canonical `combo.model` omits. Coverage must count those against the
+/// *launched* id, or a provider-routed cell reads zero forever (the in-flight badge
+/// never shows and "Trigger" re-launches indefinitely). This pins the invariant the
+/// `coverage` handler relies on by using [`launch_model_id`] the same way it does.
+#[tokio::test]
+async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
+    use test_cabinet_core::model_id::launch_model_id;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    // The canonical model the reviewer pins in their plan, and the prefixed id an
+    // OpenCode job/run is actually launched with and stored under.
+    let canonical = "anthropic/claude-opus-4.8";
+    let launched = launch_model_id(canonical, HarnessSlug::Opencode, None);
+    assert_eq!(launched, "openrouter/anthropic/claude-opus-4.8");
+
+    // A completed OpenCode run and a queued OpenCode job, both stored prefixed.
+    db.push(
+        &run_with_model(
+            "r1",
+            &launched,
+            HarnessSlug::Opencode,
+            TokenCounts::default(),
+        ),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.enqueue_job(NewJob {
+        harness_slug: "opencode".to_string(),
+        model_id: launched.clone(),
+        ..new_job("j1", "2026-06-23T00:00:00Z")
+    })
+    .await
+    .unwrap();
+
+    // Matching against the plan's bare canonical id — the pre-fix behavior — misses
+    // both, because the stored ids carry the prefix.
+    assert_eq!(
+        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "opencode", canonical)
+            .await
+            .unwrap(),
+        0,
+        "the bare canonical id does not match the prefixed stored run",
+    );
+    assert_eq!(
+        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "opencode", canonical)
+            .await
+            .unwrap(),
+        0,
+        "the bare canonical id does not match the prefixed queued job",
+    );
+
+    // Matching against the launched id — what `coverage` now does — counts both.
+    assert_eq!(
+        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "opencode", &launched)
+            .await
+            .unwrap(),
+        1,
+        "the launched id counts the completed run",
+    );
+    assert_eq!(
+        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "opencode", &launched)
+            .await
+            .unwrap(),
+        1,
+        "the launched id counts the in-flight job",
+    );
+}
+
+#[tokio::test]
+async fn unreviewed_lists_completed_runs_with_no_review_and_drops_them_once_reviewed() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None).await.unwrap();
+
+    let (unreviewed, _) = db.list_unreviewed(50, None).await.unwrap();
+    assert_eq!(unreviewed.len(), 1, "a fresh completed run is unreviewed");
+    assert_eq!(unreviewed[0].record.id, "r1");
+
+    // Once any account reviews it, it drops off the unreviewed worklist.
+    db.add_review("r1", &review()).await.unwrap();
+    let (after, _) = db.list_unreviewed(50, None).await.unwrap();
+    assert!(after.is_empty(), "a reviewed run is no longer unreviewed");
 }

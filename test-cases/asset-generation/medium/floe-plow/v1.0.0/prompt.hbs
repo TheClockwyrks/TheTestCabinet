@@ -1,0 +1,46 @@
+Draw the **snow plow**, a 96x32 (three-tile) hazard sprite for an arctic crossing
+game, using only the drawing tool.
+
+The snow plow is a hazard: a big, long tracked machine that grinds back and forth
+across the lanes the player must cross, shoving snow. It must read at a glance as a
+large, dangerous road machine — hard, mechanical, menacing — clearly a thing to
+dodge, never a creature or a safe platform. Draw it facing right (its plow blade at
+the leading right edge), filling the 96x32 canvas, on full transparency.
+
+## How drawing works
+
+The only way to make a mark is the `draw` binary already on your `PATH`. It is the
+sole channel: you build the sprite by calling it **one operation at a time**, and
+the ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, not the pixels on disk. An image produced
+any other way (writing a PNG directly, editing `canvas.png` by hand) is discarded
+and flagged; only the recorded operations count.
+
+After each call the binary re-renders the current image to `canvas.png` and appends
+the operation to `actions.json`. A blank starting canvas and an empty log are
+already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+draw fill-rect --x 4 --y 6 --width 78 --height 16 --color "#4a5560"
+```
+
+Run `draw --help` to list every operation and `draw <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`canvas.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the plow sprite up operation by operation until the image in `canvas.png`
+matches the brief — a long, hard-edged tracked snow plow facing right, filling the
+96x32 canvas, with a steel chassis on caterpillar treads, a tall hazard-yellow plow
+blade at its leading edge, a glass-windowed cab, and a red warning beacon, in the
+industrial palette on full transparency. When you are satisfied, stop: the recorded
+`actions.json` is your finished submission.

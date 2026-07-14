@@ -24,7 +24,7 @@ any a published or pending run still references), so a rename that keeps the slu
 overwrites in place instead of leaving a duplicate.
 
 ```toml
-# test-cases/<folder>/<version>/test-case.toml
+# test-cases/<type>/<difficulty>/<folder>/<version>/test-case.toml
 slug = "pong"                # stable identity (required); the store key + recorded in every run
 name = "Carom"               # human-readable display name (site-facing)
 difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
@@ -34,6 +34,7 @@ description = "description.md" # optional site-facing prose (relative path; NOT 
 changelog = "changelog.md"   # REQUIRED per-version changelog entry (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
 max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
+experimental = false         # optional; true hides the case from the UI unless the deployment enables experimental cases (default false)
 workspace = "workspaces/base" # optional starter directory; its files seed the run root before the specs
 init = "npm install"         # optional command run in the container after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
@@ -107,6 +108,12 @@ weight = 1                   # points this item is worth toward the score (requi
 reference = "gameplay"       # optional: a reference view shown as the EXPECTED target
 proof = "title"              # optional: a proof id whose SUBMITTED media is shown
 domain = "single-player"     # optional: a COMMON item may name only a COMMON domain
+# optional: name-only sub-items graded pass/fail independently (see "Sub-items" below).
+# When present, the reviewer verdicts each sub-item and `weight` splits evenly across them.
+sub_items = [
+  { id = "stationary", title = "No spin while stationary" },
+  { id = "moving", title = "Imparts spin while moving" },
+]
 
 # COMMON scoring domains, rated for EVERY variant. The reviewer rates each
 # independently while playing the build; the run's OVERALL rating is the WORST
@@ -126,11 +133,12 @@ supply variant-specific references, review items, and workspace, and may declare
 **additional scoring domains** rated only when it runs:
 
 ```toml
-# test-cases/<slug>/<version>/variants/frenzy.toml
+# test-cases/<type>/<difficulty>/<slug>/<version>/variants/frenzy.toml
 slug = "frenzy"              # stable slug, recorded in the run record
 name = "Frenzy"             # display name (optional; default humanizes the slug)
 description = "..."          # optional inline prose (site-facing)
 workspace = "workspaces/frenzy" # optional; REPLACES the common workspace for this variant
+reference_implementation = "reference-impl/frenzy" # optional; the CORRECT buildable static build of this variant (NEVER seeded)
 # ADDITIVE specs on top of the common specs; same `{ source, dest }` shape as a
 # `[[spec]]`, and `dest` likewise defaults to `source` (trailing `.hbs` stripped).
 spec = [{ source = "specs/modes/frenzy.md" }]
@@ -188,6 +196,15 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   never run unbounded. It defaults to `1` (one hour) when omitted and must be a
   positive number. This is the per-case default; a run can override it for a
   single invocation (for example `tcab run --max-runtime <hours>`).
+- `experimental` is an optional boolean, defaulting to `false`, that marks a case
+  as **still being iterated on** — not yet ready to publish runs for. It applies
+  to every test type. A deployment only offers experimental cases to the UI when
+  it opts in with the `TCAB_BACKEND_ALLOW_EXPERIMENTAL` environment variable
+  (truthy); otherwise an experimental case is **hidden from the catalog and
+  refuses to resolve**, so it is treated as if it does not exist — and therefore
+  is never run or published. The local k3d cluster (`make -C deployments/local
+  local-up`) enables experimental cases; production leaves the variable unset.
+  The flag is purely a visibility filter and has no effect on how a run executes.
 - `workspace` is an optional path to a **starter directory** whose contents are
   seeded into the root of the run before the specs (see
   [Workspace](/testing/end-to-end/overview/#workspace)). A variant may override
@@ -206,17 +223,30 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   plays by simulating it live, a voxel rig a game poses — hands the model the
   library that plays it, rather than asking the model to reimplement the runtime
   from a schema. Each entry is a package **name** (not a path), and every name
-  must be one of the **shippable packages** baked into the run image (listed in
+  must be one of the **shippable packages** in the host package store (listed in
   [`containers/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md#the-shippable-test-cabinet-packages));
   an unknown name is rejected at resolution. `packages` is **end-to-end only** —
-  an asset-generation case that declares it is rejected — and a case that
-  declares any package **must** ship a `workspace` containing a `package.json`
-  (the file the dependency is injected into). At seed time each named package is
-  added to that `package.json` as a dependency resolving to the copy baked into
-  the run image, so the model installs and imports it like any other dependency;
-  see [Packages](/testing/end-to-end/overview/#packages) for the model-facing
-  contract and why a `packages` case's `init` must run `npm install` (not
-  `npm ci`).
+  an asset-generation case that declares it is rejected. The harness does **not**
+  modify your `package.json`: you ship a `workspace` whose `package.json` already
+  depends on each declared package via an **in-repo relative** `file:` spec —
+  `"@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"`
+  — and `packages` is the declaration resolution validates that file against. At
+  seed time the named libraries are **vendored into the run repo** at
+  `.tcab/packages/` (and committed), so that relative path resolves wherever the
+  produced tree later lives — the run container, the validation host, or a clone
+  of the published repo. A case that declares a package but ships no
+  `package.json`, omits the dependency, or points it anywhere other than that
+  in-repo `file:` path is **rejected at resolution**, so a misconfiguration
+  surfaces at authoring time rather than leaving the model to discover the missing
+  dependency mid-run. The model then
+  installs and imports it like any other dependency; see
+  [Packages](/testing/end-to-end/overview/#packages) for the model-facing contract
+  and why a `packages` case's `init` must run `npm install` (not `npm ci`). Each
+  declared package is surfaced on the case's **Inputs** tab (tagged `Package`) with
+  a short description of what it provides. That description is **UI-only** — it is
+  never seeded into a run — and is defined once, centrally, next to the shippable
+  package list in `core` (not per case), so every case that ships a package shows
+  the same description; you declare only the **name** in the manifest.
 - The `[build]` table is **required** and declares the commands validation runs
   to turn a produced implementation into a served static site: `install`
   (dependency install) and `build` (the static build). Both must be stated
@@ -236,7 +266,13 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   the seeded path. A `source` ending in `.hbs` is a Handlebars template rendered
   into its `dest` (see [Spec templates](/testing/end-to-end/overview/#spec-templates));
   any other `source` is
-  seeded verbatim. The rendered reference screenshots are seeded too. Asset
+  seeded verbatim. An optional `kind` marks the file's **role**: it defaults to
+  `spec` (a prose specification the model reads) and may be set to `script` for an
+  executable starter the model edits and runs — the case's `build.py` starter stub
+  the [Blender](/testing/asset-generation/blender-binaries/) asset kind seeds, whose
+  `dest` coincides with `[output].actions`. `kind` is **presentation only**: it does
+  not change how the file is seeded, only that the **Inputs** tab tags it `Script`
+  rather than `Spec`. The rendered reference screenshots are seeded too. Asset
   entries may be files or directories; a directory is seeded recursively.
 - The `variants` list names the builds the case offers, in order, as paths to
   standalone **variant files** (the first is the default). It is a root key, so it
@@ -308,8 +344,9 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   `proof` with no `reference` (a video clip with no still that meaningfully
   depicts it, say); the reviewer UI then shows that one side full width rather
   than reserving an empty pane. Each named id must resolve for the item's variant
-  or resolution is rejected. See
-  [Reviewing Test Run Results](/guides/reviewing-test-run-results/#work-the-checklist).
+  or resolution is rejected. An item may also break into **sub-items** — see
+  [Sub-items](#sub-items) below. See
+  [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/#work-the-checklist).
 - Each `[[domain]]` declares a **scoring domain** the reviewer rates
   independently — for example a game's `single-player` and `versus` modes — by a
   stable `id` (recorded with the per-domain rating), an optional `name`
@@ -323,3 +360,67 @@ description = "The escalating Frenzy mode: uncapped speed that visibly ramps eve
   the *worst* rating across its effective domains, so a flawless mode cannot mask a
   broken one. Review items roll up to a domain through their optional `domain`. See
   [Evaluation](/testing/end-to-end/evaluation/#scoring).
+- `reference_implementation` is an **optional** per-variant key naming a
+  **reference implementation** — a directory holding a buildable static web
+  project that is the *correct* implementation of this variant, authored in-repo
+  and versioned with the case. It is declared as a top-level key of a **variant
+  file** (not `test-case.toml`), so each variant may point at its own correct build
+  and a variant that omits the key simply has none. Its value is a path resolved
+  against the **version folder** (`test-cases/<type>/<difficulty>/<folder>/<version>/`), by convention
+  `reference-impl/<variant>/`. The project is built with the case's existing
+  `[build]` commands — the shared `install` then `build`, run from that
+  directory — and its static output must land in the same `dist/`, `build/`, or
+  `out/` a run's build does. A reference implementation is **never seeded** into a
+  run: it is the authored answer, so exposing it to a model would defeat the case.
+  It exists only to be **published** out-of-band — deployed to Cloudflare Pages by
+  [`tcab publish-reference`](/components/cli/overview/#commands), whose served URL
+  the backend records — and then shown on the case page's **Reference** tab
+  (inline, with a fullscreen option). Do not confuse it with a **reference visual
+  mockup** (`[[reference]]`): a mockup is a rendered screenshot of one view, seeded
+  as a *target* the model builds toward, whereas a reference implementation is the
+  whole playable game and is never seeded. See
+  [Reference implementations](/components/core/results/#reference-implementations).
+
+## Sub-items
+
+A `[[review_item]]` that covers a section of the build often has several points a
+reviewer would grade independently. Rather than collapsing them into one pass/fail
+(where a single missed point fails the whole item), an item may declare **sub-items**:
+name-only entries, each verdicted `pass`/`fail` on its own — an academic question's
+"2a", "2b", …
+
+```toml
+[[review_item]]
+id = "ball-spin"
+title = "Paddle spin"
+text = "Swinging a paddle as it strikes the ball curves the ball's flight afterward; a stationary paddle imparts no new spin."
+weight = 2
+sub_items = [
+  { id = "stationary", title = "No spin while stationary" },
+  { id = "moving", title = "Imparts spin while moving" },
+]
+```
+
+Each sub-item carries only an `id` (which keys its verdict) and a `title` (its
+heading, shown lettered a, b, c… in the reviewer UI); it has **no** `text`, `weight`,
+or media of its own — the parent item's `text`, reference, and proof are the shared
+context. Rules:
+
+- **Ids** must be non-empty and unique **within the item**. A sub-item's verdict is
+  recorded under the composite id `<item id>.<sub-item id>` (for example
+  `ball-spin.moving`), so it must not collide with any other item's verdict id.
+- **Scoring** splits the item's `weight` evenly across its sub-items: the item earns
+  `weight × (passed sub-items ÷ total sub-items)`. So a two-point item with two
+  sub-items awards one point per passed sub-item, and a one-point item with three
+  awards a third each. The item's earned score is therefore **fractional** in general,
+  while the case's total available points are unchanged (still the sum of item
+  weights).
+- **Completeness.** Every sub-item must be verdicted before a run can be published,
+  exactly as every whole-item must be — an item with sub-items has no verdict of its
+  own.
+
+Sub-items are declared inline as an array of `{ id, title }` tables (shown above) or,
+equivalently, as repeated `[[review_item.sub_item]]` tables. They are available to a
+variant's own additive items too, with the same shape and rules. See
+[Evaluation](/testing/end-to-end/evaluation/#scoring) for how they roll up to the
+score.

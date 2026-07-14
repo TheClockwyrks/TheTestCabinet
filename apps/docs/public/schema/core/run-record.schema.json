@@ -1329,11 +1329,16 @@
       "type": "object"
     },
     "TestType": {
-      "description": "The type of a test case: which class of capability it measures and which\nmanifest tables it declares.\n\nToday four types exist in code: the original [`Self::EndToEnd`] (build a\nworking program), [`Self::AssetGeneration`] (drive a drawing tool toward a\ntarget image), [`Self::Adversarial`] (write a wasm controller pitted\nhead-to-head against a baseline), and [`Self::Performance`] (write a wasm\nengine scored on correctness plus the fuel it burns). The type is the explicit\ndiscriminator everything branches on\n— resolution, validation, the run record, and the UI — rather than being\ninferred from which tables a manifest happens to declare. It defaults to\n[`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.",
+      "description": "The type of a test case: which class of capability it measures and which\nmanifest tables it declares.\n\nToday five types exist in code: the original [`Self::EndToEnd`] (build a\nworking program), [`Self::FullStack`] (build a working program *and* produce\nits own assets with the asset-generation binaries, which are on `PATH` in the\nfull-stack run image), [`Self::AssetGeneration`] (drive a drawing tool toward a\ntarget image), [`Self::Adversarial`] (write a wasm controller pitted\nhead-to-head against a baseline), and [`Self::Performance`] (write a wasm\nengine scored on correctness plus the fuel it burns). The type is the explicit\ndiscriminator everything branches on\n— resolution, validation, the run record, and the UI — rather than being\ninferred from which tables a manifest happens to declare. It defaults to\n[`Self::EndToEnd`] so manifests that predate the discriminator keep resolving.",
       "oneOf": [
         {
           "const": "end-to-end",
           "description": "Build a working program judged by running it (the only type until now).",
+          "type": "string"
+        },
+        {
+          "const": "full-stack",
+          "description": "Build a working program that must also **produce its own assets** during the\nrun, using the asset-generation binaries (`draw`, `draw-sheet`, `particle-2d`,\n`sfx-synth`, `sfx-sample`, `music`, …) baked onto `PATH` in the full-stack run\nimage. Behaves like [`Self::EndToEnd`] in every other respect — it releases a\nsource repo, has a `[build]` table, may declare `packages`, and is judged by\nrunning the built program — but selects the full-stack image instead of the\nbare base image. See `docs/testing/full-stack/`.",
           "type": "string"
         },
         {
@@ -1448,6 +1453,11 @@
     "VoxelGenResult": {
       "description": "The regenerate result of a voxel asset-generation run — the 3D analog of\n[`AssetGenResult`].\n\nA static model ([`crate::test_case::AssetKind::VoxelModel`]) produces one\n[part](VoxelPartResult) (the whole model); an animated model\n([`crate::test_case::AssetKind::VoxelAnimation`]) produces one per declared\npart. There is no target model and no automated fidelity score; the regenerated\nmodel is reviewed against the brief. Present only on a voxel run's\n[`ValidationSummary`].",
       "properties": {
+        "blender": {
+          "default": false,
+          "description": "Whether this is a **Blender** run (`blender-character`/`blender-prop`/\n`blender-mechanism`): the emitted mesh is a self-contained **native glTF** whose\nrig and animations (if any) are baked into the file itself (glTF skin + animation\nchannels), not authored as a `rig.json`. The marker tells the 3D viewer to load\nthe glTF with a native glTF player (skeleton and/or baked clips) rather than\nposing the mesh from an inline rig. A `blender-character` is additionally\n`skinned`; a `blender-prop` (static) and `blender-mechanism` (rigid node-hierarchy\nanimations) are **not**. `false` for every non-Blender run.",
+          "type": "boolean"
+        },
         "detail": {
           "default": null,
           "description": "Detail about anything that could not be evaluated at the run level, or\n`None`. Per-part detail lives on each [`VoxelPartResult`].",

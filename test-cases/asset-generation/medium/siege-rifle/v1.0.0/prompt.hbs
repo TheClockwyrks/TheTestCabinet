@@ -1,0 +1,56 @@
+Model the **Warden service rifle** — the standard-issue weapon a *Siege* Warden
+rifleman carries — as a **static hard-surface prop** that fits within a
+{{voxel.width}}x{{voxel.height}}x{{voxel.depth}} bounding box, authored by driving
+**headless Blender** through its Python API. You build the whole rifle as clean
+geometry by writing a Blender Python script (`build.py`) and running it. A prop is
+**static** — there is no rig and no animation.
+
+This test measures **creativity and hard-surface craft**, not
+instruction-following: the brief tells you *what the rifle is*, but the exact
+shapes, proportions, and construction are **entirely yours to invent**. There is no
+target image.
+
+## How authoring works
+
+The only sanctioned way to build the prop is to **write a Blender Python (`bpy`)
+script and run it through the `tcab-blend` runner** already on your `PATH`.
+`tcab-blend` executes your `build.py` under headless Blender
+(`blender --background --python build.py -- blender.config.json`), then exports the
+native **`model.glb`** (a standard glTF 2.0 — just geometry, **no armature and no
+animations**) and renders the preview **`model.png`**. The exported `model.glb` is
+what is **judged**, rendered in a real 3D viewer — not the steps your script took.
+Anything you produce outside `tcab-blend` is discarded.
+
+A starter **`build.py`** is already in your workspace. It loads
+`blender.config.json` (the bounding box and the output paths), clears the scene, and
+marks where to build the rifle, then calls the bundled export helper. Fill it in
+with the full `bpy` API: build the geometry (`bpy.data`/`bmesh` or primitives you
+edit) and carry color with vertex colors or materials so it survives the glTF
+export.
+
+Run **`tcab-blend`** whenever you want to build and see your progress — read
+`model.png` after each run — and **you must run it before you finish** so
+`model.glb` is emitted (an un-exported model is scored as empty). Run
+`tcab-blend --help` for its exact usage; the Blender Python API is the authoring
+surface.
+
+Build the rifle in a natural **held orientation** — the barrel running front-to-back
+with a clear muzzle, the sight on top, the magazine below, the stock at the back —
+in **Blender-native space** (+Z up, muzzle facing -Y; the export converts to the
+family's +Y-up/+Z-forward glTF, so do **not** pre-rotate).
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Fill in `build.py` and run `tcab-blend` until `model.png` matches the brief: a
+believable Warden service rifle — receiver, barrel to a clear muzzle, handguard,
+stock, magazine, sight, grip, and trigger guard — assembled into one coherent
+weapon, at a sensible held-weapon scale, in the disciplined Warden palette. **Run
+`tcab-blend` before you finish** so `model.glb` is emitted. When you are satisfied,
+stop: the emitted glTF is your finished submission, and your `build.py` is re-run
+afterward to confirm it reproduces the model.

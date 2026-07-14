@@ -147,6 +147,7 @@ function part(name: string): VoxelResultView["parts"][number] {
 const VIEW: VoxelResultView = {
   animated: true,
   skinned: false,
+  blender: false,
   skinnedMeshUrl: null,
   rig: RIG,
   model: RIG,

@@ -72,10 +72,10 @@ than scored.
 ## Asset kinds
 
 A case declares, with its `asset_kind`, **what shape of asset** the model produces
-— one of twenty, spanning **2D pixel images**, **high-resolution painted assets**
-(interface art and PBR materials), **3D models** (built three ways — cube voxels,
-meshed signed-distance fields, and skinned characters), **particle effects** (2D and
-3D), and **audio** (sound effects and music):
+— one of twenty-three, spanning **2D pixel images**, **high-resolution painted assets**
+(interface art and PBR materials), **3D models** (built four ways — cube voxels,
+meshed signed-distance fields, skinned characters, and **Blender**-authored native
+glTF), **particle effects** (2D and 3D), and **audio** (sound effects and music):
 
 - **`sprite`** (the default) — a **single sprite**: one image drawn onto the whole
   canvas with the [`draw` binary](/testing/asset-generation/sprite-binaries/).
@@ -133,11 +133,18 @@ meshed signed-distance fields, and skinned characters), **particle effects** (2D
   sound effect from a modular synth graph, `sfx-sample` layers one over a baked
   sample library, and `music` sequences notes on instrument tracks — each rendering
   to a PCM `.wav`. See [Audio](#audio).
+- **`blender-character`** / **`blender-prop`** / **`blender-mechanism`** — the
+  **Blender** kinds: a 3D model authored by driving **headless Blender** through its
+  `bpy` API (a `build.py` run by `tcab-blend`) and emitted as a **native glTF 2.0**
+  the way a game consumes it — a skinned, animated **character**; a static
+  hard-surface **prop**; or a rigidly-articulated **mechanism** whose motion is baked
+  as glTF node-hierarchy clips. Their own family, not voxel/skinned/meshed. See
+  [The Blender binaries](/testing/asset-generation/blender-binaries/).
 
 `asset_kind` is a property of the whole version, **not** a variant — a case is
-exactly one kind, never a mix, and a variant cannot change it. None of the twenty
-carries a target: every kind is reviewed against the brief, never against a
-supplied picture.
+exactly one kind, never a mix, and a variant cannot change it. None of the
+twenty-three carries a target: every kind is reviewed against the brief, never against
+a supplied picture.
 
 A **sprite-sheet** case adds a `[sheet]` table that declares its **frames** (each
 by the index it is written to) and the **animation sequences** — ordered lists of

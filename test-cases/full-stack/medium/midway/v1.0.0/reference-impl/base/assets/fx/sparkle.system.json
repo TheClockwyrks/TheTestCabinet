@@ -1,0 +1,130 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 1200,
+  "fps": 30,
+  "loop": true,
+  "emitters": [
+    {
+      "name": "twinkle",
+      "shape": "disc",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 30.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 26.0
+      },
+      "lifetimeMs": 620.0,
+      "lifetimeSpread": 180.0,
+      "speed": 8.0,
+      "speedSpread": 6.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 5,
+      "forces": {},
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in-out",
+          "from": 0.2,
+          "to": 1.4
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ffcb52",
+            "at": 0.4
+          },
+          {
+            "color": "#ffd24a",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "motes",
+      "shape": "disc",
+      "position": [
+        64.0,
+        52.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 24.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 10.0
+      },
+      "lifetimeMs": 1000.0,
+      "lifetimeSpread": 200.0,
+      "speed": 16.0,
+      "speedSpread": 6.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 40.0,
+      "seed": 9,
+      "forces": {},
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.1
+        },
+        "opacityCurve": {
+          "interp": "ease-in-out",
+          "from": 0.9,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffe9a8",
+            "at": 0.0
+          },
+          {
+            "color": "#ffd24a",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {
+    "drag": 1.6
+  },
+  "subEmitters": []
+}

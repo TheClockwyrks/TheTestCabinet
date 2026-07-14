@@ -1,0 +1,26 @@
+# The gentler deal (stock turns one, more winnable). Adds its deal-mode spec, its
+# own `title` menu, and the review item for the turn count.
+slug = "draw-one"
+name = "Draw One"
+description = "The gentler deal — the stock turns one card at a time, with unlimited redeals."
+
+# The deal-mode spec is the only variant-specific spec. Its source lives flat in
+# `specs/` and seeds to the stable `specs/deal-mode.md`, so the run only ever sees
+# the single deal mode that is actually present. Draw Three seeds its own source
+# file to the same dest, and only the dest is ever seeded.
+spec = [{ source = "specs/deal-mode-draw-one.md", dest = "specs/deal-mode.md" }]
+reference = [{ view = "title", media = "reference/screenshots/draw-one/title.png" }, { view = "gameplay", media = "reference/screenshots/draw-one/gameplay.png" }]
+
+# The authored, *correct* static build of this variant — the case-variant
+# analogue of a run's playable build. A bare directory path (resolved against
+# the version folder) holding a buildable web project, built with this case's
+# `[build]` install/build commands and deployed like a published run build via
+# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
+# **never seeded into a run**.
+reference_implementation = "reference-impl/draw-one"
+
+[[review_item]]
+id = "draw-one-count"
+title = "Draw One"
+text = "Clicking the stock turns exactly one card onto the waste, which is the playable top card; recycling the empty stock is unlimited, so every stock card is reachable."
+weight = 1

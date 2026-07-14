@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<!--
+  Valence — live-board reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system, visual
+  design), ../specs/board.md (conduit, lanes, the build grid, HUD), ../specs/matter.md
+  (hit points, damage types, traits), ../specs/towers.md (the seven towers),
+  ../specs/flow.md (the HUD), and
+  ../specs/assets.md (these are stand-ins for PRODUCED sprites, animations, and
+  particle bursts).
+
+  The conduit shape, the build grid, tower mix, and matter positions vary at runtime;
+  this frame is a representative mid-round moment for a soft palette/layout comparison,
+  not a strict pixel match. Objects inside .board use BOARD-LOCAL coordinates (the
+  board starts at stage y=56).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Valence — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- ================= Top status bar ============================== -->
+      <div class="topbar">
+        <div class="stat"><span class="k">ENERGY</span><span class="v energy">420</span></div>
+        <div class="stat"><span class="k">INTEGRITY</span><span class="v integrity">78</span></div>
+        <div class="round">ROUND 7 <span class="prog">/ 20 &middot; 12 LEFT</span></div>
+        <div class="spacer"></div>
+        <div class="ctrls">
+          <div class="ctrl active">&#9654;&#9654; 2x</div>
+          <div class="ctrl">&#10073;&#10073;</div>
+          <div class="ctrl">&#128266;</div>
+        </div>
+      </div>
+
+      <!-- ================= Board ======================================= -->
+      <div class="board">
+        <!-- Conduit: inlet -> shared entry -> splitter -> two lanes -> merge ->
+             shared final -> collector. -->
+        <div class="seg" style="left: 24px; top: 324px; width: 176px"></div>
+        <!-- Lane A (upper) -->
+        <div class="seg v" style="left: 192px; top: 150px; height: 182px"></div>
+        <div class="seg" style="left: 200px; top: 142px; width: 600px"></div>
+        <div class="seg v" style="left: 792px; top: 150px; height: 182px"></div>
+        <!-- Lane B (lower) -->
+        <div class="seg v" style="left: 192px; top: 332px; height: 182px"></div>
+        <div class="seg" style="left: 200px; top: 506px; width: 600px"></div>
+        <div class="seg v" style="left: 792px; top: 332px; height: 182px"></div>
+        <!-- Shared final run -->
+        <div class="seg" style="left: 800px; top: 324px; width: 150px"></div>
+
+        <div class="inlet" style="left: 24px; top: 332px">&#9656;</div>
+        <div class="collector" style="left: 958px; top: 332px">&#9633;</div>
+
+        <!-- Support auras (always visible), centered on their tower's cell. -->
+        <div class="aura mod" style="left: 460px; top: 540px; width: 240px; height: 240px"></div>
+        <div class="aura cat" style="left: 740px; top: 380px; width: 240px; height: 240px"></div>
+        <!-- Selected Reactor tower's range ring. -->
+        <div class="range" style="left: 780px; top: 300px; width: 240px; height: 240px"></div>
+
+        <!-- Empty build cells: a legal spot beside Lane A, and the hovered cell on Lane B. -->
+        <div class="cell" style="left: 580px; top: 100px"></div>
+        <div class="cell hover" style="left: 620px; top: 540px"></div>
+
+        <!-- Towers, each snapped to a build cell (specs/board.md). Seven general-purpose
+             types; the tier-III pip carries the chosen branch letter. -->
+        <div class="tower cleaver" style="left: 140px; top: 300px">K<span class="pips"><i></i><i></i></span></div>
+        <div class="tower ion" style="left: 300px; top: 100px">I<span class="pips"><i></i><i></i><i></i></span></div>
+        <div class="tower ion" style="left: 620px; top: 100px">I<span class="pips"><i></i></span></div>
+        <div class="tower emitter" style="left: 300px; top: 540px">E<span class="pips"><i></i><i></i></span></div>
+        <div class="tower mod" style="left: 460px; top: 540px">M<span class="pips"><i></i></span></div>
+        <div class="tower cat" style="left: 740px; top: 380px">C<span class="pips"><i></i></span></div>
+        <div class="tower reactor" style="left: 780px; top: 300px">R<span class="pips"><i></i><i></i><i></i></span></div>
+        <div class="tower beam" style="left: 860px; top: 380px">B<span class="pips"><i></i><i></i></span></div>
+
+        <!-- Matter on the shared entry: a Polymer (4-atom chain) approaching the fork. -->
+        <div class="molecule" style="left: 150px; top: 332px">
+          <span class="a e1"></span><span class="b"></span><span class="a e2"></span>
+          <span class="b"></span><span class="a e1"></span><span class="b"></span><span class="a e2"></span>
+        </div>
+
+        <!-- Lane A: a partly-stripped free atom, and an energy-strip spark at the ionizer. -->
+        <div class="burst ionize" style="left: 300px; top: 150px"></div>
+        <div class="read" style="left: 470px; top: 128px"><i></i><i class="spent"></i></div>
+        <div class="atom e2 stripped" style="left: 470px; top: 150px"></div>
+
+        <!-- Lane B: a small (1-electron) fast free atom, and an inert (noble) unit ahead of the catalyst. -->
+        <div class="atom e1" style="left: 380px; top: 514px"></div>
+        <div class="inert-atom" style="left: 640px; top: 514px"></div>
+
+        <!-- Confluence / shared final: a radioactive isotope (kinetic/nuclear only) mid-decay,
+             shedding a beta particle, and a neutralize burst downstream. -->
+        <div class="burst fission" style="left: 830px; top: 332px"></div>
+        <div class="heavy-atom" style="left: 830px; top: 332px"></div>
+        <div class="atom e1" style="left: 890px; top: 332px"></div>
+        <div class="burst neutralize" style="left: 924px; top: 332px"></div>
+      </div>
+
+      <!-- ================= Right build panel =========================== -->
+      <div class="panel-right">
+        <div class="panel-h">REACTOR ARRAY</div>
+        <div class="shop">
+          <div class="shop-item">
+            <span class="glyph emitter">1</span><span class="nm">EMITTER</span><span class="cost">70</span>
+          </div>
+          <div class="shop-item">
+            <span class="glyph ion">2</span><span class="nm">IONIZER</span><span class="cost">105</span>
+          </div>
+          <div class="shop-item">
+            <span class="glyph cleaver">3</span><span class="nm">CLEAVER</span><span class="cost">150</span>
+          </div>
+          <div class="shop-item selected">
+            <span class="glyph reactor">4</span><span class="nm">REACTOR</span><span class="cost">240</span>
+          </div>
+          <div class="shop-item">
+            <span class="glyph beam">5</span><span class="nm">BEAM</span><span class="cost">300</span>
+          </div>
+          <div class="shop-item">
+            <span class="glyph cat">6</span><span class="nm">CATALYST</span><span class="cost">165</span>
+          </div>
+          <div class="shop-item">
+            <span class="glyph mod">7</span><span class="nm">MODERATOR</span><span class="cost">150</span>
+          </div>
+        </div>
+
+        <div class="inspect">
+          <div class="title">REACTOR &middot; III &middot; FALLOUT</div>
+          <div class="sub">Nuclear area burst; leaves a zone that damages and reveals</div>
+          <div class="row"><span>DAMAGE TYPE</span><b>NUCLEAR</b></div>
+          <div class="row"><span>RANGE</span><b>142</b></div>
+          <div class="row"><span>SPLASH</span><b>40</b></div>
+          <div class="row"><span>ZONE</span><b>3/s &middot; reveals</b></div>
+          <div class="btns">
+            <div class="btn up">MAX &middot; FALLOUT</div>
+            <div class="btn sell">SELL 476</div>
+          </div>
+        </div>
+
+        <div class="start-btn">ROUND 7 &middot; ACTIVE</div>
+      </div>
+    </div>
+  </body>
+</html>

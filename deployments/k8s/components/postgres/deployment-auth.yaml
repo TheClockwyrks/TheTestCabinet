@@ -23,6 +23,13 @@ spec:
       labels:
         app.kubernetes.io/name: tcab-auth
         app.kubernetes.io/part-of: test-cabinet
+      annotations:
+        # Single replica today, and the console can't verify tokens while it's down —
+        # a reschedule reads as "backend down". Keep the cluster autoscaler from
+        # draining a node running this pod during scale-down consolidation. (If auth is
+        # ever raised to 2+ replicas + a PDB for real HA, this annotation can be dropped;
+        # planned node upgrades, which don't honor it, still move the pod.)
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       containers:
         - name: auth

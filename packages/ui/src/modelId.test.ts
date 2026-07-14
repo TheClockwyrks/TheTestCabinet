@@ -29,4 +29,24 @@ describe("canonicalModelId", () => {
       "anthropic/openrouter/thing",
     );
   });
+
+  it("strips a trailing `:free` tag for OpenRouter-accessed harnesses", () => {
+    expect(canonicalModelId("deepseek/deepseek-v4:free", "kilo")).toBe(
+      "deepseek/deepseek-v4",
+    );
+    expect(
+      canonicalModelId("openrouter/deepseek/deepseek-v4:free", "opencode"),
+    ).toBe("deepseek/deepseek-v4");
+  });
+
+  it("keeps a trailing tag for provider-native harnesses (codex/claude/antigravity)", () => {
+    expect(canonicalModelId("gpt-5.5:preview", "codex")).toBe("gpt-5.5:preview");
+    expect(canonicalModelId("some-model:tag", "claude")).toBe("some-model:tag");
+  });
+
+  it("leaves the trailing tag in place when no harness is given", () => {
+    expect(canonicalModelId("deepseek/deepseek-v4:free")).toBe(
+      "deepseek/deepseek-v4:free",
+    );
+  });
 });

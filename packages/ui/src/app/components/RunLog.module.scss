@@ -72,13 +72,17 @@
 
 .log[data-scope="variant"] .row {
   // caret · harness · model · tokens · cost · rating
-  grid-template-columns: 1.2rem 7rem 1.6fr 5rem 5rem 6rem;
+  // Resizable via `--ttc-cols` (see the global scope above); the fallback is the
+  // resting template used until the user drags a header boundary.
+  grid-template-columns: var(--ttc-cols, 1.2rem 7rem 1.6fr 5rem 5rem 6rem);
   min-width: max(100%, 30rem);
 }
 
 .log[data-scope="model"] .row {
   // caret · test · harness · variant · tokens · cost · rating
-  grid-template-columns: 1.2rem 1fr 7rem 6rem 5rem 5rem 6rem;
+  // Resizable via `--ttc-cols` (see the global scope above); the fallback is the
+  // resting template used until the user drags a header boundary.
+  grid-template-columns: var(--ttc-cols, 1.2rem 1fr 7rem 6rem 5rem 5rem 6rem);
   min-width: max(100%, 40rem);
 }
 
@@ -273,8 +277,20 @@ a.row {
     overflow-x: visible;
   }
 
-  // The column header is redundant once each cell carries its own label.
-  .head {
+  // The column header is redundant once each cell carries its own label. The
+  // header element carries both `.row` and `.head`; qualify the selector so this
+  // hide out-specifies the `.row { display: flex }` card rule below (equal
+  // specificity would let the later `.row` rule win and leak a ghost header of
+  // bare column labels + sort carets above the cards). Hiding the header also
+  // removes the per-column resize handles it hosts, which are meaningless on
+  // touch.
+  .row.head {
+    display: none;
+  }
+
+  // The column-picker trigger (and any resize affordance) has no place on a
+  // phone: the cards already show every column, and there is nothing to resize.
+  .menuAnchor {
     display: none;
   }
 
@@ -284,6 +300,11 @@ a.row {
   .row {
     display: flex;
     flex-direction: column;
+    // Reset the desktop grid's `align-items: center`: in a column flex it would
+    // center every line as a content-width block, floating the labels and values
+    // in the middle of the card with ragged gutters. Stretch them to the full
+    // card width so each labelled line reads left-aligned.
+    align-items: stretch;
     gap: t.$space-xs;
     padding: t.$space-md;
     white-space: normal;

@@ -1,0 +1,187 @@
+slug = "sunfront-bulwark"
+experimental = true
+name = "Sunfront Bulwark"
+difficulty = "hard"
+tags = ["voxel", "rig", "mech"]
+summary = """
+Sculpt and rig the Sunfront Bulwark: an opaque-voxel heavy bipedal mech \
+that braces a broad tower shield on its left arm and swings a heavy siege maul on \
+its right — painting discrete opaque cells with the `voxel-anim` tool, one recorded \
+operation at a time. It strides forward on two legs and works its heavy maul arm. \
+The model invents whatever parts and joints it needs; the fixed contract is two \
+animations it must author — a walking `walk` and a weapon `smash` — the reviewer can \
+play back."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt and rig the SAME mech at three sizes — `base` (this
+# case's volume), `half` (each extent halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 40
+height = 60
+depth = 30
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log and renders nothing — rendering is on request via `voxel-anim render`.
+# Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each part
+# the model defines), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required animation contract — and the ONLY thing this case fixes about the rig.
+# A case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton it needs and is judged on whether it works out the right pieces,
+# attaches them where they belong, and animates them convincingly. What is fixed is
+# the set of NAMED ANIMATIONS the model must author (a game plays them by name) and
+# whether each is a game-triggered playable or a self-playing idle. The model authors
+# each animation's F-curves at run time with `voxel-anim
+# define-animation`/`add-keyframe`; `rig.json` is pre-seeded with these declarations
+# so the contract exists from the first operation.
+[model]
+
+# `walk` — the WALK. A game-triggered playable (not self-playing) that strides the
+# mech forward on its legs: feet plant flat and still on the ground while the body
+# passes over them, then lift, swing forward, and plant again, so the machine pushes
+# itself forward rather than flailing. Authored IN PLACE: the body does not translate
+# across the scene (the leg cycle carries the stride; a game supplies the real
+# travel).
+[[model.animation]]
+name = "walk"
+loop = true
+auto_play = false
+
+# `smash` — the WEAPON showcase. A game-triggered playable that winds the heavy siege
+# maul up overhead and slams the maul arm down in a smash while the mech stands its
+# ground.
+[[model.animation]]
+name = "smash"
+loop = true
+auto_play = false
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected size.
+# The seeded dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Bulwark and \
+poses correctly — a heavy bipedal mech with two arms, a tower shield braced on the \
+left and a siege maul in the right, whose right maul arm winds up and smashes without \
+detaching while its legs stride in the model-authored `walk` — each foot lifting \
+clear on its swing and planting flat, the knees folding the right way — and the body \
+stays put, with a clear solar-amber chest-core accent and the disciplined Duneforged \
+palette."""
+
+[[review_item]]
+id = "reads-as-mech"
+title = "Reads as a heavy shield-and-maul bipedal mech"
+text = """
+From more than one angle the model reads unmistakably as a heavy walking war-mech \
+with two arms: a broad, armored upper body with a head on top, a pair of thick, \
+visibly bent-knee legs planted beneath it, a wide tower shield braced on a visible \
+left arm, and a heavy siege maul gripped in a visible right arm. It is a bulky \
+bipedal fighting machine, not an abstract stack of boxes, and it is plainly armed — \
+not armless."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "legs-walk"
+title = "Legs stride with a planted stance, not a flail"
+text = """
+Playing `walk` strides the mech forward on its two legs in opposite phase, so one \
+foot is always down. The clip is authored IN PLACE — the body holds its ground and \
+does not drift across the scene; the forward stride is carried entirely by the legs, \
+so played on its own the feet cycle and the planted foot slides straight back under \
+the body (a treadmill) while a game supplies the real movement. \
+Each leg has a clear PLANTED STANCE — the foot flat and still on \
+the ground while the body travels forward over it — then lifts the foot clear, swings \
+it forward, and plants again with weight; a leg that swings in a continuous arc and \
+never sits still on the ground reads as flailing, not walking. The feet stay flat as \
+they carry the body (they don't tip onto toe or heel, and the knees fold the \
+reverse/digitigrade way rather than inside-out), no foot is dragged or driven down \
+through the ground, and the legs stay attached across the whole cycle. The model had \
+to invent an articulated leg (more than one segment and joint) for this to read as \
+walking rather than swinging rigid stumps, and to ease the motion (F-curves) so it \
+carries weight rather than sliding linearly."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "maul-smashes"
+title = "Maul winds up and smashes on its shoulder hinge"
+text = """
+Playing `smash` winds the heavy siege maul up over the head and slams the whole right \
+arm-and-maul down and forward in a smash about its shoulder mount, then recovers to a \
+ready pose — with no voxel of the arm or maul tearing away from its mount or clipping \
+into the body across the full swing. The arm swings as one solid piece. The maul reads \
+as a weapon HELD OUT in the fist, not an apparatus on the body: the arm, haft, and maul \
+head stand clear of the torso with a plain gap of air between them at the ready pose, \
+and the arm carries the maul out away from the body through the wind-up and recovery \
+rather than sweeping it tucked against or sunk into the torso."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "body-fixed"
+title = "The body stays put; only the moving parts move"
+text = """
+The armored body and head are the fixed base of the machine: they stay put, never \
+carried along by the arms or the legs. When `smash` plays, the maul arm works while \
+the legs hold still; when `walk` plays, the legs stride while the arms hold. Nothing \
+but the moving parts moves."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "parts-attached"
+title = "Limbs stay attached as they move"
+text = """
+Every moving limb stays attached across its full range: the legs meet the body where \
+they mount and each leg segment meets the one above it with no gap as the mech \
+strides, and the right maul arm meets its shoulder throughout the smash — never \
+floating free, detaching, or opening a gap. The braced left shield arm stays fixed to \
+the body."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (heavy brass and bronze armor, iron \
+joints and maul head, and the solar-amber core accent) with a clear amber \
+chest-core, no out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

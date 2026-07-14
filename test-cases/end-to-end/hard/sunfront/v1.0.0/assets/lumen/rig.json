@@ -1,0 +1,258 @@
+{
+  "parts": [
+    {
+      "name": "core",
+      "pivot": [
+        9,
+        15,
+        9
+      ]
+    },
+    {
+      "name": "heart",
+      "parent": "core",
+      "pivot": [
+        9,
+        15,
+        9
+      ]
+    },
+    {
+      "name": "ring_left",
+      "parent": "core",
+      "pivot": [
+        3,
+        15,
+        9
+      ]
+    },
+    {
+      "name": "ring_right",
+      "parent": "core",
+      "pivot": [
+        16,
+        15,
+        9
+      ]
+    },
+    {
+      "name": "emitter",
+      "parent": "core",
+      "pivot": [
+        9,
+        15,
+        12
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "hover_bob",
+      "part": "core",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        9,
+        15,
+        9
+      ],
+      "min": -3.0,
+      "max": 3.0,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "spin_l",
+      "part": "ring_left",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        3,
+        15,
+        9
+      ],
+      "min": -7.0,
+      "max": 7.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "spin_r",
+      "part": "ring_right",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        16,
+        15,
+        9
+      ],
+      "min": -7.0,
+      "max": 7.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "emit_pitch",
+      "part": "emitter",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        9,
+        15,
+        12
+      ],
+      "min": -0.8,
+      "max": 0.8,
+      "rest": 0.0,
+      "drive": "caller"
+    }
+  ],
+  "animations": [
+    {
+      "name": "ring_spin",
+      "periodMs": 4000,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "spin_l",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 4000,
+              "value": 6.28319,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "spin_r",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 4000,
+              "value": -6.28319,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "hover",
+      "periodMs": 2400,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "hover_bob",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 600,
+              "value": 1.4,
+              "interp": "ease-in-out",
+              "outHandle": [
+                260.0,
+                0.0
+              ],
+              "inHandle": [
+                -260.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 1200,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1800,
+              "value": -1.1,
+              "interp": "ease-in-out",
+              "outHandle": [
+                260.0,
+                0.0
+              ],
+              "inHandle": [
+                -260.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 2400,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pulse",
+      "periodMs": 2800,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "emit_pitch",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 500,
+              "value": 0.5,
+              "interp": "ease-out",
+              "inHandle": [
+                -180.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 1000,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1500,
+              "value": -0.45,
+              "interp": "ease-out",
+              "inHandle": [
+                -180.0,
+                0.0
+              ]
+            },
+            {
+              "tMs": 2000,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

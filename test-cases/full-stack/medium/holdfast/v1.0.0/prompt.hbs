@@ -1,0 +1,105 @@
+Build **Holdfast**, a top-down colony survival-management game that runs entirely
+in the browser — and **produce its art, effects, and audio yourself**, during this
+build, with the asset-generation tools on your `PATH`.
+
+Your project root is `{{workspace}}`. Create the game there.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins **Playwright** as a dev dependency and depends on the
+**`@test-cabinet/particle-runtime`** library (below). Its dependencies have already
+been installed for you — `node_modules/` is populated and Playwright's headless
+**Chromium** is downloaded — so you can build and verify right away. Build on this
+project rather than replacing it: keep the `package.json`, add your framework,
+bundler, and a `build` script on top of it, and keep the lockfile in sync (see
+below).
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## Build requirements
+
+Deliver a complete, polished, playable game, not a tech demo. The **hard
+requirements** — real graphics, no backend or credentials, the palette and type, a
+`README.md`, and the game states — are stated in full in `specs/overview.md` (and
+the files it points to). That specification is authoritative; build to it rather
+than to a summary here. Three things bear restating, because the harness depends on
+them:
+
+- **The fixed build/serve interface.** The project stays a **Node project** built
+  with only Node.js and npm-installed dependencies. Extend the provided
+  `package.json` at `{{workspace}}` and **commit a `package-lock.json`** (run
+  `npm install` after you change dependencies so the lockfile matches). `npm ci`
+  then `npm run build` must produce the static site — with no other manual step —
+  into one of `dist/`, `build/`, or `out/` at the project root, with an
+  `index.html` at the root of that directory. Serving that directory as-is must run
+  the game, and it must work **at any base path** (it is played back from a per-run
+  sub-path, so any URL the build constructs at runtime must be page-relative — never
+  a leading `/`; for a bundler, set a relative base such as `base: './'`).
+  `specs/overview.md` states this in full; follow it exactly.
+- **You PRODUCE the art, effects, and audio.** There is **no** pre-made game art in
+  this project. Instead, the run image puts six asset-generation tools on your
+  `PATH` — **`draw`** and **`draw-sheet`** (sprites and animated sprite sheets),
+  **`particle-2d`** (particle systems), and **`sfx-synth`**, **`sfx-sample`**, and
+  **`music`** (sound and music) — and you must **produce every asset the game plays
+  with these tools during this build**, then wire the produced files into the game.
+  Run each tool's `--help` to learn its operations. **`specs/assets.md` is the
+  authoritative contract**: it enumerates every sprite, animation, particle system,
+  and sound the game needs, names which tool produces each and where it lands under
+  `assets/`, and states how each is wired into the build — including that the
+  particle systems are played live through the **`@test-cabinet/particle-runtime`**
+  library already installed as a dependency of your project (import it like any
+  other dependency; do not fetch or reimplement it). Load every produced file with
+  page-relative URLs so it resolves from the served sub-path.
+- **The reference screenshots.** The `reference/` folder under `{{workspace}}` holds
+  screenshots that are **illustrative examples, not targets to reproduce** for the
+  title, gameplay, and colony-lost screens — they show one way the screens can look,
+  but design your own menus and layout from the specification rather than copying the
+  images. The images only illustrate the intended look; the specification is what you
+  build to.
+
+## Verify before you finish
+
+Your project has **Playwright** and a headless **Chromium** installed as project
+dependencies, plus network access — use them to verify your build, do not just
+assume it works. Before you consider the task complete:
+
+- Produce the **static production build** and serve it locally, then open it in
+  Chromium with Playwright and confirm it **loads with no console errors** and no
+  uncaught exceptions.
+- **Drive the game** — pan the map, designate chops and mines and watch a settler
+  walk to them and work them, haul materials and build walls, beds, a stove, farm
+  plots, and a turret, plant and harvest a crop and cook it into a meal, then let a
+  raid arrive and fight it off (or lose the colony) — and **screenshot** the title,
+  in-colony, and colony-lost screens. Verify each screen **against the specs**,
+  treating the `reference/` images as examples of the intended look only (not a
+  layout to match), and fix what does not follow the specification before finishing.
+- **Capture the proof of implementation** exactly as `specs/proof.md` specifies:
+  the screenshots and the two short clips, each written to the precise `proof/`
+  path that spec names. These are required deliverables of the finished build, not
+  a private check. Do not invent a different folder or filename, and do not skip
+  the `.webm` clips.
+
+Use the project's own Playwright: import it from your project (for example
+`import { chromium } from "playwright"`) or run the project-local CLI with
+`npx playwright`. There is **no** global Playwright on `PATH` — it lives in your
+project's `node_modules`, like any other dependency. Launch Chromium with the
+`--no-sandbox` argument — this container has no Chromium sandbox, so a default
+launch will fail.
+
+## Commit your work
+
+Your project root is a **git repository** — it was initialized before you started,
+with the starter files in its first commit. Your finished implementation is
+published directly from this repository's commits, so work you leave uncommitted is
+**not** published. When the build is complete and verified, commit everything: run
+`git add -A` then `git commit`, and confirm `git status` reports a clean working
+tree with nothing uncommitted or untracked. A `.gitignore` already excludes
+`node_modules/` and the build output (`dist/`/`build/`/`out/`), so a clean tree
+does not mean committing those — but it does mean committing your source, your
+`package-lock.json`, your `README.md`, the **produced assets under `assets/`**, and
+the `proof/` artifacts.

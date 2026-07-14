@@ -53,6 +53,18 @@ pub struct Config {
     /// The database connection URL (`TCAB_BACKEND_DATABASE_URL`). The scheme picks
     /// the backend: `sqlite://…` (local/dev) or `postgres://…` (deployment).
     pub database_url: String,
+    /// Whether to authenticate to Postgres with a Microsoft Entra managed-identity
+    /// token instead of a password (`TCAB_BACKEND_DB_AZURE_AD`, truthy to enable).
+    /// When set, `database_url` must be a passwordless `postgres://` URL naming the
+    /// Entra Postgres role as its username. Defaults to `false` (password / SQLite).
+    pub db_azure_ad: bool,
+    /// The deployment environment name (`TCAB_ENV`; `prod`/`staging`/`local`/…,
+    /// default `local` — the same value telemetry labels spans with). It selects
+    /// which environment's entries this backend reads from the committed
+    /// reference-builds lockfile at ingest: prod and staging deploy references to
+    /// different Cloudflare Pages projects, so the one shared lockfile holds a
+    /// URL per environment and each backend takes only its own.
+    pub env: String,
     /// Path to the repo checkout ingested on `POST /ingest` (`TCAB_BACKEND_CHECKOUT`).
     pub checkout: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
@@ -76,6 +88,14 @@ pub struct Config {
     pub deploy_hook_url: Option<String>,
     /// The coalescing window for bursts of publishes (`TCAB_SNAPSHOT_COALESCE_MS`).
     pub coalesce: Duration,
+    /// Whether **experimental** test-case versions are offered to the UI
+    /// (`TCAB_BACKEND_ALLOW_EXPERIMENTAL`, truthy to enable). Defaults to `false`:
+    /// an experimental version (a case still being iterated on) is hidden from the
+    /// catalog and cannot be resolved, so it is treated as if it does not exist. A
+    /// deployment that wants to run experimental cases — the local k3d cluster —
+    /// sets this truthy; production leaves it unset so experimental cases are never
+    /// offered and thus never run or published.
+    pub allow_experimental: bool,
     /// Optional override for the headless browser used to render references at
     /// ingest (`TCAB_REFERENCE_BROWSER`). Forwarded to the bundled driver as
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
@@ -118,7 +138,9 @@ impl Config {
     /// and the deploy-hook fire. Production deployments supply the full set.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind = env_or("TCAB_BACKEND_BIND", DEFAULT_BIND);
+        let env = env_or("TCAB_ENV", "local");
         let database_url = env_or("TCAB_BACKEND_DATABASE_URL", DEFAULT_DATABASE_URL);
+        let db_azure_ad = truthy("TCAB_BACKEND_DB_AZURE_AD");
         let checkout = PathBuf::from(require("TCAB_BACKEND_CHECKOUT")?);
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
         let auth_url = env_or("TCAB_BACKEND_AUTH_URL", DEFAULT_AUTH_URL);
@@ -138,6 +160,8 @@ impl Config {
             .ok()
             .filter(|v| !v.is_empty());
 
+        let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
+
         let artifacts_url =
             nonempty("TCAB_ARTIFACTS_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
 
@@ -146,7 +170,9 @@ impl Config {
 
         Ok(Self {
             bind,
+            env,
             database_url,
+            db_azure_ad,
             checkout,
             store,
             auth_url,
@@ -157,6 +183,7 @@ impl Config {
             reference_browser,
             artifacts_url,
             arena_url,
+            allow_experimental,
         })
     }
 
@@ -221,4 +248,25 @@ fn require(key: &'static str) -> Result<String, ConfigError> {
 /// Read a non-empty environment variable, returning `None` when unset or empty.
 fn nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
+}
+
+#[cfg(test)]
+#[path = "config.test.rs"]
+mod tests;
+
+/// Read a boolean flag environment variable, treating a **truthy** value as
+/// `true` and anything else — including unset, empty, or an unrecognized value —
+/// as `false`. The accepted truthy spellings (case-insensitive) are `1`, `true`,
+/// `yes`, and `on`, so an operator can enable a flag with whichever idiom their
+/// tooling favors without the flag silently flipping on for an unrelated value.
+fn truthy(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }

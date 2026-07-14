@@ -24,13 +24,18 @@ use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
     StoredContract, StoredDomain, StoredManifest, StoredMatch, StoredOutput, StoredProof,
     StoredReference, StoredReplay, StoredReviewItem, StoredSandbox, StoredSimulation, StoredSpec,
-    StoredTool, StoredVariant, StoredWorkspaceFile, reference_in, write_manifest_in,
+    StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspaceFile, reference_in,
+    write_manifest_in,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
 #[derive(Debug, Clone, Default)]
 pub struct IngestRequest {
-    /// Restrict to these case slugs (a full scan when empty).
+    /// Restrict to these entries (a full scan when `None`). Each entry is either a
+    /// bare case `id` — its slug or folder name, expanding to every version the case
+    /// declares — or a version-qualified `id@version`, targeting exactly that one
+    /// version so a single edited version can be re-ingested without re-rendering the
+    /// case's other versions.
     pub test_cases: Option<Vec<String>>,
     /// Re-ingest and re-render even when unchanged.
     pub force: bool,
@@ -206,10 +211,18 @@ impl<'a> Ingestor<'a> {
     }
 
     /// Resolve the set of `(slug, version)` pairs to scan from the checkout.
+    ///
+    /// A whole-catalog scan (no restriction) enumerates every declared case as a bare
+    /// entry; a partial scan takes the request's entries verbatim. Each entry is then
+    /// resolved to targets: a bare `id` (slug or folder name) expands to every version
+    /// the case declares, while a version-qualified `id@version` targets exactly that
+    /// one version — so an edit to a single version re-renders only it, not every
+    /// version of the case. `@` cannot occur in a slug/folder name or a version string,
+    /// so it is an unambiguous separator.
     fn version_targets(&self, request: &IngestRequest) -> Result<Vec<(String, String)>> {
         let catalog = TestCaseCatalog::new(self.checkout.join("test-cases"));
-        let slugs: Vec<String> = match &request.test_cases {
-            Some(slugs) => slugs.clone(),
+        let entries: Vec<String> = match &request.test_cases {
+            Some(entries) => entries.clone(),
             None => catalog
                 .list()
                 .map_err(BackendError::Core)?
@@ -218,10 +231,13 @@ impl<'a> Ingestor<'a> {
                 .collect(),
         };
         let mut targets = Vec::new();
-        for slug in slugs {
-            let versions = catalog.versions(&slug).map_err(BackendError::Core)?;
-            for version in versions {
-                targets.push((slug.clone(), version));
+        for entry in entries {
+            if let Some((id, version)) = entry.split_once('@') {
+                targets.push((id.to_string(), version.to_string()));
+            } else {
+                for version in catalog.versions(&entry).map_err(BackendError::Core)? {
+                    targets.push((entry.clone(), version));
+                }
             }
         }
         Ok(targets)
@@ -368,7 +384,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
     let common_specs = resolved
         .common_specs
         .iter()
-        .map(|spec| stored_spec(root, &spec.source_path, &spec.dest))
+        .map(|spec| stored_spec(root, spec))
         .collect::<Result<Vec<_>>>()?;
 
     // The starter workspace files (common + each variant's override) are keyed by
@@ -395,7 +411,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             let specs = variant
                 .specs
                 .iter()
-                .map(|spec| stored_spec(root, &spec.source_path, &spec.dest))
+                .map(|spec| stored_spec(root, spec))
                 .collect::<Result<Vec<_>>>()?;
             let workspace = variant
                 .workspace
@@ -437,6 +453,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         changelog,
         max_runtime_seconds: resolved.max_runtime_seconds,
         test_type: resolved.test_type,
+        experimental: resolved.experimental,
         build: resolved.build.as_ref().map(|build| StoredBuild {
             install: build.install.clone(),
             build: build.build.clone(),
@@ -557,6 +574,14 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
         frames: item.frames.clone(),
         weight: item.weight,
         domain: item.domain.clone(),
+        sub_items: item
+            .sub_items
+            .iter()
+            .map(|sub| StoredSubReviewItem {
+                id: sub.id.clone(),
+                title: sub.title.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -580,19 +605,21 @@ fn stored_proof(proof: &test_cabinet_core::ProofFile) -> StoredProof {
     }
 }
 
-/// Build a `StoredSpec` from a host source path and a workspace dest, deriving
-/// the store-relative `source` key and the `template` flag (a `.hbs` source).
-fn stored_spec(root: &Path, source_path: &Path, dest: &Path) -> Result<StoredSpec> {
-    let source = relative_key(root, source_path)?;
-    let template = source_path
+/// Build a `StoredSpec` from a resolved [`SpecFile`], deriving the store-relative
+/// `source` key and the `template` flag (a `.hbs` source) and carrying its `kind`.
+fn stored_spec(root: &Path, spec: &test_cabinet_core::SpecFile) -> Result<StoredSpec> {
+    let source = relative_key(root, &spec.source_path)?;
+    let template = spec
+        .source_path
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.eq_ignore_ascii_case("hbs"))
         .unwrap_or(false);
     Ok(StoredSpec {
         source,
-        dest: to_forward_slash(dest),
+        dest: to_forward_slash(&spec.dest),
         template,
+        kind: spec.kind,
     })
 }
 
@@ -667,11 +694,37 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
         }
         let from = entry.path();
         let to = dst.join(&name);
-        if entry.file_type()?.is_dir() {
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            // `entry.file_type()` (from `read_dir`) never follows the link, so a
+            // symlink is handled here before the dir/file split below. Recreate it
+            // as a symlink rather than dereferencing it: `std::fs::copy` follows the
+            // link and errors on a symlink-to-directory ("the source path is neither
+            // a regular file nor a symlink to a regular file") — e.g. a
+            // reference-impl's `node_modules/@test-cabinet/voxel-runtime` link.
+            copy_symlink(&from, &to)?;
+        } else if file_type.is_dir() {
             copy_tree(&from, &to)?;
         } else {
             std::fs::copy(&from, &to)?;
         }
+    }
+    Ok(())
+}
+
+/// Recreate the symlink at `from` at the new location `to`, preserving its target
+/// verbatim. The target is kept as-is (typically relative to the link's own
+/// directory) so the recreated link resolves the same way the original did. Mirrors
+/// `core`'s `copy_symlink`.
+fn copy_symlink(from: &Path, to: &Path) -> Result<()> {
+    let target = std::fs::read_link(from)?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target, to)?;
+    #[cfg(windows)]
+    if from.is_dir() {
+        std::os::windows::fs::symlink_dir(&target, to)?;
+    } else {
+        std::os::windows::fs::symlink_file(&target, to)?;
     }
     Ok(())
 }

@@ -12,7 +12,7 @@ import type { HarnessSlug, RunRecord } from "./index";
 /**
  * The state a driver reports for a job via `POST /jobs/{id}/status`.
  */
-export type DriverState = "running" | "succeeded" | "failed";
+export type DriverState = "starting" | "running" | "succeeded" | "failed";
 
 /**
  * The body of `POST /jobs`: what to run, with what, against which model. The
@@ -58,6 +58,21 @@ export type LaunchBody = {
    * the subscription-only Antigravity harness on the cluster path).
    */
   authMode?: string;
+  /**
+   * How many times to automatically retry this run after a terminal failure the
+   * Test Cabinet (or a catastrophic build) is responsible for — an
+   * [`Infrastructure`](crate::run_record::RunState::Infrastructure) error or a
+   * [`Catastrophic`](crate::run_record::RunState::Catastrophic) build. A
+   * [`TimedOut`](crate::run_record::RunState::TimedOut) or
+   * [`Completed`](crate::run_record::RunState::Completed) outcome is the model's,
+   * not a fault to retry, and a user cancel is never retried.
+   *
+   * The default is `1` (one retry) when omitted, so the total attempts allowed is
+   * `1 + retry_count`: the initial attempt plus up to `retry_count` retries.
+   * `0` disables retries; the backend clamps the value to a sane maximum. This is
+   * the field the run form sends; absent → treated as `1` by the backend.
+   */
+  retryCount?: number;
 };
 
 /**
@@ -104,7 +119,9 @@ export type StatusUpdate = {
  */
 export type JobState =
   | "queued"
+  | "pending"
   | "dispatched"
+  | "starting"
   | "running"
   | "succeeded"
   | "failed"

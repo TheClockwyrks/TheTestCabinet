@@ -38,7 +38,7 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use test_cabinet_core::{find_build_output, serve_asset_file, serve_build_file, serve_proof_file};
@@ -111,7 +111,11 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{id}/raw.jsonl", get(raw_file))
         .layer(axum::middleware::from_fn(accept_trace))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
+        // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
+        // spec `*` does not cover `Authorization`, so a browser rejects a preflight
+        // for a request carrying our bearer token. Mirror the request's headers
+        // instead, which echoes `Authorization` back explicitly.
+        .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
         .with_state(state)
 }
 

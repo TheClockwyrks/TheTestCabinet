@@ -1,0 +1,138 @@
+# Caldera Breaker — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera Breaker, the slow, armored siege of the Slag
+— a wide, top-heavy obsidian biped with a brick-slab torso on two short thick legs that
+walks knuckled over two enormous fused ram-forearms and grinds through what it reaches —
+as a 3D voxel model with a rig a game can pose at runtime. Build it with `voxel-anim`
+(painting opaque cells one operation at a time) as a rigged model that reads
+unmistakably as this heavy obsidian thing, trudges believably on its two legs, and rams
+on demand. There is no target model to copy.
+
+This test measures creativity and craft, not instruction-following. The brief fixes
+what the Breaker is and how it must move; it deliberately does not hand you a parts
+list, joint placements, or pose angles — working out the pieces a trudging, ramming
+creature needs, where they attach, and how they articulate is the test. Invent the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the Breaker, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the Breaker faces toward `z = {{voxel.maxZ}}` (the front) at rest, the ram-forearms
+  reaching forward. Up is +y.
+- Build the Breaker symmetric about the lengthwise vertical centerplane — the two legs
+  and the two ram-forearms mirror left/right, and the torso, ram-head, and chest seams
+  are centered on it.
+- The Breaker is deliberately **wide and top-heavy** — a broad slab torso far broader
+  than its hips, hunched forward over its rams, riding on two short thick legs. It is
+  the most armored thing on the field; nothing about it should read as low and long,
+  spindly, or lightly built.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same
+  volume's coordinates, positioned where the part sits on the assembled Breaker (a leg
+  already under its corner of the torso, a ram-forearm already reaching forward).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Body — obsidian | `#241f2b` |
+| Deep recess, shadowed seam — obsidian dark | `#16131b` |
+| Accent plate (the accent region) | `#4a4358` |
+| Acid glow — the chest seams | `#9ede3a` |
+
+Do **not** use steel `#c9ced6` or violet `#b56bff` anywhere on the model. A game
+paints those on at run time (see *The accent region*); baking them in defeats it.
+
+## What the Breaker is (and what is yours to invent)
+
+Fixed — the Breaker must read unmistakably as all of these:
+
+- A **wide, top-heavy slab torso** of obsidian — a brick-like block far broader than
+  the hips, hunched slightly forward, carried high over the legs. Its shadowed seams
+  and recesses are obsidian dark.
+- **Two short, thick legs**, one under each side, that carry the heavy mass and trudge
+  (see the animations). They read as stout and armored — the legs of something built
+  for weight, not speed.
+- **Two enormous fused ram-forearms** it walks slightly knuckled over — these are
+  shields and battering rams, **not** hands. It has **no fingers and no weapon**: the
+  forearms end blunt.
+- A **low fused ram-head** sunk between the shoulders with **no visible neck**.
+- **Acid-green seams cracking across the slab chest**, and no other glow anywhere on
+  the model. There are **no eyes**: those cracked chest seams are the Breaker's whole
+  glow signature.
+
+The Breaker carries **no weapon, no fingers, and no tools** — the ram-forearms are its
+whole armament. It is the wide, top-heavy, armored one: nothing about it reads as low,
+long, fast, spindly, or massive.
+
+Everything else is yours to invent — the exact silhouette and proportions of the torso,
+legs, ram-forearms, and ram-head, how the chest seams crack across the slab, and how you
+break the Breaker into rig parts. Nothing here prescribes a shape; the test rewards a
+bold, characterful design that is unmistakably the Breaker and animates convincingly.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time to show the Breaker's **tier**, by finding every
+voxel of one reserved color and repainting it. That reserved color is the **accent
+plate** color `#4a4358`, and it is what makes the contract work:
+
+- Sculpt the **chest-slab plates** AND **the plates on the outer face of both
+  ram-forearms** — and only those — in `#4a4358`.
+- Use `#4a4358` **nowhere else** on the model. Not a stray voxel, not a highlight, not
+  a seam. Every voxel of it is treated as an accent plate.
+- The accent must be **coherent contiguous plates** — the chest as one plate group,
+  each forearm's outer face as another, not scattered flecks — and it must be clearly
+  **visible from more than one angle**, so a player reads a Breaker's tier at a glance
+  across the battlefield.
+
+Everything else — the torso body, the recesses, the legs, the ram-head, the chest
+seams — keeps its own color and is never repainted. Get this wrong and every Breaker in
+the game looks the same tier.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author
+the motion). Author each with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion has weight — the Breaker is heavy and armored, so its motion is slow and
+deliberate, never the light snap of a small creature.
+
+- **`move`** — the trudge (a game-triggered playable, `loop = true`). The two short
+  thick legs plant and the heavy mass rocks side to side over each planted foot, so it
+  reads as a slow, armored machine hauling its weight, not gliding or flailing. Authored
+  in place: the body does not translate across the scene — the leg cycle alone carries
+  the stride (played on its own the planted foot slides straight back under the body,
+  treadmill-style, then swings forward), and a game supplies the real travel. The
+  ram-forearms stay carried low and forward as it walks.
+- **`attack`** — the ram (a game-triggered playable, `loop = true`). The Breaker rears
+  up and drives both fused ram-forearms down and forward into what it is grinding
+  through, then recovers to its stance before looping — a heavy commit, a recovery. The
+  whole top-heavy mass throws behind the ram; this is a creature with no weapon slamming
+  its forearms into a target. The feet stay planted.
+
+You may add your own extra parts, joints, or animations on top of this (for example a
+slow heave of the chest at rest), but you must not drop or contradict the required
+`move` and `attack` animations, by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on
+your `PATH`. Define your own parts with `define-part` (giving each a parent and a
+pivot), sculpt each by selecting it with `--part <name>`, set pivots with `set-pivot`,
+place joints with `define-joint`, and author the two animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and
+a mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation;
+run `voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png`
+previews) between calls to judge each part against this brief — that each leg seats
+under its own corner of the torso, the ram-forearms hang from the shoulders and reach
+the ground, the ram-head sits sunk between them, and the animations read with the right
+weight. Run `voxel-anim render` before you finish so it emits the per-part `.glb`
+geometry your result is built from — an unrendered part scores as empty (`voxel-anim
+render --component <part>` renders one part; `voxel-anim render --time <ms> --animation
+<name>` renders the model posed at that instant to check the motion).

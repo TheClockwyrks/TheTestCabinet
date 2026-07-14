@@ -24,6 +24,21 @@ export type HarnessSlug =
   | "pi";
 
 /**
+ * A family of harnesses that share a model-slug namespace — the set of model ids
+ * usable with them.
+ *
+ * A slug is only meaningful to the harnesses that speak its namespace: a Claude
+ * Code slug (`claude-opus-4-8`) means nothing to Codex, and an OpenRouter slug
+ * (`anthropic/claude-opus-4.8`) only resolves through the OpenRouter-routed
+ * harnesses. So a curated model's slugs are each tagged with the family they
+ * belong to (see the model catalog's aliases), which lets a run form offer only
+ * the slugs the selected harness can actually launch. Every [`HarnessSlug`] maps
+ * to exactly one family via [`HarnessSlug::family`]; the OpenRouter-routed
+ * harnesses collapse into one family because they all take OpenRouter ids.
+ */
+export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
+
+/**
  * The terminal state of a run — the single axis that decides publishability and
  * how a run scores. Classified objectively at the point a run ends: a clean
  * harness exit splits into [`Completed`](RunState::Completed) vs
@@ -101,8 +116,10 @@ export type RunTooling = {
  * The type of a test case: which class of capability it measures and which
  * manifest tables it declares.
  *
- * Today four types exist in code: the original [`Self::EndToEnd`] (build a
- * working program), [`Self::AssetGeneration`] (drive a drawing tool toward a
+ * Today five types exist in code: the original [`Self::EndToEnd`] (build a
+ * working program), [`Self::FullStack`] (build a working program *and* produce
+ * its own assets with the asset-generation binaries, which are on `PATH` in the
+ * full-stack run image), [`Self::AssetGeneration`] (drive a drawing tool toward a
  * target image), [`Self::Adversarial`] (write a wasm controller pitted
  * head-to-head against a baseline), and [`Self::Performance`] (write a wasm
  * engine scored on correctness plus the fuel it burns). The type is the explicit
@@ -113,6 +130,7 @@ export type RunTooling = {
  */
 export type TestType =
   | "end-to-end"
+  | "full-stack"
   | "asset-generation"
   | "adversarial"
   | "performance";
@@ -151,7 +169,10 @@ export type AssetKind =
   | "particle-3d"
   | "sfx-synth"
   | "sfx-sample"
-  | "music";
+  | "music"
+  | "blender-character"
+  | "blender-prop"
+  | "blender-mechanism";
 
 /**
  * The subject of a run: what was run, with what, against which model.
@@ -551,6 +572,17 @@ export type VoxelGenResult = {
    * meshes. `false` for every non-skinned voxel-family run.
    */
   skinned: boolean;
+  /**
+   * Whether this is a **Blender** run (`blender-character`/`blender-prop`/
+   * `blender-mechanism`): the emitted mesh is a self-contained **native glTF** whose
+   * rig and animations (if any) are baked into the file itself (glTF skin + animation
+   * channels), not authored as a `rig.json`. The marker tells the 3D viewer to load
+   * the glTF with a native glTF player (skeleton and/or baked clips) rather than
+   * posing the mesh from an inline rig. A `blender-character` is additionally
+   * `skinned`; a `blender-prop` (static) and `blender-mechanism` (rigid node-hierarchy
+   * animations) are **not**. `false` for every non-Blender run.
+   */
+  blender: boolean;
   /**
    * Detail about anything that could not be evaluated at the run level, or
    * `None`. Per-part detail lives on each [`VoxelPartResult`].

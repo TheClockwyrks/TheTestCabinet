@@ -1,0 +1,142 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 1200,
+  "fps": 30,
+  "loop": true,
+  "emitters": [
+    {
+      "name": "flame",
+      "shape": "disc",
+      "position": [
+        64.0,
+        48.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 9.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 46.0
+      },
+      "lifetimeMs": 650.0,
+      "lifetimeSpread": 160.0,
+      "speed": 46.0,
+      "speedSpread": 14.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 22.0,
+      "seed": 13,
+      "forces": {
+        "gravity": -30.0,
+        "drag": 0.8,
+        "turbulence": {
+          "amplitude": 22.0,
+          "scale": 0.04
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.1,
+          "to": 0.3
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffcf6a",
+            "at": 0.0
+          },
+          {
+            "color": "#ff5a52",
+            "at": 0.55
+          },
+          {
+            "color": "#6b6355",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "smoke",
+      "shape": "disc",
+      "position": [
+        64.0,
+        70.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 7.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "rate",
+        "rate": 14.0
+      },
+      "lifetimeMs": 1000.0,
+      "lifetimeSpread": 200.0,
+      "speed": 34.0,
+      "speedSpread": 12.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 18.0,
+      "seed": 14,
+      "forces": {
+        "gravity": -20.0,
+        "drag": 0.5,
+        "turbulence": {
+          "amplitude": 14.0,
+          "scale": 0.05
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 0.6,
+          "to": 1.6
+        },
+        "opacityCurve": {
+          "interp": "ease-in-out",
+          "from": 0.5,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#6b6355",
+            "at": 0.0
+          },
+          {
+            "color": "#6b6355",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

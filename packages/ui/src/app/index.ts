@@ -22,6 +22,7 @@ export {
   type HarnessAuthApi,
   type HarnessAuthMode,
   type InProgressRun,
+  type RunDetail,
   type SubscriptionFile,
 } from "./data/galleryContext";
 
@@ -40,17 +41,30 @@ export { frameReview, frameReviews } from "./data/frameReview";
 export { useLiveGallery } from "./runtime/useLiveGallery";
 
 // Data hooks (read the provider) and their state shapes.
-export { useRuns, type RunsState } from "./data/useRuns";
+export {
+  useCaseRunSummaries,
+  type CaseRunSummariesState,
+} from "./data/useRuns";
+export { toRunSummary } from "./data/runSummary";
+export {
+  runSummaryPage,
+  type RunQuery,
+  type RunQueryResult,
+  type RunSort,
+  type SortDir,
+} from "./data/runQuery";
 export { useTestCases, type TestCasesState } from "./data/useTestCases";
-export { useModels, type ModelsState } from "./data/useModels";
+export { useModels, useFindModel, type ModelsState } from "./data/useModels";
 export { useFindReview } from "./data/writeups";
 
-// Catalog/types and the bundled model catalog (static, shared by every host).
+// The model catalog: shapes + mappers. The catalog itself is transport-driven
+// (the console fetches it from the backend, the site reads it from the snapshot).
 export {
-  models,
   findModelByModelId,
+  toModelSummary,
   type ModelSummary,
   type ModelPrices,
+  type PriceObservation,
 } from "./data/models";
 export {
   type TestCaseSummary,

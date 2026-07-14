@@ -21,11 +21,14 @@
 pub mod api;
 pub mod artifacts;
 pub mod auth;
+pub mod bootstrap;
 pub mod config;
 pub mod db;
 pub mod error;
 pub mod ingest;
+pub mod logo;
 pub mod metrics;
+pub mod model_seed;
 pub mod publish_relay;
 pub mod publisher;
 pub mod r2;
@@ -55,6 +58,9 @@ pub struct Backend {
     pub bind: String,
     /// The background refresher handle; kept alive for the server's lifetime.
     pub refresher: crate::publisher::RefresherHandle,
+    /// The periodic model-price refresher task; kept alive for the server's
+    /// lifetime (dropping it aborts the 24-hour re-pricing loop).
+    pub price_refresher: tokio::task::JoinHandle<()>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -78,11 +84,26 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     }
 
     let store = DefinitionStore::open(&config.store)?;
-    let db = Db::connect(&config.database_url).await?;
+    let db = if config.db_azure_ad {
+        Db::connect_azure_ad(&config.database_url).await?
+    } else {
+        Db::connect(&config.database_url).await?
+    };
     // Apply the schema before serving. The migration is idempotent, so an
     // already-migrated store (a restart, or a shared deployment database) is a
     // no-op beyond the version check.
-    test_cabinet_migration::Migrator::up(db.connection(), None).await?;
+    test_cabinet_migration::Migrator::up(&db.connection(), None).await?;
+
+    // Backfill the run row's sort/filter columns for any rows that predate them
+    // (the migration stamps them with defaults; this fills the real record- and
+    // review-derived values). Idempotent, so a restart or an already-populated
+    // store is a no-op; best-effort, so it never blocks startup.
+    match db.backfill_sort_columns().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run sort/filter columns"),
+        Err(err) => tracing::warn!(error = %err, "skipping run sort-column backfill"),
+    }
+
     let db = Arc::new(db);
 
     // Reconcile orphaned in-flight jobs before serving — but only single-box,
@@ -120,6 +141,22 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     );
     let refresher = publisher.spawn();
 
+    // Model catalog bootstrap: seed the curated configs into an empty store and
+    // re-associate any legacy `:free`-tagged runs to their base model. Both are
+    // idempotent, so a restart or a shared deployment database is a safe no-op.
+    let prices = test_cabinet_core::OpenRouterPrices::new();
+    crate::bootstrap::seed_models_if_empty(&db).await?;
+    if let Err(err) = crate::bootstrap::backfill_alias_families(&db).await {
+        // Best-effort: a stale harness family only mis-filters a run form's model
+        // dropdown, never blocks startup.
+        tracing::warn!(error = %err, "skipping model-alias harness-family backfill");
+    }
+    if let Err(err) = crate::bootstrap::normalize_free_runs(&db, &prices).await {
+        // Never block startup on this best-effort normalization.
+        tracing::warn!(error = %err, "skipping :free run normalization");
+    }
+    let price_refresher = crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone());
+
     // The client the auth middleware verifies bearer tokens against. Constructed
     // once and shared; it holds only the auth service base URL.
     let auth = Arc::new(test_cabinet_core::AccountsClient::new(
@@ -136,6 +173,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config: Arc::new(config),
         http: reqwest::Client::new(),
+        prices,
     };
     let router = api::router(state);
 
@@ -143,5 +181,6 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         router,
         bind,
         refresher,
+        price_refresher,
     })
 }

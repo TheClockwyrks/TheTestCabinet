@@ -1,0 +1,140 @@
+slug = "thunderhead-theme"
+experimental = true
+name = "Thunderhead Theme"
+difficulty = "hard"
+tags = ["music", "naval"]
+summary = """
+Compose the Thunderhead main-menu theme: a 3-to-5-minute grand, cinematic \
+main-title overture for the fleet-command game — sweeping, evocative, and \
+clean-looping — sequenced note by note as instrument tracks over the gm-lite \
+bank."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 2.0
+type = "asset-generation"
+asset_kind = "music"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `gm-lite@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                 # output sample rate in Hz (required)
+channels = "stereo"                 # "mono" | "stereo" (required)
+max_duration_ms = 300000            # cap on the rendered clip's length in ms (required, positive) — up to 5 minutes
+instrument_bank = "gm-lite@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the Thunderhead main-menu theme the brief \
+describes — a grand, cinematic main-title overture that evokes a cold, high war \
+over an endless cloud sea: sweeping and evocative, serious and stirring, neutral \
+to the three powers, and long enough to feel like a full menu score."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — a coherent tonality and pulse, a memorable main \
+theme that genuinely develops across the piece's length, tasteful instrument \
+choices and voicings from the gm-lite bank, a clean seamless loop, and a \
+balanced, dynamic stereo mix."""
+
+[[review_item]]
+id = "grand-cinematic-overture"
+title = "Grand cinematic main-title overture"
+text = """
+The clip reads at once as a sweeping, cinematic main-menu theme — the grand \
+overture that would play over a title screen — evocative and stirring, carrying \
+both the weight of a coming war and a sense of vast open sky. It is not a short \
+gameplay loop and not a frantic battle cue."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "cold-high-world"
+title = "Evokes the cold, high cloud-sea world"
+text = """
+The mood fits the game's setting — an austere, cold, high war over an endless \
+cloud sea — through a serious, largely dark or minor-leaning color with room for \
+a hopeful or heroic lift, rather than a bright, casual, or generic feel."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "faction-neutral"
+title = "Neutral to the three powers"
+text = """
+The theme speaks for the whole game and does not lean on the identity of any one \
+faction — no single power's signature sound (industrial iron, cool energy, or \
+crystalline resonance) dominates it."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "memorable-theme"
+title = "A memorable, stated main theme"
+text = """
+The piece states a clear, memorable main melodic theme — the tune a player would \
+come to associate with the game — rather than drifting through ambient texture \
+with no thematic anchor."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "develops-over-length"
+title = "Develops across its length"
+text = """
+Over its three-to-five minutes the piece genuinely grows and breathes — an \
+opening, a theme statement, development or contrast, a climactic restatement, and \
+a settling — rather than vamping on one repeated idea for the whole duration."""
+weight = 3
+domain = "craft"
+
+[[review_item]]
+id = "clean-loop"
+title = "Clean loop"
+text = """
+The end flows back into the start with no click, gap, or jarring harmonic seam — \
+the close sets up the return to the opening so the theme can play on repeat under \
+the menu indefinitely."""
+weight = 2
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Balanced, dynamic stereo mix"
+text = """
+The clip is stereo with a deliberate, wide cinematic image and holds a clean \
+balance across its long dynamic arc — no clipping at the climaxes and no single \
+voice swamping the rest."""
+weight = 1
+domain = "craft"

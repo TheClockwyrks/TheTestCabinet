@@ -1,0 +1,166 @@
+slug = "caldera-slag"
+experimental = true
+name = "Caldera Slag"
+difficulty = "medium"
+tags = ["skinned", "creature"]
+summary = """
+Sculpt and rig the Caldera Slag: a molten elemental creature — a hunched \
+mass of glowing magma sheathed in cracked cooling-basalt crust — built as ONE \
+continuous skin bound to a model-invented skeleton with the `sn-skin` tool, one \
+recorded operation at a time. The model invents whatever bones and joints it needs; \
+the fixed contract is three animations it must author — a lumbering `advance` walk, \
+a one-shot `slam` attack, and an `emerge` rise from the ground — that deform the \
+whole body as continuous skin the reviewer can play back."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "sn-skinned"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt and rig the SAME Slag at three field sizes — `base` (this
+# case's volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The field bounds — the SAME [voxel] volume table a meshed case frames, here
+# bounding the ONE whole-body signed-distance field the skin is extracted from:
+# `width` across (x), `height` up (y), `depth` front-to-back (z), in field units.
+# Material is opaque #rrggbb (no alpha); the field always starts EMPTY;
+# `background` is only the clear color behind the rasterized preview PNG. A skinned
+# case must NOT declare [canvas].
+[voxel]
+width = 44
+height = 36
+depth = 44
+background = "transparent"
+
+# The skinning tool. `sn-skin` (Surface Nets — smooth, watertight, mid-fidelity) is
+# the only way to sculpt the field and edit the skeleton. Because a skinned model
+# builds ONE whole-body field / ONE mesh, `preview` and (below) `actions` are SINGLE
+# files and must NOT carry a `{part}` token. Run `sn-skin --help` for the field ops
+# AND the skeleton/animation subcommands; no operations schema is seeded. Rendering
+# is on request via `sn-skin render`.
+[tool]
+binary = "sn-skin"
+preview = "model.png"
+
+# The recorded operation log — a SINGLE op record (one field, one skeleton, one
+# log), the authoritative output the regenerated model is rebuilt from. The skinned
+# mesh.glb (geometry + the glTF skin: per-vertex bone weights and inverse-bind
+# matrices) and rig.json (skeleton, joint interface, F-curve animations) are emitted
+# automatically by core — they are NOT declared here.
+[output]
+actions = "actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe bones, joints, pivots, ranges, or the per-vertex weights
+# that bind the skin: the model invents the whole skeleton and its binding, and is
+# judged on whether it works out the right pieces and deforms the skin convincingly.
+# What is fixed is the set of NAMED ANIMATIONS the model must author (a game plays
+# them by name). The model authors each animation's F-curves at run time with
+# `sn-skin define-animation`/`add-keyframe`; `rig.json` is pre-seeded with these
+# declarations so the contract exists from the first operation.
+[model]
+
+# `advance` — the lumbering walk. A game-triggered playable that loops: the creature
+# hauls its heavy mass forward on planted limbs while the pelvis, spine, and crust
+# flex across the joints so the whole molten body rolls with weight.
+[[model.animation]]
+name = "advance"
+loop = true
+auto_play = false
+
+# `slam` — the one-shot attack. A game-triggered playable that plays once and holds:
+# the creature rears and brings its mass down, the impact carrying up through the
+# shoulders and spine as continuous-skin deformation, then settles.
+[[model.animation]]
+name = "slam"
+loop = false
+auto_play = false
+
+# `emerge` — the one-shot rise. A game-triggered playable that plays once and holds:
+# the creature forms and heaves up out of the ground, the crust splitting and the
+# body unfolding to its standing pose as the skin stretches into shape.
+[[model.animation]]
+name = "emerge"
+loop = false
+auto_play = false
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the field bounds it states match the selected
+# size. The seeded dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, skinned model reads as the Caldera Slag and \
+deforms correctly — a hunched molten mass whose one continuous skin flexes across \
+its joints without tearing while it advances, slams, and emerges, glowing magma \
+sheathed in cracked cooling-basalt crust in the disciplined Caldera palette."""
+
+[[review_item]]
+id = "reads-as-slag"
+title = "Reads as a molten Slag creature"
+text = """
+From more than one angle the model reads unmistakably as a lumbering molten \
+elemental: a hunched, top-heavy mass of glowing magma sheathed in a cracked \
+cooling-basalt crust, with limbs it hauls itself along on. It is a living creature \
+of magma, not an abstract lump or a rigid rock. Its surface is one smooth, \
+continuous skin — a single body, never a stack of detached chunks."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "advance-deforms"
+title = "Advance deforms as one continuous body"
+text = """
+Playing `advance` walks the creature with weight: its limbs plant and swing while \
+the pelvis, spine, and crust flex smoothly ACROSS the joints, so the skin stretches \
+and folds at each bend rather than tearing or leaving a seam. The whole molten mass \
+rolls as one lumbering body, easing rather than sliding at a constant rate, and it \
+loops seamlessly."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "slam-deforms"
+title = "Slam carries through the skin"
+text = """
+Playing `slam` rears the creature and brings its mass down in one heavy blow, the \
+impact carrying up through the shoulders and spine as continuous-skin deformation — \
+the body compresses and recoils as one piece, with the skin folding across the \
+joints and no part tearing away — then settles and holds its last pose."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "emerge-deforms"
+title = "Emerge forms and rises"
+text = """
+Playing `emerge` heaves the creature up out of the ground into its standing pose: \
+the body unfolds and the skin stretches into shape across the joints as it rises, \
+reading as a molten mass forming and lifting rather than a rigid model snapping \
+upright, and holds its final standing pose."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Caldera palette discipline"
+text = """
+Uses only the Caldera colors from the brief (incandescent orange-yellow molten \
+core, bright yellow hottest seams, deep-red fissures, and near-black basalt crust) \
+with no out-of-palette colors — the magma reading hot and the crust reading like \
+cooled, cracked rock — and no stray geometry drifting off the body."""
+weight = 1
+domain = "fidelity"

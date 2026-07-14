@@ -1,0 +1,42 @@
+Draw the **Spectra Shard**, a 64x64 enemy-drone sprite, using only the drawing
+tool.
+
+The Shard is a **fixed-band crystalline drone** — one of the swarm of enemies in
+*Spectra*, a two-band formation shooter. You are drawing the *enemy*, never the
+player's ship.
+
+## How drawing works
+
+The only way to make a mark is the `draw` binary already on your `PATH`. It is
+the sole channel: you build the sprite by calling it **one operation at a time**,
+and the ordered list of operations you issue — recorded to `actions.json` — is
+the **authoritative output that is scored**, not the pixels on disk. An image
+produced any other way (writing a PNG directly, editing `canvas.png` by hand) is
+discarded and flagged; only the recorded operations count.
+
+After each call the binary re-renders the current image to `canvas.png` and
+appends the operation to `actions.json`. A blank starting canvas and an empty log
+are already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+draw fill-rect --x 28 --y 28 --width 8 --height 1 --color "#ff4ec7"
+```
+
+Run `draw --help` to list every operation and `draw <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`canvas.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the Shard sprite up operation by operation until the image in `canvas.png`
+matches the brief — a faceted magenta crystal carrying the diamond band glyph,
+with white facet glints. When you are satisfied, stop: the recorded `actions.json`
+is your finished submission.

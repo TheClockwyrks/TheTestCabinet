@@ -4,24 +4,32 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import {
   isAudioAssetKind,
+  isBlenderAssetKind,
   isParticleAssetKind,
   isVoxelAssetKind,
 } from "../../../client";
 import { useTestCases } from "../../data/useTestCases";
+import { useGalleryData } from "../../data/galleryContext";
 import type { TestCaseSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import type { CatalogTab } from "../../routes";
 import styles from "./TestCasesPage.module.scss";
 
-// The catalog's type tabs, always shown in this order so the bar's shape is
-// stable regardless of which types the catalog currently holds. The catalog
-// shows exactly one tab at a time. Asset-generation is split into four
-// asset-family tabs — "2D" (sprite + paint), "3D" (voxel/mesh/skinned),
-// "Particle", and "Audio"; the other three map one-to-one to a test type.
+// The catalog's type tabs, in this order. On a console (canExecute) they are all
+// shown regardless of which types the catalog currently holds, so the bar's shape
+// is stable even for a type that has cases but no runs yet. On the static gallery
+// site the catalog holds only cases with a published run, so a tab with no case
+// under it is hidden (see `visibleTabs`) — mirroring, for the tab bar, the way the
+// grid already lists only published cases. The catalog shows exactly one tab at a
+// time. Asset-generation is split into five asset-family tabs — "2D" (sprite +
+// paint), "3D" (voxel/mesh/skinned), "Blender" (glTF characters), "Particle", and
+// "Audio"; the other three map one-to-one to a test type.
 const CATALOG_TABS: ReadonlyArray<{ tab: CatalogTab; label: string }> = [
   { tab: "end-to-end", label: "E2E" },
+  { tab: "full-stack", label: "Full-stack" },
   { tab: "2d", label: "2D" },
   { tab: "3d", label: "3D" },
+  { tab: "blender", label: "Blender" },
   { tab: "particle", label: "Particle" },
   { tab: "audio", label: "Audio" },
   { tab: "adversarial", label: "Adversarial" },
@@ -41,7 +49,21 @@ interface TestCasesPageProps {
 // listed alphabetically — never ranked.
 export function TestCasesPage({ tab }: TestCasesPageProps) {
   const { testCases, status } = useTestCases();
+  const { canExecute } = useGalleryData();
   const [query, setQuery] = useState("");
+
+  // On the static site (no execution) drop tabs the catalog has no case for, so
+  // the bar advertises only types with a published run; the consoles keep the
+  // full, stable bar.
+  const visibleTabs = useMemo(
+    () =>
+      canExecute
+        ? CATALOG_TABS
+        : CATALOG_TABS.filter((entry) =>
+            testCases.some((testCase) => inTab(testCase, entry.tab)),
+          ),
+    [canExecute, testCases],
+  );
 
   const shown = useMemo(
     () =>
@@ -72,7 +94,7 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
         <>
           <div className={styles.controls}>
             <nav className={styles.tabs} aria-label="Test type">
-              {CATALOG_TABS.map((entry) => (
+              {visibleTabs.map((entry) => (
                 <NavLink
                   key={entry.tab}
                   to={routes.testCasesCatalog(entry.tab)}
@@ -155,17 +177,19 @@ function matches(
   return haystack.includes(needle);
 }
 
-// Whether a case belongs under a given tab. The four asset-family tabs all scope
+// Whether a case belongs under a given tab. The five asset-family tabs all scope
 // to asset-generation cases, partitioned by the case's asset kind: 3D is the
-// voxel/mesh/skinned family, Particle and Audio are their own families, and 2D
-// is the remainder (the sprite and paint kinds, plus a case with no asset kind,
-// which defaults to `sprite`). The other tabs map straight to a test type.
+// voxel/mesh/skinned family, Blender is the glTF-character family, Particle and
+// Audio are their own families, and 2D is the remainder (the sprite and paint
+// kinds, plus a case with no asset kind, which defaults to `sprite`). The other
+// tabs map straight to a test type.
 function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
   switch (tab) {
     case "2d":
       return (
         testCase.testType === "asset-generation" &&
         !isVoxelAssetKind(testCase.assetKind) &&
+        !isBlenderAssetKind(testCase.assetKind) &&
         !isParticleAssetKind(testCase.assetKind) &&
         !isAudioAssetKind(testCase.assetKind)
       );
@@ -173,6 +197,11 @@ function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
       return (
         testCase.testType === "asset-generation" &&
         isVoxelAssetKind(testCase.assetKind)
+      );
+    case "blender":
+      return (
+        testCase.testType === "asset-generation" &&
+        isBlenderAssetKind(testCase.assetKind)
       );
     case "particle":
       return (
@@ -186,6 +215,8 @@ function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
       );
     case "end-to-end":
       return testCase.testType === "end-to-end";
+    case "full-stack":
+      return testCase.testType === "full-stack";
     case "adversarial":
       return testCase.testType === "adversarial";
     case "performance":

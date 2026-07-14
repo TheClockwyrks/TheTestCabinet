@@ -1,0 +1,107 @@
+# Sunfront Garrison — sculpting and rigging brief
+
+You are sculpting and rigging the Sunfront Garrison, a low, wide fortified infantry
+barracks — a muster post from which fresh troopers deploy — as a 3D voxel model with a
+small rig that animates on its own at runtime. There is no target model to copy: build
+something that reads unmistakably as this barracks building and satisfies the animation
+contract below.
+
+This brief fixes what the garrison is and how it must move. It does not give you a parts
+list, joint placements, or pose angles — working out the pieces a fortified barracks needs,
+where they attach, and how they articulate is the challenge. Invent the rig.
+
+## How the tool works
+
+`voxel-anim` paints discrete opaque cells into a voxel volume, one recorded operation at a
+time. Place cells with `set-voxel`/`fill-box`/`stroke-box`/`line`/`add-sphere` (each an
+opaque `#rrggbb` color) and clear them with the matching clear/erase ops; `mirror`
+reflects the field across a plane. Global `--part <name>` selects the part an op sculpts,
+and each part is sculpted separately in its own preview and log; create a part with
+`define-part` before you sculpt into it.
+
+A call **records only** and renders nothing; run `voxel-anim render` to (re)draw
+`parts/<part>.png` and the assembled `scene/*.png`, then read them between calls.
+`voxel-anim --help` is the contract.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It starts
+  empty.
+- x runs across the barracks, 0–{{voxel.maxX}}. y runs up, 0 (the ground) to {{voxel.maxY}} (top). z runs
+  front-to-back, 0–{{voxel.maxZ}}. Forward is +z: the front face — with the muster gate — is toward z = {{voxel.maxZ}}. Up is
+  +y.
+- Build the barracks symmetric about the vertical centerplane; the left and right halves
+  mirror each other. The muster gate, its ramp, and the belfry sit on the centerline.
+- The garrison is low and wide — a broad, squat fortified blockhouse that hugs the ground,
+  not a tall tower or spire. The blockhouse body fills most of the length and width and
+  rises only partway up the volume; the belfry over the gate reaches higher.
+
+## What the Garrison is (and what is yours to invent)
+
+The building must read unmistakably as all of these:
+
+- A low, wide **fortified blockhouse barracks** of brass-and-sandstone masonry — a squat,
+  broad stronghold that hugs the ground, with a **crenellated parapet** along its roofline
+  and **slit windows / firing ports** in its walls so it reads as manned infantry quarters,
+  not a plain box, a tall tower, or an industrial foundry.
+- A fortified **muster gate** set into the front face, with a **deployment ramp** — a
+  hinged gangway at the gate's sill — that troopers march down when they deploy.
+- A small **belfry** (a bell-cote or turret) rising over the gate, holding an iron **muster
+  bell** hung from a yoke.
+- A clear solar-amber energy accent and the palette below.
+
+Everything else is yours to invent — the silhouette and proportions, how the blockhouse is
+tiered and buttressed, how the parapet and firing ports are arranged, how the gate, ramp,
+belfry, and bell are shaped, and how you break the building into rig parts and place its
+joints. The brief rewards a bold, characterful design that is unmistakably the Garrison —
+a humble, fortified infantry billet, plainly different from the faction's foundries and
+its grand Bastion keep — and animates convincingly.
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Masonry — primary plating (brass) | `#c69a4b` |
+| Masonry — dark plating, underside, shadow (bronze) | `#7a5527` |
+| Secondary panels / lighter structure (sandstone) | `#d9c48c` |
+| Mechanisms, gate frame, ramp hinges, the bell (iron) | `#565c64` |
+| Energy accent (solar amber) | `#ff9d2e` |
+| Glowing core highlight (solar hot) | `#ffd76b` |
+
+The solar-amber accent is the team-tint region: give the garrison a clear amber glow at
+the muster gate and in the slit windows / firing ports (with solar-hot at the brightest
+points), so the accent reads from multiple angles.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author the
+motion). Both are self-playing decorative idles (`auto_play`, looping): the garrison
+cycles continuously on its own with no caller. Author each with `voxel-anim
+define-animation` then `add-keyframe`, choosing the period and interpolation so the motion
+carries weight and every loop is seamless.
+
+- **`muster_ramp_drop`** — the front deployment ramp hinges **down** from the muster gate's
+  sill toward the ground and lifts back up each cycle, pivoting on its hinge like a
+  drawbridge or gangway; the blockhouse holds still.
+- **`muster_bell_swing`** — the belfry bell swings side to side about its yoke each cycle,
+  like a pendulum ringing; the blockhouse holds still.
+
+You may add extra parts, joints, and auto-play animations of your own; you must produce
+these two animations, by these names, and must not contradict them.
+
+## Working the tool
+
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the ramp seats into the
+gate's sill on its hinge, the bell hangs in the belfry, and the animations read with
+weight. Run `voxel-anim --help` for the available
+operations, the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Run `voxel-anim render` before you finish
+so it emits the per-part `.glb` geometry your result is built from — an unrendered part
+scores as empty (`voxel-anim render --component <part>` renders one part; `voxel-anim
+render --time <ms> --animation <name>` renders the model posed at that instant to check
+the motion). The recorded per-part logs and `rig.json` are the authoritative output.

@@ -1,14 +1,13 @@
 # The performance run-container image for The Test Cabinet.
 #
 # Every performance run executes in this one image (all performance test cases
-# share it). It is the base run-container image plus, like the adversarial image,
-# The Test Cabinet's own tooling baked in — here the Lattice toolchain a model
-# develops a factory-simulation engine with (see the performance docs under
-# `apps/docs/src/content/docs/testing/performance/`):
+# share it). It is the Rust/wasm base image (`base-wasm`) — which already provides
+# the **Rust toolchain** with the `wasm32-unknown-unknown` target a model's engine
+# compiles to a wasm core module with *in-container* during the run — plus, like the
+# adversarial image, The Test Cabinet's own tooling baked in: here the Lattice
+# toolchain a model develops a factory-simulation engine with (see the performance
+# docs under `apps/docs/src/content/docs/testing/performance/`):
 #
-#   - the **Rust toolchain** with the `wasm32-unknown-unknown` target, so a
-#     model's engine compiles to a wasm core module *in-container* during the run
-#     (the case's `[build]` commands run here at run time);
 #   - the **`lattice` CLI** (`/usr/local/bin/lattice`), the binary a model runs to
 #     solve scenarios with the oracle and score its engine locally — the same
 #     `lattice-host` the validator scores with, so a local result means what a
@@ -33,18 +32,20 @@
 # repository root so the compile stage can see `crates/` and the committed training
 # fixtures under `test-cases/` (see `containers/build.sh`).
 #
-# This image inherits everything from the base — the Node toolchain, the
-# unprivileged `node` run user, the `/work` working directory, and the keep-alive
-# CMD. End-to-end runs use the base image directly; the image a run resolves is
-# selected by its test type (see crate `harness::resolve_run_image`).
+# This image inherits everything from base-wasm — the Node toolchain, the Rust +
+# `wasm32-unknown-unknown` toolchain, the unprivileged `node` run user, the `/work`
+# working directory, and the keep-alive CMD. The image a run resolves is selected by
+# its test type (see crate `harness::resolve_run_image`).
 
-# `BASE_IMAGE` is the base image to extend. It is declared here, BEFORE the first
+# `BASE_IMAGE` is the base image to extend — the Rust/wasm base (`base-wasm`), which
+# carries the pinned Rust toolchain (the `RUST_VERSION` there must stay compatible
+# with the buildkit crates this image bakes). It is declared here, BEFORE the first
 # `FROM`, so it is a global build arg the final `FROM` below can consume — an `ARG`
 # declared after a `FROM` is scoped to that stage and would be blank in a later
-# `FROM`. `build.sh` passes the base image it just built (e.g. the local
-# `test-cabinet-base:latest`, or a registry-qualified tag) so this image is always
-# `FROM` the matching base.
-ARG BASE_IMAGE=test-cabinet-base:latest
+# `FROM`. `build.sh` passes the base-wasm image it just built (e.g. the local
+# `test-cabinet-base-wasm:latest`, or a registry-qualified tag) so this image is
+# always `FROM` the matching base-wasm.
+ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 
 # --- Stage 1: compile the Lattice tooling from this repository ----------------
 # A full Rust image (not the slim base) so the `lattice` CLI, the reference wasm
@@ -82,45 +83,14 @@ RUN mkdir -p /opt/lattice/buildkit \
 		--manifest-path /opt/lattice/buildkit/lattice-sdk/Cargo.toml \
 		--target-dir /tmp/buildkit-smoke
 
-# --- Stage 2: the base run image, plus the Rust toolchain and the Lattice tooling
+# --- Stage 2: the base-wasm run image, plus the Lattice tooling --------------
+# `FROM` base-wasm, which already carries the Rust + `wasm32-unknown-unknown`
+# toolchain an engine compiles with; this image only adds the Lattice tooling.
 FROM ${BASE_IMAGE}
 
-# The pinned Rust toolchain version installed for in-container engine builds. Pin
-# it (rather than tracking `stable`) so every performance run compiles a model's
-# engine with the same compiler, keeping produced wasm reproducible; bump it
-# deliberately. This must stay compatible with the baked buildkit crates.
-ARG RUST_VERSION=1.96.0
-
-# Install the Rust toolchain into a system-wide, root-owned location so it is
-# shared by every run rather than re-downloaded per run, and add the
-# `wasm32-unknown-unknown` target the engine compiles to. rustup needs root to
-# write under /usr/local, so this runs before the base image's `USER node` would
-# otherwise take effect — switch to root explicitly, then drop back.
+# The COPY/chmod below write and re-permission root-owned paths, so switch to root
+# for them; base-wasm ends on `USER node`, and we drop back at the end.
 USER root
-ENV RUSTUP_HOME=/usr/local/rustup \
-	CARGO_HOME=/usr/local/cargo \
-	PATH=/usr/local/cargo/bin:$PATH
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-		| sh -s -- -y --no-modify-path --profile minimal \
-			--default-toolchain "${RUST_VERSION}" \
-			--target wasm32-unknown-unknown \
-	# Make the toolchain world-readable/executable so the unprivileged `node` run
-	# user can invoke `cargo`/`rustc` and the wasm target without owning the
-	# install. CARGO_HOME's registry/cache must be writable by the run user so an
-	# engine build can resolve and compile its dependencies at run time.
-	&& chmod -R a+rX /usr/local/rustup /usr/local/cargo \
-	&& mkdir -p /usr/local/cargo/registry \
-	&& chown -R node:node /usr/local/cargo/registry \
-	# The `ENV PATH` above only covers the container's main process and non-login
-	# execs (e.g. the harness's run-time install command). The agent harness runs
-	# its own shell commands through a *login* shell (`bash -lc`), which sources
-	# `/etc/profile`; on Debian that unconditionally re-sets PATH to a fixed
-	# default, dropping `/usr/local/cargo/bin` — so an agent that shells out to
-	# `cargo`/`rustc` to build its engine would not find them. Drop a profile.d
-	# snippet that re-adds cargo's bin dir; profile.d scripts run *after*
-	# `/etc/profile` sets its default PATH, so login shells see `cargo`.
-	&& printf 'export PATH=/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/rust-cargo.sh \
-	&& chmod a+r /etc/profile.d/rust-cargo.sh
 
 # Bake the `lattice` CLI onto PATH. `/usr/local/bin` is root-owned (COPY writes as
 # root regardless of the inherited run user); the unprivileged run user only
@@ -147,7 +117,7 @@ COPY crates/lattice-ref-transport/src/lib.rs /opt/lattice/references/transport/l
 # from the case's version folder so they stay in lockstep with the engine the
 # validator scores against; they are deliberately disjoint from the HELD-OUT scored
 # set, which lives only with the case and is never copied here.
-COPY test-cases/lattice/v1.0.0/references/training /opt/lattice/training
+COPY test-cases/performance/hard/lattice/v1.0.0/references/training /opt/lattice/training
 
 # Make everything under /opt/lattice world-readable (and directories traversable)
 # so the unprivileged run user can read the buildkit, references, and training set

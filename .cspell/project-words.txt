@@ -17,7 +17,6 @@ autotile
 autotiled
 autotiles
 deadzone
-defence
 despawn
 despawns
 keybinds
@@ -113,9 +112,11 @@ pathfinding
 dests
 buildkit
 cdylib
+rlib
 rustc
 rustup
 bindgen
+binaryen
 wasmtime
 schemars
 wasip
@@ -152,6 +153,9 @@ Skyworks
 hatchery
 Flak
 hitscan
+autocannon
+crenellated
+mechs
 prowed
 sponsons
 
@@ -190,6 +194,7 @@ loadouts
 
 # Caldera hex-terrain strategy tower-defense test case.
 hotbar
+buildability
 buildables
 unpowered
 chokepoints
@@ -253,3 +258,104 @@ chiptune
 bitcrush
 bezelled
 voicings
+reharmonize
+loopable
+bmesh
+gltf
+bpy
+
+# Full-stack test cases (hollowdeep, holdfast, junction, midway): case + variant
+# slugs, coined game/sim terms, and reference-mockup CSS identifiers.
+hollowdeep
+deepstart
+unmined
+siegeworks
+gatherable
+gatherables
+roughterrain
+zoneable
+roadline
+terraforming
+unstaffed
+pathed
+topbar
+bottombar
+needbar
+
+# Standard input-device term (siege-rifleman brief).
+numpad
+
+# Spec, changelog, and reference-impl vocabulary: coined game terms, audio
+# controls, code identifiers in mockups, and common dev abbreviations.
+unmute
+muteable
+undoable
+unseeable
+wavefronts
+alikes
+invuln
+deenergized
+repath
+reband
+retunes
+retuned
+rebalances
+playtesting
+impls
+inlines
+rects
+CSPRNG
+serp
+modeselect
+gameover
+Vite
+
+# Valence (valence) domain terms and reference mockup class names.
+Monatom
+Monatoms
+Macromass
+camo
+strippable
+untargetable
+multiplicatively
+ctrls
+Bloons
+stackable
+chippable
+
+# Junction reference-impl DESIGN/README (Rust→wasm city builder).
+PRNG
+blit
+STATN
+landvalue
+Menlo
+Consolas
+tunables
+mult
+openrouter
+svgl
+uncurated
+scaffolder
+
+# Siege-rifle / siege-turret asset-gen briefs (firearm & 3D-modeling terms).
+unrigged
+handguard
+foregrip
+greebles
+
+# Full-stack reference-impl DESIGN/ASSETS/README (holdfast, hollowdeep, midway).
+# Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
+# splits out of words like **GEN**erator and **PRIO**rity.
+Sela
+supercover
+regen
+blitted
+unmuted
+erator
+prio
+rity
+pathable
+subemitter
+headlessly
+accum
+lerp

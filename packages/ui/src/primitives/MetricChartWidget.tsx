@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { canonicalModelId } from "../modelId";
 import { Chart } from "./Chart";
 import { Panel } from "./Panel";
@@ -22,14 +22,14 @@ interface MetricChartWidgetProps {
   /** Heading naming the metric, e.g. "Average tokens". */
   title: string;
   /** The runs to chart, already scoped to one case + variant and sorted. */
-  runs: RunRecord[];
+  runs: RunSummary[];
   /**
    * Pulls the charted value out of a run (token total, cost, …). A run for which
    * the value is `null` — the metric could not be determined for that run's
    * harness — is excluded from the chart entirely rather than plotted as zero, so
    * an incomplete figure never distorts the comparison.
    */
-  value: (run: RunRecord) => number | null;
+  value: (run: RunSummary) => number | null;
   /** Unit shown on the y axis, e.g. "tokens" or "USD". */
   unit: string;
   /** d3 tick format for the y axis; pass a compact format for large counts. */
@@ -42,6 +42,13 @@ interface MetricChartWidgetProps {
    * accent. Omit entirely to color every bar with the accent.
    */
   colorForModel?: (modelId: string) => string | null | undefined;
+  /**
+   * Resolves a run's (canonicalized) `modelId` to the label shown on its bar —
+   * e.g. the catalog display name ("Anthropic Claude Opus 4.8") in place of the
+   * raw id. Return null/undefined for a model with no better label and the bar
+   * falls back to the canonical id. Omit entirely to label every bar by its id.
+   */
+  labelForModel?: (modelId: string) => string | null | undefined;
 }
 
 // A self-contained metric chart: a titled, full-width panel that charts one
@@ -56,13 +63,14 @@ export function MetricChartWidget({
   yTickFormat,
   barMode = "perRun",
   colorForModel,
+  labelForModel,
 }: MetricChartWidgetProps) {
   const barPoints = useMemo<BarPoint[]>(
     () =>
       barMode === "meanByModel"
-        ? meanBars(runs, value, colorForModel)
-        : runBars(runs, value, colorForModel),
-    [runs, value, barMode, colorForModel],
+        ? meanBars(runs, value, colorForModel, labelForModel)
+        : runBars(runs, value, colorForModel, labelForModel),
+    [runs, value, barMode, colorForModel, labelForModel],
   );
 
   // Memoized so <Chart> only re-plots when the data or unit change.
@@ -81,15 +89,17 @@ export function MetricChartWidget({
   );
 }
 
-// Builds one labeled bar per run. Labels prefer the model id, disambiguating
-// with the harness slug when the same model ran the variant more than once. Model
-// ids are canonicalized first, so an `openrouter/`-prefixed run and its bare
-// equivalent count as the same model. Runs whose value is unknown (`null`) are
-// dropped so they don't appear as zero bars.
+// Builds one labeled bar per run. Labels prefer the resolved model name (falling
+// back to the canonical id), disambiguating with the harness slug when the same
+// model ran the variant more than once. Model ids are canonicalized first, so an
+// `openrouter/`-prefixed run and its bare equivalent count as the same model.
+// Runs whose value is unknown (`null`) are dropped so they don't appear as zero
+// bars.
 function runBars(
-  runs: RunRecord[],
-  value: (run: RunRecord) => number | null,
+  runs: RunSummary[],
+  value: (run: RunSummary) => number | null,
   colorForModel?: (modelId: string) => string | null | undefined,
+  labelForModel?: (modelId: string) => string | null | undefined,
 ): BarPoint[] {
   const counts = new Map<string, number>();
   for (const run of runs) {
@@ -100,12 +110,13 @@ function runBars(
     const v = value(run);
     if (v === null) return [];
     const modelId = canonicalModelId(run.subject.modelId);
+    const name = labelForModel?.(modelId) ?? modelId;
     return [
       {
         label:
           (counts.get(modelId) ?? 0) > 1
-            ? `${modelId} · ${run.subject.harnessSlug}`
-            : modelId,
+            ? `${name} · ${run.subject.harnessSlug}`
+            : name,
         value: v,
         color: colorForModel?.(modelId) ?? undefined,
       },
@@ -116,13 +127,15 @@ function runBars(
 // Builds one bar per model: the mean of `value` across that model's runs, i.e.
 // the average per run. Model ids are canonicalized first, so an
 // `openrouter/`-prefixed run and its bare equivalent aggregate into one bar.
-// Models keep their first-seen order. Runs whose value is unknown (`null`) are
-// excluded from the mean; a model with no known values gets no bar at all rather
-// than a misleading zero.
+// Models keep their first-seen order. Bars are labeled by the resolved model
+// name (falling back to the canonical id). Runs whose value is unknown (`null`)
+// are excluded from the mean; a model with no known values gets no bar at all
+// rather than a misleading zero.
 function meanBars(
-  runs: RunRecord[],
-  value: (run: RunRecord) => number | null,
+  runs: RunSummary[],
+  value: (run: RunSummary) => number | null,
   colorForModel?: (modelId: string) => string | null | undefined,
+  labelForModel?: (modelId: string) => string | null | undefined,
 ): BarPoint[] {
   const totals = new Map<string, { sum: number; count: number }>();
   const order: string[] = [];
@@ -142,7 +155,7 @@ function meanBars(
   return order.map((model) => {
     const { sum, count } = totals.get(model)!;
     return {
-      label: model,
+      label: labelForModel?.(model) ?? model,
       value: sum / count,
       color: colorForModel?.(model) ?? undefined,
     };

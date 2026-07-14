@@ -740,6 +740,8 @@ impl Validator for VoxelGenValidator {
                 // A skinned run deforms one mesh; the marker tells the viewer to skin
                 // rather than pose per-part.
                 skinned: test_case.asset_kind.is_skinned(),
+                // The voxel-family kinds pose from `rig.json`, not a baked glTF.
+                blender: false,
                 detail: (!run_notes.is_empty()).then(|| run_notes.join("; ")),
             }),
             ui: None,
@@ -1886,6 +1888,469 @@ fn wav_is_silent(data: &[u8], bits: u16) -> bool {
     peak <= THRESHOLD
 }
 
+// ===========================================================================
+// Blender character validator (`blender-character`).
+//
+// The authoritative output is the emitted `character.glb` (a skinned, animated glTF
+// 2.0) the model's `build.py` exports — NEVER an operation-log replay. The validator
+// decodes the glTF's JSON header to confirm a skinned mesh is present and collects the
+// animation names, reconciles them against the required set, and — for provenance —
+// re-runs `build.py` through the `tcab-blend` runner and compares the re-exported glTF
+// to the run's. This is the emitted-file-authoritative model (like the voxel/skinned
+// kinds); the provenance re-run is the Blender analogue of the sprite cheat-divergence
+// signal, recorded rather than gated.
+// ===========================================================================
+
+/// A validator for the Blender character kind (`blender-character`). See the module
+/// comment above.
+#[derive(Debug, Clone, Default)]
+pub struct BlenderGenValidator;
+
+impl BlenderGenValidator {
+    /// A new Blender validator. It keeps no state.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Validator for BlenderGenValidator {
+    fn validate(
+        &self,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
+        artifacts: &ArtifactCollection,
+        // A Blender character run has no target model, so references are unused here.
+        _references: &[RenderedReference],
+        proofs: &[ProofFile],
+    ) -> Result<ValidationSummary> {
+        let repo = &artifacts.repo_path;
+        let proof_results = proof_results(proofs, repo);
+        let kind = test_case.asset_kind;
+        // A character deforms one skinned mesh; a prop/mechanism emits a static or
+        // rigidly-parented glTF with no skin. A prop is static (no `[model]`); a character
+        // and a mechanism reconcile the emitted glTF against required animations.
+        let expect_skin = kind.blender_is_skinned();
+        let animated = kind.blender_is_animated();
+
+        let (Some(bounds), Some(tool), Some(output)) = (
+            test_case.voxel_for(variant),
+            test_case.tool.as_ref(),
+            test_case.output.as_ref(),
+        ) else {
+            return Ok(failed_load(
+                "Blender validation requires [voxel], [tool], and [output]",
+                None,
+                None,
+                proof_results,
+            ));
+        };
+        // The `[model]` table is required for the animated members and absent for a prop.
+        let model = test_case.model.as_ref();
+        if animated && model.is_none() {
+            return Ok(failed_load(
+                "an animated Blender case requires a [model] table of required animations",
+                None,
+                None,
+                proof_results,
+            ));
+        }
+        if let Err(err) = test_cabinet_model_core::PreviewBackground::parse(&bounds.background) {
+            return Ok(failed_load(
+                &format!("invalid bounding-box background: {err}"),
+                None,
+                None,
+                proof_results,
+            ));
+        }
+
+        let mesh_rel = kind
+            .blender_mesh_dest()
+            .unwrap_or(crate::test_case::BLENDER_MESH_DEST);
+        let mesh_path = repo.join(mesh_rel);
+
+        // Decode the emitted glTF header. A missing or malformed glTF is a failed load
+        // (the run produced nothing scorable), mirroring the other emitted-data kinds.
+        let summary = match read_glb_summary(&mesh_path) {
+            Ok(summary) => summary,
+            Err(detail) => {
+                return Ok(failed_load(
+                    &format!("emitted `{mesh_rel}` is not a readable glTF: {detail}"),
+                    None,
+                    None,
+                    proof_results,
+                ));
+            }
+        };
+
+        let mut run_notes: Vec<String> = Vec::new();
+        if summary.mesh_count == 0 {
+            run_notes.push("the emitted glTF carries no mesh".to_string());
+        }
+        // Only a character must be skinned. A prop/mechanism deliberately carries no skin
+        // (a static or rigidly-parented glTF), so a missing skin is expected there.
+        if expect_skin && !summary.skins_present {
+            run_notes.push("the emitted glTF carries no skin (no skeleton-bound mesh)".to_string());
+        }
+
+        // Reconcile the produced animations against the required set: each required
+        // animation must be present in the emitted glTF and actually animate (carry
+        // channels). A gap is recorded in the run-level detail — not gated. A static prop
+        // declares no animations, so this is skipped.
+        if let Some(model) = model {
+            let produced: std::collections::HashSet<&str> =
+                summary.animation_names.iter().map(String::as_str).collect();
+            for animation in &model.animations {
+                if !produced.contains(animation.name.as_str()) {
+                    run_notes.push(format!(
+                        "required animation `{}` is missing from the emitted glTF (or animates \
+                         nothing)",
+                        animation.name
+                    ));
+                }
+            }
+
+            // Reconcile the required **caller joints** — the game-facing procedural DOFs
+            // (`turret_yaw`) — against the DOFs the model tagged into the emitted glTF's
+            // node `extras` (`tcab_joint`). Each required joint must be present with the
+            // right kind (rotation/translation) and axis so a game can find and drive it.
+            // A missing or mis-typed DOF is a recorded contract-gap note — not gated, the
+            // same pattern as the animation reconciliation above.
+            for joint in model
+                .joints
+                .iter()
+                .filter(|j| j.drive == crate::test_case::DriveKindSpec::Caller)
+            {
+                match summary.caller_joints.iter().find(|t| t.name == joint.name) {
+                    None => run_notes.push(format!(
+                        "required caller DOF `{}` is not exposed in the emitted glTF (no node \
+                         carries a `tcab_joint` extras tag with that name) — a game cannot drive it",
+                        joint.name
+                    )),
+                    Some(tagged) => {
+                        let want_kind = joint_kind_str(joint.kind);
+                        let want_axis = axis_str(joint.axis);
+                        if tagged.kind.as_deref() != Some(want_kind) {
+                            run_notes.push(format!(
+                                "caller DOF `{}` is exposed as kind `{}` but the case requires `{want_kind}`",
+                                joint.name,
+                                tagged.kind.as_deref().unwrap_or("<unset>")
+                            ));
+                        }
+                        if tagged.axis.as_deref() != Some(want_axis) {
+                            run_notes.push(format!(
+                                "caller DOF `{}` is exposed on axis `{}` but the case requires `{want_axis}`",
+                                joint.name,
+                                tagged.axis.as_deref().unwrap_or("<unset>")
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Provenance: re-run the authored `build.py` through `tcab-blend` and compare the
+        // re-exported glTF to the run's. Divergence is recorded, not gated (the Blender
+        // analogue of cheat-divergence). Absent runner/Blender (e.g. a host without the
+        // image) is skipped silently rather than noted.
+        match rerun_provenance(repo, tool, output, mesh_rel, &summary) {
+            Ok(Some(note)) => run_notes.push(note),
+            Ok(None) => {}
+            Err(detail) => {
+                run_notes.push(format!(
+                    "provenance re-run could not be performed: {detail}"
+                ));
+            }
+        }
+
+        // The single part points the 3D viewer at the emitted glTF; the viewer plays the
+        // glTF-native animations and (for a character) skins the one mesh. Named
+        // `character` for a character, `model` for a prop/mechanism.
+        let part = VoxelPartResult {
+            name: if expect_skin { "character" } else { "model" }.to_string(),
+            mesh: rel_string(Path::new(mesh_rel)),
+            preview_image: rel_string(&tool.preview),
+            ops_log: rel_string(&output.actions),
+            operation_count: 0,
+            voxel_count: 0,
+            detail: None,
+        };
+
+        Ok(ValidationSummary {
+            // A positive load is a well-formed glTF with at least one mesh; a character
+            // must additionally carry a skin.
+            loaded: summary.mesh_count > 0 && (!expect_skin || summary.skins_present),
+            detail: None,
+            install: None,
+            build: None,
+            checks: Vec::new(),
+            proofs: proof_results,
+            asset: None,
+            voxel: Some(VoxelGenResult {
+                parts: vec![part],
+                // The required animations (the scoring targets); `None` for a static prop.
+                model: model.cloned(),
+                // A Blender run carries its rig/animations in the glTF itself, not a
+                // separate `rig.json`, so there is no parsed rig doc to surface here.
+                rig: None,
+                // Only a character deforms one mesh by a skeleton; a prop/mechanism is
+                // rigid, so the viewer does not skin it.
+                skinned: expect_skin,
+                // The emitted glTF carries its own baked animations (or is static): the
+                // viewer loads it with a native glTF player rather than posing from a
+                // `rig.json`.
+                blender: true,
+                detail: (!run_notes.is_empty()).then(|| run_notes.join("; ")),
+            }),
+            ui: None,
+            material: None,
+            particle: None,
+            audio: None,
+            adversarial: None,
+            performance: None,
+        })
+    }
+}
+
+/// A minimal decode of a glTF 2.0 container's JSON header — enough to validate a
+/// Blender character run without a glTF dependency: whether it carries a skinned mesh
+/// and which animations it defines. Works for both a binary `.glb` (magic + JSON chunk)
+/// and a text `.gltf` (raw JSON).
+struct GlbSummary {
+    mesh_count: usize,
+    skins_present: bool,
+    /// The names of animations that actually animate (carry at least one channel).
+    animation_names: Vec<String>,
+    /// The runtime-drivable **caller DOFs** the model tagged into node `extras`
+    /// (`tcab_joint`) — the game-facing procedural interface. Reconciled against the
+    /// case's required caller joints.
+    caller_joints: Vec<GltfJointTag>,
+}
+
+/// The glTF JSON header fields the validator reads. Everything else is ignored.
+#[derive(serde::Deserialize)]
+struct GltfHeader {
+    #[serde(default)]
+    meshes: Vec<serde_json::Value>,
+    #[serde(default)]
+    skins: Vec<serde_json::Value>,
+    #[serde(default)]
+    animations: Vec<GltfAnimationHeader>,
+    /// The scene nodes, read only for their `extras.tcab_joint` DOF tags.
+    #[serde(default)]
+    nodes: Vec<GltfNodeHeader>,
+}
+
+#[derive(serde::Deserialize)]
+struct GltfAnimationHeader {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    channels: Vec<serde_json::Value>,
+}
+
+/// A glTF node, read only for the `tcab_joint` DOF descriptor a Blender model bakes into
+/// its `extras` (via Blender custom properties + `export_extras`).
+#[derive(serde::Deserialize)]
+struct GltfNodeHeader {
+    #[serde(default)]
+    extras: Option<GltfNodeExtras>,
+}
+
+#[derive(serde::Deserialize)]
+struct GltfNodeExtras {
+    #[serde(default)]
+    tcab_joint: Option<GltfJointTag>,
+}
+
+/// The runtime-drivable-DOF descriptor a Blender model tags a node's `extras` with — the
+/// self-contained, in-file (no sidecar, no custom extension) game-facing joint interface.
+/// The validator reads the identity/kind/axis to reconcile against the required set; the
+/// browser reads the same tag (plus limits) to drive the node live.
+#[derive(serde::Deserialize, Clone)]
+struct GltfJointTag {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    kind: Option<String>,
+    #[serde(default)]
+    axis: Option<String>,
+}
+
+/// Read and summarize the glTF at `path`. Returns a human-readable error string when the
+/// file is missing, is not a glTF container, or its JSON header does not parse.
+fn read_glb_summary(path: &Path) -> std::result::Result<GlbSummary, String> {
+    let bytes =
+        std::fs::read(path).map_err(|err| format!("cannot read `{}`: {err}", path.display()))?;
+
+    // A binary glTF begins with the magic `glTF` (0x46546C67) + version 2, then a JSON
+    // chunk (type 0x4E4F534A). A text `.gltf` is raw JSON. Support both.
+    const GLB_MAGIC: u32 = 0x4654_6C67;
+    const JSON_CHUNK: u32 = 0x4E4F_534A;
+    let json_bytes: Vec<u8> = if bytes.len() >= 12
+        && u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) == GLB_MAGIC
+    {
+        let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        if version != 2 {
+            return Err(format!("unsupported glb version {version} (expected 2)"));
+        }
+        if bytes.len() < 20 {
+            return Err("truncated glb: no JSON chunk header".to_string());
+        }
+        let chunk_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+        let chunk_type = u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+        if chunk_type != JSON_CHUNK {
+            return Err("first glb chunk is not JSON".to_string());
+        }
+        let end = 20usize
+            .checked_add(chunk_len)
+            .filter(|&end| end <= bytes.len())
+            .ok_or_else(|| "glb JSON chunk length exceeds file".to_string())?;
+        bytes[20..end].to_vec()
+    } else {
+        bytes
+    };
+
+    let header: GltfHeader = serde_json::from_slice(&json_bytes)
+        .map_err(|err| format!("glTF JSON header does not parse: {err}"))?;
+    let animation_names = header
+        .animations
+        .iter()
+        .filter(|animation| !animation.channels.is_empty())
+        .filter_map(|animation| animation.name.clone())
+        .collect();
+    // Collect the DOF tags any node carries in its `extras` (named, non-empty ones).
+    let caller_joints = header
+        .nodes
+        .into_iter()
+        .filter_map(|node| node.extras.and_then(|extras| extras.tcab_joint))
+        .filter(|tag| !tag.name.trim().is_empty())
+        .collect();
+    Ok(GlbSummary {
+        mesh_count: header.meshes.len(),
+        skins_present: !header.skins.is_empty(),
+        animation_names,
+        caller_joints,
+    })
+}
+
+/// The glTF-`extras` string form of a required joint's kind, for reconciliation against
+/// the DOF a model tagged into the emitted glTF (`"rotation"` / `"translation"`).
+fn joint_kind_str(kind: crate::test_case::JointKindSpec) -> &'static str {
+    match kind {
+        crate::test_case::JointKindSpec::Rotation => "rotation",
+        crate::test_case::JointKindSpec::Translation => "translation",
+    }
+}
+
+/// The glTF-`extras` string form of a required joint's axis (`"x"` / `"y"` / `"z"`).
+fn axis_str(axis: crate::test_case::AxisSpec) -> &'static str {
+    match axis {
+        crate::test_case::AxisSpec::X => "x",
+        crate::test_case::AxisSpec::Y => "y",
+        crate::test_case::AxisSpec::Z => "z",
+    }
+}
+
+/// Re-run the authored `build.py` through the `tcab-blend` runner in a scratch copy and
+/// compare the re-exported glTF's summary to the run's. Returns `Ok(Some(note))` when the
+/// re-run diverges (recorded, not gated), `Ok(None)` when it matches or the runner is not
+/// available on this host (skipped silently), and `Err` when the re-run is attempted but
+/// fails for an unexpected reason.
+fn rerun_provenance(
+    repo: &Path,
+    tool: &crate::test_case::ToolSpec,
+    output: &crate::test_case::OutputSpec,
+    mesh_rel: &str,
+    original: &GlbSummary,
+) -> std::result::Result<Option<String>, String> {
+    use std::process::Command;
+
+    let scratch =
+        std::env::temp_dir().join(format!("tcab-blend-provenance-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).map_err(|err| err.to_string())?;
+
+    // The `build.py` and the seeded config are all the runner needs to rebuild.
+    for rel in [
+        output.actions.to_string_lossy().to_string(),
+        crate::test_case::BLENDER_CONFIG_DEST.to_string(),
+    ] {
+        let src = repo.join(&rel);
+        if src.exists() {
+            let dest = scratch.join(&rel);
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            std::fs::copy(&src, &dest).map_err(|err| err.to_string())?;
+        }
+    }
+
+    let run = Command::new(&tool.binary).current_dir(&scratch).output();
+    let outcome = match run {
+        Ok(outcome) => outcome,
+        // The runner is not installed on this host (e.g. validating outside the Blender
+        // image): skip provenance silently rather than flag every run.
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            let _ = std::fs::remove_dir_all(&scratch);
+            return Ok(None);
+        }
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(&scratch);
+            return Err(err.to_string());
+        }
+    };
+
+    let note = if !outcome.status.success() {
+        Some(
+            "provenance re-run of build.py failed to execute — the script may not be \
+             self-contained or reproducible"
+                .to_string(),
+        )
+    } else {
+        match read_glb_summary(&scratch.join(mesh_rel)) {
+            Err(_) => Some(format!(
+                "provenance re-run of build.py did not reproduce {mesh_rel}"
+            )),
+            Ok(rebuilt) => {
+                let mut original_anims = original.animation_names.clone();
+                let mut rebuilt_anims = rebuilt.animation_names.clone();
+                original_anims.sort();
+                rebuilt_anims.sort();
+                // The caller-DOF interface must reproduce too — a build.py that emits the
+                // DOF tags nondeterministically is as much a provenance gap as a missing
+                // animation.
+                let mut original_dofs: Vec<&str> = original
+                    .caller_joints
+                    .iter()
+                    .map(|t| t.name.as_str())
+                    .collect();
+                let mut rebuilt_dofs: Vec<&str> = rebuilt
+                    .caller_joints
+                    .iter()
+                    .map(|t| t.name.as_str())
+                    .collect();
+                original_dofs.sort_unstable();
+                rebuilt_dofs.sort_unstable();
+                if rebuilt.mesh_count != original.mesh_count
+                    || rebuilt.skins_present != original.skins_present
+                    || rebuilt_anims != original_anims
+                    || rebuilt_dofs != original_dofs
+                {
+                    Some(
+                        "provenance re-run diverged from the emitted glTF — build.py may not \
+                         fully author the asset it exported"
+                            .to_string(),
+                    )
+                } else {
+                    None
+                }
+            }
+        }
+    };
+    let _ = std::fs::remove_dir_all(&scratch);
+    Ok(note)
+}
+
 /// Dispatches validation to the validator for the case's [`TestType`]. The
 /// orchestrator holds one validator, so this composes the per-type validators
 /// behind the single [`Validator`] interface and keeps the run pipeline unaware
@@ -1898,6 +2363,7 @@ pub struct DispatchValidator {
     paint: PaintGenValidator,
     particle: ParticleGenValidator,
     audio: AudioGenValidator,
+    blender: BlenderGenValidator,
     adversarial: AdversarialValidator,
     performance: PerformanceValidator,
 }
@@ -1914,6 +2380,7 @@ impl DispatchValidator {
             paint: PaintGenValidator::new(),
             particle: ParticleGenValidator::new(),
             audio: AudioGenValidator::new(),
+            blender: BlenderGenValidator::new(),
             adversarial: AdversarialValidator::new(),
             performance: PerformanceValidator::new(),
         }
@@ -1930,7 +2397,10 @@ impl Validator for DispatchValidator {
         proofs: &[ProofFile],
     ) -> Result<ValidationSummary> {
         match test_case.test_type {
-            TestType::EndToEnd => self
+            // A full-stack run builds a program just like an end-to-end run — it
+            // additionally produces its own assets, but those are build inputs, not a
+            // separately-scored output — so it routes to the same build validator.
+            TestType::EndToEnd | TestType::FullStack => self
                 .build
                 .validate(test_case, variant, artifacts, references, proofs),
             // Each asset kind routes to the validator for the data it emits: the
@@ -1951,6 +2421,9 @@ impl Validator for DispatchValidator {
                         .validate(test_case, variant, artifacts, references, proofs)
                 } else if kind.is_audio() {
                     self.audio
+                        .validate(test_case, variant, artifacts, references, proofs)
+                } else if kind.is_blender() {
+                    self.blender
                         .validate(test_case, variant, artifacts, references, proofs)
                 } else {
                     self.asset

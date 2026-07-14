@@ -1,9 +1,0 @@
-# The default Meltdown variant: the standard Containment defense on the one fixed
-# reactor floor. Listed first in the case manifest's `variants`, so it is the
-# default. It supplies the `title` view's menu mockup; `gameplay` and `game-over`
-# are common. Every path here resolves against the version folder, exactly like
-# the main manifest.
-slug = "base"
-name = "Base"
-description = "The standard Containment defense on the one fixed reactor floor."
-reference = [{ view = "title", path = "reference/menu-base.html" }]

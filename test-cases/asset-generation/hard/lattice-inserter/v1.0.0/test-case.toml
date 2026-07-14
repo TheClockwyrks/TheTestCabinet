@@ -1,0 +1,195 @@
+slug = "lattice-inserter"
+experimental = true
+name = "Lattice Inserter"
+difficulty = "hard"
+tags = ["sprite-sheet", "machine"]
+summary = """
+Draw the Lattice inserter: a swing-arm machine for a deterministic factory \
+simulation, drawn in Factorio's high-angle pseudo-3D style, as twelve 64x64 \
+frames whose arm sweeps an item across the floor from the left pickup tile to the \
+right drop tile and swings back empty in a seamless loop, produced one drawing \
+operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header
+# (`[canvas]`).
+variants = ["variants/base.toml"]
+
+# Each frame is its own 64x64 transparent canvas (a separate file) — a 2x2-tile
+# box (32 px/tile) so the arm's reach toward the neighboring pickup and drop
+# tiles fits. Fixing the frame size keeps every run comparable.
+[canvas]
+width = 64
+height = 64
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 64x64 file — and the named
+# animation sequence a reviewer plays back.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.frame]]
+index = 8
+
+[[sheet.frame]]
+index = 9
+
+[[sheet.frame]]
+index = 10
+
+[[sheet.frame]]
+index = 11
+
+[[sheet.sequence]]
+slug = "swing"
+name = "Inserter — swing"
+frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+fps = 12
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sheet matches the Lattice inserter — its high-angle \
+pseudo-3D viewpoint (consistent with the assembler, never a side elevation), its \
+fixed grey-blue pivot base at the centre, the amber swing arm and claw that sweep \
+an arc across the floor from the left pickup to the right drop with height read \
+from shading and a tracking contact shadow, the held steel plate that appears only \
+on the delivery stroke, the strict amber-on-grey palette, and the seamless loop \
+from frame 11 back to frame 0."""
+
+[[review_item]]
+id = "pickup-swing-drop"
+title = "Pickup-left, swing-across, drop-right arc"
+text = """
+Played in order, the twelve frames read as one swing-arm motion seen from above: \
+the claw starts over the LEFT pickup tile, sweeps in a smooth arc across the floor \
+(bowing out through the far side of the centre tile at mid-swing), and reaches the \
+RIGHT drop tile — then returns. The hand traces a clean arc between the two sides, \
+not a jump, a straight slide, or a vertical pendulum lift, and the left side is \
+clearly the pickup and the right the drop."""
+sequences = ["swing"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "pseudo-3d-viewpoint"
+title = "High-angle pseudo-3D viewpoint"
+text = """
+The inserter is drawn from Lattice's high-angle, pseudo-3D camera — looking DOWN \
+on it, consistent with the assembler and belts — NOT as a side elevation. The \
+pivot base sits on the floor at the centre of the frame (not on a ground line at \
+the bottom), the two worked tiles lie flat to its left and right, and the arm's \
+raised height reads from shading plus a contact shadow tracking on the floor \
+beneath the hand, not from the arm climbing up the screen."""
+sequences = ["swing"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "held-item-loaded-empty"
+title = "Held item on delivery, empty on return"
+text = """
+The delivery stroke (frames 0-5, left-to-right) carries a small steel-grey plate \
+visibly gripped in the claw; the return stroke (frames 6-11, right-to-left) shows \
+the claw EMPTY, with no item. The loaded-versus-empty difference must be obvious \
+at a glance so the cycle reads as carry-one-over-then-swing-back."""
+sequences = ["swing"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "anchored-base"
+title = "Anchored base, only the arm moves"
+text = """
+A small grey-blue base/mount sits fixed at the centre of every frame and does not \
+move, jitter, or change between frames. Only the arm and claw pivot from it; the \
+base is the still anchor the whole swing rotates around."""
+sequences = ["swing"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "seamless-loop"
+title = "Seamless swing loop"
+text = """
+The arm ends frame 11 back at the LEFT pickup position so frame 11 returns to \
+frame 0 with no jump, stutter, or backward slip — a clean continuous loop of one \
+pickup-swing-drop-return cycle. The arc step between consecutive frames is even \
+across the whole sweep."""
+sequences = ["swing"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Amber arm, grey base palette"
+text = """
+Uses only the inserter palette from the brief — the dark outline, the grey-blue \
+base tones, the amber arm with its highlight and shadow, and the steel-plate tones \
+for the held item — with no out-of-palette colors and no halo of stray or \
+anti-aliased pixels. The arm is amber; the base is grey-blue; the two never bleed \
+into each other's colors."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Centred framing with the reach fitting"
+text = """
+The base is centred in the 64x64 frame as the pivot and the arm's full reach to \
+the left pickup and right drop fits inside the frame with a small margin — neither \
+clipped at the edges nor cramped into the centre. The 64x64 box reads as a \
+2x2-tile span with the pivot at the centre."""
+weight = 1
+domain = "fidelity"

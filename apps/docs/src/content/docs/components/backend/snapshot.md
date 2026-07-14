@@ -66,18 +66,24 @@ Schema: [`snapshot/index.schema.json`](https://docs.testcabinet.ai/schema/snapsh
 
 ## `runs.json` — the run index
 
-A flat array of run **summaries**, newest first — every summary is a **published**
-run, enough for the gallery's cards and its client-side filter (by test case,
-harness, model) without fetching every per-run file. Each summary carries the
-run's id and timestamps, its [subject](/components/core/run-records/#subject) and
+A flat array of run **summaries** (the `RunSummary` card), newest first — every
+summary is a **published** run, enough for the gallery's cards and its
+client-side filter/sort/paging (by test case, harness, model) without fetching
+every per-run file. Each summary carries the run's id and timestamps, its
+[subject](/components/core/run-records/#subject) (including the
+[test type](/testing/overview/), so a card can label a run without its record) and
 [metrics](/components/core/metrics/) verbatim from the
 [run record](/components/core/run-records/), the denormalized case name for
 cards, the `validationLoaded` signal, the run state, the aggregate `rating` (the
 run's overall rating — the worst across every domain of every review — shown as a
 per-run badge), a `reviewCount` of how many reviews the run carries, and the
-links. The aggregate **score** (the average across reviews) is not summarized
-here; the site computes it client-side from the per-run file's reviews. The site
-fetches full records lazily, per run page.
+links. The `rating` is nullable in the contract (an unrated console run carries
+none), but the snapshot holds only reviewed runs, so it is always present here.
+The aggregate **score** (the average across reviews) is not summarized here; the
+site computes it client-side from the per-run file's reviews. The site fetches
+full records lazily, per run page — the summary index is the whole dataset the
+list, home, leaderboard, and metrics views read; a full record loads only when a
+run's detail page opens.
 
 Schema: [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
 

@@ -1,0 +1,370 @@
+slug = "sunfront"
+experimental = true
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, which proofs the
+# build must submit, and which validation checks run. The harness reads this file
+# to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Sunfront"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Sunfront asks
+# for a real-time 3D simulation of dozens of provided, articulated models, a ticking
+# economy with placement and upgrades, a ten-unit roster with an armor/attack counter
+# matrix, strict fog of war, a mid-map Reliquary objective with a comeback unit, an
+# adaptive AI opponent, and multiple states — a heavy build, so it sits at hard.
+difficulty = "hard"
+
+# Site-facing version changelog. NOT seeded into a run.
+changelog = "changelog.md"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["strategy", "3d", "tug-of-war", "real-time"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A 3D tug-of-war between two legions of solar automatons, fought corner-to-corner \
+across a diagonal front with provided, articulated models: spend a ticking income on \
+spawners and Solar Extractors, read the enemy's build through the fog, \
+counter it, and grind a hole to their base — while a mid-field Reliquary funds whoever \
+razes it but summons a guardian to punish the push."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Sunfront is a substantial build (a real-time unit simulation, economy,
+# placement UI, fog of war, the counter matrix, the Reliquary/Aegis objective, an
+# adaptive AI, and multiple states), so as a hard case it gets a full five hours.
+max_runtime_hours = 5
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project: a `package.json` that pins `playwright` as a dev
+# dependency, so the browser tooling is a visible, project-local dependency. The
+# seeded files land at the run root (`workspaces/base/package.json` → `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant — the standard Skirmish match on the
+# one fixed front. It supplies the `title` view's menu mockup; `gameplay` and
+# `game-over` are common. Future versions/variants are expected to add rule twists
+# (a larger front, a resource-drought opener, a no-air roster) on top of this base.
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# Provided models, seeded into the run root. Each listed directory is seeded
+# verbatim (so `assets/scarab/` lands at `assets/scarab/` in the run), alongside
+# the `assets/models.json` manifest. These are the ONLY art the case supplies —
+# the finished 3D models the build loads and renders for every unit and structure,
+# plus the provided muzzle-flash particle systems the build plays for firing units;
+# everything else (arena, fog, other effects, HUD) is generated in code.
+# `specs/assets.md` tells the build what they are, how to scale/pose/animate/play
+# them, and to load them by page-relative URL. This is a root key, so it must precede
+# the first table header.
+#
+# Each model directory holds a produced rigid voxel rig: a `rig.json` plus its
+# `meshes/*.glb` parts; `models.json`
+# names each entity's entry file accordingly. All 24 entities of the roster are seeded
+# here — every buildable unit, the Aegis, both structures plus the Solar Extractor, and
+# one spawner per unit — alongside the three provided muzzle-flash particle systems.
+# This is a root key, so it must precede the first table header.
+assets = [
+  "assets/models.json",
+  # Buildable units
+  "assets/scarab", "assets/sentinel", "assets/trooper", "assets/bulwark",
+  "assets/lancer", "assets/bombard", "assets/flakhound", "assets/sunhawk",
+  "assets/lumen", "assets/monolith",
+  # Super-unit
+  "assets/aegis",
+  # Structures
+  "assets/bastion", "assets/reliquary", "assets/solar-extractor",
+  # Spawner structures (one per buildable unit)
+  "assets/scarab-hatchery", "assets/sentinel-foundry", "assets/garrison",
+  "assets/bulwark-foundry", "assets/lancer-foundry", "assets/bombard-foundry",
+  "assets/flak-foundry", "assets/skyworks", "assets/lumen-spire",
+  "assets/monolith-forge",
+  # Provided muzzle-flash particle systems (from the sunfront-muzzle-* particle
+  # cases); the build plays these for firing units (`specs/assets.md`)
+  "assets/effects/muzzle-small-arms.json", "assets/effects/muzzle-cannon.json",
+  "assets/effects/muzzle-lance.json",
+]
+
+# Provided library packages: core bakes each into the run image and vendors it into
+# the run repository under `.tcab/packages/` at seed time (see the end-to-end
+# `packages` manifest key). The build imports both by bare name.
+# `@test-cabinet/voxel-runtime` is the model runtime: it decodes each entity's
+# `meshes/*.glb` parts and poses/animates the rigid voxel rig from its `rig.json`
+# authored animations (its `three` binding builds the vertex-colored geometry the
+# build instances). `@test-cabinet/particle-runtime` is the effect runtime the build
+# imports (its `three` binding) to PLAY the provided muzzle-flash particle systems by
+# simulating them live — the same library the effects were authored against. The
+# workspace `package.json` must depend on each via the exact `file:./.tcab/packages/…`
+# spec (already declared in `workspaces/base/package.json`) so `npm ci` resolves them
+# to the vendored copies; the build then imports them by bare name. See
+# `specs/assets.md`. This is a root key, so it must precede the first table header.
+packages = ["@test-cabinet/voxel-runtime", "@test-cabinet/particle-runtime"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. All common specs are
+# plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/assets.md"
+
+[[spec]]
+source = "specs/economy.md"
+
+[[spec]]
+source = "specs/units.md"
+
+[[spec]]
+source = "specs/waves.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/standard.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup the harness renders to a screenshot and seeds as a visual target. The
+# `title` view is variant-specific (declared per variant); `gameplay` and
+# `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot or
+# `.webm` clip to; `specs/proof.md` instructs the build to produce them at exactly
+# these paths. Validation records whether each turned up (informational). The media
+# kind is inferred from the extension: `.png` is an image, `.webm` a video.
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-match"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Match over"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "wave"
+name = "Wave march clip"
+dest = "proof/wave.webm"
+
+[[proof]]
+id = "wireframe"
+name = "Wireframe frame"
+dest = "proof/wireframe.png"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. A reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a polished economy
+# cannot mask a broken combat model or a trivial AI. Every case declares at least
+# one. Most checklist items apply across domains; an item may name one when it is
+# specific to that facet.
+[[domain]]
+id = "economy"
+name = "Economy & building"
+description = "The resource clock, build-grid structure placement, upgrades and selling, and the wave loop."
+
+[[domain]]
+id = "combat"
+name = "Combat & counters"
+description = "The unit roster, the armor/attack counter matrix, fog of war, the front-line tug-of-war, and the Reliquary/Aegis objective."
+
+[[domain]]
+id = "opponent"
+name = "AI opponent"
+description = "A competent, adapting, non-cheating, beatable computer opponent."
+
+# Reviewer checklist items, common to every variant. These are the major,
+# observable requirements a reviewer must explicitly check by playing the build —
+# what validation cannot judge and is easy to miss. They are reporter-side: never
+# seeded, so the model never sees the checklist; each restates a requirement the
+# seeded specification already states. Each is worth `weight` points; the reviewer
+# records a pass/fail verdict for each before the run can be published.
+[[review_item]]
+id = "wave-clock"
+title = "Wave clock"
+text = "Waves fire on the clock — the first at 20 s, then every 45 s — and on each wave every spawner a side owns emits exactly one unit of its type at that side's muster line. The countdown is shown and resets each wave."
+weight = 1
+domain = "economy"
+reference = "gameplay"
+proof = "wave"
+
+[[review_item]]
+id = "income"
+title = "Fixed income"
+text = "Both sides start with 200 sol. Sol accrues continuously at the shown base rate of 10/s, and that base passive rate does not rise automatically when waves fire. Destroying enemy units pays no bounty; destroying the enemy Reliquary still pays its Reliquary bounty."
+weight = 1
+domain = "economy"
+
+[[review_item]]
+id = "building"
+title = "Placing structures"
+text = "A unit spawner or Solar Extractor can be armed from the palette (click or shortcut key) and placed immediately on an empty build-grid cell, deducting its cost; an unaffordable or occupied cell is refused. A placed spawner emits its unit from the next wave on, while a placed Solar Extractor raises income immediately."
+weight = 1
+domain = "economy"
+
+[[review_item]]
+id = "upgrade-sell"
+title = "Upgrade and sell"
+text = "A placed build-grid structure can be upgraded to level 3 and sold for 50% of sol invested. Spawner upgrades raise the HP and damage of emitted units; Solar Extractor upgrades raise its income bonus from +4/s to +7/s to +10/s. The structure level is visible, and spawner levels also show on emitted units."
+weight = 1
+domain = "economy"
+
+[[review_item]]
+id = "counter-matrix"
+title = "Counter system"
+text = "Damage follows the armor/attack matrix: Piercing tears through Heavy (1.5x), Splash shreds clustered Light in an area (1.5x) but is weak on Heavy, Flak is the only thing that hits Air, and ground attacks (Normal/Piercing/Splash) cannot target Air at all. Composition beats a one-note army."
+weight = 3
+domain = "combat"
+
+[[review_item]]
+id = "front-line"
+title = "Front-line tug-of-war"
+text = "Units advance along the diagonal, acquire the nearest enemy they can damage, and stop to fight; the front line drifts toward the losing side. Two equal armies grind to a rough stalemate near the center of the diagonal front, so advantage comes from economy and counters, not a lopsided default. Units hold a target rather than jittering."
+weight = 2
+domain = "combat"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "fog-of-war"
+title = "Fog of war"
+text = "The enemy staging yard is fully hidden under fog — its structures and placements are never visible. In the lane, enemy units, Reliquary, and base are drawn only while within the vision of a player unit, base, or Reliquary, never as stale ghosts in the fog. Because the camera pans across the arena and shows only part of it, scrolling to a stretch of the field where the player has no unit or structure shows only fog there — no units or structures are drawn outside the player's vision."
+weight = 3
+domain = "combat"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "reliquary-aegis"
+title = "Reliquary and Aegis"
+text = "Each Reliquary has 2000 HP and regenerates at 4 HP/s when undamaged. Destroying the enemy Reliquary pays +700 sol and immediately spawns a single Aegis for the losing side as a defender's-advantage guardian: a large, powerful fortress that defends only its own half (never crossing the diagonal midline) and fights with independent per-turret targeting (a Heavy-first main gun that orients the hull, two Light-first side turrets firing opportunistically). It fights until destroyed — no decay — and only one per side ever appears. A destroyed Reliquary does not end the match."
+weight = 2
+domain = "combat"
+
+[[review_item]]
+id = "air-and-flak"
+title = "Air and its counter"
+text = "The Sunhawk flies over the ground line and can only be stopped by Flak (the Flakhound), which targets air first; a side with no Flak has no answer to air, and a Flakhound is near-useless against a pure-ground push."
+weight = 1
+domain = "combat"
+
+[[review_item]]
+id = "win-loss"
+title = "Win and loss"
+text = "A base has 1200 HP; the match ends the instant either base is razed, going to a match-over screen that shows VICTORY or DEFEAT and the wave count, with PLAY AGAIN and MENU. Razing the enemy base is the only win condition."
+weight = 2
+domain = "combat"
+reference = "game-over"
+proof = "game-over"
+
+[[review_item]]
+id = "ai-opponent"
+title = "Adaptive, beatable AI"
+text = "The AI builds and upgrades spawners and Solar Extractors on its own hidden grid from the same economy with no resource cheating, adapts its composition to what it has seen of the player's army (splash vs swarm, piercing vs heavy, flak vs air), presses and defends the Reliquaries — and is clearly beatable by a player who reads the counters."
+weight = 3
+domain = "opponent"
+
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every state is reachable and behaves correctly: title menu, how-to-play, the live match, pause (resume/restart/quit with the simulation frozen), and match-over (play again/menu)."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "renderer-3d"
+title = "3D rendering, camera & wireframe"
+text = "The battlefield renders as a real 3D world in WebGL/WebGPU — provided unit and structure models with real height on generated terrain — seen through a low oblique command camera (a real perspective view at a fixed angle, not a flat top-down map); a flat top-down or purely-2D rendering does not satisfy this case. The game sustains a playable frame rate in a heavy late-match battle, the performance overlay shows the live FPS, and wireframe mode reveals the geometry of the models, terrain, structures, and effects."
+weight = 2
+proof = "wireframe"
+
+[[review_item]]
+id = "hud-complete"
+title = "HUD"
+text = "The HUD overlay shows the sol balance and total income rate, the wave number and countdown, both base health bars, the build palette (ten unit spawners plus Solar Extractor) with costs and affordability, and a selected-structure panel: clicking any friendly structure (a build-grid spawner or Solar Extractor, the base, or the Reliquary) selects it and opens a panel showing its name plus the fields that apply — the base and Reliquary show their health read-only, while a build-grid structure shows its level, effect, and Upgrade/Sell actions. Plus the toggleable performance overlay (FPS) and wireframe mode — all on screen over the 3D world."
+weight = 1
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The rendered 16:9 viewport fills and is letterboxed to the browser window, and every HUD element stays on screen, fitted, centered, and legible at any window size and pixel density, including on load before any input. The camera shows only a scrollable portion of the arena — the whole map is deliberately not framed at once — while always framing the full width of the combat lane."
+weight = 1
+
+[[review_item]]
+id = "camera-navigation"
+title = "Scrolling command camera"
+text = "The battlefield is shown through a low oblique command camera at a fixed pitch and zoom that frames only a portion of the arena — the whole map is never visible at once — while always showing the full width of the combat lane, so the player never zooms out or pans sideways to see the lane's full width. The player pans the camera along the lane (edge-scroll and arrow/WASD keys) to view from their own corner up toward the enemy, and the default view on load is centered on the player's corner."
+weight = 1
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "provided-models"
+title = "Provided models rendered"
+text = "The game renders every unit and structure, including Solar Extractors, using the provided 3D models (not primitives of its own), tinted to team color, drawn at the relative scale their authored dimensions imply (a Monolith towers over a Scarab; the Aegis dwarfs every buildable unit), and animates them from the simulation — locomotion clips while moving, attack clips when firing, destroyed units flashing white a few times before they are removed, and the Aegis radar sweeping on its own. The world (arena, fog, other effects, HUD) is generated in code — the muzzle-flash effects are the provided exception (see the muzzle-flash review item)."
+weight = 2
+
+[[review_item]]
+id = "plays-muzzle-flashes"
+title = "Plays the provided muzzle flashes"
+text = "When a unit fires a weapon, the build plays one instance of that unit's provided muzzle-flash particle system (seeded under `assets/effects/`, selected per unit by the `muzzle` key in `assets/models.json`) at its muzzle, oriented along the barrel — simulated live via the seeded `@test-cabinet/particle-runtime`, not a hand-coded or substituted effect — once per shot, in sync with the unit's firing cadence so the flash rate matches its fire rate: the small-arms flash for the Sentinel/Trooper/Flakhound/Sunhawk, the heavy-cannon blast for the Bombard/Monolith/Aegis (at each firing turret), and the rail-lance discharge for the Lancer. Melee units (Scarab, Bulwark) and the support Lumen play none. Because the systems are simulated, each flash varies slightly while its character stays the same."
+weight = 2
+reference = "gameplay"
+proof = "wave"

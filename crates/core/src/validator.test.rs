@@ -118,6 +118,7 @@ fn base_variant() -> crate::test_case::Variant {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        reference_impl: None,
     }
 }
 
@@ -126,6 +127,7 @@ fn asset_version() -> TestCaseVersion {
     TestCaseVersion {
         slug: "sprite".to_string(),
         version: "v1.0.0".to_string(),
+        experimental: false,
         name: "Sprite".to_string(),
         difficulty: "medium".to_string(),
         tags: Vec::new(),
@@ -367,6 +369,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
     TestCaseVersion {
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
+        experimental: false,
         name: "Foray".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),
@@ -502,4 +505,126 @@ fn skinned_rig_maps_bones_to_parts_keeping_joints_and_animations() {
     assert_eq!(spec.animations.len(), 1);
     assert!(spec.animations[0].auto_play);
     assert_eq!(spec.animations[0].tracks[0].keyframes.len(), 2);
+}
+
+// --- Blender glTF decode (the per-kind summary the BlenderGenValidator branches on) ---
+
+use super::read_glb_summary;
+
+/// Write a text-form glTF header (raw JSON) to `path`. `read_glb_summary` accepts a
+/// `.gltf`/`.glb` alike — without the binary `glTF` magic it parses the bytes as JSON —
+/// so a JSON blob is enough to exercise the summary the validator reconciles against.
+fn write_gltf_json(path: &std::path::Path, json: serde_json::Value) {
+    std::fs::write(path, serde_json::to_vec(&json).expect("serialize gltf")).expect("write gltf");
+}
+
+#[test]
+fn glb_summary_of_a_static_prop_has_no_skin_and_no_animations() {
+    // A `blender-prop` emits geometry alone: one mesh, no skin, no animations.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("model.glb");
+    write_gltf_json(&path, serde_json::json!({ "meshes": [{}] }));
+
+    let summary = read_glb_summary(&path).expect("decode prop glTF");
+    assert_eq!(summary.mesh_count, 1);
+    assert!(!summary.skins_present, "a prop carries no skin");
+    assert!(
+        summary.animation_names.is_empty(),
+        "a prop declares no animations"
+    );
+}
+
+#[test]
+fn glb_summary_of_a_mechanism_has_animations_but_no_skin() {
+    // A `blender-mechanism` bakes node-hierarchy clips but is rigid: animations present,
+    // no skin — the shape the validator reconciles without requiring a skin.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("model.glb");
+    write_gltf_json(
+        &path,
+        serde_json::json!({
+            "meshes": [{}, {}],
+            "animations": [
+                { "name": "idle", "channels": [{}] },
+                { "name": "fire", "channels": [{}] },
+            ],
+        }),
+    );
+
+    let summary = read_glb_summary(&path).expect("decode mechanism glTF");
+    assert_eq!(summary.mesh_count, 2);
+    assert!(!summary.skins_present, "a mechanism is rigid, not skinned");
+    assert_eq!(
+        summary.animation_names,
+        vec!["idle".to_string(), "fire".to_string()]
+    );
+}
+
+#[test]
+fn glb_summary_ignores_animations_that_animate_nothing() {
+    // An animation with no channels animates nothing, so it is not counted as produced —
+    // the reconciliation gap a missing/empty required clip records.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("model.glb");
+    write_gltf_json(
+        &path,
+        serde_json::json!({
+            "meshes": [{}],
+            "animations": [
+                { "name": "real", "channels": [{}] },
+                { "name": "empty", "channels": [] },
+            ],
+        }),
+    );
+
+    let summary = read_glb_summary(&path).expect("decode glTF");
+    assert_eq!(summary.animation_names, vec!["real".to_string()]);
+}
+
+#[test]
+fn glb_summary_collects_caller_dof_tags_from_node_extras() {
+    // A `blender-mechanism` tags each runtime-drivable DOF into a node's `extras`
+    // (`tcab_joint`) — the self-contained, in-file game-facing interface. The summary
+    // collects the named ones so the validator can reconcile them against the required set.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("model.glb");
+    write_gltf_json(
+        &path,
+        serde_json::json!({
+            "meshes": [{}],
+            "nodes": [
+                { "name": "base" },
+                {
+                    "name": "yaw",
+                    "extras": {
+                        "tcab_joint": {
+                            "name": "turret_yaw", "kind": "rotation", "axis": "z",
+                            "min": -2.97, "max": 2.97, "rest": 0.0
+                        }
+                    }
+                },
+                {
+                    "name": "gun",
+                    "extras": {
+                        "tcab_joint": {
+                            "name": "barrel_pitch", "kind": "rotation", "axis": "x",
+                            "min": -0.35, "max": 0.79, "rest": 0.0
+                        }
+                    }
+                },
+                { "name": "untagged", "extras": { "note": "not a DOF" } }
+            ]
+        }),
+    );
+
+    let summary = read_glb_summary(&path).expect("decode glTF");
+    let names: Vec<&str> = summary
+        .caller_joints
+        .iter()
+        .map(|t| t.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["turret_yaw", "barrel_pitch"]);
+    let yaw = &summary.caller_joints[0];
+    assert_eq!(yaw.kind.as_deref(), Some("rotation"));
+    assert_eq!(yaw.axis.as_deref(), Some("z"));
 }

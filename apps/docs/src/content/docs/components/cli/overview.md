@@ -62,10 +62,30 @@ including:
   Publishing a run requires it to have at least one review; the self-review
   satisfies that. For the flow where different people review, use `review` then
   have an operator publish. Requires a logged-in account.
-- **`catalog`** — regenerate the bundled model dataset (`models.json`) every host
-  ships, refreshing each model's OpenRouter prices, context window, and release
-  date. (Test-case data is served from the backend's public snapshot, not emitted
-  here.)
+- **`publish-reference`** — deploy a case's
+  [reference implementations](/components/core/results/#reference-implementations)
+  and record their URLs: `tcab publish-reference --env <prod|staging> <slug>
+  [<version>] [--variant <slug>] [--all-variants]`. The required `--env` selects
+  the Cloudflare Pages project (prod's `test-cabinet-references` or staging's
+  `test-cabinet-references-staging`); it has no default, so a publish can never
+  silently target prod. For each targeted variant that declares a
+  [`reference_implementation`](/testing/end-to-end/manifests/), it runs the case
+  `[build]` install then build in that directory, scrubs the output with the same
+  secret-redaction pass the [publisher](/components/core/results/#secret-redaction)
+  uses, deploys the static build to that Pages project
+  (`wrangler pages deploy <out> --project-name <project>
+  --branch <slug>-<version-with-dots-as-dashes>-<variant>`), reads the served URL
+  back from `wrangler`'s output (Cloudflare truncates long subdomains, so the URL
+  is parsed rather than constructed), and **writes it into the committed
+  `test-cases/reference-builds.lock.json`** under the `--env` key. It does not
+  contact the backend: the private backends **ingest** that lockfile from their own
+  checkout on the next `scripts/reingest-cluster.sh`, which upserts the
+  `case_reference_build` table the version response and public snapshot read.
+  Because the command only writes a local file, it needs no backend URL or login —
+  just `wrangler`. Unlike a run's build, a reference implementation is **never
+  seeded** and is deployed out-of-band by a person — this command is that step; it
+  is also wired as a `workflow_dispatch` GitHub Actions job that commits the
+  lockfile.
 - **`harnesses`** — inspect the supported agent harnesses.
 
 ## Authentication

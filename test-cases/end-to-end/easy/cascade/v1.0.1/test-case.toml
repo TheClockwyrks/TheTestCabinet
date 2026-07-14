@@ -1,0 +1,279 @@
+slug = "cascade"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Cascade"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Cascade asks
+# for a full deck model, legal-move validation across foundations and tableau,
+# drag-and-drop of single cards and ordered runs, an auto-move to foundation, win
+# detection, a physics-driven victory animation, and the menus and states that tie
+# it together — a contained front-end build, so it sits at easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["cards", "solitaire", "klondike", "2d"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file); NOT seeded into a run.
+summary = """
+A green-felt Klondike solitaire built from the classic rules, capped by a \
+physics-driven victory cascade — every foundation card bouncing off the table \
+and painting the screen when you win."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. It injects absolute in-container paths via template variables
+# rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Cascade is a medium build with several interacting systems (rules,
+# drag-and-drop, the win animation), so two hours is comfortable headroom for a
+# healthy build while still bounding a runaway session.
+max_runtime_hours = 2.0
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins
+# `playwright` as a dev dependency, so the in-container browser tooling is a
+# visible, project-local dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Each seeds the common specs plus its own deal-mode
+# spec (a flat `specs/deal-mode-<slug>.md` source seeding to the stable
+# `specs/deal-mode.md`, the only path ever seeded), declares its own `title` menu
+# mockup (the menu shows the deal mode), and the
+# review item for its turn count. The two differ in the stock's
+# turn count and how the waste is shown, so each also declares its own `gameplay`
+# mockup; only the `victory` view is common to both.
+#   - draw-three — the classic Klondike deal (turns three; the default).
+#   - draw-one   — the gentler deal (turns one; more winnable).
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = [
+  "variants/draw-three.toml",
+  "variants/draw-one.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`, `build/`, or `out/`. `npm ci` requires a committed
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. Both commands are required — there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern so that the deal-mode
+# material can be seeded per variant (see `[[variant]]` below). These six files
+# are always present, so the deal-mode spec may reference them freely; the common
+# specs, in turn, refer to the deal-mode spec by its seeded path
+# (`specs/deal-mode.md`) — the stable dest every variant's deal-mode source seeds
+# to, so a run only ever sees the single deal mode that is actually present.
+#
+# Every common spec is plain Markdown, seeded verbatim (no `.hbs` — none of their
+# text varies by variant or version).
+# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/layout.md"
+
+[[spec]]
+source = "specs/rules.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/cascade.md"
+
+# Proof of implementation: instructs the build to capture evidence (screenshots
+# and the cascade clip) at the exact paths the `[[proof]]` entries below declare.
+# The paths in this spec and in the `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl builds — the
+# authored, correct games under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. References are not validated unless a `[[check]]` below
+# names them. The `title` and `gameplay` views are variant-specific (declared per
+# variant above): the menu shows the active deal mode, and the waste is fanned
+# (Draw Three) or a single card (Draw One). Only `victory` looks the same in every
+# variant, so it is common.
+[[reference]]
+view = "victory"
+media = "reference/screenshots/victory.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to as evidence; `specs/proof.md` instructs the build to produce
+# them at exactly these paths. Validation records whether each turned up
+# (informational — a missing proof does not fail the run), and a reviewer pairs
+# each with its expected reference (see the `review_item` links below). The media
+# kind is inferred from the extension: `.png` is an image, `.webm` a video (the
+# format Playwright records natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Gameplay"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "win"
+name = "Win screen"
+dest = "proof/win.png"
+
+[[proof]]
+id = "cascade"
+name = "Victory cascade clip"
+dest = "proof/cascade.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. A reviewer rates each independently while playing the build,
+# and the run's overall rating is the worst across them. Cascade is a single
+# solitaire game, so it declares one domain.
+[[domain]]
+id = "klondike"
+name = "Klondike Play"
+description = "The full game: dealing, legal moves across the tableau and foundations, the stock and waste, winning, and the victory cascade."
+
+# Reviewer checklist items, common to every variant. These are the major,
+# observable requirements a reviewer must explicitly check by playing the build —
+# the things validation cannot judge and that are easy to miss. They are
+# reporter-side material: never seeded into a run, so the model never sees the
+# checklist; each one restates a requirement the seeded specification already
+# states. Each variant adds its own item (the draw count) above. Each item is
+# worth `weight` points toward the run's score; the reviewer records a pass/fail
+# verdict for each before the run can be published.
+[[review_item]]
+id = "correct-deal"
+title = "Correct deal"
+text = "A new game deals seven tableau columns of 1..7 cards with exactly one face-up card on top of each, the remaining cards stacked face-down in the stock, and the waste and all four foundations empty; the deal is reshuffled and different every new game."
+weight = 1
+sub_items = [
+  { id = "tableau", title = "Seven columns of 1..7, one face-up on top" },
+  { id = "stock-and-empties", title = "The remaining cards fill the stock; waste and all four foundations empty" },
+  { id = "reshuffled", title = "Reshuffled and different every new game" },
+]
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "foundation-build"
+title = "Foundation build-up"
+text = "Foundations build up by suit from Ace to King: an empty foundation accepts only an Ace, and thereafter only the next-higher card of the same suit; a wrong suit or out-of-order card is rejected."
+weight = 1
+
+[[review_item]]
+id = "tableau-build"
+title = "Tableau build-down"
+text = "A tableau card can be placed only on a face-up card one rank higher and of the opposite color (red on black or black on red); illegal color/rank placements are rejected."
+weight = 1
+
+[[review_item]]
+id = "king-to-empty"
+title = "King to empty column"
+text = "Only a King (or a run headed by a King) may be moved onto an empty tableau column; any lower card is rejected there."
+weight = 1
+
+[[review_item]]
+id = "run-move"
+title = "Ordered-run move"
+text = "A contiguous descending, alternating-color run of face-up cards moves together as a unit onto a legal target, carrying every card below the grabbed card with it."
+weight = 1
+
+[[review_item]]
+id = "flip-exposed"
+title = "Expose and flip"
+text = "When a move leaves a column's new bottom card face-down, that card is immediately turned face-up; face-down cards are never draggable or peekable."
+weight = 1
+
+[[review_item]]
+id = "stock-recycle"
+title = "Stock and recycle"
+text = "Only the top waste card is playable, and when the stock empties, clicking its slot recycles the whole waste back to the stock in order for another pass, with no pass limit."
+weight = 1
+sub_items = [
+  { id = "top-waste", title = "Only the top waste card is playable" },
+  { id = "recycle", title = "Empty stock recycles the waste, no pass limit" },
+]
+
+[[review_item]]
+id = "auto-move"
+title = "Double-click to foundation"
+text = "Double-clicking a playable card (the top of the waste or the bottom face-up card of a column) sends it to its foundation when that move is legal, and does nothing when it is not."
+weight = 1
+
+[[review_item]]
+id = "drag-and-drop"
+title = "Drag-and-drop feel"
+text = "Cards are moved by dragging with the mouse: the held card or run follows the cursor and floats above the table, a legal drop target under the cursor is highlighted, and releasing over an illegal spot returns the cards to their origin."
+weight = 1
+sub_items = [
+  { id = "follows-cursor", title = "Held card or run follows the cursor, floating above" },
+  { id = "highlight", title = "Legal drop target is highlighted" },
+  { id = "snap-back", title = "Illegal drop returns the cards to their origin" },
+]
+
+[[review_item]]
+id = "win-detection"
+title = "Win detection"
+text = "Completing all four foundations (all 52 cards home) is detected as a win and stops normal play; there is no false win before every foundation is complete."
+weight = 1
+
+[[review_item]]
+id = "victory-cascade"
+title = "Victory cascade"
+text = "On winning, the foundation cards launch one at a time and bounce off the bottom edge under gravity, each leaving a permanent painted trail so the table fills with arcs of overlapping cards, ending with a YOU WIN prompt to start a new game."
+weight = 1
+sub_items = [
+  { id = "launch-bounce", title = "Cards launch one at a time and bounce under gravity" },
+  { id = "painted-trail", title = "Each leaves a permanent painted trail of arcs" },
+  { id = "you-win", title = "Ends with a YOU WIN prompt to start a new game" },
+]
+reference = "victory"
+proof = "cascade"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 table — stock, waste, all four foundations, every tableau column at its full extent, and the HUD — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1

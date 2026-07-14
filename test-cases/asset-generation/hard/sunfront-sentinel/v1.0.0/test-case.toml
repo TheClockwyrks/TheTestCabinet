@@ -1,0 +1,170 @@
+slug = "sunfront-sentinel"
+experimental = true
+name = "Sunfront Sentinel"
+difficulty = "hard"
+tags = ["voxel", "rig", "mech"]
+summary = """
+Sculpt and rig the Sunfront Sentinel: an opaque-voxel bipedal war-mech \
+that strides on two legs, aims a right-arm rifle up and down, and stands its \
+ground to fire — built not from a fixed skeleton but by painting opaque cells with \
+the voxel-anim tool one recorded operation at a time. The model invents whatever \
+parts and joints it needs; the fixed contract is two animations it must author — a \
+walking `walk` and a rifle-recoil `fire` — the reviewer can play back."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME mech at three sizes — `base` (this case's
+# volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. Each part is sculpted separately in this shared volume's coordinates.
+# The volume always starts EMPTY; `background` is only the clear color behind the
+# rasterized isometric preview PNG. A voxel case must NOT declare [canvas].
+[voxel]
+width = 20
+height = 40
+depth = 20
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each
+# declared part name), the authoritative output each part's regenerated model is
+# rebuilt from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A
+# case does NOT prescribe parts, joints, pivots, or ranges: the model invents
+# whatever skeleton a walking, firing mech needs and is judged on whether it works
+# out the right pieces, attaches them where they belong, and animates them
+# convincingly. What is fixed is the set of NAMED ANIMATIONS the model must author
+# (a game plays them by name) and whether each is a game-triggered playable or a
+# self-playing idle. The model authors each animation's F-curves at run time with
+# the voxel-anim `define-animation`/`add-keyframe` subcommands; `rig.json` is
+# pre-seeded with these declarations so the contract exists from the first
+# operation.
+[model]
+
+# `walk` — the WALK. A game-triggered playable (not self-playing) that strides the
+# mech forward on its two legs: each foot plants flat and still on the ground while
+# the body passes over it, then lifts, swings forward, and plants again, so the
+# machine pushes itself forward rather than flailing. Authored IN PLACE: the body
+# does not translate across the scene (the leg cycle carries the stride; a game
+# supplies the real travel). The legs move; the rifle holds.
+[[model.animation]]
+name = "walk"
+loop = true
+auto_play = false
+
+# `fire` — the WEAPON showcase. A game-triggered playable that snaps the right-arm
+# rifle into a quick recoil nod and settles while the mech stands its ground — the
+# legs stay planted.
+[[model.animation]]
+name = "fire"
+loop = true
+auto_play = false
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected size.
+# The seeded dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Sentinel and \
+poses correctly — a bipedal war-mech that strides on two legs whose feet lift \
+clear and plant flat on the ground (never dragged, never flailing), a right-arm \
+rifle that aims up and down and recoils on its shoulder mount without detaching, \
+and a body that stays put — with a clear solar-amber visor accent and the \
+disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-mech"
+title = "Reads as a bipedal war-mech"
+text = """
+From more than one angle the model reads unmistakably as an upright walking \
+war-mech: a standing body with a head on top, a pair of jointed legs planted \
+beneath it, and a rifle carried on the right arm. It is a bipedal fighting \
+machine, not an abstract stack of boxes on legs."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "legs-walk"
+title = "Legs stride on planted feet without clipping the ground"
+text = """
+Playing `walk` strides the mech forward on its two legs. The clip is authored \
+IN PLACE — the body holds its ground and does not drift across the scene; the \
+forward stride is carried entirely by the legs, so played on its own the feet cycle \
+and the planted foot slides straight back under the body (a treadmill) while a game \
+supplies the real movement. Each foot has a clear \
+PLANTED STANCE — flat and still on the ground while the mech passes over it — then \
+lifts clear, swings forward, and plants again with weight; the two legs step in \
+opposite phase so the machine is always supported and pushes itself forward, NOT \
+flailing its legs in a continuous arc. The feet stay flat as they carry the body \
+(they don't tip onto toe or heel), no foot is dragged or driven down through the \
+ground, and the legs stay attached to the body across the whole cycle. The model \
+had to invent an articulated leg (more than one segment and joint) for this to \
+read as walking rather than swinging rigid poles."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "rifle-aims"
+title = "Right-arm rifle aims and recoils on a clean hinge"
+text = """
+The rifle is held on a distinct right arm and points FORWARD when level, reading as a \
+held, wielded weapon out on a limb — the arm reaches from the shoulder and carries the \
+rifle, set clearly apart from the shoulder and body by a visible arm or joint rather \
+than bolted flush to the shoulder or fused into the body (an arm that terminates in the \
+rifle is fine, as long as it still reads as a held weapon on an appendage). Playing \
+`fire` works it convincingly: it snaps into a quick recoil nod — tilting up and down at \
+the shoulder joint — and settles, aiming cleanly up and down across its range rather \
+than spinning or sliding, with no part of the weapon tearing away from the arm or \
+clipping into the body as it moves."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "body-fixed"
+title = "The body stays put; only the moving parts move"
+text = """
+The mech's body is the fixed base of the machine: it stays put, never carried \
+along by the legs or the rifle. When `fire` plays, the rifle works while the legs \
+stay planted; when `walk` plays, the legs stride while the rifle holds. Nothing \
+but the moving parts moves."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass body, sandstone panels, iron \
+rifle and legs, and the solar-amber visor accent) with a clear amber visor on the \
+head, no out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

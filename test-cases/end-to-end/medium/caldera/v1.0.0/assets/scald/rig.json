@@ -1,0 +1,628 @@
+{
+  "parts": [
+    {
+      "name": "base",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "drum",
+      "parent": "base",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "crown",
+      "parent": "drum",
+      "pivot": [
+        18,
+        15,
+        18
+      ]
+    },
+    {
+      "name": "collar",
+      "parent": "drum",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "cowl_e",
+      "parent": "drum",
+      "pivot": [
+        30,
+        10,
+        18
+      ]
+    },
+    {
+      "name": "cowl_w",
+      "parent": "drum",
+      "pivot": [
+        5,
+        10,
+        18
+      ]
+    },
+    {
+      "name": "cowl_n",
+      "parent": "drum",
+      "pivot": [
+        18,
+        10,
+        30
+      ]
+    },
+    {
+      "name": "cowl_s",
+      "parent": "drum",
+      "pivot": [
+        18,
+        10,
+        5
+      ]
+    },
+    {
+      "name": "cowl_ne",
+      "parent": "drum",
+      "pivot": [
+        29,
+        10,
+        25
+      ]
+    },
+    {
+      "name": "cowl_nw",
+      "parent": "drum",
+      "pivot": [
+        8,
+        10,
+        25
+      ]
+    },
+    {
+      "name": "cowl_se",
+      "parent": "drum",
+      "pivot": [
+        29,
+        10,
+        12
+      ]
+    },
+    {
+      "name": "cowl_sw",
+      "parent": "drum",
+      "pivot": [
+        8,
+        10,
+        12
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "crown_swell",
+      "part": "crown",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        18,
+        15,
+        18
+      ],
+      "min": 0.0,
+      "max": 4.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cowl_e_open",
+      "part": "cowl_e",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        30,
+        10,
+        18
+      ],
+      "min": 0.0,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cowl_w_open",
+      "part": "cowl_w",
+      "kind": "rotation",
+      "axis": "z",
+      "pivot": [
+        5,
+        10,
+        18
+      ],
+      "min": -0.7,
+      "max": 0.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cowl_n_open",
+      "part": "cowl_n",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        18,
+        10,
+        30
+      ],
+      "min": 0.0,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cowl_s_open",
+      "part": "cowl_s",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        18,
+        10,
+        5
+      ],
+      "min": -0.7,
+      "max": 0.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cowl_ne_open",
+      "part": "cowl_ne",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        29,
+        10,
+        25
+      ],
+      "min": 0.0,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cowl_nw_open",
+      "part": "cowl_nw",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        8,
+        10,
+        25
+      ],
+      "min": 0.0,
+      "max": 0.7,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cowl_se_open",
+      "part": "cowl_se",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        29,
+        10,
+        12
+      ],
+      "min": -0.7,
+      "max": 0.0,
+      "rest": 0.0,
+      "drive": "auto"
+    },
+    {
+      "name": "cowl_sw_open",
+      "part": "cowl_sw",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        8,
+        10,
+        12
+      ],
+      "min": -0.7,
+      "max": 0.0,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "idle",
+      "periodMs": 2800,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "crown_swell",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": 1.5,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_e_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": 0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_n_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": 0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_ne_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": 0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_nw_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": 0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_w_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": -0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_s_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": -0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_se_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": -0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_sw_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 1400,
+              "value": -0.14,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 2800,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "emit",
+      "periodMs": 800,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "crown_swell",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 1.0,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 350,
+              "value": 4.0,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": 1.0,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_e_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.25,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 450,
+              "value": 0.65,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": 0.25,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_n_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.25,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 450,
+              "value": 0.65,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": 0.25,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_ne_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.25,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 450,
+              "value": 0.65,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": 0.25,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_nw_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.25,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 450,
+              "value": 0.65,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": 0.25,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_w_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.25,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 450,
+              "value": -0.65,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": -0.25,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_s_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.25,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 450,
+              "value": -0.65,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": -0.25,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_se_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.25,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 450,
+              "value": -0.65,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": -0.25,
+              "interp": "bezier"
+            }
+          ]
+        },
+        {
+          "joint": "cowl_sw_open",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": -0.25,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 450,
+              "value": -0.65,
+              "interp": "bezier"
+            },
+            {
+              "tMs": 800,
+              "value": -0.25,
+              "interp": "bezier"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

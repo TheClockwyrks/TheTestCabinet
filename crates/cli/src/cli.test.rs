@@ -385,43 +385,13 @@ fn prompt_parses_required_arguments() {
 }
 
 #[test]
-fn catalog_parses_with_defaults() {
-    let cli = Cli::try_parse_from(["tcab", "catalog"])
-        .expect("the catalog subcommand should parse with no arguments");
-
-    match cli.command {
-        Command::Catalog(args) => {
-            // The catalog reads the model catalog from `models` and writes
-            // `models.json` into the shared UI package unless told otherwise.
-            assert_eq!(args.models_dir, std::path::PathBuf::from("models"));
-            assert_eq!(
-                args.data_dir,
-                std::path::PathBuf::from("packages/ui/src/app/data")
-            );
-        }
-        other => panic!("expected a catalog command, got {other:?}"),
-    }
-}
-
-#[test]
-fn catalog_accepts_directory_overrides() {
-    let cli = Cli::try_parse_from([
-        "tcab",
-        "catalog",
-        "--models-dir",
-        "/tmp/models",
-        "--data-dir",
-        "/tmp/data",
-    ])
-    .expect("explicit catalog directories should parse");
-
-    match cli.command {
-        Command::Catalog(args) => {
-            assert_eq!(args.models_dir.to_str(), Some("/tmp/models"));
-            assert_eq!(args.data_dir.to_str(), Some("/tmp/data"));
-        }
-        other => panic!("expected a catalog command, got {other:?}"),
-    }
+fn removed_catalog_subcommand_no_longer_parses() {
+    // `tcab catalog` was retired when the model catalog moved into the backend
+    // store (curated in the app, no longer a bundled `models.json`).
+    assert!(
+        Cli::try_parse_from(["tcab", "catalog"]).is_err(),
+        "the catalog subcommand should no longer exist"
+    );
 }
 
 #[test]
@@ -444,4 +414,111 @@ fn orchestrators_parses_with_json_flag() {
         Command::Orchestrators(args) => assert!(args.json),
         other => panic!("expected an orchestrators command, got {other:?}"),
     }
+}
+
+#[test]
+fn publish_reference_parses_slug_only_and_defaults_version_and_selectors() {
+    // Only the positional slug is required; version is optional (newest), and
+    // neither variant selector is set (defaulting to all variants with a
+    // reference).
+    let cli = Cli::try_parse_from(["tcab", "publish-reference", "--env", "prod", "carom"])
+        .expect("a slug-only publish-reference invocation should parse");
+
+    match cli.command {
+        Command::PublishReference(args) => {
+            assert_eq!(args.slug, "carom");
+            assert_eq!(args.env, DeployEnv::Prod);
+            assert_eq!(args.version, None);
+            assert_eq!(args.variant, None);
+            assert!(!args.all_variants);
+            assert!(!args.dry_run);
+        }
+        other => panic!("expected a publish-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_reference_accepts_a_positional_version_and_variant() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "publish-reference",
+        "--env",
+        "staging",
+        "carom",
+        "v1.0.1",
+        "--variant",
+        "base",
+    ])
+    .expect("a slug + version + variant invocation should parse");
+
+    match cli.command {
+        Command::PublishReference(args) => {
+            assert_eq!(args.slug, "carom");
+            assert_eq!(args.env, DeployEnv::Staging);
+            assert_eq!(args.version.as_deref(), Some("v1.0.1"));
+            assert_eq!(args.variant.as_deref(), Some("base"));
+            assert!(!args.all_variants);
+        }
+        other => panic!("expected a publish-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_reference_accepts_all_variants_and_dry_run() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "publish-reference",
+        "--env",
+        "prod",
+        "carom",
+        "--all-variants",
+        "--dry-run",
+    ])
+    .expect("--all-variants --dry-run should parse");
+
+    match cli.command {
+        Command::PublishReference(args) => {
+            assert!(args.all_variants);
+            assert!(args.dry_run);
+            assert_eq!(args.variant, None);
+        }
+        other => panic!("expected a publish-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_reference_rejects_variant_with_all_variants() {
+    // The two variant selectors are mutually exclusive (`--env` supplied so the
+    // conflict is the only reason the parse fails).
+    assert!(
+        Cli::try_parse_from([
+            "tcab",
+            "publish-reference",
+            "--env",
+            "prod",
+            "carom",
+            "--variant",
+            "base",
+            "--all-variants",
+        ])
+        .is_err(),
+        "--variant and --all-variants should conflict"
+    );
+}
+
+#[test]
+fn publish_reference_requires_a_slug() {
+    assert!(
+        Cli::try_parse_from(["tcab", "publish-reference", "--env", "prod"]).is_err(),
+        "the case slug is required"
+    );
+}
+
+#[test]
+fn publish_reference_requires_an_env() {
+    // `--env` has no default so a publish can never silently target prod.
+    assert!(
+        Cli::try_parse_from(["tcab", "publish-reference", "carom"]).is_err(),
+        "--env is required"
+    );
 }

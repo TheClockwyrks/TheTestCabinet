@@ -39,6 +39,70 @@ asset-generation — must be released as its **own** public git repository.
   a `voxel-animation` gives one orbit-drag viewer per animation with a control per
   caller joint. See [Evaluation](/testing/asset-generation/evaluation/#voxel-validation).
 
+## Reference implementations
+
+Separate from any run's output, a test-case variant may ship a **reference
+implementation**: an authored, in-repo, versioned, buildable static game that is
+the *correct* implementation of that variant. Think of it as the case-variant
+analogue of a run's playable build — the answer key rather than a model's
+attempt. It lets the case page show, alongside the models' runs, what a faithful
+build of the spec looks like.
+
+A reference implementation is authored **in the repository, versioned with the
+case**: it lives in a directory under the version folder (by convention
+`reference-impl/<variant>/`) and a variant opts in by naming that directory with
+its optional
+[`reference_implementation`](/testing/end-to-end/manifests/) key. Because it is
+declared per variant, each variant may have its own correct build, and a variant
+without the key simply has none. It is built with the case's existing
+[`[build]` commands](/testing/end-to-end/manifests/) run from that directory, and
+emits its static site into the same `dist/`, `build/`, or `out/` a run's build
+does.
+
+Two properties keep it honest:
+
+- It is **never seeded** into a run. It is the authored answer, so handing it to a
+  model would defeat the point of the case. It never crosses into the run
+  container, the seeded tree, or the prompt — only into the published gallery.
+- It is deployed **out-of-band**, by a person, not as part of any run's lifecycle.
+  The [`tcab publish-reference`](/components/cli/overview/#commands) command builds
+  the variant's `reference_implementation` directory with the case `[build]`
+  commands, runs the **same secret-redaction scrubber** the run
+  [publisher](#secret-redaction) uses over the output, and deploys it to
+  Cloudflare Pages — its own references project (a required `--env` selects prod's
+  `test-cabinet-references` or staging's `test-cabinet-references-staging`), on a
+  branch named `<slug>-<version-with-dots-as-dashes>-<variant>` — exactly the way a
+  published run's build is deployed to Pages. Cloudflare truncates long subdomains,
+  so the served URL is **read back** from `wrangler`'s output rather than
+  constructed, then written into a committed lockfile.
+
+Recording the URL follows a **pull** model, not a push: the remote backends are
+private (VPN-only), so nothing off-cluster can `PUT` to them. Instead
+`publish-reference` writes each URL into a committed lockfile,
+`test-cases/reference-builds.lock.json`, keyed **by environment first** (`prod` and
+`staging` deploy to different Pages projects, so a variant has a URL per
+environment). The backend **ingests** that lockfile from its own git checkout on the
+next re-ingest (`scripts/reingest-cluster.sh`, the same path that refreshes catalog
+edits), reads the entries for its own `TCAB_ENV`, and **reconciles** the dedicated
+`case_reference_build` table (keyed by `(slug, version, variant)`) to match —
+upserting each URL and pruning any the lockfile no longer lists. A version's
+`GET /test-cases/{slug}/versions/{version}` response carries each variant's
+`referenceBuild` URL, and the public snapshot serializes it as each variant's
+`referenceBuild` field, so the console can surface it. On the case page it appears
+as a **Reference** tab — shown only for an end-to-end case whose selected variant
+has a recorded build — that embeds the game inline (loaded by default, with a
+fullscreen toggle and no "unedited model code" caveat, because this is the
+vetted correct build rather than a run's raw output).
+
+A reference implementation is distinct from a **reference visual mockup** (the
+[`[[reference]]`](/testing/end-to-end/manifests/) views). A mockup is a rendered
+screenshot of a single view, **seeded** into the run as a static *target* the
+model builds toward (and used as the baseline for a validation check); it is a
+picture of one screen and it deliberately never includes its source. A reference
+implementation is the **whole playable game**, is **never seeded**, and is
+deployed and shown as a live build. One shows the model where to aim; the other
+shows a human what hitting the mark looks like.
+
 ## Run Record
 
 Each finished run's [run record](/components/core/run-records/) must be uploaded
@@ -191,11 +255,16 @@ record.
 The **checklist** records a binary verdict — **pass** or **fail**, with an
 optional note — for each reviewer checklist item the test case version declares
 (see the version manifest's
-[`review_item`s](/testing/end-to-end/manifests/)). Every declared item must carry
-a verdict before a review can be submitted, so a reviewer cannot silently skip a
-requirement the case author called out. Each item is worth a **weight** in
-points: a `pass` earns the item's weight and a `fail` earns none, and a review's
-**score** is the earned weight over the total declared weight.
+[`review_item`s](/testing/end-to-end/manifests/)). An item that declares
+[sub-items](/testing/end-to-end/manifests/#sub-items) is instead verdicted per
+sub-item, its verdict recorded under the composite id `<item id>.<sub-item id>`.
+Every declared item — and every sub-item — must carry a verdict before a review
+can be submitted, so a reviewer cannot silently skip a requirement the case author
+called out. Each item is worth a **weight** in points: graded as a whole, a `pass`
+earns the item's weight and a `fail` earns none; graded by sub-items, the weight
+splits evenly across them and the item earns the fraction that passed (so a
+review's earned score can be fractional). A review's **score** is the earned
+weight over the total declared weight.
 
 A case declares one or more **common scoring domains** (for example a game's
 single-player and versus modes), and the run's variant may add its own; the
@@ -206,7 +275,7 @@ review the **overall rating** is the *worst* across those domains, so a flawless
 mode cannot mask a broken one. What each
 tier means is reviewer judgment rather than anything a run emits, so the criteria
 for choosing one live with the review workflow; see
-[Reviewing Test Run Results](/guides/reviewing-test-run-results/#write-the-review).
+[Reviewing Test Run Results](/guides/development/reviewing-test-run-results/#write-the-review).
 
 ### Aggregating across reviews
 

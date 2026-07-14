@@ -11,14 +11,18 @@
 # instead of one silent blocking POST that looks like a hang.
 #
 # CHANGE DETECTION. Rendering all 50+ cases on every edit is wasteful, so by
-# default this only re-ingests cases whose files changed since the last successful
-# run. We keep a marker file (its mtime is the last-ingest baseline) and, for each
-# candidate case, ask `find` whether any file under test-cases/<slug>/ is newer than
-# that baseline. Cases with no newer file are skipped without touching the backend.
-# The baseline is captured BEFORE the scan and only advanced on success, so an edit
-# made while an ingest is in flight is still caught on the next run. Two escape
-# hatches ignore the baseline: `--force` (re-ingest everything regardless), and a
-# missing marker file (a first run, or `rm .reingest-timestamp`, re-ingests all).
+# default this only re-ingests the individual test-case VERSIONS whose files changed
+# since the last successful run. We keep a marker file (its mtime is the last-ingest
+# baseline) and, for each candidate case, ask `find` whether any file under a given
+# version folder test-cases/<type>/<difficulty>/<slug>/<version>/ is newer than that
+# baseline. Only the
+# changed versions are re-ingested — sent as `<slug>@<version>` targets — so editing
+# one version no longer re-renders every version the case declares; a case with no
+# newer file in any version is skipped without touching the backend. The baseline is
+# captured BEFORE the scan and only advanced on success, so an edit made while an
+# ingest is in flight is still caught on the next run. Two escape hatches ignore the
+# baseline: `--force` (re-ingest everything regardless), and a missing marker file (a
+# first run, or `rm .reingest-timestamp`, re-ingests all).
 #
 # Note the two distinct meanings of "force": the `--force` FLAG here controls the
 # CLIENT-side change detection (scan everything, skip the mtime filter), while the
@@ -45,6 +49,10 @@
 #
 # Override the target with BACKEND_URL (default http://127.0.0.1:8787):
 #   BACKEND_URL=http://127.0.0.1:8787 scripts/reingest.sh carom
+#
+# This targets a directly-reachable backend URL (local dev, or a port-forward). To
+# re-ingest a DEPLOYED environment's private backend on AKS, use
+# `scripts/reingest-cluster.sh --env <prod|staging>` instead.
 set -euo pipefail
 
 backend="${BACKEND_URL:-http://127.0.0.1:8787}"
@@ -84,7 +92,7 @@ if [[ ${#slugs[@]} -gt 0 ]]; then
 else
   while IFS= read -r d; do
     candidates+=("$(basename "$d")")
-  done < <(find "$cases_dir" -mindepth 1 -maxdepth 1 -type d | sort)
+  done < <(find "$cases_dir" -mindepth 3 -maxdepth 3 -type d | sort)
 fi
 
 # Decide what actually gets ingested.
@@ -109,13 +117,30 @@ if [[ ${#slugs[@]} -eq 0 && ( "$force" == true || ! -e "$timestamp" ) ]]; then
 else
   to_ingest=()
   for slug in "${candidates[@]}"; do
-    dir="${cases_dir}/${slug}"
-    if [[ "$force" == true || ! -e "$timestamp" || ! -d "$dir" ]]; then
-      # --force / no baseline / a slug with no folder on disk (let the backend judge it).
+    # Cases live at test-cases/<type>/<difficulty>/<slug>/, so resolve the folder by
+    # its final component — the bare slug/folder-name a candidate carries. When it
+    # resolves nowhere (an unknown arg, or a slug that differs from its folder name)
+    # `dir` is empty and the guard below targets the whole case by slug.
+    dir="$(find "$cases_dir" -mindepth 3 -maxdepth 3 -type d -name "$slug" -print -quit 2>/dev/null)"
+    if [[ "$force" == true || ! -e "$timestamp" || -z "$dir" || ! -d "$dir" ]]; then
+      # --force / no baseline / a slug with no folder on disk: target the whole case
+      # (a bare entry the backend expands to every version) and let it judge.
       to_ingest+=("$slug")
-    elif [[ -n "$(find "$dir" -newer "$timestamp" -print -quit 2>/dev/null)" ]]; then
-      to_ingest+=("$slug")
+      continue
     fi
+    # Otherwise narrow to the individual version folders that changed, so editing one
+    # version re-renders only it rather than every version the case declares. A version
+    # folder with no file newer than the baseline (`find … -print -quit` stops at the
+    # first hit, so it is cheap) contributes nothing; a case with no changed version is
+    # skipped entirely. A non-matching glob leaves the literal pattern, which the
+    # `-d` guard rejects.
+    for vdir in "${dir}"/*/; do
+      [[ -d "$vdir" ]] || continue
+      version="$(basename "$vdir")"
+      if [[ -n "$(find "$vdir" -newer "$timestamp" -print -quit 2>/dev/null)" ]]; then
+        to_ingest+=("${slug}@${version}")
+      fi
+    done
   done
 
   if [[ ${#to_ingest[@]} -eq 0 ]]; then
@@ -137,7 +162,27 @@ fi
 # stream emits and a pretty-printed error body. Returns empty when the key is absent;
 # never fails under `set -e`.
 jval() { # jval <key> <line>
-  if [[ "$2" =~ \"$1\"[[:space:]]*:[[:space:]]*\"?([^,\"}]*) ]]; then
+  # A string value is captured in full — its body may legitimately contain commas
+  # and (backslash-escaped) quotes, e.g. an error `message` that quotes a JSON
+  # snippet like `add `"pkg": "file:…"``. Naively stopping at the first `"`/`,`
+  # (the old `[^,\"}]*`) truncated such messages mid-value, so match the whole
+  # quoted body honoring escapes (`\"`, `\\`, …) and then unescape it.
+  local str_re="\"$1\"[[:space:]]*:[[:space:]]*\"(([^\"\\]|\\\\.)*)\""
+  if [[ "$2" =~ $str_re ]]; then
+    local s="${BASH_REMATCH[1]}" bs=$'\001'
+    s="${s//\\\\/$bs}"    # protect escaped backslashes before unescaping the rest
+    s="${s//\\\"/\"}"     # \" -> "
+    s="${s//\\\//\/}"     # \/ -> /
+    s="${s//\\n/$'\n'}"   # \n -> newline
+    s="${s//\\t/$'\t'}"   # \t -> tab
+    s="${s//\\r/$'\r'}"   # \r -> carriage return
+    s="${s//$bs/\\}"      # restore literal backslashes
+    printf '%s' "$s"
+    return
+  fi
+  # A bare scalar (number, boolean, null) runs up to the next structural delimiter.
+  local scalar_re="\"$1\"[[:space:]]*:[[:space:]]*([^,\"}[:space:]]+)"
+  if [[ "$2" =~ $scalar_re ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
   fi
 }

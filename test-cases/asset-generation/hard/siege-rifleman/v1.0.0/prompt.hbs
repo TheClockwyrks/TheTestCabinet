@@ -1,0 +1,88 @@
+Model, rig, and animate the **Warden Rifleman**, an upright Cobalt infantry soldier
+for the Wardens' Siege squad — as **one skinned character** that fits within a
+{{voxel.width}}x{{voxel.height}}x{{voxel.depth}} bounding box, authored by driving
+**headless Blender** through its Python API. You build the character mesh, invent an
+armature (skeleton) to bind it, weight the skin, add an empty `weapon_socket` bone for
+the rifle, and **author its six animations** — all by writing a Blender Python script
+(`build.py`) and running it.
+
+This test measures **creativity and craft with a real character pipeline**, not
+instruction-following: the brief tells you *what the Rifleman is* and *how it must
+move*, but the mesh topology, the skeleton you build, where you place the joints, how
+you weight the skin, and how you shape every form are **entirely yours to invent**. Work
+out the pieces an infantry soldier that idles, runs, fires, reloads, flinches, and dies
+needs.
+
+## How authoring works
+
+The only sanctioned way to build the character is to **write a Blender Python (`bpy`)
+script and run it through the `tcab-blend` runner** already on your `PATH`. `tcab-blend`
+executes your `build.py` under headless Blender
+(`blender --background --python build.py -- blender.config.json`), then exports the
+skinned, animated **`character.glb`** (a standard glTF 2.0 with the skin — bones,
+per-vertex weights, inverse-bind matrices — and your animations) and renders the preview
+**`model.png`**. The exported `character.glb` is what is **judged**, rendered in a real
+3D viewer — not the steps your script took. Anything you produce outside `tcab-blend` is
+discarded.
+
+A starter **`build.py`** is already in your workspace. It loads `blender.config.json`
+(the bounding box, the output paths, and the list of required animation names), clears
+the scene, and marks where to build the body mesh, the armature, the skin weights, and
+each animation, then calls the bundled export helper. Fill it in with the full `bpy`
+API: build the mesh (`bpy.data`/`bmesh` or primitives you edit), add an `Armature`
+object with edit-bones in a hierarchy, bind the skin with vertex groups (Blender's
+automatic weights are a fine starting point), and author one **Action** per animation
+with F-curve keyframes on the pose bones. Carry color with vertex colors or materials so
+it survives the glTF export.
+
+Run **`tcab-blend`** whenever you want to build and see your progress — read `model.png`
+after each run — and **you must run it before you finish** so `character.glb` is emitted
+(an un-exported model is scored as empty). Run `tcab-blend --help` for its exact usage;
+the Blender Python API is the authoring surface.
+
+Two conventions matter:
+
+- **Gear is baked in; the weapon is not.** The Rifleman's permanent gear (helmet, light
+  armor, pouches) is part of the one skinned mesh and moves with the body. The **rifle is
+  not** part of the mesh: add an empty **`weapon_socket`** bone parented to the right hand
+  (with no vertex influence) where a game hangs a separate weapon asset, and shape the
+  hands to hold a rifle there. Do not model the gun.
+- **Author every animation in place.** The run cycle strides on the spot; a game supplies
+  the real travel. Do not move the character across the world in the animations.
+- **Expose the runtime interface.** A game plays your six clips by name (that works
+  natively), but it must also be able to *aim* the soldier and *mount* a weapon. Build an
+  **aim bone** (upper spine/chest, carrying the head/arms/socket) and tag it with a
+  `tcab_joint` custom property (the **`aim_pitch`** caller DOF, a rotation about the
+  glTF-frame `x` axis, ±40°), and tag the `weapon_socket` bone with `tcab_socket` — both
+  export into the glTF `extras`, the self-contained game-facing interface (see the brief).
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Fill in `build.py` and run `tcab-blend` until `model.png` matches the brief and the
+character is complete: an upright Warden Rifleman built as one skinned mesh, bound to a
+skeleton you invented, that deforms convincingly across its joints. **Author the six
+required animations** as Actions with F-curve keyframes, easing each so the body carries
+weight rather than sliding linearly:
+
+- **`idle`** — plays continuously on its own: a settled, breathing ready stance.
+- **`run`** — a game-triggered loop: a believable run cycle authored **in place**,
+  opposite-phase legs on planted feet, arms counter-swinging.
+- **`fire`** — a game-triggered one-shot: shoulder the socketed weapon, brace, take a
+  single recoil kick that ripples through the shoulder and torso and settles.
+- **`reload`** — a game-triggered one-shot: work the hands and the `weapon_socket`
+  through a reload and back to ready.
+- **`hit`** — a game-triggered one-shot: a sharp flinch/stagger that recovers.
+- **`death`** — a game-triggered one-shot that plays **once and holds**: the body
+  collapses and holds the downed pose.
+
+The six animations are the fixed contract — produce them, by those names; the mesh,
+skeleton, weights, and socket that realize them are yours. **Run `tcab-blend` before you
+finish** so `character.glb` is emitted. When you are satisfied, stop: the emitted glTF is
+your finished submission, and your `build.py` is re-run afterward to confirm it
+reproduces the character.

@@ -16,19 +16,43 @@
 use std::path::{Path, PathBuf};
 
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::{Expr, OnConflict};
+use sea_orm::sea_query::{CaseStatement, Expr, Func, OnConflict, SimpleExpr};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
-    DatabaseConnection, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectOptions, ConnectionTrait, Database,
+    DatabaseBackend, DatabaseConnection, EntityTrait, IntoActiveModel, Order, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
+use test_cabinet_core::metrics::{Cost, TokenPrices};
+use test_cabinet_core::reference_lock::ReferenceBuildEntry;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
-use test_cabinet_core::run_record::{RunLinks, RunRecord};
-use test_cabinet_entities::{job, publish_job, review, run, run_link, snapshot_state, tournament};
+use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug, RunLinks, RunRecord};
+use test_cabinet_entities::{
+    case_reference_build, harness_config, job, model, model_alias, model_price, publish_job,
+    review, review_plan, run, run_link, snapshot_state, tournament,
+};
 
 use crate::error::Result;
+
+/// The non-terminal job states — a run the queue still owns, from enqueue through
+/// execution. A job in one of these is "in flight": it appears in the active-run
+/// list, counts toward coverage, and is cancelable. `queued` and `pending` have no
+/// driver yet (the dispatcher will claim a `queued` one; a `pending` one is held
+/// back because its harness is at its parallelism cap); `dispatched`, `starting`,
+/// and `running` each have a driver Job coming up or executing.
+const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
+
+/// The job states that occupy a **parallelism slot** for their harness: a driver
+/// Job has been (or is being) created for them. Used to enforce a harness's maximum
+/// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count.
+const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+
+/// The job states a backend restart must reap: a driver was executing them (or
+/// being created for them) and went down with the backend, so the job can never
+/// reach a terminal state on its own. `queued`/`pending` jobs have no driver, so
+/// they are left for the dispatcher to drain once it reconnects.
+const REAPABLE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
 /// A stored run: the full record, its reviews, and its links. This is the shape
 /// `GET /runs/{id}` and the snapshot's per-run file are built from. A run may be
@@ -138,10 +162,30 @@ const SNAPSHOT_STATE_ID: i32 = 1;
 
 /// The SeaORM-backed store.
 pub struct Db {
-    conn: DatabaseConnection,
+    handle: ConnHandle,
+}
+
+/// How the store reaches its database: a fixed connection (SQLite, or a
+/// password-authenticated `postgres://` URL), or a Microsoft Entra
+/// managed-identity connection whose token — and therefore whose underlying pool —
+/// rotates in the background.
+enum ConnHandle {
+    /// A connection built once from the URL. Cheap to clone (an `Arc` to the pool).
+    Static(DatabaseConnection),
+    /// A passwordless Azure AD connection; the current pool is read per query.
+    AzureAd(std::sync::Arc<test_cabinet_db_auth::AzureAdDb>),
 }
 
 impl Db {
+    /// The current SeaORM connection, as a cheap clone. Every query and
+    /// transaction goes through this so that, under Azure AD auth, work runs on
+    /// the pool built with the freshest token.
+    fn conn(&self) -> DatabaseConnection {
+        match &self.handle {
+            ConnHandle::Static(conn) => conn.clone(),
+            ConnHandle::AzureAd(db) => db.connection(),
+        }
+    }
     /// Connect to the store at `url`, choosing the backend by URL scheme
     /// (`sqlite://…` or `postgres://…`). For a SQLite **file** URL the parent
     /// directory is created first (so a fresh deployment works) and WAL +
@@ -156,7 +200,23 @@ impl Db {
         }
         let conn = Database::connect(ConnectOptions::new(url.to_owned())).await?;
         Self::apply_sqlite_pragmas(&conn).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            handle: ConnHandle::Static(conn),
+        })
+    }
+
+    /// Connect to a managed-PostgreSQL store using Microsoft Entra managed-identity
+    /// (passwordless) authentication. `url` must name the Entra Postgres role as
+    /// its username and carry no password; the access token is minted from the
+    /// pod's Workload Identity and the connection pool is rebuilt as it rotates.
+    /// See [`test_cabinet_db_auth`].
+    pub async fn connect_azure_ad(url: &str) -> Result<Self> {
+        let db = test_cabinet_db_auth::AzureAdDb::connect(url)
+            .await
+            .map_err(|err| sea_orm::DbErr::Custom(format!("Azure AD Postgres auth: {err}")))?;
+        Ok(Self {
+            handle: ConnHandle::AzureAd(std::sync::Arc::new(db)),
+        })
     }
 
     /// Open an in-memory SQLite store with the schema migrated in (used by tests).
@@ -171,12 +231,16 @@ impl Db {
         let conn = Database::connect(opts).await?;
         Self::apply_sqlite_pragmas(&conn).await?;
         test_cabinet_migration::Migrator::up(&conn, None).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            handle: ConnHandle::Static(conn),
+        })
     }
 
     /// The underlying connection, for the startup migration in [`crate::build`].
-    pub fn connection(&self) -> &DatabaseConnection {
-        &self.conn
+    /// Returns a cheap clone of the current pool (owned, so it stays valid across a
+    /// background refresh under Azure AD auth).
+    pub fn connection(&self) -> DatabaseConnection {
+        self.conn()
     }
 
     /// Apply the SQLite-only pragmas. WAL is required by the Litestream backup
@@ -209,7 +273,7 @@ impl Db {
         record.links = links.clone();
         let record_json = serde_json::to_string(&record)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let existing = run::Entity::find_by_id(record.id.clone()).one(&txn).await?;
         let newly_pushed = existing.is_none();
@@ -218,6 +282,13 @@ impl Db {
             .map(|model| model.published)
             .unwrap_or(false);
         let existing_published_at = existing.and_then(|model| model.published_at);
+
+        // The record-derived sort columns (test type, run time, tokens, cost) are
+        // refreshed on every (re-)push; the review-derived columns (rating /
+        // review_count) are NOT touched here — they are maintained by `add_review`,
+        // and a re-push must preserve an already-reviewed run's aggregate. A brand-
+        // new push writes the zero-review defaults (no rating, count 0).
+        let lifted = lifted_run_metrics(&record);
 
         run::Entity::insert(run::ActiveModel {
             id: Set(record.id.clone()),
@@ -230,15 +301,23 @@ impl Db {
             harness_slug: Set(record.subject.harness_slug.as_str().to_string()),
             harness_version: Set(record.subject.harness_version.clone()),
             model_id: Set(record.subject.model_id.clone()),
+            test_type: Set(lifted.test_type),
             run_state: Set(run_state_str(record.status.state).to_string()),
+            run_time_seconds: Set(lifted.run_time_seconds),
+            total_tokens: Set(lifted.total_tokens),
+            cost_comparable: Set(lifted.cost_comparable),
+            rating: Set(None),
+            review_count: Set(0),
             loaded: Set(record.validation.loaded),
             published: Set(was_published),
             record_json: Set(record_json),
             events_json: Set(events_json.map(|s| s.to_string())),
         })
         .on_conflict(
-            // Re-push updates the record and lifted columns but never the publish
-            // state (`Published`/`PublishedAt`), which only `publish` changes.
+            // Re-push updates the record and its lifted record-derived columns but
+            // never the publish state (`Published`/`PublishedAt`, changed only by
+            // `publish`) nor the review-derived `Rating`/`ReviewCount` (maintained
+            // by `add_review`).
             OnConflict::column(run::Column::Id)
                 .update_columns([
                     run::Column::StartedAt,
@@ -249,7 +328,11 @@ impl Db {
                     run::Column::HarnessSlug,
                     run::Column::HarnessVersion,
                     run::Column::ModelId,
+                    run::Column::TestType,
                     run::Column::RunState,
+                    run::Column::RunTimeSeconds,
+                    run::Column::TotalTokens,
+                    run::Column::CostComparable,
                     run::Column::Loaded,
                     run::Column::RecordJson,
                     run::Column::EventsJson,
@@ -295,7 +378,7 @@ impl Db {
         let ratings_json = serde_json::to_string(&review.ratings)?;
         let checklist_json = serde_json::to_string(&review.checklist)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -341,14 +424,33 @@ impl Db {
         .exec(&txn)
         .await?;
 
+        // Recompute the lifted rating / review_count from the run's full review set
+        // (including the review just written) so the console's sort columns stay in
+        // step with the reviews table.
+        let reviews = review::Entity::find()
+            .filter(review::Column::RunId.eq(run_id))
+            .all(&txn)
+            .await?
+            .into_iter()
+            .map(stored_review)
+            .collect::<Result<Vec<_>>>()?;
+        let rating = lifted_rating(&reviews);
+        let review_count = reviews.len() as i64;
+
+        let published = run.published;
+        let mut active = run.into_active_model();
+        active.rating = Set(rating);
+        active.review_count = Set(review_count);
+        active.update(&txn).await?;
+
         // A new/updated review changes a published run's aggregate rating and
         // score, so refresh the snapshot; a pending run is not public.
-        if run.published {
+        if published {
             set_dirty(&txn).await?;
         }
 
         txn.commit().await?;
-        Ok(run.published)
+        Ok(published)
     }
 
     /// Publish a stored run: flip it public. Refused with
@@ -359,7 +461,7 @@ impl Db {
     /// stored. Idempotent: re-publishing an already-published run preserves its
     /// original `published_at`. Stamps `published_at` on the first publish.
     pub async fn publish(&self, run_id: &str, published_at: &str) -> Result<PublishRunOutcome> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -401,7 +503,7 @@ impl Db {
     /// with `run_id` is stored. Because only an unpublished run can be deleted, the
     /// run is not in the public snapshot and no refresh is needed.
     pub async fn delete_run(&self, run_id: &str) -> Result<()> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -440,7 +542,7 @@ impl Db {
     /// Fetch one stored run by id (published or pending).
     pub async fn get_run(&self, id: &str) -> Result<Option<StoredRun>> {
         let run = run::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?;
         let Some(run) = run else {
             return Ok(None);
@@ -465,7 +567,7 @@ impl Db {
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -533,7 +635,7 @@ impl Db {
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -544,6 +646,92 @@ impl Db {
             None
         };
         Ok((runs, next_before))
+    }
+
+    /// List the **unreviewed** runs — completed runs that no account has reviewed
+    /// yet (`run_state = completed AND review_count = 0`) — newest-first by
+    /// `finished_at`, paginated by a `finished_at` cursor. This is the reviewer's
+    /// "nobody has looked at this" worklist, a strict subset of
+    /// [`list_for_review`](Self::list_for_review): it drops the completed runs that
+    /// already carry at least one review, so a reviewer sees only what still needs
+    /// a first pass. The failure tiers are excluded for the same reason they are in
+    /// the review worklist — they carry no review checklist.
+    pub async fn list_unreviewed(
+        &self,
+        limit: usize,
+        before: Option<&str>,
+    ) -> Result<(Vec<StoredRun>, Option<String>)> {
+        let fetch = limit.saturating_add(1);
+        let mut query = run::Entity::find()
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::ReviewCount.eq(0));
+        if let Some(before) = before {
+            query = query.filter(run::Column::FinishedAt.lt(before));
+        }
+        let rows = query
+            .order_by_desc(run::Column::FinishedAt)
+            .order_by_desc(run::Column::Id)
+            .limit(fetch as u64)
+            .all(&self.conn())
+            .await?;
+
+        let mut runs = self.assemble(rows).await?;
+        let next_before = if runs.len() > limit {
+            runs.truncate(limit);
+            runs.last().map(|run| run.record.finished_at.clone())
+        } else {
+            None
+        };
+        Ok((runs, next_before))
+    }
+
+    /// List summary rows for the console's **numbered** pager: a `limit`-sized
+    /// window at `offset`, ordered by the chosen lifted column (with an `id`
+    /// tiebreak) under the supplied [`SummaryFilter`], **plus** the total count of
+    /// matching rows (ignoring limit/offset) so the console can size the pager.
+    ///
+    /// This is a distinct path from the `before`-cursor listings (which the public
+    /// snapshot drain and the reviewer worklist use) — it is OFFSET/COUNT-based and
+    /// carries filter/free-text/sort parameters. The two never share a query. The
+    /// backing store is embedded SQLite, so the count is a single `COUNT(*)` over
+    /// the same predicate.
+    ///
+    /// Cost and rating NULLs (unknown cost / an unrated run) always sort **last**,
+    /// in either direction: the ordering leads with a null-group key so the
+    /// non-null rows precede the null ones regardless of `dir`. Rating is ordered by
+    /// its **tier** (`flawless > great > scuffed > broken`), not lexically — see
+    /// [`rating_rank_expr`].
+    ///
+    /// [`assemble`](Self::assemble) preserves the input row order (it maps rows
+    /// one-for-one, only skipping any that no longer deserialize), so the returned
+    /// page stays in the sorted order.
+    pub async fn list_summaries(
+        &self,
+        filter: &SummaryFilter,
+        sort: SummarySort,
+        dir: SortDir,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<StoredRun>, usize)> {
+        // The same predicate drives both the COUNT and the page; count first (no
+        // limit/offset), then order + window the page.
+        let total = summary_query(filter).count(&self.conn()).await? as usize;
+
+        let order = match dir {
+            SortDir::Asc => Order::Asc,
+            SortDir::Desc => Order::Desc,
+        };
+        let rows = apply_summary_sort(summary_query(filter), sort, order.clone())
+            // A stable final tiebreak on the primary key so paging is deterministic
+            // even when the sort column ties.
+            .order_by(run::Column::Id, order)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.conn())
+            .await?;
+
+        let runs = self.assemble(rows).await?;
+        Ok((runs, total))
     }
 
     /// Shared worklist query: runs whose `run_state` is one of `states` (pending
@@ -565,7 +753,7 @@ impl Db {
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -588,7 +776,7 @@ impl Db {
             .filter(run::Column::TestCaseSlug.eq(slug.to_string()))
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         self.assemble(rows).await
     }
@@ -601,7 +789,7 @@ impl Db {
             .filter(run::Column::Published.eq(true))
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         self.assemble(rows).await
     }
@@ -620,7 +808,7 @@ impl Db {
             .column(run::Column::TestCaseVersion)
             .distinct()
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         Ok(rows.into_iter().collect())
     }
@@ -629,7 +817,7 @@ impl Db {
     pub async fn run_count(&self) -> Result<i64> {
         Ok(run::Entity::find()
             .filter(run::Column::Published.eq(true))
-            .count(&self.conn)
+            .count(&self.conn())
             .await? as i64)
     }
 
@@ -645,7 +833,7 @@ impl Db {
         let mut link_map: std::collections::HashMap<String, run_link::Model> =
             run_link::Entity::find()
                 .filter(run_link::Column::RunId.is_in(ids.clone()))
-                .all(&self.conn)
+                .all(&self.conn())
                 .await?
                 .into_iter()
                 .map(|link| (link.run_id.clone(), link))
@@ -657,7 +845,7 @@ impl Db {
             .filter(review::Column::RunId.is_in(ids))
             .order_by_asc(review::Column::ReviewedAt)
             .order_by_asc(review::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         for review in reviews {
             let run_id = review.run_id.clone();
@@ -715,7 +903,7 @@ impl Db {
     ) -> Result<PublishOutcome> {
         let record_json = serde_json::to_string(record)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let existing_published_at = tournament::Entity::find_by_id(record.id.clone())
             .one(&txn)
             .await?
@@ -756,7 +944,7 @@ impl Db {
     /// Fetch one stored tournament by id.
     pub async fn get_tournament(&self, id: &str) -> Result<Option<StoredTournament>> {
         tournament::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .map(stored_tournament)
             .transpose()
@@ -778,7 +966,7 @@ impl Db {
             .order_by_desc(tournament::Column::PublishedAt)
             .order_by_desc(tournament::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut tournaments = rows
@@ -798,7 +986,7 @@ impl Db {
     /// row has never been written.
     pub async fn snapshot_state(&self) -> Result<SnapshotState> {
         let state = snapshot_state::Entity::find_by_id(SNAPSHOT_STATE_ID)
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .map(|model| SnapshotState {
                 dirty: model.dirty,
@@ -816,7 +1004,7 @@ impl Db {
     /// Mark the snapshot dirty (a publish has landed). Coalescing reads this to
     /// decide whether a refresh is needed.
     pub async fn mark_dirty(&self) -> Result<()> {
-        set_dirty(&self.conn).await
+        set_dirty(&self.conn()).await
     }
 
     /// Record a successful upload: clear the dirty flag and stamp the upload time
@@ -837,7 +1025,7 @@ impl Db {
                 ])
                 .to_owned(),
         )
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -924,6 +1112,316 @@ fn stored_tournament(model: tournament::Model) -> Result<StoredTournament> {
     })
 }
 
+/// The columns lifted out of a run's `RunRecord` for the console's sort/filter
+/// listing, computed once and applied on every insert/upsert of the run row.
+struct LiftedRunMetrics {
+    /// The kebab-case test-type token (`record.subject.test_type`).
+    test_type: String,
+    /// End-to-end wall-clock time in seconds (`record.metrics.run_time_seconds`).
+    run_time_seconds: f64,
+    /// Total token count across every class — the same sum the UI's `totalTokens`
+    /// shows — with an unreported/absent total stored as `0`.
+    total_tokens: i64,
+    /// Comparable cost (USD), or `None` when the cost is unknown.
+    cost_comparable: Option<f64>,
+}
+
+/// Lift the record-derived sort columns out of a run's record. Reuses the core
+/// [`TokenCounts::total`](test_cabinet_core::metrics::TokenCounts::total) so the
+/// lifted `total_tokens` matches the UI's headline figure exactly.
+fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
+    LiftedRunMetrics {
+        test_type: record.subject.test_type.as_str().to_string(),
+        run_time_seconds: record.metrics.run_time_seconds,
+        total_tokens: record.metrics.tokens.total().unwrap_or(0) as i64,
+        cost_comparable: record.metrics.cost.comparable,
+    }
+}
+
+/// The run's aggregate rating — the worst rating any reviewer gave any domain —
+/// or `None` when the run carries no reviews. The single source of truth for the
+/// lifted `run.rating` column and the snapshot's summary cards; wraps the core
+/// [`aggregate_rating`](test_cabinet_core::review::aggregate_rating).
+pub(crate) fn aggregate_review_rating(
+    reviews: &[StoredReview],
+) -> Option<test_cabinet_core::review::Rating> {
+    test_cabinet_core::review::aggregate_rating(
+        reviews.iter().map(|review| review.ratings.as_slice()),
+    )
+}
+
+/// Reviewer coverage plans and the run/job counts the coverage matrix is built
+/// from. A plan is per-account (keyed by the auth-service user id); the counts are
+/// **global** — they tally every run/job for a cell regardless of who launched it,
+/// so two reviewers dividing the model space never redo each other's runs.
+impl Db {
+    /// Load a reviewer's saved coverage plan, or `None` when they have not saved
+    /// one yet. A malformed stored plan (corrupt JSON) surfaces as an error rather
+    /// than being silently dropped.
+    pub async fn get_review_plan(&self, user_id: &str) -> Result<Option<crate::api::ReviewPlan>> {
+        let Some(row) = review_plan::Entity::find_by_id(user_id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(crate::api::ReviewPlan {
+            runs_per_cell: row.runs_per_cell.max(0) as u32,
+            cases: serde_json::from_str(&row.cases_json)?,
+            combinations: serde_json::from_str(&row.combinations_json)?,
+        }))
+    }
+
+    /// Upsert a reviewer's coverage plan in place (one row per account, keyed by
+    /// `user_id`).
+    pub async fn put_review_plan(
+        &self,
+        user_id: &str,
+        plan: &crate::api::ReviewPlan,
+        updated_at: &str,
+    ) -> Result<()> {
+        let cases_json = serde_json::to_string(&plan.cases)?;
+        let combinations_json = serde_json::to_string(&plan.combinations)?;
+        review_plan::Entity::insert(review_plan::ActiveModel {
+            user_id: Set(user_id.to_string()),
+            runs_per_cell: Set(plan.runs_per_cell as i32),
+            cases_json: Set(cases_json),
+            combinations_json: Set(combinations_json),
+            updated_at: Set(updated_at.to_string()),
+        })
+        .on_conflict(
+            OnConflict::column(review_plan::Column::UserId)
+                .update_columns([
+                    review_plan::Column::RunsPerCell,
+                    review_plan::Column::CasesJson,
+                    review_plan::Column::CombinationsJson,
+                    review_plan::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Count the **completed** runs for one coverage cell (an exact
+    /// case-version-variant × harness × model tuple). Only evaluable `completed`
+    /// runs count toward a cell's target; the failure tiers do not.
+    pub async fn count_completed_runs_for_cell(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        harness: &str,
+        model: &str,
+    ) -> Result<u64> {
+        Ok(run::Entity::find()
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::TestCaseSlug.eq(slug))
+            .filter(run::Column::TestCaseVersion.eq(version))
+            .filter(run::Column::Variant.eq(variant))
+            .filter(run::Column::HarnessSlug.eq(harness))
+            .filter(run::Column::ModelId.eq(model))
+            .count(&self.conn())
+            .await?)
+    }
+
+    /// Count the **in-flight** jobs — queued, pending, dispatched, starting, or
+    /// running — for one coverage cell. These count toward a cell's target alongside
+    /// completed runs, so triggering the missing runs immediately marks the cell
+    /// satisfied and the reviewer does not double-trigger while runs are still
+    /// executing (or waiting to).
+    pub async fn count_in_flight_jobs_for_cell(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        harness: &str,
+        model: &str,
+    ) -> Result<u64> {
+        Ok(job::Entity::find()
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .filter(job::Column::TestCaseSlug.eq(slug))
+            .filter(job::Column::TestCaseVersion.eq(version))
+            .filter(job::Column::Variant.eq(variant))
+            .filter(job::Column::HarnessSlug.eq(harness))
+            .filter(job::Column::ModelId.eq(model))
+            .count(&self.conn())
+            .await?)
+    }
+}
+
+/// The lifted `run.rating` column value: the aggregate rating as its lowercase
+/// wire token, or `None` when the run carries no reviews.
+fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
+    aggregate_review_rating(reviews).map(|rating| rating.as_str().to_string())
+}
+
+/// Which lifecycle slice the console's summary listing draws its page from,
+/// mirroring the `state` selector of the cursor listings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SummaryState {
+    /// Published runs only (the public read side). The default.
+    #[default]
+    Published,
+    /// Completed runs (pending + published) — the reviewer worklist.
+    Review,
+    /// The publishable failure tiers (catastrophic + timed-out), pending and
+    /// published.
+    Failures,
+    /// Every unpublished run whatever its terminal state — the "produced" worklist.
+    Unpublished,
+    /// Completed runs no account has reviewed yet (`review_count = 0`) — the
+    /// reviewer's "needs a first pass" worklist, a subset of [`Self::Review`].
+    Unreviewed,
+}
+
+/// The filter for [`Db::list_summaries`]: a lifecycle `state` slice, optional
+/// equality filters on the lifted identity columns, and an optional case-
+/// insensitive free-text query — all combined with AND.
+#[derive(Debug, Clone, Default)]
+pub struct SummaryFilter {
+    /// The lifecycle slice to draw from (default [`SummaryState::Published`]).
+    pub state: SummaryState,
+    /// Restrict to one test-case slug (`test_case_slug`).
+    pub test_case: Option<String>,
+    /// Restrict to one model (`model_id`).
+    pub model: Option<String>,
+    /// Restrict to one harness (`harness_slug`).
+    pub harness: Option<String>,
+    /// Free-text query matched case-insensitively (LIKE `%q%`) across
+    /// `test_case_slug`, `model_id`, `harness_slug`, and `variant`.
+    pub q: Option<String>,
+}
+
+/// The sort column for [`Db::list_summaries`], mapped to a lifted `run` column (or,
+/// for [`SummarySort::Rating`], a tier-rank expression).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SummarySort {
+    /// By start time (`started_at`). The default.
+    #[default]
+    Date,
+    /// By end-to-end wall-clock time (`run_time_seconds`).
+    Runtime,
+    /// By total token count (`total_tokens`).
+    Tokens,
+    /// By comparable cost (`cost_comparable`); unknown-cost NULLs sort last.
+    Cost,
+    /// By rating **tier** (`flawless > great > scuffed > broken`); unrated NULLs
+    /// sort last.
+    Rating,
+    /// By test type (`test_type`).
+    TestType,
+    /// By test-case slug (`test_case_slug`).
+    TestCase,
+    /// By harness slug (`harness_slug`).
+    Harness,
+    /// By model id (`model_id`).
+    Model,
+    /// By variant (`variant`).
+    Variant,
+}
+
+/// The sort direction for [`Db::list_summaries`], applied to the primary sort key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortDir {
+    /// Descending — the default (newest / largest / best first).
+    #[default]
+    Desc,
+    /// Ascending.
+    Asc,
+}
+
+/// Build the filtered `run` query shared by [`Db::list_summaries`]'s COUNT and its
+/// page: the lifecycle-state predicate AND'd with the optional equality filters and
+/// the free-text query. No ordering, limit, or offset — the caller adds those.
+fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
+    let mut query = run::Entity::find();
+    query = match filter.state {
+        SummaryState::Published => query.filter(run::Column::Published.eq(true)),
+        SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
+        SummaryState::Failures => {
+            query.filter(run::Column::RunState.is_in(["catastrophic", "timed_out"]))
+        }
+        SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
+        SummaryState::Unreviewed => query
+            .filter(run::Column::RunState.eq("completed"))
+            .filter(run::Column::ReviewCount.eq(0)),
+    };
+    if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::TestCaseSlug.eq(test_case));
+    }
+    if let Some(model) = filter.model.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::ModelId.eq(model));
+    }
+    if let Some(harness) = filter.harness.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::HarnessSlug.eq(harness));
+    }
+    if let Some(q) = filter.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        // Lower both sides so the match is case-insensitive on any backend (SQLite's
+        // LIKE is ASCII-case-insensitive already; lowering makes it explicit and
+        // portable). OR across the searchable identity columns; AND'd with the rest.
+        let pattern = format!("%{}%", q.to_lowercase());
+        let text = Condition::any()
+            .add(Expr::expr(Func::lower(run::Column::TestCaseSlug.into_expr())).like(&pattern))
+            .add(Expr::expr(Func::lower(run::Column::ModelId.into_expr())).like(&pattern))
+            .add(Expr::expr(Func::lower(run::Column::HarnessSlug.into_expr())).like(&pattern))
+            .add(Expr::expr(Func::lower(run::Column::Variant.into_expr())).like(&pattern));
+        query = query.filter(text);
+    }
+    query
+}
+
+/// Apply the primary sort key (in `order`) to a summary query. The caller appends
+/// the `id` tiebreak. Cost/rating lead with a null-group key so NULLs always sort
+/// last regardless of `order`.
+fn apply_summary_sort(
+    query: Select<run::Entity>,
+    sort: SummarySort,
+    order: Order,
+) -> Select<run::Entity> {
+    match sort {
+        SummarySort::Date => query.order_by(run::Column::StartedAt, order),
+        SummarySort::Runtime => query.order_by(run::Column::RunTimeSeconds, order),
+        SummarySort::Tokens => query.order_by(run::Column::TotalTokens, order),
+        SummarySort::TestType => query.order_by(run::Column::TestType, order),
+        SummarySort::TestCase => query.order_by(run::Column::TestCaseSlug, order),
+        SummarySort::Harness => query.order_by(run::Column::HarnessSlug, order),
+        SummarySort::Model => query.order_by(run::Column::ModelId, order),
+        SummarySort::Variant => query.order_by(run::Column::Variant, order),
+        // Unknown-cost NULLs sort last in either direction: order first by a
+        // null-group key (non-null `false`/0 before null `true`/1), then the value.
+        SummarySort::Cost => query
+            .order_by(
+                run::Column::CostComparable.into_expr().is_null(),
+                Order::Asc,
+            )
+            .order_by(run::Column::CostComparable, order),
+        // Rating is a TIER, not a lexical token: rank it via a CASE, with unrated
+        // NULLs pinned last (again via a leading null-group key).
+        SummarySort::Rating => query
+            .order_by(run::Column::Rating.into_expr().is_null(), Order::Asc)
+            .order_by(rating_rank_expr(), order),
+    }
+}
+
+/// A SQL `CASE` mapping the `run.rating` text token to its tier ordinal (`0` best,
+/// larger worse), drawn from [`Rating::rank`](test_cabinet_core::review::Rating) so
+/// the DB order matches the in-memory "worst wins" aggregate. Any unexpected/legacy
+/// non-null token ranks beyond the worst tier; genuine NULLs are separated out by
+/// the caller's null-group key before this is consulted.
+fn rating_rank_expr() -> SimpleExpr {
+    use test_cabinet_core::review::Rating;
+    let mut case = CaseStatement::new();
+    for rating in Rating::ALL {
+        case = case.case(
+            run::Column::Rating.eq(rating.as_str()),
+            rating.rank() as i32,
+        );
+    }
+    case.finally(Rating::ALL.len() as i32).into()
+}
+
 /// The wire string for a run state (matching the serde representation).
 fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
     use test_cabinet_core::run_record::RunState;
@@ -969,6 +1467,9 @@ pub struct NewJob {
     pub model_id: String,
     /// The per-job bearer token the driver authenticates its streaming with.
     pub job_token: String,
+    /// Which attempt this job is: `0` for a console launch, `n > 0` for the backend's
+    /// `n`th automatic retry after a terminal infrastructure/catastrophic failure.
+    pub attempt: i32,
     /// RFC 3339 of enqueue (the claim-ordering key, also the initial update time).
     pub created_at: String,
 }
@@ -1005,36 +1506,136 @@ impl Db {
             job_token: Set(new.job_token),
             record_id: Set(None),
             detail: Set(None),
+            attempt: Set(new.attempt),
             created_at: Set(new.created_at.clone()),
             updated_at: Set(new.created_at),
         })
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
 
-    /// Atomically claim the oldest `queued` job, flipping it to `dispatched`, and
-    /// return it (or `None` when the queue is empty). The select-then-update runs
-    /// in one transaction; SQLite serializes writers (single-writer WAL), so two
-    /// dispatchers cannot claim the same job.
+    /// Atomically claim the oldest claimable job, flipping it to `dispatched`, and
+    /// return it (or `None` when nothing is claimable). Enforces each harness's
+    /// configured maximum parallelism: a job is claimable only when its harness has
+    /// fewer than its limit of runs already occupying a parallelism slot
+    /// ([`ACTIVE_SLOT_STATES`] — `dispatched`/`starting`/`running`). A harness with
+    /// no configured limit is always claimable.
+    ///
+    /// The same pass **reconciles the display state** of every non-selected waiting
+    /// job: a `queued`/`pending` job whose harness is at its cap is moved to
+    /// `pending` (held back, visible as such), and one whose harness is back under
+    /// its cap is released to `queued`. So an operator sees exactly which waiting
+    /// runs are deliberately held versus merely next in line. Selection stays FIFO
+    /// (oldest `created_at`, then `id`) across harnesses, skipping any at their cap.
+    ///
+    /// The select-then-updates run in one transaction; SQLite serializes writers
+    /// (single-writer WAL), so two dispatchers cannot claim the same job.
     pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
-        let txn = self.conn.begin().await?;
-        let candidate = job::Entity::find()
-            .filter(job::Column::State.eq("queued"))
+        use std::collections::HashMap;
+
+        let txn = self.conn().begin().await?;
+
+        // The per-harness parallelism limits (harnesses with no configured limit are
+        // absent → unlimited).
+        let caps: HashMap<String, i32> = harness_config::Entity::find()
+            .all(&txn)
+            .await?
+            .into_iter()
+            .filter_map(|row| row.max_parallelism.map(|max| (row.harness_slug, max)))
+            .collect();
+
+        // How many runs of each harness already occupy a parallelism slot.
+        let mut active_by_harness: HashMap<String, i64> = HashMap::new();
+        for job in job::Entity::find()
+            .filter(job::Column::State.is_in(ACTIVE_SLOT_STATES))
+            .all(&txn)
+            .await?
+        {
+            *active_by_harness.entry(job.harness_slug).or_insert(0) += 1;
+        }
+
+        // Is a harness under its configured cap right now, given `active` already in
+        // flight? Absent from `caps` means unlimited.
+        let under_cap = |harness: &str, active: i64| -> bool {
+            caps.get(harness).is_none_or(|&max| active < i64::from(max))
+        };
+
+        // Walk the waiting jobs oldest-first: claim the first whose harness is under
+        // its cap, and reconcile the pending/queued display state of the rest so a
+        // held-back run reads as `pending` and a now-claimable one as `queued`.
+        let waiting = job::Entity::find()
+            .filter(job::Column::State.is_in(["queued", "pending"]))
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
-            .one(&txn)
+            .all(&txn)
             .await?;
-        let Some(model) = candidate else {
-            txn.commit().await?;
-            return Ok(None);
-        };
-        let mut active = model.into_active_model();
-        active.state = Set("dispatched".to_string());
-        active.updated_at = Set(now.to_string());
-        let updated = active.update(&txn).await?;
+
+        let mut claimed: Option<job::Model> = None;
+        for job in waiting {
+            let active = active_by_harness
+                .get(&job.harness_slug)
+                .copied()
+                .unwrap_or(0);
+            let has_room = under_cap(&job.harness_slug, active);
+
+            if claimed.is_none() && has_room {
+                // Claim this one: it now occupies a slot for its harness, so bump the
+                // count for the reconcile of any later same-harness jobs.
+                *active_by_harness
+                    .entry(job.harness_slug.clone())
+                    .or_insert(0) += 1;
+                let mut active_model = job.into_active_model();
+                active_model.state = Set("dispatched".to_string());
+                active_model.updated_at = Set(now.to_string());
+                claimed = Some(active_model.update(&txn).await?);
+                continue;
+            }
+
+            // Not claimed: make its display state match whether its harness has room.
+            let target = if has_room { "queued" } else { "pending" };
+            if job.state != target {
+                let mut active_model = job.into_active_model();
+                active_model.state = Set(target.to_string());
+                active_model.updated_at = Set(now.to_string());
+                active_model.update(&txn).await?;
+            }
+        }
+
         txn.commit().await?;
-        Ok(Some(updated))
+        Ok(claimed)
+    }
+
+    /// Every stored per-harness config row (harnesses with no overrides are absent).
+    pub async fn list_harness_configs(&self) -> Result<Vec<harness_config::Model>> {
+        Ok(harness_config::Entity::find().all(&self.conn()).await?)
+    }
+
+    /// Set (or clear, with `None`) a harness's maximum parallelism, upserting its
+    /// config row and stamping `updated_at`. A `None` limit means unlimited; the row
+    /// is kept (carrying `NULL`) so the setting is explicit and auditable.
+    pub async fn set_harness_max_parallelism(
+        &self,
+        harness_slug: &str,
+        max_parallelism: Option<i32>,
+        now: &str,
+    ) -> Result<()> {
+        harness_config::Entity::insert(harness_config::ActiveModel {
+            harness_slug: Set(harness_slug.to_string()),
+            max_parallelism: Set(max_parallelism),
+            updated_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::column(harness_config::Column::HarnessSlug)
+                .update_columns([
+                    harness_config::Column::MaxParallelism,
+                    harness_config::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
     }
 
     /// Atomically cancel a job: move it to the terminal `canceled` state, stamping
@@ -1051,9 +1652,9 @@ impl Db {
         now: &str,
         detail: &str,
     ) -> Result<Option<job::Model>> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let candidate = job::Entity::find_by_id(id.to_string())
-            .filter(job::Column::State.is_in(["queued", "dispatched", "running"]))
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .one(&txn)
             .await?;
         let Some(model) = candidate else {
@@ -1087,7 +1688,7 @@ impl Db {
     ) -> Result<Option<job::Model>> {
         let Some(model) = job::Entity::find_by_id(id.to_string())
             .filter(job::Column::State.ne("canceled"))
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
@@ -1101,47 +1702,48 @@ impl Db {
         if let Some(record_id) = record_id {
             active.record_id = Set(Some(record_id.to_string()));
         }
-        Ok(Some(active.update(&self.conn).await?))
+        Ok(Some(active.update(&self.conn()).await?))
     }
 
     /// Fetch one job by id.
     pub async fn get_job(&self, id: &str) -> Result<Option<job::Model>> {
         Ok(job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?)
     }
 
-    /// Fail every job mid-execution (`dispatched` or `running`) in one update,
-    /// stamping `updated_at` and the supplied terminal `detail`. Returns how many
-    /// were reaped.
+    /// Fail every job mid-execution (`dispatched`, `starting`, or `running`) in one
+    /// update, stamping `updated_at` and the supplied terminal `detail`. Returns how
+    /// many were reaped.
     ///
     /// This is the single-box backend's startup reconciliation (see
     /// [`crate::build`]): when the whole stack shares one machine, a backend
     /// restart means every in-flight driver went down with it, so any job the
     /// store still believes is executing is orphaned — it can never reach a
     /// terminal state on its own and would otherwise show as forever "running".
-    /// `queued` jobs are deliberately left untouched: they have no driver yet, so
-    /// the dispatcher drains them normally once it reconnects.
+    /// `queued` and `pending` jobs are deliberately left untouched: they have no
+    /// driver yet, so the dispatcher drains them normally once it reconnects.
     pub async fn fail_in_flight_jobs(&self, now: &str, detail: &str) -> Result<u64> {
         let result = job::Entity::update_many()
             .col_expr(job::Column::State, Expr::value("failed"))
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(detail))
-            .filter(job::Column::State.is_in(["dispatched", "running"]))
-            .exec(&self.conn)
+            .filter(job::Column::State.is_in(REAPABLE_STATES))
+            .exec(&self.conn())
             .await?;
         Ok(result.rows_affected)
     }
 
-    /// Every job still in flight (`queued`, `dispatched`, or `running`),
-    /// oldest-first by enqueue time. This is the console's active-run list: a run
-    /// it is watching survives a page reload because the backend remembers it.
+    /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
+    /// `running`), oldest-first by enqueue time. This is the console's active-run
+    /// list: a run it is watching survives a page reload because the backend
+    /// remembers it — including one held back (`pending`) or spinning up (`starting`).
     pub async fn active_jobs(&self) -> Result<Vec<job::Model>> {
         Ok(job::Entity::find()
-            .filter(job::Column::State.is_in(["queued", "dispatched", "running"]))
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 }
@@ -1160,12 +1762,12 @@ impl Db {
     /// gate [`Db::publish`] does.
     pub async fn ensure_publishable(&self, run_id: &str) -> Result<()> {
         let run = run::Entity::find_by_id(run_id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .ok_or_else(|| {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
-        gate_publishable(&self.conn, run_id, &run.run_state).await
+        gate_publishable(&self.conn(), run_id, &run.run_state).await
     }
 
     /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to
@@ -1182,7 +1784,7 @@ impl Db {
             created_at: Set(new.created_at.clone()),
             updated_at: Set(new.created_at),
         })
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1192,7 +1794,7 @@ impl Db {
     /// select-then-update runs in one transaction, exactly like
     /// [`Db::claim_next_job`], so two dispatchers cannot claim the same publish job.
     pub async fn claim_next_publish_job(&self, now: &str) -> Result<Option<publish_job::Model>> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let candidate = publish_job::Entity::find()
             .filter(publish_job::Column::State.eq("queued"))
             .order_by_asc(publish_job::Column::CreatedAt)
@@ -1214,7 +1816,7 @@ impl Db {
     /// Fetch one publish job by id.
     pub async fn get_publish_job(&self, id: &str) -> Result<Option<publish_job::Model>> {
         Ok(publish_job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?)
     }
 
@@ -1231,7 +1833,7 @@ impl Db {
         detail: Option<&str>,
     ) -> Result<Option<publish_job::Model>> {
         let Some(model) = publish_job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
@@ -1242,7 +1844,7 @@ impl Db {
         if let Some(detail) = detail {
             active.detail = Set(Some(detail.to_string()));
         }
-        Ok(Some(active.update(&self.conn).await?))
+        Ok(Some(active.update(&self.conn()).await?))
     }
 
     /// Finalize a **succeeded** publish: in one transaction, attach the links the
@@ -1265,7 +1867,7 @@ impl Db {
         playable_build: Option<&str>,
         now: &str,
     ) -> Result<PublishRunOutcome> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -1330,6 +1932,577 @@ impl Db {
         txn.commit().await?;
         Ok(PublishRunOutcome { newly_published })
     }
+}
+
+/// One canonical model id a curated model claims, with the harness family it is
+/// usable with. The `alias` string is globally unique across all models; the
+/// `family` tags which harnesses can launch it (see [`HarnessFamily`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AliasEntry {
+    /// The canonical model id (globally unique).
+    pub alias: String,
+    /// The harness family this slug is usable with.
+    pub family: HarnessFamily,
+}
+
+/// A curated model configuration and the canonical run-record ids it covers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredModel {
+    /// The curated `model` row.
+    pub config: model::Model,
+    /// The canonical model ids this config claims, each with its harness family,
+    /// sorted by id.
+    pub aliases: Vec<AliasEntry>,
+}
+
+/// The write payload for [`Db::upsert_model_config`].
+#[derive(Debug, Clone)]
+pub struct ModelConfigWrite {
+    pub slug: String,
+    pub display_name: String,
+    pub provider: String,
+    pub provider_logo_url: Option<String>,
+    pub provider_logo_svg: Option<String>,
+    pub description_md: Option<String>,
+    pub openrouter_slug: Option<String>,
+    /// The canonical model ids this config claims, each with its harness family
+    /// (at least one).
+    pub aliases: Vec<AliasEntry>,
+    /// RFC 3339 timestamp for the created/updated stamp.
+    pub now: String,
+}
+
+/// One price observation to append to a model's history.
+#[derive(Debug, Clone)]
+pub struct PriceWrite {
+    pub model_id: String,
+    pub observed_at: String,
+    pub uncached_input: Option<f64>,
+    pub cached_input: Option<f64>,
+    pub output: Option<f64>,
+    pub context_length: Option<i64>,
+    pub released_at: Option<String>,
+}
+
+/// Project a stored `model_alias` row into an [`AliasEntry`], parsing its
+/// `harness_family` wire slug and falling back to [`HarnessFamily::Openrouter`]
+/// for an unrecognized value (the migration default, and the harmless choice for
+/// a slug the current build does not know a family for).
+fn alias_entry(row: model_alias::Model) -> AliasEntry {
+    let family = HarnessFamily::from_wire(&row.harness_family).unwrap_or(HarnessFamily::Openrouter);
+    AliasEntry {
+        alias: row.alias,
+        family,
+    }
+}
+
+/// The model catalog store: curated config, its aliases, and observed prices.
+impl Db {
+    /// Every curated model config with its aliases, ordered by slug.
+    pub async fn list_model_configs(&self) -> Result<Vec<StoredModel>> {
+        let configs = model::Entity::find()
+            .order_by_asc(model::Column::Slug)
+            .all(&self.conn())
+            .await?;
+        let mut alias_map: std::collections::HashMap<String, Vec<AliasEntry>> =
+            std::collections::HashMap::new();
+        for alias in model_alias::Entity::find().all(&self.conn()).await? {
+            let model_slug = alias.model_slug.clone();
+            alias_map
+                .entry(model_slug)
+                .or_default()
+                .push(alias_entry(alias));
+        }
+        Ok(configs
+            .into_iter()
+            .map(|config| {
+                let mut aliases = alias_map.remove(&config.slug).unwrap_or_default();
+                aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
+                StoredModel { config, aliases }
+            })
+            .collect())
+    }
+
+    /// A single curated model config with its aliases, or `None`.
+    pub async fn get_model_config(&self, slug: &str) -> Result<Option<StoredModel>> {
+        let Some(config) = model::Entity::find_by_id(slug).one(&self.conn()).await? else {
+            return Ok(None);
+        };
+        let mut aliases: Vec<AliasEntry> = model_alias::Entity::find()
+            .filter(model_alias::Column::ModelSlug.eq(slug))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(alias_entry)
+            .collect();
+        aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
+        Ok(Some(StoredModel { config, aliases }))
+    }
+
+    /// Create or update a curated model config and replace its alias set, in one
+    /// transaction. On update the original `created_at` is preserved. Returns a
+    /// [`BackendError::Conflict`](crate::error::BackendError::Conflict) when any
+    /// alias is already claimed by a *different* curated model.
+    pub async fn upsert_model_config(&self, write: ModelConfigWrite) -> Result<()> {
+        let txn = self.conn().begin().await?;
+
+        // Reject an alias that another curated model already owns (the alias
+        // column is globally unique; catch it before the constraint fires so the
+        // caller gets a clean 409 naming the offending id).
+        for entry in &write.aliases {
+            if let Some(existing) = model_alias::Entity::find()
+                .filter(model_alias::Column::Alias.eq(entry.alias.clone()))
+                .one(&txn)
+                .await?
+                && existing.model_slug != write.slug
+            {
+                return Err(crate::error::BackendError::Conflict(format!(
+                    "model id `{}` is already claimed by model `{}`",
+                    entry.alias, existing.model_slug
+                )));
+            }
+        }
+
+        let existing = model::Entity::find_by_id(&write.slug).one(&txn).await?;
+        let created_at = existing
+            .as_ref()
+            .map(|m| m.created_at.clone())
+            .unwrap_or_else(|| write.now.clone());
+        let active = model::ActiveModel {
+            slug: Set(write.slug.clone()),
+            display_name: Set(write.display_name),
+            provider: Set(write.provider),
+            provider_logo_url: Set(write.provider_logo_url),
+            provider_logo_svg: Set(write.provider_logo_svg),
+            description_md: Set(write.description_md),
+            openrouter_slug: Set(write.openrouter_slug),
+            created_at: Set(created_at),
+            updated_at: Set(write.now),
+        };
+        model::Entity::insert(active)
+            .on_conflict(
+                OnConflict::column(model::Column::Slug)
+                    .update_columns([
+                        model::Column::DisplayName,
+                        model::Column::Provider,
+                        model::Column::ProviderLogoUrl,
+                        model::Column::ProviderLogoSvg,
+                        model::Column::DescriptionMd,
+                        model::Column::OpenrouterSlug,
+                        model::Column::UpdatedAt,
+                    ])
+                    .to_owned(),
+            )
+            .exec(&txn)
+            .await?;
+
+        // Replace the alias set wholesale.
+        model_alias::Entity::delete_many()
+            .filter(model_alias::Column::ModelSlug.eq(write.slug.clone()))
+            .exec(&txn)
+            .await?;
+        for entry in write.aliases {
+            model_alias::Entity::insert(model_alias::ActiveModel {
+                id: Set(uuid::Uuid::new_v4().to_string()),
+                model_slug: Set(write.slug.clone()),
+                alias: Set(entry.alias),
+                harness_family: Set(entry.family.as_str().to_string()),
+            })
+            .exec(&txn)
+            .await?;
+        }
+
+        txn.commit().await?;
+        Ok(())
+    }
+
+    /// Delete a curated model config (its aliases cascade). Returns whether a row
+    /// was removed. The model's runs and price history are untouched, so it may
+    /// reappear as a derived (uncurated) catalog entry.
+    pub async fn delete_model_config(&self, slug: &str) -> Result<bool> {
+        let deleted = model::Entity::delete_by_id(slug).exec(&self.conn()).await?;
+        Ok(deleted.rows_affected > 0)
+    }
+
+    /// The distinct `(model_id, harness_slug)` pairs across **all** stored runs.
+    /// The catalog derives a model per canonical id from these.
+    pub async fn distinct_run_models(&self) -> Result<Vec<(String, String)>> {
+        Ok(run::Entity::find()
+            .select_only()
+            .column(run::Column::ModelId)
+            .column(run::Column::HarnessSlug)
+            .distinct()
+            .into_tuple()
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// The distinct `(model_id, harness_slug)` pairs across **published** runs
+    /// only — the derived set the public snapshot may show.
+    pub async fn distinct_published_run_models(&self) -> Result<Vec<(String, String)>> {
+        Ok(run::Entity::find()
+            .select_only()
+            .column(run::Column::ModelId)
+            .column(run::Column::HarnessSlug)
+            .filter(run::Column::Published.eq(true))
+            .distinct()
+            .into_tuple()
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// The most recent price observation for a canonical model id, or `None`.
+    pub async fn latest_price(&self, model_id: &str) -> Result<Option<model_price::Model>> {
+        Ok(model_price::Entity::find()
+            .filter(model_price::Column::ModelId.eq(model_id))
+            .order_by_desc(model_price::Column::ObservedAt)
+            .order_by_desc(model_price::Column::Id)
+            .one(&self.conn())
+            .await?)
+    }
+
+    /// Append a price observation to a model's history.
+    pub async fn insert_price_observation(&self, write: PriceWrite) -> Result<()> {
+        model_price::Entity::insert(model_price::ActiveModel {
+            id: NotSet,
+            model_id: Set(write.model_id),
+            observed_at: Set(write.observed_at),
+            uncached_input: Set(write.uncached_input),
+            cached_input: Set(write.cached_input),
+            output: Set(write.output),
+            context_length: Set(write.context_length),
+            released_at: Set(write.released_at),
+        })
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Every price observation, ascending by `(model_id, observed_at)`. The
+    /// catalog groups these into per-model histories.
+    pub async fn all_model_prices(&self) -> Result<Vec<model_price::Model>> {
+        Ok(model_price::Entity::find()
+            .order_by_asc(model_price::Column::ModelId)
+            .order_by_asc(model_price::Column::ObservedAt)
+            .order_by_asc(model_price::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// The curated `openrouter_slug` of the model that claims `alias`, if any. Used
+    /// to price a run's model against its configured OpenRouter slug rather than a
+    /// slug guessed from the run's model id.
+    pub async fn openrouter_slug_for_alias(&self, alias: &str) -> Result<Option<String>> {
+        let Some(row) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(alias))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(model::Entity::find_by_id(row.model_slug)
+            .one(&self.conn())
+            .await?
+            .and_then(|m| m.openrouter_slug))
+    }
+
+    /// Every `(id, alias, harness_family)` triple across all curated models. Used
+    /// by the startup backfill that corrects the harness family of aliases created
+    /// before the `harness_family` column existed.
+    pub async fn all_alias_families(&self) -> Result<Vec<(String, String, HarnessFamily)>> {
+        Ok(model_alias::Entity::find()
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| {
+                let family = HarnessFamily::from_wire(&row.harness_family)
+                    .unwrap_or(HarnessFamily::Openrouter);
+                (row.id, row.alias, family)
+            })
+            .collect())
+    }
+
+    /// Set the harness family of a single alias row by its id. Used by the startup
+    /// backfill; a no-op set costs nothing because the caller only writes rows whose
+    /// family actually changed.
+    pub async fn set_alias_family(&self, id: &str, family: HarnessFamily) -> Result<()> {
+        model_alias::ActiveModel {
+            id: Set(id.to_string()),
+            harness_family: Set(family.as_str().to_string()),
+            ..Default::default()
+        }
+        .update(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Whether any stored run is a candidate for `:free` normalization — an
+    /// OpenRouter-accessed harness whose model id carries a trailing `:tag`. Used
+    /// to skip the OpenRouter price fetch entirely at startup when there is nothing
+    /// to re-price (the common case), so a boot with no such runs costs no network.
+    pub async fn has_free_tag_candidates(&self) -> Result<bool> {
+        let rows: Vec<(String, String)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::ModelId)
+            .column(run::Column::HarnessSlug)
+            .filter(run::Column::ModelId.contains(":"))
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(rows.iter().any(|(model_id, harness_slug)| {
+            parse_harness_slug(harness_slug).routes_through_openrouter() && model_id.contains(':')
+        }))
+    }
+
+    /// Re-associate `:free`-style runs to their base model: for every run driven by
+    /// an OpenRouter-accessed harness whose model id carries a trailing `:tag`,
+    /// strip the tag from the lifted `model_id` column and the record's
+    /// `subject.modelId`, and recompute the run's comparable cost at the base
+    /// model's price (from `base_prices`, keyed by OpenRouter id). A run whose base
+    /// price is unavailable has its cost set to unknown rather than left at the
+    /// misleading `$0.00` a free tag produces. Idempotent (an already-stripped run
+    /// is unchanged) and best-effort per row. Returns how many runs were rewritten.
+    pub async fn normalize_free_model_ids(
+        &self,
+        base_prices: &std::collections::HashMap<String, TokenPrices>,
+    ) -> Result<usize> {
+        let rows = run::Entity::find().all(&self.conn()).await?;
+        let mut rewritten = 0usize;
+        for row in rows {
+            let harness = parse_harness_slug(&row.harness_slug);
+            if !harness.routes_through_openrouter() {
+                continue;
+            }
+            let Some((base, _tag)) = row.model_id.rsplit_once(':') else {
+                continue;
+            };
+            let base = base.to_string();
+            // Deserialize the record; a legacy record that no longer matches the
+            // schema is skipped rather than corrupted.
+            let Ok(mut record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                continue;
+            };
+            record.subject.model_id = base.clone();
+            let lookup = test_cabinet_core::model_id::openrouter_price_id(&base, harness);
+            let comparable = base_prices
+                .get(&lookup)
+                .and_then(|prices| Cost::comparable_from(&record.metrics.tokens, prices));
+            record.metrics.cost = Cost {
+                comparable,
+                actual: comparable,
+            };
+            let record_json = serde_json::to_string(&record)?;
+
+            let mut active = row.into_active_model();
+            active.model_id = Set(base);
+            // Keep the lifted cost column in step with the record's recomputed cost.
+            active.cost_comparable = Set(comparable);
+            active.record_json = Set(record_json);
+            active.update(&self.conn()).await?;
+            rewritten += 1;
+        }
+        Ok(rewritten)
+    }
+
+    /// Backfill the sort/filter columns lifted onto the `run` row after rows
+    /// already existed (`test_type`, `run_time_seconds`, `total_tokens`,
+    /// `cost_comparable`, `rating`, `review_count`): parse each un-backfilled row's
+    /// record for the record-derived columns and compute `rating` / `review_count`
+    /// from its reviews.
+    ///
+    /// Idempotent: a row is "un-backfilled" iff its `test_type` is still the empty
+    /// string the migration's default stamped — a value no real run carries, since
+    /// every write sets a kebab-case token. A second boot (or a store whose rows
+    /// were all written with the columns already populated) therefore does no work.
+    /// Best-effort per row: a legacy record that no longer deserializes is left for
+    /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
+    /// [`Self::assemble`] tolerate such rows). Returns how many rows were filled.
+    pub async fn backfill_sort_columns(&self) -> Result<usize> {
+        let rows = run::Entity::find()
+            .filter(run::Column::TestType.eq(""))
+            .all(&self.conn())
+            .await?;
+        if rows.is_empty() {
+            return Ok(0);
+        }
+
+        // Group the candidate rows' reviews by run id in one query.
+        let ids: Vec<String> = rows.iter().map(|row| row.id.clone()).collect();
+        let mut review_map: std::collections::HashMap<String, Vec<StoredReview>> =
+            std::collections::HashMap::new();
+        let reviews = review::Entity::find()
+            .filter(review::Column::RunId.is_in(ids))
+            .all(&self.conn())
+            .await?;
+        for review in reviews {
+            let run_id = review.run_id.clone();
+            review_map
+                .entry(run_id)
+                .or_default()
+                .push(stored_review(review)?);
+        }
+
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                continue;
+            };
+            let lifted = lifted_run_metrics(&record);
+            let reviews = review_map.get(&row.id).map(Vec::as_slice).unwrap_or(&[]);
+            let rating = lifted_rating(reviews);
+            let review_count = reviews.len() as i64;
+
+            let mut active = row.into_active_model();
+            active.test_type = Set(lifted.test_type);
+            active.run_time_seconds = Set(lifted.run_time_seconds);
+            active.total_tokens = Set(lifted.total_tokens);
+            active.cost_comparable = Set(lifted.cost_comparable);
+            active.rating = Set(rating);
+            active.review_count = Set(review_count);
+            active.update(&self.conn()).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+}
+
+/// The reference-implementation store: the deployed URL of a test-case variant's
+/// authored, correct build (the case-variant analogue of a run's `playableBuild`).
+///
+/// The rows are written **out-of-band** by the `tcab publish-reference` CLI (via
+/// the authenticated record endpoint), never at ingest and never seeded into a
+/// run. Reads feed `GET /test-cases/{slug}/versions/{version}` and the public
+/// snapshot, which surface the URL on the test-case page's "Reference" tab.
+impl Db {
+    /// Create or replace the served URL for one `(slug, version, variant)` triple.
+    /// A re-deploy of the same variant upserts its `url` (and `updated_at`) in
+    /// place — the composite primary key means there is never more than one row per
+    /// triple.
+    pub async fn upsert_reference_build(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        url: &str,
+        now: &str,
+    ) -> Result<()> {
+        case_reference_build::Entity::insert(case_reference_build::ActiveModel {
+            slug: Set(slug.to_string()),
+            version: Set(version.to_string()),
+            variant: Set(variant.to_string()),
+            url: Set(url.to_string()),
+            updated_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                case_reference_build::Column::Slug,
+                case_reference_build::Column::Version,
+                case_reference_build::Column::Variant,
+            ])
+            .update_columns([
+                case_reference_build::Column::Url,
+                case_reference_build::Column::UpdatedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// The reference-build URL of every variant of `(slug, version)` that has one,
+    /// keyed by variant slug. Feeds the version response and the snapshot, both of
+    /// which fold the URL onto each variant object; a variant absent from the map
+    /// simply has no reference implementation.
+    pub async fn reference_builds_for_version(
+        &self,
+        slug: &str,
+        version: &str,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        Ok(case_reference_build::Entity::find()
+            .filter(case_reference_build::Column::Slug.eq(slug))
+            .filter(case_reference_build::Column::Version.eq(version))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| (row.variant, row.url))
+            .collect())
+    }
+
+    /// Reconcile the **entire** reference-build table to `desired` — the complete set
+    /// of deployed reference URLs for this backend's environment, read from the
+    /// committed reference-builds lockfile at ingest (see [`crate::api::ingest`]).
+    /// Every triple in `desired` is upserted; every stored triple absent from
+    /// `desired` is removed. The lockfile is the single source of truth, so this
+    /// makes the table match it exactly — the pull-model replacement for the former
+    /// per-variant write endpoint.
+    ///
+    /// Returns whether the table actually changed, so the caller can skip a redundant
+    /// snapshot refresh when a re-ingest finds the lockfile already in sync.
+    pub async fn sync_reference_builds(
+        &self,
+        desired: &[ReferenceBuildEntry],
+        now: &str,
+    ) -> Result<bool> {
+        // Snapshot the current rows so the table is touched only where it differs; an
+        // unchanged re-ingest then neither writes nor forces a snapshot rebuild.
+        let current: std::collections::HashMap<(String, String, String), String> =
+            case_reference_build::Entity::find()
+                .all(&self.conn())
+                .await?
+                .into_iter()
+                .map(|row| ((row.slug, row.version, row.variant), row.url))
+                .collect();
+        let desired_keys: std::collections::HashSet<(String, String, String)> = desired
+            .iter()
+            .map(|e| (e.slug.clone(), e.version.clone(), e.variant.clone()))
+            .collect();
+
+        let mut changed = false;
+
+        // Upsert triples that are new or whose served URL moved.
+        for entry in desired {
+            let key = (
+                entry.slug.clone(),
+                entry.version.clone(),
+                entry.variant.clone(),
+            );
+            if current.get(&key).map(String::as_str) != Some(entry.url.as_str()) {
+                self.upsert_reference_build(
+                    &entry.slug,
+                    &entry.version,
+                    &entry.variant,
+                    &entry.url,
+                    now,
+                )
+                .await?;
+                changed = true;
+            }
+        }
+
+        // Remove triples the lockfile no longer lists.
+        for key in current.keys() {
+            if !desired_keys.contains(key) {
+                case_reference_build::Entity::delete_by_id(key.clone())
+                    .exec(&self.conn())
+                    .await?;
+                changed = true;
+            }
+        }
+
+        Ok(changed)
+    }
+}
+
+/// Parse a stored harness slug string into a [`HarnessSlug`], defaulting to Claude
+/// for an unrecognized value (a slug the current build does not know). The default
+/// only affects the `:free` normalization guard, which a non-OpenRouter default
+/// simply skips.
+fn parse_harness_slug(slug: &str) -> HarnessSlug {
+    HarnessSlug::ALL
+        .into_iter()
+        .find(|h| h.as_str() == slug)
+        .unwrap_or(HarnessSlug::Claude)
 }
 
 #[cfg(test)]

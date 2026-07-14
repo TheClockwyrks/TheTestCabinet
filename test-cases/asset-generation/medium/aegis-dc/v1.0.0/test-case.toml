@@ -1,0 +1,167 @@
+slug = "aegis-dc"
+experimental = true
+name = "Aegis (Dual Contouring)"
+difficulty = "medium"
+tags = ["mesh", "dual-contouring", "walker"]
+summary = """
+Sculpt the Aegis: a colossal, hard-edged six-legged walking fortress \
+built as a signed-distance field and extracted with the Dual \
+Contouring tool (`dc`) into a single crisp-panelled mesh — one recorded \
+operation at a time, sharp seams and beveled armor preserved with `--sharp`."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "dc-model"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants mesh the SAME Aegis at three sizes — `base` (this case's field
+# bounds), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The default volume the model shapes its signed-distance field within (the 3D
+# analog of a 2D canvas): `width` across (x), `height` up (y), `depth`
+# front-to-back (z), in field units. The Aegis is deliberately huge — a walking
+# fortress with a far larger footprint than any ordinary war machine, riding
+# raised on its legs — so its volume is length-dominant: broad and long. A variant
+# may OVERRIDE this with its own `[voxel]` (the `half`/`double` size axis); `base`
+# inherits it. The field always starts EMPTY (everywhere outside, no surface);
+# `background` is only the clear color behind the wgpu preview PNG and never adds
+# material. A voxel/mesh case must NOT declare [canvas].
+[voxel]
+width = 120
+height = 110
+depth = 150
+background = "transparent"
+
+# The meshing tool. `dc` (Dual Contouring) is the only channel for shaping the
+# surface: it composites signed-distance primitives into one field and records every
+# operation, rendering nothing — rendering is on request via `dc render`, which
+# extracts the single sharp-edged mesh and draws the preview. Run `dc --help` for the
+# operations; no operations schema is seeded.
+# `dc` is the high-fidelity, sharp-feature-preserving extractor and exposes the
+# `--sharp` / `--smooth` tag on primitives (mc/sn do not).
+[tool]
+binary = "dc"
+preview = "model.png"
+
+# The recorded operation log — the authoritative output the run collects: the
+# ordered record of every `dc` op the model issued, from which the scored model is
+# regenerated. For a static model this is a single file (no `{part}` template). The
+# `dc` binary additionally emits its extracted mesh as `mesh.glb` (positions, normals,
+# colors, indices in the runtime PartMesh shape) at its own fixed path, so it is not
+# named here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the field bounds it states match the selected
+# size (`{{voxel.width}}`×`{{voxel.height}}`×`{{voxel.depth}}`). The seeded dest
+# drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the extracted mesh reads as the Aegis — a colossal, \
+hard-surfaced six-legged walking fortress that dwarfs every ordinary unit, its \
+tiered prowed citadel bristling with a central main cannon, two side-mounted \
+turrets, and a sensor vane, standing planted on six heavy articulated legs — \
+built with the crisp panel seams, beveled armor, and sharp edges Dual Contouring \
+preserves, in clean bilateral symmetry and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-fortress"
+title = "Reads as a giant six-legged walking fortress"
+text = """
+From more than one angle the mesh reads unmistakably as a colossal six-legged \
+walking fortress — plainly far bigger and broader than an ordinary war machine, a \
+striding stronghold: a tiered, prowed armored citadel (not a plain box) riding \
+raised on six heavy legs (three down each side), a big main turret with a long \
+forward cannon on top, a rotating secondary turret out on each side sponson, and a \
+sensor vane above. It is a bristling, detailed multi-gun war machine, not an \
+abstract stack of boxes on legs."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "sharp-hard-surface"
+title = "Crisp hard-surface armor with sharp edges and panel seams"
+text = """
+The fortress reads as a HARD-SURFACE machine, not a soft or melted blob: the armor \
+plating meets at crisp beveled edges and sharp corners, panel seams and the prow's \
+angled facets are clean and legible, and the silhouette holds definite straight \
+runs and flat planes rather than dissolving into rounded lumps. Dual Contouring's \
+sharp-feature preservation (hard unions and `--sharp` primitives) is used to keep \
+those edges crisp — this crispness is the whole point of choosing `dc` over the \
+smoother extractors, and any intentionally rounded detail (a dome, a barrel) reads \
+as a deliberate contrast against the hard plating."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "stands-on-six-legs"
+title = "Stands planted on six articulated legs"
+text = """
+The fortress rides raised well off the ground on SIX distinct heavy legs, three \
+down each side, each an articulated thigh-and-shin chain with a visibly bent knee \
+ending in a short flat foot planted on the ground — not straight posts and not a \
+shared slab per side. Every leg sits under its own hip on the hull's belly, spread \
+wide for a stable, heavy stance, and each thigh meets the hull, each shin the \
+thigh, and each foot the ground with no floating gaps."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "multi-gun"
+title = "Central cannon, two side turrets, and a sensor vane"
+text = """
+The armament is all present and correctly placed: a big central main turret on \
+top of the citadel carrying a long cannon that projects forward; a stubby \
+secondary turret out on the sponson of EACH side (mounted on the flanks, not up \
+on the roof); and a sensor/radar vane atop the command citadel. Each reads clearly \
+as its own component seated on the hull with no floating gap."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "symmetry"
+title = "Bilateral symmetry"
+text = """
+The fortress is cleanly symmetric about its lengthwise vertical centerplane: the \
+two banks of three legs, the two side turrets and \
+their sponsons, and the centered main turret, cannon, and vane all mirror each \
+other, so it reads as a deliberate war machine rather than a lopsided hull."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
+and gun barrels, dark-iron recesses, and the solar-amber accent) with a clear \
+amber accent on the fortress, no out-of-palette colors, and no stray material \
+drifting off the hull."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "fills-volume"
+title = "Fills the volume"
+text = """
+The fortress uses most of the volume — broad across x at the leg stance, \
+long along z, and riding up on its legs — with only a little margin on every \
+side, neither shrunk into one corner nor clipped where it runs past a face of the \
+volume."""
+weight = 1
+domain = "fidelity"

@@ -120,6 +120,7 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
+        experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),
@@ -185,6 +186,38 @@ fn now() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(1_718_660_880).unwrap()
 }
 
+#[test]
+fn run_summary_from_stored_maps_fields_without_a_catalog() {
+    // A reviewed run: the aggregate rating is the worst across its reviews (here a
+    // single `Great`), the test type is carried through, and `case_name` falls
+    // back to the slug because `from_stored` never consults the case catalog.
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    // Add a harsher domain rating so the aggregate is the worst of the two.
+    run.reviews[0].ratings.push(DomainRating {
+        domain: "polish".to_string(),
+        rating: Rating::Scuffed,
+    });
+    let summary = RunSummary::from_stored(&run);
+    assert_eq!(summary.id, "r1");
+    assert_eq!(summary.case_name, "pong"); // slug fallback, not a catalog name
+    assert_eq!(
+        summary.subject.test_type,
+        test_cabinet_core::TestType::EndToEnd
+    );
+    assert_eq!(summary.subject.test_case_slug, "pong");
+    assert_eq!(summary.review_count, 1);
+    assert!(summary.validation_loaded);
+    assert_eq!(summary.rating, Some(Rating::Scuffed)); // worst across the two domains
+
+    // An unrated run (no reviews) carries a `None` rating — the whole point of the
+    // field being optional for console runs.
+    let mut unrated = stored_run("r2", "2026-06-17T21:41:00Z");
+    unrated.reviews.clear();
+    let summary = RunSummary::from_stored(&unrated);
+    assert_eq!(summary.rating, None);
+    assert_eq!(summary.review_count, 0);
+}
+
 #[tokio::test]
 async fn snapshot_has_index_runs_per_run_and_case_objects() {
     let runs = vec![stored_run("r1", "2026-06-17T21:40:00Z")];
@@ -202,6 +235,52 @@ async fn snapshot_has_index_runs_per_run_and_case_objects() {
     assert!(keys.contains(&format!("{prefix}/runs.json").as_str()));
     assert!(keys.contains(&format!("{prefix}/runs/r1.json").as_str()));
     assert!(keys.contains(&format!("{prefix}/cases/pong/v1.0.0.json").as_str()));
+    // An empty catalog still emits a well-formed models.json.
+    assert!(keys.contains(&format!("{prefix}/models.json").as_str()));
+}
+
+#[tokio::test]
+async fn snapshot_emits_the_composed_model_catalog() {
+    use crate::api::{AliasOut, ModelOut};
+    use test_cabinet_core::run_record::HarnessFamily;
+
+    let (_tmp, store) = empty_store();
+    let model = ModelOut {
+        slug: "opus".to_string(),
+        name: "Claude Opus 4.8".to_string(),
+        provider: "Anthropic".to_string(),
+        curated: true,
+        openrouter_url: Some("https://openrouter.ai/anthropic/claude-opus-4.8".to_string()),
+        description: None,
+        logo_svg: None,
+        covered_model_ids: vec![],
+        aliases: vec![AliasOut {
+            slug: "anthropic/claude-opus-4.8".to_string(),
+            harness_family: HarnessFamily::Openrouter,
+        }],
+        price: None,
+        price_history: vec![],
+        context_length: None,
+        released_at: None,
+    };
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_models(vec![model])
+        .build(now())
+        .await
+        .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let models = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/models.json"))
+        .expect("models.json present");
+    let body: serde_json::Value = serde_json::from_slice(&models.bytes).unwrap();
+    assert_eq!(body["models"][0]["name"], "Claude Opus 4.8");
+    assert_eq!(body["models"][0]["curated"], true);
+    // The index points at the catalog file.
+    let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
+    assert_eq!(index["modelsKey"], format!("{prefix}/models.json"));
 }
 
 #[tokio::test]
@@ -403,15 +482,21 @@ async fn case_metadata_inlines_specs_and_description() {
         source: "spec/rules.md".to_string(),
         dest: "spec/rules.md".to_string(),
         template: false,
+        kind: Default::default(),
     }];
     m.variants[0].specs = vec![crate::store::StoredSpec {
-        source: "spec/base.md".to_string(),
-        dest: "spec/base.md".to_string(),
+        source: "spec/build.py".to_string(),
+        dest: "build.py".to_string(),
         template: false,
+        kind: test_cabinet_core::SpecKind::Script,
     }];
+    // A declared runtime package: its UI-only description is looked up from core's
+    // registry at snapshot time (never stored), so the static gallery's Inputs tab
+    // can show it.
+    m.packages = vec!["@test-cabinet/particle-runtime".to_string()];
 
     let (_tmp, store) = empty_store();
-    for (key, body) in [("spec/rules.md", "# Rules"), ("spec/base.md", "# Base")] {
+    for (key, body) in [("spec/rules.md", "# Rules"), ("spec/build.py", "# build")] {
         let path = store.version_dir(&m.slug, &m.version).join(key);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, body).unwrap();
@@ -444,11 +529,24 @@ async fn case_metadata_inlines_specs_and_description() {
     // variant's own on the variant, each carrying its dest path and text.
     assert_eq!(parsed["commonSeededInputs"][0]["path"], "spec/rules.md");
     assert_eq!(parsed["commonSeededInputs"][0]["text"], "# Rules");
+    // A common spec with no explicit role defaults to "spec".
+    assert_eq!(parsed["commonSeededInputs"][0]["kind"], "spec");
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["path"], "build.py");
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["text"], "# build");
+    // The script role survives ingest → snapshot, so the Inputs tab tags it "Script".
+    assert_eq!(parsed["variants"][0]["seededInputs"][0]["kind"], "script");
+    // The declared package is carried with its UI-only description, looked up from
+    // core's registry at snapshot time.
     assert_eq!(
-        parsed["variants"][0]["seededInputs"][0]["path"],
-        "spec/base.md"
+        parsed["packages"][0]["name"],
+        "@test-cabinet/particle-runtime"
     );
-    assert_eq!(parsed["variants"][0]["seededInputs"][0]["text"], "# Base");
+    assert!(
+        parsed["packages"][0]["description"]
+            .as_str()
+            .is_some_and(|d| !d.is_empty()),
+        "package description should be inlined from core's registry"
+    );
 }
 
 #[tokio::test]
@@ -854,4 +952,59 @@ async fn store_media_is_used_without_calling_the_artifact_service() {
         seen.lock().unwrap().is_empty(),
         "the store fast-path made no artifact-service request",
     );
+}
+
+#[tokio::test]
+async fn a_variant_carries_its_reference_build_url_when_one_is_supplied() {
+    // The reference-implementation URL lives in the `case_reference_build` table
+    // (written out-of-band by `tcab publish-reference`), not the manifest, so the
+    // caller hands the builder a `(slug, version)` → (variant → URL) map. It must
+    // land on the matching variant's `referenceBuild`, and a variant absent from the
+    // map (here there is none — the case has a single `base` variant) exports null.
+    let (_tmp, store) = empty_store();
+    let mut builds = std::collections::HashMap::new();
+    builds.insert(
+        ("pong".to_string(), "v1.0.0".to_string()),
+        std::collections::HashMap::from([(
+            "base".to_string(),
+            "https://carom-v1-0-0-base.test-cabinet-references.pages.dev".to_string(),
+        )]),
+    );
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .with_reference_builds(builds)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert_eq!(
+        parsed["variants"][0]["referenceBuild"],
+        "https://carom-v1-0-0-base.test-cabinet-references.pages.dev"
+    );
+}
+
+#[tokio::test]
+async fn a_variant_without_a_reference_build_exports_null() {
+    // No reference build supplied for this case → the variant's `referenceBuild` is
+    // serialized as JSON null (the default), never omitted, so the site can rely on
+    // the key's presence.
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert!(parsed["variants"][0]["referenceBuild"].is_null());
 }

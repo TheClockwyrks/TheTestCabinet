@@ -1,0 +1,139 @@
+# Caldera Colossus — sculpting and rigging brief
+
+You are sculpting and rigging the Caldera Colossus, the massive elite bruiser of the Slag
+— a ponderous, columnar obsidian quadruped on four thick column legs, its enormous body
+carrying an open furnace crater in its back that exposes a molten acid-green core — as a
+3D voxel model with a rig a game can pose at runtime. Build it with `voxel-anim`
+(painting opaque cells one operation at a time) as a rigged model that reads unmistakably
+as this immense obsidian thing, walks believably on its columns, crushes on demand, and
+breathes its furnace aura on its own. There is no target model to copy.
+
+This test measures creativity and craft, not instruction-following. The brief fixes
+what the Colossus is and how it must move; it deliberately does not hand you a parts
+list, joint placements, or pose angles — working out the pieces a ponderous, crushing
+creature needs, where they attach, and how they articulate is the test. Invent the rig.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It
+  starts empty.
+- x runs across the Colossus, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom, the ground) to `{{voxel.maxY}}`
+  (top). z runs front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the Colossus faces toward `z = {{voxel.maxZ}}` (the front) at rest. Up is +y.
+- Build the Colossus symmetric about the lengthwise vertical centerplane — the four legs
+  and the two shoulder guards mirror left/right, and the body, the back crater, and
+  its molten core are centered on it.
+- The Colossus is deliberately **massive and columnar** — an enormous body carried on
+  four thick column legs, filling most of the volume. It is the biggest thing on the
+  field; nothing about it should read as low and long, top-heavy, or spindly.
+- Each part is sculpted separately with `voxel-anim --part <name>`, in this same
+  volume's coordinates, positioned where the part sits on the assembled Colossus (a leg
+  already under its corner of the body, the crater already set into the back).
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Body — obsidian | `#241f2b` |
+| Deep recess, shadowed seam — obsidian dark | `#16131b` |
+| Accent plate (the accent region) | `#4a4358` |
+| Acid glow — the furnace core and its seams | `#9ede3a` |
+
+Do **not** use steel `#c9ced6` or violet `#b56bff` anywhere on the model. A game
+paints those on at run time (see *The accent region*); baking them in defeats it.
+
+## What the Colossus is (and what is yours to invent)
+
+Fixed — the Colossus must read unmistakably as all of these:
+
+- A **massive, columnar body** of obsidian, enormous and heavy, filling most of the
+  volume. Its shadowed seams and recesses are obsidian dark.
+- **Four thick column legs**, one at each corner, that carry it and walk (see the
+  animations). They read as heavy columns — the legs of the biggest thing on the field,
+  built for weight, not speed.
+- **Heavy shoulder guards** over the front of the body.
+- **An open furnace crater set into its back** — a broken cavity exposing a molten
+  acid-green core that blazes from inside it — with **molten acid-green seams radiating
+  from the crater across the body**. This exposed core and its seams are the Colossus's
+  whole glow signature, and it is the **only** Slag with an exposed core.
+
+The Colossus carries **no weapon and no tools** — its whole enormous body is its weapon.
+It is the massive one with the exposed molten core: nothing about it reads as low, long,
+fast, wide, top-heavy, or spindly.
+
+Everything else is yours to invent — the exact silhouette and proportions of the body,
+legs, and guards, how the furnace crater is broken open and how deep the core sits,
+how the molten seams radiate across the body, and how you break the Colossus into rig
+parts. Nothing here prescribes a shape; the test rewards a bold, characterful design that
+is unmistakably the Colossus and animates convincingly.
+
+## The accent region — a hard contract
+
+A game recolors this model at run time to show the Colossus's **tier**, by finding every
+voxel of one reserved color and repainting it. That reserved color is the **accent
+plate** color `#4a4358`, and it is what makes the contract work:
+
+- Sculpt the **shoulder guards** AND **the raised rim around the back crater** — and
+  only those — in `#4a4358`.
+- Use `#4a4358` **nowhere else** on the model. Not a stray voxel, not a highlight, not
+  a seam, and **not** on the molten core or its radiating seams. Every voxel of it is
+  treated as an accent plate.
+- The accent must be **coherent contiguous plates** — the guards and the crater rim
+  each a coherent plate group, not scattered flecks — and it must be clearly **visible
+  from more than one angle**, so a player reads a Colossus's tier at a glance across the
+  battlefield.
+
+Everything else — the body, the recesses, the legs, the exposed core, its seams — keeps
+its own color and is never repainted. Get this wrong and every Colossus in the game looks
+the same tier.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with three required animation declarations by name (you author
+the motion). Author each with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and each key's `--interp` (`constant`/`linear`/`bezier` or
+`ease-in`/`ease-out`/`ease-in-out`, with optional `--in-handle`/`--out-handle`) so the
+motion has the right weight — the Colossus is immensely heavy, so its walk and slam are
+ponderous and deliberate, never the light snap of a small creature.
+
+- **`move`** — the walk (a game-triggered playable, `loop = true`). Each thick column leg
+  lands with weight and the whole enormous mass settles onto it, so it reads as an
+  immensely heavy machine hauling itself along, not gliding or stepping lightly. Authored
+  in place: the body does not translate across the scene — the leg cycle alone carries the
+  stride (played on its own the planted foot slides straight back under the body,
+  treadmill-style, then swings forward), and a game supplies the real travel.
+- **`attack`** — the slam (a game-triggered playable, `loop = true`). The Colossus rears
+  and brings its full mass down in one crushing slam, then settles back to its stance
+  before looping — a heavy commit, a recovery. The whole enormous weight throws behind the
+  slam; this is a creature with no weapon crushing a target with its body. The feet stay
+  planted.
+- **`aura`** — the armor-aura idle (a **self-playing idle**, `auto_play = true`,
+  `loop = true`). It runs continuously on its own, under everything else: the furnace core
+  in the back crater pulses and breathes, and the molten seams swell and dim with it, so
+  the armor aura the Colossus projects over nearby Slag reads as always on without being
+  triggered. It **moves no leg** — only the core and its seams breathe.
+
+You may add your own extra parts, joints, or animations on top of this, but you must not
+drop or contradict the required `move`, `attack`, and `aura` animations, by those names.
+
+## Working the tool
+
+The only way to place a voxel and edit the rig is the `voxel-anim` binary already on
+your `PATH`. Define your own parts with `define-part` (giving each a parent and a
+pivot), sculpt each by selecting it with `--part <name>`, set pivots with `set-pivot`,
+place joints with `define-joint`, and author the three animations' keyframes with
+`define-animation`/`add-keyframe`. Run `voxel-anim --help` for the available operations
+(setting and clearing single voxels, filling and stroking boxes, 3D lines, spheres, and
+a mirror plane), the rig subcommands, and the animation subcommands, and `voxel-anim
+<operation> --help` for each one's exact flags. Call `voxel-anim` once per operation;
+run `voxel-anim render` and read `parts/<part>.png` (and the assembled `scene/*.png`
+previews) between calls to judge each part against this brief — that each column leg
+seats under its own corner of the body, the guards sit over the front legs, the
+furnace crater is set cleanly into the back with the core exposed inside it, and the
+animations read with the right weight. Run `voxel-anim render` before you finish so it
+emits the per-part `.glb` geometry your result is built from — an unrendered part scores
+as empty (`voxel-anim render --component <part>` renders one part; `voxel-anim render
+--time <ms> --animation <name>` renders the model posed at that instant to check the
+motion).

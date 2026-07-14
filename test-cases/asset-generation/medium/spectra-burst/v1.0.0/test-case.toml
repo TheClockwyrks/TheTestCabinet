@@ -1,0 +1,122 @@
+slug = "spectra-burst"
+experimental = true
+name = "Spectra Burst"
+difficulty = "medium"
+tags = ["vfx", "2d"]
+summary = """
+Author the Spectra drone-burst: the screen-space explosion VFX for a two-band \
+formation shooter — a neon flash core, an expanding ring shockwave, and radial \
+cyan/magenta spark streaks — as a 128x128 particle-2d effect simulated live from \
+an authored emitter system."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 2D (planar, screen-space) particle effect: an enemy-drone detonation the review
+# UI and a game simulate live from the authored emitter system.
+asset_kind = "particle-2d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The 2D field the effect plays in. particle-2d is planar — width/height only, no
+# depth. duration_ms/fps/loop fix the playback; `background` is the preview's clear
+# color only (the effect is composited over the game's dark field at play time).
+[particle]
+width       = 128            # extent along x, in pixels (required)
+height      = 128            # extent along y — up — in pixels (required)
+duration_ms = 700            # a one-shot detonation ~0.7 s long (required)
+fps         = 60             # preview/playback frame rate (required, > 0)
+loop        = false          # one-shot: bursts and decays to empty (an explosion)
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-2d` is the only way to shape the effect; it records
+# every operation and, on `render`, simulates the system and writes the preview GIF.
+# Run `particle-2d --help` for the operations; no operations schema is seeded.
+[tool]
+binary  = "particle-2d"
+preview = "effect.gif"
+
+# The recorded op log — the authoritative output. Core emits the authored
+# system.json (emitters/forces/curves) automatically; it is not declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id   = "read"
+name = "Effect read"
+description = """
+How well the simulated effect reads as the Spectra drone-burst — its flash core, \
+expanding ring shockwave, and radial cyan/magenta spark streaks, in the neon \
+two-band palette."""
+
+[[domain]]
+id   = "motion"
+name = "Motion & timing"
+description = """
+How well the detonation is paced over its 700 ms — a hard burst that expands, \
+throws sparks, and decays cleanly to an empty field — and reads the same across \
+live replays."""
+
+[[review_item]]
+id     = "reads-as-detonation"
+title  = "Reads as a neon drone burst"
+text   = """
+The effect reads at a glance as a sharp neon detonation of an enemy drone: a \
+bright flash core at the center, an expanding ring shockwave around it, and radial \
+spark streaks thrown outward — not a soft puff, a plume, or a formless blob."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id     = "three-elements"
+title  = "Flash, ring, and sparks all present"
+text   = """
+All three distinct elements are legible in the simulated effect: the overexposed \
+white-cyan flash core, the thin expanding cyan ring shockwave, and the radial \
+cyan-and-magenta spark streaks that stretch along their velocity."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id     = "palette"
+title  = "Spectra two-band palette"
+text   = """
+Uses only the Spectra colors from the brief — white flash, cyan band (#34e2ff), \
+and magenta band (#ff4ec7) — reading as the game's neon two-band look on dark. No \
+out-of-palette hues, no muddy smoke."""
+weight = 1
+domain = "read"
+
+[[review_item]]
+id     = "lifecycle"
+title  = "Lifecycle over the duration"
+text   = """
+Bursts hard at the very start (the flash and shockwave detonate together), expands \
+and throws sparks outward through the middle as the ring thins and fades, and \
+decays cleanly to an empty field by the end of the 700 ms — a true one-shot with \
+nothing left lingering."""
+weight = 3
+domain = "motion"
+
+[[review_item]]
+id     = "reads-across-replays"
+title  = "Reads the same across replays"
+text   = """
+Because the system is simulated live and varies slightly from one play to the next, \
+the detonation still reads as the same effect on every replay — the sparks scatter \
+differently but the flash, ring, and radial burst are always the character on show."""
+weight = 1
+domain = "motion"

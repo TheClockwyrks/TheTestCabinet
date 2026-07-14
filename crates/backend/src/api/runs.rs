@@ -21,10 +21,16 @@ use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::RunRecord;
 
 use crate::auth::AuthUser;
-use crate::db::{Reviewer, StoredReview, StoredRun};
+use crate::db::{
+    Reviewer, SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState,
+};
 use crate::error::ApiError;
+use crate::snapshot::{RunSummary, run_summary_score};
+use crate::store::{DefinitionStore, StoredManifest};
 
 use super::AppState;
+
+use std::collections::HashMap;
 
 /// The default and maximum page size for `GET /runs`.
 const DEFAULT_LIMIT: usize = 50;
@@ -193,11 +199,46 @@ pub async fn delete(
 /// state (completed, every failure tier, including the never-publishable
 /// infrastructure failures), ordered by finish time — the console's "produced"
 /// worklist, disjoint from the default published listing.
+///
+/// `fields=summary` returns bounded [`RunSummary`] cards (the lightweight shape
+/// the console's run log and list pages consume) instead of full
+/// [`StoredRunOut`] records; the cursor (`before`/`limit`) and `state` selector
+/// behave identically for both projections. Any other `fields` value (or none)
+/// keeps the default full records.
 pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
-) -> Result<Json<ListResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+
+    // The numbered-pager path: a summary projection with an explicit `offset` uses
+    // the OFFSET + total-COUNT listing (with filter/free-text/sort), distinct from
+    // the `before`-cursor path below. Only the summary projection carries it.
+    if params.fields.as_deref() == Some("summary")
+        && let Some(offset) = params.offset
+    {
+        let filter = SummaryFilter {
+            state: summary_state(params.state.as_deref()),
+            test_case: params.test_case.clone(),
+            model: params.model.clone(),
+            harness: params.harness.clone(),
+            q: params.q.clone(),
+        };
+        let sort = parse_sort(params.sort.as_deref());
+        let dir = parse_dir(params.dir.as_deref());
+        let (runs, total) = state
+            .db
+            .list_summaries(&filter, sort, dir, limit, offset)
+            .await
+            .map_err(ApiError::from)?;
+        return Ok(Json(SummaryListResponse {
+            runs: summary_cards(&state.store, &runs),
+            next_before: None,
+            total: Some(total),
+        })
+        .into_response());
+    }
+
     let (runs, next_before) = match params.state.as_deref() {
         Some("review") | Some("all") => state
             .db
@@ -214,16 +255,63 @@ pub async fn list(
             .list_unpublished(limit, params.before.as_deref())
             .await
             .map_err(ApiError::from)?,
+        Some("unreviewed") => state
+            .db
+            .list_unreviewed(limit, params.before.as_deref())
+            .await
+            .map_err(ApiError::from)?,
         _ => state
             .db
             .list_published(limit, params.before.as_deref())
             .await
             .map_err(ApiError::from)?,
     };
-    Ok(Json(ListResponse {
-        runs: runs.iter().map(stored_run_out).collect(),
-        next_before,
-    }))
+    if params.fields.as_deref() == Some("summary") {
+        Ok(Json(SummaryListResponse {
+            runs: summary_cards(&state.store, &runs),
+            next_before,
+            total: None,
+        })
+        .into_response())
+    } else {
+        Ok(Json(ListResponse {
+            runs: runs.iter().map(stored_run_out).collect(),
+            next_before,
+        })
+        .into_response())
+    }
+}
+
+/// Build the summary cards for a page of runs, enriching each with its aggregate
+/// reviewer `score` — the one field [`RunSummary::from_stored`] leaves `None`
+/// because the checklist weights live only in the case catalog, not the run.
+///
+/// Each run's manifest is resolved from the definition store and its reviews
+/// scored against that case's declared weights (see [`run_summary_score`]). The
+/// resolved manifest is cached per `(slug, version)` so a case is read once per
+/// page rather than once per run; a run whose case isn't ingested keeps
+/// `score = None`.
+fn summary_cards(store: &DefinitionStore, runs: &[StoredRun]) -> Vec<RunSummary> {
+    let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
+    runs.iter()
+        .map(|run| {
+            let mut card = RunSummary::from_stored(run);
+            let subject = &run.record.subject;
+            let key = (
+                subject.test_case_slug.clone(),
+                subject.test_case_version.clone(),
+            );
+            let manifest = manifests.entry(key).or_insert_with(|| {
+                store
+                    .read_manifest(&subject.test_case_slug, &subject.test_case_version)
+                    .ok()
+            });
+            if let Some(manifest) = manifest {
+                card.score = run_summary_score(manifest, &subject.variant, &run.reviews);
+            }
+            card
+        })
+        .collect()
 }
 
 /// `GET /adversarial/controllers?testCase=<slug>` — the pushed adversarial
@@ -383,6 +471,30 @@ pub struct ListParams {
     /// `published` (default) for the public listing, or `review`/`all` for the
     /// reviewer worklist (pending + published).
     state: Option<String>,
+    /// `summary` returns bounded [`RunSummary`] cards instead of full
+    /// [`StoredRunOut`] records; any other value (or none) keeps the full records.
+    fields: Option<String>,
+    /// The 0-based row offset for the numbered-pager path. Present only on the
+    /// summary projection; when set, the offset + total-count listing (with the
+    /// filter/free-text/sort params below) is used instead of the `before` cursor.
+    /// The struct has no `rename_all`, so each field binds by its Rust name; only
+    /// `test_case` needs a `rename` to reach the camelCase wire name `testCase`.
+    offset: Option<usize>,
+    /// Filter to one test-case slug (summary + offset path only). Wire: `testCase`.
+    #[serde(rename = "testCase")]
+    test_case: Option<String>,
+    /// Filter to one model id (summary + offset path only).
+    model: Option<String>,
+    /// Filter to one harness slug (summary + offset path only).
+    harness: Option<String>,
+    /// Case-insensitive free-text query across the lifted identity columns (summary
+    /// + offset path only).
+    q: Option<String>,
+    /// The sort column: `date` (default), `runtime`, `tokens`, `cost`, `rating`,
+    /// `testType`, `testCase`, `harness`, `model`, `variant`.
+    sort: Option<String>,
+    /// The sort direction: `desc` (default) or `asc`.
+    dir: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -390,6 +502,59 @@ pub struct ListParams {
 pub struct ListResponse {
     runs: Vec<StoredRunOut>,
     next_before: Option<String>,
+}
+
+/// The lightweight `fields=summary` projection of [`ListResponse`]: bounded run
+/// cards plus the same cursor. Not a contract-codegen type — a plain axum
+/// response reusing the [`RunSummary`] contract shape (already registered via the
+/// snapshot's `runs.json` index).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummaryListResponse {
+    runs: Vec<RunSummary>,
+    next_before: Option<String>,
+    /// The total number of matching rows, ignoring the page window — present only
+    /// on the numbered-pager (offset) path, to size the console's pager. Absent on
+    /// the `before`-cursor path (which drains rather than jumps), so that wire shape
+    /// is unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<usize>,
+}
+
+/// Map the `state` query param to the summary listing's lifecycle slice, mirroring
+/// the cursor path's `state` handling (`review`/`all` → the reviewer worklist).
+fn summary_state(state: Option<&str>) -> SummaryState {
+    match state {
+        Some("review") | Some("all") => SummaryState::Review,
+        Some("failures") => SummaryState::Failures,
+        Some("unpublished") => SummaryState::Unpublished,
+        Some("unreviewed") => SummaryState::Unreviewed,
+        _ => SummaryState::Published,
+    }
+}
+
+/// Map the `sort` query param to a [`SummarySort`], defaulting to `Date`.
+fn parse_sort(sort: Option<&str>) -> SummarySort {
+    match sort {
+        Some("runtime") => SummarySort::Runtime,
+        Some("tokens") => SummarySort::Tokens,
+        Some("cost") => SummarySort::Cost,
+        Some("rating") => SummarySort::Rating,
+        Some("testType") => SummarySort::TestType,
+        Some("testCase") => SummarySort::TestCase,
+        Some("harness") => SummarySort::Harness,
+        Some("model") => SummarySort::Model,
+        Some("variant") => SummarySort::Variant,
+        _ => SummarySort::Date,
+    }
+}
+
+/// Map the `dir` query param to a [`SortDir`], defaulting to `Desc`.
+fn parse_dir(dir: Option<&str>) -> SortDir {
+    match dir {
+        Some("asc") => SortDir::Asc,
+        _ => SortDir::Desc,
+    }
 }
 
 #[derive(Deserialize)]

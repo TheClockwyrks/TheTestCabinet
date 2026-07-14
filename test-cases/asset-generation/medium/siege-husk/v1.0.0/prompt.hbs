@@ -1,0 +1,82 @@
+Sculpt and rig the **Siege Husk**, a decrepit, low-poly shambling humanoid enemy for
+the Siege first-person voxel last-stand game — as **one continuous skin** in a {{voxel.width}}x{{voxel.height}}x{{voxel.depth}}
+volume using only the `mc-skin` tool. You build it by **compositing signed-distance
+primitives** into a single whole-body field — one recorded operation at a time — bind it
+to a **skeleton you invent**, and **author its animations** as F-curves so the skin
+deforms across its joints.
+
+This test measures **creativity and craft**, not instruction-following: the brief tells
+you *what the husk is* and *how it must move*, but the forms you sculpt, the skeleton you
+build, where you place the bones and joints, and how the skin binds to them are
+**entirely yours to invent**. Work out the bones a walking, lunging, collapsing humanoid
+needs.
+
+## How sculpting and rigging works
+
+The only way to sculpt the field and edit the skeleton is the `mc-skin` binary already
+on your `PATH`. You build the character by calling it **one operation at a time**, and
+the ordered operations you issue — recorded to `actions.json` — together with the
+skeleton and animations you define are your submission.
+
+`mc-skin` sculpts **one whole-body field** — the entire husk at once. There is **no
+`--part` flag**: a skinned character is a single field with a single log, extracted into
+one continuous Marching Cubes surface (a low-poly, chunky faceted look — the binary's
+fixed character). Composite the body from additive and subtractive spheres, boxes,
+ellipsoids, and cylinders — each an opaque `#rrggbb` `--color`, with an optional soft
+`--blend` that fuses them into one skin. The volume starts **empty**. Each call only
+records the operation and renders **nothing** — run `mc-skin render` to (re)draw
+`model.png`, and run `mc-skin render --time <ms> --animation <name>` to see the model
+**posed with actual skin deformation**; you **must** run `mc-skin render` before you
+finish so it emits the skinned `mesh.glb` geometry and the derived skin weights the run
+is scored from — an unrendered model is scored as empty.
+
+**You invent the skeleton.** Define the bones you need with `define-bone` (the first bone
+the root, each other under a parent), position each head→tail with `set-bone`, place
+joints on them with `define-joint`, and author each required animation with
+`define-animation`/`add-keyframe`. The per-vertex skin weights are **derived
+automatically** at render (bone-heat diffusion, capped at four influences per vertex) —
+you do not paint them by hand.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+mc-skin add-ellipsoid --x 3 --y 4 --z 2 --rx 2 --ry 4 --rz 2 --color "#7e8a68"
+mc-skin define-bone --name pelvis --parent ""
+```
+
+(The values above are just an example — sculpt your own forms and name your own bones
+however you like.) Run `mc-skin --help` to list every operation **and** the skeleton and
+animation subcommands (defining and positioning bones, defining joints, and authoring
+animations with `define-animation`/`add-keyframe`), and `mc-skin <operation> --help` for
+one operation's exact flags — that help text is the authoritative contract. **Read
+`model.png` after you run `mc-skin render`** to see the whole body, and read a posed
+`mc-skin render --time <ms> --animation <name>` to confirm the skin actually deforms
+across its joints.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Sculpt and rig the husk up operation by operation until `model.png` matches the brief — a
+gaunt, hunched, decrepit humanoid of ashen grey-green flesh, tattered dark cloth, and
+exposed bone, read as one continuous skin — and the rig is complete: a skeleton whose
+joints bend the skin across the hips, knees, shoulders, and spine. **Author the three
+required animations** as F-curves with the `mc-skin` animation subcommands:
+
+- **`walk`** — a looping shamble whose legs plant and drag while the pelvis and spine
+  flex and the arms sway, authored in place, carrying lurching weight rather than sliding
+  stiffly.
+- **`lunge`** — a one-shot forward wrench toward +z that snaps the torso and a shoulder
+  forward to grab or swipe, then settles and holds.
+- **`collapse`** — a one-shot death crumple in which the legs buckle and the spine folds
+  so the body slumps down and holds limp on the ground.
+
+In every one the skin must deform smoothly across its joints — an elbow, hip, or spine
+that bends and folds — with no seam opening and nothing tearing away. The three
+animations are the fixed contract — produce them, by those names; the bones and joints
+that realize them are yours. When you are satisfied, stop: the recorded operation log and
+`rig.json` are your finished submission.

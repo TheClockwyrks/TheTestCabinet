@@ -21,7 +21,11 @@ export {
   type ReviewVerdict,
   type Score,
   type WeightedItem,
+  type WeightedSubItem,
   scoreChecklist,
+  subItemVerdictId,
+  verdictIdsForItem,
+  formatPoints,
   type AggregateScore,
   aggregateScore,
   aggregateRating,
@@ -74,7 +78,10 @@ function readRatings(frontmatter: string): DomainRating[] {
     if (!key.startsWith("rating.")) continue;
     const domain = key.slice("rating.".length).trim();
     if (!domain) continue;
-    const value = line.slice(separator + 1).trim().toLowerCase();
+    const value = line
+      .slice(separator + 1)
+      .trim()
+      .toLowerCase();
     if (!isRating(value)) continue;
     ratings.push({ domain, rating: value });
   }
@@ -95,7 +102,9 @@ function readChecklist(frontmatter: string): ReviewVerdict[] {
     if (!id) continue;
     const value = line.slice(separator + 1).trim();
     const space = value.search(/\s/);
-    const statusToken = (space === -1 ? value : value.slice(0, space)).toLowerCase();
+    const statusToken = (
+      space === -1 ? value : value.slice(0, space)
+    ).toLowerCase();
     if (!isVerdictStatus(statusToken)) continue;
     const note = space === -1 ? "" : value.slice(space + 1).trim();
     verdicts.push({ id, status: statusToken, ...(note ? { note } : {}) });

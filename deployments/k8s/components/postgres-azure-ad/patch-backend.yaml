@@ -1,0 +1,25 @@
+# Convert the backend Deployment (added by components/postgres) to passwordless
+# Azure AD Postgres auth: run under the workload-identity ServiceAccount, carry the
+# label that makes the azure-workload-identity webhook project the federated token +
+# AZURE_* env, and flip TCAB_BACKEND_DB_AZURE_AD so the backend mints an Entra access
+# token as the Postgres password. Strategic merge — the `backend` container and the
+# env list merge by name, so this adds the flag without disturbing the other env.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-backend
+  namespace: tcab-prod
+spec:
+  template:
+    metadata:
+      labels:
+        # Triggers the azure-workload-identity webhook to project the federated
+        # token file + AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_FEDERATED_TOKEN_FILE.
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: tcab-backend
+      containers:
+        - name: backend
+          env:
+            - name: TCAB_BACKEND_DB_AZURE_AD
+              value: "true"

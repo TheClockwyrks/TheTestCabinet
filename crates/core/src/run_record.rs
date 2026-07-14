@@ -52,6 +52,37 @@ impl HarnessSlug {
         HarnessSlug::Pi,
     ];
 
+    /// Whether this harness reaches its model **through OpenRouter** (it
+    /// authenticates with `OPENROUTER_API_KEY`), as opposed to a provider-native
+    /// endpoint. True for Cline, Goose, Kilo, OpenCode, and Pi; false for Codex
+    /// (OpenAI), Claude (Anthropic), and Antigravity (Google). This governs
+    /// whether a trailing `:free`-style OpenRouter variant tag is stripped when
+    /// canonicalizing the model id (see [`crate::model_id`]). A drift test keeps
+    /// this in step with each harness's `api_key_env`.
+    pub fn routes_through_openrouter(self) -> bool {
+        matches!(
+            self,
+            HarnessSlug::Cline
+                | HarnessSlug::Goose
+                | HarnessSlug::Kilo
+                | HarnessSlug::Opencode
+                | HarnessSlug::Pi
+        )
+    }
+
+    /// Whether this harness reaches its model **through a provider route** whose
+    /// prefix is prepended to the model id at launch — true only for OpenCode and
+    /// Kilo Code, which pass the id verbatim to a CLI that routes through OpenRouter
+    /// and so must launch with the `openrouter/` prefix (see
+    /// [`crate::model_id::launch_model_id`]). The other OpenRouter-authenticated
+    /// harnesses (Cline, Goose, Pi) pass a provider flag internally and launch the
+    /// id unprefixed, so they are **not** included here — contrast the broader
+    /// [`Self::routes_through_openrouter`]. Mirrors the run form's
+    /// `PROVIDER_HARNESSES` set in `packages/ui/src/app/data/providers.ts`.
+    pub fn uses_provider(self) -> bool {
+        matches!(self, HarnessSlug::Opencode | HarnessSlug::Kilo)
+    }
+
     /// The wire slug for this harness, matching the serde representation.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -64,6 +95,76 @@ impl HarnessSlug {
             HarnessSlug::Opencode => "opencode",
             HarnessSlug::Pi => "pi",
         }
+    }
+
+    /// The [`HarnessFamily`] this harness belongs to — the model-slug namespace it
+    /// draws from. The three provider-native harnesses (Claude Code, Codex,
+    /// Antigravity) are each their own family; every OpenRouter-routed harness
+    /// shares the single [`HarnessFamily::Openrouter`] family, because a slug added
+    /// for one of them (an OpenRouter id) is usable with all of them. A drift test
+    /// keeps the OpenRouter arm in step with [`Self::routes_through_openrouter`].
+    pub fn family(self) -> HarnessFamily {
+        match self {
+            HarnessSlug::Claude => HarnessFamily::Claude,
+            HarnessSlug::Codex => HarnessFamily::Codex,
+            HarnessSlug::Antigravity => HarnessFamily::Antigravity,
+            HarnessSlug::Cline
+            | HarnessSlug::Goose
+            | HarnessSlug::Kilo
+            | HarnessSlug::Opencode
+            | HarnessSlug::Pi => HarnessFamily::Openrouter,
+        }
+    }
+}
+
+/// A family of harnesses that share a model-slug namespace — the set of model ids
+/// usable with them.
+///
+/// A slug is only meaningful to the harnesses that speak its namespace: a Claude
+/// Code slug (`claude-opus-4-8`) means nothing to Codex, and an OpenRouter slug
+/// (`anthropic/claude-opus-4.8`) only resolves through the OpenRouter-routed
+/// harnesses. So a curated model's slugs are each tagged with the family they
+/// belong to (see the model catalog's aliases), which lets a run form offer only
+/// the slugs the selected harness can actually launch. Every [`HarnessSlug`] maps
+/// to exactly one family via [`HarnessSlug::family`]; the OpenRouter-routed
+/// harnesses collapse into one family because they all take OpenRouter ids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum HarnessFamily {
+    /// Anthropic Claude Code — provider-native Anthropic model ids.
+    Claude,
+    /// OpenAI Codex — provider-native OpenAI model ids.
+    Codex,
+    /// Google Antigravity — provider-native Google model ids.
+    Antigravity,
+    /// Every OpenRouter-routed harness (Cline, Goose, Kilo, OpenCode, Pi): its
+    /// slugs are OpenRouter ids (`provider/model`).
+    Openrouter,
+}
+
+impl HarnessFamily {
+    /// All families, in catalog order.
+    pub const ALL: [HarnessFamily; 4] = [
+        HarnessFamily::Claude,
+        HarnessFamily::Codex,
+        HarnessFamily::Antigravity,
+        HarnessFamily::Openrouter,
+    ];
+
+    /// The wire slug for this family, matching the serde representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HarnessFamily::Claude => "claude",
+            HarnessFamily::Codex => "codex",
+            HarnessFamily::Antigravity => "antigravity",
+            HarnessFamily::Openrouter => "openrouter",
+        }
+    }
+
+    /// Parse a wire slug back into a family, or `None` for an unrecognized value.
+    pub fn from_wire(slug: &str) -> Option<HarnessFamily> {
+        HarnessFamily::ALL.into_iter().find(|f| f.as_str() == slug)
     }
 }
 

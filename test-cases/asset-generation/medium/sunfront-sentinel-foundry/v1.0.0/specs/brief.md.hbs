@@ -1,0 +1,121 @@
+# Sunfront Sentinel Foundry — sculpting and rigging brief
+
+You are sculpting and rigging the Sunfront Sentinel Foundry, a wide, open casting works
+where a gantry-slung crucible tips and pours glowing molten metal while great bellows
+breathe beside it — built with `voxel-anim` by painting discrete opaque cells into a
+rigged 3D model a game poses at runtime. There is no target model to copy: it must read
+unmistakably as this working casting foundry and satisfy the animation contract below.
+
+This is a **casting** foundry — it melts and pours metal; it does not hammer or stamp.
+Build it low and broad, an open-fronted hall, not a tall tower.
+
+This brief fixes what the Foundry is and how it must move. It does not give you a parts
+list, joint placements, or pivots — working out the pieces a pouring, breathing foundry
+needs, where they attach, and how they articulate is the challenge. Invent the rig.
+
+## How the tool works
+
+`voxel-anim` places discrete opaque cells, one recorded operation at a time. Set and
+clear single voxels, fill and stroke boxes, draw 3D lines and spheres, and mirror across
+a plane; each op takes an opaque `#rrggbb` color, and there is no transparency. Global
+`--part <name>` selects the part an op paints, and each part is its own volume, previewed
+on its own; create a part with `define-part` before you paint into it.
+
+A call **records only** and renders nothing; run `voxel-anim render` to (re)draw
+`parts/<part>.png` and the assembled `scene/*.png`, then read them between calls.
+`voxel-anim --help` is the contract.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels. It starts
+  empty; cell coordinates are grid positions in this volume.
+- x runs across the hall, 0–{{voxel.maxX}}. y runs up, 0 (the ground) to {{voxel.maxY}} (top). z runs
+  front-to-back, 0–{{voxel.maxZ}}. **Forward is +z:** the open pour-face of the hall — where the
+  crucible tips and the molten stream falls — faces toward z = {{voxel.maxZ}}. Up is +y.
+- Build the hall symmetric about the lengthwise vertical centerplane where the form
+  allows, with the casting bed centered under the crucible (the flank bellows may break
+  that symmetry).
+- The foundry is deliberately **wide and low** — a broad, open-fronted masonry casting
+  hall rooted to the ground, filling most of the width and depth but only rising partway
+  up the volume. It is emphatically **not** a tall tower with a central throat.
+- Each part is sculpted in these shared coordinates, positioned where it sits on the
+  assembled hall.
+
+## What the Foundry is (and what is yours to invent)
+
+The foundry must read unmistakably as all of these:
+
+- A wide, low, open-fronted masonry casting hall — the fixed body of the works, rooted to
+  the ground and filling most of the width and depth, its front opened so the pour reads.
+  Build it in the brass and bronze plating (bronze on its underside and in the shadowed
+  seams, sandstone panels for lighter structure), not a plain box.
+- A raised **gantry** spanning the hall that carries a big iron **crucible** — a heavy
+  vessel brimming with glowing molten metal, hung on trunnions so it can tip forward and
+  pour.
+- A **casting bed / mold trough** set below the crucible's lip, where the poured molten
+  metal lands and pools — glowing in the solar-amber and solar-hot accents.
+- A pair of great **bellows** on the flank — an accordion-ribbed wedge that squeezes shut
+  and draws open to blast the melt.
+- A clear solar-amber accent: the molten metal itself — a glowing crucible brim, the
+  pour stream, and the pooled trough — so the accent reads from many angles.
+
+Everything else is yours to invent — the silhouette and proportions, how the hall is
+massed and roofed, how the gantry is trussed, how the crucible, casting bed, and bellows
+are shaped, and how you break the foundry into rig parts and place its joints. Nothing
+here prescribes a shape or a pivot; the brief rewards a bold, characterful design that is
+unmistakably a casting foundry and animates convincingly. Leave the moving pieces
+something to seat against — trunnions for the crucible to tip on, a bed beneath its lip,
+and a clear mouth for the bellows — so they meet the hall with no gap.
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Masonry — primary plating (brass) | `#c69a4b` |
+| Masonry — dark plating, underside, shadow (bronze) | `#7a5527` |
+| Secondary panels / lighter structure (sandstone) | `#d9c48c` |
+| Crucible, gantry, bellows frame, joints, mechanisms (iron) | `#565c64` |
+| Deep recesses, shadow (dark iron) | `#31353b` |
+| Molten metal — energy accent (solar amber) | `#ff9d2e` |
+| Molten metal — hottest glow (solar hot) | `#ffd76b` |
+
+The solar-amber accent is the team-tint region: give the foundry a clear, glowing molten
+accent — a brimming crucible, the pour stream, and the pooled casting bed, with a
+solar-hot highlight at the hottest metal — so the accent reads from multiple angles.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with two required animation declarations by name (you author the
+motion). Both are self-playing and looping, so the foundry runs continuously on its own
+with no caller, and the hall itself stays fixed throughout. Author each with `voxel-anim
+define-animation` then `add-keyframe`, choosing the period and interpolation so the motion
+carries weight rather than sliding linearly.
+
+- **`crucible_pour`** — the crucible tips forward on its trunnions, pours a stream of
+  molten metal down into the casting bed, holds at the bottom of the tip, and rights
+  back level each loop, moving with the weight of a full vessel. The crucible moves; the
+  hall, gantry, and bellows hold.
+- **`bellows_breathe`** — the great bellows squeeze shut and draw back open in a slow,
+  weighted breath each loop. The bellows move; the hall and crucible hold.
+
+You may add extra parts, joints, and self-playing animations of your own (a flickering
+glow, a secondary counterweight, a drifting heat-haze); you must produce these two
+animations, by these names, and must not contradict them — the hall itself never moves,
+only the crucible and the bellows, and nothing hammers or stamps.
+
+## Working the tool
+
+Define your parts with `define-part`, paint each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the two animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the crucible hangs over
+the casting bed with room to tip and pour, the bellows seat on the flank with room to
+squeeze, and the animations read with weight. Run `voxel-anim render` before you finish
+so it emits the per-part `.glb` geometry your result is built from — an unrendered part
+scores as empty (`voxel-anim render --component <part>` renders one part; `voxel-anim
+render --time <ms> --animation <name>` renders the model posed at that instant to check
+the motion). The recorded per-part logs and `rig.json` are the authoritative output. Run
+`voxel-anim --help` for the available operations, the rig subcommands, and the animation
+subcommands, and `voxel-anim <operation> --help` for each one's exact flags.

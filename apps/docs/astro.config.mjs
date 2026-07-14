@@ -32,7 +32,8 @@ function fixExpressiveCodeStylesheet() {
           if (!EC_CSS.test(url)) return next();
           try {
             const resolved = await server.pluginContainer.resolveId(url);
-            const loaded = resolved && (await server.pluginContainer.load(resolved.id));
+            const loaded =
+              resolved && (await server.pluginContainer.load(resolved.id));
             const css = typeof loaded === "string" ? loaded : loaded?.code;
             if (css) {
               res.setHeader("Content-Type", "text/css");
@@ -59,7 +60,7 @@ function fixExpressiveCodeStylesheet() {
         const ecCss = assets.filter((f) => /^ec\..+\.css$/.test(f));
         if (ecCss.length !== 1) {
           logger.warn(
-            `expected exactly one Expressive Code stylesheet, found ${ecCss.length}; skipping link repair`
+            `expected exactly one Expressive Code stylesheet, found ${ecCss.length}; skipping link repair`,
           );
           return;
         }
@@ -83,7 +84,7 @@ function fixExpressiveCodeStylesheet() {
         };
         await walk(outDir);
         logger.info(
-          `repaired Expressive Code stylesheet link on ${patched} page(s) -> ${realHref}`
+          `repaired Expressive Code stylesheet link on ${patched} page(s) -> ${realHref}`,
         );
       },
     },
@@ -125,7 +126,6 @@ export default defineConfig({
       sidebar: [
         { label: "Overview", link: "/" },
         { label: "Terminology", link: "/terminology" },
-        { label: "Roadmap", link: "/roadmap" },
         // End-user material: short task refreshers, then the detailed guides.
         // Placed above the developer-facing Components section to match the
         // audience split called out on the home page.
@@ -134,20 +134,60 @@ export default defineConfig({
           collapsed: true,
           items: [
             "quickstarts/overview",
-            "quickstarts/set-up-authentication",
-            "quickstarts/register-and-login",
-            "quickstarts/run-a-test-case",
-            "quickstarts/run-the-local-service-stack",
-            "quickstarts/author-an-end-to-end-test-case",
-            "quickstarts/author-an-asset-generation-test-case",
-            "quickstarts/create-an-end-to-end-variant",
-            "quickstarts/create-a-sprite-variant",
-            "quickstarts/create-a-sprite-sheet-variant",
-            "quickstarts/add-or-update-a-model",
-            "quickstarts/publish-an-audio-sample-pack",
-            "quickstarts/review-a-run",
-            "quickstarts/publish-a-run",
-            "quickstarts/roll-prod-service-images",
+            {
+              label: "Setup",
+              collapsed: true,
+              items: [
+                "quickstarts/setup/set-up-authentication",
+                "quickstarts/setup/register-and-login",
+              ],
+            },
+            {
+              label: "Development",
+              collapsed: true,
+              items: [
+                "quickstarts/development/run-a-test-case",
+                "quickstarts/development/run-the-local-service-stack",
+                "quickstarts/development/review-a-run",
+              ],
+            },
+            {
+              label: "Authoring",
+              collapsed: true,
+              items: [
+                "quickstarts/authoring/author-an-end-to-end-test-case",
+                "quickstarts/authoring/author-a-full-stack-test-case",
+                "quickstarts/authoring/author-an-asset-generation-test-case",
+                "quickstarts/authoring/author-a-voxel-model-test-case",
+                "quickstarts/authoring/author-a-voxel-animation-test-case",
+                "quickstarts/authoring/author-a-mesh-model-test-case",
+                "quickstarts/authoring/author-a-mesh-animation-test-case",
+                "quickstarts/authoring/author-a-skinned-test-case",
+                "quickstarts/authoring/author-a-blender-character-test-case",
+                "quickstarts/authoring/author-a-ui-test-case",
+                "quickstarts/authoring/author-a-material-test-case",
+                "quickstarts/authoring/author-a-particle-test-case",
+                "quickstarts/authoring/author-an-audio-test-case",
+                "quickstarts/authoring/create-an-end-to-end-variant",
+                "quickstarts/authoring/create-a-sprite-variant",
+                "quickstarts/authoring/create-a-sprite-sheet-variant",
+                "quickstarts/authoring/create-a-voxel-model-variant",
+                "quickstarts/authoring/create-a-voxel-animation-variant",
+                "quickstarts/authoring/create-a-mesh-model-variant",
+                "quickstarts/authoring/create-a-mesh-animation-variant",
+                "quickstarts/authoring/publish-an-audio-sample-pack",
+              ],
+            },
+            {
+              label: "DevOps",
+              collapsed: true,
+              items: [
+                "quickstarts/devops/add-or-update-a-model",
+                "quickstarts/devops/publish-a-run",
+                "quickstarts/devops/publish-a-reference",
+                "quickstarts/devops/roll-prod-service-images",
+              ],
+            },
           ],
         },
         {
@@ -155,37 +195,63 @@ export default defineConfig({
           collapsed: true,
           items: [
             "guides/overview",
-            "guides/first-time-setup",
-            "guides/running-the-local-service-stack",
-            "guides/authoring-an-end-to-end-test-case",
-            "guides/authoring-an-asset-generation-test-case",
-            "guides/authoring-a-voxel-model-test-case",
-            "guides/authoring-a-voxel-animation-test-case",
-            "guides/authoring-a-mesh-model-test-case",
-            "guides/authoring-a-mesh-animation-test-case",
-            "guides/authoring-a-skinned-test-case",
-            "guides/authoring-a-ui-test-case",
-            "guides/authoring-a-material-test-case",
-            "guides/authoring-a-particle-test-case",
-            "guides/authoring-an-audio-test-case",
-            "guides/creating-an-end-to-end-variant",
-            "guides/creating-a-sprite-variant",
-            "guides/creating-a-sprite-sheet-variant",
-            "guides/creating-a-voxel-model-variant",
-            "guides/creating-a-voxel-animation-variant",
-            "guides/creating-a-mesh-model-variant",
-            "guides/creating-a-mesh-animation-variant",
-            "guides/adding-or-updating-a-model",
-            "guides/publishing-an-audio-sample-pack",
-            "guides/reviewing-test-run-results",
-            "guides/publishing-a-test-run-result",
-            "guides/rolling-prod-service-images",
+            {
+              label: "Setup",
+              collapsed: true,
+              items: ["guides/setup/first-time-setup"],
+            },
+            {
+              label: "Development",
+              collapsed: true,
+              items: [
+                "guides/development/running-the-local-service-stack",
+                "guides/development/reviewing-test-run-results",
+              ],
+            },
+            {
+              label: "Authoring",
+              collapsed: true,
+              items: [
+                "guides/authoring/authoring-an-end-to-end-test-case",
+                "guides/authoring/authoring-a-full-stack-test-case",
+                "guides/authoring/authoring-an-asset-generation-test-case",
+                "guides/authoring/authoring-a-voxel-model-test-case",
+                "guides/authoring/authoring-a-voxel-animation-test-case",
+                "guides/authoring/authoring-a-mesh-model-test-case",
+                "guides/authoring/authoring-a-mesh-animation-test-case",
+                "guides/authoring/authoring-a-skinned-test-case",
+                "guides/authoring/authoring-a-blender-character-test-case",
+                "guides/authoring/authoring-a-ui-test-case",
+                "guides/authoring/authoring-a-material-test-case",
+                "guides/authoring/authoring-a-particle-test-case",
+                "guides/authoring/authoring-an-audio-test-case",
+                "guides/authoring/creating-an-end-to-end-variant",
+                "guides/authoring/creating-a-sprite-variant",
+                "guides/authoring/creating-a-sprite-sheet-variant",
+                "guides/authoring/creating-a-voxel-model-variant",
+                "guides/authoring/creating-a-voxel-animation-variant",
+                "guides/authoring/creating-a-mesh-model-variant",
+                "guides/authoring/creating-a-mesh-animation-variant",
+                "guides/authoring/publishing-an-audio-sample-pack",
+              ],
+            },
+            {
+              label: "DevOps",
+              collapsed: true,
+              items: [
+                "guides/devops/adding-or-updating-a-model",
+                "guides/devops/publishing-a-test-run-result",
+                "guides/devops/publishing-a-reference-implementation",
+                "guides/devops/rolling-prod-service-images",
+              ],
+            },
           ],
         },
         {
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.5.0",
             "changelogs/v0.4.1",
             "changelogs/v0.4.0",
             "changelogs/v0.3.2",
@@ -277,6 +343,11 @@ export default defineConfig({
               label: "Voxel Runtime",
               collapsed: true,
               items: ["components/voxel-runtime/overview"],
+            },
+            {
+              label: "Particle Runtime",
+              collapsed: true,
+              items: ["components/particle-runtime/overview"],
             },
             {
               label: "Documentation",
@@ -439,6 +510,15 @@ export default defineConfig({
               ],
             },
             {
+              label: "Full Stack",
+              collapsed: true,
+              items: [
+                "testing/full-stack/overview",
+                "testing/full-stack/manifests",
+                "testing/full-stack/evaluation",
+              ],
+            },
+            {
               label: "Adversarial",
               collapsed: true,
               items: [
@@ -468,6 +548,7 @@ export default defineConfig({
                 "testing/asset-generation/voxel-binaries",
                 "testing/asset-generation/mesh-binaries",
                 "testing/asset-generation/skinned-binaries",
+                "testing/asset-generation/blender-binaries",
                 "testing/asset-generation/particle-binaries",
                 "testing/asset-generation/audio-binaries",
                 "testing/asset-generation/rigging-walkers",

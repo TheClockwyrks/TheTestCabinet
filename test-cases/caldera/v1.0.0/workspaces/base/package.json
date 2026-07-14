@@ -1,9 +1,0 @@
-{
-  "name": "caldera",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Caldera — a real-time strategy tower-defense over a procedurally generated hex caldera: build a water-to-steam fluid network to power towers and hold a fixed Core against escalating waves of the Slag. Runs entirely in the browser.",
-  "devDependencies": {
-    "playwright": "1.61.0"
-  }
-}

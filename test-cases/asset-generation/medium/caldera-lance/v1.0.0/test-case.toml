@@ -1,0 +1,160 @@
+slug = "caldera-lance"
+name = "Caldera Lance"
+difficulty = "medium"
+tags = ["voxel", "rig", "tower"]
+summary = """
+Sculpt and rig the Caldera Lance: the anti-armor tower of the Holdfast — a tall, \
+narrow brass mast carrying one long, thin, horizontal iron rail held high, like a \
+rail gun, that traverses slowly on its own to scan and discharges forward in one hard \
+snap on demand while the mast stays fixed — painted cell by cell with the `voxel-anim` \
+tool, one recorded operation at a time. The model invents whatever parts and joints it \
+needs; the fixed contract is two animations it must author — a self-playing `idle` and \
+a triggered `fire` — plus a contiguous verdigris accent yoke the game recolors to show \
+the tower's upgrade level."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME Lance at three sizes — `base` (this case's
+# volume), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D canvas):
+# `width` across (x), `height` up (y), `depth` front-to-back (z), in voxels. Sized
+# from the Lance's real size at the roster's shared scale — it is the TALLEST and
+# THINNEST tower by a wide margin, and the volume's tall, narrow proportions carry that
+# before a single voxel is placed. Each part is sculpted separately in this shared
+# volume's coordinates. The volume always starts EMPTY; `background` is only the clear
+# color behind the rasterized isometric preview PNG. A voxel case must NOT declare
+# [canvas].
+[voxel]
+width = 26
+height = 74
+depth = 30
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the rig;
+# every operation targets a part with `--part <name>`, recording to that part's action
+# log; rendering is on request (`voxel-anim render`). Run `voxel-anim --help` for the
+# operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each part the
+# model defines), the authoritative output each part's regenerated model is rebuilt
+# from.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. Both names here are the ones
+# `caldera`'s `assets/models.json` binds to the Lance's game events.
+[model]
+
+# `idle` — the self-playing scan. A self-playing idle that loops on its own: the rail
+# traverses slowly back and forth across a narrow arc, scanning for a target, so the
+# tower reads as live even when it is not firing. The mast stays fixed.
+[[model.animation]]
+name = "idle"
+loop = true
+auto_play = true
+
+# `fire` — the shot. A game-triggered playable that loops: the rail draws back along its
+# yoke as it charges, then discharges forward in one hard snap and settles — a single
+# powerful shot, slow and deliberate, not a burst. The mast stays fixed.
+[[model.animation]]
+name = "fire"
+loop = true
+auto_play = false
+
+# The self-contained brief, seeded for the run. It is a Handlebars template (`.hbs`),
+# rendered per variant so the volume it states matches the selected size. The seeded
+# dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Caldera Lance and poses \
+correctly — the tallest, thinnest tower, a tall narrow brass mast carrying one long, \
+thin, horizontal iron rail held high, carrying one contiguous verdigris accent yoke, \
+whose rail scans slowly on its own and discharges forward in one hard snap while the \
+mast stays fixed, in the disciplined Holdfast palette."""
+
+[[review_item]]
+id = "reads-as-lance"
+title = "Reads as the Lance"
+text = """
+From more than one angle the model reads unmistakably as the Lance: the TALLEST and \
+THINNEST tower by a wide margin, a tall narrow brass mast founded on the ground carrying \
+ONE LONG, THIN, HORIZONTAL IRON RAIL held high — a single needle-like barrel running out \
+far past the mast, like a rail gun, with nothing bulky about it. That one long thin rail \
+held high is the whole tell. It is not slim, squat, or barrel-less, and carries no drum \
+of short barrels, single fat upward tub, or ring of nozzles. It is brass-and-iron \
+machinery — a static emplacement, not a creature."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "idle-reads"
+title = "Idle traverses the rail to scan on its own"
+text = """
+Playing `idle` traverses the rail slowly back and forth across a narrow arc, scanning for a \
+target, on its own with no caller, so the tower reads as live and powered even when it is not \
+firing. It loops seamlessly with an eased, deliberate cadence rather than a mechanical linear \
+slide. Only the rail traverses — the tall mast and the ground base stay fixed, never carried \
+along — and the rail stays whole on its yoke."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "fire-reads"
+title = "Fire discharges in one hard snap"
+text = """
+Playing `fire` draws the rail back along its yoke as it charges, then discharges it forward in \
+one hard snap and settles — slow, heavy, and deliberate, reading as a single powerful shot \
+rather than a rapid burst. The rail moves as one solid piece along its yoke, staying attached \
+throughout, and the tall mast and ground base stay fixed."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "accent-yoke"
+title = "A contiguous verdigris accent yoke"
+text = """
+The mounting yoke where the rail pivots on the mast is sculpted as ONE CONTIGUOUS fitting in \
+the accent color `#2f7d72`, and clearly visible from more than one angle. That color appears \
+NOWHERE else on the model — not one stray voxel, highlight, or seam. The game finds every \
+voxel of it and repaints it to show the tower's upgrade level, so a scattered, broken, or \
+misplaced accent region breaks the upgrade system outright."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Holdfast palette discipline"
+text = """
+Uses only the brief's four colors — brass plating, brass dark, iron mechanisms, and the \
+verdigris accent — with no out-of-palette colors, and in particular NO steel `#b8bcc2`, NO \
+gold `#ffce54`, and NO white `#dfeaea` anywhere on the model, since a game paints those \
+onto the accent yoke at run time to show the upgrade level. No stray voxels drift off the \
+model."""
+weight = 1
+domain = "fidelity"

@@ -1,0 +1,121 @@
+# Sunfront Sunhawk — sculpting and rigging brief
+
+You are sculpting and rigging the Sunfront Sunhawk, a wide, flat gunship aircraft with
+two spinning rotors and an underslung forward cannon — built by painting opaque cells
+with `voxel-anim`, as a rigged 3D voxel model a game poses at runtime. There is no
+target model to copy: it must read unmistakably as the Sunhawk and satisfy the
+animation contract below.
+
+This brief fixes what the Sunhawk is and how it must move. It deliberately does not give
+you a parts list, joint placements, or pose angles — working out the pieces a hovering,
+firing gunship needs, where they attach, and how they articulate is the challenge. Invent the
+rig.
+
+## How the tool works
+
+`voxel-anim` places discrete opaque voxels — you build each part by painting cells:
+
+- Set and clear single voxels, fill and stroke boxes, draw 3D lines and spheres, and
+  use a mirror plane to keep the aircraft symmetric — each cell an opaque `#rrggbb`
+  color (there is no transparency).
+- Global `--part <name>` selects the part an op sculpts; each part is sculpted
+  separately in its own preview and log. Create a part with `define-part` before you
+  sculpt into it.
+
+Build one operation at a time. A call **records only** and renders nothing; run
+`voxel-anim render` to (re)draw `parts/<part>.png` and the assembled `scene/*.png`, then
+read them between calls. `voxel-anim --help` is the contract.
+
+## The volume and coordinate system
+
+- The volume is **{{voxel.width}} wide (x) × {{voxel.height}} tall (y) × {{voxel.depth}} deep (z)**, in opaque voxels, starting
+  empty.
+- x runs across the aircraft, `0`–`{{voxel.maxX}}`. y runs up, `0` (bottom) to `{{voxel.maxY}}` (top). z runs
+  front-to-back, `0`–`{{voxel.maxZ}}`.
+- Forward is +z: the nose and cannon point toward `z = {{voxel.maxZ}}` (the front) at rest. Up is
+  +y.
+- Build the aircraft symmetric about the lengthwise vertical centerplane — the two
+  rotors mirror each other, and the fuselage and cannon are centered on it.
+- The Sunhawk is deliberately wide and flat — a low, broad gunship, not a tall one. It
+  fills most of the width and length while staying shallow in height.
+- Each part is sculpted in these shared coordinates, where it sits on the assembled
+  aircraft.
+
+## What the Sunhawk is (and what is yours to invent)
+
+Fixed — the aircraft must read unmistakably as all of these:
+
+- A wide, flat armored fuselage — a low, broad gunship hull with a shaped nose at the
+  front (`z` toward `{{voxel.maxZ}}`), not a plain box.
+- A rotor out on each side (one per flank, plainly side-mounted on a stub or nacelle)
+  that spins (see the animations). Each rotor is a **large, prominent** part of the
+  aircraft — a broad spread of blades that reads at a glance as a major feature of the
+  gunship, not a small disc or gear tucked on the hull. The exact size is yours, but make
+  the rotors unmistakably large and clearly part of the unit.
+- An underslung forward cannon projecting forward (+z) from beneath the nose, shaped so
+  it can tilt up and down about a horizontal hinge across its mount.
+- A clear solar-amber intake accent and the palette below.
+
+Everything else is yours to invent — the exact silhouette, proportions, how the
+fuselage is shaped and tiered, how the rotors and nacelles are designed, how the cannon
+is massed, and how you break the aircraft into rig parts and place its joints. Nothing
+here prescribes a shape; the brief rewards a bold, characterful design that is
+unmistakably the Sunhawk and animates convincingly.
+
+## Palette
+
+Use only these opaque colors:
+
+| Role | Hex |
+| --- | --- |
+| Hull — primary plating (brass) | `#c69a4b` |
+| Hull — secondary panels (sandstone) | `#d9c48c` |
+| Underside, shadowed seams (bronze) | `#7a5527` |
+| Rotors, cannon, mechanisms (iron) | `#565c64` |
+| Intake accent (solar amber) | `#ff9d2e` |
+
+Give the Sunhawk clear amber intakes on the fuselage (a glow at the cannon's muzzle
+reads well too), so the solar-amber accent shows from multiple angles.
+
+## The required animations — the fixed contract
+
+`rig.json` is pre-seeded with three required animation declarations by name (you author
+the motion). Author each with `voxel-anim define-animation` then `add-keyframe`,
+choosing the period and each key's interpolation with `--interp
+constant|linear|bezier|ease-in|ease-out|ease-in-out` (and, where it helps,
+`--in-handle`/`--out-handle`) so the motion carries weight and ease, not a mechanical
+linear slide.
+
+- **`rotor_spin`** — the rotor blur (a self-playing idle). Both rotors whirl a full turn
+  on their own across a short period so the blades read as a continuous blur, playing
+  under the other animations and at rest. A smooth, near-constant-rate spin is right
+  here.
+- **`hover`** — the hover / cruise movement (a game-triggered playable). The whole craft
+  bobs gently up and down (rise, hold near the top, settle, hold near the bottom) so it
+  reads as a gunship holding station — buoyant, not a sawtooth. The rotors keep
+  spinning; the cannon holds.
+- **`strafe`** — the cannon gun-run (a game-triggered playable). The underslung cannon
+  sweeps down to rake the ground and back up, then loops, settling onto the target with
+  weight before it tips back up, while the fuselage holds station. The cannon moves; the
+  hull stays put.
+
+You may add extra parts, joints, and animations of your own (for example a tail fin,
+landing skids, or a subtle banking idle); you must produce these three animations, by
+these names, and must not contradict them (e.g. don't move the hull around under
+`strafe`, or stop the rotors).
+
+## Working the tool
+
+Define your parts with `define-part`, sculpt each with `--part <name>`, set pivots
+with `set-pivot`, place joints with `define-joint`, and author the three animations'
+keyframes — running `voxel-anim render` and reading `parts/<part>.png` and the
+`scene/*.png` previews between calls to confirm the parts fit, the rotors seat on
+their mounts, the cannon hangs under the nose, and the animations read with weight.
+Run `voxel-anim --help` for the available operations (setting and clearing single
+voxels, filling and stroking boxes, 3D lines, spheres, and a mirror plane) and the
+rig subcommands, and `voxel-anim <operation> --help` for each one's exact flags. Run
+`voxel-anim render` before you finish so it emits the per-part `.glb` geometry your
+result is built from — an unrendered part scores as empty (`voxel-anim render
+--component <part>` renders one part; `voxel-anim render --time <ms> --animation
+<name>` renders the model posed at that instant to check the motion). The recorded
+per-part logs and `rig.json` are the authoritative output.

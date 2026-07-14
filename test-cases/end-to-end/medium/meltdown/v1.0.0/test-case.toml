@@ -1,0 +1,421 @@
+slug = "meltdown"
+experimental = true
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Meltdown"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Meltdown asks
+# for multi-size, rotatable grid tower placement with live maze re-pathing, eight
+# tower types each with distinct thermal behavior, a heat-to-damage plateau with a
+# per-tower redline and a trip, a surface-cooling ("thermal blanket") model with
+# radiator faces and conduction between neighbors, a thermostatic Forge and coolant
+# Sink, upgrade and economy systems, several surge types including maze-ignoring
+# flyers, a 20-wave progression with win and loss, and multiple states. The thermal
+# simulation and the spatial heat-management it demands push it past the arcade
+# cases; it is still a bounded, single-screen 2D build, so it sits at medium.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["strategy", "2d", "tower-defense"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+An open-field tower-defense game where your towers are also the walls, so you \
+build the maze the surge must walk — and every emitter fires harder the hotter it \
+runs, up to its redline, then trips if it overheats. Towers shed heat only through \
+faces on open air, so pace heat across the floor: space and rotate your guns, run a \
+core in its plateau, feed a sniper, hold the cryo line cold."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run
+# is stopped. Meltdown is a substantial build (grid maze and live pathing, eight
+# towers, the heat/redline model, economy and upgrades, a 20-wave progression,
+# multiple states), so it gets a full five hours.
+max_runtime_hours = 5
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins
+# `playwright` as a dev dependency, so the in-container browser tooling is a
+# visible, project-local dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant (the standard Containment defense on
+# the one fixed floor), declared in its own file under `variants/`. It supplies the
+# `title` view's menu screenshot; `mode-select`, `gameplay`, and `game-over` are
+# common. Future
+# versions/variants are expected to add alternate floors (a central reactor block,
+# scattered cores) and rule twists as additional variants on top of this base.
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. All common specs are
+# plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/heat.md"
+
+[[spec]]
+source = "specs/towers.md"
+
+[[spec]]
+source = "specs/creeps.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl build — the
+# authored, correct game under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. The `title` view is variant-specific (declared per variant
+# above); `mode-select`, `gameplay`, and `game-over` look the same in every variant.
+[[reference]]
+view = "mode-select"
+media = "reference/screenshots/mode-select.png"
+
+[[reference]]
+view = "gameplay"
+media = "reference/screenshots/gameplay.png"
+
+[[reference]]
+view = "game-over"
+media = "reference/screenshots/game-over.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to; `specs/proof.md` instructs the build to produce them at
+# exactly these paths. Validation records whether each turned up (informational).
+# The media kind is inferred from the extension: `.png` is an image, `.webm` a
+# video (the format Playwright records natively; the public gallery transcodes
+# it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "mode-select"
+name = "Mode select"
+dest = "proof/mode-select.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-match"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "End screen"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "heat"
+name = "Heat-as-power clip"
+dest = "proof/heat.webm"
+
+[[proof]]
+id = "siege"
+name = "Maze and surge clip"
+dest = "proof/siege.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a flawless heat system
+# cannot mask a maze that does not path, and vice versa. Domains are case-level; an
+# individual review item rolls up to one through its optional `domain`, while a
+# general item (states, window fit) omits it.
+[[domain]]
+id = "heat"
+name = "Heat & Thermal Play"
+description = "The signature: heat as power up to each tower's redline plateau, the trip as the sole failure, surface cooling through radiator faces (a boxed-in core bakes) with rotation and conduction, the thermostatic Forge and coolant Sink, the heat-averse Rime, and how spacing and orientation pace each tower's heat."
+
+[[domain]]
+id = "defense"
+name = "Tower Defense"
+description = "The TD core: towers-as-walls mazing and live re-pathing to the fixed opposite exhaust, the can't-seal rule, the tower roster and upgrades, the surge types and maze-ignoring flyers, and the economy and 20-wave progression."
+
+# Reviewer checklist items, common to every variant. The major, observable
+# requirements a reviewer must explicitly check by playing the build — the things
+# validation cannot judge and that are easy to miss. Reporter-side material: never
+# seeded into a run, so the model never sees the checklist; each restates a
+# requirement the seeded specification already states. Each item is worth `weight`
+# points toward the run's score; the reviewer records a pass/fail verdict for each
+# before the run can be published.
+
+[[review_item]]
+id = "heat-is-power"
+title = "Heat is power, up to the redline"
+text = "An emitter's damage climbs with its heat on an accelerating curve — feeble when cold (about 0.35x base) — to 3.5x at its per-tower REDLINE (its max-efficiency mark), then holds flat at 3.5x from the redline up to the 100 trip. Its glow tracks heat from cold blue to white-hot, the heat read shows the redline marker, and the selected-tower inspector displays the tower's current per-shot damage alongside its heat damage multiplier (e.g. x3.5) so the climb and the plateau are visible directly. Because a cold gun is so weak, a tower fed a steady stream of targets hits dramatically harder than an idle one — heat is where nearly all the damage lives."
+weight = 1
+domain = "heat"
+reference = "gameplay"
+proof = "heat"
+sub_items = [
+  { id = "climbs", title = "Cold gun is feeble (~0.35x); damage climbs to 3.5x at the redline" },
+  { id = "plateau", title = "The inspector's heat damage-multiplier climbs as the tower heats, then holds flat from the redline up to the trip — going past the redline adds trip risk, not more damage" },
+  { id = "read", title = "Glow tracks heat cold->white-hot and the heat read shows the redline marker" },
+]
+
+[[review_item]]
+id = "redline-trip"
+title = "The trip"
+text = "Pushing a tower's heat to 100 trips it offline for about 5 seconds (strobing red, dealing no damage), then it returns cold — and this is the ONLY way a tower fails (towers are never destroyed or damaged by the surge). The redline (max-efficiency mark) is below 100 for most towers, so running in the plateau is deliberately close to the trip. A tripped kill-box visibly gaps the defense for those seconds, so pacing heat to avoid the trip is essential to hold a dense wave."
+weight = 1
+domain = "heat"
+proof = "heat"
+sub_items = [
+  { id = "trips", title = "Reaching 100 trips it offline ~5s (strobing red, no damage), then it returns cold" },
+  { id = "only-failure", title = "The trip is the ONLY way a tower fails — never destroyed or damaged by the surge" },
+]
+
+[[review_item]]
+id = "surface-cooling"
+title = "Surface cooling — the thermal blanket"
+text = "A tower sheds heat only through footprint faces that touch OPEN AIR (or the casing); a face against another tower sheds none. So a firing tower boxed in by neighbors cannot dump its heat and bakes itself to the trip, while an open or lightly-mazed tower cools freely. Packing towers tight (short paths, lined-up Forges) therefore carries a real heat cost, and a dense core needs Sinks threaded through it to survive."
+weight = 1
+domain = "heat"
+sub_items = [
+  { id = "open-faces-only", title = "Sheds heat only through faces on open air; a face against another tower sheds none" },
+  { id = "boxed-bakes", title = "A firing tower boxed in by neighbors bakes itself to the trip" },
+]
+
+[[review_item]]
+id = "radiator-rotation"
+title = "Radiator faces and rotation"
+text = "Each emitter has designated radiator faces (drawn as cyan fins) that shed heat far better than plain faces, and the player can rotate a tower in 90-degree steps WHILE IT IS HELD to aim those faces at the open lane — but its orientation is LOCKED IN at placement and a placed tower can no longer be rotated (re-aiming a built tower means selling it and building a fresh one). The same tower in the same spot can sit safely in its plateau or trip depending purely on which way it was faced when placed, so rotation is a real cooling lever; the held preview and the inspector both show the faces."
+weight = 1
+domain = "heat"
+sub_items = [
+  { id = "faces", title = "Radiator faces (cyan fins) shed far better than plain faces" },
+  { id = "aim", title = "Rotating the held preview 90 degrees aims those faces at open air before placing" },
+  { id = "locked", title = "Orientation is locked at placement — a placed tower cannot be rotated" },
+]
+
+[[review_item]]
+id = "forge-source"
+title = "The Forge (thermostat)"
+text = "The Forge does not fire; it warms each touching emitter TOWARD a setpoint and only while the emitter is below it, so it can never shove a gun past that setpoint on its own. It wakes a cold gun to a strong, safe heat (e.g. the Lance) and gets out of the way. Its setpoint rises with its level, and only a maxed Forge can drive a high-redline tower into its top plateau."
+weight = 1
+domain = "heat"
+
+[[review_item]]
+id = "heat-sink"
+title = "The Sink (coolant loop)"
+text = "The Sink does not fire; it draws heat from each touching emitter's faces, proportional to heat (biting hardest near the trip). Because it cools through a face that would otherwise be blocked, it is the ONLY way to cool a boxed-in tower — thread Sinks through a dense core and it holds instead of baking. It lets a redline-prone tower (e.g. a Stutter) run flat out without tripping; its output rises with level, and Sinks stack."
+weight = 1
+domain = "heat"
+
+[[review_item]]
+id = "rime-averse"
+title = "The heat-averse Rime"
+text = "The cryo Rime runs the rule backward: it slows the surge hardest when COLD and its slow degrades as it heats (to nothing at the redline), so it wants isolation or a Sink and is ruined by an adjacent Forge or a hot core. Some surge (the Core boss) is immune to slowing entirely."
+weight = 1
+domain = "heat"
+
+[[review_item]]
+id = "conduction"
+title = "Conduction between neighbors"
+text = "When two emitter footprints touch along an edge, heat conducts across it from the hotter tower into the cooler: a cool tower placed hard against a hot, firing neighbor heats up — its own heat bar climbs — even though it is not firing and has open faces, purely because it is touching a hotter gun. It is a tool (a boxed-in tower can drain into a deliberately-cooler neighbor) and a hazard for the Rime (a Rime jammed against hot guns is conducted UP toward their heat, its heat bar rising until it stops slowing). The movers (Forge/Sink) have no heat of their own and do not conduct."
+weight = 1
+domain = "heat"
+
+[[review_item]]
+id = "upgrades-hotter"
+title = "Upgrades run hotter"
+text = "A tower upgrades through three levels (I, II, III), each making an emitter stronger AND hotter-running — a maxed emitter is a glass cannon that needs thermal support to hold its plateau — while its size, redline, mass, and radiator layout stay unchanged. The movers upgrade differently: the Forge's setpoint and the Sink's output grow with their level, and the Rime raises its cold-slow ceiling rather than its damage."
+weight = 1
+domain = "heat"
+
+[[review_item]]
+id = "sell-refund"
+title = "Selling and refunds"
+text = "Selling a tower reopens every tile in its footprint immediately (the surge re-paths) and refunds 70% of everything spent on it (build plus upgrades) — EXCEPT a tower sold during the same build phase it was placed on, before that wave has started, which refunds its FULL spend (100%). A tower that has never fought a wave is fully refundable, so the untimed opening build phase can be laid out and re-shaped without penalty; once the wave it was placed on has run, its refund drops to 70%."
+weight = 1
+domain = "defense"
+sub_items = [
+  { id = "partial", title = "70% refund once the tower has fought a wave" },
+  { id = "full", title = "Full refund if sold before its placement wave starts" },
+]
+
+[[review_item]]
+id = "mazing"
+title = "Towers are walls"
+text = "There is no fixed path: every tower is also a wall, and the surge pathfinds the shortest open route around them, so the player builds the maze. Placing or selling a tower re-paths every unit on the floor live, with no teleporting."
+weight = 1
+domain = "defense"
+reference = "gameplay"
+proof = "siege"
+sub_items = [
+  { id = "towers-are-walls", title = "No fixed path — every tower is a wall and the player builds the maze" },
+  { id = "live-repath", title = "Placing or selling a tower re-paths every unit live, with no teleporting" },
+]
+
+[[review_item]]
+id = "cant-seal"
+title = "You can never seal the floor"
+text = "A placement that would leave any vent with no route to any exhaust (or trap a unit already walking) is refused and shown invalid — there is always at least one open path from each vent to an exhaust."
+weight = 1
+domain = "defense"
+sub_items = [
+  { id = "no-seal", title = "A placement leaving any vent no route to an exhaust is refused and shown invalid" },
+  { id = "no-trap", title = "A placement that would trap a unit already walking is likewise refused" },
+]
+
+[[review_item]]
+id = "opposite-exhaust"
+title = "Two vents, two exhausts"
+text = "The surge enters at the mid-left and mid-top vents and leaves at the mid-right and mid-bottom exhausts — the only four openings in the casing wall that encloses the floor — each unit routing to its fixed opposite exhaust (left→right, top→bottom) and never the nearer one, so the maze must lengthen that crossing to be effective."
+weight = 1
+domain = "defense"
+
+[[review_item]]
+id = "casing-wall"
+title = "The floor is a walled reactor"
+text = "The reactor floor is enclosed by an impassable casing wall, and the surge can enter or leave only through the four openings in it — the two vents and two exhausts. No tower is ever built on the casing; the wall and its four openings are visible around the floor. The 50x36 tile grid and 1280x720 resolution are unchanged — the floor is simply inset within the casing, so tiles are slightly smaller."
+weight = 1
+domain = "defense"
+reference = "gameplay"
+
+[[review_item]]
+id = "flyers-and-flak"
+title = "Flyers ignore the maze"
+text = "Flyers (Drift) fly in a straight line from vent to the opposite exhaust, over every tower and wall, and any emitter can hit them while they are in range (the Flak is the dedicated air specialist, but not the only counter). Because the maze cannot stop them, a defense that leaves the flight line uncovered leaks flyers regardless of how good the maze is."
+weight = 1
+domain = "defense"
+proof = "siege"
+sub_items = [
+  { id = "straight-line", title = "Flyers fly straight from vent to opposite exhaust, over every tower and wall" },
+  { id = "any-emitter-hits", title = "Any emitter can hit a flyer in range; the Flak is the dedicated air specialist" },
+]
+
+[[review_item]]
+id = "tower-roster"
+title = "The six emitters"
+text = "All six emitters behave per their roles and thermal identities: the balanced 2x2 Arc, the twitchy rapid-fire 2x2 Stutter that wants a Sink, the huge 4x4 long-range Lance that runs cold until tucked or forge-fed, the area-splash 3x3 Bloom that runs hot, the slowing 2x2 Rime, and the anti-air 2x2 Flak — each targeting and firing as specified."
+weight = 1
+domain = "defense"
+
+[[review_item]]
+id = "tower-sizes"
+title = "Tower sizes"
+text = "Towers come in 2x2, 3x3, and 4x4 footprints (Arc/Stutter/Rime/Flak are 2x2, Bloom is 3x3, Lance is 4x4). A larger tower walls off more floor and — because it generates heat across its body but sheds it only through its perimeter — runs hotter for the same firing, wanting open air, corner placement, or Sinks. Placement centers the size-appropriate block on the cursor."
+weight = 1
+domain = "defense"
+
+[[review_item]]
+id = "tower-info"
+title = "Shop-hover info, targeting, and per-tower counts"
+text = "Hovering a shop tower shows that type's info panel in the inspector area (in place of the next-wave preview): its type, size, range, damage or effect, fire rate, targeting, mass, and radiator faces at base (level I) values, plus a short description of what it does — returning to its prior contents when the cursor leaves. A selected placed tower's inspector additionally shows its live heat read (with the redline marker) and its per-instance lifetime kill count and total damage dealt (runtime tallies, so they appear only on a placed tower). Targeting reads ground-and-air for every emitter but the air-only Flak; the Forge and Sink never fire (targeting none, damage 0)."
+weight = 1
+domain = "defense"
+reference = "gameplay"
+proof = "gameplay"
+sub_items = [
+  { id = "shop-hover", title = "Hovering a shop tower shows its stats and a description at base (level I) values" },
+  { id = "targeting", title = "Targeting read shows ground-and-air, or air-only for the Flak" },
+  { id = "counts", title = "A selected placed tower shows its lifetime kills and total damage dealt" },
+]
+
+[[review_item]]
+id = "surge-and-waves"
+title = "Surge, waves, and the economy"
+text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on the milestone waves — the midpoint and the finale), each with its trait, in large, dense waves; a leak costs lives, 0 lives ends the game, and clearing the final wave wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus — and the standard Medium start (250) affords an opening maze of about 16 basic Arc towers, so building and re-shaping a large maze is central to the game."
+weight = 1
+domain = "defense"
+
+[[review_item]]
+id = "opening-build"
+title = "Untimed opening build phase"
+text = "Before Wave 1 the opening build phase is untimed: it shows no countdown and never auto-starts, so the player can lay a full opening maze at leisure and presses Start (the wave control) to begin Wave 1 when ready. The between-wave build phases keep the up-to-15-second countdown, auto-start, and early-send bonus; the opening phase pays no early-send bonus."
+weight = 1
+domain = "defense"
+sub_items = [
+  { id = "opening-untimed", title = "The opening phase is untimed: no countdown, never auto-starts, begins on Start" },
+  { id = "between-waves-timed", title = "Between-wave phases keep the ~15s countdown, auto-start, and early-send bonus" },
+]
+
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu (PLAY, HOW TO PLAY), mode select, difficulty select, how-to-play, in-match (the untimed opening build phase, the timed build phases between waves, and the live wave), pause (resume/restart/quit), Victory, and Game over (reactor breached), each with the right screen and actions."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "modes-and-difficulty"
+title = "Modes and difficulty"
+text = "PLAY opens a mode-select menu listing the standard Containment mode and the special modes, and mousing over (or focusing) a mode shows its description BEFORE it is chosen. Selecting Containment opens a difficulty select — Easy, Medium, Hard — whose choice changes the starting money and the wave count (Easy: more money, fewer waves; Hard: less money, more waves). Each special mode plays by its own overrides — e.g. The Hundred's single 100-unit onslaught, Deep Pockets' 10,000 start with no interest, Bottleneck's restricted central build zone, Sudden Death's one life — and RESTART / PLAY AGAIN replay the chosen mode and difficulty."
+weight = 1
+reference = "mode-select"
+proof = "mode-select"
+sub_items = [
+  { id = "mode-descriptions", title = "Mode select shows each mode's description before it is chosen" },
+  { id = "difficulty", title = "Containment opens difficulty select; Easy/Medium/Hard change starting money and wave count" },
+  { id = "special-modes", title = "Each special mode plays by its own overrides (The Hundred, Deep Pockets, Bottleneck, Sudden Death)" },
+  { id = "replay", title = "RESTART / PLAY AGAIN replay the chosen mode and difficulty" },
+]
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the full reactor floor with its enclosing casing wall, the build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1

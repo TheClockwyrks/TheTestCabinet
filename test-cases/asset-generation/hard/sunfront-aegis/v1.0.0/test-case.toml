@@ -1,0 +1,194 @@
+slug = "sunfront-aegis"
+experimental = true
+name = "Sunfront Aegis"
+difficulty = "hard"
+tags = ["voxel", "rig", "walker"]
+summary = """
+Sculpt and rig the Sunfront Aegis: a colossal six-legged walking fortress painted as \
+an opaque-voxel model — built not by compositing a field but by placing \
+discrete cells one recorded operation at a time. It strides on legs, aims a dominant \
+forward main cannon, works two side turrets that each cover their own flank, and \
+sweeps a radar vane. The model invents whatever parts and joints it needs; the fixed \
+contract is three animations it must author — a walking `march`, a weapon \
+`bombardment`, and a self-playing `radar_spin` — the reviewer can play back."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.5
+type = "asset-generation"
+asset_kind = "voxel-animation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME fortress at three sizes — `base` (this case's
+# volume), `half` (each extent ~halved), and `double` (each doubled) — each declaring
+# its own `[voxel]` override. `base` is first, so it is the default. This list is a
+# root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The fixed voxel volume each part is sculpted into (the 3D analog of a 2D
+# canvas): `width` across (x), `height` up (y), `depth` front-to-back (z), in
+# voxels. The Aegis is deliberately huge — a walking fortress with a far larger
+# footprint than any buildable unit, riding raised on legs — so its volume is
+# broad, deep, and tall. Each part is sculpted separately in this shared volume's
+# coordinates. The volume always starts EMPTY; `background` is only the clear color
+# behind the rasterized isometric preview PNG. A voxel case must NOT declare
+# [canvas].
+[voxel]
+width = 120
+height = 110
+depth = 150
+background = "transparent"
+
+# The sculpting tool. `voxel-anim` is the only way to place a voxel and edit the
+# rig; every operation targets a part with `--part <name>`, records to that part's
+# action log and renders nothing — rendering is on request via `voxel-anim render`.
+# Run `voxel-anim --help`
+# for the operations AND the rig subcommands; no operations schema is seeded.
+[tool]
+binary = "voxel-anim"
+preview = "parts/{part}.png"
+
+# The recorded action logs — one per part (the `{part}` token expands to each part
+# the model defines), the authoritative output each part's regenerated model is
+# rebuilt from. The composited rig rides in `rig.json` at its own fixed path, so it
+# is not named here.
+[output]
+actions = "parts/{part}.actions.json"
+
+# The required rig contract — and the ONLY thing this case fixes about the rig. A case
+# does NOT prescribe parts, joints, pivots, or ranges: the model invents whatever
+# skeleton it needs and is judged on whether it works out the right pieces, attaches
+# them where they belong, and animates them convincingly. What is fixed is the set of
+# NAMED ANIMATIONS the model must author (a game plays them by name) and whether each
+# is a game-triggered playable or a self-playing idle. The model authors each
+# animation's F-curves at run time with `voxel-anim define-animation`/`add-keyframe`;
+# `rig.json` is pre-seeded with these declarations so the contract exists from the
+# first operation.
+[model]
+
+# `march` — the WALK. A game-triggered playable (not self-playing) that strides the
+# fortress forward on its legs: feet plant flat and still on the ground while the body
+# passes over them, then lift, swing forward, and plant again, so the machine pushes
+# itself forward rather than flailing. Authored IN PLACE: the body does not translate
+# across the scene (the leg cycle carries the stride; a game supplies the real travel).
+[[model.animation]]
+name = "march"
+loop = true
+auto_play = false
+
+# `bombardment` — the WEAPON showcase. A game-triggered playable that works the guns
+# (the main cannon and the two side turrets) while the fortress stands its ground.
+[[model.animation]]
+name = "bombardment"
+loop = true
+auto_play = false
+
+# `radar_spin` — the decorative sensor sweep. A self-playing idle that turns the radar
+# vane continuously, on its own, under both playables and at rest.
+[[model.animation]]
+name = "radar_spin"
+loop = true
+auto_play = true
+
+# The self-contained brief, seeded for the run. It is a Handlebars template (`.hbs`),
+# rendered per variant so the volume it states matches the selected size. The seeded
+# dest drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated, rigged model reads as the Sunfront Aegis and poses \
+correctly — a colossal walking fortress, far larger than any buildable unit, painted \
+from opaque voxels, striding on legs that plant and lift their feet under the `march` \
+walk, a dominant forward main cannon and two flanking side turrets that work under \
+`bombardment`, a radar that sweeps on its own, and a hull that stays put — with a \
+clear solar-amber accent and the disciplined Duneforged palette."""
+
+[[review_item]]
+id = "reads-as-fortress"
+title = "Reads as a giant multi-legged walking fortress"
+text = """
+From more than one angle the model reads unmistakably as a giant six-legged walking \
+fortress — plainly far bigger and broader than an ordinary war machine, a colossal \
+striding stronghold that dwarfs every buildable unit: a tiered, prowed armored \
+citadel (not a plain box) riding raised on multiple thick, heavily built legs — sized \
+to bear its colossal mass rather than spindly against its bulk, and braced out around \
+the hull to plant it solidly on all sides rather than a row of identical legs beneath \
+it — a big main turret \
+with a long forward cannon on top, a rotating turret out on each side, and a sweeping \
+radar vane above. It is a bristling, detailed multi-gun war machine, not an abstract \
+stack of boxes on legs."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "legs-walk"
+title = "Legs stride on planted feet without clipping the ground"
+text = """
+Playing `march` strides the fortress forward on its legs. The clip is authored \
+IN PLACE — the body holds its ground and does not drift across the scene; the \
+forward stride is carried entirely by the legs, so played on its own the feet cycle \
+and the planted foot slides straight back under the body (a treadmill) while a game \
+supplies the real movement. Each foot has a clear \
+PLANTED STANCE — flat and still on the ground while the fortress passes over it — then \
+lifts clear, swings forward, and plants again with weight; the legs cycle so the \
+machine is always supported (three feet down at all times) and pushes itself forward, \
+NOT flailing its legs in a continuous arc. The feet stay flat as they carry the body \
+(they don't tip onto toe or heel), no foot is dragged or driven down through the \
+ground, and the legs stay attached to the hull across the whole cycle. The model had \
+to invent an articulated leg (more than one segment and joint) for this to read as a \
+heavy walker striding rather than swinging rigid poles."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "main-gun-forward"
+title = "Main cannon aims forward and elevates"
+text = """
+The dominant main cannon points FORWARD along the fortress's centerline, up on the \
+main turret. Playing `bombardment` works it convincingly: it holds its forward facing \
+(fine corrections only, never spinning to the sides) and elevates up and down, with no \
+voxels tearing away from its mount or clipping into the hull as it moves."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "side-turrets-traverse"
+title = "Two side turrets each cover their own flank"
+text = """
+Two secondary turrets are plainly mounted OUT ON THE SIDES of the hull (one per flank, \
+not on top), and each traverses to aim independently — the left turret sweeping the \
+left side, the right turret the right — swinging only within an arc that covers its own \
+flank, each about its own mount without detaching from the hull, as `bombardment` \
+plays."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "hull-fixed"
+title = "Hull stays put; only the moving parts move"
+text = """
+The armored hull is the fixed base of the machine: it stays put, never carried along \
+by the turrets, the legs, or the radar. When `bombardment` plays, the guns work while \
+the legs stay planted; when `march` plays, the legs stride while the guns hold; the \
+decorative radar vane sweeps on its own throughout (`radar_spin`). Nothing but the \
+moving parts moves."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Duneforged palette discipline"
+text = """
+Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
+and gun barrels, and the solar-amber accent) with a clear amber accent, no \
+out-of-palette colors, and no stray voxels drifting off the parts."""
+weight = 1
+domain = "fidelity"

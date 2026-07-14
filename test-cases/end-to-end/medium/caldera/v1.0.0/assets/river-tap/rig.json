@@ -1,0 +1,146 @@
+{
+  "parts": [
+    {
+      "name": "weir",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "frame",
+      "parent": "weir",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "gate",
+      "parent": "frame",
+      "pivot": [
+        10,
+        7,
+        13
+      ]
+    },
+    {
+      "name": "wheel",
+      "parent": "weir",
+      "pivot": [
+        21,
+        6,
+        19
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "name": "gate_lift",
+      "part": "gate",
+      "kind": "translation",
+      "axis": "y",
+      "pivot": [
+        10,
+        7,
+        13
+      ],
+      "min": 0.0,
+      "max": 7.0,
+      "rest": 0.0,
+      "drive": "caller"
+    },
+    {
+      "name": "wheel_spin",
+      "part": "wheel",
+      "kind": "rotation",
+      "axis": "x",
+      "pivot": [
+        21,
+        6,
+        19
+      ],
+      "min": -1.0,
+      "max": 20.0,
+      "rest": 0.0,
+      "drive": "auto"
+    }
+  ],
+  "animations": [
+    {
+      "name": "idle",
+      "periodMs": 4800,
+      "looping": true,
+      "autoPlay": true,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "wheel_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 4800,
+              "value": 6.283185,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "draw",
+      "periodMs": 3000,
+      "looping": true,
+      "autoPlay": false,
+      "joints": [],
+      "tracks": [
+        {
+          "joint": "wheel_spin",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 3000,
+              "value": 12.56637,
+              "interp": "linear"
+            }
+          ]
+        },
+        {
+          "joint": "gate_lift",
+          "keyframes": [
+            {
+              "tMs": 0,
+              "value": 0.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 600,
+              "value": 5.0,
+              "interp": "linear"
+            },
+            {
+              "tMs": 2600,
+              "value": 5.0,
+              "interp": "ease-in-out"
+            },
+            {
+              "tMs": 3000,
+              "value": 0.0,
+              "interp": "linear"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

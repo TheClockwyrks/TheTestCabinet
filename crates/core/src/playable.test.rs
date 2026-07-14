@@ -148,6 +148,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
         }),
         rig: None,
         skinned: false,
+        blender: false,
         detail: None,
     };
     let dir = run_dir_with_validation(
@@ -195,6 +196,7 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
         model: None,
         rig: None,
         skinned: false,
+        blender: false,
         detail: None,
     };
     let dir = run_dir_with_validation(

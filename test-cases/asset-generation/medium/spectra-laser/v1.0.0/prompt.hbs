@@ -1,0 +1,51 @@
+Synthesize the **Spectra laser-fire sound effect** — a short, bright arcade "pew"
+— using only the audio synthesis tool.
+
+It is the **player fighter's primary laser fire** for *Spectra*, a two-band
+formation shooter. The player pilots a fighter along the bottom of the screen and
+fires this shot upward at a swarm of drones, many times a second — so it must be
+short, snappy, and unmistakable. You are synthesizing that shot from oscillators
+alone: **no samples, no recordings.**
+
+## How the audio tool works
+
+The only way to shape sound is the `sfx-synth` binary already on your `PATH`. It
+is the sole channel: you build the clip by calling it **one operation at a time**,
+and the ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, not the `.wav` on disk. Audio produced any
+other way (writing a WAV directly, editing a file by hand) is discarded and
+flagged; only the recorded operations count.
+
+Each operation adds a voice, envelope, sweep, filter, or effect to a layered synth
+graph and appends itself to the log — it does **not** re-render. Rendering is a
+separate, on-request step: run `sfx-synth render` to mix the recorded graph down to
+the clip and draw the **waveform + spectrogram** preview to `waveform.png`. That
+preview is how you read your progress — you cannot hear the clip, but the waveform
+shows the amplitude envelope (attack, decay, tail) and the spectrogram shows the
+pitch sweep and spectral content over time. A pre-seeded config and an empty log
+are already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+sfx-synth add-voice --name zap --wave saw --freq 1800 --gain -3 --start 0 --dur 160
+```
+
+Run `sfx-synth --help` to list every operation and `sfx-synth <operation> --help`
+for one operation's exact flags — that help text is the authoritative contract.
+**Render and read `waveform.png`** after your calls to judge your progress against
+the brief.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the laser shot up operation by operation — a fast downward pitch sweep with a
+crisp attack and a quick decay — rendering to check the waveform and spectrogram as
+you go, until the clip matches the brief. Keep the whole event well within the
+**800 ms** cap and the **mono, 44.1 kHz** format. When you are satisfied, stop: the
+recorded `actions.json` is your finished submission.

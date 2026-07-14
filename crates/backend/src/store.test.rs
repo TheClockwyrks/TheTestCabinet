@@ -20,6 +20,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
+        experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
             build: "npm run build".to_string(),
@@ -47,6 +48,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             source: "specs/overview.hbs".to_string(),
             dest: "specs/overview.md".to_string(),
             template: true,
+            kind: Default::default(),
         }],
         workspace: vec![StoredWorkspaceFile {
             source: "workspaces/base/package.json".to_string(),
@@ -73,6 +75,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 frames: vec![],
                 weight: 1,
                 domain: None,
+                sub_items: vec![],
             }],
             domains: vec![],
             voxel: None,
@@ -94,6 +97,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             frames: vec![],
             weight: 2,
             domain: Some("single-player".to_string()),
+            sub_items: vec![],
         }],
         domains: vec![StoredDomain {
             id: "single-player".to_string(),
@@ -181,19 +185,104 @@ fn reference_scope_and_view_are_validated() {
 }
 
 #[test]
-fn versions_are_listed_oldest_to_newest_by_mtime() {
+fn versions_are_listed_oldest_to_newest_by_semantic_version() {
     let (_dir, store) = temp_store();
-    // Write v1.0.0 first, then v1.1.0; the newer directory has a later mtime, so
-    // it must be listed last (newest-listed-last per the catalog contract).
+    // Write the *newer* version first so its directory has the *earlier* mtime:
+    // this proves ordering follows the semantic version, not directory mtime.
+    // Mtime order is not a reliable proxy for version order across environments
+    // (a fresh checkout or re-ingest touches version dirs in an arbitrary order),
+    // which is what made the reported "latest version" environment-dependent.
     store
-        .write_manifest(&sample_manifest("snake", "v1.0.0"))
+        .write_manifest(&sample_manifest("snake", "v1.10.0"))
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(20));
     store
-        .write_manifest(&sample_manifest("snake", "v1.1.0"))
+        .write_manifest(&sample_manifest("snake", "v1.9.0"))
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    store
+        .write_manifest(&sample_manifest("snake", "v1.0.0"))
         .unwrap();
     let versions = store.list_versions("snake").unwrap();
-    assert_eq!(versions, vec!["v1.0.0".to_string(), "v1.1.0".to_string()]);
+    // Component-wise: v1.0.0 < v1.9.0 < v1.10.0 (not the lexical v1.10.0 < v1.9.0),
+    // newest listed last per the catalog contract.
+    assert_eq!(
+        versions,
+        vec![
+            "v1.0.0".to_string(),
+            "v1.9.0".to_string(),
+            "v1.10.0".to_string()
+        ]
+    );
+}
+
+#[test]
+fn experimental_versions_are_hidden_from_the_visible_catalog() {
+    let (_dir, store) = temp_store();
+    // A ready case, and a case whose only version is experimental.
+    store
+        .write_manifest(&sample_manifest("ready", "v1.0.0"))
+        .unwrap();
+    let mut wip = sample_manifest("wip", "v1.0.0");
+    wip.experimental = true;
+    store.write_manifest(&wip).unwrap();
+
+    assert!(store.is_experimental("wip", "v1.0.0"));
+    assert!(!store.is_experimental("ready", "v1.0.0"));
+
+    // Experimental disabled (the default, production): the WIP case is absent from
+    // the catalog and its versions list is empty — it is treated as if uningested.
+    let visible: Vec<String> = store
+        .list_visible_cases(false)
+        .unwrap()
+        .into_iter()
+        .map(|(slug, _)| slug)
+        .collect();
+    assert_eq!(visible, vec!["ready".to_string()]);
+    assert!(
+        store
+            .list_visible_versions("wip", false)
+            .unwrap()
+            .is_empty()
+    );
+
+    // Experimental enabled (the local cluster): every case is visible, exactly as
+    // the unfiltered listing.
+    let mut visible: Vec<String> = store
+        .list_visible_cases(true)
+        .unwrap()
+        .into_iter()
+        .map(|(slug, _)| slug)
+        .collect();
+    visible.sort();
+    assert_eq!(visible, vec!["ready".to_string(), "wip".to_string()]);
+    assert_eq!(
+        store.list_visible_versions("wip", true).unwrap(),
+        vec!["v1.0.0".to_string()]
+    );
+}
+
+#[test]
+fn a_case_keeps_its_non_experimental_versions_when_filtered() {
+    let (_dir, store) = temp_store();
+    // v1.0.0 is experimental, v1.1.0 is ready. With experimental hidden the case
+    // stays in the catalog, exposing only its ready version.
+    let mut v1 = sample_manifest("mixed", "v1.0.0");
+    v1.experimental = true;
+    store.write_manifest(&v1).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    store
+        .write_manifest(&sample_manifest("mixed", "v1.1.0"))
+        .unwrap();
+
+    assert_eq!(
+        store.list_visible_versions("mixed", false).unwrap(),
+        vec!["v1.1.0".to_string()]
+    );
+    assert_eq!(
+        store.list_visible_cases(false).unwrap(),
+        vec![("mixed".to_string(), vec!["v1.1.0".to_string()])]
+    );
 }
 
 #[test]

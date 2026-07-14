@@ -1,0 +1,147 @@
+slug = "sunfront-muzzle-lance"
+experimental = true
+name = "Sunfront Rail-Lance Muzzle Flash"
+difficulty = "medium"
+tags = ["asset-generation", "particle", "3d", "vfx", "muzzle-flash"]
+summary = """
+Author the Sunfront rail-lance muzzle flash: a thin, searing, forward-directed \
+energy discharge — a bright white-gold flash at the lance tip, a tight forward \
+bolt of streaked energy, and a flicker of crackle motes, with no smoke — as a \
+one-shot particle-3d emitter system the game plays once per shot, built one \
+recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 3D particle effect: a forward-directed rail-lance energy discharge the model
+# authors as an emitter SYSTEM, simulated live by the review UI and the game. It is a
+# ONE-SHOT discharge (one shot's worth) — the game replays it once per shot, in sync
+# with the firing unit's cadence, so the flash rate matches how fast the unit fires.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]); the discharge fires forward along +z from a lance tip near the rear.
+# The volume is narrow and deep — a thin bolt that projects far forward, not a wide
+# blast. duration_ms is one discharge's length; loop = false, so the discharge fires
+# at the start and decays cleanly to empty. The game replays it once per shot.
+[particle]
+width       = 20             # extent along x — narrow; this is a thin, focused discharge
+height      = 20             # extent along y — up
+depth       = 44             # extent along z — forward; the bolt projects far toward +z
+duration_ms = 400            # one discharge: fires at the start and decays to empty
+fps         = 60             # preview/playback frame rate
+loop        = false          # ONE-SHOT — a single shot's discharge; the game replays it per shot
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "read"
+name = "Effect read"
+description = """
+How clearly the simulated effect reads as a focused energy/rail discharge — a \
+searing white-gold flash at the lance tip, a thin forward bolt of streaked energy, \
+and a flicker of crackle motes, with NO smoke or fire — in the declared warm-energy \
+palette, from multiple orbit angles and across replays."""
+
+[[domain]]
+id = "motion"
+name = "Motion & timing"
+description = """
+How well the effect plays as a one-shot energy discharge — a searing flash and thin \
+forward bolt at the start, the bolt firing straight forward along the lance and \
+fading with distance under light drag, and a clean decay to empty by the end of \
+duration_ms, reading the same across replays so it holds up when the game replays it \
+once per shot."""
+
+[[review_item]]
+id = "reads-as-energy-lance"
+title = "Reads as a focused energy/rail discharge"
+text = """
+The effect reads at a glance as a focused energy weapon firing: a searing bright \
+flash at the lance tip and a thin, fast forward bolt of energy, with a flicker of \
+crackle — distinctly an energy discharge, NOT a fiery gun flash with flame and \
+smoke, and NOT an omnidirectional burst. It is legible as a forward-directed \
+rail-lance discharge from multiple orbit angles."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id = "distinct-layers"
+title = "Discharge core, energy bolt, and crackle"
+text = """
+All three authored layers are present and distinct: a searing white-gold discharge \
+core at the lance tip; a thin, streaked forward bolt of fast energy particles; and \
+a flicker of small crackle motes around the tip. Each is a distinct emitter, and \
+there is no smoke or flame gout."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "one-shot-flash"
+title = "One-shot discharge that decays to empty"
+text = """
+Plays as a single one-shot discharge: it fires hard at the start and decays cleanly \
+to empty by the end of duration_ms, with no steady-state loop or continuous stream \
+(the game supplies the repetition by replaying it once per shot). It reads the same \
+across replays despite the live simulation varying slightly."""
+weight = 3
+domain = "motion"
+
+[[review_item]]
+id = "forward-directional-motion"
+title = "Thin forward bolt"
+text = """
+The bolt fires straight forward out the lance tip (along +z) as a tight, thin, \
+velocity-stretched streak, not a spherical burst or a wide spray. The energy holds a \
+roughly straight line (little gravity) and fades with distance under light drag; \
+nothing balloons outward or floats unnaturally."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "curves"
+title = "Color, opacity & size over life"
+text = """
+Each particle's look changes over its life as the brief describes: the discharge \
+core runs searing white to hot gold and fades fast; the bolt is a bright white-gold \
+streaking to amber, thin, fading and shrinking as it travels; the crackle motes \
+flicker out quickly. Sizes and opacities ease rather than snap."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "palette"
+title = "Warm-energy palette"
+text = """
+Uses only the declared warm-energy colors — searing white, hot gold, and amber — \
+with no smoke greys, no fire-orange, and no out-of-palette hues (no blues, greens, \
+or purples), and no team tint bleeding into the discharge."""
+weight = 1
+domain = "read"

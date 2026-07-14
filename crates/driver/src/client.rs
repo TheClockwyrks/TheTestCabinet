@@ -80,6 +80,21 @@ impl JobClient {
         }
     }
 
+    /// Report that the driver has come up and begun the pre-run setup
+    /// (`POST /jobs/{id}/status`, `starting`) — connecting to the container runtime
+    /// and materializing the definition, before the harness session begins.
+    pub async fn post_status_starting(&self) -> Result<(), ClientError> {
+        self.post_status(
+            "status (starting)",
+            &StatusUpdate {
+                state: DriverState::Starting,
+                record: None,
+                detail: None,
+            },
+        )
+        .await
+    }
+
     /// Report that execution has begun (`POST /jobs/{id}/status`, `running`).
     pub async fn post_status_running(&self) -> Result<(), ClientError> {
         self.post_status(

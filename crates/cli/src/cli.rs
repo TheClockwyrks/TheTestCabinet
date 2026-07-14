@@ -62,9 +62,11 @@ pub enum Command {
     /// without seeding or launching anything.
     Prompt(PromptArgs),
 
-    /// Regenerate the live `models.json` catalog the frontend reads. Test-case
-    /// data is served from the backend's published snapshot, not emitted here.
-    Catalog(CatalogArgs),
+    /// Build and deploy a test case variant's **reference implementation** — the
+    /// authored, correct static build of the case — and record its URL on the
+    /// backend so the site's Reference tab can embed it.
+    #[command(name = "publish-reference")]
+    PublishReference(PublishReferenceArgs),
 }
 
 /// The agent harness to drive, selectable on the command line.
@@ -155,6 +157,13 @@ pub struct RunArgs {
     /// cluster path.
     #[arg(long, value_name = "MODE")]
     pub auth_mode: Option<String>,
+
+    /// How many times the backend automatically retries this run after a terminal
+    /// infrastructure error or catastrophic (won't-load) build. Omit to accept the
+    /// backend default of `1` (one retry); `0` disables retries. A timeout or a
+    /// completed run is never retried.
+    #[arg(long, value_name = "N")]
+    pub retry_count: Option<u32>,
 
     /// Directory to also write the produced run record's JSON into. The backend
     /// holds the run's artifacts, so this only mirrors the record locally; omit it
@@ -307,23 +316,85 @@ pub struct PromptArgs {
     pub variant: String,
 }
 
-/// Arguments for `tcab catalog`.
+/// Arguments for `tcab publish-reference`.
 ///
-/// The catalog command needs no API keys: it reads the model catalog from disk
-/// and regenerates the bundled model dataset (`models.json`) the consoles and
-/// site ship, refreshing each model's OpenRouter prices. `--models-dir` and
-/// `--data-dir` exist so the source catalog and the output location can be
-/// relocated in tests or alternative layouts.
-#[derive(Debug, Args)]
-pub struct CatalogArgs {
-    /// Directory holding the model catalog (`<slug>.toml` declarations).
-    #[arg(long, value_name = "DIR", default_value = "models")]
-    pub models_dir: std::path::PathBuf,
+/// The command targets a case (by slug or folder name) at a single version and,
+/// for each targeted variant that declares a `reference_implementation`, builds
+/// it with the case's own `[build]` commands, deploys the static output to
+/// Cloudflare Pages, and records the served URL on the backend.
+///
+/// `version` is positional and optional: omit it to target the case's newest
+/// version. Variant selection is `--variant <slug>` for exactly one, or
+/// `--all-variants` for every variant that declares a reference implementation;
+/// when neither is given the command defaults to all such variants (the flag is
+/// the explicit, self-documenting form of the default). The two selectors are
+/// mutually exclusive.
+///
+/// `disable_version_flag` frees `--version`/`-V` so it is not consumed as clap's
+/// auto-generated binary-version flag, matching `tcab run`/`tcab prompt` — though
+/// here the version is positional rather than a `--version` flag.
+/// The deployment environment a reference implementation publishes to, selecting
+/// the Cloudflare Pages project it lands in (see `publish_reference`). It is a
+/// required `--env` flag rather than a defaulted one so a publish can never
+/// silently target prod — the same convention the operator shell scripts use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "snake_case")]
+pub enum DeployEnv {
+    /// Production hosting.
+    Prod,
+    /// Staging hosting (the pre-release mirror of prod).
+    Staging,
+}
 
-    /// Directory the regenerated model dataset (`models.json`) is written into.
-    /// Defaults to the shared UI package every host bundles it from.
-    #[arg(long, value_name = "DIR", default_value = "packages/ui/src/app/data")]
-    pub data_dir: std::path::PathBuf,
+impl DeployEnv {
+    /// The canonical environment name — the accepted flag value, the key the
+    /// reference-builds lockfile groups by, and the backend's `TCAB_ENV` value it
+    /// selects its entries with. Keeping these in one place keeps the three in
+    /// lockstep.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DeployEnv::Prod => "prod",
+            DeployEnv::Staging => "staging",
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct PublishReferenceArgs {
+    /// Deployment environment: which Cloudflare Pages project the reference
+    /// implementation deploys to. **Required** — with no default a publish can
+    /// never silently target prod, mirroring the `--env` flag on the operator
+    /// shell scripts (for example `scripts/upload-subscription-creds.sh`).
+    #[arg(long, value_enum, value_name = "ENV")]
+    pub env: DeployEnv,
+
+    /// Slug (or folder name) of the test case to publish a reference for (for
+    /// example, `carom`).
+    #[arg(value_name = "SLUG")]
+    pub slug: String,
+
+    /// Exact, immutable test case version. Omit to target the case's newest
+    /// version.
+    #[arg(value_name = "VERSION")]
+    pub version: Option<String>,
+
+    /// Publish the reference for exactly this variant (for example, `base`).
+    /// Mutually exclusive with `--all-variants`; errors if the named variant has
+    /// no reference implementation.
+    #[arg(long, value_name = "VARIANT", conflicts_with = "all_variants")]
+    pub variant: Option<String>,
+
+    /// Publish the reference for every variant that declares one. This is also the
+    /// default when neither `--variant` nor `--all-variants` is given.
+    #[arg(long)]
+    pub all_variants: bool,
+
+    /// Print the plan — the targeted variants, their resolved reference-impl
+    /// directories, and the deploy branch each would use — without building,
+    /// deploying, scrubbing, or recording anything.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[cfg(test)]

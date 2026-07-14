@@ -1,0 +1,229 @@
+slug = "siege-turret"
+experimental = true
+name = "Siege Warden Turret"
+difficulty = "medium"
+tags = ["asset-generation", "3d", "blender", "mechanism", "rigid", "animated"]
+summary = """
+Model, rig, and animate the Warden automated defense turret — a Siege emplacement — by \
+driving HEADLESS BLENDER through its Python API. The model writes a `build.py` (a `bpy` \
+script) that builds the turret as SEPARATE parented parts (a fixed base, a rotating yaw \
+housing, and an elevating twin-barrel gun) and authors four animations as glTF \
+node-hierarchy motion — RIGID articulation, not skin deformation — then runs `tcab-blend` \
+to export a standard native `model.glb` (an animated glTF 2.0 with baked node clips). The \
+emitted glTF is judged — rendered and scrubbed in the browser — and the script is re-run \
+for provenance."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 2.0
+type = "asset-generation"
+# The first RIGID-ARTICULATED Blender-authored asset kind: a MECHANISM authored by driving
+# headless Blender through a `build.py` script (NOT a constrained op-log tool). The
+# authoritative output is the emitted `model.glb` (a native glTF 2.0 whose motion is baked
+# as standard glTF NODE-HIERARCHY animations — parented parts posed about their pivots, NOT
+# skin deformation and NOT a Test-Cabinet `rig.json`), rendered in-browser and judged;
+# `build.py` is the recorded authoring trace, re-run for provenance. Declares a `[model]`
+# table of required animations. See /testing/asset-generation/blender-binaries/.
+asset_kind = "blender-mechanism"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record. The
+# flagship ships a single `base` variant. This list is a root key, so it must precede the
+# first table header.
+variants = ["variants/base.toml"]
+
+# The turret's BOUNDING BOX — the volume the whole emplacement must fit within, in world
+# units (`width` across, `height` the standing height, `depth` front-to-back). The turret
+# is authored in Blender-native space (+Z up, facing -Y) and the bundled export converts it
+# to the family's +Y-up/+Z-forward glTF. This is the `[voxel]` table reused as a bounds box
+# (a Blender mechanism is a real mesh, not a voxel field). `background` is only the clear
+# color behind the rendered preview PNG. A blender-mechanism case must NOT declare [canvas].
+[voxel]
+width = 24
+height = 30
+depth = 24
+background = "transparent"
+
+# The authoring tool. `tcab-blend` is the runner that executes the model's `build.py`
+# under headless Blender (`blender --background --python build.py -- blender.config.json`),
+# emits `model.glb`, and renders the preview. It is the ONLY sanctioned build path;
+# anything produced outside it is discarded. Run `tcab-blend --help` for its usage; the
+# Blender Python API (`bpy`) is the authoring surface. `preview` is a SINGLE file — a
+# Blender mechanism is emitted as one glTF, so no `{part}` token.
+[tool]
+binary = "tcab-blend"
+preview = "model.png"
+
+# The authored `build.py` IS the recorded output/trace (there is NO operation log): the
+# validator re-runs it through `tcab-blend` for provenance and compares the re-exported
+# glTF to the run's. The emitted `model.glb` (the native geometry + the glTF node-hierarchy
+# animations) is emitted by the runner and is NOT declared here — core provides its path.
+[output]
+actions = "build.py"
+
+# The required animation contract — and the ONLY thing this case fixes about the rig. The
+# case does NOT prescribe the parts, their pivots, or the axes: the model invents the whole
+# articulated hierarchy (a fixed base, a rotating housing, an elevating gun, and whatever
+# else it needs) in `build.py`, and is judged on whether it moves convincingly as a RIGID
+# mechanism (parts pivoting cleanly about their joints, nothing bending or tearing like a
+# skinned body would). What is fixed is TWO game-facing contracts:
+#
+#   * the NAMED ANIMATIONS ([[model.animation]]) the model must author — the baked clips a
+#     game PLAYS by name (deploy/fire/stow), authored as glTF node-hierarchy motion
+#     (parented parts posed by Blender Actions on OBJECT transforms), and
+#   * the CALLER JOINTS ([[model.joint]]) — the runtime-drivable DOFs a game SETS each frame
+#     from its own state to AIM the turret (turret_yaw, barrel_pitch). The model builds a
+#     node for each and tags that node's glTF `extras` with a `tcab_joint` descriptor
+#     ({name, kind, axis, min, max, rest}, rotation limits in radians) so the interface
+#     travels IN the emitted glTF — self-contained, read by three.js as `userData`. The
+#     game finds the node by that name and clamps to the limits. A caller DOF is NOT
+#     animated by a clip (the game owns it); the clips move other parts (housing, barrels).
+[model]
+
+# `deploy` — the SETUP. A game-triggered one-shot: the turret comes online from a stowed,
+# folded-down rest — the housing rises/unfolds and the gun elevates from packed to a ready,
+# level firing attitude. Rigid parts swinging about their pivots, not a squashing body.
+[[model.animation]]
+name = "deploy"
+loop = false
+auto_play = false
+
+# `fire` — the SHOT. A game-triggered one-shot: the twin barrels kick back sharply along
+# their axis (recoil) and return, with a small muzzle rise through the elevation joint that
+# settles. The base and housing hold their aim.
+[[model.animation]]
+name = "fire"
+loop = false
+auto_play = false
+
+# `stow` — the SHUTDOWN. A game-triggered one-shot that plays ONCE and HOLDS: the reverse of
+# deploy — the gun packs down and the housing folds back to the stowed rest pose, and HOLDS
+# it. Rigid segments folding about their pivots, holding the final packed pose.
+[[model.animation]]
+name = "stow"
+loop = false
+auto_play = false
+
+# The CALLER JOINTS — the runtime-drivable DOFs a game aims the turret with. Axes are named
+# in the EMITTED glTF frame (Y-up, the space three.js sees): the housing yaws about the
+# vertical (Y) axis; the gun elevates about a horizontal (X) axis. Rotation limits are in
+# DEGREES here (converted to radians in the emitted asset). The model builds the driven node
+# and tags its `extras` so a game finds it; the browser review viewer drives these live with
+# a slider each, proving the turret can be aimed at runtime.
+
+# `turret_yaw` — TRAVERSE. The housing rotates left/right about the vertical axis to aim.
+[[model.joint]]
+name = "turret_yaw"
+kind = "rotation"
+axis = "y"
+min = -170.0
+max = 170.0
+rest = 0.0
+
+# `barrel_pitch` — ELEVATION. The gun raises/lowers about a horizontal axis to aim up/down.
+[[model.joint]]
+name = "barrel_pitch"
+kind = "rotation"
+axis = "x"
+min = -10.0
+max = 60.0
+rest = 0.0
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated model reads as an automated Warden defense turret — a \
+fixed base/mount, a rotating housing, and an elevating gun (a twin-barrel emplacement) \
+reading clearly from more than one angle, in the disciplined Warden palette, at a sensible \
+emplacement scale within the bounding box."""
+
+[[domain]]
+id = "articulation"
+name = "Articulation"
+description = """
+How convincingly the turret moves as a RIGID mechanism — separate parts pivoting cleanly \
+about their joints (the housing yawing, the gun elevating, the barrels recoiling) with \
+nothing bending, stretching, or tearing the way a skinned body would — across BOTH its \
+game-facing contracts: the baked clips it plays (deploy, firing recoil, stow that holds) \
+and the runtime caller DOFs a game aims it with (turret_yaw traverse, barrel_pitch \
+elevation), which must actually turn the right parts about the right axes when driven."""
+
+[[review_item]]
+id = "reads-as-turret"
+title = "Reads as an automated defense turret"
+text = """
+From more than one angle the model reads unmistakably as an automated turret: a fixed base \
+or mount on the ground, a rotating housing on top of it, and a gun (a twin-barrel or heavy \
+single-barrel emplacement) carried by that housing. The parts are proportioned and \
+assembled like a real emplacement, not an abstract stack of boxes."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "rigid-articulation"
+title = "Moves as rigid parts about clean joints"
+text = """
+When any animation plays, the turret articulates as SEPARATE RIGID PARTS pivoting about \
+their joints — the housing yaws, the gun elevates, the barrels recoil — and NOTHING bends, \
+squashes, stretches, or tears the way a skinned body would. Each part holds its shape and \
+moves only about its pivot; parts stay attached at their joints (no gaps opening, no piece \
+flying off) through the motion."""
+weight = 3
+domain = "articulation"
+
+[[review_item]]
+id = "runtime-aimable"
+title = "Aims at runtime — the game can drive it"
+text = """
+The turret exposes its two caller DOFs so a game can AIM it at runtime: driving `turret_yaw` \
+traverses the housing (and the gun it carries) left and right about the vertical axis, and \
+driving `barrel_pitch` elevates the gun up and down about a horizontal axis — each turning \
+the RIGHT part about the RIGHT axis, clamped to its range, while the base stays planted. \
+(In the review viewer, dragging each control's slider aims that DOF live.) This is the \
+scanning/tracking a game does itself; it is not a baked clip."""
+weight = 2
+domain = "articulation"
+
+[[review_item]]
+id = "deploy-and-fire"
+title = "Deploys, then fires with recoil"
+text = """
+Playing `deploy` once brings the turret online from a stowed rest — the housing rises / \
+unfolds and the gun elevates to a ready, level attitude — as rigid parts swinging about \
+their pivots. Playing `fire` once kicks the barrels back along their axis and returns them, \
+with a small muzzle rise that settles. Both play ONCE, not on a loop."""
+weight = 2
+domain = "articulation"
+
+[[review_item]]
+id = "stow-holds"
+title = "Stows and holds the packed pose"
+text = """
+Playing `stow` once folds the turret back down — the reverse of deploy, the gun packing \
+down and the housing folding to the stowed rest — and HOLDS that final packed pose rather \
+than snapping back to the active stance."""
+weight = 1
+domain = "articulation"
+
+[[review_item]]
+id = "palette"
+title = "Warden palette discipline"
+text = """
+Uses only the Warden colors from the brief (a Cobalt housing with the gunmetal, dark-iron, \
+and charcoal-slate fittings and the pale-cobalt sensor glow named there) with a clear \
+silhouette and no out-of-palette colors."""
+weight = 1
+domain = "fidelity"
+
+# The self-contained brief, seeded for the run (dest defaults to source).
+[[spec]]
+source = "specs/brief.md"
+
+# The `build.py` STARTER STUB, seeded to the run workspace ROOT as `build.py` (the path
+# `[output].actions` names) so the model edits it in place and `tcab-blend` runs it.
+# `kind = "script"` marks it an executable starter (not a prose spec), so the Inputs
+# surfaces tag it "Script" rather than "Spec".
+[[spec]]
+source = "specs/build.py"
+dest = "build.py"
+kind = "script"

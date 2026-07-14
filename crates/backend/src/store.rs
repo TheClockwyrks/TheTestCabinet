@@ -29,7 +29,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
+use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec, version_key};
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 use uuid::Uuid;
 
@@ -83,6 +83,14 @@ pub struct StoredManifest {
     /// discriminator existed.
     #[serde(default)]
     pub test_type: TestType,
+    /// Whether this version is **experimental** — still being iterated on and not
+    /// yet ready to have runs published for it. Defaulted to `false` for manifests
+    /// stored before the field existed. A deployment that has not opted in via
+    /// `TCAB_BACKEND_ALLOW_EXPERIMENTAL` hides experimental versions from the
+    /// catalog and refuses to resolve them, so they are treated as if they do not
+    /// exist (see [`DefinitionStore::list_visible_cases`]).
+    #[serde(default)]
+    pub experimental: bool,
     /// Build commands. `Some` for an end-to-end case, `None` for any other type
     /// (an asset-generation case has no build). Defaulted for manifests stored
     /// before it became optional; skipped when absent so an asset-generation
@@ -359,6 +367,11 @@ pub struct StoredSpec {
     pub dest: String,
     /// Whether the source is a Handlebars template the runner renders.
     pub template: bool,
+    /// The seeded file's role (`spec`/`script`), carried so the Inputs surfaces
+    /// can tag it. Presentation only; defaults to `spec` for stores ingested
+    /// before the field existed.
+    #[serde(default)]
+    pub kind: test_cabinet_core::SpecKind,
 }
 
 /// An asset mapping persisted in a [`StoredManifest`].
@@ -494,12 +507,27 @@ pub struct StoredReviewItem {
     #[serde(default)]
     pub frames: Vec<u32>,
     /// How many points the item is worth toward the run's score. Always greater
-    /// than zero.
+    /// than zero. Split evenly across `sub_items` when the item has any.
     pub weight: u32,
     /// The scoring domain (by id) the item belongs to, or `None` for a general
     /// item that belongs to no single domain.
     #[serde(default)]
     pub domain: Option<String>,
+    /// Name-only sub-items this item is graded by, each an independently scored
+    /// point. Empty for an item graded as a whole.
+    #[serde(default)]
+    pub sub_items: Vec<StoredSubReviewItem>,
+}
+
+/// A name-only sub-item of a [`StoredReviewItem`], persisted in a
+/// [`StoredManifest`]: one independently graded point within the item.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredSubReviewItem {
+    /// Stable slug identifying the sub-item within its parent; part of the
+    /// composite verdict id the reviewer records against it.
+    pub id: String,
+    /// The short heading shown for the sub-item in the reviewer UI.
+    pub title: String,
 }
 
 /// A scoring domain persisted in a [`StoredManifest`]. A reviewer rates each
@@ -670,8 +698,8 @@ impl DefinitionStore {
         Ok(())
     }
 
-    /// List every ingested case slug and its versions, in insertion (mtime) order
-    /// so the newest is listed last per the catalog contract.
+    /// List every ingested case slug and its versions, oldest-first by semantic
+    /// version so the newest is listed last per the catalog contract.
     pub fn list_cases(&self) -> Result<Vec<(String, Vec<String>)>> {
         let cases_root = self.root.join("test-cases");
         let mut out = Vec::new();
@@ -684,28 +712,88 @@ impl DefinitionStore {
         Ok(out)
     }
 
-    /// List the ingested versions for a slug, ordered oldest-first by directory
-    /// modification time so the newest is listed last (matches the catalog
-    /// contract's "newest-listed-last (insertion order)").
+    /// List the ingested versions for a slug, ordered oldest-first by semantic
+    /// version so the newest is listed last (matches the catalog contract's
+    /// "newest-listed-last").
+    ///
+    /// Versions are compared component-wise via [`version_key`] — the same order
+    /// the core filesystem catalog uses — rather than by directory modification
+    /// time. Mtime is not a reliable proxy for version order: a fresh checkout or
+    /// a re-ingest writes/touches version directories in whatever order it walks
+    /// them, so mtime differs between a locally-seeded store and a
+    /// freshly-provisioned one even for identical content. That divergence made
+    /// the "latest version" the store reports (e.g. for the review-plan staleness
+    /// check and the catalog's version dropdown) depend on the environment.
     pub fn list_versions(&self, slug: &str) -> Result<Vec<String>> {
         let slug_dir = self.root.join("test-cases").join(slug);
         if !slug_dir.is_dir() {
             return Ok(Vec::new());
         }
-        let mut versioned: Vec<(std::time::SystemTime, String)> = Vec::new();
+        let mut versions: Vec<String> = Vec::new();
         for name in raw_dir_names(&slug_dir)? {
-            let dir = slug_dir.join(&name);
             if !self.manifest_path(slug, &name).is_file() {
                 continue;
             }
-            let mtime = dir
-                .metadata()
-                .and_then(|m| m.modified())
-                .unwrap_or(std::time::UNIX_EPOCH);
-            versioned.push((mtime, name));
+            versions.push(name);
         }
-        versioned.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-        Ok(versioned.into_iter().map(|(_, name)| name).collect())
+        versions.sort_by(|a, b| version_key(a).cmp(&version_key(b)).then_with(|| a.cmp(b)));
+        Ok(versions)
+    }
+
+    /// Whether a stored version is flagged **experimental** (its manifest's
+    /// `experimental = true`). A version whose manifest is missing or unreadable is
+    /// reported as non-experimental so a half-written or pre-field version stays
+    /// visible by default rather than vanishing on a transient read error.
+    pub fn is_experimental(&self, slug: &str, version: &str) -> bool {
+        self.read_manifest(slug, version)
+            .map(|manifest| manifest.experimental)
+            .unwrap_or(false)
+    }
+
+    /// Like [`Self::list_cases`], but the **outward-facing** view: when
+    /// `allow_experimental` is false, every experimental version is hidden and a
+    /// case left with no visible versions is dropped entirely, so an experimental
+    /// case is invisible to the UI until it graduates. When `allow_experimental`
+    /// is true this is exactly [`Self::list_cases`] (no per-version manifest read).
+    ///
+    /// This is deliberately separate from [`Self::list_cases`], which ingest's
+    /// reconciliation relies on seeing *every* stored version (experimental
+    /// included) so it can prune what the checkout no longer declares.
+    pub fn list_visible_cases(
+        &self,
+        allow_experimental: bool,
+    ) -> Result<Vec<(String, Vec<String>)>> {
+        if allow_experimental {
+            return self.list_cases();
+        }
+        let cases_root = self.root.join("test-cases");
+        let mut out = Vec::new();
+        for slug in sorted_dir_names(&cases_root)? {
+            let versions = self.list_visible_versions(&slug, allow_experimental)?;
+            if !versions.is_empty() {
+                out.push((slug, versions));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Like [`Self::list_versions`], but hides experimental versions unless
+    /// `allow_experimental` is true. The outward-facing analogue used by the
+    /// per-case versions endpoint so an experimental version is not offered to the
+    /// UI (and a case with only experimental versions reports none, i.e. 404s).
+    pub fn list_visible_versions(
+        &self,
+        slug: &str,
+        allow_experimental: bool,
+    ) -> Result<Vec<String>> {
+        let versions = self.list_versions(slug)?;
+        if allow_experimental {
+            return Ok(versions);
+        }
+        Ok(versions
+            .into_iter()
+            .filter(|version| !self.is_experimental(slug, version))
+            .collect())
     }
 
     /// Path to a version's resolved manifest sidecar.

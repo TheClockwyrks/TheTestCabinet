@@ -40,6 +40,11 @@ pub struct Model {
     /// A terminal failure reason when the job failed, else `NULL`.
     #[sea_orm(column_type = "Text", nullable)]
     pub detail: Option<String>,
+    /// Which attempt this job is: `0` for the run the console launched, then `1`,
+    /// `2`, … for each automatic retry the backend re-enqueues after a terminal
+    /// infrastructure/catastrophic failure. Bounded against the launch request's
+    /// `retryCount` so the retry chain always terminates.
+    pub attempt: i32,
     /// RFC 3339 of when the job was enqueued (the claim ordering key).
     pub created_at: String,
     /// RFC 3339 of the last state transition.

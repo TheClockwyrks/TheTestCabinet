@@ -9,10 +9,14 @@ import type {
   AuthResult,
   BackendIdentity,
   DomainRating,
+  HarnessConfigEntry,
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
+  LogoFetchResult,
   Model,
+  ModelInput,
+  ModelSeed,
   ProgressCallback,
   PublishProgress,
   PublishResult,
@@ -29,6 +33,46 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "./types";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type {
+  CoverageMatrix,
+  ReviewPlan,
+} from "@test-cabinet/run-record/review-plan";
+
+// One page of bounded run summary cards from the backend
+// (`GET /runs?fields=summary`), newest first — the lightweight projection of
+// {@link RunPage} the run log and list pages consume. `nextCursor` is the
+// `before` value for the following page, or null when there are none more.
+// `total` is the count of all matching rows ignoring the page window — present
+// (non-null) only on the numbered-pager (offset) path, so the console can size
+// its pager; null on the `before`-cursor drain path (which walks rather than
+// jumps).
+export interface RunSummaryPage {
+  summaries: RunSummary[];
+  nextCursor: string | null;
+  total: number | null;
+}
+
+// The sort column for a summary listing, matching the backend's accepted `sort`
+// query tokens exactly (`GET /runs?fields=summary&sort=…`; see the backend's
+// `parse_sort`). `date` orders by the run's start time, `runtime`/`tokens`/`cost`
+// by the recorded metrics, `rating` by the aggregate quality tier, and the rest
+// by the lifted identity columns. Unknown/absent defaults to `date` server-side.
+export type RunSort =
+  | "date"
+  | "runtime"
+  | "tokens"
+  | "cost"
+  | "rating"
+  | "testType"
+  | "testCase"
+  | "harness"
+  | "model"
+  | "variant";
+
+// The sort direction for a summary listing, matching the backend's accepted `dir`
+// query tokens exactly (`asc`/`desc`; unknown/absent defaults to `desc`).
+export type SortDir = "asc" | "desc";
 
 // Thrown by a transport for an operation its service doesn't (yet) expose, so
 // the console can render a clear "not available here" state rather than a raw
@@ -51,7 +95,38 @@ export interface BackendClient {
 
   // Catalog. (Harnesses are a fixed, code-defined catalog in the UI — see
   // `app/data/harnesses.ts` — not served by the backend.)
+  //
+  // The model catalog is served by `GET /models`: curated configs merged with the
+  // models derived from recorded runs, each with its observed price history. The
+  // config mutations below are optional so a transport that can't reach them (the
+  // static site) omits them and the console hides the affordance — the same
+  // pattern `deleteRun?`/`killRun?` use.
   listModels(): Promise<Model[]>;
+  /** Create a curated model config (`POST /models`, Bearer). */
+  createModel?(input: ModelInput, token: string): Promise<Model>;
+  /** Update a curated model config (`PUT /models/{slug}`, Bearer). */
+  updateModel?(slug: string, input: ModelInput, token: string): Promise<Model>;
+  /** Delete a curated model config (`DELETE /models/{slug}`, Bearer). */
+  deleteModel?(slug: string, token: string): Promise<void>;
+  /** Fetch + sanitize a provider logo from an svgl.app URL (`POST /models/logo`, Bearer). */
+  fetchModelLogo?(url: string, token: string): Promise<LogoFetchResult>;
+  /** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
+  seedModelFromRun?(runId: string): Promise<ModelSeed>;
+
+  // Per-harness configuration (`GET /harness-config` open; the setter Bearer). The
+  // list enumerates every harness with its current knobs (today: max parallelism);
+  // the setter upserts one harness's config and returns the refreshed list. Optional
+  // so a transport without them (the static site) hides the affordance.
+  /** Every harness with its current configuration (`GET /harness-config`). */
+  listHarnessConfigs?(): Promise<HarnessConfigEntry[]>;
+  /** Set a harness's maximum parallelism (`null` = no limit); resolves to the
+   * refreshed list (`POST /harness-config/{slug}`, Bearer). */
+  setHarnessMaxParallelism?(
+    slug: string,
+    maxParallelism: number | null,
+    token: string,
+  ): Promise<HarnessConfigEntry[]>;
+
   listTestCases(): Promise<TestCase[]>;
   listVersions(slug: string): Promise<string[]>;
   resolveVersion(slug: string, version: string): Promise<VersionInfo>;
@@ -68,6 +143,34 @@ export interface BackendClient {
    * page (`null` when there are no more).
    */
   listRuns(opts?: { before?: string; limit?: number }): Promise<RunPage>;
+
+  /**
+   * List bounded run summary cards, newest first (`GET /runs?fields=summary`) —
+   * the lightweight projection the run log and list pages consume instead of full
+   * records. Two paging modes share the endpoint:
+   *
+   * - The **cursor** drain (public snapshot / worklists): pass a `before` cursor
+   *   and a `limit`, optionally narrowed by `state`. Resolves the page's summaries
+   *   and `nextCursor` (the `before` value for the following page, `null` when no
+   *   more); `total` is `null`.
+   * - The **numbered-pager** window (console listings): pass an `offset` (0-based;
+   *   its presence selects this mode) with an optional `limit`, `state`, the
+   *   equality filters (`testCase`/`model`/`harness`), a free-text `q`, and
+   *   `sort`/`dir`. Resolves the windowed summaries plus the `total` count of all
+   *   matching rows (`nextCursor` is `null`).
+   */
+  listRunSummaries(opts?: {
+    before?: string;
+    limit?: number;
+    offset?: number;
+    state?: string;
+    testCase?: string;
+    model?: string;
+    harness?: string;
+    q?: string;
+    sort?: RunSort;
+    dir?: SortDir;
+  }): Promise<RunSummaryPage>;
 
   /** One published run by id (`GET /runs/{id}`): record + review + links. */
   readRun(id: string): Promise<StoredRun>;
@@ -96,6 +199,25 @@ export interface BackendClient {
     version: string,
     variant: string,
   ): Promise<ReviewItem[]>;
+
+  // Reviewer coverage plans (console-only, Bearer). A plan is per-account, so
+  // every call carries the reviewer's token. These are optional so the static
+  // site's read-only transport omits them; the console gates the reviewer
+  // surfaces on `canExecute` and a signed-in account, and never calls them
+  // otherwise.
+  /**
+   * The signed-in reviewer's saved coverage plan (`GET /review-plan`), or an
+   * empty plan (`runsPerCell: 0`, no cases/combinations) when none is saved yet.
+   */
+  getReviewPlan?(token: string): Promise<ReviewPlan>;
+  /** Upsert the signed-in reviewer's coverage plan (`PUT /review-plan`). */
+  putReviewPlan?(plan: ReviewPlan, token: string): Promise<void>;
+  /**
+   * The coverage matrix computed from the reviewer's saved plan
+   * (`GET /review-plan/coverage`): every `case × combination` cell with its
+   * completed/in-flight/remaining counts and version-staleness flag.
+   */
+  getCoverage?(token: string): Promise<CoverageMatrix>;
 }
 
 // Handlers for a live run subscription.

@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { RatingBadge } from "@test-cabinet/ui";
 import {
+  formatPoints,
   scoreChecklist,
   worstRating,
   type Rating,
@@ -50,9 +51,7 @@ export function ReviewList({
                   reviewedAt={review.reviewedAt}
                   score={score}
                 />
-                {snippet && (
-                  <p className={styles.reviewSnippet}>{snippet}</p>
-                )}
+                {snippet && <p className={styles.reviewSnippet}>{snippet}</p>}
               </div>
               {/* Marks the card as navigable — it opens the review's own page. */}
               <span className={styles.chevron} aria-hidden="true">
@@ -93,7 +92,7 @@ export function ReviewHeader({
           </span>
           {score && (
             <span className={styles.reviewScore}>
-              {score.earned} / {score.total} pts
+              {formatPoints(score.earned)} / {score.total} pts
             </span>
           )}
         </div>

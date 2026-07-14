@@ -1,0 +1,107 @@
+slug = "skyshard"
+experimental = true
+name = "Skyshard Interceptor"
+difficulty = "easy"
+tags = ["voxel", "ship"]
+summary = """
+Sculpt the Skyshard Interceptor: a symmetric, forward-swept fighter jet built as \
+an opaque-voxel model, one recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "voxel-model"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# The three variants sculpt the SAME interceptor at three sizes — `base` (this
+# case's volume), `half` (each extent ~halved), and `double` (each doubled) — each
+# declaring its own `[voxel]` override. `base` is first, so it is the default. This
+# list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml", "variants/half.toml", "variants/double.toml"]
+
+# The default voxel volume the model sculpts into (the 3D analog of a 2D canvas):
+# `width` across (x), `height` up (y), `depth` front-to-back (z), in voxels. A
+# variant may OVERRIDE this with its own `[voxel]` (the `half`/`double` size axis);
+# `base` inherits it. The volume always starts EMPTY; `background` is only the clear
+# color behind the rasterized isometric preview PNG. A voxel case must NOT declare
+# [canvas].
+[voxel]
+width = 50
+height = 20
+depth = 76
+background = "transparent"
+
+# The sculpting tool. `voxel` is the only way to place a voxel; every operation
+# records to the action log and renders nothing — rendering is on request via
+# `voxel render`. Run `voxel --help` to see the operations; no operations schema is seeded.
+[tool]
+binary = "voxel"
+preview = "model.png"
+
+# The recorded action log — the authoritative output. `voxel render` also emits the
+# per-part `.glb` the 3D client renders (not declared here).
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run. It is a Handlebars template
+# (`.hbs`), rendered per variant so the volume it states matches the selected
+# size (`{{voxel.width}}`×`{{voxel.height}}`×`{{voxel.depth}}`). The seeded dest
+# drops the `.hbs`, so the run still reads `specs/brief.md`.
+[[spec]]
+source = "specs/brief.md.hbs"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the regenerated model reads as the Skyshard interceptor — a \
+forward-swept fighter jet with a pointed nose leading its flight direction, clean \
+bilateral symmetry, the disciplined Skyshard palette, and a form that fills the \
+volume rather than a small blob floating in it."""
+
+[[review_item]]
+id = "reads-as-jet"
+title = "Forward-swept interceptor, nose leading"
+text = """
+From more than one angle the model reads unmistakably as a fighter jet: a long \
+central fuselage tapering to a pointed NOSE at the front (the direction it flies), \
+a cockpit canopy set into the top near the nose, a pair of forward-swept wings \
+whose tips reach ahead of their roots, and tail fins at the rear. It is a sleek \
+aircraft, not an abstract wedge or a blocky brick."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "symmetry"
+title = "Bilateral symmetry"
+text = """
+The interceptor is cleanly symmetric about its lengthwise vertical centerplane: \
+the two wings, the two tail fins, and any engine intakes mirror each other, so it \
+reads as a deliberate aircraft rather than a lopsided hull."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Skyshard palette discipline"
+text = """
+Uses only the Skyshard colors from the brief (steel hull, dark underside, cyan \
+canopy glass, a warm nose-and-tail accent, and the afterburner glow) with no \
+out-of-palette colors and no stray voxels drifting outside the hull."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "fills-volume"
+title = "Fills the volume"
+text = """
+The jet uses most of the volume — long along z, spanning most of the width at the \
+wingtips, a few voxels of margin on every side — neither shrunk into one corner nor \
+clipped where it runs past a face of the volume."""
+weight = 1
+domain = "fidelity"

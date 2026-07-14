@@ -1,0 +1,25 @@
+# The default variant: the standard colony start. Listed first in the case
+# manifest's `variants`, so it is the default. Every path resolves against the
+# version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard colony start."
+
+# The playable start is seeded to the stable path `specs/mode.md` that the common
+# specs reference; base seeds the standard survival start. `dest` is given explicitly
+# because the source name differs from the seeded path.
+spec = [{ source = "specs/mode-survival.md", dest = "specs/mode.md" }]
+
+# The main menu lists a different start per variant, so each variant supplies its own
+# `title` reference; `gameplay` and `game-over` are common.
+reference = [{ view = "title", path = "reference/menu-base.html" }]
+
+# The authored, *correct* static build of this variant — the case-variant analogue of a
+# run's playable build. A bare directory path (resolved against the version folder)
+# holding a buildable web project, built with this case's `[build]` install/build
+# commands and deployed like a published run build via `tcab publish-reference`, then
+# shown on the case's "Reference" tab. It is **never seeded into a run**. This is a
+# full-stack case, so this build also PRODUCED its own art, animation, effects, and audio
+# during authoring (committed under `reference-impl/base/assets/`); the build itself only
+# loads them, so `npm ci && npm run build` is self-contained.
+reference_implementation = "reference-impl/base"

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<!--
+  Midway — in-park reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system,
+  visual design), ../specs/park.md (tiles, paths, camera), ../specs/guests.md
+  (the crowd), ../specs/flow.md (the HUD dashboard), and ../specs/assets.md
+  (these are stand-ins for PRODUCED sprites, animations, and particle effects).
+
+  The park layout, crowd, and ride positions vary at runtime; this frame is a
+  representative moment for a soft palette/layout comparison, not a strict pixel
+  match. Objects inside .park use FIELD-LOCAL coordinates (a tile at field row r
+  sits at top = r * 24; the field itself starts at stage y=64).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Midway — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- ================= Top HUD: park vitals ========================= -->
+      <div class="topbar">
+        <div class="vital">
+          <span class="k">CASH</span>
+          <span class="v cash">$8,240</span>
+        </div>
+        <div class="vital">
+          <span class="k">GUESTS</span>
+          <span class="v">63</span>
+        </div>
+        <div class="vital">
+          <span class="k">RATING</span>
+          <span class="stars">&#9733;&#9733;&#9733;&#9733;<span class="off">&#9733;</span></span>
+        </div>
+        <div class="vital">
+          <span class="k">HAPPINESS</span>
+          <span class="v mood">72%</span>
+          <div class="meter"><span class="mo" style="width: 72%"></span></div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="alert-chip">&#9888; RIDE DOWN &mdash; COASTER</div>
+        <div class="clock">
+          <span class="day">DAY 14</span>
+          <span class="speed">&#9654;&#9654; 2x</span>
+        </div>
+      </div>
+
+      <!-- ================= Park view (camera onto the tile world) ======= -->
+      <div class="park">
+        <!-- Entrance gate at the top fence, and the avenue down from it. -->
+        <div class="gate" style="--c: 25; --r: 0">ENTRANCE</div>
+        <div class="region path" style="--c: 25; --r: 1; --w: 3; --h: 7"></div>
+
+        <!-- Main cross avenue and two spurs. -->
+        <div class="region path" style="--c: 6; --r: 8; --w: 40; --h: 2"></div>
+        <div class="region path" style="--c: 11; --r: 4; --w: 2; --h: 4"></div>
+        <div class="region path" style="--c: 36; --r: 10; --w: 2; --h: 4"></div>
+        <div class="region path" style="--c: 10; --r: 15; --w: 30; --h: 2"></div>
+        <div class="region path" style="--c: 24; --r: 10; --w: 2; --h: 5"></div>
+
+        <!-- A decorative pond bottom-left (unbuildable water). -->
+        <div class="region water" style="--c: 3; --r: 18; --w: 6; --h: 4"></div>
+
+        <!-- Rides. Carousel spinning, drop tower running, coaster broken. -->
+        <div class="ride on" style="--c: 8; --r: 3; --w: 3; --h: 3">&#9784;<span class="tag">CAROUSEL</span></div>
+        <div class="ride on" style="--c: 41; --r: 3; --w: 2; --h: 4">&#8645;<span class="tag">DROP TOWER</span></div>
+        <div class="ride broken" style="--c: 33; --r: 11; --w: 5; --h: 3">&#9888;<span class="tag">COASTER</span></div>
+
+        <!-- Stalls on the cross avenue. Food and drink; souvenir and restroom. -->
+        <div class="stall" style="--c: 17; --r: 7; --w: 2">FOOD</div>
+        <div class="stall drink" style="--c: 30; --r: 7; --w: 2">DRINK</div>
+        <div class="stall" style="--c: 20; --r: 10; --w: 2">GIFTS</div>
+        <div class="stall restroom" style="--c: 27; --r: 10; --w: 2">WC</div>
+
+        <!-- Scenery lifting path appeal. -->
+        <div class="tree" style="--c: 15; --r: 5"></div>
+        <div class="tree" style="--c: 34; --r: 5"></div>
+        <div class="tree" style="--c: 44; --r: 9"></div>
+        <div class="flower" style="--c: 23; --r: 6"></div>
+        <div class="flower" style="--c: 29; --r: 6"></div>
+        <div class="lamp" style="--c: 26; --r: 7"></div>
+        <div class="bench" style="--c: 14; --r: 9"></div>
+        <div class="bench" style="--c: 40; --r: 9"></div>
+
+        <!-- Produced particle effects: carousel sparkle, food-stall steam. -->
+        <div class="fx sparkle" style="--c: 8; --r: 2; --w: 3; --h: 3"></div>
+        <div class="fx steam" style="--c: 17; --r: 5; --w: 2; --h: 2"></div>
+
+        <!-- Guests on the paths (produced, animated sprites), mixed moods.
+             Positioned at stage pixels; a path row r sits at top = 64 + r*24. -->
+        <div class="guest happy" style="left: 616px; top: 130px"></div>
+        <div class="guest" style="left: 636px; top: 168px"></div>
+        <div class="guest happy" style="left: 300px; top: 268px"></div>
+        <div class="guest eating" style="left: 432px; top: 208px"></div>
+        <div class="guest" style="left: 748px; top: 272px"></div>
+        <div class="guest happy" style="left: 980px; top: 262px"></div>
+        <div class="guest" style="left: 520px; top: 424px"></div>
+        <div class="guest happy" style="left: 616px; top: 428px"></div>
+        <div class="guest angry" style="left: 872px; top: 316px"></div>
+        <div class="guest angry" style="left: 872px; top: 340px"></div>
+        <div class="guest angry" style="left: 896px; top: 328px"></div>
+        <div class="guest" style="left: 236px; top: 216px"></div>
+      </div>
+
+      <!-- ================= Bottom HUD: palette + context panel ========== -->
+      <div class="bottombar">
+        <div class="palette">
+          <div class="tool selected">&#8862;</div>
+          <div class="tool">&#9974;</div>
+          <div class="tool">&#9823;</div>
+          <div class="tool">$</div>
+          <div class="tool">&#10005;</div>
+        </div>
+
+        <div class="context">
+          <span class="name">COASTER</span>
+          <div class="ctx-stat">
+            <span class="k">PRICE</span><span class="v cash">$4.00</span>
+          </div>
+          <div class="ctx-stat">
+            <span class="k">QUEUE</span><span class="v">12</span>
+          </div>
+          <div class="ctx-stat">
+            <span class="k">THRILL</span><span class="v thrill">8.1</span>
+          </div>
+          <div class="ctx-stat">
+            <span class="k">STATUS</span><span class="v" style="color: var(--alert)">BROKEN</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -8,3 +8,24 @@
 // and glow. Functional surfaces that must stay fully opaque (the game embed, the
 // topbar, toggle buttons) deliberately keep `t.$color-surface` instead.
 $panel-bg: color-mix(in srgb, t.$color-surface 88%, transparent);
+
+// A soft right-edge fade for a horizontally-scrollable strip — the swipeable tab
+// rows the layouts collapse to on a phone. The scrollbar is hidden there, so
+// without a cue a clipped trailing tab reads as "the last tab" rather than "swipe
+// for more". Masking the trailing edge to transparent signals the strip scrolls.
+// Apply inside the strip's mobile `overflow-x: auto` block; the left edge is left
+// crisp so the (usually active) first tab stays sharp at rest.
+@mixin swipe-fade($fade: 1.75rem) {
+  mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - #{$fade}),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - #{$fade}),
+    transparent 100%
+  );
+}

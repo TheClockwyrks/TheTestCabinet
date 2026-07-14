@@ -1,0 +1,48 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+
+.widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: t.$space-md;
+  // Match the featured run's bottom margin so the widgets→feature gap equals the
+  // feature→run-log gap below it.
+  margin-bottom: t.$space-lg;
+}
+
+// One card. It is a link to the full reviewer surface.
+.widget {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-md t.$space-lg;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  text-decoration: none;
+  color: t.$color-text;
+
+  &:hover {
+    border-color: t.$color-accent;
+    // The card is an anchor; without this the global `a:hover` underline
+    // would re-apply over the base `text-decoration: none`.
+    text-decoration: none;
+  }
+}
+
+.widgetLabel {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: lowercase;
+}
+
+.widgetStat {
+  color: t.$color-text-muted;
+  font-size: t.$font-md;
+
+  strong {
+    color: t.$color-text;
+    font-size: t.$font-lg;
+  }
+}

@@ -15,7 +15,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
@@ -46,7 +46,11 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/logout", post(logout))
         .layer(axum::middleware::from_fn(accept_trace))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
+        // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
+        // spec `*` does not cover `Authorization`, so a browser rejects a preflight
+        // for a request carrying our bearer token. Mirror the request's headers
+        // instead, which echoes `Authorization` back explicitly.
+        .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
         .with_state(state)
 }
 

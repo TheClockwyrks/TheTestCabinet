@@ -1,0 +1,101 @@
+slug = "spectra-fighter"
+experimental = true
+name = "Spectra Fighter"
+difficulty = "medium"
+tags = ["sprite", "ship"]
+summary = """
+Draw the Spectra resonator-fighter: the player's ship for a two-band formation \
+shooter, as a 64x64 sprite produced one drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# A 64x64 transparent canvas keeps every run comparable.
+[canvas]
+width = 64
+height = 64
+background = "transparent"
+
+# The drawing tool. `draw` is the only way to make a mark; it records every
+# operation to the action log and re-renders the preview after each call. Run
+# `draw --help` to see the operations; no operations schema is seeded.
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+# The recorded action log — the authoritative output the score is regenerated
+# from.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sprite matches the Spectra fighter target — its \
+upward-pointing hull silhouette, the glowing cyan core carrying the ring band \
+glyph, its symmetry, and the neon Spectra palette."""
+
+[[review_item]]
+id = "faces-up"
+title = "Player ship, facing up"
+text = """
+The sprite reads as the player's fighter — an arrowhead hull pointing UP (the \
+direction it fires), not a drone or an enemy. It is clearly a ship, not an \
+abstract shape."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "band-core"
+title = "Cyan core with the ring glyph"
+text = """
+A glowing cyan core sits in the hull, carrying the cyan band's RING motif (a \
+stroked ring), so the ship's spectral band reads by shape as well as color — the \
+colorblind-safe convention the game uses everywhere a band appears."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "symmetry"
+title = "Left/right symmetry"
+text = """
+The fighter is cleanly symmetric about its vertical centerline (x = 32) — the two \
+wings and engine glows mirror each other — reading as a deliberate ship, not a \
+lopsided blob."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "palette"
+title = "Spectra palette"
+text = """
+Uses only the Spectra colors from the brief (light hull, cyan band, warm engine \
+accent, white highlight) with no out-of-palette colors and no halo of stray \
+pixels."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "framing"
+title = "Canvas framing"
+text = """
+The fighter fills most of the 64x64 frame, roughly centered with a small margin, \
+neither tiny in a corner nor clipped at an edge."""
+weight = 1
+domain = "fidelity"

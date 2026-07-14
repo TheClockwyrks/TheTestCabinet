@@ -1,0 +1,370 @@
+slug = "wireworm"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Wireworm"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Wireworm asks
+# for a segmented worm that winds and splits over a tile field, a charged-terrain
+# model with a chain-reaction discharge, three distinct foes, a persistent growing
+# field, a 12-level progression with win and loss, and multiple states — a
+# self-contained 2D build, so it sits at easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "shooter"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A fixed-shooter where a segmented data-worm winds down a circuit board and you cut \
+it apart from a band at the bottom — and every node the worm bumps gains charge, so \
+a critical node you shoot detonates a chain-arc that clears the cluster and fries \
+the worm through it. Every segment you shoot leaves a node, so the field thickens \
+and drives the worm down faster: build the charge, then release it."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Wireworm is a substantial build (a splitting worm over a tile field, the
+# charge/discharge model, three foes, a persistent field, a 12-level progression,
+# multiple states), so as a hard case it gets a full five hours.
+max_runtime_hours = 5
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins `playwright`
+# as a dev dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Provided art assets, seeded into the run root under `assets/`. A directory is
+# seeded recursively, so every sprite frame under `assets/` reaches the run. The
+# build must render the game with these (see specs/assets.md) and load them with
+# page-relative URLs so it works under any base path.
+assets = ["assets"]
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant (the standard Descent run on the one
+# board), declared in its own file under `variants/`. It supplies the `title`
+# view's menu; `gameplay` and `game-over` are common. Future
+# versions/variants are expected to add rule twists (e.g. a longer endless run or
+# a denser starting field) as additional variants on top of this base. This list
+# is a root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. All common specs are
+# plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/charge.md"
+
+[[spec]]
+source = "specs/worm.md"
+
+[[spec]]
+source = "specs/foes.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/assets.md"
+
+[[spec]]
+source = "specs/standard.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl build — the
+# authored, correct game under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. The `title` view is variant-specific (declared per variant
+# below); `gameplay` and `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+media = "reference/screenshots/gameplay.png"
+
+[[reference]]
+view = "game-over"
+media = "reference/screenshots/game-over.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to; `specs/proof.md` instructs the build to produce them at
+# exactly these paths. Validation records whether each turned up (informational).
+# The media kind is inferred from the extension: `.png` is an image, `.webm` a
+# video (the format Playwright records natively; the public gallery transcodes
+# it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-game"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "End screen"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "discharge"
+name = "Chain-arc discharge clip"
+dest = "proof/discharge.webm"
+
+[[proof]]
+id = "worm"
+name = "Worm split and field clip"
+dest = "proof/worm.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a flawless discharge
+# system cannot mask a worm that does not wind and split, and vice versa. Domains
+# are case-level; an individual review item rolls up to one through its optional
+# `domain`, while a general item (states, window fit) omits it.
+[[domain]]
+id = "charge"
+name = "Charge & Discharge"
+description = "The signature: nodes charging as the worm bumps them, the shot-into-a-node model (de-energize / clear / detonate), the chain-arc discharge that clears a cluster and cleanly fries the worm, critical nodes making the worm dive, and how shooting thickens the field while discharges thin it."
+
+[[domain]]
+id = "arcade"
+name = "Worm & Arcade Core"
+description = "The fixed-shooter core: the worm winding, dropping/reversing, oscillating, splitting on a mid-segment hit and shortening on an end hit while salting the board with nodes; the band-bound cursor firing up; the three foes; and lives, the 12-level progression, and the win/lose states."
+
+# Reviewer checklist items, common to every variant. The major, observable
+# requirements a reviewer must explicitly check by playing the build — the things
+# validation cannot judge and that are easy to miss. Reporter-side material: never
+# seeded into a run, so the model never sees the checklist; each restates a
+# requirement the seeded specification already states. Each item is worth `weight`
+# points toward the run's score; the reviewer records a pass/fail verdict for each
+# before the run can be published.
+
+[[review_item]]
+id = "charge-from-bumps"
+title = "The worm charges the field"
+text = "Each time the worm is turned by a node it charges that node one level, and the node's glow tracks its charge (inert dark -> low teal -> mid cyan -> white-hot critical, the critical node pulsing with amber sparks). Nodes the worm ricochets off repeatedly climb to critical; charge never rises from your shots."
+weight = 1
+domain = "charge"
+reference = "gameplay"
+proof = "discharge"
+sub_items = [
+  { id = "charges-on-turn", title = "A node the worm is turned by gains one charge; repeated bumps climb it to critical" },
+  { id = "glow-ramp", title = "A node's glow tracks its charge, the critical node unmistakable and pulsing" },
+]
+
+[[review_item]]
+id = "shot-into-node"
+title = "Shooting a node: clear, de-energize, or detonate"
+text = "A bolt into an INERT node (charge 0) destroys it; a bolt into a charge-1 or charge-2 node knocks its charge down one level without removing it (so a charged node resists clearing); and a bolt into a CRITICAL node detonates it. Your shots only ever lower a node's charge, never raise it."
+weight = 1
+domain = "charge"
+sub_items = [
+  { id = "inert-destroyed", title = "A bolt into an inert node destroys it" },
+  { id = "charged-deenergized", title = "A bolt into a charge-1/2 node knocks it down one level without removing it" },
+  { id = "critical-detonates", title = "A bolt into a critical node detonates it" },
+]
+
+[[review_item]]
+id = "chain-arc-discharge"
+title = "The chain-arc discharge"
+text = "Shooting a critical node sets off a chain-arc: it clears itself and arcs to charged nodes within 2 tiles, which detonate and chain onward through the connected charged cluster, clearing the whole swath in one shot. Inert nodes do not conduct, so the arcs leap over them. Worm segments caught in the arc are fried and leave NO nodes. A dense charged cluster clears wide from a single well-placed shot."
+weight = 1
+domain = "charge"
+reference = "gameplay"
+proof = "discharge"
+sub_items = [
+  { id = "chains", title = "Arcs to charged nodes within 2 tiles and chains onward through the connected cluster" },
+  { id = "inert-insulates", title = "After a discharge, dark inert nodes inside the blast are still standing while the glowing charged nodes around them are gone — only charged nodes clear" },
+  { id = "fries-clean", title = "Worm segments caught in the arc are fried and leave no nodes" },
+]
+
+[[review_item]]
+id = "critical-dive"
+title = "Critical nodes make the worm dive"
+text = "When the worm hits a critical node it dives straight down its column (ignoring nodes and walls) until it reaches the bottom, instead of the normal drop-and-reverse — so a standing critical cluster is a dive-lane that fast-tracks the worm at you, not just a free weapon."
+weight = 1
+domain = "charge"
+proof = "worm"
+
+[[review_item]]
+id = "field-grows-and-thins"
+title = "Shooting grows the field; discharges thin it"
+text = "Every worm segment killed by a bolt leaves a fresh inert node where it died, so the field visibly thickens as you fight — and a denser field drops the worm down faster. Segments killed by a discharge leave no node, so a discharge is the way to thin the board."
+weight = 1
+domain = "charge"
+sub_items = [
+  { id = "shot-thickens", title = "A shot-killed segment leaves a fresh inert node, thickening the field" },
+  { id = "discharge-thins", title = "A discharge-killed segment leaves no node, thinning the field" },
+]
+
+[[review_item]]
+id = "worm-winds"
+title = "The worm winds down"
+text = "The worm travels horizontally and, when blocked by a node, a segment, or the side edge, drops a row and reverses; it descends to the floor then oscillates back up and down, spending dangerous time low in the player's band until cleared. It never leaves through an edge."
+weight = 1
+domain = "arcade"
+reference = "gameplay"
+proof = "worm"
+sub_items = [
+  { id = "drop-reverse", title = "Blocked by a node, segment, or side edge, it drops a row and reverses" },
+  { id = "oscillates", title = "It descends to the floor, then oscillates up and down across the lower board" },
+  { id = "stays-on-board", title = "It never leaves the board through an edge" },
+]
+
+[[review_item]]
+id = "split-and-shorten"
+title = "Split and shorten"
+text = "A bolt into a MIDDLE segment splits the worm into two independent worms (the trailing part grows a new head); a bolt into a head or tail shortens the worm by one. Each new worm winds and is shot like any other."
+weight = 1
+domain = "arcade"
+proof = "worm"
+sub_items = [
+  { id = "split", title = "A middle-segment hit splits the worm into two, the trailing part growing a new head" },
+  { id = "shorten", title = "A head or tail hit shortens the worm by one" },
+]
+
+[[review_item]]
+id = "band-bound-cursor"
+title = "Band-bound cursor firing up"
+text = "The cursor moves freely but is clamped to the bottom player band (it can never leave those rows or the board), and fires bolts straight up that stop at the first node, worm segment, or foe in the column. A worm segment or a foe reaching the cursor costs a life."
+weight = 1
+domain = "arcade"
+sub_items = [
+  { id = "clamped", title = "The cursor moves freely but is clamped to the bottom band, never leaving it" },
+  { id = "fires-up", title = "It fires bolts straight up that stop at the first node, segment, or foe" },
+  { id = "costs-life", title = "A worm segment or foe reaching the cursor costs a life" },
+]
+
+[[review_item]]
+id = "foe-glitch"
+title = "The glitch eats the field"
+text = "The glitch skitters through the lower board in a restless zig-zag, removing any node it passes over (of any charge, defusing charge you were building), is deadly on contact, and dies to a single bolt."
+weight = 1
+domain = "arcade"
+sub_items = [
+  { id = "zigzag", title = "It skitters through the lower board in a restless zig-zag" },
+  { id = "eats-nodes", title = "It removes any node it passes over, of any charge" },
+  { id = "one-bolt", title = "It is deadly on contact and dies to a single bolt" },
+]
+
+[[review_item]]
+id = "foe-dropper"
+title = "The packet-dropper reseeds"
+text = "When the field grows too sparse a dropper falls straight down a column, laying fresh inert nodes in empty tiles it passes; it takes two bolts to kill (the first only speeds it up) and is deadly on contact."
+weight = 1
+domain = "arcade"
+sub_items = [
+  { id = "sparse-trigger", title = "Clearing the lower field to near-empty draws a dropper in to reseed it; keeping the field dense draws far fewer" },
+  { id = "reseeds", title = "It falls down a column, laying fresh inert nodes in the empty tiles it passes" },
+  { id = "two-bolts", title = "It takes two bolts to kill — the first only speeds it up" },
+]
+
+[[review_item]]
+id = "foe-corruptor"
+title = "The corruptor slams a critical line"
+text = "The corruptor crawls horizontally across an upper row, slamming every node it passes straight to critical (setting both a detonation cluster and a worm dive-lane), pays the largest bounty, and dies to a single bolt."
+weight = 1
+domain = "arcade"
+sub_items = [
+  { id = "crawls-top", title = "It crawls horizontally across an upper row without descending" },
+  { id = "slams-critical", title = "It slams every node it passes straight to critical, leaving a dive-lane cluster" },
+  { id = "one-bolt", title = "It dies to a single bolt and pays the largest bounty" },
+]
+
+[[review_item]]
+id = "levels-and-victory"
+title = "Levels, persistence, and victory"
+text = "The game is a run of 12 levels with the worm lengthening and quickening each level and the node field PERSISTING between levels (so the board only gets denser); clearing every worm segment advances the level, 0 lives ends the game, and clearing level 12 wins it."
+weight = 1
+domain = "arcade"
+sub_items = [
+  { id = "progression", title = "A run of 12 levels, the worm lengthening and quickening each level" },
+  { id = "field-persists", title = "The node field persists between levels, so the board only gets denser" },
+  { id = "win-lose", title = "Clearing every segment advances, 0 lives ends the game, and clearing level 12 wins" },
+]
+
+[[review_item]]
+id = "uses-assets"
+title = "Renders with the provided sprites"
+text = "The game renders the nodes (a frame per charge state, the critical node pulsing), the worm (head/body/tail, mirrored by direction), the cursor, and the three foes using the provided assets/ sprites at 32x32 with nearest-neighbor scaling — while the bolts, the discharge arcs, the board, and the HUD are drawn in code."
+weight = 1
+domain = "arcade"
+
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, in-game, pause (resume/restart/quit), Victory, and Game over, each with the right screen and actions."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the full HUD bar, the whole board, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1
+
+[[review_item]]
+id = "audio"
+title = "Synthesized audio"
+text = "Audio is required, synthesized with the Web Audio API (no audio files): distinct short cues for firing a bolt, cutting a worm segment, a chain-arc discharge, a node reaching critical, killing a foe, losing a life, clearing a level, and the Victory/Game-over stings. It must stay fully playable muted, never block loading if audio cannot start, and not begin until the player interacts; a mute toggle is provided."
+weight = 1
+sub_items = [
+  { id = "cues", title = "Distinct synthesized cues for firing, cutting a segment, discharge, critical, foe kill, life loss, level clear, and the end stings" },
+  { id = "graceful", title = "Plays fully muted with a working mute toggle, and no sound plays until the player first interacts" },
+]

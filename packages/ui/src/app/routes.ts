@@ -2,16 +2,19 @@
 // functions so every route is defined in exactly one place.
 
 // The catalog's type tabs, each its own route so the selected tab survives a
-// reload and is linkable. Asset-generation is split into four tabs by asset
-// family — 2D (sprite + paint), 3D (voxel/mesh/skinned), particle, and audio;
-// the rest map one-to-one to a `TestType`. Each tab slug is a literal path
+// reload and is linkable. Asset-generation is split into five tabs by asset
+// family — 2D (sprite + paint), 3D (voxel/mesh/skinned), Blender (glTF
+// characters), particle, and audio; the rest map one-to-one to a `TestType`.
+// Each tab slug is a literal path
 // segment under `/test-cases`, a sibling of the `:slug` detail route (the same
 // literal-beside-param shape as `/runs/failures` beside `/runs/:runId`) — none
 // collides with a real case slug.
 export type CatalogTab =
   | "end-to-end"
+  | "full-stack"
   | "2d"
   | "3d"
+  | "blender"
   | "particle"
   | "audio"
   | "adversarial"
@@ -39,13 +42,34 @@ export const routes = {
   // quick match or run a tournament over a field.
   testCaseArena: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/arena`,
+  // The case's reference implementation: the authored, correct static build for
+  // the selected variant, embedded inline. Shown only for an end-to-end case whose
+  // selected variant declares a `reference_implementation`.
+  testCaseReference: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/reference`,
   models: (): string => "/models",
   modelDetail: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}`,
   modelStats: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/stats`,
+  modelPricing: (modelId: string): string =>
+    `/models/${encodeURIComponent(modelId)}/pricing`,
   modelRuns: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/runs`,
+  // The add/edit model config form (consoles only; the static site is read-only
+  // and never links here). `modelNew` opens a blank draft, optionally seeded from
+  // a run of an unknown model (`?fromRun=<runId>`) or pre-claiming a known id
+  // (`?alias=<modelId>`); `modelEdit` opens an existing config for revision. The
+  // `/models/new` static path outranks the `/models/:modelId` dynamic route.
+  modelNew: (opts?: { fromRun?: string; alias?: string }): string => {
+    const params = new URLSearchParams();
+    if (opts?.fromRun) params.set("fromRun", opts.fromRun);
+    if (opts?.alias) params.set("alias", opts.alias);
+    const query = params.toString();
+    return query ? `/models/new?${query}` : "/models/new";
+  },
+  modelEdit: (slug: string): string =>
+    `/models/${encodeURIComponent(slug)}/edit`,
   about: (): string => "/about",
   aboutTesting: (): string => "/about/testing",
   aboutMetrics: (): string => "/about/metrics",
@@ -54,7 +78,7 @@ export const routes = {
   settings: (): string => "/settings",
   settingsAppearance: (): string => "/settings/appearance",
   settingsConnections: (): string => "/settings/connections",
-  settingsAuth: (): string => "/settings/authentication",
+  settingsHarnesses: (): string => "/settings/harnesses",
   // Account routes (consoles only; the static site is read-only and never links
   // to them). The account view shows the signed-in user and a sign-out control;
   // login/register are their own pages. `login`/`register` take an optional
@@ -68,6 +92,14 @@ export const routes = {
   // The publishable-failures worklist (consoles only): produced catastrophic /
   // timed-out runs awaiting publish. The static site never links to it.
   runFailures: (): string => "/runs/failures",
+  // Reviewer tooling (consoles only): the coverage matrix + plan editor, and the
+  // unreviewed-runs worklist. Both are console-only reviewer surfaces the static
+  // site never links to. Static segments beside `/runs/:runId`, like `/runs/new`.
+  runCoverage: (): string => "/runs/coverage",
+  // The review-plan editor, its own URL (a static segment under the coverage
+  // dashboard) so setting up or revising the plan is linkable and reloadable.
+  runCoverageConfig: (): string => "/runs/coverage/config",
+  runUnreviewed: (): string => "/runs/unreviewed",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
   // a test case lands on the new-run form with that case already chosen.
@@ -121,8 +153,10 @@ export const routePatterns = {
   // The catalog's type tabs — literal siblings of `:slug` below (static segments
   // rank above the dynamic `:slug`, and no case slug matches these words).
   testCasesE2E: "/test-cases/end-to-end",
+  testCasesFullStack: "/test-cases/full-stack",
   testCases2D: "/test-cases/2d",
   testCases3D: "/test-cases/3d",
+  testCasesBlender: "/test-cases/blender",
   testCasesParticle: "/test-cases/particle",
   testCasesAudio: "/test-cases/audio",
   testCasesAdversarial: "/test-cases/adversarial",
@@ -134,9 +168,16 @@ export const routePatterns = {
   testCaseMetrics: "/test-cases/:slug/metrics",
   testCaseChangelog: "/test-cases/:slug/changelog",
   testCaseArena: "/test-cases/:slug/arena",
+  testCaseReference: "/test-cases/:slug/reference",
   models: "/models",
+  // The `/models/new` static path outranks the `/models/:modelId` dynamic route,
+  // so a blank/seeded config form is reachable at a literal segment beside the
+  // model detail (the same literal-beside-param shape `/runs/new` uses).
+  modelNew: "/models/new",
   modelDetail: "/models/:modelId",
   modelStats: "/models/:modelId/stats",
+  modelPricing: "/models/:modelId/pricing",
+  modelEdit: "/models/:modelId/edit",
   modelRuns: "/models/:modelId/runs",
   about: "/about",
   aboutTesting: "/about/testing",
@@ -144,12 +185,17 @@ export const routePatterns = {
   settings: "/settings",
   settingsAppearance: "/settings/appearance",
   settingsConnections: "/settings/connections",
-  settingsAuth: "/settings/authentication",
+  settingsHarnesses: "/settings/harnesses",
   account: "/account",
   login: "/login",
   register: "/register",
   runs: "/runs",
   runFailures: "/runs/failures",
+  runCoverage: "/runs/coverage",
+  // The plan editor lives one segment deeper; it is more specific than
+  // `/runs/coverage`, so react-router ranks it above the dashboard route.
+  runCoverageConfig: "/runs/coverage/config",
+  runUnreviewed: "/runs/unreviewed",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",

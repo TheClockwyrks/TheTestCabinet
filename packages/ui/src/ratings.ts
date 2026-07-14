@@ -89,6 +89,17 @@ export function isVerdictStatus(value: string): value is VerdictStatus {
   return value === "pass" || value === "fail";
 }
 
+/**
+ * Format a point value for display: a whole number as-is, and a fractional one
+ * (an item with sub-items can earn a fraction of its weight) to at most two
+ * decimals with trailing zeros trimmed — so `2` stays `2`, `0.5` shows `0.5`,
+ * and `1/3` shows `0.33`.
+ */
+export function formatPoints(points: number): string {
+  if (Number.isInteger(points)) return String(points);
+  return points.toFixed(2).replace(/\.?0+$/, "");
+}
+
 /** A run's numeric score: the point weight earned over the total available. */
 export interface Score {
   /** The weight of the items the reviewer marked `pass`. */
@@ -97,28 +108,70 @@ export interface Score {
   total: number;
 }
 
+/** A name-only sub-item of a {@link WeightedItem}. */
+export interface WeightedSubItem {
+  id: string;
+}
+
 /** The minimal shape {@link scoreChecklist} needs from a declared review item. */
 export interface WeightedItem {
   id: string;
   weight: number;
+  /** The item's name-only sub-items, when it is graded per sub-item rather than
+   * as a whole. */
+  subItems?: readonly WeightedSubItem[];
+}
+
+/**
+ * The verdict id a reviewer records for one of an item's sub-items: the
+ * composite `<item id>.<sub-item id>`. A sub-item's verdict is an ordinary
+ * {@link ReviewVerdict} whose id names the point within the item. Mirrors
+ * `ReviewItem::sub_item_verdict_id` in the Rust core.
+ */
+export function subItemVerdictId(itemId: string, subItemId: string): string {
+  return `${itemId}.${subItemId}`;
+}
+
+/**
+ * The verdict ids a reviewer must record for `item`: the item's own id when it
+ * is graded as a whole, or one composite id per sub-item when it declares
+ * `subItems`. This is the set of ids that must appear in a review's checklist for
+ * the item to be fully addressed. Mirrors `ReviewItem::verdict_ids` in the Rust
+ * core.
+ */
+export function verdictIdsForItem(item: {
+  id: string;
+  subItems?: readonly WeightedSubItem[];
+}): string[] {
+  if (!item.subItems || item.subItems.length === 0) return [item.id];
+  return item.subItems.map((sub) => subItemVerdictId(item.id, sub.id));
 }
 
 /**
  * Score a run by combining the case's declared `items` (which carry the point
- * weights) with the reviewer's `verdicts`: an item earns its weight when marked
- * `pass` and none when marked `fail`. The total is the sum of every item's
- * weight. Mirrors `score` in the Rust core.
+ * weights) with the reviewer's `verdicts`. An item graded as a whole earns its
+ * weight when marked `pass` and none when marked `fail`. An item with sub-items
+ * has its weight split evenly across them and earns the fraction whose sub-items
+ * passed (so `earned` can be fractional). The total is the sum of every item's
+ * weight. Mirrors `score_checklist` in the Rust core.
  */
 export function scoreChecklist(
   items: readonly WeightedItem[],
   verdicts: readonly ReviewVerdict[],
 ): Score {
+  const passed = (id: string) =>
+    verdicts.some((v) => v.id === id && v.status === "pass");
   let earned = 0;
   let total = 0;
   for (const item of items) {
     total += item.weight;
-    if (verdicts.some((v) => v.id === item.id && v.status === "pass")) {
-      earned += item.weight;
+    if (!item.subItems || item.subItems.length === 0) {
+      if (passed(item.id)) earned += item.weight;
+    } else {
+      const passedSubs = item.subItems.filter((sub) =>
+        passed(subItemVerdictId(item.id, sub.id)),
+      ).length;
+      earned += (item.weight * passedSubs) / item.subItems.length;
     }
   }
   return { earned, total };
@@ -144,7 +197,9 @@ export interface AggregateScore {
  * earned over the shared total, or null when there are no reviews. Mirrors
  * `aggregate_score` in the Rust core.
  */
-export function aggregateScore(scores: readonly Score[]): AggregateScore | null {
+export function aggregateScore(
+  scores: readonly Score[],
+): AggregateScore | null {
   if (scores.length === 0) return null;
   const total = scores.reduce((max, s) => Math.max(max, s.total), 0);
   const earned = scores.reduce((sum, s) => sum + s.earned, 0) / scores.length;
@@ -159,5 +214,7 @@ export function aggregateScore(scores: readonly Score[]): AggregateScore | null 
 export function aggregateRating(
   reviews: readonly (readonly DomainRating[])[],
 ): Rating | null {
-  return worstRating(reviews.flatMap((ratings) => ratings.map((r) => r.rating)));
+  return worstRating(
+    reviews.flatMap((ratings) => ratings.map((r) => r.rating)),
+  );
 }

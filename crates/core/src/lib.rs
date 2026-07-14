@@ -23,7 +23,7 @@ pub mod harness_registry;
 pub mod job_api;
 pub mod match_play;
 pub mod metrics;
-pub mod models;
+pub mod model_id;
 pub mod orchestrator;
 pub mod performance_validator;
 pub mod playable;
@@ -34,6 +34,7 @@ pub mod publish;
 pub mod publish_job_api;
 pub mod redact;
 pub mod reference;
+pub mod reference_lock;
 pub mod review;
 pub mod run_record;
 pub mod seeding;
@@ -98,7 +99,6 @@ pub use job_api::{
     LaunchBody, Notification, NotificationKind, NotificationOutcome, StatusUpdate,
 };
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
-pub use models::{Model, ModelCatalog};
 pub use orchestrator::{
     BUILT_IN_SLUGS, ONE_SHOT_SLUG, Orchestrator, OrchestratorCatalog, OrchestratorManifest,
     OrchestratorSelection,
@@ -114,7 +114,7 @@ pub use pricing::{ModelDetails, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template};
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
-    SystemCommandRunner, implementation_dir, parse_wrangler_url, run_slug,
+    SystemCommandRunner, deploy_pages_build, implementation_dir, parse_wrangler_url, run_slug,
 };
 pub use publish_job_api::{
     PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
@@ -132,14 +132,15 @@ pub use seeding::FsRepoSeeder;
 pub use test_case::{
     AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec, MediaKind,
     ModelSpec, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
-    SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, TestCase, TestCaseCatalog,
-    TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile,
+    SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
+    TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec,
+    WorkspaceFile, shippable_package_description,
 };
 pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
     CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
 };
-pub use validator::{AssetGenValidator, BuildValidator, DispatchValidator};
+pub use validator::{AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator};
 
 /// What to run, with what, against which model.
 ///
@@ -806,15 +807,21 @@ where
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
 
-        // Orchestrator selection is limited to the end-to-end test type for now:
-        // other test types build a single artifact in one pass and always run
-        // one-shot. Reject any non-default orchestrator (a non-one-shot built-in
-        // slug, or an external `--orchestrator-dir`, which is by definition not
-        // one-shot) for any other test type. This fails fast — before any
-        // container is started — so a misconfigured request never burns setup.
+        // Orchestrator selection is limited to the types that build a program over a
+        // working session — end-to-end and full-stack. The other types build a single
+        // artifact in one pass and always run one-shot. Reject any non-default
+        // orchestrator (a non-one-shot built-in slug, or an external
+        // `--orchestrator-dir`, which is by definition not one-shot) for those types.
+        // This fails fast — before any container is started — so a misconfigured
+        // request never burns setup.
         let orchestrator_requested =
             request.orchestrator.slug != ONE_SHOT_SLUG || request.orchestrator.dir.is_some();
-        if orchestrator_requested && test_case.test_type != TestType::EndToEnd {
+        if orchestrator_requested
+            && !matches!(
+                test_case.test_type,
+                TestType::EndToEnd | TestType::FullStack
+            )
+        {
             return Err(Error::OrchestratorUnsupportedForTestType {
                 slug: request.orchestrator.slug.clone(),
                 test_type: test_case.test_type,
@@ -930,12 +937,11 @@ where
             TokenPrices::default()
         } else {
             // Map the model ID to the slug OpenRouter lists it under (for
-            // example Codex's `gpt-5.5` becomes `openai/gpt-5.5`).
-            let lookup_id = self
-                .harnesses
-                .get(request.harness)
-                .map(|harness| harness.pricing_model_id(&request.model_id))
-                .unwrap_or_else(|| request.model_id.clone());
+            // example Codex's `gpt-5.5` becomes `openai/gpt-5.5`), collapsing an
+            // `openrouter/` routing prefix and a `:free`-style variant tag so a
+            // free-tagged run is priced at the model's base rate, not $0.
+            let lookup_id =
+                crate::model_id::openrouter_price_id(&request.model_id, request.harness);
             match self.prices.token_prices(&lookup_id).await {
                 Ok(prices) => prices,
                 Err(err) => {
@@ -1001,8 +1007,8 @@ where
 /// and its validation summary.
 ///
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
-/// (end-to-end, asset-generation) an output that never loaded leaves nothing to
-/// review — the model's output is broken — so the run is
+/// (end-to-end, full-stack, asset-generation) an output that never loaded leaves
+/// nothing to review — the model's output is broken — so the run is
 /// [`RunState::Catastrophic`] rather than [`RunState::Completed`]. The
 /// **auto-scored** types (adversarial, performance) carry their authoritative
 /// result in the validation summary even when `loaded` is false (a forfeit or an
@@ -1010,7 +1016,9 @@ where
 /// [`RunState::Completed`]; a per-type catastrophic tier for them is deferred.
 fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
     match test_type {
-        TestType::EndToEnd | TestType::AssetGeneration if !validation.loaded => {
+        TestType::EndToEnd | TestType::FullStack | TestType::AssetGeneration
+            if !validation.loaded =>
+        {
             RunState::Catastrophic
         }
         _ => RunState::Completed,

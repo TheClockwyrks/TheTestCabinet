@@ -68,11 +68,13 @@ async fn main() -> ExitCode {
         config.job_token.clone(),
     ));
 
-    // Mark the job running before any work, so the console shows it left the queue.
-    // A failure to even report this is terminal: the driver cannot stream, so there
-    // is nothing useful it can still do.
-    if let Err(err) = client.post_status_running().await {
-        eprintln!("could not report `running` to the backend: {err}");
+    // Mark the job starting before any work, so the console shows it left the queue
+    // and is spinning up (pre-run container setup). The driver advances it to
+    // `running` from inside `drive` once setup finishes and the harness session is
+    // about to begin. A failure to even report this is terminal: the driver cannot
+    // stream, so there is nothing useful it can still do.
+    if let Err(err) = client.post_status_starting().await {
+        eprintln!("could not report `starting` to the backend: {err}");
         return ExitCode::FAILURE;
     }
 
@@ -94,7 +96,7 @@ async fn main() -> ExitCode {
         let cancelled = wait_for_cancellation(&client);
         tokio::pin!(cancelled);
         tokio::select! {
-            outcome = drive(&config, &request, &tx) => Some(outcome),
+            outcome = drive(&config, &request, &tx, &client) => Some(outcome),
             _ = &mut cancelled => None,
         }
     };
