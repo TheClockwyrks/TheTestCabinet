@@ -1,0 +1,392 @@
+slug = "deepcore"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Deepcore"
+
+# Test type. Deepcore is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. It is NOT the older two-run pattern where a
+# separate asset-gen run makes an asset a later game merely consumes; here one model
+# both produces the art/animation/audio and builds the game around it. The `full-stack`
+# type schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
+# exactly six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
+# with one of them (`specs/assets.md` is the production contract). A root identity
+# field, so it sits above the first table.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Deepcore is
+# medium: it asks for a Motherload-style dig-and-build — a fixed-step simulation of a
+# character drilling and falling and jetpacking through a banded tile mine over a
+# vertical camera, a fuel-and-hull budget that makes the descent a round-trip gamble,
+# an ore-to-Credits economy with a five-track upgrade shop, a guaranteed-but-hidden
+# exotic-material hunt with a scanner, gas/lava/impact hazards, an unstable Core Sample
+# on a countdown, a five-component escape-rocket win condition, Standard and Hardcore
+# death modes, and multiple states — AND, on top of that, for the model to author every
+# sprite, animation, particle effect, and sound the game plays, with the produced
+# ANIMATED MINER CHARACTER as the headline. The interacting simulation plus a full
+# asset-production pass make this a demanding medium case.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["mining", "resource-management", "2d", "motherload"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A subterranean dig-and-build: drill a character down through banded rock, haul ore up \
+against a jetpack-fuel budget to sell and upgrade, hunt two buried exotic materials \
+with a scanner, and race an unstable core sample up from the bottom on a 90-second \
+timer — all to fabricate a five-part escape rocket and launch — while you produce \
+every asset, above all the animated miner across drilling, thrusting, falling, and \
+hurt, with the on-PATH tools."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT seeded
+# into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder),
+# recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run (with
+# the seeded specs and the selected variant) and handed to the model as the build
+# instruction. Injects absolute in-container paths via template variables. The
+# harness auto-prepends the standing full-stack asset-quality preamble to the
+# rendered prompt, so this template does NOT restate a global quality directive.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Deepcore is a large build — a fixed-step mining simulation with tile physics,
+# a fuel/hull/ore/Credits economy, an upgrade shop, a scanner-driven material hunt,
+# hazards, an unstable-core timed climax, a five-part rocket win condition, two death
+# modes, and multiple states, plus a full asset-production pass through six tools with an
+# animated character at its center — so it gets eight hours: comfortably more than a
+# healthy build needs while still bounding a runaway session.
+max_runtime_hours = 8
+
+# Starter workspace seeded into the root of every run before the specs. It gives the
+# model a baseline project to build on: a `package.json` that pins `playwright` as a
+# dev dependency and declares the produced-effect runtime (`packages`, below) as a
+# baked-in `file:` dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded and
+# before the harness starts. `npm install` — NOT `npm ci` — because `packages` injects
+# the `@test-cabinet/particle-runtime` `file:` dependency this build plays its produced
+# particle systems with, so the lockfile is completed at seed time; the same command
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the whole
+# point of a full-stack case: the model PRODUCES the game's art, animation, and audio
+# itself, during the run, with the six binaries on the run image's `PATH` (see `type`
+# above and `specs/assets.md`). The `reference/` mockups below are harness-side visual
+# targets rendered via `[[reference]]`, not seeded game assets.
+
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# the review UI plays a produced effect with; core bakes it into the run image and the
+# seeded workspace `package.json` depends on it via its baked-in `file:` path, so the
+# build imports it (its `/canvas` binding) like any other dependency and plays each
+# produced `system.json` by simulating it live. The VFX — drill debris, jetpack exhaust,
+# gas explosions, lava embers, ore sparkle, core extraction and detonation, launch
+# exhaust, and death bursts — are all produced `particle-2d` systems played this way;
+# see `specs/assets.md` for the consumption contract. (A root key, so it must sit above
+# the first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Deepcore offers a single `base` variant (the standard expedition), declared in its
+# own file under `variants/`. Standard vs Hardcore is an IN-GAME MODE menu — it changes
+# only what happens on death — not a variant, so there is no per-variant mode file; the
+# expedition is one and the same in both modes (`specs/modes.md`). This list is a root
+# key, so it must sit above the first `[table]` header below.
+variants = [
+  "variants/base.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults. The build
+# must be self-contained: it bundles the committed produced assets without invoking the
+# asset tools, which are on `PATH` only while the run is live (`specs/assets.md`).
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
+# The specification is decomposed by concern; all common specs are plain Markdown,
+# seeded verbatim. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
+# stripped), so these need only name the source they seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/world.md"
+
+[[spec]]
+source = "specs/character.md"
+
+[[spec]]
+source = "specs/mining.md"
+
+[[spec]]
+source = "specs/hazards.md"
+
+[[spec]]
+source = "specs/upgrades.md"
+
+[[spec]]
+source = "specs/rocket.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+# The asset-production contract: every asset the game needs, which of the six on-PATH
+# binaries produces it, where it lands in the workspace, and how it is wired into the
+# build. Seeded for every variant so the produced-asset review items and this spec stay
+# in lockstep. This is the defining spec of a full-stack case, and its animated-miner
+# section is the headline of what this build is judged on.
+[[spec]]
+source = "specs/assets.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact paths
+# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
+# entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML mockup
+# the harness renders to a screenshot and seeds as a visual target. The `title` view is
+# variant-specific (declared per variant) because the menu differs by variant; `mine`,
+# `surface`, and `game-over` look the same in every variant.
+[[reference]]
+view = "mine"
+path = "reference/mine.html"
+
+[[reference]]
+view = "surface"
+path = "reference/surface.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest` path
+# (relative to the run workspace root) the build must write a screenshot or `.webm`
+# clip to; `specs/proof.md` instructs the build to produce them at exactly these paths.
+# Validation records whether each turned up (informational). The media kind is inferred
+# from the extension: `.png` is an image, `.webm` a video (the format Playwright records
+# natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "mine"
+name = "Live dig"
+dest = "proof/mine.png"
+
+[[proof]]
+id = "surface"
+name = "Surface camp"
+dest = "proof/surface.png"
+
+[[proof]]
+id = "game-over"
+name = "End screen"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "loop"
+name = "Dig-sell-upgrade loop clip"
+dest = "proof/loop.webm"
+
+[[proof]]
+id = "core-run"
+name = "Core run + launch clip"
+dest = "proof/core-run.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The reference
+# screenshots are seeded as illustrative examples of the screens, not layouts to
+# reproduce, so menus and screens are left to the model's design and are reviewed by a
+# human rather than scored against a baseline. The automated load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — a flawless mining sim cannot mask
+# a stiff, un-produced miner, and a gorgeous animated character cannot mask a mine that
+# does not dig or an economy that cannot be won. Domains are case-level; an individual
+# review item rolls up to one through its optional `domain`, while a general item
+# (states, window fit) omits it.
+[[domain]]
+id = "simulation"
+name = "Mine & Expedition Systems"
+description = "The interacting Motherload-style systems: the character drilling down/left/right (never up) and falling/thrusting through a banded tile mine over a vertical camera; the fuel budget that makes every dig a round-trip gamble with free refuel/repair only at the surface; the ore-to-Credits economy (six ores rising in value with depth, a cargo cap, selling at the market) funding a five-track upgrade shop (fuel, drill, cargo, hull, scanner); the four depth bands whose hardness gates the descent behind drill tiers; the two guaranteed-but-hidden exotic materials found via the scanner; gas/lava/impact hazards; the unstable Core Sample extracted from the bottom on a 90-second detonation timer; the five-component escape rocket (two bought, two needing a material, one needing the Core Sample) that is the only win; and the Standard (drop-and-respawn) vs Hardcore (permadeath) death modes, installed rocket parts durable across both."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Character Animation"
+description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED MINER — the suited prospector with drill and jetpack animating distinctly for idle, walk, drill-down, drill-side, jetpack-ascend, fall, hurt, and out-of-fuel, mirrored to face its direction — plus the four band rock tiles and the carved tunnels, the six ore veins and the two material nodes and the glowing core, the gas and lava hazards (lava shimmering), the four surface buildings and the escape rocket that visibly assembles component by component, the produced particle VFX (drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, core extraction and detonation, launch exhaust, death), and the produced audio (drill/thrust loops, pickups, explosions, alarms, launch roar, and a lonely descent music bed), all wired in, with the in-code HUD, scanner indicator, core countdown, and building panels reading the state at a glance."
+
+# Reviewer checklist items, common to every variant. The major, observable
+# requirements a reviewer must explicitly check by playing the build — the things
+# validation cannot judge and that are easy to miss. Reporter-side material: never
+# seeded into a run, so the model never sees the checklist; each restates a requirement
+# the seeded specification already states. Each item is worth `weight` points toward
+# the run's score; the reviewer records a pass/fail verdict for each before the run can
+# be published. The per-domain ratings stay the reviewer's call.
+
+# --- Mine & Expedition Systems --------------------------------------------------
+[[review_item]]
+id = "dig-and-move"
+title = "Drill down/left/right (never up), fall cheap, thrust burns fuel"
+text = "The miner drills the tile it moves into — DOWN, LEFT, and RIGHT — but NEVER up: the ceiling is solid, so the only way to gain height is the jetpack through tunnels already carved. Falling through open tunnel is free and fast; jetpack thrust is the only way up and burns fuel. Drilling a tile takes a time set by the tile's band hardness and the drill tier, leaving an empty tunnel. Movement is smooth and continuous (hold a direction), the miner fits one tile, and it falls whenever unsupported."
+weight = 1
+domain = "simulation"
+proof = "mine"
+
+[[review_item]]
+id = "fuel-round-trip"
+title = "The fuel budget and the round-trip gamble"
+text = "Fuel drains from jetpack thrust (fastest), lateral air drift, a passive underground trickle, and each tile drilled, and refills to the tank maximum ONLY at the surface (free). The tension of every dig is getting back before Fuel hits 0 — running dry underground strands the miner and is a DEATH (handled by the mode). A low-fuel warning (gauge alert color + alarm) shows under 20%. Bigger fuel-tank tiers are what let a round trip reach deeper. Hull works the same way (damaged by hazards, repaired free at the surface, death at 0)."
+weight = 1
+domain = "simulation"
+proof = "loop"
+
+[[review_item]]
+id = "ore-economy-upgrades"
+title = "Ore → Credits → upgrades economy"
+text = "Drilling an ore vein adds one unit to a capped cargo bay (ore left in the ground when full); the six ores rise steeply in value with depth (Ferron 6 → Adamite 300). Selling the cargo at the Ore Market is the ONLY Credit source; Credits are spent at the Upgrade Shop on five tracks (fuel tank, drill, cargo bay, hull, scanner), each five tiers bought in order at the pinned prices, and on the rocket. Starting Credits are 0; the loop is dig → fill cargo → climb → sell → upgrade → deeper."
+weight = 1
+domain = "simulation"
+proof = "surface"
+
+[[review_item]]
+id = "depth-bands-hardness"
+title = "Four depth bands whose hardness gates the descent"
+text = "The mine is banded — Topsoil (soft), Rockbed, Deepstone, Coreshell (very hard) — each visibly distinct (its own rock fill, a rising glow toward the core) so depth reads from the world, not just the meter, and each harder to drill than the last. A tile whose hardness exceeds the drill's power still drills but PUNISHINGLY slowly, so reaching the deepstone and coreshell at a workable pace requires buying up the drill tier — one of the ways the economy paces the descent. Depth is shown in meters."
+weight = 1
+domain = "simulation"
+proof = "mine"
+
+[[review_item]]
+id = "materials-scanner"
+title = "Guaranteed-but-hidden exotic materials and the scanner"
+text = "Two buried materials — Resonite in the Rockbed band, Cryenite in the Deepstone band — are placed at RANDOM positions within their band but GUARANTEED to exist there (the Terraria model), and are located by an always-on SCANNER that points (direction + distance) to the nearest material the player still needs, within a range set by the scanner tier. Materials ride in a separate satchel — never sold, never taking a cargo slot. A run can never be soft-locked by an unlucky map."
+weight = 1
+domain = "simulation"
+proof = "mine"
+
+[[review_item]]
+id = "hazards"
+title = "Gas, lava, and impact hazards"
+text = "The deep dig is a gauntlet with NO enemies — the mine itself is the adversary. Drilling into a gas pocket DETONATES it (a hull hit + knockback + burst VFX). Lava is unminable and drains hull fast on contact, so it must be routed around (it never fully seals the way down). Landing too fast deals impact hull damage scaled to the excess speed, rewarding feathering the descent. Gas appears from the rockbed down and lava from the deepstone down, denser with depth."
+weight = 1
+domain = "simulation"
+proof = "core-run"
+
+[[review_item]]
+id = "core-run-timer"
+title = "The unstable Core Sample and its 90-second timer"
+text = "At the bottom (the Core chamber past the coreshell's lava) the miner extracts the unstable CORE SAMPLE, which starts a 90-second destabilization countdown that does NOT pause. It must be hauled up and installed as the Ignition Core before the timer expires; if it expires it DETONATES for lethal damage (killing the miner — the deliberate replacement for a boss fight). Dying while carrying it DESTROYS the sample regardless of mode, so a failed core run means returning for a fresh one. The timer forces the fuel/hull upgrades to be in place first."
+weight = 1
+domain = "simulation"
+proof = "core-run"
+
+[[review_item]]
+id = "rocket-victory"
+title = "The five-component escape rocket is the only win"
+text = "Winning means fabricating and installing five rocket components at the Launch Pad, in order: Hull Frame and Fuel Cells (Credits only), Guidance Unit (Credits + 1 Resonite), Thruster Assembly (Credits + 1 Cryenite), and Ignition Core (Credits + the Core Sample). Because the deep parts cannot be bought at any price, the shallows alone can't win — the rocket forces the full descent. Fabricating consumes the Credits and the material and visibly adds the part to the rocket on the pad; installing all five enables LAUNCH → Victory. There is no boss and no other ending."
+weight = 1
+domain = "simulation"
+proof = "surface"
+
+[[review_item]]
+id = "modes-death"
+title = "Standard vs Hardcore modes change only death"
+text = "After NEW EXPEDITION, a MODE SELECT offers Standard and Hardcore, each stating its death rule. In STANDARD, death drops the carried cargo and uninstalled materials as a retrievable cache at the death site and respawns the miner at the surface (full fuel/hull), keeping Credits, upgrades, and installed rocket parts — no Game Over from death. In HARDCORE, death ends the run (permadeath, Game Over → PLAY AGAIN fresh). Everything else — world, economy, hazards, goal — is identical across modes, and the Core Sample never survives a death, while installed rocket parts always do."
+weight = 1
+domain = "simulation"
+proof = "game-over"
+
+# --- Presentation & Character Animation ------------------------------------------
+[[review_item]]
+id = "produced-miner-animation"
+title = "The produced, animated miner (the headline)"
+text = "The prospector is drawn from sprite-sheet cycles the build PRODUCED with draw-sheet, and it visibly ANIMATES a distinct cycle for each thing it does — idle (a breathing/lamp bob), walk, drill-down, drill-side, jetpack-ascend (with a flame flicker), fall, hurt (a sharp flinch on damage), and out-of-fuel slump — mirrored to face left/right, with a consistent suited silhouette and its drill and jetpack across the set. This is half of what the build is judged on: a stiff, single-frame miner is a failed build, not a placeholder to excuse."
+weight = 1
+domain = "presentation"
+proof = "loop"
+
+[[review_item]]
+id = "produced-environment"
+title = "Produced band tiles, ore, materials, and hazards"
+text = "The four band rock tiles (topsoil earth, rockbed stone, deepstone, red-glowing coreshell), the bedrock border, the carved tunnels, the six ore veins (each reading as its ore), the two material nodes (Resonite, Cryenite) and the glowing core, and the gas-pocket and lava tiles are all drawn from sprites the build produced with draw/draw-sheet (the lava shimmering), in the palette — so the band a player is in, an ore vein against plain rock, a material against ore, and a hazard against safe ground all read at a glance. Not flat rectangles or ad-hoc canvas fills."
+weight = 1
+domain = "presentation"
+proof = "mine"
+
+[[review_item]]
+id = "produced-buildings-rocket"
+title = "Produced surface buildings and the assembling rocket"
+text = "The four surface buildings (Fuel Depot, Ore Market, Upgrade Shop, Launch Pad) are produced sprites that read clearly as what they are on the scrapped surface under the dusk sky, and the escape ROCKET on the pad visibly GAINS each installed component as it is fabricated (assembly-stage frames or stacked per-component sprites) from bare pad to launch-ready — the player's win-progress read and a bespoke centerpiece asset."
+weight = 1
+domain = "presentation"
+proof = "surface"
+
+[[review_item]]
+id = "produced-vfx"
+title = "Produced particle VFX"
+text = "The drill debris, jetpack exhaust, ore sparkle, material shimmer, gas explosion, lava embers, impact dust, core extraction pulse, the big core detonation, the launch exhaust, and the death burst are particle systems the build authored with particle-2d and plays live through @test-cabinet/particle-runtime's canvas binding — simulated bursts fired at the moment and position of each event, VARYING shot to shot, not flat flashes or hand-coded loops. The core detonation and launch exhaust in particular read as dramatic, produced effects."
+weight = 1
+domain = "presentation"
+proof = "core-run"
+
+[[review_item]]
+id = "produced-audio"
+title = "Produced sound and music"
+text = "The mine has real audio the build produced with the audio tools: a drill loop, a jetpack thrust loop, an ore pickup, a material chime, a gas explosion, a lava sizzle, an impact thud, a purchase/fabricate confirm, a launch roar, a death cue, and the low-fuel and core-timer alarms (sfx-synth and/or sfx-sample), plus a lonely industrial descent music bed (music), played via Web Audio on the matching events and looping the bed — not silence, and not a downloaded or hand-oscillated stand-in. Audio does not autostart before the player interacts, and a mute toggle is present."
+weight = 1
+domain = "presentation"
+proof = "core-run"
+
+[[review_item]]
+id = "readable-hud"
+title = "Readable HUD, scanner, and panels"
+text = "A player can tell at a glance — Fuel and Hull (turning to the alert color as they run low), Cargo as used/capacity, Credits, Depth in meters, and which materials are in the satchel — and read the SCANNER indicator (direction + distance to the nearest needed material), the prominent CORE-SAMPLE COUNTDOWN while carrying it, and the surface panels (the Ore Market cargo breakdown, the Upgrade Shop's five tracks and prices, the Launch Pad rocket checklist). The HUD, scanner, countdown, panels, tile grid, and death-cache marker are drawn in code in the palette; only their small icons may be produced sprites."
+weight = 1
+domain = "presentation"
+proof = "surface"
+
+# --- General (states, window fit) — no domain -----------------------------------
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu (NEW EXPEDITION, HOW TO PLAY), mode select (Standard/Hardcore, or back to the menu), how-to-play, the live in-mine state with its HUD and the four surface building panels, the Esc pause menu (resume/restart/quit to menu), Victory after a launch (run summary, PLAY AGAIN in the same mode, MENU), and — in Hardcore only — Game Over on death (Standard instead drops-and-respawns and continues). Each end screen shows the run summary."
+weight = 1
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the top status bar and the full mine viewport, all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input. The mine world is exactly the viewport width (no horizontal scroll); the camera follows the miner vertically only."
+weight = 1
