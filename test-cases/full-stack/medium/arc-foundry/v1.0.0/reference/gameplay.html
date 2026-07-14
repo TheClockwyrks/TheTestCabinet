@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<!--
+  Arc Foundry — live-board reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system,
+  visual design), ../specs/board.md (the 20px tile grid, the uniform 2x2 footprint,
+  the ordered-waypoint mazing model, the three maps, HUD layout), ../specs/enemies.md
+  (the Load roster), ../specs/towers.md (the five component types and the Scrap ->
+  Tesla-Prime quality ladder), ../specs/build.md (the scrap-press: stamp / slag /
+  combine), ../specs/flow.md (the economy + HUD), and ../specs/assets.md (these are
+  stand-ins for PRODUCED sprites, animations, and — the headline — live electrical
+  PARTICLE VFX: arcs, chain-lightning, spark showers, discharge rings).
+
+  This frame depicts MAP A "The Substation" (specs/board.md, sec. 4.1) mid-wave:
+  the ordered waypoint chain E -> WP1 -> WP2 -> WP3 -> WP4 -> Collector, the Load's
+  live shortest-open route weaving AROUND a maze of stamped components + slag walls
+  (towers ARE walls), more than one component TYPE and more than one QUALITY TIER on
+  the board, a scrap-press STAMP in progress (build spark), a COMBINE climbing the
+  ladder (combine flash), and several electrical VFX mid-fire. The exact waypoints,
+  the maze, the component mix, and the Load shown are one representative moment for a
+  soft palette/layout comparison, not a strict pixel match. Objects inside .board use
+  BOARD-LOCAL coordinates (the board starts at stage y=56).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Arc Foundry — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- ================= Top status bar ============================== -->
+      <div class="topbar">
+        <div class="stat">
+          <span class="ico charge">&#9889;</span>
+          <span class="k">CHARGE</span><span class="v charge">268</span>
+        </div>
+        <div class="stat">
+          <span class="ico integ">&#9707;</span>
+          <span class="k">GRID</span><span class="v integ">17</span>
+        </div>
+        <div class="wave">WAVE 12 <span class="prog">/ 30 &middot; 24 LEFT</span></div>
+        <div class="spacer"></div>
+        <div class="ctrls">
+          <div class="ctrl active">&#9654;&#9654; 2x</div>
+          <div class="ctrl">&#10073;&#10073;</div>
+          <div class="ctrl">&#128266;</div>
+        </div>
+      </div>
+
+      <!-- ================= Board (the yard) ============================ -->
+      <div class="board">
+        <!-- SVG field layer: the waypoint chain (faint dashed), the Load's live
+             route (bright cable weaving around the maze), and firing arcs. viewBox
+             is board-local 1000x664. -->
+        <svg class="field" viewBox="0 0 1000 664">
+          <!-- Ordered waypoint chain E -> WP1 -> WP2 -> WP3 -> WP4 -> C. -->
+          <polyline points="10,90 950,90 950,570 50,570 50,330 990,330"
+            fill="none" stroke="#2b3d4e" stroke-width="2" stroke-dasharray="5 9" opacity="0.65" />
+
+          <!-- The Load's live shortest-open route: serpentines the top leg through
+               the maze's gaps, down the right edge, along the bottom, up the left,
+               and across the middle to the Collector. Wide dim glow + bright core. -->
+          <polyline points="10,90 200,90 200,270 260,270 340,270 340,90 400,90 480,90 480,270 540,270 620,270 620,90 680,90 760,90 760,270 820,270 900,90 950,90 950,570 600,570 560,600 480,600 50,570 50,330 360,330 400,300 460,300 500,330 990,330"
+            fill="none" stroke="#2f5a78" stroke-width="10" stroke-linejoin="round" stroke-linecap="round" opacity="0.5" />
+          <polyline points="10,90 200,90 200,270 260,270 340,270 340,90 400,90 480,90 480,270 540,270 620,270 620,90 680,90 760,90 760,270 820,270 900,90 950,90 950,570 600,570 560,600 480,600 50,570 50,330 360,330 400,300 460,300 500,330 990,330"
+            fill="none" stroke="#8fd6ff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.85" />
+
+          <!-- Filament flyer's straight-line path (ignores the maze): E -> over the
+               yard -> Collector, shown faint. -->
+          <polyline points="10,90 990,330" fill="none" stroke="#d6b6ff" stroke-width="1.5" stroke-dasharray="3 7" opacity="0.4" />
+
+          <!-- Chain-lightning (Coil, bottom leg): forked bolt leaping between three
+               hit units, dimming per jump. Wide violet glow + white core. -->
+          <polyline points="460,520 482,540 500,555 528,547 560,545 584,557 600,560"
+            fill="none" stroke="#b06bff" stroke-width="6" stroke-linecap="round" opacity="0.5" />
+          <polyline points="460,520 482,540 500,555 528,547 560,545 584,557 600,560"
+            fill="none" stroke="#eaf6ff" stroke-width="1.8" stroke-linecap="round" opacity="0.95" />
+
+          <!-- Arc bolt (Capacitor, mid leg -> Slug): a crackling blue-white bolt. -->
+          <polyline points="380,340 416,332 452,342 500,332"
+            fill="none" stroke="#4aa6ff" stroke-width="4.5" stroke-linecap="round" opacity="0.45" />
+          <polyline points="380,340 416,332 452,342 500,332"
+            fill="none" stroke="#cfe8ff" stroke-width="1.6" stroke-linecap="round" opacity="0.95" />
+
+          <!-- Discharge Rig heavy bolt (col-2 rig -> Mote): a fat, violent crack. -->
+          <polyline points="400,180 428,172 456,188 480,178"
+            fill="none" stroke="#ff5470" stroke-width="7" stroke-linecap="round" opacity="0.45" />
+          <polyline points="400,180 428,172 456,188 480,178"
+            fill="none" stroke="#ffd6de" stroke-width="2.2" stroke-linecap="round" opacity="0.95" />
+        </svg>
+
+        <!-- Entry (feeder vent), waypoint pylons, Collector. -->
+        <div class="entry" style="left: 10px; top: 90px">&#9656;</div>
+        <div class="pylon" style="left: 950px; top: 90px">1</div>
+        <div class="pylon" style="left: 950px; top: 570px">2</div>
+        <div class="pylon" style="left: 50px; top: 570px">3</div>
+        <div class="pylon" style="left: 50px; top: 330px">4</div>
+        <div class="collector" style="left: 990px; top: 330px">&#9633;</div>
+
+        <!-- Selected Capacitor's range ring (drawn in code in the real game). -->
+        <div class="range" style="left: 540px; top: 120px; width: 232px; height: 232px"></div>
+
+        <!-- ===== The maze: stamped components (towers ARE walls) + slag walls.
+             Five component TYPES and five QUALITY TIERS (t1 Scrap .. t5 Tesla-Prime)
+             are present so the ladder reads at a glance. Each .comp is a uniform 2x2
+             (40x40) footprint anchored by its top-left tile; the .head points at the
+             target. ===== -->
+
+        <!-- Column 1 (col 12) — hangs from the top edge; route passes below it. -->
+        <div class="comp coil t5" style="left: 240px; top: 40px; transform: rotate(28deg)">
+          <span class="core">L</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="comp cap t3" style="left: 240px; top: 80px; transform: rotate(20deg)">
+          <span class="core">C</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+        <div class="slag" style="left: 240px; top: 120px"></div>
+
+        <!-- Column 2 (col 19) — rises from mid; route passes above it. -->
+        <div class="comp rig t4" style="left: 380px; top: 140px">
+          <span class="core">D</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="comp emit t2" style="left: 380px; top: 180px; transform: rotate(-40deg)">
+          <span class="core">E</span><span class="head"></span>
+          <span class="pips"><i></i><i></i></span>
+        </div>
+        <div class="slag" style="left: 380px; top: 220px"></div>
+
+        <!-- Column 3 (col 26) — a COMBINE pair (two Tuned Capacitors) mid-merge. -->
+        <div class="comp node t3" style="left: 520px; top: 40px">
+          <span class="core">A</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+        <div class="comp cap t2" style="left: 520px; top: 80px; transform: rotate(12deg)">
+          <span class="core">C</span><span class="head"></span>
+          <span class="pips"><i></i><i></i></span>
+        </div>
+        <div class="comp cap t2" style="left: 520px; top: 120px; transform: rotate(-8deg)">
+          <span class="core">C</span><span class="head"></span>
+          <span class="pips"><i></i><i></i></span>
+        </div>
+
+        <!-- Column 4 (col 33) — rises from mid; a Scrap capacitor shows the low end. -->
+        <div class="comp coil t3" style="left: 660px; top: 140px; transform: rotate(-18deg)">
+          <span class="core">L</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+        <div class="slag" style="left: 660px; top: 180px"></div>
+        <div class="comp cap t1" style="left: 660px; top: 220px">
+          <span class="core">C</span><span class="head"></span>
+          <span class="pips"><i></i></span>
+        </div>
+
+        <!-- Column 5 (col 40) — hangs from top; Arc-Node discharges into a Cluster pack. -->
+        <div class="comp rig t2" style="left: 800px; top: 40px; transform: rotate(48deg)">
+          <span class="core">D</span><span class="head"></span>
+          <span class="pips"><i></i><i></i></span>
+        </div>
+        <div class="slag" style="left: 800px; top: 80px"></div>
+        <div class="comp node t4" style="left: 800px; top: 120px; transform: rotate(62deg)">
+          <span class="core">A</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i></span>
+        </div>
+
+        <!-- Bottom leg — a Charged Coil chaining, plus slag maze. -->
+        <div class="comp coil t4" style="left: 440px; top: 500px">
+          <span class="core">L</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="slag" style="left: 560px; top: 520px"></div>
+
+        <!-- Mid leg — a Charged Capacitor and a Charged Discharge Rig. -->
+        <div class="comp cap t3" style="left: 360px; top: 320px; transform: rotate(-6deg)">
+          <span class="core">C</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+        <div class="comp rig t3" style="left: 600px; top: 280px; transform: rotate(-14deg)">
+          <span class="core">D</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+
+        <!-- A fresh scrap-press STAMP landing: the held ghost + a build-spark shower. -->
+        <div class="ghost" style="left: 860px; top: 480px"></div>
+        <div class="vfx spark" style="left: 880px; top: 500px"></div>
+
+        <!-- ===== Electrical VFX (produced particle systems in the real build) ===== -->
+        <!-- COMBINE flash: the two Tuned Capacitors imploding into a Charged one. -->
+        <div class="vfx combine" style="left: 540px; top: 140px"></div>
+        <!-- Discharge ring: the Arc-Node's splash over the Cluster pack. -->
+        <div class="vfx ring" style="left: 820px; top: 270px; width: 128px; height: 128px"></div>
+        <!-- Muzzle glow at the firing Discharge Rig head. -->
+        <div class="vfx muzzle" style="left: 418px; top: 178px"></div>
+        <!-- Spark-burst impacts where bolts land. -->
+        <div class="vfx impact" style="left: 500px; top: 332px"></div>
+        <div class="vfx impact" style="left: 480px; top: 178px"></div>
+        <!-- A death discharge where a unit just popped. -->
+        <div class="vfx death" style="left: 762px; top: 300px"></div>
+        <!-- Leak alarm: a unit grounding out at the Collector. -->
+        <div class="vfx leak" style="left: 990px; top: 330px"></div>
+
+        <!-- ===== The Load (charge units), each with a health bar ===== -->
+        <!-- Top leg: Motes + a Spark routing through the maze gaps. -->
+        <div class="unit mote" style="left: 200px; top: 180px">
+          <span class="hp"><i style="width: 82%"></i></span><span class="body"></span>
+        </div>
+        <div class="unit spark" style="left: 340px; top: 180px">
+          <span class="hp"><i class="mid" style="width: 55%"></i></span><span class="body"></span>
+        </div>
+        <div class="unit mote" style="left: 480px; top: 178px">
+          <span class="hp"><i class="low" style="width: 22%"></i></span><span class="body"></span>
+        </div>
+        <!-- Mid leg: a Slug tank taking a capacitor bolt. -->
+        <div class="unit slug" style="left: 500px; top: 332px">
+          <span class="hp"><i style="width: 68%"></i></span><span class="body"></span>
+        </div>
+        <!-- Filament flyer crossing straight over the maze. -->
+        <div class="unit filament" style="left: 600px; top: 210px">
+          <span class="hp"><i style="width: 90%"></i></span><span class="body"></span>
+        </div>
+        <!-- Cluster pack flooding the col-5 chokepoint (under the discharge ring). -->
+        <div class="unit cluster" style="left: 805px; top: 255px"><span class="body"></span></div>
+        <div class="unit cluster" style="left: 828px; top: 258px"><span class="body"></span></div>
+        <div class="unit cluster" style="left: 812px; top: 280px"><span class="body"></span></div>
+        <div class="unit cluster" style="left: 836px; top: 274px"><span class="body"></span></div>
+        <div class="unit cluster" style="left: 800px; top: 272px"><span class="body"></span></div>
+        <!-- Bottom leg: three units caught in the Coil's chain-lightning. -->
+        <div class="unit mote" style="left: 500px; top: 555px">
+          <span class="hp"><i class="mid" style="width: 48%"></i></span><span class="body"></span>
+        </div>
+        <div class="unit spark" style="left: 560px; top: 545px">
+          <span class="hp"><i class="low" style="width: 30%"></i></span><span class="body"></span>
+        </div>
+        <div class="unit mote" style="left: 600px; top: 560px">
+          <span class="hp"><i class="low" style="width: 18%"></i></span><span class="body"></span>
+        </div>
+      </div>
+
+      <!-- ================= Right build panel =========================== -->
+      <div class="panel-right">
+        <div class="panel-h">SCRAP-PRESS</div>
+        <div class="press">
+          <div class="stamp">
+            <span class="rig">&#9881;</span>
+            <span class="nm">STAMP</span>
+            <span class="cost">&#9889; 18</span>
+          </div>
+          <div class="allow">
+            STAMPS THIS LEVEL
+            <span class="dots"><i class="spent"></i><i class="spent"></i><i></i><i></i><i></i></span>
+          </div>
+        </div>
+
+        <div class="panel-h">COMPONENTS</div>
+        <div class="legend">
+          <div class="legend-item"><span class="glyph cap">C</span><span class="nm">CAPACITOR</span><span class="role">BOLT</span></div>
+          <div class="legend-item"><span class="glyph coil">L</span><span class="nm">COIL</span><span class="role">CHAIN</span></div>
+          <div class="legend-item"><span class="glyph emit">E</span><span class="nm">EMITTER</span><span class="role">SPARK</span></div>
+          <div class="legend-item"><span class="glyph node">A</span><span class="nm">ARC-NODE</span><span class="role">SPLASH</span></div>
+          <div class="legend-item"><span class="glyph rig">D</span><span class="nm">DISCHARGE RIG</span><span class="role">HEAVY</span></div>
+        </div>
+
+        <!-- Selected-component inspector: the Tuned Capacitor (a match exists on the
+             board, so COMBINE is offered). -->
+        <div class="inspect">
+          <div class="title">CAPACITOR <span class="tchip t3">&#9889; TUNED &middot; T2</span></div>
+          <div class="sub">Single-target bolt &middot; combine two to climb a tier</div>
+          <div class="row"><span>DAMAGE</span><b>18</b></div>
+          <div class="row"><span>RANGE</span><b>116</b></div>
+          <div class="row"><span>FIRE RATE</span><b>1.6 /s</b></div>
+          <div class="targ">TARGET
+            <span class="opt on">FIRST</span><span class="opt">LAST</span><span class="opt">NEAR</span><span class="opt">STRONG</span>
+          </div>
+          <div class="btns">
+            <div class="btn combine">COMBINE</div>
+            <div class="btn b-slag">SLAG +12</div>
+            <div class="btn sell">SELL 25</div>
+          </div>
+        </div>
+
+        <div class="wave-ctrl">
+          <div class="start-btn live">WAVE 12 &middot; ACTIVE</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

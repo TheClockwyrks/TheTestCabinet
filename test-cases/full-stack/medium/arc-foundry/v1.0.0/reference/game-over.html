@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!--
+  Arc Foundry — grid-overload (defeat) reference mockup.
+  Canonical view slug: game-over
+  Render at a 1280x720 viewport. See ../specs/flow.md (the Overload state: shown when
+  Grid Integrity reaches 0 — the wave reached, final score, TRY AGAIN / MENU). The
+  dimmed live yard behind the panel is illustrative only.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Arc Foundry — Grid overload</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- Dimmed status bar: Grid Integrity has hit zero. -->
+      <div class="topbar dim">
+        <div class="stat"><span class="ico charge">&#9889;</span><span class="k">CHARGE</span><span class="v charge">142</span></div>
+        <div class="stat"><span class="ico integ">&#9707;</span><span class="k">GRID</span><span class="v low">0</span></div>
+        <div class="wave">WAVE 18 <span class="prog">/ 30</span></div>
+        <div class="spacer"></div>
+        <div class="ctrls"><div class="ctrl">&#9654; 1x</div><div class="ctrl">&#10073;&#10073;</div></div>
+      </div>
+
+      <!-- Dimmed live yard behind the panel, for atmosphere. -->
+      <div class="board dim">
+        <svg class="field" viewBox="0 0 1000 664">
+          <polyline points="10,90 950,90 950,570 50,570 50,330 990,330"
+            fill="none" stroke="#2b3d4e" stroke-width="2" stroke-dasharray="5 9" opacity="0.65" />
+          <polyline points="10,90 300,90 300,300 520,300 520,90 760,90 760,300 950,90 950,570 50,570 50,330 990,330"
+            fill="none" stroke="#2f5a78" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" />
+        </svg>
+        <div class="entry" style="left: 10px; top: 90px">&#9656;</div>
+        <div class="collector" style="left: 990px; top: 330px">&#9633;</div>
+        <div class="comp coil t4" style="left: 280px; top: 60px"><span class="core">L</span><span class="head"></span><span class="pips"><i></i><i></i><i></i><i></i></span></div>
+        <div class="slag" style="left: 280px; top: 100px"></div>
+        <div class="comp rig t3" style="left: 500px; top: 60px"><span class="core">D</span><span class="head"></span><span class="pips"><i></i><i></i><i></i></span></div>
+        <div class="comp node t2" style="left: 740px; top: 60px"><span class="core">A</span><span class="head"></span><span class="pips"><i></i><i></i></span></div>
+        <div class="comp cap t5" style="left: 360px; top: 320px"><span class="core">C</span><span class="head"></span><span class="pips"><i></i><i></i><i></i><i></i><i></i></span></div>
+        <div class="vfx leak" style="left: 990px; top: 330px"></div>
+        <div class="unit dynamo" style="left: 900px; top: 330px"><span class="hp"><i class="low" style="width: 12%"></i></span><span class="body"></span></div>
+        <div class="unit slug" style="left: 640px; top: 570px"><span class="body"></span></div>
+        <div class="unit mote" style="left: 500px; top: 570px"><span class="body"></span></div>
+      </div>
+
+      <div class="overlay"></div>
+      <div class="panel-modal">
+        <p class="panel-eyebrow">GRID INTEGRITY FAILED</p>
+        <h1 class="panel-title">OVERLOAD</h1>
+        <p class="panel-stat">REACHED WAVE 18 / 30</p>
+        <p class="panel-sub">SCORE 24,180</p>
+        <div class="panel-actions">
+          <div class="action primary">TRY AGAIN</div>
+          <div class="action">MENU</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

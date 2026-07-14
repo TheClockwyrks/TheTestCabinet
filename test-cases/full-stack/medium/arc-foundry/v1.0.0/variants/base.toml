@@ -1,0 +1,21 @@
+# The default (and only) Arc Foundry variant: the standard SALVAGE campaign. Listed
+# first in the case manifest's `variants`, so it is the default. Difficulty
+# (Easy / Medium / Hard) is chosen on the in-game DIFFICULTY SELECT menu and changes
+# only the wave count and enemy toughness (`specs/modes.md`), so it is NOT a variant —
+# there is one campaign, and this variant carries no per-variant mode spec. Every path
+# here resolves against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard SALVAGE campaign: 130 starting Charge, 20 Grid Integrity, with Easy/Medium/Hard chosen in-game (they change only the wave count and enemy toughness)."
+
+# The campaign start is seeded to the stable path `specs/mode.md` that the common
+# specs reference (its main-menu `SALVAGE` entry and the campaign framing). `dest` is
+# given explicitly because the source name differs from the seeded path. Difficulty
+# itself stays in-game (`specs/modes.md`); this only supplies the single start.
+spec = [{ source = "specs/mode-standard.md", dest = "specs/mode.md" }]
+
+# This variant's own `title` reference. The main menu lists a single SALVAGE start, so
+# the title mockup is variant-specific; `map-select`, `gameplay`, and `game-over` are
+# common (declared in the main manifest). Each `path` is a static HTML mockup the
+# harness renders to a screenshot and seeds as a visual target.
+reference = [{ view = "title", path = "reference/menu-base.html" }]
