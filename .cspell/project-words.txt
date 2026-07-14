@@ -359,3 +359,14 @@ subemitter
 headlessly
 accum
 lerp
+
+# Arc Foundry electro-industrial GemTD test case.
+gemtd
+reskin
+serpentines
+criss
+tanky
+# Arc Foundry reference-mockup CSS identifiers (harness-side only).
+integ
+tchip
+targ

@@ -1,0 +1,393 @@
+slug = "arc-foundry"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Arc Foundry"
+
+# Test type. Arc Foundry is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE the game's own assets
+# DURING the run, using the asset-generation binaries on the run image's `PATH`, and
+# then build a game that uses them. It is NOT the older two-run pattern where a
+# separate asset-gen run makes an asset a later game merely consumes; here one model
+# both produces the art/effects/audio and builds the game around it. The `full-stack`
+# type schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
+# exactly six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
+# with one of them (`specs/assets.md` is the production contract). A root identity
+# field, so it sits above the first table.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Arc Foundry is
+# medium: it asks for a GemTD-style tower defense — a fixed-step simulation of the Load
+# pathfinding an ORDERED-WAYPOINT maze across three chosen maps with live re-pathing and
+# a never-seal rule, a random scrap-press build with a keep/slag/combine loop over a
+# five-rung quality ladder, five component types with automatic targeting and traveling
+# electrical projectiles, an economy of Charge/interest/Grid Integrity, an escalating
+# wave campaign that ends in a Dynamo boss, an in-game Easy/Medium/Hard difficulty menu,
+# and multiple states — AND, on top of that, for the model to author every sprite,
+# animation, particle effect, and sound the game plays, with the produced ELECTRICAL VFX
+# as the headline. The interacting simulation plus a full asset-production pass make this
+# a demanding medium case.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["tower-defense", "strategy", "2d", "gemtd"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+An electro-industrial GemTD: feed a scrap-press that stamps a random salvaged \
+electrical component at a random quality tier, and decide each one's fate on the \
+board — keep it firing, slag it into inert wall, or combine two matches up the \
+Scrap-to-Tesla-Prime ladder — while every stamp is also a maze wall the Load must \
+crawl around an ordered chain of waypoints, and you produce every sprite, arc, \
+chain-lightning, discharge, and sound with the on-PATH asset tools."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT seeded
+# into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder),
+# recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run (with
+# the seeded specs and the selected variant) and handed to the model as the build
+# instruction. Injects absolute in-container paths via template variables. The
+# harness auto-prepends the standing full-stack asset-quality preamble to the
+# rendered prompt, so this template does NOT restate a global quality directive.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Arc Foundry is a large build — a fixed-step GemTD simulation with waypoint
+# mazing and live re-pathing, a random scrap-press build loop over a five-rung quality
+# ladder, five component types, three maps, an in-game difficulty menu, a dozens-of-waves
+# campaign, and multiple states, plus a full asset-production pass through six tools — so
+# it gets eight hours: comfortably more than a healthy build needs while still bounding a
+# runaway session.
+max_runtime_hours = 8
+
+# Starter workspace seeded into the root of every run before the specs. It gives the
+# model a baseline project to build on: a `package.json` that pins `playwright` as a
+# dev dependency and declares the produced-effect runtime (`packages`, below) as a
+# baked-in `file:` dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded and
+# before the harness starts. `npm install` — NOT `npm ci` — because `packages`
+# injects the `@test-cabinet/particle-runtime` `file:` dependency this build plays
+# its produced particle systems with, so the lockfile is completed at seed time; the
+# same command downloads the Playwright Chromium build (the base image ships the OS
+# libraries Chromium links against, but not the browser binary), so the model can
+# build and verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the
+# whole point of a full-stack case: the model PRODUCES the game's art, effects, and
+# audio itself, during the run, with the six binaries on the run image's `PATH` (see
+# `type` above and `specs/assets.md`). The `reference/` mockups below are
+# harness-side visual targets rendered via `[[reference]]`, not seeded game assets.
+
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# the review UI plays a produced effect with; core bakes it into the run image and
+# the seeded workspace `package.json` depends on it via its baked-in `file:` path, so
+# the build imports it (its `/canvas` binding) like any other dependency and plays
+# each produced `system.json` by simulating it live. The electrical VFX — the build
+# spark, combine flash, arc bolts, chain-lightning, spark sprays, discharge rings,
+# impacts, deaths, and the leak alarm — are all produced `particle-2d` systems played
+# this way; see `specs/assets.md` for the consumption contract. (A root key, so it
+# must sit above the first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Arc Foundry offers a single `base` variant (the standard SALVAGE campaign),
+# declared in its own file under `variants/`. Difficulty (Easy / Medium / Hard) is an
+# IN-GAME menu — it changes only the wave count and enemy toughness — not a variant, so
+# there is no per-variant mode file; the campaign is one and the same at every
+# difficulty (`specs/modes.md`). This list is a root key, so it must sit above the
+# first `[table]` header below.
+variants = [
+  "variants/base.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults. The build
+# must be self-contained: it bundles the committed produced assets without invoking the
+# asset tools, which are on `PATH` only while the run is live (`specs/assets.md`).
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern; all common specs are plain
+# Markdown, seeded verbatim. A spec's `dest` defaults to its `source` (with a trailing
+# `.hbs` stripped), so these need only name the source they seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/board.md"
+
+[[spec]]
+source = "specs/enemies.md"
+
+[[spec]]
+source = "specs/towers.md"
+
+[[spec]]
+source = "specs/build.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+# The asset-production contract: every asset the game needs, which of the six
+# on-PATH binaries produces it, where it lands in the workspace, and how it is wired
+# into the build. Seeded for every variant so the produced-asset review items and
+# this spec stay in lockstep. This is the defining spec of a full-stack case, and its
+# electrical-VFX section is the headline of what this build is judged on.
+[[spec]]
+source = "specs/assets.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact paths
+# the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
+# entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup the harness renders to a screenshot and seeds as a visual target. The
+# `title` view is variant-specific (declared per variant) because the menu differs by
+# variant; `map-select`, `gameplay`, and `game-over` look the same in every variant.
+[[reference]]
+view = "map-select"
+path = "reference/map-select.html"
+
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest` path
+# (relative to the run workspace root) the build must write a screenshot or `.webm`
+# clip to; `specs/proof.md` instructs the build to produce them at exactly these
+# paths. Validation records whether each turned up (informational). The media kind is
+# inferred from the extension: `.png` is an image, `.webm` a video (the format
+# Playwright records natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Live board"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Overload"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "systems"
+name = "Scrap-press build loop clip"
+dest = "proof/systems.webm"
+
+[[proof]]
+id = "pressure"
+name = "Late-wave pressure clip"
+dest = "proof/pressure.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The reference
+# screenshots are seeded as illustrative examples of the screens, not layouts to
+# reproduce, so menus and screens are left to the model's design and are reviewed by
+# a human rather than scored against a baseline. The automated load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — flawless GemTD systems cannot
+# mask crude, un-produced art, and gorgeous produced VFX cannot mask a maze that does
+# not path. Domains are case-level; an individual review item rolls up to one through
+# its optional `domain`, while a general item (states, window fit) omits it.
+[[domain]]
+id = "simulation"
+name = "Foundry Systems"
+description = "The interacting GemTD systems: the map select and its three ordered-waypoint maps (The Substation's edge-hugging serpentine, The Switchyard's center-crossing star, The Transformer Yard's fixed housings), the Load pathfinding the shortest OPEN route around the walls between consecutive waypoints with live re-pathing and the never-seal rule, the random scrap-press build (a random component type at a random quality on weighted-low odds, five stamps a level), the three fates (keep firing, slag into inert wall, combine two matches one tier up the Scrap-to-Tesla-Prime ladder), the five component types with their firing identities and automatic targeting, the Load roster with its maze-ignoring Filament flyer and Dynamo boss, the Charge / interest / Grid Integrity economy, the escalating wave campaign, and the in-game Easy/Medium/Hard difficulty that changes only wave count and enemy toughness."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Electrical VFX"
+description = "The genuinely tool-produced assets and how the build presents them: the five component sprites across all five quality tiers (finish escalating pitted-Scrap to mirror-chromed Tesla-Prime, a rotatable head over a fixed base) with the inert slag wall and the traveling projectiles, the six Load types with their charge-cycle animations, the airborne Filament, and the seething Dynamo, the yard art (substrate, feeder-vent Entry, grounding Collector, waypoint pylons, Map C's transformer housings), and above all the produced ELECTRICAL PARTICLE VFX — the build spark, combine flash, arc bolts, chain-lightning, spark sprays, discharge rings, impacts, death discharges, and leak alarm, simulated live through `@test-cabinet/particle-runtime` and escalating with quality — plus the produced audio, and the in-code HUD, map-select previews, and build panel that read the quality ladder and the coming wave at a glance."
+
+# Reviewer checklist items, common to every variant. The major, observable
+# requirements a reviewer must explicitly check by playing the build — the things
+# validation cannot judge and that are easy to miss. Reporter-side material: never
+# seeded into a run, so the model never sees the checklist; each restates a
+# requirement the seeded specification already states. Each item is worth `weight`
+# points toward the run's score; the reviewer records a pass/fail verdict for each
+# before the run can be published. The per-domain ratings stay the reviewer's call.
+
+# --- Foundry Systems ------------------------------------------------------------
+[[review_item]]
+id = "maps-and-waypoints"
+title = "Three maps with ordered-waypoint topologies"
+text = "A MAP SELECT lets the player choose among three fixed, hand-authored maps that differ in TOPOLOGY, not in numbers — The Substation (an edge-hugging serpentine), The Switchyard (a star whose legs criss-cross the center), and The Transformer Yard (different waypoints AND two large pre-blocked transformer housings that pre-shape the maze). Each map defines an ordered chain of checkpoints (Entry, then its waypoints in sequence, then the Collector) at the pinned tile coordinates, and every map plays the same campaign, economy, roster, and scaling — the waypoint placement and any fixed housings, not the numbers, are the difference. Maps are chosen, not per-game random layouts."
+weight = 1
+domain = "simulation"
+reference = "map-select"
+proof = "gameplay"
+
+[[review_item]]
+id = "waypoint-mazing"
+title = "Towers are walls; ordered-waypoint mazing and never-seal"
+text = "There is no fixed track: every component AND every slag wall is a wall, and the Load pathfinds the shortest OPEN route around them — but constrained to the map's ordered waypoint chain, reaching each waypoint in sequence and solving each leg (current position to next waypoint) rather than globally. Building lengthens a leg's route; a placement that would fully seal any waypoint segment, or trap a unit already walking, is REFUSED and shown invalid (the never-seal rule), so the maze can only lengthen a route, never close it. Placing, slagging, combining, or selling re-paths every walking unit LIVE from where it stands, with no teleporting."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "scrap-press-roll"
+title = "The scrap-press stamps a random component at a random quality"
+text = "A component is NEVER bought at a chosen type or quality — the only way one enters the board (aside from a combine) is a scrap-press pull, which costs a fixed 18 Charge and stamps ONE component of a RANDOM type (uniform, 20% each of the five) at a RANDOM quality on odds weighted LOW toward Scrap, so the climb comes from combining, not from lucky rolls. Each level grants a fixed allowance of five stamps that refreshes every build phase and does not carry over; slagging, selling, and combining consume no stamps. Stamps and this allowance are identical on every difficulty."
+weight = 1
+domain = "simulation"
+proof = "systems"
+
+[[review_item]]
+id = "keep-slag-combine"
+title = "The three fates: keep, slag, combine"
+text = "Every stamped component ends as exactly one of three things, and choosing among them is the whole game. KEEP it active (it fires and walls its 2x2 footprint). SLAG it into an inert wall (it stops firing but keeps walling, a one-way conversion refunding a flat 12 Charge). Or COMBINE it: two matching components — same TYPE and same QUALITY — fold into one of that type a tier higher, at the selected component's footprint, FREEING the other footprint (which re-paths the floor) and costing no Charge. COMBINE is offered only when a matching component exists elsewhere, and Tesla-Prime is the apex and cannot combine further. Because a combine both frees a wall and out-DPSes what it consumed, the real tension is whether you can give up that wall's position in the maze."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "quality-ladder"
+title = "The five-rung quality ladder is the power axis"
+text = "Every component carries one of five quality tiers — Scrap, Tuned, Charged, Primed, Tesla-Prime — and quality is the power axis: damage multiplies steeply up the ladder (x1 / x2.2 / x5 / x11 / x24 over Scrap) while range nudges up and fire rate stays flat, so a board of Scrap is a junkyard of pea-shooters and a Tesla-Prime is a lightning god, and a combined component always out-damages the two it consumed. The tier must read at a glance by MORE than color — the sprite finish and firing-VFX intensity escalate every rung (`specs/towers.md`, `specs/assets.md`)."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "component-types"
+title = "Five component types, automatic targeting, projectile carries the hit"
+text = "The five component types each have a distinct firing identity: the Capacitor (a clean single-target bolt), the Coil (chain-lightning that leaps to nearby extra targets, dimming per jump, its leap count growing with quality), the Emitter (a rapid low-damage anti-swarm spark), the Arc-Node (an area discharge damaging everything within a quality-scaling splash radius), and the Discharge Rig (a slow long-range heavy bolt). All five fire AUTOMATICALLY at valid in-range units with no manual trigger, all five hit ground and air, each carries a selectable targeting priority (first / last / nearest / strongest / weakest, defaulting to first), each firing head ROTATES to aim, and every shot is a VISIBLE traveling projectile or arc that carries the hit on impact — not hitscan."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "load-and-flyer"
+title = "The Load roster, the flyer, and the Dynamo"
+text = "The Load is the six enemy types of `specs/enemies.md` — Mote, the fast fragile Spark, the slow tanky Slug (leaks 2), the pack-swarming Cluster, the maze-ignoring Filament flyer, and the Dynamo boss (leaks 5) — with their pinned base stats, mixed so no single component type answers everything. The Filament FLYER flies straight from Entry through the waypoints to the Collector over every wall (the maze cannot slow it, but a component in range can still hit it), and the Dynamo anchors the milestone waves. Only HP scales across waves (baseHP x baseMult x (1 + k x (w-1))); speeds, bounties, leaks, and every component stat are unchanged wave to wave."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "pressure"
+
+[[review_item]]
+id = "economy-integrity-campaign"
+title = "Economy, Grid Integrity, and the wave campaign"
+text = "Charge is earned from kill bounties, a wave-clear bonus, 8% capped interest at the start of each between-wave phase, and an early-send bonus, and spent to stamp the press (18) with slag/sell refunds; a leak costs Grid Integrity (starting 20), and reaching 0 overloads and ends the game even mid-wave. The run is a fixed sequence of N waves (30 on the reference Medium) on the chosen map, with an UNTIMED opening build phase before Wave 1 (no countdown, START begins it) and timed build phases between, a Dynamo boss on the midpoint and final milestone waves, and victory for clearing the final wave with integrity left."
+weight = 1
+domain = "simulation"
+proof = "pressure"
+
+[[review_item]]
+id = "difficulty-in-game"
+title = "In-game difficulty changes only wave count and toughness"
+text = "After MAP SELECT, a DIFFICULTY SELECT lets the player pick Easy / Medium / Hard, and each entry reads what it changes — its wave count and its enemy toughness — before it is chosen. Difficulty changes ONLY the number of waves (Easy 20, Medium 30, Hard 40) and the enemy HP scaling (the baseMult and k constants); starting Charge (130), Grid Integrity (20), builds-per-level (5), stamp cost (18), the roster, and every economy value are IDENTICAL on all three. PLAY AGAIN replays the same map and difficulty."
+weight = 1
+domain = "simulation"
+reference = "map-select"
+proof = "gameplay"
+
+[[review_item]]
+id = "pause-in-place"
+title = "Pause in place, distinct from the pause menu"
+text = "The game can be paused IN PLACE — freezing all ticks (the Load, fire, projectiles, the economy, and any build-phase countdown) while the board stays fully interactive, with NO menu shown — via a status-bar pause control and, once a wave is live, `Space`; the paused state reads clearly as PAUSED, and components can still be stamped, positioned, selected, slagged, sold, and combined on the still board before resuming. This is separate from the `Esc` pause MENU, which also freezes the game but covers it with the Resume / Restart / Quit menu; opening it freezes the game even when already paused in place."
+weight = 1
+domain = "simulation"
+proof = "gameplay"
+
+# --- Presentation & Electrical VFX ----------------------------------------------
+[[review_item]]
+id = "produced-component-sprites"
+title = "Produced component sprites across all five quality tiers"
+text = "The five component types (Capacitor, Coil, Emitter, Arc-Node, Discharge Rig) are drawn from sprites the build produced with `draw`/`draw-sheet` at EACH of the five quality tiers, so the ladder reads at a glance by more than color — a Scrap component is pitted, rusted, dim-flickering; a Tesla-Prime is mirror-chromed and wreathed in arcs — and each reads clearly as its TYPE and its QUALITY. Each firing component is a rotatable HEAD on a fixed base drawn to a canonical facing so the game aims it, its firing charge-and-discharge cycle animates, the single-bolt components have traveling projectile sprites, and the inert SLAG WALL reads as unmistakably dead (a fused lump, no head, no glow) — not flat rectangles or ad-hoc canvas fills."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-load-and-yard"
+title = "Produced, animated Load and yard art"
+text = "The six Load types and the Dynamo boss are drawn from sprites the build produced with `draw`/`draw-sheet`, and they visibly ANIMATE — a short charge/crackle cycle per type so units seethe with charge as they crawl, the Filament reading as airborne, and the Dynamo seething with an unstable-overload wobble as it is worn down — not static dots. The yard art is produced too: the oil-dark concrete substrate the board tiles from, the glowing feeder-vent Entry and hazard-marked grounding Collector, a waypoint pylon at each map's checkpoint tiles, and the steel transformer housings that fill Map C's fixed-blocked tiles — so the yard, its flow toward the Collector, and each map's waypoints read at a glance."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "produced-electrical-vfx"
+title = "Produced electrical particle VFX (the headline)"
+text = "The build spark, the combine flash, the arc bolt (fatter on the Discharge Rig), the Coil's chain-lightning (forking between units and dimming per jump), the Emitter's spark spray, the Arc-Node's expanding discharge ring, the spark-burst impact, the death discharge (a big EMP-style burst for the Dynamo), and the leak alarm are particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated bursts fired at the moment and position of each event, VARYING shot to shot, not a flat flash or a hand-coded loop. A firing effect's intensity ESCALATES with the component's quality tier, so the ladder reads in the VFX as well as the sprite. This is half of what the build is judged on."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "systems"
+
+[[review_item]]
+id = "produced-audio"
+title = "Produced sound and music"
+text = "The yard has real audio the build produced with the audio tools: a press/stamp clunk, a fire cue per component family (a sharp zap for the Capacitor/Emitter, a crackling chain for the Coil, a discharge boom for the Arc-Node/Discharge Rig), a combine chime, a kill/ground-out pop, a slag thunk, and a leak alarm (`sfx-synth` and/or `sfx-sample`), plus a tense, driving industrial-electro reactor music bed (`music`), played via Web Audio on the matching events and looping the bed — not silence, and not a downloaded or hand-oscillated stand-in. Audio does not autostart before the player interacts, and a mute toggle is present."
+weight = 1
+domain = "presentation"
+proof = "pressure"
+
+[[review_item]]
+id = "readable-at-speed"
+title = "Readable board, HUD, and build panel"
+text = "A player can tell at a glance — even at fast speed — each board component's TYPE and QUALITY TIER, read Charge, Grid Integrity (turning to the alert color as it runs low), and the wave indicator with its progress or build-phase countdown, and read the scrap-press control (its cost and remaining stamps), the selected-component inspector (type, quality, live stats, and the SLAG / SELL / COMBINE / targeting controls), and the next-wave preview. The HUD, build panel, menus, map-select waypoint previews, placement cues (legal vs never-seal), range rings, waypoint markers, and health bars are drawn in code in the palette; only their small icons may be produced sprites."
+weight = 1
+domain = "presentation"
+reference = "gameplay"
+proof = "gameplay"
+
+# --- General (states, window fit) — no domain -----------------------------------
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu (SALVAGE, HOW TO PLAY), map select (choose one of the three maps, or back to the menu), difficulty select (Easy/Medium/Hard, or back to map select), how-to-play, the live in-match board with its HUD and build panel (the untimed opening build phase, the timed build phases between waves, and the live wave), in-place pause and the Esc pause menu (resume/restart/quit to menu), Overload (defeat) when Grid Integrity hits 0, and Victory after the final wave — each end screen showing the score and the wave reached, with PLAY AGAIN (on the same map and difficulty) and MENU."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the full board (yard), the top status bar, the right build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+weight = 1
