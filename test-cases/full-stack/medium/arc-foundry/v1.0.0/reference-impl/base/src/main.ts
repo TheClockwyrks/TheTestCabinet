@@ -55,11 +55,18 @@ async function main(): Promise<void> {
     game,
     audio,
     startOn: (mapId: string, diffKey: Difficulty) => game.startOn(mapById(mapId), DIFFICULTY[diffKey]),
-    // Place a component at a 2×2 anchor (rolls one if none is held), for scripted layouts.
+    // Drop a rock at a 2×2 anchor (rolls a candidate on placement), for scripted layouts.
     placeStamp: (col: number, row: number) => game.placeStamp(col, row),
-    // Place an EXACT type + quality at a named anchor (no roll / no cost) — the deterministic
-    // board-layout path the proof-capture script drives (specs/proof.md).
+    // Place an EXACT type + quality COMPONENT at a named anchor (no roll / no cost) — the
+    // deterministic board-layout path the proof-capture script drives (specs/proof.md).
     place: (type: ComponentType, tier: Tier, col: number, row: number) => game.devPlace(type, tier, col, row),
+    // Drop an inert BLOCKER at a named anchor (no roll / no cost) — for scripted mazes.
+    blocker: (col: number, row: number) => game.devBlocker(col, row),
+    keep: (id: number) => game.keep(id),
+    combine: (id: number) => game.combine(id),
+    upgradeQuality: () => game.upgradeQuality(),
+    setRefinement: (r: 0 | 1 | 2 | 3 | 4 | 5) => game.devSetRefinement(r),
+    startWave: () => game.startWave(),
     pull: () => game.pullPress(),
     setState: (s: Game["state"]) => (game.state = s),
   };
@@ -114,17 +121,17 @@ async function main(): Promise<void> {
         game.paused = false; // Resume fully un-freezes (clears any interactive pause too)
         break;
       case "stamp":
-        // Pull the scrap-press (specs/build.md) — rolls a component and holds it.
+        // Pull the scrap-press (specs/build.md) — arms a blank rock; it rolls on placement.
         game.pullPress();
         break;
-      case "slag":
-        game.slagSelected();
-        break;
-      case "sell":
-        game.sellSelected();
+      case "keep":
+        game.keepSelected();
         break;
       case "combine":
         game.combineSelected();
+        break;
+      case "upgrade":
+        game.upgradeQuality();
         break;
       case "targeting":
         game.cycleTargetingSelected();
@@ -164,10 +171,11 @@ async function main(): Promise<void> {
         return;
       }
     }
-    // Board hit-test while playing: place the held stamp at the snapped 2×2 anchor, or
-    // select / deselect the structure under the pointer (specs/board.md, specs/controls.md).
+    // Board hit-test while playing: drop the held rock at the snapped 2×2 anchor (the roll
+    // happens on the drop, and the press re-arms for continuous placement), or select /
+    // deselect the structure under the pointer (specs/board.md, specs/controls.md).
     if (game.state === "playing" && x < PANEL_X && y > STATUS_H) {
-      if (game.held) {
+      if (game.holding) {
         const a = game.board.pixelToAnchor(x, y);
         game.placeStamp(a.col, a.row);
       } else {
@@ -194,16 +202,16 @@ async function main(): Promise<void> {
         game.pullPress();
         return;
       }
-      if (lower === "g") {
-        game.slagSelected();
-        return;
-      }
-      if (lower === "s") {
-        game.sellSelected();
+      if (lower === "k") {
+        game.keepSelected();
         return;
       }
       if (lower === "c") {
         game.combineSelected();
+        return;
+      }
+      if (lower === "u") {
+        game.upgradeQuality();
         return;
       }
       if (lower === "t") {
@@ -215,8 +223,8 @@ async function main(): Promise<void> {
         return;
       }
       if (k === "Escape") {
-        // Esc first cancels a held stamp / selection; otherwise it opens the pause MENU.
-        if (game.held) game.cancelHeld();
+        // Esc first cancels a held rock / selection; otherwise it opens the pause MENU.
+        if (game.holding) game.cancelHeld();
         else if (game.selectedId != null) game.select(null);
         else openPauseMenu();
       }
@@ -252,7 +260,7 @@ async function main(): Promise<void> {
   function handleInput(): void {
     if (input.clicks.length || input.keys.length || input.rightClicks) gesture();
     for (const c of input.clicks) routeClick(c.x, c.y);
-    if (input.rightClicks > 0 && game.held) game.cancelHeld();
+    if (input.rightClicks > 0 && game.holding) game.cancelHeld();
     for (const k of input.keys) routeKey(k);
     input.drain();
   }

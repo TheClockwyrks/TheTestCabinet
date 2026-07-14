@@ -2,10 +2,11 @@
 //
 // A wave is a timed sequence of Load units released from the map's single Entry
 // (specs/board.md). Early waves are mostly Motes and Sparks; mid waves add Clusters
-// (splash/chain answer), Slugs (heavy single-hit answer), and Filaments (the flyer); late
-// waves press dense mixes. Milestone waves (round(N/2) and N) fold in a Dynamo boss
-// (specs/flow.md §9.1). HP scaling is applied per-unit at spawn from the difficulty
-// (specs/enemies.md §7.1), NOT here — this module only picks the type sequence and timing,
+// (splash/chain answer) and Slugs (heavy single-hit answer); late waves press dense mixes.
+// FILAMENTS (the flyer) appear ONLY on every fourth wave (w % 4 === 0), never otherwise
+// (specs/enemies.md). Milestone waves (round(N/2) and N) fold in a Dynamo boss
+// (specs/flow.md). HP scaling is applied per-unit at spawn from the difficulty
+// (specs/enemies.md), NOT here — this module only picks the type sequence and timing,
 // seeded per wave so a given wave plays the same each time it is reached.
 
 import { LOAD_ORDER, isMilestoneWave, type DifficultyDef } from "./constants";
@@ -25,14 +26,14 @@ export function buildWave(wave: number, diff: DifficultyDef): Wave {
   const rng = new Rng(wave * 2654435761 + 40503);
 
   // Unlock thresholds are small fixed wave numbers (every difficulty runs ≥ 20 waves): the
-  // roster fills in over the opening third — Motes/Sparks, then Clusters, Slugs, Filaments.
+  // GROUND roster fills in over the opening third — Motes/Sparks, then Clusters, Slugs.
+  // Filaments are NOT in this pool; they are added as a fixed contingent every 4th wave below.
   const pool: Weighted[] = (
     [
       { type: "mote", weight: 6, unlock: 1 },
       { type: "spark", weight: 4, unlock: 2 },
       { type: "cluster", weight: 3, unlock: 5 },
       { type: "slug", weight: 2, unlock: 6 },
-      { type: "filament", weight: 2, unlock: 8 },
     ] satisfies Weighted[]
   ).filter((w) => wave >= w.unlock);
 
@@ -66,6 +67,19 @@ export function buildWave(wave: number, diff: DifficultyDef): Wave {
     t += interval;
   }
 
+  // Air contingent: Filaments appear ONLY on every fourth wave (specs/enemies.md). The count
+  // grows with the wave; they are spaced across the wave near the straight-line flyer path.
+  const hasAir = wave % 4 === 0;
+  if (hasAir) {
+    const airCount = Math.round(2 + wave * 0.35);
+    const airInterval = Math.max(260, interval * 0.7);
+    let at = 900;
+    for (let i = 0; i < airCount; i++) {
+      events.push({ atMs: Math.round(at), type: "filament" });
+      at += airInterval;
+    }
+  }
+
   const hasBoss = isMilestoneWave(wave, diff);
   if (hasBoss) {
     // The Dynamo anchors the middle of the wave so it crosses under the pressure of the rest.
@@ -79,5 +93,5 @@ export function buildWave(wave: number, diff: DifficultyDef): Wave {
   const present = new Set(events.map((e) => e.type));
   const types = LOAD_ORDER.filter((t2) => present.has(t2));
 
-  return { wave, events, durationMs, types, hasBoss };
+  return { wave, events, durationMs, types, hasBoss, hasAir };
 }

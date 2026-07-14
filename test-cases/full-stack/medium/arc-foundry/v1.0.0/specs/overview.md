@@ -15,12 +15,15 @@ you **Grid Integrity**; every unit you burn down pays a bounty of **Charge** tha
 funds more stamps.
 
 The twist that defines the game is what happens at the press. You do **not** buy a
-component you choose — each pull of the press **stamps a random component type at a
-random quality tier**, weighted low, and you decide its fate on the board: keep it
-firing, **slag** it into an inert wall, or **combine** it with a match to climb the
-quality ladder. Every stamp is a wall no matter which fate you pick, so the
-**keep-vs-slag-vs-combine decision — and which builds you keep as permanent
-obstacles — is the strategic heart of the game** (`specs/build.md`).
+component you choose — you place a **rock** that **rolls a random component type at a
+random quality tier the instant it lands**, weighted low. Each level you place **five**
+such rocks and **keep exactly one** as a firing tower; every rock you do not keep
+hardens into an inert **blocker** that walls the yard but never fires. You climb the
+quality ladder by **combining** matched rolls, and spend kill income on **UPGRADE
+QUALITY** to bias the press toward stronger gems. Every rock is a wall no matter what,
+so the **which-single-roll-to-keep decision, the maze you wall from the rest, and the
+climb — is the strategic heart of the game** (`specs/build.md`). This is a faithful
+reskin of Gem Tower Defense.
 
 Components come in five **types**, each an electrical part with a distinct firing
 identity and signature VFX: the **Capacitor** (a crisp single-target bolt), the
@@ -35,13 +38,14 @@ burns weakly; a Tesla-Prime looks like a lightning god. The full type roster and
 quality scaling live in `specs/towers.md`.
 
 The yard has **no fixed track**. The Load pathfinds across the open floor, and every
-component and every slag wall is a **wall**, so building lengthens the Load's route
-— but movement is constrained by an **ordered chain of waypoints** each map defines:
-the Load must reach each waypoint in sequence, and between consecutive waypoints it
-takes the **shortest open route around the walls you have built**. A **never-seal
-rule** forbids fully blocking any segment of the chain, and the floor **re-paths
-live** whenever the maze changes. The campaign is played on a **map you choose at
-the start**, and the three maps differ in **topology** — different waypoint
+component and every blocker is a **wall**, so building lengthens the Load's route — but
+movement is constrained by an **ordered chain of waypoints** each map defines, each a
+4-tile **platform** you cannot build on: the Load must reach each waypoint in sequence,
+and between consecutive waypoints it takes the **shortest open route around the walls you
+have built**. A **never-seal rule** forbids fully blocking any segment of the chain or
+encircling a waypoint, and the floor **re-paths live** whenever the maze changes. The
+campaign is played on a **map you choose at the start**, and the three maps differ in
+**topology** — different waypoint
 placements, and one with pre-blocked transformer housings that pre-shape the maze
 before you build a single wall (`specs/board.md`, `specs/modes.md`).
 
@@ -76,21 +80,22 @@ start; they cross-reference each other by name and form one specification.
   **quality ladder** and how damage and range scale by tier, the full stat tables,
   the Coil chain and Arc-Node splash specifics, targeting priorities and head
   rotation, and the projectile-carries-the-hit rule. **Read this carefully.**
-- `specs/build.md` — the **scrap-press build loop**: the fixed builds-per-level
-  allowance, the stamp cost and the random type/quality roll odds, the three fates
-  (keep active, slag into an inert wall, combine), the **combine recipe**, and the
-  full-refund window.
-- `specs/flow.md` — the economy (Charge, bounties, wave-clear bonus, interest,
-  early-send, refunds), Grid Integrity and leaks, the wave campaign and
-  victory/overload, milestone waves and the Dynamo, scoring, the game state machine,
-  the required menus, the HUD, and what is out of scope.
+- `specs/build.md` — the **scrap-press build loop**: the fixed 5-stamp allowance, the
+  stamp cost and the on-placement random type/quality roll odds, the **keep exactly one
+  per level** rule and inert **blockers**, the **combine recipe**, and the **UPGRADE
+  QUALITY** Refinement track.
+- `specs/flow.md` — the economy (Charge, bounties, wave-clear bonus, interest, the
+  UPGRADE QUALITY sink), Grid Integrity and leaks, the wave campaign and
+  victory/overload, milestone waves and the Dynamo, scoring, the game state machine, the
+  required menus, the HUD, and what is out of scope.
 - `specs/modes.md` — the **difficulty** system as an in-game menu (Easy/Medium/Hard
   change only the wave count and enemy toughness; money and builds are constant),
   and the **map-select** and **difficulty-select** menu content and navigation.
 - `specs/controls.md` — the fixed-timestep simulation and the mouse and keyboard
-  controls: stamping, positioning and placing a stamp, selecting a component,
-  slag/sell/combine and targeting controls, starting and sending waves, the speed
-  toggle, in-place pause vs the Esc pause menu, and mute.
+  controls: pulling the press and placing a rock (continuous placement; the roll is on
+  drop), selecting a candidate/component, keep/combine/upgrade-quality and targeting
+  controls, starting and sending waves, the speed toggle, in-place pause vs the Esc
+  pause menu, and mute.
 - `specs/assets.md` — the **asset-production contract**: every sprite, sheet,
   **particle system**, sound, and music track you must produce with the on-`PATH`
   tools, where each lands, and how each is wired into the build. The **electrical
@@ -105,11 +110,13 @@ start; they cross-reference each other by name and form one specification.
 
 Produce a complete, polished, **playable** game that runs entirely in a browser.
 This is a substantial front-end task: a fixed-step real-time simulation of the Load
-pathfinding an ordered-waypoint maze across three maps with live re-pathing, a
-random scrap-press build with a keep/slag/combine loop over a five-rung quality
-ladder, five component types with automatic targeting and traveling electrical
-projectiles, an economy of Charge and interest and Grid Integrity, an escalating
-wave campaign that ends in a Dynamo boss, multiple game states and menus, and a HUD
+pathfinding an ordered-waypoint maze (with 4-tile waypoint platforms) across three maps
+with live re-pathing, a random scrap-press build with the place-and-reveal stamp, the
+keep-one-per-level rule, inert blockers, a combine climb and an UPGRADE QUALITY track
+over a five-rung quality ladder, five component types with automatic targeting and
+traveling electrical projectiles, an economy of Charge and interest and Grid Integrity,
+an escalating wave campaign that ends in a Dynamo boss, multiple game states and menus,
+and a HUD
 — **and** a full pass of producing the game's art, effects, and audio with the
 on-`PATH` tools. Aim for a build a person would actually want to play — tense,
 legible, and alive — not a tech demo.
@@ -185,7 +192,8 @@ The stage is divided into three regions (`specs/board.md` details each):
   wide) — with the scrap-press control, the selected-component inspector, the
   next-wave preview, and the wave control;
 - the **board (yard)** — `x` in `[0, 1000]`, `y` in `[56, 720]` (1000 x 664) — the
-  chosen map's tile grid, waypoints, components and slag, the Load, projectiles, and
+  chosen map's tile grid, waypoints, components/candidates/blockers, the Load,
+  projectiles, and
   VFX.
 
 The status bar and build panel are fixed and always fully visible; the board fills
@@ -222,7 +230,7 @@ unloading. The canonical palette and type are below; match them.
 | Quality — Charged (T3) | `#6cb6ff` |
 | Quality — Primed (T4) | `#c78cff` |
 | Quality — Tesla-Prime (T5) | `#ffe45a` |
-| Slag wall (inert scrap) | `#4a4640` |
+| Blocker (inert scrap rock) | `#4a4640` |
 | The Load (charge units) | `#c4cbd6` |
 | Dynamo (overload core) | `#a45cff` |
 | Alert / danger | `#ff5a52` |
@@ -243,9 +251,11 @@ unloading. The canonical palette and type are below; match them.
   escalate every rung, from a pitted, dim-flickering Scrap through a polished,
   humming Charged to a mirror-chromed Tesla-Prime wreathed in continuous arcs. A
   board full of Scrap must read as a junkyard and a Tesla-Prime as a lightning god.
-  **Slag walls must read as unmistakably inert** — a fused lump of scrap with no
-  firing head. Component **type** is coded distinctly from quality **tier** so the
-  two axes never collide (`specs/towers.md`).
+  **Blockers must read as unmistakably inert** — a fused scrap rock with no firing head
+  — and a **candidate** (a placed-but-not-yet-kept roll) must read as distinct from a
+  kept component so the player can tell what is still selectable. Component **type** is
+  coded distinctly from quality **tier** so the two axes never collide
+  (`specs/towers.md`).
 - **The produced electrical VFX are the headline of this build.** The arcs,
   chain-lightning, spark showers, and discharges are simulated `particle-2d` systems
   played live and spawned at each event, not canned frames or flat flashes, and they

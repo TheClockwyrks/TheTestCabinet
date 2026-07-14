@@ -3,12 +3,13 @@
 //
 // Draws the whole fixed 1280×720 stage every frame from the simulation state, reading it
 // and never mutating it: the yard substrate + faint tile grid, each map's waypoint pylons /
-// Entry / Collector / fixed housings and the flow direction toward the sink, the maze of
-// produced component + slag sprites (with the quality-tier finish escalating rung by rung),
-// the Load with per-unit health bars and charge cycles, travelling projectiles, the live
-// produced electrical particle bursts (via Bursts), and the in-code HUD / build panel /
-// menus — plus the held-stamp ghost with its legal/illegal placement cue and the range
-// rings. Returns the frame's hit-testable UI regions so the input layer can route pointer
+// Entry / Collector / fixed housings and the 4-tile waypoint PLATFORMS, the flow direction
+// toward the sink, the maze of produced component / candidate / blocker sprites (with the
+// quality-tier finish escalating rung by rung, and candidates shown uncommitted), the Load
+// with per-unit health bars and charge cycles, travelling projectiles, the live produced
+// electrical particle bursts (via Bursts), and the in-code HUD / build panel / menus — plus
+// the blank held-rock ghost with its legal/illegal placement cue and the range rings (only
+// on placed pieces, whose roll is known). Returns the frame's hit-testable UI regions so the input layer can route pointer
 // events (specs/controls.md) without re-deriving the layout. Component TYPE and quality
 // TIER must both read at a glance (specs/overview.md, specs/towers.md).
 
@@ -17,6 +18,7 @@ import {
   BOARD_X1,
   BOARD_Y0,
   BOARD_Y1,
+  BUILDS_PER_LEVEL,
   COL,
   COMPONENT_COLOR,
   COMPONENT_LABEL,
@@ -47,6 +49,7 @@ import type { Bursts } from "./particles";
 import { Game } from "./sim";
 import { menuItems, type MenuItem } from "./menus";
 import type {
+  Candidate,
   Clickable,
   Component,
   Difficulty,
@@ -331,20 +334,47 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   }
 
   drawFlow(ctx, board.chain);
+  drawPlatforms(ctx, board);
   drawWaypoints(ctx, board.chain, A);
 
-  // Range / preview rings under the pieces so the pieces stay legible.
+  // Range / preview rings under the pieces so the pieces stay legible. A placed piece whose
+  // roll is known (a firing component OR an uncommitted candidate) previews its range when
+  // selected; a blocker has no range.
   const sel = game.selected();
   if (sel && sel.kind === "component") {
     const ctr = footprintCenter(sel.col, sel.row);
     drawRange(ctx, ctr.x, ctr.y, game.statsOf(sel).range, COMPONENT_COLOR[sel.type]);
+  } else if (sel && sel.kind === "candidate") {
+    const ctr = footprintCenter(sel.col, sel.row);
+    drawRange(ctx, ctr.x, ctr.y, deriveStats(sel.type, sel.tier).range, COMPONENT_COLOR[sel.type]);
   }
 
-  // The maze: components and slag walls (specs/board.md — every piece is a 2×2 wall).
+  // The maze: firing components, this-level candidates, and inert blockers — every piece is
+  // a 2×2 wall (specs/board.md).
   for (const s of game.structures) {
     if (s.kind === "component") drawComponent(ctx, game, s, A);
-    else drawSlag(ctx, s, A);
+    else if (s.kind === "candidate") drawCandidate(ctx, game, s, A);
+    else drawBlocker(ctx, game, s, A);
   }
+}
+
+// The waypoint PLATFORMS — each interior waypoint is a 4-tile T of walkable-but-never-
+// buildable plating (specs/board.md). Draw the plate distinctly so a platform never reads
+// as buildable open yard (you cannot drop a rock on it).
+function drawPlatforms(ctx: CanvasRenderingContext2D, board: { waypointTiles: Set<number> }): void {
+  ctx.save();
+  for (const key of board.waypointTiles) {
+    const col = key % GRID_COLS;
+    const row = (key - col) / GRID_COLS;
+    const x = GRID_X0 + col * TILE;
+    const y = GRID_Y0 + row * TILE;
+    ctx.fillStyle = hexA(COL.flow, 0.24);
+    ctx.fillRect(x, y, TILE, TILE);
+    ctx.strokeStyle = hexA(COL.integrity, 0.4);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+  }
+  ctx.restore();
 }
 
 // The ordered waypoint chain, drawn as a guide line with animated flow chevrons pointing
@@ -495,15 +525,94 @@ function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, 
   text(ctx, ROMAN[c.tier], bx + bw / 2, by + 6, 8, tierC, "center", "800");
 }
 
-// An inert slag wall — a fused lump with no head, unmistakably dead (specs/build.md).
-function drawSlag(ctx: CanvasRenderingContext2D, s: Structure, A: Assets): void {
+// An inert BLOCKER — a hardened fused-scrap rock with no head, unmistakably dead: it walls
+// the Load but never fires (specs/build.md). Every un-kept candidate hardens into one of
+// these at wave start.
+function drawBlocker(ctx: CanvasRenderingContext2D, game: Game, s: Structure, A: Assets): void {
   const ctr = footprintCenter(s.col, s.row);
   const size = FOOTPRINT_PX;
-  if (A.slag) blit(ctx, A.slag, ctr.x, ctr.y, size, size, 0);
+  if (A.blocker) blit(ctx, A.blocker, ctr.x, ctr.y, size, size, 0);
   else {
-    ctx.fillStyle = COL.slag;
+    ctx.fillStyle = COL.blocker;
     roundRect(ctx, ctr.x - size / 2 + 2, ctr.y - size / 2 + 2, size - 4, size - 4, 4);
     ctx.fill();
+  }
+  if (game.selectedId === s.id) {
+    ctx.strokeStyle = hexA(COL.text, 0.7);
+    ctx.lineWidth = 2;
+    roundRect(ctx, ctr.x - size / 2, ctr.y - size / 2, size, size, 5);
+    ctx.stroke();
+  }
+}
+
+// A CANDIDATE — a rock placed THIS build phase that has rolled a random type + quality and
+// is eligible to be KEPT or COMBINED this level only (specs/build.md). It draws its rolled
+// component sprite with an UNCOMMITTED treatment (dimmed, a pulsing dashed outline, a "NEW"
+// tag) so it never reads as a settled firing component, and a bright KEEP / COMBINE marker
+// when it is this level's harvest choice.
+function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, A: Assets): void {
+  const ctr = footprintCenter(c.col, c.row);
+  const tierC = TIER_COLOR[c.tier];
+  const typeC = COMPONENT_COLOR[c.type];
+  const size = FOOTPRINT_PX;
+  const pulse = 0.5 + 0.5 * Math.sin(time * 5);
+  const kept = game.keptId() === c.id;
+
+  // A faint tier glow so quality still reads, but muted (this rock is not committed yet).
+  glow(ctx, ctr.x, ctr.y, 10 + c.tier * 3, tierC, 0.08 + 0.03 * c.tier);
+
+  // The rolled component sprite, dimmed.
+  ctx.save();
+  ctx.globalAlpha = 0.6;
+  const base = A.componentBase(c.type);
+  if (base) blit(ctx, base, ctr.x, ctr.y, size, size, 0);
+  const head = A.componentHead(c.type, c.tier);
+  if (head) blit(ctx, head, ctr.x, ctr.y, size, size, 0);
+  ctx.restore();
+
+  // Uncommitted pulsing dashed outline in the type accent.
+  ctx.save();
+  ctx.strokeStyle = hexA(typeC, 0.35 + 0.45 * pulse);
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 3]);
+  roundRect(ctx, ctr.x - size / 2, ctr.y - size / 2, size, size, 5);
+  ctx.stroke();
+  ctx.restore();
+
+  // The quality read (tier ring + Roman badge), so type AND quality still read at a glance.
+  ring(ctx, ctr.x, ctr.y, size / 2 - 1, tierC, 0.7, 1.5);
+  const bx = ctr.x - size / 2 + 2;
+  const by = ctr.y - size / 2 + 2;
+  const bw = 6 + ROMAN[c.tier].length * 5;
+  roundRect(ctx, bx, by, bw, 11, 3);
+  ctx.fillStyle = hexA("#05080c", 0.75);
+  ctx.fill();
+  text(ctx, ROMAN[c.tier], bx + bw / 2, by + 6, 8, tierC, "center", "800");
+
+  if (kept) {
+    // The level's committed harvest — a bright marker ring + a KEEP / COMBINE tag.
+    const label = game.harvest.mode === "combine" ? "COMBINE" : "KEEP";
+    glow(ctx, ctr.x, ctr.y, size / 2 + 4, COL.charge, 0.2 + 0.1 * pulse);
+    ring(ctx, ctr.x, ctr.y, size / 2 + 2, COL.charge, 0.9, 2);
+    const tw = 8 + label.length * 6;
+    roundRect(ctx, ctr.x - tw / 2, ctr.y - size / 2 - 13, tw, 12, 3);
+    ctx.fillStyle = hexA(COL.charge, 0.9);
+    ctx.fill();
+    text(ctx, label, ctr.x, ctr.y - size / 2 - 7, 8, COL.void, "center", "800", 0.5);
+  } else {
+    // A small "NEW" tag at the bottom so an uncommitted candidate reads as a fresh roll.
+    roundRect(ctx, ctr.x - 12, ctr.y + size / 2 - 11, 24, 11, 3);
+    ctx.fillStyle = hexA(typeC, 0.85);
+    ctx.fill();
+    text(ctx, "NEW", ctr.x, ctr.y + size / 2 - 5, 7, COL.void, "center", "800", 0.5);
+  }
+
+  // Selection outline.
+  if (game.selectedId === c.id) {
+    ctx.strokeStyle = COL.text;
+    ctx.lineWidth = 2;
+    roundRect(ctx, ctr.x - size / 2, ctr.y - size / 2, size, size, 5);
+    ctx.stroke();
   }
 }
 
@@ -588,21 +697,20 @@ function drawHealthBar(ctx: CanvasRenderingContext2D, u: Unit): void {
   ctx.fillRect(x, y, w * frac, h);
 }
 
-// ---- held-stamp ghost (position + range + legal/illegal cue) -------------------
-// specs/controls.md: the rolled component is held on the cursor as its 2×2 footprint,
-// snapped to the grid, previewing its range ring and a legal/illegal placement cue.
+// ---- held-rock ghost (position + legal/illegal cue) ----------------------------
+// specs/controls.md, specs/build.md: a GENERIC blank rock is held on the cursor as its 2×2
+// footprint, snapped to the grid, with a legal/illegal placement cue. There is NO range
+// ring and NO head — the type + quality only ROLL when the rock lands (placeStamp).
 function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
-  if (game.state !== "playing" || !game.held) return;
+  if (game.state !== "playing" || !game.holding) return;
   const px = game.pointerX;
   const py = game.pointerY;
   if (px < BOARD_X0 || px > BOARD_X1 || py < BOARD_Y0 || py > BOARD_Y1) return;
 
   const anchor = game.board.pixelToAnchor(px, py);
-  const legal = game.board.canPlace(anchor.col, anchor.row, game.structures, game.units);
+  const legal = game.canPlaceAt(anchor.col, anchor.row);
   const ctr = footprintCenter(anchor.col, anchor.row);
   const cue = legal ? COL.legal : COL.illegal;
-
-  drawRange(ctx, ctr.x, ctr.y, deriveStats(game.held.type, game.held.tier).range, COMPONENT_COLOR[game.held.type]);
 
   // Footprint tiles cue (specs/overview.md placement-cue palette).
   const x0 = GRID_X0 + anchor.col * TILE;
@@ -615,12 +723,12 @@ function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): 
   ctx.strokeRect(x0 + 1, y0 + 1, FOOTPRINT_PX - 2, FOOTPRINT_PX - 2);
   ctx.restore();
 
-  // Ghost head at its rolled tier so the stamp reads before it lands.
+  // The blank rock lump + a "?" — its roll is unknown until it lands.
   ctx.save();
-  ctx.globalAlpha = legal ? 0.85 : 0.4;
-  const head = A.componentHead(game.held.type, game.held.tier);
-  if (head) blit(ctx, head, ctr.x, ctr.y, FOOTPRINT_PX, FOOTPRINT_PX, 0);
+  ctx.globalAlpha = legal ? 0.8 : 0.4;
+  if (A.blocker) blit(ctx, A.blocker, ctr.x, ctr.y, FOOTPRINT_PX - 4, FOOTPRINT_PX - 4, 0);
   ctx.restore();
+  text(ctx, "?", ctr.x, ctr.y, 18, legal ? COL.spark : COL.illegal, "center", "800");
 }
 
 // ---- status bar ---------------------------------------------------------------
@@ -655,7 +763,9 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
     sub = "PAUSED";
     subColor = COL.alert;
   } else if (game.phase === "build") {
-    sub = game.buildTimed ? `BUILD · ${Math.ceil(Math.max(0, game.buildTimer))}s` : "BUILD · READY";
+    // The build phase is UNTIMED (specs/flow.md) — no countdown, SEND when ready.
+    sub = "BUILD";
+    subColor = COL.integrity;
   } else {
     sub = `${Math.round(game.waveProgress() * 100)}%`;
   }
@@ -696,10 +806,12 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   const px = PANEL_X + 14;
   const w = pw - 28;
 
-  // --- Scrap-press (STAMP) control ---
+  // --- Scrap-press (STAMP) control (specs/build.md) ---
+  // Arms a BLANK rock; the roll happens on placement. 10 Charge and one of the level's 5
+  // stamps per placed rock — the cap is 5 regardless of Charge.
   text(ctx, "SCRAP-PRESS", px, 74, 11, COL.text3, "left", "700", 1);
   const stampY = 84;
-  const stampH = 48;
+  const stampH = 46;
   const canStamp = game.canStamp();
   roundRect(ctx, px, stampY, w, stampH, 8);
   ctx.fillStyle = canStamp ? hexA(COL.charge, 0.16) : "rgba(255,255,255,0.03)";
@@ -707,14 +819,40 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.strokeStyle = canStamp ? COL.charge : "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  text(ctx, "STAMP", px + 12, stampY + 18, 15, canStamp ? COL.text : COL.text3, "left", "800", 1);
-  text(ctx, `${game.stampsLeft()} / 5 STAMPS LEFT`, px + 12, stampY + 35, 9, COL.text3, "left", "500", 0.5);
-  text(ctx, `${game.stampCost()}`, px + w - 12, stampY + 20, 15, canStamp ? COL.charge : COL.text3, "right", "700");
-  if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), px + w - 40, stampY + 34, 12, 12);
+  text(ctx, "STAMP", px + 12, stampY + 17, 15, canStamp ? COL.text : COL.text3, "left", "800", 1);
+  text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, px + 12, stampY + 34, 9, COL.text3, "left", "500", 0.5);
+  text(ctx, `${game.stampCost()}`, px + w - 12, stampY + 19, 15, canStamp ? COL.charge : COL.text3, "right", "700");
+  if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), px + w - 40, stampY + 33, 12, 12);
   clicks.push({ x: px, y: stampY, w, h: stampH, action: "stamp", disabled: !canStamp });
 
-  // A held roll reads on the press panel too (type + tier), a hint to place it.
-  const infoY = stampY + stampH + 10;
+  // --- UPGRADE QUALITY (Refinement track) control (specs/build.md) ---
+  // Spend Charge to raise Refinement R, biasing every future roll toward higher tiers.
+  const upHeadY = stampY + stampH + 22;
+  text(ctx, "UPGRADE QUALITY", px, upHeadY, 11, COL.text3, "left", "700", 1);
+  const upY = stampY + stampH + 32;
+  const upH = 44;
+  const canUp = game.canUpgradeQuality();
+  const refCost = game.refineCost(); // number | null (null at max R)
+  const atMax = refCost === null;
+  roundRect(ctx, px, upY, w, upH, 8);
+  ctx.fillStyle = canUp ? hexA(COL.integrity, 0.14) : "rgba(255,255,255,0.03)";
+  ctx.fill();
+  ctx.strokeStyle = canUp ? COL.integrity : "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  text(ctx, "UPGRADE", px + 12, upY + 16, 14, canUp ? COL.text : COL.text3, "left", "800", 1);
+  const rProgress = atMax ? `R${game.refinement} · MAX` : `R${game.refinement} → R${game.refinement + 1}`;
+  text(ctx, rProgress, px + 12, upY + 33, 9, canUp ? COL.integrity : COL.text3, "left", "600", 0.5);
+  if (atMax) {
+    text(ctx, "MAX", px + w - 12, upY + 22, 14, COL.text3, "right", "700");
+  } else {
+    text(ctx, `${refCost}`, px + w - 12, upY + 22, 15, canUp ? COL.charge : COL.text3, "right", "700");
+    if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), px + w - 40, upY + 36, 12, 12);
+  }
+  clicks.push({ x: px, y: upY, w, h: upH, action: "upgrade", disabled: !canUp });
+
+  // --- Inspector / next-wave info area ---
+  const infoY = upY + upH + 12;
   const infoH = STAGE_H - 62 - infoY - 8;
   roundRect(ctx, px, infoY, w, infoH, 8);
   ctx.fillStyle = "rgba(255,255,255,0.02)";
@@ -724,41 +862,46 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.stroke();
 
   const sel = game.selected();
-  if (game.held) drawHeldInfo(ctx, game, A, px + 14, infoY + 12, w - 28);
+  if (game.holding) drawHeldInfo(ctx, game, A, px + 14, infoY + 12, w - 28);
   else if (sel) drawInspector(ctx, game, sel, A, px + 14, infoY + 12, w - 28, clicks);
   else drawNextWave(ctx, game, A, px + 14, infoY + 12, w - 28);
 
   drawWaveControl(ctx, game, px, w, clicks);
 }
 
+// While a blank rock is on the cursor: no type/quality yet — it rolls only when it lands.
 function drawHeldInfo(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {
-  const held = game.held!;
-  text(ctx, "HELD STAMP", x, y + 6, 11, COL.text3, "left", "700", 1);
-  const head = A.componentHead(held.type, held.tier);
-  if (head) blit(ctx, head, x + 20, y + 36, 40, 40, 0);
-  text(ctx, COMPONENT_LABEL[held.type], x + 46, y + 28, 13, COMPONENT_COLOR[held.type], "left", "700", 0.5);
-  text(ctx, `${TIER_NAME[held.tier]} · ${ROMAN[held.tier]}`, x + 46, y + 44, 11, TIER_COLOR[held.tier], "left", "600", 0.5);
-  wrap(ctx, "Click a legal spot on the yard to place it. Esc discards it (the pull is spent).", x, y + 74, w, 11, COL.text2, 15);
+  text(ctx, "PLACING ROCK", x, y + 6, 11, COL.charge, "left", "700", 1);
+  if (A.blocker) {
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    blit(ctx, A.blocker, x + 24, y + 44, 40, 40, 0);
+    ctx.restore();
+  }
+  text(ctx, "?", x + 24, y + 44, 20, COL.spark, "center", "800");
+  wrap(ctx, "Drop it on a legal spot — it rolls a RANDOM component type and quality the instant it lands. Esc / right-click cancels for free.", x, y + 82, w, 11, COL.text2, 15);
+  text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, x, y + 150, 10, COL.text3, "left", "500", 0.5);
 }
 
-// The selected-component inspector (specs/board.md, specs/controls.md).
+// The selected-piece inspector (specs/board.md, specs/build.md, specs/controls.md).
+// A CANDIDATE offers KEEP / COMBINE (build phase); a COMPONENT offers the targeting cycle;
+// a BLOCKER is inert (no stats, no actions).
 function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, A: Assets, x: number, y: number, w: number, clicks: Clickable[]): void {
-  if (s.kind === "slag") {
-    text(ctx, "SLAG WALL", x, y + 6, 14, COL.text2, "left", "700", 0.5);
-    wrap(ctx, "An inert fused-scrap wall. It blocks the Load but never fires.", x, y + 30, w, 11, COL.text2, 15);
-    button(ctx, clicks, x, y + 78, w, 30, `SELL ${game.sellValue(s)}`, "sell", COL.charge, true);
+  if (s.kind === "blocker") {
+    text(ctx, "INERT BLOCKER", x, y + 6, 14, COL.text2, "left", "700", 0.5);
+    wrap(ctx, "A hardened scrap rock — it walls the Load's route but never fires. Drop a fresh rock onto it to reroll a new component.", x, y + 32, w, 11, COL.text2, 15);
     return;
   }
 
-  const c = s;
-  const stats = game.statsOf(c);
-  const typeC = COMPONENT_COLOR[c.type];
+  const isCand = s.kind === "candidate";
+  const stats = isCand ? deriveStats(s.type, s.tier) : game.statsOf(s);
+  const typeC = COMPONENT_COLOR[s.type];
 
-  const head = A.componentHead(c.type, c.tier);
+  const head = A.componentHead(s.type, s.tier);
   if (head) blit(ctx, head, x + 18, y + 20, 40, 40, 0);
-  text(ctx, COMPONENT_LABEL[c.type], x + 44, y + 12, 13, typeC, "left", "700", 0.5);
-  text(ctx, `${TIER_NAME[c.tier]} · ${ROMAN[c.tier]}`, x + 44, y + 28, 11, TIER_COLOR[c.tier], "left", "600", 0.5);
-  text(ctx, "HITS GROUND & AIR", x + 44, y + 42, 8, COL.text3, "left", "500", 0.5);
+  text(ctx, COMPONENT_LABEL[s.type], x + 44, y + 12, 13, typeC, "left", "700", 0.5);
+  text(ctx, `${TIER_NAME[s.tier]} · ${ROMAN[s.tier]}`, x + 44, y + 28, 11, TIER_COLOR[s.tier], "left", "600", 0.5);
+  text(ctx, isCand ? "UNCOMMITTED ROLL" : "HITS GROUND & AIR", x + 44, y + 42, 8, isCand ? COL.charge : COL.text3, "left", "500", 0.5);
 
   let row = y + 66;
   const line = (k: string, v: string, col: string = COL.text): void => {
@@ -771,21 +914,35 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   line("FIRE RATE", `${stats.fireRate.toFixed(1)}/s`);
   if (stats.splash > 0) line("SPLASH", `${Math.round(stats.splash)}`, COL.arcnode);
   if (stats.chainLeaps > 0) line("CHAIN", `+${stats.chainLeaps} leaps`, COL.coil);
-  line("TARGET", TARGETING_LABEL[c.targeting], COL.integrity);
+  if (!isCand) line("TARGET", TARGETING_LABEL[s.targeting], COL.integrity);
 
-  // Controls: targeting cycle, then SLAG / COMBINE / SELL.
-  const cy = STAGE_H - 62 - 8 - 30 - 8 - 30 - 8 - 28;
-  button(ctx, clicks, x, cy, w, 26, `TARGET · ${TARGETING_LABEL[c.targeting]}`, "targeting", COL.integrity, true);
+  const baseY = STAGE_H - 62 - 8; // just above the wave control
 
-  const canCombine = game.canCombine(c);
-  const half = (w - 8) / 2;
-  const r2 = cy + 34;
-  button(ctx, clicks, x, r2, half, 30, "SLAG 12", "slag", "#c9a15a", true);
-  if (canCombine) button(ctx, clicks, x + half + 8, r2, half, 30, "COMBINE", "combine", TIER_COLOR[Math.min(MAX_TIER, c.tier + 1) as Tier], true);
-  else button(ctx, clicks, x + half + 8, r2, half, 30, c.tier >= MAX_TIER ? "MAX TIER" : "NO MATCH", "combine", COL.text3, false);
-
-  const r3 = r2 + 38;
-  button(ctx, clicks, x, r3, w, 30, `SELL ${game.sellValue(c)}`, "sell", COL.charge, true);
+  if (isCand) {
+    // The one keep-or-combine choice per level (specs/build.md). Reversible until SEND.
+    const kept = game.keptId() === s.id;
+    const half = (w - 8) / 2;
+    const by = baseY - 30;
+    // A status line above the buttons.
+    if (kept) {
+      const msg = game.harvest.mode === "combine" ? "COMBINING THIS LEVEL" : "KEPT THIS LEVEL";
+      text(ctx, msg, x, by - 12, 10, COL.charge, "left", "700", 1);
+    } else {
+      text(ctx, "KEEP ONE ROLL PER LEVEL", x, by - 12, 10, COL.text3, "left", "600", 1);
+    }
+    const keepLabel = kept && game.harvest.mode === "keep" ? "KEEP ✓" : "KEEP";
+    if (game.canCombine(s)) {
+      const combLabel = kept && game.harvest.mode === "combine" ? "COMBINE ✓" : "COMBINE";
+      button(ctx, clicks, x, by, half, 30, keepLabel, "keep", COL.charge, true);
+      button(ctx, clicks, x + half + 8, by, half, 30, combLabel, "combine", TIER_COLOR[Math.min(MAX_TIER, s.tier + 1) as Tier], true);
+    } else {
+      button(ctx, clicks, x, by, w, 30, keepLabel, "keep", COL.charge, true);
+    }
+  } else {
+    // A firing component: cycle its targeting priority (specs/towers.md).
+    const cy = baseY - 26;
+    button(ctx, clicks, x, cy, w, 26, `TARGET · ${TARGETING_LABEL[s.targeting]}`, "targeting", COL.integrity, true);
+  }
 }
 
 // The next-wave preview (specs/enemies.md, specs/flow.md) — shown when nothing is selected.
@@ -810,15 +967,16 @@ function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
   }
 }
 
-// The wave control (START in the opening phase / SEND-early between waves) + a speed toggle.
+// The wave control: START the opening wave / SEND the next one when ready (build phases are
+// untimed — no countdown, specs/flow.md) + a speed toggle. During a live wave it reads the
+// wave progress instead.
 function drawWaveControl(ctx: CanvasRenderingContext2D, game: Game, px: number, w: number, clicks: Clickable[]): void {
   const y = STAGE_H - 62;
   const h = 46;
   if (game.phase === "build") {
     const speedW = 52;
     const sendW = w - speedW - 8;
-    const early = game.buildTimed ? Math.max(0, Math.floor(game.buildTimer)) : 0;
-    const label = game.buildTimed ? `SEND WAVE +${early}` : "START";
+    const label = game.wave === 0 ? "START" : "SEND";
     roundRect(ctx, px, y, sendW, h, 8);
     ctx.fillStyle = hexA(COL.charge, 0.92);
     ctx.fill();
@@ -1030,12 +1188,13 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   text(ctx, "HOW TO PLAY", STAGE_W / 2, 56, 30, COL.text, "center", "700", 4);
   const lines: [string, string][] = [
     ["GOAL", "The Load spills from the feeder vent and crawls to the grounding collector. Every unit that grounds out costs Grid Integrity; at 0 the grid overloads and you lose. Clear all the waves with integrity left to win."],
-    ["THE MAZE", "Every component AND every slag wall is a 2×2 WALL. The Load must reach each ordered waypoint in sequence, taking the shortest OPEN route around your walls — so building lengthens its route. You can never fully seal a waypoint segment (a sealing placement is refused), and the floor re-paths live as walls change."],
-    ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to stamp a RANDOM component type at a RANDOM quality, weighted low. Position its 2×2 footprint on a legal spot and place it — it lands ACTIVE and firing. 5 stamps per level, 18 Charge each."],
-    ["THE THREE FATES", "Keep a stamp firing, SLAG it (G) into an inert wall for 12 Charge back, or COMBINE (C) two matching components — same TYPE and same QUALITY — into one a tier higher. The quality ladder Scrap→Tuned→Charged→Primed→Tesla-Prime is the power axis; climb it by combining."],
-    ["COMPONENTS", "Capacitor (single bolt), Coil (chain-lightning), Emitter (rapid spark), Arc-Node (area discharge), Discharge Rig (heavy long-range bolt). All hit ground and air. Select one to read its stats, cycle its TARGET (T), SELL (S) it, slag, or combine. The Filament flies and ignores the maze."],
-    ["ECONOMY", "Kills pay Charge bounty; clearing a wave pays a bonus; banked Charge earns interest each build phase; sending a wave early pays per second left. Spend Charge to stamp and reshape the maze."],
-    ["CONTROLS", "B stamp · click place · click select · G slag · S sell · C combine · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · Esc cancel then pause menu · M mute."],
+    ["THE MAZE", "Every component, candidate, AND blocker is a 2×2 WALL. The Load must reach each ordered 4-tile waypoint PLATFORM in sequence, taking the shortest OPEN route around your walls — so building lengthens its route. You cannot build on a platform and can never fully seal a segment (a sealing placement is refused); the floor re-paths live as walls change."],
+    ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to arm a BLANK rock, then drop it on a legal spot — the instant it lands it ROLLS a random component type and quality (weighted low). Place up to 5 rocks per level, 10 Charge each; keep placing back-to-back until the allowance or Charge runs out."],
+    ["KEEP ONE PER LEVEL", "Select a placed rock and KEEP (K) exactly ONE per level to make it a firing tower — every rock you don't keep hardens into an inert BLOCKER. Or COMBINE (C) two same-TYPE + same-QUALITY rolls into one a tier higher, which counts as the level's keep. Choose KEEP or COMBINE, then SEND: the mobs enter."],
+    ["UPGRADE QUALITY", "Spend Charge on UPGRADE QUALITY (U) to raise your Refinement level R0→R5, biasing every future roll toward the higher tiers of the ladder Scrap→Tuned→Charged→Primed→Tesla-Prime. Refinement is the odds; combining is the direct climb."],
+    ["COMPONENTS", "Capacitor (single bolt), Coil (chain-lightning), Emitter (rapid spark), Arc-Node (area discharge), Discharge Rig (heavy long-range bolt). All hit ground and air. Select one to read its stats and cycle its TARGET (T). The Filament flies and ignores the maze — air only arrives every 4th wave."],
+    ["ECONOMY", "Kills pay Charge bounty; clearing a wave pays a bonus; banked Charge earns interest each build phase. Build phases are UNTIMED — take your time, then SEND when ready. There is no selling."],
+    ["CONTROLS", "B stamp · click place · click select · K keep · C combine · U upgrade quality · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · Esc cancel then pause menu · M mute."],
   ];
   let y = 100;
   for (const [k, v] of lines) {

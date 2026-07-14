@@ -1,18 +1,21 @@
 // Arc Foundry — the complete shared data model (the FROZEN CONTRACT).
 //
-// Arc Foundry is a GemTD reskin (specs/overview.md): you stamp random electrical
-// COMPONENTS from a scrap-press, wall a maze with them through ORDERED WAYPOINTS, and
-// climb a five-rung QUALITY ladder (Scrap → Tuned → Charged → Primed → Tesla-Prime) by
-// COMBINING matches. Every stamped component — active or slagged — is also a 2×2 WALL.
-// The Load pathfinds the shortest OPEN route around the walls between consecutive
-// waypoints; a placement that would seal any segment is refused (never-seal), and the
-// floor re-paths live as walls change.
+// Arc Foundry is a faithful GemTD reskin (specs/overview.md): you place random-rolling
+// electrical ROCKS from a scrap-press, KEEP EXACTLY ONE per level as a firing COMPONENT,
+// and every rock you do not keep hardens into an inert BLOCKER (a 2×2 wall that never
+// fires). You climb a five-rung QUALITY ladder (Scrap → Tuned → Charged → Primed →
+// Tesla-Prime) by COMBINING matches, and buy UPGRADE QUALITY (Refinement) to bias rolls
+// upward. Every component, candidate, and blocker is also a 2×2 WALL. The Load pathfinds
+// the shortest OPEN route around the walls between consecutive waypoint PLATFORMS; a
+// placement that would seal any segment or encircle a waypoint is refused (never-seal),
+// and the floor re-paths live as walls change.
 //
 // This module holds every runtime TYPE the rest of the build reads; the fixed NUMBERS
-// (stat tables, roll odds, the three maps' coordinates, the economy, the difficulty
-// table) live in constants.ts, which imports these types. Rendering, audio, and
-// particles read this state and drain its event queues; the simulation itself is
-// DOM-free and driven identically by the browser and the headless balance harness.
+// (stat tables, roll odds, the Refinement track, the three maps' coordinates, the
+// economy, the difficulty table) live in constants.ts, which imports these types.
+// Rendering, audio, and particles read this state and drain its event queues; the
+// simulation itself is DOM-free and driven identically by the browser and the headless
+// balance harness.
 
 // ---- Kinds (the two orthogonal component axes, the Load, difficulty) -----------
 
@@ -25,6 +28,10 @@ export type ComponentType = "capacitor" | "coil" | "emitter" | "arcnode" | "disc
 // 3 = Charged, 4 = Primed, 5 = Tesla-Prime. The power axis; combining climbs one rung.
 export type Tier = 1 | 2 | 3 | 4 | 5;
 
+// The Refinement level R on the UPGRADE QUALITY track (specs/build.md): 0..5. Higher R
+// biases the stamp's QUALITY roll toward higher tiers. Persistent for the run.
+export type Refinement = 0 | 1 | 2 | 3 | 4 | 5;
+
 // Per-component targeting priority — which valid in-range unit it fires at
 // (specs/towers.md, specs/controls.md). FIRST (default) is furthest along the waypoint
 // chain, LAST the least far; NEAREST ranks by straight-line distance from the component;
@@ -32,7 +39,8 @@ export type Tier = 1 | 2 | 3 | 4 | 5;
 export type TargetingMode = "first" | "last" | "nearest" | "strongest" | "weakest";
 
 // The Load roster (specs/enemies.md): charge units seeking ground. `filament` is the
-// flyer (ignores the maze); `dynamo` is the boss (overload core, anchors milestone waves).
+// flyer (ignores the maze, appears every 4th wave); `dynamo` is the boss (overload core,
+// anchors milestone waves).
 export type LoadType = "mote" | "spark" | "slug" | "cluster" | "filament" | "dynamo";
 
 // The in-game difficulty (specs/modes.md): changes ONLY wave count and enemy HP scaling.
@@ -52,9 +60,10 @@ export interface TileCoord {
 }
 
 // A tile's build/walk state (specs/board.md). `open` is empty yard the Load crosses and
-// the player may build on; `blocked` is a component or slag footprint (a wall the player
-// can remove); `fixed` is a map's pre-placed housing (impassable AND never buildable).
-export type TileState = "open" | "blocked" | "fixed";
+// the player may build on; `blocked` is a component / candidate / blocker footprint (a
+// wall); `fixed` is a map's pre-placed housing (impassable AND never buildable);
+// `waypoint` is a tile of a 4-tile waypoint platform (walkable but never buildable).
+export type TileState = "open" | "blocked" | "fixed" | "waypoint";
 
 // A board edge (or the center) an Entry / Collector / waypoint sits on, for layout.
 export type MapEdge = "left" | "right" | "top" | "bottom" | "center";
@@ -70,7 +79,9 @@ export interface HousingRect {
 
 // A map's TOPOLOGY (specs/board.md): the ordered waypoint chain and any fixed housings.
 // Every map plays the same campaign, economy, roster, and scaling — only the topology
-// differs. The pathing chain is [entry, ...waypoints, collector], traversed in order.
+// differs. The pathing chain is [entry, ...waypoints, collector], traversed in order;
+// each waypoint coordinate is the ANCHOR of a 4-tile T-shaped platform (the extra tiles
+// are derived in board.ts: (c−1,r), (c+1,r), and a stem (c, r±1) toward row 16).
 export interface MapDef {
   id: string;
   name: string; // "The Substation" | "The Switchyard" | "The Transformer Yard"
@@ -78,28 +89,26 @@ export interface MapDef {
   styleLabel: string; // the visual flow treatment ("SERPENTINE" / "BUSBAR" / "CHOKEPOINT")
   entry: TileCoord;
   entryEdge: MapEdge;
-  waypoints: TileCoord[]; // WP1..WPk, in order
+  waypoints: TileCoord[]; // WP1..WPk anchors, in order (each a 4-tile platform)
   collector: TileCoord;
   collectorEdge: MapEdge;
   housings: HousingRect[]; // fixed-blocked, never buildable (empty on Maps A/B)
 }
 
-// ---- Placed structures: active components and inert slag walls ------------------
+// ---- Placed structures: components, candidates, blockers ------------------------
 
-// Fields common to everything placed on the yard — both active components and slag
-// walls occupy a uniform 2×2 footprint anchored at (col, row) and are WALLS (specs/board.md).
+// Fields common to everything placed on the yard. Components, candidates, and blockers
+// all occupy a uniform 2×2 footprint anchored at (col, row) and are WALLS (specs/board.md).
 export interface StructureBase {
   id: number;
   col: number; // top-left anchor tile of the 2×2 footprint
   row: number;
-  invested: number; // the Charge this piece carries, for the sell refund (specs/towers.md)
-  placedForWave: number; // the wave number whose approach this piece was placed during
-  refundable: boolean; // full-refund window: true until placedForWave starts (specs/build.md)
 }
 
 // An ACTIVE component: fires automatically at its type/quality stats AND walls
 // (specs/towers.md). Its head rotates to face the target; each shot is a travelling
-// projectile / arc that carries the hit on impact.
+// projectile / arc that carries the hit on impact. Created only by KEEPing a candidate or
+// by a COMBINE (specs/build.md). Permanent — there is no selling.
 export interface Component extends StructureBase {
   kind: "component";
   type: ComponentType;
@@ -110,19 +119,39 @@ export interface Component extends StructureBase {
   aimAngle: number; // the head's heading — tracks the current target
 }
 
-// A SLAG wall: an inert fused-scrap lump — walls but never fires (specs/build.md).
-export interface SlagWall extends StructureBase {
-  kind: "slag";
+// A CANDIDATE: a rock placed THIS build phase that has rolled a random type + quality and
+// is eligible to be kept or combined this level only (specs/build.md). Walls its footprint
+// but does not fire (there are no units on the floor during the build phase). At wave
+// start every un-harvested candidate hardens into a Blocker.
+export interface Candidate extends StructureBase {
+  kind: "candidate";
+  type: ComponentType;
+  tier: Tier;
+}
+
+// A BLOCKER: an inert fused-scrap rock — walls but never fires (specs/build.md). The maze
+// material. A future stamp may be dropped onto a blocker to reroll it into a candidate.
+export interface Blocker extends StructureBase {
+  kind: "blocker";
 }
 
 // Everything on the yard the maze is built from.
-export type Structure = Component | SlagWall;
+export type Structure = Component | Candidate | Blocker;
+
+// The level's single harvest choice (specs/build.md): what the SEND resolves into the one
+// new/upgraded firing component. `keep` promotes a candidate; `combine` merges a candidate
+// with a partner (another candidate or an existing component of the same type + tier) one
+// tier higher, consuming the partner. Reversible until SEND.
+export type Harvest =
+  | { mode: "none" }
+  | { mode: "keep"; id: number }
+  | { mode: "combine"; id: number; partnerId: number };
 
 // ---- The Load (units) ----------------------------------------------------------
 
 // A live unit of the Load (specs/enemies.md). It spawns at Entry, traverses the waypoint
 // chain in order, and grounds out (leaks) at the Collector. `flies` units ignore the maze
-// and straight-line through the waypoints (specs/board.md §3.6).
+// and straight-line through the waypoints (specs/board.md).
 export interface Unit {
   id: number;
   type: LoadType;
@@ -149,7 +178,7 @@ export interface Unit {
 // A shot in flight (specs/towers.md). A component launches one toward its target; it
 // travels and applies the component's effect on IMPACT (never a hitscan). It carries a
 // snapshot of the firing component's shot so the effect is faithful even if the component
-// is later sold or combined, and misses harmlessly if its target is gone.
+// is later combined, and misses harmlessly if its target is gone.
 export interface Projectile {
   id: number;
   type: ComponentType; // which component fired it (sprite + effect)
@@ -182,6 +211,7 @@ export interface Wave {
   durationMs: number;
   types: LoadType[]; // distinct types present, in preview order (the next-wave preview)
   hasBoss: boolean; // a Dynamo anchors this (milestone) wave
+  hasAir: boolean; // a Filament contingent is present (every 4th wave)
 }
 
 // ---- Game state machine, presentation events, UI hit-testing -------------------
@@ -199,13 +229,15 @@ export type GameState =
   | "victory"
   | "defeat";
 
+// A level is a BUILD phase (untimed; you place rocks, keep, combine, upgrade quality)
+// then a WAVE phase (the Load runs; building is disabled). specs/flow.md.
 export type Phase = "build" | "wave";
 
 // The produced electrical particle systems, fired at each event (specs/assets.md — THE
 // HEADLINE). A firing effect's intensity escalates with the component's quality tier.
 export type FxKind =
-  | "buildspark" // a component is stamped from the press
-  | "combine" // two components combine into a higher tier
+  | "buildspark" // a rock is placed / a candidate revealed at the press
+  | "combine" // a combine resolves into a higher tier (also reused for a KEEP flourish)
   | "arcbolt" // a Capacitor / Discharge Rig fires its single bolt
   | "chain" // a Coil fires and chains between hit units
   | "spray" // an Emitter fires its fast spark fan
@@ -229,7 +261,9 @@ export interface FxEvent {
 }
 
 // The produced sound cues (specs/assets.md "Audio"). Music is looped separately.
-export type Cue = "stamp" | "zap" | "chain" | "discharge" | "combine" | "kill" | "leak" | "slag";
+// `settle` is the rock-settle thunk played when unkept candidates harden into blockers at
+// wave start (it replaces the old "slag" cue).
+export type Cue = "stamp" | "zap" | "chain" | "discharge" | "combine" | "kill" | "leak" | "settle";
 
 // A hit-testable UI region emitted by the renderer and routed by the input layer.
 export interface Clickable {

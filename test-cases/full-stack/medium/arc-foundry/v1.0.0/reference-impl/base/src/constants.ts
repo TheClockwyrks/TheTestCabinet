@@ -7,15 +7,16 @@
 //
 // The model (specs/overview.md): a GemTD reskin. A component has a TYPE (one of five
 // firing identities) and a quality TIER (Scrap → Tesla-Prime). Damage/range derive from
-// base (Scrap) stats times the tier; fire rate is flat across quality. Every component —
-// active or slagged — is a 2×2 wall; the Load mazes the shortest OPEN route through
-// ordered waypoints, never fully sealable.
+// base (Scrap) stats times the tier; fire rate is flat across quality. Every component,
+// candidate, and blocker is a 2×2 wall; the Load mazes the shortest OPEN route through
+// ordered waypoint platforms, never fully sealable.
 
 import type {
   ComponentType,
   Difficulty,
   LoadType,
   MapDef,
+  Refinement,
   TargetingMode,
   Tier,
 } from "./types";
@@ -45,7 +46,7 @@ export function tileCenter(col: number, row: number): { x: number; y: number } {
 }
 
 // ---- Component footprint (specs/board.md §2.3 — uniform 2×2) --------------------
-export const FOOTPRINT_TILES = 2; // every component / slag wall is 2×2 tiles (40×40 px)
+export const FOOTPRINT_TILES = 2; // every component / candidate / blocker is 2×2 tiles (40×40 px)
 export const FOOTPRINT_PX = FOOTPRINT_TILES * TILE; // 40
 // Legal anchor range for a 2×2 footprint: col 0..48, row 0..31.
 export const MAX_ANCHOR_COL = GRID_COLS - FOOTPRINT_TILES; // 48
@@ -88,7 +89,7 @@ export const COL = {
   emitter: "#7fe6b0",
   arcnode: "#ffb347",
   discharge: "#ff5470",
-  slag: "#3a4351",
+  blocker: "#3a4351", // inert fused-scrap rock (was "slag")
 } as const;
 
 export const FONT = `"SF Mono", "JetBrains Mono", "Fira Mono", "DejaVu Sans Mono", "Menlo", "Consolas", monospace`;
@@ -122,8 +123,8 @@ export const TIER_NAME: Record<Tier, string> = {
   5: "TESLA-PRIME",
 };
 // Damage multiplier by tier (steep, so combining always pays). Index 0 is unused padding.
-export const QUALITY_MULT: number[] = [0, 1.0, 2.2, 5.0, 11, 24];
-export const RANGE_PER_TIER = 2; // range += 2 px per tier above T1
+export const QUALITY_MULT: number[] = [0, 1.0, 3.0, 9.0, 40, 110];
+export const RANGE_PER_TIER = 8; // range += 8 px per tier above T1 (carries reach a little farther)
 export const MAX_TIER: Tier = 5; // Tesla-Prime is the apex — cannot combine further
 
 // ---- Targeting (specs/towers.md, specs/controls.md) ----------------------------
@@ -150,11 +151,11 @@ export interface ComponentDef {
 }
 
 export const COMPONENTS: Record<ComponentType, ComponentDef> = {
-  capacitor: { type: "capacitor", name: "CAPACITOR", role: "Balanced single-target zap", color: COL.capacitor, range: 80, fireRate: 1.6, dmg: 8, splashT1: 0, splashPerTier: 0 },
-  coil: { type: "coil", name: "COIL", role: "Chain-lightning — leaps to nearby units", color: COL.coil, range: 88, fireRate: 1.1, dmg: 6, splashT1: 0, splashPerTier: 0 },
-  emitter: { type: "emitter", name: "EMITTER", role: "Rapid low-damage spark; anti-swarm", color: COL.emitter, range: 70, fireRate: 4.5, dmg: 2, splashT1: 0, splashPerTier: 0 },
-  arcnode: { type: "arcnode", name: "ARC-NODE", role: "Area discharge — damages everything near impact", color: COL.arcnode, range: 78, fireRate: 0.9, dmg: 7, splashT1: 45, splashPerTier: 5 },
-  discharge: { type: "discharge", name: "DISCHARGE RIG", role: "Slow, long-range heavy bolt; anti-tank", color: COL.discharge, range: 130, fireRate: 0.5, dmg: 22, splashT1: 0, splashPerTier: 0 },
+  capacitor: { type: "capacitor", name: "CAPACITOR", role: "Balanced single-target zap", color: COL.capacitor, range: 104, fireRate: 1.6, dmg: 8, splashT1: 0, splashPerTier: 0 },
+  coil: { type: "coil", name: "COIL", role: "Chain-lightning — leaps to nearby units", color: COL.coil, range: 114, fireRate: 1.1, dmg: 6, splashT1: 0, splashPerTier: 0 },
+  emitter: { type: "emitter", name: "EMITTER", role: "Rapid low-damage spark; anti-swarm", color: COL.emitter, range: 92, fireRate: 4.5, dmg: 2, splashT1: 0, splashPerTier: 0 },
+  arcnode: { type: "arcnode", name: "ARC-NODE", role: "Area discharge — damages everything near impact", color: COL.arcnode, range: 100, fireRate: 0.9, dmg: 7, splashT1: 45, splashPerTier: 5 },
+  discharge: { type: "discharge", name: "DISCHARGE RIG", role: "Slow, long-range heavy bolt; anti-tank", color: COL.discharge, range: 165, fireRate: 0.5, dmg: 22, splashT1: 0, splashPerTier: 0 },
 };
 
 // Coil chain (specs/towers.md §5.3): the bolt leaps to the nearest not-yet-hit unit
@@ -202,11 +203,13 @@ export function deriveStats(type: ComponentType, tier: Tier): CompStats {
   };
 }
 
-// ---- The scrap-press build loop (specs/build.md §6) ----------------------------
-export const BUILDS_PER_LEVEL = 7; // fixed 7-stamp allowance per level (constant across difficulty)
-export const STAMP_COST = 18; // Charge per press pull
+// ---- The scrap-press build loop (specs/build.md) -------------------------------
+// GemTD-faithful: place up to BUILDS_PER_LEVEL rocks a level, keep exactly one, the rest
+// harden into blockers. The ROLL happens on placement, not on the STAMP click.
+export const BUILDS_PER_LEVEL = 5; // fixed 5-stamp allowance per level (hard cap, constant across difficulty)
+export const STAMP_COST = 10; // Charge to place one rock (capped at 5 placements/level regardless of Charge)
 
-// Type roll: uniform 20% each (specs/build.md §6.2).
+// Type roll: uniform 20% each (specs/build.md). Independent of Refinement.
 export const STAMP_TYPE_WEIGHT: Record<ComponentType, number> = {
   capacitor: 0.2,
   coil: 0.2,
@@ -215,24 +218,30 @@ export const STAMP_TYPE_WEIGHT: Record<ComponentType, number> = {
   discharge: 0.2,
 };
 
-// Quality roll: weighted low so the climb is via combining (specs/build.md §6.2).
-// Indexed by tier; index 0 unused. Sums to 1.0.
-export const STAMP_QUALITY_WEIGHT: number[] = [0, 0.62, 0.24, 0.1, 0.034, 0.006];
+// Quality roll by Refinement level R (specs/build.md — UPGRADE QUALITY). Each row is a
+// 5-tier distribution [T1..T5] that sums to 1.0; higher R biases upward. Indexed R = 0..5.
+export const QUALITY_ODDS_BY_R: number[][] = [
+  [0.72, 0.26, 0.02, 0.0, 0.0], //  R0 (base — Scrap-heavy; Primed/Tesla-Prime are combine-only)
+  [0.55, 0.36, 0.09, 0.0, 0.0], //  R1
+  [0.4, 0.42, 0.18, 0.0, 0.0], //   R2
+  [0.28, 0.44, 0.28, 0.0, 0.0], //  R3
+  [0.18, 0.44, 0.38, 0.0, 0.0], //  R4
+  [0.1, 0.42, 0.48, 0.0, 0.0], //   R5
+];
 
-// Invested value a component carries (specs/towers.md §5.6): a stamped one is worth
-// STAMP_COST; a combined one the sum of the two it consumed, so it doubles each rung.
-// Indexed by tier; index 0 unused: 18, 36, 72, 144, 288.
-export function investedValue(tier: Tier): number {
-  return STAMP_COST * Math.pow(2, tier - 1);
-}
+// Legacy alias: the R0 quality distribution as a tier-indexed array (index 0 unused), so
+// any older reference keeps working. Prefer QUALITY_ODDS_BY_R[r].
+export const STAMP_QUALITY_WEIGHT: number[] = [0, ...QUALITY_ODDS_BY_R[0]!];
 
-// Sell / slag refunds (specs/towers.md §5.6).
-export const SELL_FRACTION = 0.7; // active component sells for 70% of invested value
-export const SLAG_REFUND = 12; // flat Charge refunded when slagging an active component
-export const SLAG_WALL_SELL = 6; // a slag wall sells for this
+export const MAX_REFINEMENT: Refinement = 5;
 
-export function sellRefund(tier: Tier): number {
-  return Math.floor(investedValue(tier) * SELL_FRACTION); // 12, 25, 50, 100, 201
+// UPGRADE QUALITY cost to REACH each Refinement level (from the previous), Charge.
+// Indexed by target level; index 0 unused (you start at R0). specs/build.md.
+export const REFINE_COST: number[] = [0, 55, 110, 200, 340, 520];
+
+// Cost to buy the next level from the current one, or null if already at the apex.
+export function nextRefineCost(r: Refinement): number | null {
+  return r >= MAX_REFINEMENT ? null : REFINE_COST[r + 1]!;
 }
 
 // ---- The Load roster (specs/enemies.md §7 — base Wave-1, Medium) ---------------
@@ -265,13 +274,14 @@ export function scaledHp(baseHp: number, wave: number, baseMult: number, k: numb
   return Math.round(baseHp * baseMult * (1 + k * (wave - 1)));
 }
 
-// ---- Economy (specs/flow.md §8 — constant across difficulty) -------------------
+// ---- Economy (specs/flow.md — constant across difficulty) ----------------------
+// Every build phase is UNTIMED (specs/flow.md): no countdown and no early-send bonus.
+// Charge is spent on placing rocks (STAMP_COST) and UPGRADE QUALITY (REFINE_COST) only —
+// there is no selling or slagging.
 export const START_CHARGE = 130;
 export const START_INTEGRITY = 20;
-export const BUILD_PHASE_SECONDS = 15; // between-wave build phase (the opening phase is untimed)
 export const INTEREST_RATE = 0.08; // 8% of current Charge at the start of each between-wave phase
 export const INTEREST_CAP = 40; // capped at +40 per build phase
-export const EARLY_SEND_PER_SECOND = 1; // Charge per whole second left on the countdown
 
 export function waveClearBonus(wave: number): number {
   return 20 + 5 * wave;
@@ -294,9 +304,9 @@ export interface DifficultyDef {
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
-  easy: { key: "easy", label: "EASY", waves: 20, baseMult: 0.9, k: 0.2, milestones: [10, 20], note: "Shorter siege, gentler HP ramp." },
-  medium: { key: "medium", label: "MEDIUM", waves: 30, baseMult: 1.0, k: 0.26, milestones: [15, 30], note: "The reference balance." },
-  hard: { key: "hard", label: "HARD", waves: 40, baseMult: 1.15, k: 0.33, milestones: [20, 40], note: "Dozens of waves, a steep HP climb." },
+  easy: { key: "easy", label: "EASY", waves: 20, baseMult: 0.24, k: 0.8, milestones: [10, 20], note: "Shorter siege, gentler HP ramp." },
+  medium: { key: "medium", label: "MEDIUM", waves: 30, baseMult: 0.22, k: 1.35, milestones: [15, 30], note: "The reference balance." },
+  hard: { key: "hard", label: "HARD", waves: 40, baseMult: 0.24, k: 1.75, milestones: [20, 40], note: "Dozens of waves, a steep HP climb." },
 };
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard"];

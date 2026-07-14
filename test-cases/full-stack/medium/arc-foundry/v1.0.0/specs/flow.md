@@ -15,9 +15,9 @@ wave count and enemy toughness change.
 
 ## Charge and the economy
 
-**Charge** is the currency — scavenged power spent to stamp the scrap-press and
-recovered when components are slagged, sold, or killed for, so the Load always
-presses against a maze that is still being built up.
+**Charge** is the currency — scavenged power spent to place rocks at the scrap-press
+and to UPGRADE QUALITY, and recovered from kill bounties, the wave-clear bonus, and
+interest, so the Load always presses against a maze that is still being built up.
 
 - **Starting Charge** is `130` — enough to open with a few stamps and a starter
   maze, not a full board.
@@ -27,18 +27,16 @@ presses against a maze that is still being built up.
   `20` plus `5 × waveNumber`.
 - **Interest.** At the start of each **between-wave build phase** you earn `8%` of
   your current Charge, rounded down and **capped at `+40`** per build phase — a
-  gentle reward for banking rather than over-spending. (The untimed opening phase
-  before Wave 1 earns no interest.)
-- **Early-send bonus.** Sending the next wave early (`specs/controls.md`) pays `1`
-  Charge per whole second left on the build-phase countdown when you send it.
-- **Spending.** A press pull costs `18` Charge and stamps one component
-  (`specs/build.md`); Charge never goes below `0`. **Slagging** an active
-  component into an inert wall refunds a flat `12`; **combining** two matching
-  components costs nothing; **selling** an active component refunds `70%` of its
-  invested value, rounded down (T1 `12`, T2 `25`, T3 `50`, T4 `100`, T5 `201`), or
-  its **full** invested value if it is sold **before the wave it was made for
-  starts** — the full-refund window (`specs/towers.md`, `specs/build.md`). A slag
-  wall sells for `6`.
+  gentle reward for banking rather than over-spending. (The opening phase before
+  Wave 1 earns no interest.)
+- **Spending.** Charge is spent on two things: **placing rocks** and **UPGRADE
+  QUALITY**. Placing a rock costs `10` Charge and rolls one component where it lands,
+  up to the `5`-per-level allowance (`specs/build.md`); Charge never goes below `0`,
+  so the press is disabled when you cannot afford `10`. **UPGRADE QUALITY** buys the
+  next Refinement level for its fixed cost (`55 / 110 / 200 / 340 / 520` up the R1–R5
+  track, `specs/build.md`). **Combining costs nothing.** There is **no selling and no
+  slagging** — rocks, blockers, and kept components are permanent (`specs/towers.md`,
+  `specs/build.md`), so the only Charge sinks are stamps and refinement.
 
 ## Grid Integrity and leaks
 
@@ -56,21 +54,19 @@ presses against a maze that is still being built up.
   map-select screen (`specs/board.md`), where `N` is set by the selected difficulty
   (`specs/modes.md`); the reference **Medium** run is `30`. Waves are numbered
   `WAVE 1` … `WAVE N`.
-- Between waves there is a **build phase** of up to `15 s` (its countdown shown in
-  the build panel, `specs/board.md`), during which the Load is not spawning and you
-  stamp, slag, combine, sell, and re-shape the maze. Interest is paid at its start.
-  You may **send the next wave early** (`specs/controls.md`) for the early-send
-  bonus, or let the timer expire to start it automatically.
-- **The opening build phase — before Wave 1 — is untimed.** It shows **no
-  countdown** and never starts on its own: the player lays their opening maze at
-  leisure and presses **START** (the wave control, `specs/controls.md`) to begin
-  Wave 1 when ready. It pays no early-send bonus, and interest (paid only at the
-  start of the between-wave phases) does not apply to it. Because nothing has
-  fought yet, every component stamped, kept, or slagged in the opening phase is
-  **fully refundable** while it lasts (`specs/build.md`) — the whole opening layout
-  can be re-shaped without penalty.
-- Building is allowed during **both** the build phase and the live wave, subject to
-  the fixed allowance of **`7` press stamps per level** (`specs/build.md`).
+- Between waves there is an **untimed build phase**, during which the Load is not
+  spawning and you place rocks, keep, combine, and upgrade quality (`specs/build.md`).
+  It shows **no countdown** and never starts on its own; interest is paid at its
+  start. The player re-shapes the maze at leisure and presses **SEND** (the wave
+  control, `specs/controls.md`) to resolve the level (the kept candidate becomes a
+  component, the rest harden into blockers, `specs/build.md`) and start the next wave.
+- **The opening build phase — before Wave 1 — is also untimed**, reads **START**
+  instead of SEND, and pays no interest (interest is paid only at the start of the
+  between-wave phases). The `130` opening Charge lays the first partial maze, not a
+  finished board.
+- Building is allowed **only during the build phase**, never during a live wave,
+  subject to the fixed allowance of **`5` rock stamps per level** (`specs/build.md`).
+  There is no build-phase timer and no early-send bonus.
 - During a wave, the Load spawns from the map's **Entry** over time (the exact
   timing and per-wave mix are specified in `specs/enemies.md`). A wave is
   **cleared** when every unit it released has either died or leaked. Clearing a
@@ -81,7 +77,7 @@ presses against a maze that is still being built up.
 - **Difficulty scaling.** Only the **wave count** `N` and the **enemy HP scaling**
   change with difficulty (`specs/modes.md`). A unit's HP on wave `w` is its base HP
   (`specs/enemies.md`) times `baseMult × (1 + k × (w − 1))`, where `baseMult` and
-  `k` are the difficulty's constants (Medium `baseMult = 1.0`, `k = 0.26`). Speeds,
+  `k` are the difficulty's constants (Medium `baseMult = 0.22`, `k = 1.35`). Speeds,
   bounties, and leak values do not scale, and every component stat is unchanged
   across waves — only the Load grows.
 - **Victory.** Clearing the **final wave** (Wave `N`) with **Grid Integrity
@@ -122,18 +118,20 @@ The game is a small state machine. Each state has a clear screen and controls
    one begins the campaign on the chosen map at that difficulty; a **BACK** choice
    returns to map select.
 4. **How to play.** Describes the goal (stop the Load from reaching the Collector),
-   the controls, the scrap-press build (stamp a random component of a random
-   quality), the three fates (keep active, **slag** into a wall, **combine** a
-   match up the quality ladder), that every component is also a **wall** and you
-   build the maze, the ordered waypoints, the flyer that ignores the maze, and the
-   economy and Grid Integrity. Returns to the main menu.
-5. **In match.** The live game: the chosen map's yard and its maze, the Load
-   walking and flying, the components firing, and the build panel. This covers both
-   the **build phase** (countdown running, no Load spawning) and the **wave phase**
-   (Load active); building is allowed in both (`specs/controls.md`). Play can be
-   **paused in place** here — ticks freeze while the board stays fully interactive,
-   with no menu over it and a clear `PAUSED` read — via the status-bar pause
-   control or the pause hotkey (`specs/controls.md`).
+   the controls, the scrap-press build (place a rock that **rolls a random component
+   on placement**), the **keep exactly one per level** rule and that every other rock
+   hardens into an inert **blocker**, **combining** a match up the quality ladder,
+   **UPGRADE QUALITY** (refining the press for better rolls), that every rock and
+   component is also a **wall** and you build the maze, the ordered waypoints and
+   their platforms, the flyer that appears every four waves and ignores the maze, and
+   the economy and Grid Integrity. Returns to the main menu.
+5. **In match.** The live game: the chosen map's yard and its maze, the Load walking
+   and flying, the components firing, and the build panel. This covers both the
+   **untimed build phase** (no Load spawning; you build) and the **wave phase** (Load
+   active; building is disabled, `specs/controls.md`). Play can be **paused in place**
+   here — ticks freeze while the board stays visible, with no menu over it and a clear
+   `PAUSED` read — via the status-bar pause control or the pause hotkey
+   (`specs/controls.md`).
 6. **Paused.** The `Esc` overlay menu, reachable in match. Offers **Resume**,
    **Restart**, and **Quit to menu**. The yard is visible but frozen behind the
    menu. This is separate from the in-place pause of state 5: the menu freezes the
@@ -186,21 +184,25 @@ fully visible:
 
 - **Status bar** (`y` in `[0, 56]`): **Charge**, **Grid Integrity** (turning to the
   alert color as it runs low), the **wave indicator** `WAVE n / N` with the current
-  wave's progress or the build-phase countdown, and the **speed**, **pause**, and
-  **mute** controls. A clear `PAUSED` read shows while paused in place.
-- **Build panel** (`x` in `[1000, 1280]`): the **scrap-press** control (STAMP,
-  showing its `18` cost and the remaining stamps of the `7`-per-level allowance);
-  the **selected-component inspector** (its type, quality tier, live stats — damage,
-  range, fire rate, targeting — and the **SLAG / SELL / COMBINE** and **targeting**
-  controls, with COMBINE shown only when a match exists, `specs/build.md`); the
-  **next-wave preview** (the coming wave's types, shown when nothing is selected);
-  and the **wave control** (START / send-early) with the speed toggle.
+  wave's progress or a **BUILD** read between waves (the phase is untimed), and the
+  **speed**, **pause**, and **mute** controls. A clear `PAUSED` read shows while paused
+  in place.
+- **Build panel** (`x` in `[1000, 1280]`): the **scrap-press** control (STAMP, showing
+  its `10` cost and the remaining stamps of the `5`-per-level allowance); the **UPGRADE
+  QUALITY** control (the current Refinement level `R` and the next level's cost,
+  `specs/build.md`); the **selected candidate/component inspector** (its type, quality
+  tier, live stats — damage, range, fire rate, targeting — and the **KEEP / COMBINE**
+  and **targeting** controls, with KEEP/COMBINE on candidates during the build phase and
+  COMBINE shown only when a match exists, `specs/build.md`); the **next-wave preview**
+  (the coming wave's types, shown when nothing is selected); and the **wave control**
+  (START / SEND) with the speed toggle.
 
-On the board, each unit carries a **health bar** (`specs/enemies.md`), each
-component reads as its **type** and **quality tier** (its finish and VFX escalate
-by tier, `specs/towers.md`), and a selected or held component shows its **range
-ring**. A player must be able to read, without hunting, how much Charge they have,
-how close Grid Integrity is to zero, which wave is coming and what it contains, and
+On the board, each unit carries a **health bar** (`specs/enemies.md`), each component
+and candidate reads as its **type** and **quality tier** (its finish and VFX escalate
+by tier, `specs/towers.md`), a **blocker** reads as an inert rock, and a selected or
+held piece shows its **range ring**. A player must be able to read, without hunting,
+how much Charge they have, how close Grid Integrity is to zero, which wave is coming and
+what it contains, and
 each board component's type and quality — at fast speed.
 
 ## Key behaviors
@@ -212,31 +214,31 @@ targets:
   then a **DIFFICULTY SELECT** where they pick Easy / Medium / Hard, and plays the
   run on that map at that difficulty (`specs/board.md`, `specs/modes.md`).
 - **Difficulty changes only wave count and enemy toughness.** Starting Charge
-  (`130`), Grid Integrity (`20`), builds-per-level (`7`), stamp cost (`18`), the
-  roster, and every economy value are identical on Easy / Medium / Hard
-  (`specs/modes.md`).
-- Every component is also a **wall** and you **build the maze**: the Load traverses
-  its map's ordered waypoints, taking the shortest **open** route between
-  consecutive waypoints, and building lengthens the route; a placement that would
-  seal any waypoint segment is **refused**, and the floor **re-paths live** as walls
-  change (`specs/board.md`).
-- The **scrap-press** stamps a **random** component type at a **random** quality on
-  fixed odds; each stamp can be kept active, **slagged** into an inert wall, or
-  **combined** with a match (same type + quality → one tier higher) up the
-  crude→prime **quality ladder** (`specs/build.md`, `specs/towers.md`).
-- Components **fire automatically** at valid in-range units with selectable
-  targeting, throwing visible traveling arcs that carry the hit; **flyers** ignore
-  the maze but can still be hit in range (`specs/towers.md`, `specs/enemies.md`).
-- The **economy** runs on kill bounties, the wave-clear bonus, interest, and the
-  early-send bonus; a **leak** costs Grid Integrity; **`0`** integrity overloads and
-  ends the game; clearing the **final wave** with integrity left wins it (this file).
-- A **Dynamo** boss anchors the milestone waves (`round(N / 2)` and Wave `N`),
-  seething and bursting into a big discharge on death (`specs/enemies.md`,
-  `specs/assets.md`).
+  (`130`), Grid Integrity (`20`), builds-per-level (`5`), stamp cost (`10`), the
+  Refinement track, the roster, and every economy value are identical on Easy /
+  Medium / Hard (`specs/modes.md`).
+- Every rock and component is also a **wall** and you **build the maze**: the Load
+  traverses its map's ordered waypoints (each a 4-tile **platform**), taking the
+  shortest **open** route between consecutive waypoints, and building lengthens the
+  route; a placement that would seal any segment, or land on a waypoint platform, is
+  **refused**, and the floor **re-paths live** as walls change (`specs/board.md`).
+- The **scrap-press** places a rock that **rolls a random component type at a random
+  quality on placement** (biased upward by Refinement); you **keep exactly one** roll
+  per level as a firing component, every other rock hardens into an inert **blocker**,
+  and **combining** a match (same type + quality → one tier higher) is the level's
+  alternative keep (`specs/build.md`, `specs/towers.md`).
+- Components **fire automatically** at valid in-range units with selectable targeting,
+  throwing visible traveling arcs that carry the hit; **flyers** (every fourth wave)
+  ignore the maze but can still be hit in range (`specs/towers.md`, `specs/enemies.md`).
+- The **economy** runs on kill bounties, the wave-clear bonus, and interest, spent on
+  stamps and **UPGRADE QUALITY** (no selling); a **leak** costs Grid Integrity; **`0`**
+  integrity overloads and ends the game; clearing the **final wave** with integrity left
+  wins it (this file).
+- A **Dynamo** boss anchors the milestone waves (`round(N / 2)` and Wave `N`), seething
+  and bursting into a big discharge on death (`specs/enemies.md`, `specs/assets.md`).
 - The game can be **paused in place** (status-bar pause or the pause hotkey during a
-  wave): ticks freeze but the board stays interactive, so components can still be
-  stamped, slagged, combined, and sold, with no menu shown. **`Esc`** instead opens
-  the pause **menu**, which also freezes the game (`specs/controls.md`).
+  wave): ticks freeze so you can read the frozen board, with no menu shown. **`Esc`**
+  instead opens the pause **menu**, which also freezes the game (`specs/controls.md`).
 - The component and Load sprites, the enemy and boss **animations**, the
   **electrical particle VFX** (arcs, chain-lightning, spark showers, discharges),
   and the **audio** are all **produced with the on-`PATH` tools** and wired in

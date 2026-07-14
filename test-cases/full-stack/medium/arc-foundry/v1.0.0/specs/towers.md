@@ -2,15 +2,17 @@
 
 ## Overview
 
-This file defines the **five component types** stamped from the scrap-press — the
-turrets you wall the yard with — their firing identities, the **quality ladder**
-that scales them, and the full stat tables for every type at every quality. It
-builds on the tile grid and the uniform footprint in `specs/board.md`, the Load
-it fires at in `specs/enemies.md`, the scrap-press build loop (stamping odds,
-slag, and the combine recipe) in `specs/build.md`, the placing/selecting/selling
-controls in `specs/controls.md`, the economy in `specs/flow.md`, and the produced
-sprites and electrical VFX in `specs/assets.md`. Ranges are in logical pixels
-(`specs/board.md`); Charge values are the unitless money of `specs/flow.md`.
+This file defines the **five component types** — the turrets you wall the yard with,
+each created by **keeping** a rolled rock or **combining** a match (`specs/build.md`) —
+their firing identities, the **quality ladder** that scales them, and the full stat
+tables for every type at every quality. It builds on the tile grid and the uniform
+footprint in `specs/board.md`, the Load it fires at in `specs/enemies.md`, the
+scrap-press build loop (the place-and-reveal stamp, the one-keep-per-level rule,
+inert blockers, the combine recipe, and UPGRADE QUALITY) in `specs/build.md`, the
+placing / keeping / combining / targeting controls in `specs/controls.md`, the economy
+in `specs/flow.md`, and the produced sprites and electrical VFX in `specs/assets.md`.
+Ranges are in logical pixels (`specs/board.md`); Charge values are the unitless money
+of `specs/flow.md`.
 
 The stat numbers below are **fixed** for this version; implement them exactly as
 written. Equally important is the **behavior**: five distinct firing identities,
@@ -35,9 +37,10 @@ there is no manual trigger — and **all five hit both ground and flying** units
 | **Discharge Rig** | slow, long-range heavy bolt — the anti-tank sniper | a fat **capacitor-bank crack** |
 
 A component is **never bought at a chosen type or quality**: it is created only by
-stamping the press or by combining matches (`specs/build.md`). What you build with
-is what the press hands you, so the roster is played by *shaping* random rolls,
-not by picking towers off a shop.
+**keeping** a rolled candidate or by **combining** a match (`specs/build.md`). What you
+build with is what the press hands you — one keep per level — so the roster is played by
+*shaping* random rolls (and refining the press to roll better ones), not by picking
+towers off a shop.
 
 ## The quality ladder
 
@@ -66,12 +69,14 @@ recipe, odds, and the free-of-Charge climb live in `specs/build.md`.
 A component's stats derive from its **base (Scrap / T1)** stats and its quality
 tier, by these fixed rules:
 
-- **Damage** = base damage **× quality multiplier**: T1 `×1.0`, T2 `×2.2`, T3
-  `×5.0`, T4 `×11`, T5 `×24`. The curve is deliberately **steep** so combining two
-  components always out-damages the two it consumed (`specs/build.md`) — the
-  board's power comes from *climbing*, not from flooding the yard with Scrap.
-- **Range** = base range **+ 2 px per tier above T1** (so T3 is `+4`, T5 is
-  `+8`).
+- **Damage** = base damage **× quality multiplier**: T1 `×1`, T2 `×3`, T3 `×9`,
+  T4 `×40`, T5 `×110`. The curve is deliberately **steep** so combining two
+  components always out-damages the two it consumed (`specs/build.md`) — and because
+  **Primed (T4) and Tesla-Prime (T5) can only be reached by combining**
+  (`specs/build.md`: the press never rolls above Charged), the board's power comes
+  from *climbing*, not from flooding the yard with Scrap.
+- **Range** = base range **+ 8 px per tier above T1** (so T3 is `+16`, T5 is
+  `+32`).
 - **Fire rate** is **flat across quality** — a component's firing cadence is part
   of its identity and never changes with tier. Quality is the power axis, cadence
   is the identity axis.
@@ -122,11 +127,11 @@ These are the **base** numbers every higher tier scales from (per the rules abov
 
 | Type | Range | Fire rate | Base dmg (T1) | Firing behavior |
 | --- | --- | --- | --- | --- |
-| **Capacitor** | 80 | 1.6 /s | 8 | single target |
-| **Coil** | 88 | 1.1 /s | 6 | chains to nearby extra targets (below) |
-| **Emitter** | 70 | 4.5 /s | 2 | single target, very fast |
-| **Arc-Node** | 78 | 0.9 /s | 7 | splash: all units within radius of impact (below) |
-| **Discharge Rig** | 130 | 0.5 /s | 22 | single target, long range |
+| **Capacitor** | 104 | 1.6 /s | 8 | single target |
+| **Coil** | 114 | 1.1 /s | 6 | chains to nearby extra targets (below) |
+| **Emitter** | 92 | 4.5 /s | 2 | single target, very fast |
+| **Arc-Node** | 100 | 0.9 /s | 7 | splash: all units within radius of impact (below) |
+| **Discharge Rig** | 165 | 0.5 /s | 22 | single target, long range |
 
 - **Capacitor** — the cheap, reliable workhorse: one clean bolt at a steady cadence.
   The component you keep active in numbers early and climb by combining.
@@ -174,11 +179,11 @@ Damage per shot, `base × qualityMult`, rounded — **fixed**:
 
 | Type | Scrap (T1) | Tuned (T2) | Charged (T3) | Primed (T4) | Tesla-Prime (T5) |
 | --- | --- | --- | --- | --- | --- |
-| **Capacitor** | 8 | 18 | 40 | 88 | 192 |
-| **Coil** | 6 | 13 | 30 | 66 | 144 |
-| **Emitter** | 2 | 4 | 10 | 22 | 48 |
-| **Arc-Node** | 7 | 15 | 35 | 77 | 168 |
-| **Discharge Rig** | 22 | 48 | 110 | 242 | 528 |
+| **Capacitor** | 8 | 24 | 72 | 320 | 880 |
+| **Coil** | 6 | 18 | 54 | 240 | 660 |
+| **Emitter** | 2 | 6 | 18 | 80 | 220 |
+| **Arc-Node** | 7 | 21 | 63 | 280 | 770 |
+| **Discharge Rig** | 22 | 66 | 198 | 880 | 2420 |
 
 (For the Coil, this is the **primary-hit** damage; each leap is `×0.7` of the
 previous, per above. For the Arc-Node, this is dealt to **every** unit in the
@@ -186,48 +191,33 @@ splash radius.)
 
 ## Full range table (type × quality)
 
-Range in logical pixels, `base + 2·(tier − 1)` — **fixed**:
+Range in logical pixels, `base + 8·(tier − 1)` — **fixed**:
 
 | Type | T1 | T2 | T3 | T4 | T5 |
 | --- | --- | --- | --- | --- | --- |
-| **Capacitor** | 80 | 82 | 84 | 86 | 88 |
-| **Coil** | 88 | 90 | 92 | 94 | 96 |
-| **Emitter** | 70 | 72 | 74 | 76 | 78 |
-| **Arc-Node** | 78 | 80 | 82 | 84 | 86 |
-| **Discharge Rig** | 130 | 132 | 134 | 136 | 138 |
+| **Capacitor** | 104 | 112 | 120 | 128 | 136 |
+| **Coil** | 114 | 122 | 130 | 138 | 146 |
+| **Emitter** | 92 | 100 | 108 | 116 | 124 |
+| **Arc-Node** | 100 | 108 | 116 | 124 | 132 |
+| **Discharge Rig** | 165 | 173 | 181 | 189 | 197 |
 
-## Cost, invested value, and selling
+## Cost and permanence (no selling)
 
-A component is created only by **stamping the press** or by **combining**
-(`specs/build.md`); it is never bought at a chosen quality. Its worth is the Charge
-that made it — its **invested value** — and that governs what selling refunds.
+A component is created only by **keeping** a rolled candidate or by **combining** a
+match (`specs/build.md`); it is never bought at a chosen quality. What you spend Charge
+on is **stamping rocks** (10 Charge each, capped at five per level) and **UPGRADE
+QUALITY** (`specs/build.md`) — not on the components themselves, and combining is free.
 
-- A **stamp** costs **18 Charge** and yields one component, so a stamped component's
-  invested value is **18**. A **combined** component is worth the **sum of the two
-  it consumed** (combining costs no Charge), so invested value **doubles each combine
-  rung**.
-- **Selling** an active component refunds **70% of its invested value**, rounded
-  down; selling frees its 2×2 footprint immediately and the floor re-paths
-  (`specs/board.md`).
-- **Slagging** an active component (converting it to an inert **slag wall**,
-  `specs/build.md`) refunds a flat **12 Charge**; a **slag wall** itself sells for
-  **6**.
-- **Full-refund window:** a component stamped, kept, or slagged during a build phase
-  and sold **before that wave starts** refunds its **full** invested value, no 70%
-  loss — this makes the opening build fully re-shapeable (`specs/build.md`,
-  `specs/flow.md`).
+- Placed rocks, blockers, and kept components are **permanent**. There is **no
+  selling** and **no slagging**: a rock you do not keep hardens into an inert **blocker**
+  at wave start and stays part of the maze for the rest of the run (`specs/build.md`).
+  The only structure ever removed is a combine partner, whose footprint is freed when the
+  combine resolves.
+- The steep damage curve is why **combining always pays**: two matching components fold
+  into one that out-damages them both, and it costs no Charge and frees a tile. The only
+  question is whether you rolled a match this level and want to spend your **one keep** on
+  the climb rather than on a new tower (`specs/build.md`, `specs/board.md`).
 
-| Quality | Invested value | Sell (70%, active) |
-| --- | --- | --- |
-| **T1 Scrap** | 18 | 12 |
-| **T2 Tuned** | 36 | 25 |
-| **T3 Charged** | 72 | 50 |
-| **T4 Primed** | 144 | 100 |
-| **T5 Tesla-Prime** | 288 | 201 |
-
-The steep damage curve against this doubling invested value is why **combining
-always pays**: two matching components fold into one that out-damages them both and
-frees a tile, so the only question is whether you can give up that wall's position
-in the maze (`specs/build.md`, `specs/board.md`). Stamping, slagging, combining,
-selling, and setting targeting all happen through the selected-component inspector
-and the scrap-press in the build panel (`specs/controls.md`).
+Keeping, combining, upgrading quality, and setting targeting all happen through the
+selected-candidate / component inspector and the scrap-press in the build panel
+(`specs/controls.md`).

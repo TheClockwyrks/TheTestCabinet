@@ -4,10 +4,11 @@
 // The yard is a 50×33 grid of 20 px tiles (specs/board.md §2.2). Each map defines an
 // ORDERED waypoint chain [entry, WP1…WPk, collector]; a non-flying unit heads to each
 // node in sequence, taking the shortest OPEN route (grid A*, with the diagonal corner-cut
-// rule) around the walls between consecutive nodes. Every component and slag wall is a 2×2
-// wall; Map C adds fixed housings that are impassable AND never buildable. A placement is
-// REFUSED if it would seal any chain segment or trap a walking unit (the never-seal rule);
-// the floor re-paths live as walls change.
+// rule) around the walls between consecutive nodes. Every component, candidate, and blocker
+// is a 2×2 wall; Map C adds fixed housings that are impassable AND never buildable. Each
+// waypoint is a 4-tile T-shaped PLATFORM — walkable but never buildable — so a waypoint can
+// never be walled off. A placement is REFUSED if it would seal any chain segment, trap a
+// walking unit, or cover a platform tile (the never-seal rule); the floor re-paths live.
 //
 // The Board is DOM-free and pure over its (map, structures) inputs, so the browser and the
 // headless balance harness drive it identically.
@@ -102,10 +103,40 @@ export class Board {
   readonly map: MapDef;
   // The full ordered pathing chain: [entry, ...waypoints, collector] (specs/board.md §3.1).
   readonly chain: TileCoord[];
+  // The tiles of every waypoint PLATFORM (walkable but never buildable), as row*COLS+col.
+  readonly waypointTiles: Set<number>;
 
   constructor(map: MapDef) {
     this.map = map;
     this.chain = [map.entry, ...map.waypoints, map.collector];
+    this.waypointTiles = new Set();
+    for (const wp of map.waypoints) {
+      for (const t of this.platformTiles(wp.col, wp.row)) {
+        if (this.inBounds(t.col, t.row)) this.waypointTiles.add(t.row * GRID_COLS + t.col);
+      }
+    }
+  }
+
+  // The 4 tiles of a waypoint's T-shaped platform (specs/board.md): the three-in-a-row
+  // (c−1,r), (c,r), (c+1,r) and one stem tile toward the board's vertical center (row 16).
+  platformTiles(col: number, row: number): TileCoord[] {
+    const stemRow = row < 16 ? row + 1 : row - 1;
+    return [
+      { col: col - 1, row },
+      { col, row },
+      { col: col + 1, row },
+      { col, row: stemRow },
+    ];
+  }
+  isWaypointTile(col: number, row: number): boolean {
+    return this.waypointTiles.has(row * GRID_COLS + col);
+  }
+  // Would a 2×2 footprint anchored at (col, row) cover any waypoint-platform tile?
+  footprintHitsWaypoint(col: number, row: number): boolean {
+    for (const t of this.footprintTiles(col, row)) {
+      if (this.isWaypointTile(t.col, t.row)) return true;
+    }
+    return false;
   }
 
   get cols(): number {
@@ -175,7 +206,12 @@ export class Board {
   tileStateOf(col: number, row: number, occ: Occupancy): TileState {
     if (!this.inBounds(col, row)) return "fixed";
     const v = occ[row * GRID_COLS + col]!;
-    return v === 2 ? "fixed" : v === 1 ? "blocked" : "open";
+    if (v === 2) return "fixed";
+    if (v === 1) return "blocked";
+    // Waypoint-platform tiles are walkable (occ 0 for pathing) but render as a platform and
+    // are never buildable.
+    if (this.isWaypointTile(col, row)) return "waypoint";
+    return "open";
   }
   isOpenTile(col: number, row: number, occ: Occupancy): boolean {
     return this.inBounds(col, row) && occ[row * GRID_COLS + col] === 0;
@@ -346,10 +382,12 @@ export class Board {
     return false;
   }
 
-  // A full legality check for a held stamp: in bounds, footprint clear of walls/housings and
-  // of any live ground unit, and not sealing the maze (§3.4, specs/board.md placement).
+  // A full legality check for a dropped rock: in bounds, footprint clear of walls/housings,
+  // not covering a waypoint platform, clear of any live ground unit, and not sealing the maze
+  // (specs/board.md placement).
   canPlace(col: number, row: number, structures: Structure[], units: Unit[]): boolean {
     if (!this.anchorInBounds(col, row)) return false;
+    if (this.footprintHitsWaypoint(col, row)) return false;
     const occ = this.occupancy(structures);
     if (!this.footprintClear(col, row, occ)) return false;
     for (const u of units) {

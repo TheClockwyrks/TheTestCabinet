@@ -2,39 +2,35 @@
 // specs/flow.md).
 //
 // A fixed-step model of the Load mazing the ordered-waypoint chain around the walls, the
-// scrap-press random build, the keep / slag / combine quality ladder, five components firing
-// automatically with travelling projectiles / arcs, the economy and Grid Integrity, and the
-// wave campaign with its Dynamo boss. The simulation is DOM-free and its control API is
-// INPUT-FREE and DETERMINISTIC — no pointer, no clock, no rng from the wall — so the browser
-// and the headless balance harness drive it identically: a fixed seed + a fixedStep(dt) loop
-// reproduces a match exactly. Rendering, audio, and particles read this state and drain its
-// fx/sound queues each frame.
+// GemTD scrap-press build (place a rock that rolls a random component ON PLACEMENT, KEEP
+// exactly one a level, the rest harden into inert blockers), the combine quality ladder and
+// the UPGRADE QUALITY refinement track, five components firing automatically with travelling
+// projectiles / arcs, the economy and Grid Integrity, and the wave campaign with its Dynamo
+// boss. The simulation is DOM-free and its control API is INPUT-FREE and DETERMINISTIC — no
+// pointer, no clock, no rng from the wall — so the browser and the headless balance harness
+// drive it identically: a fixed seed + a fixedStep(dt) loop reproduces a match exactly.
+// Rendering, audio, and particles read this state and drain its fx/sound queues each frame.
 
 import {
   BUILDS_PER_LEVEL,
-  BUILD_PHASE_SECONDS,
   COMPONENT_ORDER,
   DEFAULT_MAP,
   DIFFICULTY,
-  EARLY_SEND_PER_SECOND,
   INTEREST_CAP,
   INTEREST_RATE,
   LOAD,
   MAX_TIER,
   PROJECTILE_SPEED,
+  QUALITY_ODDS_BY_R,
   SCORE_PER_INTEGRITY,
   SCORE_PER_WAVE,
-  SLAG_REFUND,
-  SLAG_WALL_SELL,
   STAMP_COST,
-  STAMP_QUALITY_WEIGHT,
   STAMP_TYPE_WEIGHT,
   TARGETING_ORDER,
   deriveStats,
   footprintCenter,
-  investedValue,
+  nextRefineCost,
   scaledHp,
-  sellRefund,
   tileCenter,
   waveClearBonus,
   type CompStats,
@@ -45,15 +41,18 @@ import type { Campaign } from "./mode";
 import { buildWave } from "./waves";
 import type { Wave } from "./types";
 import type {
+  Blocker,
+  Candidate,
   Component,
   ComponentType,
   Cue,
   FxEvent,
   GameState,
+  Harvest,
   MapDef,
   Phase,
   Projectile,
-  SlagWall,
+  Refinement,
   Structure,
   TargetingMode,
   Tier,
@@ -61,16 +60,9 @@ import type {
 } from "./types";
 import { Rng } from "./rng";
 
-// The seed for the scrap-press roll. Fixed so a given sequence of press pulls / placements
-// reproduces exactly; the wave composition seeds itself per wave (waves.ts).
+// The seed for the scrap-press roll. Fixed so a given sequence of placements reproduces
+// exactly; the wave composition seeds itself per wave (waves.ts).
 const PRESS_SEED = 0x51a6c0de;
-
-// A rolled-but-not-yet-placed stamp held on the cursor after a press pull (specs/build.md,
-// specs/controls.md). Its type + quality are fixed at the pull; it must be placed.
-export interface HeldStamp {
-  type: ComponentType;
-  tier: Tier;
-}
 
 export class Game {
   readonly campaign: Campaign;
@@ -91,17 +83,16 @@ export class Game {
 
   units: Unit[] = [];
   projectiles: Projectile[] = []; // shots / arcs in flight (specs/towers.md)
-  structures: Structure[] = []; // active components AND slag walls — the maze (specs/board.md)
+  structures: Structure[] = []; // components, candidates, and blockers — the maze (specs/board.md)
 
   // Build / selection UI state.
-  held: HeldStamp | null = null; // the rolled stamp on the cursor, awaiting placement
+  holding = false; // a blank rock is on the cursor (rolls on placement, specs/build.md)
   selectedId: number | null = null;
-  stampsUsed = 0; // press pulls spent of the level's BUILDS_PER_LEVEL allowance
-  pointerX = -1; // logical-space pointer, for the held-stamp ghost / range preview
+  stampsUsed = 0; // rocks placed of the level's BUILDS_PER_LEVEL allowance (decrements on PLACEMENT)
+  refinement: Refinement = 0; // UPGRADE QUALITY level (biases the quality roll, specs/build.md)
+  harvest: Harvest = { mode: "none" }; // the level's single keep/combine choice, resolved at SEND
+  pointerX = -1; // logical-space pointer, for the held-rock ghost / range preview
   pointerY = -1;
-
-  buildTimer = 0; // seconds left in a between-wave build phase (0 = untimed opening)
-  buildTimed = false;
 
   // Run tallies surfaced to the balance harness / HUD.
   kills = 0;
@@ -152,13 +143,13 @@ export class Game {
     this.units = [];
     this.projectiles = [];
     this.structures = [];
-    this.held = null;
+    this.holding = false;
     this.selectedId = null;
     this.stampsUsed = 0;
+    this.refinement = 0;
+    this.harvest = { mode: "none" };
     this.pointerX = -1;
     this.pointerY = -1;
-    this.buildTimer = 0;
-    this.buildTimed = false; // the opening build phase is untimed (specs/flow.md)
     this.kills = 0;
     this.leakCount = 0;
     this.fxQueue = [];
@@ -177,10 +168,8 @@ export class Game {
     if (this.state !== "playing" || this.paused) return;
 
     if (this.phase === "build") {
-      if (this.buildTimed) {
-        this.buildTimer -= dt;
-        if (this.buildTimer <= 0) this.beginWave(0);
-      }
+      // Build phases are UNTIMED (specs/flow.md): nothing starts the wave but SEND. Advance
+      // component firing animations cosmetically; no units are on the floor to fire at.
       for (const s of this.structures) if (s.kind === "component") s.fireAnim += dt;
       return;
     }
@@ -236,9 +225,9 @@ export class Game {
     return u;
   }
 
-  // ---- Re-path (specs/board.md §3.5) ------------------------------------------
+  // ---- Re-path (specs/board.md) -----------------------------------------------
   // Rebuild the cached occupancy and re-route every walking unit from where it stands —
-  // called whenever the maze changes (stamp, slag, combine, sell).
+  // called whenever the maze changes (a rock placed, a combine freeing a footprint).
   private rePath(): void {
     this.occ = this.board.occupancy(this.structures);
     for (const u of this.units) {
@@ -540,28 +529,106 @@ export class Game {
       this.win();
       return;
     }
-    // Open the next between-wave build phase.
+    // Open the next (untimed) between-wave build phase; refresh the allowance and pay interest.
     this.phase = "build";
-    this.buildTimed = true;
-    this.buildTimer = BUILD_PHASE_SECONDS;
     this.stampsUsed = 0; // the 5-stamp allowance refreshes at the start of the build phase
+    this.harvest = { mode: "none" };
+    this.holding = false;
     this.charge += Math.min(INTEREST_CAP, Math.floor(this.charge * INTEREST_RATE)); // interest
     this.nextWave = buildWave(this.wave + 1, this.diff);
-    for (const s of this.structures) s.refundable = false; // the full-refund window has closed
   }
 
-  private beginWave(earlySeconds: number): void {
-    if (earlySeconds > 0) this.charge += earlySeconds * EARLY_SEND_PER_SECOND;
+  // Resolve the level's harvest (keep / combine) and start the wave (specs/build.md,
+  // specs/flow.md). The kept candidate becomes a firing component; every un-harvested
+  // candidate hardens into a blocker.
+  private beginWave(): void {
+    this.resolveHarvest();
     this.wave += 1;
     this.phase = "wave";
     this.paused = false;
+    this.holding = false;
     this.activeWave = this.nextWave;
     this.spawnCursor = 0;
     this.waveClock = 0;
-    this.buildTimed = false;
-    this.buildTimer = 0;
+    this.occ = this.board.occupancy(this.structures);
     this.nextWave = buildWave(Math.min(this.wave + 1, this.diff.waves), this.diff);
-    for (const s of this.structures) s.refundable = false; // launching a wave closes the window
+  }
+
+  // Turn this level's single keep/combine choice into the one new/upgraded component, and
+  // harden every remaining candidate into an inert blocker (specs/build.md).
+  private resolveHarvest(): void {
+    const h = this.harvest;
+    if (h.mode === "keep") {
+      const cand = this.candidateById(h.id);
+      if (cand) this.promoteToComponent(cand);
+    } else if (h.mode === "combine") {
+      this.resolveCombine(h.id, h.partnerId);
+    }
+    // Every leftover candidate becomes a blocker.
+    let hardened = false;
+    for (let i = 0; i < this.structures.length; i++) {
+      const s = this.structures[i]!;
+      if (s.kind === "candidate") {
+        this.structures[i] = { id: s.id, kind: "blocker", col: s.col, row: s.row } as Blocker;
+        hardened = true;
+      }
+    }
+    if (hardened) this.sndQueue.push("settle");
+    this.harvest = { mode: "none" };
+  }
+
+  // Replace a candidate in place with a firing component of its rolled type + tier.
+  private promoteToComponent(cand: Candidate): void {
+    const i = this.structures.findIndex((s) => s.id === cand.id);
+    if (i < 0) return;
+    const comp: Component = {
+      id: cand.id,
+      kind: "component",
+      type: cand.type,
+      tier: cand.tier,
+      col: cand.col,
+      row: cand.row,
+      targeting: "first",
+      cooldown: 0,
+      fireAnim: 999,
+      aimAngle: 0,
+    };
+    this.structures[i] = comp;
+    const ctr = footprintCenter(comp.col, comp.row);
+    this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
+  }
+
+  // Resolve a combine harvest: the candidate `id` and its `partnerId` (another candidate or an
+  // existing component of the same type + tier) fold into one a tier higher at the candidate's
+  // footprint; the partner is consumed and its footprint freed.
+  private resolveCombine(id: number, partnerId: number): void {
+    const cand = this.candidateById(id);
+    const partner = this.structures.find((s) => s.id === partnerId) as Candidate | Component | undefined;
+    if (!cand || !partner || cand.tier >= MAX_TIER || partner.type !== cand.type || partner.tier !== cand.tier) {
+      // Fall back to a plain keep if the pairing is no longer valid.
+      if (cand) this.promoteToComponent(cand);
+      return;
+    }
+    const newTier = (cand.tier + 1) as Tier;
+    this.structures = this.structures.filter((s) => s.id !== partner.id);
+    const i = this.structures.findIndex((s) => s.id === cand.id);
+    const comp: Component = {
+      id: cand.id,
+      kind: "component",
+      type: cand.type,
+      tier: newTier,
+      col: cand.col,
+      row: cand.row,
+      targeting: "first",
+      cooldown: 0,
+      fireAnim: 999,
+      aimAngle: 0,
+    };
+    if (i >= 0) this.structures[i] = comp;
+    else this.structures.push(comp);
+    const ctr = footprintCenter(comp.col, comp.row);
+    this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
+    this.sndQueue.push("combine");
   }
 
   private win(): void {
@@ -587,26 +654,25 @@ export class Game {
   stampsLeft(): number {
     return Math.max(0, BUILDS_PER_LEVEL - this.stampsUsed);
   }
+  // The press may be pulled only in the BUILD phase, with a stamp of the level's 5-allowance
+  // left and enough Charge — the cap is five regardless of how much Charge you hold.
   canStamp(): boolean {
-    return this.state === "playing" && this.held === null && this.stampsLeft() > 0 && this.charge >= STAMP_COST;
+    return (
+      this.state === "playing" &&
+      this.phase === "build" &&
+      !this.holding &&
+      this.stampsLeft() > 0 &&
+      this.charge >= STAMP_COST
+    );
   }
 
-  // Pull the press: spend 18 Charge + one stamp, roll a random type at a random quality on
-  // the pinned odds, and HOLD it on the cursor (specs/build.md §6.2). Returns the roll, or
-  // null if refused. Deterministic via the seeded press rng.
-  pullPress(): HeldStamp | null {
-    if (!this.canStamp()) return null;
-    const roll = this.rollStamp();
-    this.held = roll;
+  // Pull the press: arm a BLANK rock on the cursor (specs/build.md). No roll and no Charge
+  // yet — the roll and cost happen when the rock lands (placeStamp). Returns true if armed.
+  pullPress(): boolean {
+    if (!this.canStamp()) return false;
+    this.holding = true;
     this.sndQueue.push("stamp");
-    return roll;
-  }
-
-  // Consume Charge + one stamp and roll a type/quality on the pinned independent odds.
-  private rollStamp(): HeldStamp {
-    this.charge -= STAMP_COST;
-    this.stampsUsed += 1;
-    return { type: this.rollType(), tier: this.rollTier() };
+    return true;
   }
 
   private rollType(): ComponentType {
@@ -618,153 +684,150 @@ export class Game {
     return COMPONENT_ORDER[COMPONENT_ORDER.length - 1]!;
   }
 
+  // Quality roll biased by the current Refinement level (specs/build.md — UPGRADE QUALITY).
   private rollTier(): Tier {
+    const odds = QUALITY_ODDS_BY_R[this.refinement]!;
     let r = this.press.next();
     for (let tier = 1; tier <= MAX_TIER; tier++) {
-      r -= STAMP_QUALITY_WEIGHT[tier]!;
+      r -= odds[tier - 1]!;
       if (r <= 0) return tier as Tier;
     }
     return 1;
   }
 
-  // Place the held stamp (or, if none is held, roll one now — the headless one-shot path) at
-  // the 2×2 anchor (col, row) if legal; it lands ACTIVE and the floor re-paths live
-  // (specs/build.md, specs/board.md). Fires a build-spark VFX. Returns the placed component,
-  // or null (a rolled-but-refused stamp is retained on the cursor, so no roll is lost).
-  placeStamp(col: number, row: number): Component | null {
-    if (this.state !== "playing") return null;
-    let stamp = this.held;
-    if (!stamp) {
-      if (!this.canStamp()) return null;
-      stamp = this.rollStamp();
-    }
-    if (!this.board.canPlace(col, row, this.structures, this.units)) {
-      this.held = stamp; // keep it on the cursor for a retry (the roll is already committed)
-      return null;
-    }
-    const comp: Component = {
-      id: this.nextId++,
-      kind: "component",
-      type: stamp.type,
-      tier: stamp.tier,
-      col,
-      row,
-      invested: investedValue(stamp.tier),
-      placedForWave: this.phase === "build" ? this.wave + 1 : this.wave,
-      refundable: this.phase === "build",
-      targeting: "first",
-      cooldown: 0,
-      fireAnim: 999,
-      aimAngle: 0,
-    };
-    this.structures.push(comp);
-    this.held = null;
-    this.selectedId = comp.id;
-    this.rePath();
-    const ctr = footprintCenter(col, row);
-    this.fxQueue.push({ kind: "buildspark", x: ctr.x, y: ctr.y, tier: stamp.tier });
-    this.sndQueue.push("stamp");
-    return comp;
-  }
-
-  cancelHeld(): void {
-    this.held = null; // the roll is committed (Charge already spent); the stamp is discarded
-  }
-
-  // ---- The three fates: keep / slag / combine (specs/build.md §6.6) ------------
-
-  keep(id: number): void {
-    // Keeping is the default fate — the component is already active and walling. This is a
-    // confirm the headless harness may call; it only verifies the piece exists.
-    void this.structures.find((s) => s.id === id && s.kind === "component");
-  }
-
-  // Slag an active component into an inert slag wall: it stops firing but keeps walling,
-  // refunding a flat 12 Charge (specs/build.md §6.4). One-way; the footprint is unchanged.
-  slag(id: number): void {
-    const i = this.structures.findIndex((s) => s.id === id && s.kind === "component");
-    if (i < 0) return;
-    const c = this.structures[i] as Component;
-    const wall: SlagWall = {
-      id: c.id,
-      kind: "slag",
-      col: c.col,
-      row: c.row,
-      invested: c.invested,
-      placedForWave: c.placedForWave,
-      refundable: false, // a slag wall sells for a flat 6 (specs/flow.md); no full-refund
-    };
-    this.structures[i] = wall;
-    this.charge += SLAG_REFUND;
-    this.fxQueue.push({ kind: "buildspark", x: footprintCenter(c.col, c.row).x, y: footprintCenter(c.col, c.row).y });
-    this.sndQueue.push("slag");
-    // Firing stops but the footprint is unchanged, so no re-path is needed.
-  }
-  slagSelected(): void {
-    const s = this.selected();
-    if (s && s.kind === "component") this.slag(s.id);
-  }
-  slagValue(): number {
-    return SLAG_REFUND;
-  }
-
-  // Does an active component of `c`'s exact type AND quality exist elsewhere on the board
-  // (so COMBINE is offered)? Tesla-Prime is the apex and never combines (specs/build.md §6.5).
-  canCombine(c: Component): boolean {
-    return c.tier < MAX_TIER && this.combinePartnerOf(c) !== null;
-  }
-  combinePartnerOf(c: Component): Component | null {
-    if (c.tier >= MAX_TIER) return null;
+  // Is the 2×2 anchor (col, row) exactly an existing blocker's footprint? Dropping a rock onto
+  // a blocker rerolls it into a fresh candidate (specs/build.md).
+  private blockerAtAnchor(col: number, row: number): Blocker | null {
     for (const s of this.structures) {
-      if (s.kind === "component" && s.id !== c.id && s.type === c.type && s.tier === c.tier) return s;
+      if (s.kind === "blocker" && s.col === col && s.row === row) return s;
     }
     return null;
   }
 
-  // Combine two matching components → one a tier higher at `id`'s footprint; consumes both,
-  // frees the partner's footprint (re-pathing), costs no Charge (specs/build.md §6.5).
+  // Where a rock may land: an empty legal footprint, OR exactly onto an existing blocker
+  // (which it rerolls). specs/build.md, specs/board.md.
+  canPlaceAt(col: number, row: number): boolean {
+    if (this.state !== "playing" || this.phase !== "build") return false;
+    if (this.blockerAtAnchor(col, row)) return true;
+    return this.board.canPlace(col, row, this.structures, this.units);
+  }
+
+  // Drop a rock at the 2×2 anchor (col, row): the roll happens HERE (a random type + quality
+  // on the current Refinement odds), spending 10 Charge + one stamp and landing a CANDIDATE
+  // that walls and re-paths the floor (specs/build.md, specs/board.md). Dropping onto a
+  // blocker rerolls it in place. Returns the placed candidate, or null if refused (no cost).
+  // Re-arms another rock afterward if the allowance + Charge still permit (continuous
+  // placement). If no rock is held (the headless one-shot path), it arms one implicitly.
+  placeStamp(col: number, row: number): Candidate | null {
+    if (this.state !== "playing" || this.phase !== "build") return null;
+    if (!this.holding && !this.canStamp()) return null;
+    // Not enough Charge / no allowance and not currently holding: refuse.
+    if (this.stampsLeft() <= 0 || this.charge < STAMP_COST) return null;
+    const onBlocker = this.blockerAtAnchor(col, row);
+    if (!onBlocker && !this.board.canPlace(col, row, this.structures, this.units)) {
+      return null; // illegal spot: keep holding, nothing spent
+    }
+    if (onBlocker) {
+      // Reroll a blocker in place: remove it, drop a candidate on the same footprint.
+      this.structures = this.structures.filter((s) => s.id !== onBlocker.id);
+    }
+    this.charge -= STAMP_COST;
+    this.stampsUsed += 1;
+    const cand: Candidate = {
+      id: this.nextId++,
+      kind: "candidate",
+      type: this.rollType(),
+      tier: this.rollTier(),
+      col,
+      row,
+    };
+    this.structures.push(cand);
+    this.selectedId = cand.id;
+    this.holding = this.canStamp(); // continuous placement: re-arm if a stamp + Charge remain
+    this.rePath();
+    const ctr = footprintCenter(col, row);
+    this.fxQueue.push({ kind: "buildspark", x: ctr.x, y: ctr.y, tier: cand.tier });
+    this.sndQueue.push("stamp");
+    return cand;
+  }
+
+  cancelHeld(): void {
+    this.holding = false; // nothing was rolled or spent — cancelling a held rock is free
+  }
+
+  // ---- Keep / combine — the one harvest per level (specs/build.md) -------------
+
+  candidateById(id: number): Candidate | null {
+    const s = this.structures.find((x) => x.id === id);
+    return s && s.kind === "candidate" ? s : null;
+  }
+  candidates(): Candidate[] {
+    return this.structures.filter((s): s is Candidate => s.kind === "candidate");
+  }
+  // The candidate that will become this level's kept component (keep or combine), or null.
+  keptId(): number | null {
+    return this.harvest.mode === "none" ? null : this.harvest.id;
+  }
+
+  // Mark a candidate as this level's kept roll (reversible until SEND). Only one at a time.
+  keep(id: number): void {
+    if (this.phase !== "build") return;
+    if (!this.candidateById(id)) return;
+    this.harvest = { mode: "keep", id };
+  }
+  keepSelected(): void {
+    const s = this.selected();
+    if (s && s.kind === "candidate") this.keep(s.id);
+  }
+
+  // Does a same-type + same-quality match exist for this candidate (another candidate or an
+  // existing component), so COMBINE is offered? Tesla-Prime never combines (specs/build.md).
+  canCombine(c: Candidate): boolean {
+    return c.tier < MAX_TIER && this.combinePartnerOf(c) !== null;
+  }
+  combinePartnerOf(c: Candidate): Candidate | Component | null {
+    if (c.tier >= MAX_TIER) return null;
+    for (const s of this.structures) {
+      if (s.id === c.id) continue;
+      if ((s.kind === "candidate" || s.kind === "component") && s.type === c.type && s.tier === c.tier) return s;
+    }
+    return null;
+  }
+
+  // Set this level's harvest to a combine of candidate `id` with a matching partner (resolved
+  // at SEND, producing one component a tier higher and consuming the partner). Build phase only.
   combine(id: number): void {
-    const c = this.structures.find((s) => s.id === id && s.kind === "component") as Component | undefined;
-    if (!c || c.tier >= MAX_TIER) return;
+    if (this.phase !== "build") return;
+    const c = this.candidateById(id);
+    if (!c) return;
     const partner = this.combinePartnerOf(c);
     if (!partner) return;
-    this.structures = this.structures.filter((s) => s.id !== partner.id);
-    c.tier = (c.tier + 1) as Tier;
-    c.invested = c.invested + partner.invested; // sum of the two consumed → doubles each rung
-    c.cooldown = 0;
-    c.fireAnim = 0;
-    if (this.selectedId === partner.id) this.selectedId = c.id;
-    this.rePath(); // the partner footprint is freed
-    const ctr = footprintCenter(c.col, c.row);
-    this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: c.tier });
-    this.sndQueue.push("combine");
+    this.harvest = { mode: "combine", id, partnerId: partner.id };
   }
   combineSelected(): void {
     const s = this.selected();
-    if (s && s.kind === "component" && this.canCombine(s)) this.combine(s.id);
+    if (s && s.kind === "candidate" && this.canCombine(s)) this.combine(s.id);
   }
 
-  // ---- Sell (specs/towers.md §5.6) --------------------------------------------
+  // ---- UPGRADE QUALITY — the Refinement track (specs/build.md) -----------------
 
-  sellValue(s: Structure): number {
-    if (s.kind === "slag") return SLAG_WALL_SELL;
-    return s.refundable ? s.invested : sellRefund(s.tier);
+  refineCost(): number | null {
+    return nextRefineCost(this.refinement);
   }
-  sell(id: number): void {
-    const s = this.structures.find((x) => x.id === id);
-    if (!s) return;
-    this.charge += this.sellValue(s);
-    this.structures = this.structures.filter((x) => x.id !== id);
-    if (this.selectedId === id) this.selectedId = null;
-    this.rePath(); // the footprint is freed
-    this.sndQueue.push("slag");
+  canUpgradeQuality(): boolean {
+    const cost = this.refineCost();
+    return this.state === "playing" && this.phase === "build" && cost !== null && this.charge >= cost;
   }
-  sellSelected(): void {
-    const s = this.selected();
-    if (s) this.sell(s.id);
+  upgradeQuality(): boolean {
+    const cost = this.refineCost();
+    if (!this.canUpgradeQuality() || cost === null) return false;
+    this.charge -= cost;
+    this.refinement = (this.refinement + 1) as Refinement;
+    this.sndQueue.push("combine"); // a bright confirm cue for the refinement
+    return true;
   }
 
-  // ---- Targeting (specs/towers.md §5.2, specs/controls.md) --------------------
+  // ---- Targeting (specs/towers.md, specs/controls.md) -------------------------
 
   setTargeting(c: Component, mode: TargetingMode): void {
     c.targeting = mode;
@@ -805,8 +868,8 @@ export class Game {
   }
   startWave(): void {
     if (!this.canStartWave()) return;
-    const early = this.buildTimed ? Math.max(0, Math.floor(this.buildTimer)) : 0;
-    this.beginWave(early);
+    this.holding = false;
+    this.beginWave();
   }
   currentWave(): Wave | null {
     return this.activeWave ?? this.nextWave;
@@ -845,9 +908,22 @@ export class Game {
   devBeginWave(n: number): void {
     this.wave = n - 1;
     this.phase = "build";
-    this.buildTimed = false;
+    this.harvest = { mode: "none" };
     this.nextWave = buildWave(n, this.diff);
     this.startWave();
+  }
+  devSetRefinement(r: Refinement): void {
+    this.refinement = r;
+  }
+  // Drop a blocker (an inert wall) of no type at (or nearest-legal to) an anchor, with no
+  // Charge cost — the deterministic maze-building counterpart used by the balance harness.
+  devBlocker(col: number, row: number): Blocker | null {
+    const anchor = this.board.nearestLegalAnchor(col, row, this.structures, this.units);
+    if (!anchor) return null;
+    const b: Blocker = { id: this.nextId++, kind: "blocker", col: anchor.col, row: anchor.row };
+    this.structures.push(b);
+    this.rePath();
+    return b;
   }
 
   // Place a component of an EXACT type + quality at (or nearest-legal to) an anchor, with no
@@ -865,9 +941,6 @@ export class Game {
       tier,
       col: anchor.col,
       row: anchor.row,
-      invested: investedValue(tier),
-      placedForWave: this.phase === "build" ? this.wave + 1 : this.wave,
-      refundable: this.phase === "build",
       targeting: "first",
       cooldown: 0,
       fireAnim: 999,
@@ -877,5 +950,19 @@ export class Game {
     this.selectedId = comp.id;
     this.rePath();
     return comp;
+  }
+
+  // Drop a CANDIDATE of an EXACT type + quality at (or nearest-legal to) an anchor, with no
+  // press roll and no Charge cost — the deterministic counterpart used by the proof-capture
+  // script to demonstrate keep / combine without depending on a random roll. Build phase only.
+  devCandidate(type: ComponentType, tier: Tier, col: number, row: number): Candidate | null {
+    if (this.phase !== "build") return null;
+    const anchor = this.board.nearestLegalAnchor(col, row, this.structures, this.units);
+    if (!anchor) return null;
+    const cand: Candidate = { id: this.nextId++, kind: "candidate", type, tier, col: anchor.col, row: anchor.row };
+    this.structures.push(cand);
+    this.selectedId = cand.id;
+    this.rePath();
+    return cand;
   }
 }

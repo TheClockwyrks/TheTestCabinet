@@ -10,7 +10,7 @@
 // Produced layout (specs/assets.md):
 //   assets/board/            substrate, entry, collector, pylon, housing
 //   assets/components/<type>/   base, head_<tier> (1..5), fire_<n> (firing cycle)
-//   assets/components/slag/  wall
+//   assets/components/blocker/  rock (the inert blocker lump)
 //   assets/projectiles/      capacitor, emitter, discharge (single-bolt shots)
 //   assets/load/<type>/      idle_<n> (charge cycle) + frame 0 as the static read
 //   assets/fx/press/         press-stamp cycle frames
@@ -49,8 +49,8 @@ export function componentHeadSprite(type: ComponentType, tier: Tier): string {
 export function componentBaseSprite(type: ComponentType): string {
   return `components/${type}/base`;
 }
-// The inert slag-wall lump (specs/build.md).
-export const SLAG_SPRITE = "components/slag/wall";
+// The inert blocker rock — the lump an unkept rock hardens into (specs/build.md).
+export const BLOCKER_SPRITE = "components/blocker/rock";
 // The travelling projectile sprite for a single-bolt component (Coil/Arc-Node are VFX).
 export function projSprite(type: ComponentType): string {
   return `projectiles/${type}`;
@@ -79,7 +79,7 @@ const CUE_SOURCE: Record<Cue, string> = {
   combine: "combine",
   kill: "kill",
   leak: "leak",
-  slag: "slag",
+  settle: "settle",
 };
 
 export interface Assets {
@@ -88,7 +88,7 @@ export interface Assets {
   componentBase(type: ComponentType): HTMLImageElement | undefined;
   componentHead(type: ComponentType, tier: Tier): HTMLImageElement | undefined;
   componentFire(type: ComponentType): HTMLImageElement[]; // firing-cycle frames
-  slag: HTMLImageElement | undefined;
+  blocker: HTMLImageElement | undefined;
   projectile(type: ComponentType): HTMLImageElement | undefined;
   loadFrames: Record<LoadType, HTMLImageElement[]>; // per-type charge cycle
   pressFrames: HTMLImageElement[]; // the scrap-press stamping cycle
@@ -142,7 +142,7 @@ export async function loadAssets(): Promise<Assets> {
     componentBase: (type) => imgs.get(componentBaseSprite(type)),
     componentHead: (type, tier) => imgs.get(componentHeadSprite(type, tier)),
     componentFire: (type) => componentFireCache[type],
-    slag: imgs.get(SLAG_SPRITE),
+    blocker: imgs.get(BLOCKER_SPRITE),
     projectile: (type) => imgs.get(projSprite(type)),
     loadFrames,
     pressFrames: framesFor("fx/press/stamp", 8),

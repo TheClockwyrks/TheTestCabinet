@@ -17,7 +17,7 @@
 #   combine.wav — rising combine chime         (quality ladder climbs; specs/build.md)
 #   kill.wav    — ground-out pop               (a unit is destroyed; specs/enemies.md)
 #   leak.wav    — leak alarm                   (a unit grounds out, Grid Integrity drops; flow.md)
-#   slag.wav    — dead slag thunk              (a component is fused into wall; specs/build.md)
+#   settle.wav  — rock-settle thunk            (unkept rocks harden into blockers; specs/build.md)
 #   music.wav (+ music.mid) — the tense electro-industrial reactor bed, looped under the board
 #
 # Usage:  bash scripts/gen-audio.sh    (sfx-synth/music must be on PATH, or built under
@@ -196,12 +196,12 @@ x add-distortion --bus master --drive 1.7
 x add-reverb --bus master --size 0.34 --mix 0.14
 x render
 
-# =================================== SLAG =====================================
-# The SLAG THUNK — a component fused into a dead wall lump (specs/build.md): it must read as
+# ================================== SETTLE ====================================
+# The ROCK-SETTLE THUNK — unkept rocks hardening into blockers (specs/build.md): it must read as
 # DEAD, no glow, no ring. A dull, damped low sine THUD with a short lowpassed noise scrape,
 # heavily lowpassed so there is no bright electric character left — the sound of something
 # going inert. Short and lifeless by design.
-newsfx mono 300 "$AUD/slag.wav"
+newsfx mono 300 "$AUD/settle.wav"
 x add-voice --name thud --wave sine --freq 120 --gain -4 --start 0 --dur 200
 x set-envelope --voice thud --env punch
 x set-pitch --voice thud --slide-to 58 --over 180
