@@ -2,7 +2,8 @@
 # Shared per-environment target resolver for the REMOTE cluster/vault scripts.
 #
 # The scripts that act on a deployed environment — upload-subscription-creds.sh,
-# enable-secret-rotation.sh, reingest-cluster.sh, backfill-run-media.sh — take a
+# enable-secret-rotation.sh, reingest-cluster.sh, backfill-run-media.sh,
+# recover-run-media-from-snapshot.sh — take a
 # REQUIRED `--env <prod|staging>` and source this file to turn that name into the
 # concrete Azure resources they operate on. Keeping the mapping here means the
 # per-environment facts (Key Vault, AKS cluster, resource group, namespace) live in
@@ -44,6 +45,11 @@ tcab_env_resolve() {
       TCAB_INGEST_BRANCH="master"
       # The artifact service's PUBLIC (internal-ingress) read URL for this env.
       TCAB_ARTIFACTS_PUBLIC_URL="https://artifacts.tcab.testcabinet.ai"
+      # The public base the exported snapshot is served under (the CF Pages/R2 URL the
+      # site reads as TCAB_SNAPSHOT_URL — set dashboard-side, mirrored here so the
+      # recovery script can read a prior snapshot). Override with SOURCE_BASE if the
+      # dashboard value differs.
+      TCAB_SNAPSHOT_URL="https://snapshot.testcabinet.ai"
       ;;
     staging)
       TCAB_VAULT="testcabinet-staging"
@@ -52,6 +58,9 @@ tcab_env_resolve() {
       TCAB_NAMESPACE="tcab-staging"
       TCAB_INGEST_BRANCH="staging"
       TCAB_ARTIFACTS_PUBLIC_URL="https://artifacts.staging.tcab.testcabinet.ai"
+      # The staging snapshot read base (must equal the staging site's dashboard-set
+      # TCAB_SNAPSHOT_URL). Override with SOURCE_BASE if the dashboard value differs.
+      TCAB_SNAPSHOT_URL="https://snapshot.staging.testcabinet.ai"
       ;;
     "")
       echo "error: --env is required (one of: prod, staging)" >&2
