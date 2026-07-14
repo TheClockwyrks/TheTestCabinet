@@ -43,6 +43,11 @@ struct MapDocument {
     red_jelly: Vec<TileArray>,
     #[serde(default)]
     blue_jelly: Vec<TileArray>,
+    /// The spawn (and recall) tiles of the large seeds on each half.
+    #[serde(default)]
+    red_large_seeds: Vec<TileArray>,
+    #[serde(default)]
+    blue_large_seeds: Vec<TileArray>,
 }
 
 /// Why a map file failed to load. Loading is fallible (a hand-edited file may be
@@ -106,6 +111,8 @@ impl Board {
             blue_seeds: sorted(doc.blue_seeds),
             red_jelly: sorted(doc.red_jelly),
             blue_jelly: sorted(doc.blue_jelly),
+            red_large_seeds: sorted(doc.red_large_seeds),
+            blue_large_seeds: sorted(doc.blue_large_seeds),
         };
 
         board.validate()?;
@@ -128,6 +135,8 @@ impl Board {
             blue_seeds: self.blue_seeds.iter().copied().map(from_pos).collect(),
             red_jelly: self.red_jelly.iter().copied().map(from_pos).collect(),
             blue_jelly: self.blue_jelly.iter().copied().map(from_pos).collect(),
+            red_large_seeds: self.red_large_seeds.iter().copied().map(from_pos).collect(),
+            blue_large_seeds: self.blue_large_seeds.iter().copied().map(from_pos).collect(),
         };
         toml::to_string_pretty(&doc).expect("a MapDocument always serializes to TOML")
     }
@@ -141,6 +150,8 @@ impl Board {
             ("blue_seeds", &self.blue_seeds),
             ("red_jelly", &self.red_jelly),
             ("blue_jelly", &self.blue_jelly),
+            ("red_large_seeds", &self.red_large_seeds),
+            ("blue_large_seeds", &self.blue_large_seeds),
         ] {
             for tile in tiles {
                 if !on_board(*tile) {

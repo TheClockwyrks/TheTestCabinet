@@ -83,10 +83,11 @@ pub fn advance(
 
     movement(board, state, red, blue, rules);
     eating(board, state);
-    banking(board, state, &was_on_own_half);
+    banking(board, state, rules, &was_on_own_half);
     tagging(board, state);
     jelly(board, state, rules);
     regrow_jelly(state);
+    large_seeds(board, state, rules);
 
     // Immunity ticks down once per tick, after all phases that read it.
     for agent in &mut state.agents {
@@ -201,7 +202,8 @@ fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, 
     }
 }
 
-/// Phase 2 — eating. A raider on an enemy cache consumes it into its load.
+/// Phase 2 — eating. A raider on an enemy cache consumes it into its load; a raider
+/// on an enemy *large* seed picks that up instead, whole.
 fn eating(board: &Board, state: &mut MatchState) {
     for i in 0..state.agents.len() {
         let agent = &state.agents[i];
@@ -215,6 +217,19 @@ fn eating(board: &Board, state: &mut MatchState) {
         if state.caches(enemy_half).contains(&pos) {
             state.caches_mut(enemy_half).remove(&pos);
             state.agents[i].carrying += 1;
+        }
+
+        // A large seed is picked up, not consumed: it stays a distinct object the
+        // raider is hauling, so a tag can drop it back whole. Only the raiding side
+        // can take it — its own colony walking over it is recalling it, not eating it
+        // (that is the drift/recall phase's business, not this one).
+        for seed_idx in 0..state.large_seeds.len() {
+            let seed = &state.large_seeds[seed_idx];
+            if seed.half == enemy_half && seed.on_board() && seed.pos == pos {
+                state.large_seeds[seed_idx].carried_by = Some(i);
+                state.large_seeds[seed_idx].recall_accum = 0;
+                state.agents[i].carrying_large += 1;
+            }
         }
     }
 }
@@ -261,6 +276,7 @@ fn tagging(board: &Board, state: &mut MatchState) {
         }
     }
 
+
     for &(_, _, victim_team, _, _) in &to_respawn {
         // Every tag is one kill credited to the colony that did the tagging — the
         // victim's opponent, whichever role each side was playing.
@@ -280,12 +296,96 @@ fn tagging(board: &Board, state: &mut MatchState) {
             let defender_half = victim_team.opponent();
             scatter_dropped_load(board, state, defender_half, tag_tile, load);
         }
+        // A large seed the victim was hauling drops back onto the board WHOLE at the
+        // tag tile — still one object worth `large_seed_value`, not that many
+        // ordinary caches. It resumes drifting from wherever it landed (its home, and
+        // so its recall guard, is unchanged), which makes running down a big-seed
+        // carrier a genuinely good defensive play: you get the object back, deep in
+        // your own territory, and the clock on it starts again.
+        for seed in state.large_seeds.iter_mut() {
+            if seed.carried_by == Some(idx) {
+                seed.carried_by = None;
+                seed.pos = tag_tile;
+                seed.drift_accum = 0;
+                seed.recall_accum = 0;
+            }
+        }
+
         // Respawn the tagged ant at its nest with nothing carried; reset its charge.
         let nest = board.nest(victim_team);
         let agent = &mut state.agents[idx];
         agent.pos = nest;
         agent.carrying = 0;
+        agent.carrying_large = 0;
         agent.move_accum = 0;
+    }
+}
+
+/// Phase 6 — the large seeds: drift, and recall.
+///
+/// **Drift** happens regardless of who is standing on the seed. That is deliberate
+/// and it is the mechanic's whole defensive property: an ordinary cache can be
+/// denied forever by a soldier parked on it, but a large seed simply walks out from
+/// under a squatter. A defender who wants it back has to *do* something.
+///
+/// **Recall** is that something: an ant of the seed's own colony stands on it for
+/// `large_seed_recall_ticks` consecutive ticks and it snaps home. The guard —
+/// `large_seed_recall_min_steps` of maze distance from home before a recall is legal
+/// at all — closes the two ways this would otherwise be free. Without it an ant could
+/// sit on the spawn tile and pin the seed there forever, or (the subtler hole) camp
+/// one tile out and yo-yo the seed home the instant it arrived, keeping it
+/// permanently out of reach at almost no cost. The defence has to let the seed get
+/// out before it can pull it back.
+fn large_seeds(board: &Board, state: &mut MatchState, rules: &Rules) {
+    for seed_idx in 0..state.large_seeds.len() {
+        if !state.large_seeds[seed_idx].on_board() {
+            continue;
+        }
+        let seed = &state.large_seeds[seed_idx];
+        let (half, pos, home) = (seed.half, seed.pos, seed.home);
+
+        // Recall progress: any ant of the seed's own colony standing on it. Progress
+        // is *consecutive* — it resets the moment nobody is there, so a recall has to
+        // be seen through in one stint rather than accumulated in passing.
+        let guarded = state
+            .agents
+            .iter()
+            .any(|agent| agent.team == half && agent.pos == pos);
+        let far_enough = state.large_seeds[seed_idx]
+            .home_dist
+            .get(&pos)
+            .is_some_and(|d| *d >= rules.large_seed_recall_min_steps);
+
+        if guarded && far_enough {
+            let seed = &mut state.large_seeds[seed_idx];
+            seed.recall_accum += 1;
+            if seed.recall_accum >= rules.large_seed_recall_ticks {
+                seed.pos = home;
+                seed.recall_accum = 0;
+                seed.drift_accum = 0;
+                continue; // recalled home this tick; it does not also drift
+            }
+        } else {
+            state.large_seeds[seed_idx].recall_accum = 0;
+        }
+
+        // Drift one tile toward the border every `large_seed_drift_ticks`. The step is
+        // the first tile of a shortest path through the actual maze, so the seed
+        // threads the tunnels rather than walking into a wall — and it comes to rest
+        // `large_seed_border_margin` columns short of the border, never crossing.
+        let seed = &mut state.large_seeds[seed_idx];
+        seed.drift_accum += 1;
+        if seed.drift_accum < rules.large_seed_drift_ticks {
+            continue;
+        }
+        seed.drift_accum = 0;
+        let from = seed.pos;
+        if let Some(next) = board
+            .drift_path(from, half, rules.large_seed_border_margin)
+            .first()
+        {
+            state.large_seeds[seed_idx].pos = *next;
+        }
     }
 }
 
@@ -334,21 +434,41 @@ fn scatter_dropped_load(
     }
 }
 
-/// Phase 4 — banking. A raider that crossed back onto its own half this tick
-/// banks its whole load. `was_on_own_half` is the pre-movement snapshot.
-fn banking(board: &Board, state: &mut MatchState, was_on_own_half: &[bool]) {
+/// Phase 3 — banking. A raider that crossed back onto its own half this tick banks
+/// its whole load. `was_on_own_half` is the pre-movement snapshot.
+fn banking(board: &Board, state: &mut MatchState, rules: &Rules, was_on_own_half: &[bool]) {
     // Bank into a scratch tally first so we are not borrowing `state.score`
     // mutably while iterating `state.agents` mutably.
-    let mut banked = Vec::new();
-    for (agent, was_home) in state.agents.iter_mut().zip(was_on_own_half) {
+    let mut banked: Vec<(Team, u32)> = Vec::new();
+    let mut banked_by: Vec<usize> = Vec::new();
+    for (i, (agent, was_home)) in state
+        .agents
+        .iter_mut()
+        .zip(was_on_own_half)
+        .enumerate()
+        .map(|(i, pair)| (i, pair))
+    {
         // Banking is a *crossing*: was on the enemy half, now on its own half,
-        // still carrying. (A tagged raider was respawned to its nest with load 0,
-        // so even though it is now on its own half it banks nothing — exactly the
-        // "killed before banking scores nothing" rule.)
+        // still carrying.
         let now_own_half = board.team_of_column(agent.pos.x) == agent.team;
-        if !was_home && now_own_half && agent.carrying > 0 {
-            banked.push((agent.team, agent.carrying));
+        let load = agent.load(rules);
+        if !was_home && now_own_half && load > 0 {
+            banked.push((agent.team, load));
             agent.carrying = 0;
+            if agent.carrying_large > 0 {
+                agent.carrying_large = 0;
+                banked_by.push(i);
+            }
+        }
+    }
+    // A banked large seed is out of play for good — the same fate as an eaten cache,
+    // and what makes it count toward the sweep.
+    for seed in state.large_seeds.iter_mut() {
+        if let Some(carrier) = seed.carried_by {
+            if banked_by.contains(&carrier) {
+                seed.banked = true;
+                seed.carried_by = None;
+            }
         }
     }
     for (team, load) in banked {

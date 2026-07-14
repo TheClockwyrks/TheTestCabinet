@@ -101,6 +101,55 @@
       ],
       "type": "object"
     },
+    "LargeSeedView": {
+      "description": "A large seed in the observation: where it is, where it came from, what it is\nworth, and how long until it takes its next step toward the border.\n\nEvery large seed also appears in [`World::seeds`], so a controller that ignores\nthis list still picks one up by walking onto it. This list is what lets a\ncontroller treat it as an *objective* — contest it, time a jelly to break a\ndefender parked on it, recall its own before the enemy reaches it, or weigh the\ncarry penalty of hauling one home.",
+      "properties": {
+        "half": {
+          "$ref": "#/$defs/Team",
+          "description": "Whose larder it belongs to: the colony that may recall it, and whose opponent\nmay eat it."
+        },
+        "home_x": {
+          "description": "The spawn tile it drifted from, and where its own colony recalls it to.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "home_y": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "ticks_to_drift": {
+          "description": "Ticks until it walks one more tile toward the border. It drifts whether or not\nanyone stands on it, so this is a clock, not a suggestion.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "value": {
+          "description": "What it banks — and what it weighs while carried. The same number.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "x": {
+          "description": "Current tile.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "y": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "home_x",
+        "home_y",
+        "half",
+        "value",
+        "ticks_to_drift"
+      ],
+      "type": "object"
+    },
     "OwnAgentView": {
       "description": "One of the controller's *own* agents, with the carry-weight cadence\npre-computed so the controller never re-derives it.",
       "properties": {
@@ -233,9 +282,16 @@
       "type": "array"
     },
     "jelly": {
-      "description": "Active royal-jelly nodes.",
+      "description": "Active royal-jelly nodes. A node that has been eaten drops out of this list\nand reappears in it when it regrows, at the same tile.",
       "items": {
         "$ref": "#/$defs/JellyView"
+      },
+      "type": "array"
+    },
+    "large_seeds": {
+      "description": "The large seeds currently on the board, with their value, home, and drift\nclock. Each also appears in `seeds`.",
+      "items": {
+        "$ref": "#/$defs/LargeSeedView"
       },
       "type": "array"
     },
@@ -250,7 +306,7 @@
       "$ref": "#/$defs/ScoreView"
     },
     "seeds": {
-      "description": "Every uneaten cache (including dropped, recoverable ones) on the board.",
+      "description": "Every takeable seed tile on the board — uneaten ordinary caches (including\ndropped, recoverable ones) **and** large seeds. Walking onto any of these\npicks it up; the list does not say which is which, so see `large_seeds`.",
       "items": {
         "items": {
           "format": "int32",
@@ -290,6 +346,7 @@
     "my_agents",
     "enemies",
     "seeds",
+    "large_seeds",
     "jelly"
   ],
   "title": "World",

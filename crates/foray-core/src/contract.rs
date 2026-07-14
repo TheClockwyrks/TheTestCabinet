@@ -203,6 +203,33 @@ pub struct JellyView {
     pub active: bool,
 }
 
+/// A large seed in the observation: where it is, where it came from, what it is
+/// worth, and how long until it takes its next step toward the border.
+///
+/// Every large seed also appears in [`World::seeds`], so a controller that ignores
+/// this list still picks one up by walking onto it. This list is what lets a
+/// controller treat it as an *objective* — contest it, time a jelly to break a
+/// defender parked on it, recall its own before the enemy reaches it, or weigh the
+/// carry penalty of hauling one home.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct LargeSeedView {
+    /// Current tile.
+    pub x: i32,
+    pub y: i32,
+    /// The spawn tile it drifted from, and where its own colony recalls it to.
+    pub home_x: i32,
+    pub home_y: i32,
+    /// Whose larder it belongs to: the colony that may recall it, and whose opponent
+    /// may eat it.
+    pub half: Team,
+    /// What it banks — and what it weighs while carried. The same number.
+    pub value: u32,
+    /// Ticks until it walks one more tile toward the border. It drifts whether or not
+    /// anyone stands on it, so this is a clock, not a suggestion.
+    pub ticks_to_drift: u32,
+}
+
 /// Remaining (un-banked-away) seed totals per half, the sweep-progress signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -229,9 +256,15 @@ pub struct World {
     pub my_agents: Vec<OwnAgentView>,
     /// The opposing colony's three agents.
     pub enemies: Vec<EnemyAgentView>,
-    /// Every uneaten cache (including dropped, recoverable ones) on the board.
+    /// Every takeable seed tile on the board — uneaten ordinary caches (including
+    /// dropped, recoverable ones) **and** large seeds. Walking onto any of these
+    /// picks it up; the list does not say which is which, so see `large_seeds`.
     pub seeds: Vec<[i32; 2]>,
-    /// Active royal-jelly nodes.
+    /// The large seeds currently on the board, with their value, home, and drift
+    /// clock. Each also appears in `seeds`.
+    pub large_seeds: Vec<LargeSeedView>,
+    /// Active royal-jelly nodes. A node that has been eaten drops out of this list
+    /// and reappears in it when it regrows, at the same tile.
     pub jelly: Vec<JellyView>,
 }
 
@@ -284,13 +317,45 @@ impl World {
             })
             .collect();
 
+        // Every takeable seed tile, ordinary AND large. Large seeds are listed here
+        // as well as in `large_seeds` on purpose: a controller that simply walks to
+        // the nearest seed picks one up without knowing what it is, so naive play
+        // keeps working and a half's full value stays reachable (a controller that
+        // could not take large seeds would top out below the sweep bar and could
+        // never sweep at all). `large_seeds` is the richer view, for controllers that
+        // want to play the objective deliberately rather than stumble onto it.
         let mut seeds: Vec<[i32; 2]> = state
             .red_caches
             .iter()
             .chain(state.blue_caches.iter())
             .map(|p| [p.x, p.y])
+            .chain(
+                state
+                    .large_seeds
+                    .iter()
+                    .filter(|seed| seed.on_board())
+                    .map(|seed| [seed.pos.x, seed.pos.y]),
+            )
             .collect();
         seeds.sort();
+
+        let mut large_seeds: Vec<LargeSeedView> = state
+            .large_seeds
+            .iter()
+            .filter(|seed| seed.on_board())
+            .map(|seed| LargeSeedView {
+                x: seed.pos.x,
+                y: seed.pos.y,
+                home_x: seed.home.x,
+                home_y: seed.home.y,
+                half: seed.half,
+                value: rules.large_seed_value,
+                ticks_to_drift: rules
+                    .large_seed_drift_ticks
+                    .saturating_sub(seed.drift_accum),
+            })
+            .collect();
+        large_seeds.sort_by_key(|s| (s.x, s.y));
 
         let mut jelly: Vec<JellyView> = state
             .red_jelly
@@ -328,6 +393,7 @@ impl World {
             my_agents,
             enemies,
             seeds,
+            large_seeds,
             jelly,
         }
     }

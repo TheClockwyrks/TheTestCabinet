@@ -215,12 +215,42 @@ fn generated_maze_is_mirror_symmetric_and_deterministic() {
             );
         }
     }
-    // Fixtures mirror too: every Red cache/jelly has its Blue twin.
+    // Fixtures mirror too: every Red cache/jelly/large seed has its Blue twin.
     for seed in a.initial_seeds(Team::Red) {
         assert!(a.initial_seeds(Team::Blue).contains(&a.mirror(*seed)));
     }
-    assert_eq!(a.initial_seeds(Team::Red).len(), 20);
+    for seed in a.initial_large_seeds(Team::Red) {
+        assert!(a.initial_large_seeds(Team::Blue).contains(&a.mirror(*seed)));
+    }
+    assert_eq!(a.initial_seeds(Team::Red).len(), 14);
+    assert_eq!(a.initial_large_seeds(Team::Red).len(), 2);
     assert_eq!(a.initial_jelly(Team::Red).len(), 2);
+
+    // The invariant that actually matters: large seeds were CARVED OUT of the half's
+    // value, not added on top. A half is still worth 20, so the sweep bar — and every
+    // balance assumption resting on it — is exactly where it was.
+    let rules = rules();
+    let half_value = a.initial_seeds(Team::Red).len() as u32
+        + a.initial_large_seeds(Team::Red).len() as u32 * rules.large_seed_value;
+    assert_eq!(
+        half_value, 20,
+        "14 ordinary + 2 large x 3 = 20, the same value a half held before"
+    );
+
+    // Large seeds sit DEEP — further from the border than the median cache — so
+    // drifting one out is a journey and taking one is a commitment.
+    let deepest_cache = a
+        .initial_seeds(Team::Red)
+        .iter()
+        .map(|p| p.x)
+        .min()
+        .expect("caches exist");
+    for large in a.initial_large_seeds(Team::Red) {
+        assert!(
+            large.x <= deepest_cache,
+            "a large seed is at least as deep as the deepest ordinary cache",
+        );
+    }
 }
 
 #[test]
@@ -269,7 +299,7 @@ fn committed_schemas_match_the_types() {
 #[test]
 fn role_is_derived_from_the_half_the_agent_stands_on() {
     let board = open_board();
-    let state = MatchState::new(&board);
+    let state = MatchState::new(&board, &rules());
     let red = state.agents.iter().find(|a| a.team == Team::Red).unwrap();
     assert_eq!(
         red.role(&board),
@@ -1049,7 +1079,7 @@ fn forfeit_result_is_representable() {
 #[test]
 fn action_validation_rejects_unowned_duplicate_and_missing_agents() {
     let board = open_board();
-    let state = MatchState::new(&board);
+    let state = MatchState::new(&board, &rules());
     // Valid: exactly Red's three ids.
     let ok = Action {
         moves: vec![

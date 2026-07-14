@@ -93,6 +93,14 @@ pub struct Board {
     /// Initial royal-jelly node tiles, one list per half.
     red_jelly: Vec<Pos>,
     blue_jelly: Vec<Pos>,
+    /// Initial **large** seed tiles — the spawn (and recall) home of each large
+    /// seed, one list per half. A large seed is worth [`Rules::large_seed_value`]
+    /// ordinary seeds and drifts toward the border in play; these are only its
+    /// starting tiles. Placed deep in the half, so drifting it out is a journey.
+    ///
+    /// [`Rules::large_seed_value`]: crate::config::Rules::large_seed_value
+    red_large_seeds: Vec<Pos>,
+    blue_large_seeds: Vec<Pos>,
 }
 
 impl Board {
@@ -144,6 +152,126 @@ impl Board {
         }
     }
 
+    /// The initial (spawn/recall home) tiles of the large seeds on `team`'s half —
+    /// the ones the opposing team raids.
+    pub fn initial_large_seeds(&self, team: Team) -> &[Pos] {
+        match team {
+            Team::Red => &self.red_large_seeds,
+            Team::Blue => &self.blue_large_seeds,
+        }
+    }
+
+    /// The tiles a large seed born at `home` on `team`'s half walks through as it
+    /// drifts toward the border, in order, **excluding** `home` itself. The last
+    /// entry is where it comes to rest: `margin` columns short of the border, so it
+    /// never crosses (a seed is stolen by a raid, never conceded by the clock).
+    ///
+    /// This is a shortest path through the *actual maze*, so no map surgery is
+    /// needed to give a seed somewhere to go — it threads the tunnels it is given.
+    /// Returns an empty path when the seed already sits at or past the stop column,
+    /// or when walls cut it off entirely (drift then simply never happens, which is
+    /// inert rather than a panic).
+    pub fn drift_path(&self, home: Pos, team: Team, margin: i32) -> Vec<Pos> {
+        // The last column the seed may occupy: `margin` short of its own front line.
+        // Red advances east toward `border_x - 1`; Blue advances west toward
+        // `border_x`. Clamp into the half so a silly `margin` cannot walk it out.
+        let stop_x = match team {
+            Team::Red => (self.border_x - 1 - margin).max(0),
+            Team::Blue => (self.border_x + margin).min(self.width - 1),
+        };
+        let reached = |p: Pos| match team {
+            Team::Red => p.x >= stop_x,
+            Team::Blue => p.x <= stop_x,
+        };
+        if reached(home) || !self.is_passable(home) {
+            return Vec::new();
+        }
+
+        // Breadth-first from `home` over passable tiles of this half only. Neighbours
+        // are expanded in a fixed N/S/E/W order and the queue is FIFO, so the path is
+        // a deterministic function of the board — which it must be: the engine is
+        // re-simulated from the input log on playback, and a path that varied between
+        // runs would desync every replay.
+        let mut came_from: std::collections::HashMap<Pos, Pos> = std::collections::HashMap::new();
+        let mut seen: std::collections::HashSet<Pos> = std::collections::HashSet::new();
+        let mut queue: std::collections::VecDeque<Pos> = std::collections::VecDeque::new();
+        seen.insert(home);
+        queue.push_back(home);
+
+        let mut goal: Option<Pos> = None;
+        while let Some(cur) = queue.pop_front() {
+            if reached(cur) {
+                goal = Some(cur);
+                break;
+            }
+            for next in [
+                Pos::new(cur.x, cur.y - 1),
+                Pos::new(cur.x, cur.y + 1),
+                Pos::new(cur.x + 1, cur.y),
+                Pos::new(cur.x - 1, cur.y),
+            ] {
+                if !self.is_passable(next)
+                    || self.team_of_column(next.x) != team
+                    || !seen.insert(next)
+                {
+                    continue;
+                }
+                came_from.insert(next, cur);
+                queue.push_back(next);
+            }
+        }
+
+        // Walk the parent chain back from the goal, then flip it. `home` is dropped:
+        // the path is the tiles the seed *moves to*, one per drift step.
+        let Some(goal) = goal else {
+            return Vec::new();
+        };
+        let mut path = Vec::new();
+        let mut cur = goal;
+        while cur != home {
+            path.push(cur);
+            cur = came_from[&cur];
+        }
+        path.reverse();
+        path
+    }
+
+    /// Maze distance from `home` to every reachable tile on `team`'s half. Used to
+    /// decide whether a large seed has drifted far enough from its spawn to be
+    /// recalled — a lookup, not a search, because it is read every tick.
+    ///
+    /// Keyed on the seed's *home* rather than its path so a seed that was dropped
+    /// somewhere unexpected (a raider carrying it was tagged mid-maze) still gets a
+    /// sensible answer, instead of one derived from a path it is no longer on.
+    pub fn home_distances(&self, home: Pos, team: Team) -> std::collections::BTreeMap<Pos, u32> {
+        let mut dist = std::collections::BTreeMap::new();
+        if !self.is_passable(home) {
+            return dist;
+        }
+        let mut queue = std::collections::VecDeque::new();
+        dist.insert(home, 0u32);
+        queue.push_back(home);
+        while let Some(cur) = queue.pop_front() {
+            let d = dist[&cur];
+            for next in [
+                Pos::new(cur.x, cur.y - 1),
+                Pos::new(cur.x, cur.y + 1),
+                Pos::new(cur.x + 1, cur.y),
+                Pos::new(cur.x - 1, cur.y),
+            ] {
+                if !self.is_passable(next)
+                    || self.team_of_column(next.x) != team
+                    || dist.contains_key(&next)
+                {
+                    continue;
+                }
+                dist.insert(next, d + 1);
+                queue.push_back(next);
+            }
+        }
+        dist
+    }
+
     /// The initial royal-jelly nodes on `team`'s half.
     pub fn initial_jelly(&self, team: Team) -> &[Pos] {
         match team {
@@ -170,8 +298,15 @@ pub struct BoardParams {
     pub width: i32,
     /// Total height in tiles.
     pub height: i32,
-    /// Seed caches to place per half.
+    /// Ordinary seed caches to place per half.
     pub seeds_per_half: usize,
+    /// Large seeds to place per half. Each is worth
+    /// [`Rules::large_seed_value`](crate::config::Rules::large_seed_value) ordinary
+    /// seeds and is **carved out of** the half's total, not added on top: the shipped
+    /// numbers are 14 ordinary + 2 large x 3 = 20, exactly the value a half held
+    /// before large seeds existed. Adding them on top would have raised the sweep bar
+    /// and pushed more matches to the time limit — the opposite of the intent.
+    pub large_seeds_per_half: usize,
     /// Royal-jelly nodes to place per half.
     pub jelly_per_half: usize,
     /// Out of every 10 interior floor tiles, roughly how many to turn into wall
@@ -180,13 +315,15 @@ pub struct BoardParams {
 }
 
 impl Default for BoardParams {
-    /// The shipped `mirror-32x16` defaults (lead decision 5): ~32x16, ~20 seed
-    /// caches and 2 jelly nodes per half.
+    /// The shipped `mirror-32x16` defaults (lead decision 5): 32x16, 2 jelly nodes
+    /// per half, and a half worth 20 points — now split as 14 ordinary caches plus
+    /// 2 large seeds at 3 apiece.
     fn default() -> BoardParams {
         BoardParams {
             width: 32,
             height: 16,
-            seeds_per_half: 20,
+            seeds_per_half: 14,
+            large_seeds_per_half: 2,
             jelly_per_half: 2,
             wall_density_tenths: 3,
         }
@@ -277,12 +414,33 @@ impl Board {
             }
             if left_seeds.len() < params.seeds_per_half {
                 left_seeds.push(*pos);
+                taken.insert(*pos);
             } else {
                 break;
             }
         }
+
+        // Large seeds go DEEP: of the tiles still free, take the ones furthest from
+        // the border (smallest `x` on the left half), breaking ties by `y` for a
+        // stable pick. Depth is the whole point — a large seed's drift toward the
+        // border has to be a real journey, and a raider coming for one has to commit
+        // to crossing the defender's territory rather than snatching it off the seam.
+        //
+        // This pass draws no randomness and runs *after* the jelly and cache passes,
+        // so it cannot perturb the RNG stream that placed them: the maze, the jelly,
+        // and the first `seeds_per_half` caches are bit-for-bit what they were.
+        let mut deep: Vec<Pos> = candidates
+            .iter()
+            .copied()
+            .filter(|p| !taken.contains(p))
+            .collect();
+        deep.sort_by_key(|p| (p.x, p.y));
+        let left_large: Vec<Pos> = deep.into_iter().take(params.large_seeds_per_half).collect();
+
         left_seeds.sort();
         left_jelly.sort();
+        let mut left_large = left_large;
+        left_large.sort();
 
         // 4. Mirror everything to the right half.
         let mirror = |p: Pos| Pos::new(width - 1 - p.x, p.y);
@@ -299,6 +457,9 @@ impl Board {
         let red_jelly = left_jelly.clone();
         let mut blue_jelly: Vec<Pos> = left_jelly.iter().map(|p| mirror(*p)).collect();
         blue_jelly.sort();
+        let red_large_seeds = left_large.clone();
+        let mut blue_large_seeds: Vec<Pos> = left_large.iter().map(|p| mirror(*p)).collect();
+        blue_large_seeds.sort();
 
         Board {
             id: id.into(),
@@ -313,6 +474,8 @@ impl Board {
             blue_seeds,
             red_jelly,
             blue_jelly,
+            red_large_seeds,
+            blue_large_seeds,
         }
     }
 }
