@@ -1,0 +1,377 @@
+// Arc Foundry — fixed constants: the stage, palette, grid geometry, the component stat
+// tables across the quality ladder, the scrap-press roll odds and combine recipe, the
+// three maps, the Load roster and its per-wave HP scaling, the economy, and the
+// difficulty table. Every number that specs/*.md pins lives here so the simulation reads
+// exactly as written, and this is the single balance surface a later workflow tunes
+// (specs/towers.md, specs/build.md, specs/enemies.md, specs/flow.md, specs/modes.md).
+//
+// The model (specs/overview.md): a GemTD reskin. A component has a TYPE (one of five
+// firing identities) and a quality TIER (Scrap → Tesla-Prime). Damage/range derive from
+// base (Scrap) stats times the tier; fire rate is flat across quality. Every component —
+// active or slagged — is a 2×2 wall; the Load mazes the shortest OPEN route through
+// ordered waypoints, never fully sealable.
+
+import type {
+  ComponentType,
+  Difficulty,
+  LoadType,
+  MapDef,
+  TargetingMode,
+  Tier,
+} from "./types";
+
+// ---- Stage (specs/overview.md) -------------------------------------------------
+export const STAGE_W = 1280;
+export const STAGE_H = 720;
+
+export const STATUS_H = 56; // top status bar: y in [0, 56], full width
+export const PANEL_X = 1000; // right build panel: x in [1000, 1280], y in [56, 720]
+export const BOARD_X0 = 0;
+export const BOARD_Y0 = STATUS_H;
+export const BOARD_X1 = PANEL_X;
+export const BOARD_Y1 = STAGE_H;
+
+// ---- Tile grid (specs/board.md §2.2) -------------------------------------------
+export const TILE = 20; // 20 × 20 px tiles
+export const GRID_COLS = 50; // columns c = 0..49
+export const GRID_ROWS = 33; // rows r = 0..32
+export const GRID_X0 = 0; // grid anchored at the board top-left (0, 56)
+export const GRID_Y0 = STATUS_H;
+export const BOARD_FRAME = 4; // the y in [716, 720] strip is board frame, not playable
+
+// A tile's center in logical-pixel space.
+export function tileCenter(col: number, row: number): { x: number; y: number } {
+  return { x: GRID_X0 + TILE * col + TILE / 2, y: GRID_Y0 + TILE * row + TILE / 2 };
+}
+
+// ---- Component footprint (specs/board.md §2.3 — uniform 2×2) --------------------
+export const FOOTPRINT_TILES = 2; // every component / slag wall is 2×2 tiles (40×40 px)
+export const FOOTPRINT_PX = FOOTPRINT_TILES * TILE; // 40
+// Legal anchor range for a 2×2 footprint: col 0..48, row 0..31.
+export const MAX_ANCHOR_COL = GRID_COLS - FOOTPRINT_TILES; // 48
+export const MAX_ANCHOR_ROW = GRID_ROWS - FOOTPRINT_TILES; // 31
+
+// A component's center (used for range, targeting, drawing): (20·(col+1), 56 + 20·(row+1)).
+export function footprintCenter(col: number, row: number): { x: number; y: number } {
+  return { x: GRID_X0 + TILE * (col + 1), y: GRID_Y0 + TILE * (row + 1) };
+}
+
+// Fixed simulation timestep (specs/controls.md — a fixed tick, render interpolates).
+export const FIXED_STEP = 1 / 60;
+
+// ---- Palette (specs/overview.md) -----------------------------------------------
+// Electro-industrial: a cold, oil-dark yard lit by blue-white discharge.
+export const COL = {
+  void: "#05080c",
+  substrate: "#0d141b",
+  concrete: "#141d26",
+  grid: "#1d2b38",
+  flow: "#2f6d92",
+  arc: "#8fdcff", // the blue-white of a live arc
+  spark: "#eaf6ff",
+  charge: "#ffcf4a", // Charge (money)
+  integrity: "#46d6e6", // Grid Integrity (lives)
+  entry: "#ffd15a", // the feeder vent
+  collector: "#ff6a4a", // the grounding sink (hazard)
+  housing: "#37485a", // Map C transformer steel
+  legal: "#46d07a", // legal placement cue
+  illegal: "#ff4d4d", // illegal placement cue
+  alert: "#ff5a52", // low-integrity alarm
+  boss: "#c65cff", // the Dynamo
+  panel: "#0f1620",
+  text: "#e8eef5",
+  text2: "#93a2b2",
+  text3: "#5d6b7a",
+  // Per-component-type accents (specs/towers.md).
+  capacitor: "#5ac8ff",
+  coil: "#9b7bff",
+  emitter: "#7fe6b0",
+  arcnode: "#ffb347",
+  discharge: "#ff5470",
+  slag: "#3a4351",
+} as const;
+
+export const FONT = `"SF Mono", "JetBrains Mono", "Fira Mono", "DejaVu Sans Mono", "Menlo", "Consolas", monospace`;
+
+// ---- Component types (specs/towers.md) -----------------------------------------
+export const COMPONENT_ORDER: ComponentType[] = ["capacitor", "coil", "emitter", "arcnode", "discharge"];
+
+export const COMPONENT_LABEL: Record<ComponentType, string> = {
+  capacitor: "CAPACITOR",
+  coil: "COIL",
+  emitter: "EMITTER",
+  arcnode: "ARC-NODE",
+  discharge: "DISCHARGE RIG",
+};
+
+export const COMPONENT_COLOR: Record<ComponentType, string> = {
+  capacitor: COL.capacitor,
+  coil: COL.coil,
+  emitter: COL.emitter,
+  arcnode: COL.arcnode,
+  discharge: COL.discharge,
+};
+
+// ---- The quality ladder (specs/towers.md §1.2, §5.2) ---------------------------
+export const TIERS: Tier[] = [1, 2, 3, 4, 5];
+export const TIER_NAME: Record<Tier, string> = {
+  1: "SCRAP",
+  2: "TUNED",
+  3: "CHARGED",
+  4: "PRIMED",
+  5: "TESLA-PRIME",
+};
+// Damage multiplier by tier (steep, so combining always pays). Index 0 is unused padding.
+export const QUALITY_MULT: number[] = [0, 1.0, 2.2, 5.0, 11, 24];
+export const RANGE_PER_TIER = 6; // range += 6 px per tier above T1
+export const MAX_TIER: Tier = 5; // Tesla-Prime is the apex — cannot combine further
+
+// ---- Targeting (specs/towers.md, specs/controls.md) ----------------------------
+export const TARGETING_ORDER: TargetingMode[] = ["first", "last", "nearest", "strongest", "weakest"];
+export const TARGETING_LABEL: Record<TargetingMode, string> = {
+  first: "FIRST",
+  last: "LAST",
+  nearest: "NEAREST",
+  strongest: "STRONGEST",
+  weakest: "WEAKEST",
+};
+
+// ---- Base (Scrap / T1) component stats (specs/towers.md §5.3) -------------------
+export interface ComponentDef {
+  type: ComponentType;
+  name: string;
+  role: string; // one-line role (inspector)
+  color: string;
+  range: number; // T1 range (px)
+  fireRate: number; // shots/sec — FLAT across quality
+  dmg: number; // T1 base damage (× QUALITY_MULT for higher tiers)
+  splashT1: number; // Arc-Node: T1 splash radius (0 for the others)
+  splashPerTier: number; // Arc-Node: +radius per tier above T1
+}
+
+export const COMPONENTS: Record<ComponentType, ComponentDef> = {
+  capacitor: { type: "capacitor", name: "CAPACITOR", role: "Balanced single-target zap", color: COL.capacitor, range: 110, fireRate: 1.6, dmg: 8, splashT1: 0, splashPerTier: 0 },
+  coil: { type: "coil", name: "COIL", role: "Chain-lightning — leaps to nearby units", color: COL.coil, range: 120, fireRate: 1.1, dmg: 6, splashT1: 0, splashPerTier: 0 },
+  emitter: { type: "emitter", name: "EMITTER", role: "Rapid low-damage spark; anti-swarm", color: COL.emitter, range: 95, fireRate: 4.5, dmg: 2, splashT1: 0, splashPerTier: 0 },
+  arcnode: { type: "arcnode", name: "ARC-NODE", role: "Area discharge — damages everything near impact", color: COL.arcnode, range: 105, fireRate: 0.9, dmg: 7, splashT1: 45, splashPerTier: 5 },
+  discharge: { type: "discharge", name: "DISCHARGE RIG", role: "Slow, long-range heavy bolt; anti-tank", color: COL.discharge, range: 170, fireRate: 0.5, dmg: 22, splashT1: 0, splashPerTier: 0 },
+};
+
+// Coil chain (specs/towers.md §5.3): the bolt leaps to the nearest not-yet-hit unit
+// within CHAIN_RANGE, each leap dealing ×CHAIN_FALLOFF of the previous. Max ADDITIONAL
+// leaps by tier: 2 (T1–T2), 3 (T3–T4), 4 (Tesla-Prime).
+export const COIL_CHAIN_RANGE = 70;
+export const COIL_CHAIN_FALLOFF = 0.7;
+export function coilLeaps(tier: Tier): number {
+  return tier >= 5 ? 4 : tier >= 3 ? 3 : 2;
+}
+
+// Projectile travel speed by component (logical px/s). A shot is a real travelling
+// projectile that deals its effect on impact, not a hitscan (specs/towers.md).
+export const PROJECTILE_SPEED: Record<ComponentType, number> = {
+  capacitor: 560,
+  coil: 640,
+  emitter: 680,
+  arcnode: 460,
+  discharge: 760,
+};
+
+// ---- Derived effective stats (the single source, specs/towers.md §5.2) ---------
+export interface CompStats {
+  range: number;
+  fireRate: number;
+  dmg: number; // per shot
+  splash: number; // Arc-Node area radius (0 = single target)
+  chainLeaps: number; // Coil extra leaps (0 = no chain)
+  chainRange: number;
+  chainFalloff: number;
+}
+
+// A component's live behaviour is fully derived from (type, tier).
+export function deriveStats(type: ComponentType, tier: Tier): CompStats {
+  const def = COMPONENTS[type];
+  const mult = QUALITY_MULT[tier]!;
+  return {
+    range: def.range + RANGE_PER_TIER * (tier - 1),
+    fireRate: def.fireRate, // flat across quality
+    dmg: Math.round(def.dmg * mult),
+    splash: def.splashT1 > 0 ? def.splashT1 + def.splashPerTier * (tier - 1) : 0,
+    chainLeaps: type === "coil" ? coilLeaps(tier) : 0,
+    chainRange: COIL_CHAIN_RANGE,
+    chainFalloff: COIL_CHAIN_FALLOFF,
+  };
+}
+
+// ---- The scrap-press build loop (specs/build.md §6) ----------------------------
+export const BUILDS_PER_LEVEL = 5; // fixed 5-stamp allowance per level (constant across difficulty)
+export const STAMP_COST = 18; // Charge per press pull
+
+// Type roll: uniform 20% each (specs/build.md §6.2).
+export const STAMP_TYPE_WEIGHT: Record<ComponentType, number> = {
+  capacitor: 0.2,
+  coil: 0.2,
+  emitter: 0.2,
+  arcnode: 0.2,
+  discharge: 0.2,
+};
+
+// Quality roll: weighted low so the climb is via combining (specs/build.md §6.2).
+// Indexed by tier; index 0 unused. Sums to 1.0.
+export const STAMP_QUALITY_WEIGHT: number[] = [0, 0.62, 0.24, 0.1, 0.034, 0.006];
+
+// Invested value a component carries (specs/towers.md §5.6): a stamped one is worth
+// STAMP_COST; a combined one the sum of the two it consumed, so it doubles each rung.
+// Indexed by tier; index 0 unused: 18, 36, 72, 144, 288.
+export function investedValue(tier: Tier): number {
+  return STAMP_COST * Math.pow(2, tier - 1);
+}
+
+// Sell / slag refunds (specs/towers.md §5.6).
+export const SELL_FRACTION = 0.7; // active component sells for 70% of invested value
+export const SLAG_REFUND = 12; // flat Charge refunded when slagging an active component
+export const SLAG_WALL_SELL = 6; // a slag wall sells for this
+
+export function sellRefund(tier: Tier): number {
+  return Math.floor(investedValue(tier) * SELL_FRACTION); // 12, 25, 50, 100, 201
+}
+
+// ---- The Load roster (specs/enemies.md §7 — base Wave-1, Medium) ---------------
+export interface LoadDef {
+  type: LoadType;
+  label: string;
+  baseHp: number; // before difficulty + per-wave scaling
+  speed: number; // logical px/s (does NOT scale)
+  flies: boolean;
+  bounty: number; // Charge + score (does NOT scale)
+  leak: number; // Grid Integrity cost (does NOT scale)
+  radius: number; // visual/collision radius (logical px)
+  boss: boolean;
+}
+
+export const LOAD: Record<LoadType, LoadDef> = {
+  mote: { type: "mote", label: "MOTE", baseHp: 30, speed: 60, flies: false, bounty: 3, leak: 1, radius: 10, boss: false },
+  spark: { type: "spark", label: "SPARK", baseHp: 18, speed: 120, flies: false, bounty: 3, leak: 1, radius: 8, boss: false },
+  slug: { type: "slug", label: "SLUG", baseHp: 180, speed: 38, flies: false, bounty: 7, leak: 2, radius: 13, boss: false },
+  cluster: { type: "cluster", label: "CLUSTER", baseHp: 10, speed: 72, flies: false, bounty: 2, leak: 1, radius: 7, boss: false },
+  filament: { type: "filament", label: "FILAMENT", baseHp: 55, speed: 85, flies: true, bounty: 6, leak: 1, radius: 9, boss: false },
+  dynamo: { type: "dynamo", label: "DYNAMO", baseHp: 1500, speed: 30, flies: false, bounty: 90, leak: 5, radius: 20, boss: true },
+};
+
+export const LOAD_ORDER: LoadType[] = ["mote", "spark", "slug", "cluster", "filament", "dynamo"];
+
+// Per-wave HP scaling (specs/enemies.md §7.1): HP(w) = baseHP × baseMult × (1 + k·(w−1)).
+// baseMult and k are set by difficulty; only HP grows — speeds, bounties, leaks are fixed.
+export function scaledHp(baseHp: number, wave: number, baseMult: number, k: number): number {
+  return Math.round(baseHp * baseMult * (1 + k * (wave - 1)));
+}
+
+// ---- Economy (specs/flow.md §8 — constant across difficulty) -------------------
+export const START_CHARGE = 130;
+export const START_INTEGRITY = 20;
+export const BUILD_PHASE_SECONDS = 15; // between-wave build phase (the opening phase is untimed)
+export const INTEREST_RATE = 0.08; // 8% of current Charge at the start of each between-wave phase
+export const INTEREST_CAP = 40; // capped at +40 per build phase
+export const EARLY_SEND_PER_SECOND = 1; // Charge per whole second left on the countdown
+
+export function waveClearBonus(wave: number): number {
+  return 20 + 5 * wave;
+}
+
+// Scoring (specs/flow.md §8.3): + bounty per kill, + 100·wave per wave cleared,
+// + 250·integrityRemaining at victory.
+export const SCORE_PER_WAVE = 100;
+export const SCORE_PER_INTEGRITY = 250;
+
+// ---- Difficulty table (specs/modes.md §9.2 — wave count + toughness ONLY) ------
+export interface DifficultyDef {
+  key: Difficulty;
+  label: string;
+  waves: number; // N
+  baseMult: number; // HP base multiplier
+  k: number; // per-wave HP scaling
+  milestones: number[]; // waves that carry a Dynamo (round(N/2) and N)
+  note: string;
+}
+
+export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
+  easy: { key: "easy", label: "EASY", waves: 20, baseMult: 0.85, k: 0.15, milestones: [10, 20], note: "Shorter siege, gentler HP ramp." },
+  medium: { key: "medium", label: "MEDIUM", waves: 30, baseMult: 1.0, k: 0.2, milestones: [15, 30], note: "The reference balance." },
+  hard: { key: "hard", label: "HARD", waves: 40, baseMult: 1.15, k: 0.26, milestones: [20, 40], note: "Dozens of waves, a steep HP climb." },
+};
+
+export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard"];
+
+// A wave carries a Dynamo boss if it is a milestone wave (specs/flow.md §9.1).
+export function isMilestoneWave(wave: number, diff: DifficultyDef): boolean {
+  return diff.milestones.includes(wave);
+}
+
+// ---- The three maps (specs/board.md §4 — tile coordinates) ---------------------
+// Every map plays the same campaign; only the topology (waypoint placement and Map C's
+// fixed housings) differs. The pathing chain is [entry, ...waypoints, collector].
+
+// Map A — "The Substation": a wide serpentine hugging the perimeter (five long legs).
+const SUBSTATION: MapDef = {
+  id: "substation",
+  name: "The Substation",
+  blurb: "A wide serpentine hugging the yard's edge — fold one big maze across the open center.",
+  styleLabel: "SERPENTINE",
+  entry: { col: 0, row: 4 },
+  entryEdge: "left",
+  waypoints: [
+    { col: 47, row: 4 },
+    { col: 47, row: 28 },
+    { col: 2, row: 28 },
+    { col: 2, row: 16 },
+  ],
+  collector: { col: 49, row: 16 },
+  collectorEdge: "right",
+  housings: [],
+};
+
+// Map B — "The Switchyard": a crossing star whose legs cut through the center four times.
+const SWITCHYARD: MapDef = {
+  id: "switchyard",
+  name: "The Switchyard",
+  blurb: "A crossing star — the legs criss-cross the middle, so the center band is the premium maze.",
+  styleLabel: "BUSBAR",
+  entry: { col: 25, row: 0 },
+  entryEdge: "top",
+  waypoints: [
+    { col: 2, row: 30 },
+    { col: 47, row: 2 },
+    { col: 2, row: 2 },
+    { col: 47, row: 30 },
+  ],
+  collector: { col: 25, row: 32 },
+  collectorEdge: "bottom",
+  housings: [],
+};
+
+// Map C — "The Transformer Yard": two fixed housings split the yard; WP2 forces the gap.
+const TRANSFORMER: MapDef = {
+  id: "transformer",
+  name: "The Transformer Yard",
+  blurb: "Two fixed transformer housings split the yard on a diagonal; the center waypoint threads the gap.",
+  styleLabel: "CHOKEPOINT",
+  entry: { col: 0, row: 2 },
+  entryEdge: "left",
+  waypoints: [
+    { col: 48, row: 2 },
+    { col: 24, row: 16 },
+    { col: 48, row: 30 },
+  ],
+  collector: { col: 0, row: 30 },
+  collectorEdge: "left",
+  housings: [
+    { col0: 12, row0: 6, col1: 19, row1: 12 },
+    { col0: 30, row0: 20, col1: 37, row1: 26 },
+  ],
+};
+
+export const MAPS: MapDef[] = [SUBSTATION, SWITCHYARD, TRANSFORMER];
+export const DEFAULT_MAP = SUBSTATION;
+
+export function mapById(id: string): MapDef {
+  return MAPS.find((m) => m.id === id) ?? DEFAULT_MAP;
+}
