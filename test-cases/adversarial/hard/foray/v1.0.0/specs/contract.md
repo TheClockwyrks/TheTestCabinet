@@ -16,8 +16,9 @@ replace) what the SDK does, not because you have to write it by hand.
 ## `world` — the observation (input)
 
 Each tick you receive a `World` for your colony. Fully observable in v1 —
-there is no fog; you see the whole board, both teams, every cache, and every
-active jelly. The authoritative schema is `schemas/world.json`; the shape is:
+there is no fog; you see the whole board, both teams, every seed (ordinary and
+large), and every active jelly node. The authoritative schema is
+`schemas/world.json`; the shape is:
 
 ```jsonc
 {
@@ -32,20 +33,33 @@ active jelly. The authoritative schema is `schemas/world.json`; the shape is:
   "score": { "red": 7, "blue": 5 },          // banked points
   "seeds_remaining": { "red_half": 13, "blue_half": 11 }, // sweep progress
   "my_agents": [                  // ALWAYS your three agents, ids 0..3
+    // `load` is the number that matters: carrying + 3 * carrying_large.
     { "id": 0, "x": 14, "y": 8, "role": "raider", "carrying": 4,
+      "carrying_large": 0, "load": 4,
       "immune_ticks": 0, "can_move_this_tick": false },
     { "id": 1, "x": 6, "y": 2, "role": "soldier", "carrying": 0,
+      "carrying_large": 0, "load": 0,
       "immune_ticks": 0, "can_move_this_tick": true },
+    // Hauling a large seed: NOTHING in `carrying`, but three units of load.
     { "id": 2, "x": 9, "y": 11, "role": "raider", "carrying": 0,
+      "carrying_large": 1, "load": 3,
       "immune_ticks": 12, "can_move_this_tick": true }
   ],
   "enemies": [                    // the opposing colony's three agents (no cadence)
     { "id": 0, "x": 20, "y": 8, "role": "soldier", "carrying": 0,
-      "immune_ticks": 0 }
+      "carrying_large": 0, "load": 0, "immune_ticks": 0 }
   ],
-  // EVERY uneaten cache, incl. dropped recoverable ones:
-  "seeds": [ [18,3], [21,9] ],
-  "jelly": [ { "x": 24, "y": 1, "active": true } ]  // active royal-jelly nodes
+  // EVERY takeable seed tile — ordinary caches (incl. dropped, recoverable ones)
+  // AND large seeds. Step on any of these to pick it up.
+  "seeds": [ [18,3], [21,9], [15,6] ],
+  // The large seeds, with what `seeds` alone cannot tell you. Each also appears
+  // in `seeds` above. `ticks_to_drift` is a clock: it moves whether you like it
+  // or not, and it is heading for the border.
+  "large_seeds": [
+    { "x": 15, "y": 6, "home_x": 1, "home_y": 6, "half": "red",
+      "value": 3, "ticks_to_drift": 128 }
+  ],
+  "jelly": [ { "x": 24, "y": 1, "active": true } ]  // ACTIVE royal-jelly nodes
 }
 ```
 
@@ -53,20 +67,36 @@ Key fields to reason about:
 
 - **`role`** is derived from the half the agent stands on — `soldier` at home,
   `raider` on the enemy half. You do not compute it; you read it.
-- **`carrying`** is the agent's current load (seeds eaten but not yet banked).
+- **`carrying`** is **ordinary** seeds eaten but not yet banked — it does **not**
+  count a large seed.
+- **`carrying_large`** is how many large seeds the agent holds.
+- **`load`** is the number that actually matters: `carrying + 3 * carrying_large`.
+  It is **both** what the agent banks if it gets home **and** what carry-weight
+  charges it to move. Read `carrying` alone and a raider hauling nothing but a large
+  seed looks unladen — it is in fact three units heavy, one ordinary seed away from
+  losing its speed edge over a soldier. It is given to you so you never derive it.
 - **`can_move_this_tick`** (own agents only) exposes the
   [carry-weight speed model](/specs/rules.md) directly: it is `true` when the agent
   has banked enough charge to step this tick if told to. A laden raider mid-stall
   reads `false` (any move you submit for it is a no-op), and because a soldier
   moves just under one tile/tick, even a soldier reads `false` on its occasional
   skipped step. Enemies do not carry this field — you do not drive them.
-- **`immune_ticks`** is the remaining royal-jelly immunity window (`0` when not
-  immune). An immune raider cannot be tagged.
-- **`seeds`** is the full live cache list. The caches you *raid* are the ones on
-  the **enemy** half; the ones you *defend* are on your own half. A dropped load
-  (from a tag) appears here too, as recoverable caches.
-- **`seeds_remaining`** is the sweep-progress signal: `blue_half` is what Red still
-  has to strip to win by sweep, and vice versa.
+- **`immune_ticks`** is the remaining royal-jelly window (`0` when not immune), and
+  it is given for **enemies too**. An immune ant cannot be tagged **and tags any
+  non-immune enemy it meets** — including a soldier standing on its own half. An
+  enemy with `immune_ticks > 0` is not a target; it is a threat.
+- **`seeds`** is every takeable seed tile — ordinary caches *and* large seeds. The
+  ones you *raid* are on the **enemy** half; the ones you *defend* are on your own.
+  A dropped load (from a tag) appears here too, as recoverable caches.
+- **`large_seeds`** is the richer view of the large seeds, which `seeds` alone
+  cannot distinguish: each is worth (and weighs) `value` = 3, drifts toward the
+  border every `ticks_to_drift`, and can be recalled to `home_x`/`home_y` by an ant
+  of the colony named in `half`. Ignore this list and you will still pick large seeds
+  up by walking onto them — you just will not know what you are holding, or that the
+  ones on **your** half are walking toward the enemy.
+- **`seeds_remaining`** is the sweep-progress signal, counted by **value** (a half
+  starts at 20): `blue_half` is what Red still has to strip to win by sweep, and vice
+  versa.
 
 ## `action` — the output
 
@@ -96,10 +126,16 @@ ordinary bugs are forgiven, not match-ending.
   a structurally valid `moves` list for you (exactly your three ids, once each),
   so use it and you cannot trip this.
 - **A well-formed but blocked move is clamped, not punished.** A move into a wall,
-  off the board, submitted for an agent that has not banked a full step this tick,
-  or that would **swap tiles** with another agent (you cannot pass through another
-  agent) is applied as **Stop**. Ordinary pathfinding bugs cost you tempo, not the
+  off the board, or submitted for an agent that has not banked a full step this
+  tick, is applied as **Stop**. Ordinary pathfinding bugs cost you tempo, not the
   match.
+
+One clamp is **not** harmless, and it is worth stating plainly here because it is
+the one that kills controllers: a **soldier and an enemy raider that try to trade
+tiles** in the same tick do not swap — and they are then treated as having **met**,
+so the tagging rule settles it. Absent jelly, that means the defender **catches**
+the raider. Walking a raider straight into a defender's tile in the hope of slipping
+through does not cost you tempo; it costs you the agent and its whole load.
 
 ## The ABI (what the SDK does for you)
 
