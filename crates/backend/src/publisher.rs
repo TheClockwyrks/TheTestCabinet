@@ -214,10 +214,30 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         }
     }
 
+    // A published run's media is immutable and stored under a content-stable key
+    // (`media/runs/<id>/…`) shared across snapshots, so learn which media is already
+    // uploaded and skip re-reading/re-uploading it. Only when R2 is configured — the
+    // dev path has no bucket to list, and re-uploads nothing anyway. A list failure is
+    // not fatal: fall back to an empty set (re-export everything) rather than abort the
+    // whole refresh, so a transient list error degrades to the old behavior.
+    let existing_media = match &inner.r2 {
+        Some(r2) => match r2.list_keys("media/runs/").await {
+            Ok(keys) => keys.into_iter().collect(),
+            Err(err) => {
+                tracing::warn!(
+                    "listing existing snapshot media failed ({err}); re-exporting all run media"
+                );
+                std::collections::HashSet::new()
+            }
+        },
+        None => std::collections::HashSet::new(),
+    };
+
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
         .with_models(models)
         .with_reference_builds(reference_builds)
+        .with_existing_media(existing_media)
         .build(generated_at)
         .await?;
     let run_count = snapshot.run_count;
