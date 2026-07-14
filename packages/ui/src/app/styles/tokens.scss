@@ -54,3 +54,5 @@ $color-accent: var(--ttc-accent);
 $color-accent-2: var(--ttc-accent-2);
 $color-positive: var(--ttc-positive);
 $color-negative: var(--ttc-negative);
+// The palette's amber — reused for in-progress / in-flight states.
+$color-warning: var(--ttc-rating-scuffed);

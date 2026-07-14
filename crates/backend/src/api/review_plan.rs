@@ -213,6 +213,16 @@ pub async fn coverage(
 
         for combo in &plan.combinations {
             let harness = combo.harness.as_str();
+            // Runs and jobs store the model id they were *launched* with, which for
+            // a provider-routed harness (OpenCode / Kilo Code) carries the
+            // `openrouter/` prefix the plan's canonical `combo.model` omits. Match
+            // against that same launched id so provider-routed cells count their
+            // completed runs and in-flight jobs instead of always reading zero.
+            let launch_model = test_cabinet_core::model_id::launch_model_id(
+                &combo.model,
+                combo.harness,
+                combo.provider.as_deref(),
+            );
             let completed = state
                 .db
                 .count_completed_runs_for_cell(
@@ -220,7 +230,7 @@ pub async fn coverage(
                     &case.version,
                     &case.variant,
                     harness,
-                    &combo.model,
+                    &launch_model,
                 )
                 .await
                 .map_err(ApiError::from)? as u32;
@@ -231,7 +241,7 @@ pub async fn coverage(
                     &case.version,
                     &case.variant,
                     harness,
-                    &combo.model,
+                    &launch_model,
                 )
                 .await
                 .map_err(ApiError::from)? as u32;

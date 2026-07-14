@@ -80,53 +80,50 @@ patches:
 # rather than :latest in a real deployment.
 #
 # All service images are pinned to ONE git-sha so they version together, currently
-# `b3c2b322` (the v0.4.1 build — the changelog-tip commit whose push batch also
-# carried the v0.4.1 UI fixes plus the backend/core/entities/migration crate changes,
-# so `build-service-images` rebuilt and published multi-arch (amd64+arm64) for every
-# service at that sha; the docs-only tip commit shares the push, so the tag rides on
-# it). Bumped from the v0.4.0 pin `ba19bd69`.
+# `a74d1414` (the v0.5.0 release build — the changelog-tip commit on `master`, at which
+# `build-service-images` rebuilt and published multi-arch (amd64+arm64) for every
+# service). Bumped from the v0.4.1 pin `b3c2b322`.
 #
 # The RUN-CONTAINER images (test-cabinet-base/-base-wasm/-sprite/-sprite-sheet/-adversarial/
 # -performance, plus the voxel/mesh/skin/ui/material/particle/audio kinds) are pinned
 # SEPARATELY via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml and are NOT
 # generally in lockstep with the service images — they only rebuild when
-# `build-containers` runs. As of the v0.4.1 roll they have DIVERGED: the changes since
-# v0.4.0 touched only service crates (backend/core/entities/migration) and the web/UI,
-# none of the asset-generation/foray crates `build-containers` watches, so no new run
-# image was published and TCAB_CONTAINER_TAG stays at `ba19bd69` while the service
-# images move to `b3c2b322`. Still re-pin TCAB_CONTAINER_TAG only to a sha at which
-# `build-containers` actually published. Roll the service images — staging before
+# `build-containers` runs. For the v0.5.0 roll they are back IN lockstep: unlike v0.4.1,
+# the v0.5.0 work touched the asset-generation/foray crates `build-containers` watches,
+# so `build-containers` published multi-arch run images at the same `a74d1414` and
+# TCAB_CONTAINER_TAG moves to it too. Still re-pin TCAB_CONTAINER_TAG only to a sha at
+# which `build-containers` actually published. Roll the service images — staging before
 # prod — when promoting a build.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: b3c2b32239a21aa9a324d58313a1d56361a25bcd
+    newTag: a74d14141c2b0e4d3be6edb0abeca95ea102baa6
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: b3c2b32239a21aa9a324d58313a1d56361a25bcd
+    newTag: a74d14141c2b0e4d3be6edb0abeca95ea102baa6
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: b3c2b32239a21aa9a324d58313a1d56361a25bcd
+    newTag: a74d14141c2b0e4d3be6edb0abeca95ea102baa6
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: b3c2b32239a21aa9a324d58313a1d56361a25bcd
+    newTag: a74d14141c2b0e4d3be6edb0abeca95ea102baa6
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: b3c2b32239a21aa9a324d58313a1d56361a25bcd
+    newTag: a74d14141c2b0e4d3be6edb0abeca95ea102baa6
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: b3c2b32239a21aa9a324d58313a1d56361a25bcd
+    newTag: a74d14141c2b0e4d3be6edb0abeca95ea102baa6
   # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
   # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
   # rewrites nothing today — it is kept for parity so the registry/tag set stays
   # complete and a future container-image reference to the publisher is covered.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: b3c2b32239a21aa9a324d58313a1d56361a25bcd
+    newTag: a74d14141c2b0e4d3be6edb0abeca95ea102baa6
   # The in-cluster web console image (the internal-ingress component's tcab-web
   # Deployment). One environment-agnostic build per git-sha; the per-env backend/auth
   # URLs are injected at runtime via env, not baked. GHCR package is Public/anonymously
   # pullable.
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: b3c2b32239a21aa9a324d58313a1d56361a25bcd
+    newTag: a74d14141c2b0e4d3be6edb0abeca95ea102baa6
