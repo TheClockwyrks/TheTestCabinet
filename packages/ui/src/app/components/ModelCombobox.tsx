@@ -90,24 +90,31 @@ export function ModelCombobox({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
+  // Whether the field's current text is a query the user is actively typing (as
+  // opposed to a committed/seeded model id). The list only narrows to the value
+  // while typing — otherwise opening a field that already holds a selected id
+  // (the batch form seeds each row's model) would substring-match that full id
+  // and collapse the whole catalog down to the one selected model.
+  const [typing, setTyping] = useState(false);
 
   const options = useMemo(
     () => buildOptions(models, harnessFamily),
     [models, harnessFamily],
   );
 
-  // Filter against the typed query. An empty field lists everything; otherwise a
-  // simple substring match over each option's name/slug/aliases. Known models lead
-  // so the curated catalog surfaces first.
+  // Filter against the typed query. When not actively typing (a committed or
+  // seeded value, or an empty field) the full list shows; while typing, a simple
+  // substring match over each option's name/slug/aliases narrows it. Known models
+  // lead so the curated catalog surfaces first.
   const filtered = useMemo(() => {
-    const query = value.trim().toLowerCase();
+    const query = typing ? value.trim().toLowerCase() : "";
     const matches = query
       ? options.filter((o) => o.search.includes(query))
       : options;
     const known = matches.filter((o) => o.curated);
     const used = matches.filter((o) => !o.curated);
     return { known, used, flat: [...known, ...used] };
-  }, [options, value]);
+  }, [options, value, typing]);
 
   // Close on an outside pointerdown; the input's own blur is not enough because a
   // click on an option must fire first (handled via mousedown-preventDefault).
@@ -125,6 +132,9 @@ export function ModelCombobox({
     onChange(option.id);
     setOpen(false);
     setHighlight(-1);
+    // The value is now a committed selection, not a query — reopening should show
+    // the full list again rather than narrowing to the just-picked id.
+    setTyping(false);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -158,11 +168,7 @@ export function ModelCombobox({
   // Render one group (Known / Previously used) with a non-selectable heading. The
   // `offset` maps each option to its index in the flat highlight list so keyboard
   // and pointer highlighting agree.
-  function renderGroup(
-    heading: string,
-    group: ModelOption[],
-    offset: number,
-  ) {
+  function renderGroup(heading: string, group: ModelOption[], offset: number) {
     if (group.length === 0) return null;
     return (
       <li role="presentation">
@@ -214,18 +220,21 @@ export function ModelCombobox({
           onChange(e.target.value);
           setOpen(true);
           setHighlight(-1);
+          // A keystroke turns the field into a live query, narrowing the list.
+          setTyping(true);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          // Focusing a field that holds a committed/seeded id shows the whole
+          // catalog; typing then narrows it.
+          setTyping(false);
+        }}
         onKeyDown={onKeyDown}
       />
       {open && hasOptions && (
         <ul id={listId} className={styles.list} role="listbox">
           {renderGroup("Known", filtered.known, 0)}
-          {renderGroup(
-            "Previously used",
-            filtered.used,
-            filtered.known.length,
-          )}
+          {renderGroup("Previously used", filtered.used, filtered.known.length)}
         </ul>
       )}
     </div>

@@ -140,6 +140,12 @@ export function priceHistoryChart(
         x: "date",
         y: "value",
         stroke: "series",
+        // Group into one line per series explicitly. Left implicit, Plot infers z
+        // from `stroke` and warns "the implicit z channel has high cardinality"
+        // whenever the series count exceeds half the point count — which a short
+        // history (e.g. one observation: a single Input and Output point) always
+        // trips. Naming z here is exactly the grouping we want and silences it.
+        z: "series",
         strokeWidth: 2,
       }),
       Plot.dot(data as PricePoint[], {

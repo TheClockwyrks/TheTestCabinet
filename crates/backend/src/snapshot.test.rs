@@ -414,9 +414,9 @@ async fn per_run_file_exports_asset_media_and_names_it_by_key() {
     .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
-    // The staged bytes are exported under the run's asset prefix with a content
-    // type that follows the extension.
-    let regen_key = format!("{prefix}/runs/a1/asset/regenerated.png");
+    // The staged bytes are exported under the run's content-stable media prefix
+    // (NOT this snapshot's prefix) with a content type that follows the extension.
+    let regen_key = "media/runs/a1/asset/regenerated.png".to_string();
     let regen = snapshot
         .objects
         .iter()
@@ -427,7 +427,7 @@ async fn per_run_file_exports_asset_media_and_names_it_by_key() {
     let actions = snapshot
         .objects
         .iter()
-        .find(|o| o.key == format!("{prefix}/runs/a1/asset/actions.json"))
+        .find(|o| o.key == "media/runs/a1/asset/actions.json")
         .expect("action log exported");
     assert_eq!(actions.content_type, "application/json");
 
@@ -734,19 +734,19 @@ async fn per_run_file_exports_proof_media_from_the_record() {
         .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
-    // Each present proof's bytes are exported under its served key, with a content
-    // type that follows the extension (the video stays a video).
+    // Each present proof's bytes are exported under its content-stable media key,
+    // with a content type that follows the extension (the video stays a video).
     let title = snapshot
         .objects
         .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1/proof/title.png"))
+        .find(|o| o.key == "media/runs/p1/proof/title.png")
         .expect("image proof exported");
     assert_eq!(title.content_type, "image/png");
     assert_eq!(title.bytes, b"png:title");
     let rally = snapshot
         .objects
         .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1/proof/rally.mp4"))
+        .find(|o| o.key == "media/runs/p1/proof/rally.mp4")
         .expect("video proof exported");
     assert_eq!(rally.content_type, "video/mp4");
 
@@ -824,7 +824,7 @@ async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
     let rally = snapshot
         .objects
         .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1/proof/rally.mp4"))
+        .find(|o| o.key == "media/runs/p1/proof/rally.mp4")
         .expect("video proof published as mp4");
     assert_eq!(rally.content_type, "video/mp4");
     // The bytes are a valid mp4: the `ftyp` box tag sits at offset 4.
@@ -844,10 +844,7 @@ async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
         .find(|m| m["id"] == "rally")
         .unwrap();
     assert_eq!(rally_meta["kind"], "video");
-    assert_eq!(
-        rally_meta["key"],
-        format!("{prefix}/runs/p1/proof/rally.mp4")
-    );
+    assert_eq!(rally_meta["key"], "media/runs/p1/proof/rally.mp4");
 }
 
 #[tokio::test]
@@ -867,12 +864,11 @@ async fn video_proof_falls_back_to_webm_when_transcode_fails() {
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     let rally = snapshot
         .objects
         .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1/proof/rally.webm"))
+        .find(|o| o.key == "media/runs/p1/proof/rally.webm")
         .expect("video proof falls back to raw webm");
     assert_eq!(rally.content_type, "video/webm");
     assert_eq!(rally.bytes, b"not a real webm");
@@ -905,12 +901,11 @@ async fn missing_store_media_falls_back_to_the_artifact_service() {
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     let title = snapshot
         .objects
         .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1/proof/title.png"))
+        .find(|o| o.key == "media/runs/p1/proof/title.png")
         .expect("proof recovered from the artifact service");
     assert_eq!(title.bytes, b"durable:title");
     assert!(
@@ -940,18 +935,103 @@ async fn store_media_is_used_without_calling_the_artifact_service() {
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     let title = snapshot
         .objects
         .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1/proof/title.png"))
+        .find(|o| o.key == "media/runs/p1/proof/title.png")
         .expect("proof exported from the store");
     assert_eq!(title.bytes, b"local:title");
     assert!(
         seen.lock().unwrap().is_empty(),
         "the store fast-path made no artifact-service request",
     );
+}
+
+#[tokio::test]
+async fn existing_media_is_referenced_without_re_uploading_or_reading_the_source() {
+    // The media is already in the bucket at its content-stable key. The builder must
+    // reference it in the per-run document but NOT re-emit it as an upload object, and
+    // must not need the source bytes at all — proving a refresh keeps a run's media
+    // even when the store and artifact service have both lost the bytes (as after a
+    // cluster recreate). The store is empty and no artifact fallback is configured.
+    let (_tmp, store) = empty_store();
+    let existing = std::collections::HashSet::from([
+        "media/runs/p1/proof/title.png".to_string(),
+        "media/runs/p1/proof/rally.mp4".to_string(),
+    ]);
+
+    let run = proof_run(
+        "p1",
+        vec![
+            proof("title", "proof/title.png", MediaKind::Image, true),
+            proof("rally", "proof/rally.mp4", MediaKind::Video, true),
+        ],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(existing)
+        .build(now())
+        .await
+        .unwrap();
+
+    // No media object is re-emitted for the already-present keys.
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.starts_with("media/runs/p1/proof/")),
+        "existing media must not be re-uploaded",
+    );
+    // But the per-run document still points at both stable keys.
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/p1.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let keys: Vec<&str> = parsed["proofMedia"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        keys,
+        vec![
+            "media/runs/p1/proof/title.png",
+            "media/runs/p1/proof/rally.mp4"
+        ],
+    );
+}
+
+#[tokio::test]
+async fn media_absent_from_the_bucket_is_still_uploaded_from_the_source() {
+    // The complement: a stable key NOT in the existing set is read from the store and
+    // uploaded as before, so a brand-new run's media is exported on its first refresh.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_proof("p1", "title.png", b"png:title")
+        .unwrap();
+    let run = proof_run(
+        "p1",
+        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        // An unrelated key is present, but not this run's — so it is not skipped.
+        .with_existing_media(std::collections::HashSet::from([
+            "media/runs/other/proof/x.png".to_string(),
+        ]))
+        .build(now())
+        .await
+        .unwrap();
+
+    let title = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/p1/proof/title.png")
+        .expect("absent media is uploaded from the source");
+    assert_eq!(title.bytes, b"png:title");
 }
 
 #[tokio::test]
