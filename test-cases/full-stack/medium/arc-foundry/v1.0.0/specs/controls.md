@@ -1,145 +1,147 @@
 # Arc Foundry — Controls
 
 This file defines how the player interacts with the yard: the simulation step,
-pulling the scrap-press and placing the stamped component, selecting and
-inspecting a component, the **slag / sell / combine / targeting** controls,
-driving the waves, and the speed and pause controls. It builds on the tile grid
-and build-panel layout in `specs/board.md`, the components in `specs/towers.md`,
-the build loop in `specs/build.md`, and the flow in `specs/flow.md`. Mouse and
-keyboard only; no touch or gamepad for this version, and **every interaction and
-menu must be achievable with the mouse alone**, with the keyboard shortcuts as
+pulling the scrap-press and placing rocks, selecting and inspecting a candidate or
+component, the **keep / combine / upgrade-quality / targeting** controls, driving the
+waves, and the speed and pause controls. It builds on the tile grid, the waypoint
+zones, and the build-panel layout in `specs/board.md`, the components in
+`specs/towers.md`, the build loop in `specs/build.md`, and the flow in `specs/flow.md`.
+Mouse and keyboard only; no touch or gamepad for this version, and **every interaction
+and menu must be achievable with the mouse alone**, with the keyboard shortcuts as
 accelerators.
 
 ## Simulation
 
 Run the simulation on a **fixed timestep** — the **tick** (for example 60 Hz) —
 decoupled from rendering, so unit movement, live re-pathing, component fire,
-projectiles, and the economy are reproducible and independent of the render
-frame rate. Render with smooth interpolation between ticks. The **speed control**
-(below) scales how many ticks pass per real second; it must change only how fast
-the game plays, never the *outcome*. **Pause** halts ticks entirely, and comes in
-two forms that both freeze ticks but differ in what else they do — an **in-place
-pause** that leaves the yard interactive, and the **pause menu**, both described
-under *Waves, speed, and pause* below.
+projectiles, and the economy are reproducible and independent of the render frame rate.
+Render with smooth interpolation between ticks. The **speed control** (below) scales how
+many ticks pass per real second; it must change only how fast the game plays, never the
+*outcome*. **Pause** halts ticks entirely, and comes in two forms that both freeze ticks
+but differ in what else they do — an **in-place pause** and the **pause menu**, both
+described under *Waves, speed, and pause* below.
 
-## Stamping and placing a component (the scrap-press)
+## Building happens only in the build phase
 
-The player builds only by **pulling the scrap-press**, which stamps one random
-component to position on the grid (`specs/build.md`):
+All building — pulling the press, placing rocks, keeping, combining, and upgrading
+quality — happens **only during a build phase** (`specs/flow.md`), never during a live
+wave. While a wave is running the build controls are disabled; you may still **select a
+component** to read its stats and **change its targeting**, but you cannot stamp, keep,
+combine, or upgrade until the wave clears and the next build phase opens.
+
+## Stamping and placing a rock (the scrap-press)
+
+The player builds only by **pulling the scrap-press**, which puts a blank rock on the
+cursor to drop on the grid; **the component is rolled where the rock lands, not when you
+pull** (`specs/build.md`):
 
 1. **Pull the press.** Click the **STAMP** control in the build panel
-   (`specs/board.md`), or press its hotkey **`B`**, to pull the press. Each pull
-   costs **18 Charge** and spends **one** of the level's fixed **7-stamp
-   allowance** (`specs/build.md`); STAMP is refused (clearly) when you cannot
-   afford 18 or the allowance is spent. A pull immediately rolls a **random
-   component type at a random quality** on the pinned odds (`specs/build.md`) —
-   the roll is fixed at the pull and the stamped component must be placed.
-2. **Position.** The rolled component is then **held on the cursor** as its
-   uniform **`2×2` tile footprint** (`specs/board.md`), snapping to the grid under
-   the pointer. The preview shows the component's **range ring** and a
-   **legal/illegal** footprint cue (`#46d07a` legal, `#ff4d4d` illegal). A
-   footprint is illegal if any of its four tiles is off the board, already blocked
-   by a component, slag wall, or fixed housing, or if placing it would **seal**
-   any waypoint segment or trap a walking unit (the **never-seal rule**,
-   `specs/board.md`).
-3. **Place.** Left-click a **legal** footprint to drop the component there; it
-   lands **ACTIVE** (firing + walling) and the floor **re-paths live**
-   (`specs/board.md`). A **build spark** VFX fires at the new footprint
-   (`specs/assets.md`).
+   (`specs/board.md`), or press its hotkey **`B`**, to arm a **blank rock** on the
+   cursor. STAMP is refused (clearly) when the **5-stamp allowance** is spent or you
+   cannot afford **10 Charge** — the allowance is a hard cap of five per level and is
+   **not** a function of Charge (`specs/build.md`).
+2. **Position.** The blank rock is **held on the cursor** as its uniform **`2×2` tile
+   footprint** (`specs/board.md`), snapping to the grid under the pointer. The preview
+   shows a **legal/illegal** footprint cue (`#46d07a` legal, `#ff4d4d` illegal). A
+   footprint is illegal if any of its four tiles is off the board, already blocked by a
+   component/blocker or a fixed housing, a **waypoint-zone** tile, or if placing it
+   would **seal** any waypoint segment (the **never-seal rule**, `specs/board.md`).
+3. **Place.** Left-click a **legal** footprint to drop the rock: it lands, **rolls a
+   random component type at a random quality** on the current Refinement odds
+   (`specs/build.md`), becomes an **ACTIVE candidate** (walling + inspectable, not yet
+   yours), and the floor **re-paths live** (`specs/board.md`). A **build spark** VFX
+   fires at the new footprint (`specs/assets.md`).
+4. **Continuous placement.** After a drop, if a stamp and Charge remain, the press
+   **immediately arms another rock** on the cursor so you place five back-to-back
+   without re-clicking STAMP (`specs/build.md`). Placement ends when the allowance or
+   Charge is exhausted, or you cancel.
+5. **Cancel (free).** Press **`Esc`** or right-click while holding a rock to put it away
+   with **no Charge spent and no stamp consumed** (`specs/build.md`).
 
-A pull is committed once rolled — there is no cancel that refunds it — but a
-component placed during a build phase can be sold or slagged for its **full**
-invested value until that wave starts (`specs/build.md`, `specs/flow.md`), so the
-opening build is fully re-shapeable. Pulling is allowed during the build phase
-**and** during a live wave, up to the 7-stamp allowance (`specs/build.md`).
+Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh candidate
+(spending a stamp + Charge), the way you turn an old wall into a tower (`specs/build.md`).
 
-## Selecting and inspecting a component
+## Selecting and inspecting a candidate or component
 
-- **Select.** Left-click a placed component or slag wall (when not positioning a
-  stamp) to select it. The selected component shows its **range ring** on the
-  yard, and the **inspector** in the build panel (`specs/board.md`) shows its
-  **type**, **quality tier**, live stats (damage, range, fire rate, targeting),
-  and its action controls. A slag wall reads as inert (no range, no targeting) and
-  offers only **SELL**.
-- **Slag.** With an active component selected, click **SLAG** in the inspector or
-  press **`G`** to fuse it into an inert **slag wall** — it stops firing but keeps
-  walling — refunding a flat **12 Charge** (`specs/build.md`). Slag is a one-way
-  conversion.
-- **Sell.** Click **SELL** or press **`S`** to sell the selected component or slag
-  wall, freeing its footprint and re-pathing the floor. An active component
-  refunds **70%** of its invested value (or its **full** invested value inside the
-  pre-wave window, `specs/build.md`); a slag wall sells for **6**
-  (`specs/build.md`, `specs/flow.md`).
+- **Select.** Left-click a placed candidate, component, or blocker (when not holding a
+  rock) to select it. The selection shows its **range ring** on the yard (components and
+  candidates only), and the **inspector** in the build panel (`specs/board.md`) shows
+  its **type**, **quality tier**, live stats (damage, range, fire rate, targeting), and
+  its action controls. A blocker reads as inert (no range, no targeting) and offers no
+  actions.
+- **Keep.** With a **candidate** selected during the build phase, click **KEEP** or
+  press **`K`** to mark it as this level's kept roll (`specs/build.md`). Only one
+  candidate is ever the kept one; keeping another moves the choice. The keep is
+  reversible until you send the wave, when the kept candidate becomes a permanent firing
+  component and every other candidate hardens into a blocker.
 - **Combine.** **COMBINE** appears in the inspector **only** when the selected
-  active component has **another active component of the same type and same
-  quality** somewhere on the board (`specs/build.md`). Clicking it, or pressing
-  **`C`**, consumes both, produces one component **one quality tier higher at the
-  selected component's footprint**, frees the other footprint (re-pathing the
-  floor), costs **no Charge**, and fires a **combine flash** VFX
-  (`specs/assets.md`). A **Tesla-Prime** component is the apex and offers no
-  COMBINE.
-- **Targeting.** With a **damage** component selected, the inspector shows a
-  **targeting** control that **cycles** its priority — `first` → `last` →
-  `nearest` → `strongest` → `weakest` and back — on each click or press of
-  **`T`**. The priority applies to that component only, defaults to **`first`**
-  (furthest along the waypoint chain), and takes effect immediately
-  (`specs/towers.md`). Coil and Arc-Node use it to pick their **primary** target,
-  then chain / splash around it.
+  **candidate** (build phase only) has a matching **candidate or component** of the same
+  type and same quality on the board (`specs/build.md`). Clicking it, or pressing
+  **`C`**, sets this level's harvest to that combine (the alternative to a plain keep);
+  it resolves at wave start, producing one component one tier higher at the candidate's
+  footprint and consuming the partner, for **no Charge**, with a **combine flash** VFX
+  (`specs/assets.md`). A **Tesla-Prime** candidate offers no COMBINE.
+- **Upgrade quality.** The build panel's **UPGRADE QUALITY** control — or **`U`** —
+  spends Charge to buy the next **Refinement** level, biasing future rolls toward higher
+  qualities (`specs/build.md`). It is disabled at **R5** or when you cannot afford the
+  next cost.
+- **Targeting.** With a **component** selected, the inspector shows a **targeting**
+  control that **cycles** its priority — `first` → `last` → `nearest` → `strongest` →
+  `weakest` and back — on each click or press of **`T`**. The priority applies to that
+  component only, defaults to **`first`** (furthest along the waypoint chain), and takes
+  effect immediately (`specs/towers.md`). Targeting may be changed at any time, including
+  during a live wave, since it is not a build action.
 - **Deselect.** Click empty yard or press **`Esc`** to deselect.
 
 ## Waves, speed, and pause
 
-- **Start / send wave.** The **START** control in the build panel
-  (`specs/board.md`) — or **`Space`** — starts the next wave. The **opening**
-  build phase before Wave 1 is untimed, reads **START**, and begins Wave 1 only
-  when pressed, with no early-send bonus (`specs/flow.md`). Between waves the
-  15-second build-phase countdown runs; pressing it then **sends the next wave
-  early**, paying the early-send bonus (`specs/flow.md`), and letting the timer
-  expire auto-starts the wave. Once a wave is **live**, **`Space`** instead toggles
-  the **in-place pause** (below) — there is no wave to send mid-wave.
+- **Send wave.** The **SEND** control in the build panel (`specs/board.md`) — or
+  **`Space`** — resolves the build phase (the kept candidate becomes a component, the
+  rest harden into blockers, `specs/build.md`) and starts the next wave. **Every build
+  phase is untimed**: it never starts on its own and shows no countdown; the Load waits
+  until you press SEND. The opening build phase before Wave 1 reads **START**; between
+  waves it reads **SEND**. There is no early-send bonus and no build-phase timer
+  (`specs/flow.md`). Once a wave is **live**, **`Space`** instead toggles the **in-place
+  pause** (below).
 - **Speed.** A **speed** toggle in the panel — or **`F`** — cycles the game speed
-  between **`1×`** and **`2×`**, scaling how many ticks pass per second (the
-  current speed is shown, `specs/board.md`). It applies to the whole simulation and
-  persists until changed.
-- **In-place pause.** A dedicated **pause** control in the status bar — and, once
-  a wave is live, **`Space`** — **pauses and resumes in place**: it freezes ticks
-  (the Load, fire, projectiles, the economy, and any build-phase countdown all
-  halt) **without** opening a menu, and the yard **stays fully interactive** — you
-  can keep pulling the press, positioning, selecting, slagging, selling, and
-  combining on the still board, then resume. The frozen state reads clearly as
+  between **`1×`** and **`2×`**, scaling how many ticks pass per second (the current
+  speed is shown, `specs/board.md`). It applies to the whole simulation and persists
+  until changed.
+- **In-place pause.** A dedicated **pause** control in the status bar — and, once a wave
+  is live, **`Space`** — **pauses and resumes in place**: it freezes ticks (the Load,
+  fire, projectiles, and the economy all halt) **without** opening a menu, so you can
+  watch the frozen board and read it, then resume. The frozen state reads clearly as
   **PAUSED** (`specs/board.md`). This is distinct from the pause **menu** below.
-- **Pause menu.** **`Esc`** with nothing held or selected opens the **Paused**
-  overlay menu — **Resume**, **Restart**, **Quit to menu** (`specs/flow.md`) —
-  which also freezes the board behind it; while positioning a stamp or with a
-  component selected, `Esc` first cancels that. Opening the menu freezes the game
-  even if it was already paused in place, and **Resume** returns to normal running
-  play, clearing any in-place pause.
-- **Mute.** **`M`** — or the status-bar control — toggles audio mute
-  (`specs/flow.md`).
+- **Pause menu.** **`Esc`** with nothing held or selected opens the **Paused** overlay
+  menu — **Resume**, **Restart**, **Quit to menu** (`specs/flow.md`) — which also freezes
+  the board behind it; while holding a rock or with something selected, `Esc` first
+  cancels/deselects that. **Resume** returns to normal running play, clearing any
+  in-place pause.
+- **Mute.** **`M`** — or the status-bar control — toggles audio mute (`specs/flow.md`).
 
 ## Menu navigation
 
-In the title, map-select, difficulty-select, how-to-play, pause, victory, and
-overload screens (`specs/flow.md`, `specs/modes.md`), the pointer and/or
-`Up`/`Down` (or `W`/`S`) move the selection and `Enter`/`Space` confirms; `Esc`
-backs out of a submenu to the previous screen. The map-select and
-difficulty-select screens must let the player read what each choice changes
-before confirming (`specs/modes.md`). Every menu must be fully operable with the
-**mouse alone**, with these keyboard accelerators as an alternative.
+In the title, map-select, difficulty-select, how-to-play, pause, victory, and overload
+screens (`specs/flow.md`, `specs/modes.md`), the pointer and/or `Up`/`Down` (or `W`/`S`)
+move the selection and `Enter`/`Space` confirms; `Esc` backs out of a submenu to the
+previous screen. The map-select and difficulty-select screens must let the player read
+what each choice changes before confirming (`specs/modes.md`). Every menu must be fully
+operable with the **mouse alone**, with these keyboard accelerators as an alternative.
 
 ## Keyboard shortcuts (accelerators)
 
 The mouse path above is the primary pointing device; the shortcuts below are
-**required** alongside it, and a held key must not auto-repeat an action meant to
-fire once per press (pulling the press, sending a wave, toggling speed, pausing,
-slagging, selling, combining, cycling targeting):
+**required** alongside it, and a held key must not auto-repeat an action meant to fire
+once per press (pulling the press, keeping, combining, upgrading quality, sending a
+wave, toggling speed, pausing, cycling targeting):
 
 - **Pull the scrap-press (STAMP):** `B`
-- **Slag / Sell selected:** `G` / `S`
-- **Combine selected (when a match exists):** `C`
-- **Cycle targeting priority:** `T`
-- **Cancel stamp / deselect / back:** `Esc`
-- **Start / send wave; in-place pause once live:** `Space`
+- **Keep selected candidate:** `K`
+- **Combine selected candidate (when a match exists):** `C`
+- **Upgrade quality (Refinement):** `U`
+- **Cycle targeting priority (component selected):** `T`
+- **Cancel held rock / deselect / back:** `Esc`
+- **Send wave; in-place pause once live:** `Space`
 - **Speed toggle (`1×`/`2×`):** `F`
 - **Mute:** `M`
 

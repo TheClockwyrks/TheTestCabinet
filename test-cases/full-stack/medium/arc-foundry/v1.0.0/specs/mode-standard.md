@@ -39,9 +39,10 @@ overrides beyond the chosen difficulty's wave count and enemy toughness
   `specs/board.md`;
 - the **Load** — its unit roster, hit points, the flyer, and the Dynamo boss —
   from `specs/enemies.md`;
-- the **components**, their quality ladder, targeting, and selling from
+- the **components**, their quality ladder, targeting, and permanence (no selling) from
   `specs/towers.md`;
-- the **scrap-press build loop** — the random stamp, keep / slag / combine — from
+- the **scrap-press build loop** — the on-placement random stamp, keep-one-per-level,
+  inert blockers, combine, and UPGRADE QUALITY — from
   `specs/build.md`;
 - the controls from `specs/controls.md`;
 - and the economy, Grid Integrity, the wave progression with its Dynamo, scoring,

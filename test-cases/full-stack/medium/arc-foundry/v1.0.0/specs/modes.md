@@ -11,10 +11,11 @@ win/lose states in `specs/flow.md`.
 There is exactly **one campaign** (`SALVAGE`) and **no special modes** — every
 run plays the same campaign, roster, economy, and build loop. Difficulty changes
 **only** the number of waves and how tough the Load grows; nothing else is
-overridden. The tile floor, the ordered-waypoint mazing and live re-pathing, the
-scrap-press build, the keep / slag / combine loop and the quality ladder, the
-five components, the economy, and Grid Integrity all work exactly as their specs
-define them, at every difficulty.
+overridden. The tile floor, the ordered-waypoint mazing (with its 4-tile waypoint
+platforms) and live re-pathing, the scrap-press build, the keep-one-per-level rule,
+inert blockers, the combine climb, the UPGRADE QUALITY track, the quality ladder, the
+five components, the economy, and Grid Integrity all work exactly as their specs define
+them, at every difficulty.
 
 The numeric values in this file are **fixed**; implement them exactly as written.
 The **wording** of the on-screen descriptions and the **layout** of the menus are
@@ -54,15 +55,16 @@ A run is played at one of three **difficulties**, chosen on the difficulty selec
 menu. A difficulty sets **only** the **number of waves** and the **enemy
 toughness** — the per-wave HP-scaling constants `baseMult` and `k`
 (`specs/enemies.md`). **Every other value is identical across difficulty:**
-starting Charge (`130`), Grid Integrity (`20`), builds-per-level (`7`), the stamp
-cost (`18`), the Load roster, the economy, and the components are all unchanged.
+starting Charge (`130`), Grid Integrity (`20`), builds-per-level (`5`), the stamp
+cost (`10`), the Refinement track, the Load roster, the economy, and the components are
+all unchanged.
 Only the wave count and the HP scaling move.
 
 | Difficulty | Waves `N` | HP base multiplier `baseMult` | HP scaling `k` | Milestone waves |
 | --- | --- | --- | --- | --- |
-| **Easy** | `20` | `0.90` | `0.20` | `10`, `20` |
-| **Medium** | `30` | `1.00` | `0.26` | `15`, `30` |
-| **Hard** | `40` | `1.15` | `0.33` | `20`, `40` |
+| **Easy** | `20` | `0.24` | `0.80` | `10`, `20` |
+| **Medium** | `30` | `0.22` | `1.35` | `15`, `30` |
+| **Hard** | `40` | `0.24` | `1.75` | `20`, `40` |
 
 A unit's HP on wave `w` is `baseHP × baseMult × (1 + k × (w − 1))`
 (`specs/enemies.md`); `baseMult` and `k` are the difficulty's values from the
@@ -70,14 +72,16 @@ table. **Milestone waves** each carry a **Dynamo** boss (`specs/enemies.md`): th
 final wave (`N`) always, and the midpoint wave (`round(N / 2)`) always
 (`specs/flow.md`).
 
-- **Medium** is the reference balance — `30` waves, unscaled base HP
-  (`baseMult = 1.0`), and the standard per-wave HP ramp (`k = 0.26`).
-- **Easy** runs a shorter siege of `20` waves with a lower base HP and a gentler
-  per-wave ramp.
-- **Hard** runs a longer siege of `40` waves with a higher base HP and a steeper
-  ramp; because HP scales per wave, its later waves climb far past a Medium run's.
+- **Medium** is the reference balance — `30` waves, a gentle base
+  (`baseMult = 0.22`) and a steep per-wave HP ramp (`k = 1.35`): easy early, brutal late.
+- **Easy** runs a shorter siege of `20` waves with the **gentlest per-wave ramp**
+  (`k = 0.80`), so HP climbs slowly and the run stays forgiving.
+- **Hard** runs a longer siege of `40` waves with the **steepest ramp**
+  (`k = 1.75`); because HP scales per wave, its later waves climb far past a Medium
+  run's. (All three difficulties share a similar low base multiplier — the difference
+  is the ramp `k` and the wave count, not the opening HP.)
 
-Because the money rate and the `7`-stamp allowance are constant, the extra waves
+Because the money rate and the `5`-stamp allowance are constant, the extra waves
 on Hard simply supply more kill income at the same rate over a longer, tougher
 campaign — the difficulty is expressed entirely as more waves of a tougher Load,
 not a tighter economy. Wave counts are on the scale of dozens of levels.

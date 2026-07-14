@@ -3,14 +3,16 @@
 // Serves the BUILT dist under a non-root sub-path (proving base-path safety, since a run is
 // served from /runs/<id>/build/), drives the game through representative states with the
 // project-local Playwright + Chromium, and writes the exact proof/ artifacts the case
-// declares. Also asserts the build loads with no console errors and that the scrap-press
-// build loop, the maze re-path, the economy, and the end states actually work.
+// declares. Also asserts the build loads with no console errors and that the GemTD build loop
+// (place-and-reveal, keep-one, blockers, combine, UPGRADE QUALITY), the maze, the economy, and
+// the end states actually work.
 //
-// The board is laid out deterministically through window.__arcfoundry.place(type, tier,
-// col, row) — the dev counterpart to the random scrap-press — so each capture shows the
-// exact mix of component types + quality tiers + slag walls the proof calls for
-// (specs/build.md, specs/proof.md). The simulation itself is advanced by the game's own
-// requestAnimationFrame loop (main.ts); this script only sets state and waits.
+// The board is laid out deterministically through window.__arcfoundry.place(type, tier, col,
+// row) (an exact firing COMPONENT), .blocker(col, row) (an inert BLOCKER wall), and, for the
+// build-loop demo, .game.devCandidate(...) — the dev counterparts to the random scrap-press —
+// so each capture shows the exact mix the proof calls for (specs/build.md, specs/proof.md).
+// The simulation itself is advanced by the game's own requestAnimationFrame loop (main.ts);
+// this script only sets state and waits.
 
 import { chromium } from "playwright";
 import http from "node:http";
@@ -69,57 +71,59 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The proof runs on MAP A — "The Substation": a wide serpentine whose first leg runs the
 // Load along the top edge (row 4), so a maze folded into that corridor reads as a real
 // route-around. Anchors are 2×2 top-left tiles (col 0..48, row 0..31); free layout snaps
-// each to the nearest legal anchor (specs/board.md). A staggered field across the corridor
-// forces the walking Load to weave up and down between the blocks.
+// each to the nearest legal anchor (specs/board.md). A staggered field across the corridor —
+// firing COMPONENTS interspersed with inert BLOCKERS — forces the walking Load to weave.
 //
-// Each entry is [type, tier, col, row, slag?]: a component of that exact type + quality is
-// placed at (or nearest-legal to) the anchor; if `slag` is set it is then fused into an
-// inert slag wall (walls, never fires) so the board carries both live components and slag.
+// A board entry is either ["c", type, tier, col, row] (a firing component of that exact type
+// + quality) or ["b", col, row] (an inert blocker wall). Blockers are the maze material a
+// GemTD player accrues from every rock they do not keep (specs/build.md).
 const MAZE = [
-  ["capacitor", 2, 6, 2],
-  ["coil", 1, 12, 5],
-  ["emitter", 1, 18, 2],
-  ["discharge", 3, 24, 5],
-  ["arcnode", 2, 30, 2, "slag"],
-  ["capacitor", 1, 36, 5],
-  ["coil", 2, 42, 2],
-  ["emitter", 3, 9, 8],
-  ["arcnode", 1, 21, 8],
-  ["discharge", 1, 33, 8, "slag"],
+  ["c", "capacitor", 2, 6, 2],
+  ["b", 12, 5],
+  ["c", "coil", 1, 15, 2],
+  ["c", "emitter", 1, 18, 8],
+  ["b", 24, 5],
+  ["c", "discharge", 3, 27, 2],
+  ["b", 30, 8],
+  ["c", "capacitor", 1, 36, 5],
+  ["c", "coil", 2, 42, 2],
+  ["b", 21, 5],
+  ["b", 33, 2],
+  ["c", "arcnode", 2, 9, 8],
 ];
 
 // A denser board for the late-wave pressure clip — a chain-heavy line (Coils), area
 // dischargers (Arc-Nodes), and long-range Discharge Rigs down the corridor so packed Load
-// draws chain-lightning + discharge rings, plus a slag wall to shape the maze.
+// draws chain-lightning + discharge rings, plus blockers to shape the maze.
 const HEAVY = [
-  ["coil", 3, 6, 2],
-  ["coil", 2, 14, 5],
-  ["arcnode", 3, 22, 2],
-  ["discharge", 4, 30, 5],
-  ["coil", 2, 38, 2],
-  ["arcnode", 2, 12, 8, "slag"],
-  ["capacitor", 3, 26, 8],
-  ["emitter", 2, 40, 8],
+  ["c", "coil", 3, 6, 2],
+  ["c", "coil", 2, 14, 5],
+  ["c", "arcnode", 3, 22, 2],
+  ["c", "discharge", 4, 30, 5],
+  ["c", "coil", 2, 38, 2],
+  ["b", 12, 8],
+  ["c", "capacitor", 3, 26, 8],
+  ["c", "emitter", 2, 40, 8],
+  ["b", 18, 2],
+  ["b", 34, 8],
 ];
 
-// Lay a named board out on the yard (placing, then slagging the flagged pieces).
+// Lay a named board out on the yard (exact components + inert blockers).
 async function buildBoard(page, board) {
   return page.evaluate((board) => {
     const af = window.__arcfoundry;
     const g = af.game;
     let placed = 0;
-    let slagged = 0;
-    for (const [type, tier, col, row, slag] of board) {
-      const c = af.place(type, tier, col, row);
-      if (!c) continue;
-      placed++;
-      if (slag) {
-        g.slag(c.id);
-        slagged++;
+    let blocked = 0;
+    for (const e of board) {
+      if (e[0] === "c") {
+        if (af.place(e[1], e[2], e[3], e[4])) placed++;
+      } else {
+        if (af.blocker(e[1], e[2])) blocked++;
       }
     }
     g.select(null);
-    return { placed, slagged, structures: g.structures.length };
+    return { placed, blocked, structures: g.structures.length };
   }, board);
 }
 
@@ -140,7 +144,7 @@ async function buildBoard(page, board) {
   await page.close();
 }
 
-// ---- 2. gameplay.png (mid-wave, full maze, a shot mid-flight) ------------------
+// ---- 2. gameplay.png (mid-wave, full maze of components + blockers, a shot mid-flight) --
 {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   watch(page);
@@ -151,6 +155,7 @@ async function buildBoard(page, board) {
     const af = window.__arcfoundry;
     af.startOn("substation", "medium");
     af.game.devGrant(4000, 100);
+    af.setRefinement(3); // a mid-run refined press: the board carries higher tiers
   });
   const layout = await buildBoard(page, MAZE);
   console.log("gameplay board:", JSON.stringify(layout));
@@ -186,12 +191,12 @@ async function buildBoard(page, board) {
     g.devGrant(400, 3); // a thin defence + low integrity: it scores, then the grid overloads
     g.speed = 6; // fast-forward the long serpentine so the Load reaches the Collector quickly
   });
-  // A sparse board that cannot stop a dense late wave — the Load leaks until Grid Integrity
-  // is spent and the grid overloads (specs/flow.md).
+  // A sparse board (a few weak components, no maze) that cannot stop a dense late wave — the
+  // Load leaks until Grid Integrity is spent and the grid overloads (specs/flow.md).
   await buildBoard(page, [
-    ["capacitor", 1, 10, 4],
-    ["coil", 1, 24, 4],
-    ["emitter", 1, 38, 4],
+    ["c", "capacitor", 1, 10, 4],
+    ["c", "coil", 1, 24, 4],
+    ["c", "emitter", 1, 38, 4],
   ]);
   await page.evaluate(() => window.__arcfoundry.game.devBeginWave(12));
   for (let i = 0; i < 300; i++) {
@@ -233,7 +238,8 @@ async function clip(name, setup, seconds, during) {
   console.log(`${name} captured`);
 }
 
-// ---- 4. systems.webm (the scrap-press build loop: stamp → combine → live re-path) --
+// ---- 4. systems.webm (the GemTD build loop: place-and-reveal → keep/combine → UPGRADE
+//         QUALITY → send, so unkept rocks harden into blockers and the Load routes the maze) --
 await clip(
   "systems.webm",
   async (page) => {
@@ -243,40 +249,46 @@ await clip(
       af.game.devGrant(6000, 100);
       af.game.speed = 1;
     });
-    await buildBoard(page, MAZE);
-    await page.evaluate(() => window.__arcfoundry.game.devBeginWave(7)); // Load walking, so re-path shows
+    // Start with a partial maze of blockers + a couple of kept components already down.
+    await buildBoard(page, [
+      ["c", "capacitor", 2, 6, 2],
+      ["b", 14, 5],
+      ["b", 22, 2],
+      ["c", "coil", 1, 30, 5],
+      ["b", 38, 8],
+    ]);
   },
-  7,
+  9,
   async (page) => {
-    // A scripted build-loop, spaced out over the recording, so the clip shows each event:
-    // a press stamp (buildspark), a combine folding two matching into a tier higher (its
-    // combine-flash, one footprint freeing), and the floor re-pathing live around the change.
-    await sleep(800);
-    // A press stamp rolling a random component onto a legal footprint (specs/build.md).
+    // A scripted BUILD-PHASE loop, spaced over the recording, so the clip shows each event:
+    // a rock placed that rolls on placement (buildspark), an UPGRADE QUALITY purchase, a
+    // combine set on a matched pair, then SEND — the combine resolves (combine-flash), the
+    // unkept rocks harden into blockers, and the Load routes the shortest open maze route.
+    await sleep(700);
+    // Pull the press and drop a rock: it ROLLS a random component on placement (specs/build.md).
     await page.evaluate(() => {
       const g = window.__arcfoundry.game;
       g.pullPress();
-      const a = g.board.nearestLegalAnchor(15, 11, g.structures, g.units);
+      const a = g.board.nearestLegalAnchor(18, 11, g.structures, g.units);
       if (a) g.placeStamp(a.col, a.row);
     });
-    await sleep(1500);
-    // Two matching components placed adjacent, then COMBINED into one a tier higher — the
-    // partner's footprint frees and the maze re-paths (specs/build.md §6.5).
+    await sleep(1100);
+    // Refine the press one level up the UPGRADE QUALITY track.
+    await page.evaluate(() => window.__arcfoundry.upgradeQuality());
+    await sleep(1100);
+    // Two matching candidates + a couple of extra rocks; set a COMBINE as this level's harvest.
     await page.evaluate(() => {
       const af = window.__arcfoundry;
-      af.place("capacitor", 2, 27, 11);
-      af.place("capacitor", 2, 31, 11); // becomes selected — its partner is the first
-      af.game.combineSelected();
+      const c1 = af.game.devCandidate("capacitor", 2, 26, 11);
+      af.game.devCandidate("capacitor", 2, 31, 11);
+      af.game.devCandidate("emitter", 1, 36, 11); // an unkept roll → becomes a blocker on send
+      if (c1) af.combine(c1.id);
     });
-    await sleep(1500);
-    // A fresh wall dropped across the corridor forces the walking Load to redirect live.
-    await page.evaluate(() => {
-      const af = window.__arcfoundry;
-      af.place("discharge", 3, 20, 3);
-      af.place("arcnode", 2, 34, 3);
-      af.game.select(null);
-    });
-    await sleep(2400);
+    await sleep(1400);
+    // Send the wave: the combine resolves (flash), the unkept candidates harden into blockers,
+    // and the Load walks the shortest open route around the new maze (specs/build.md, board.md).
+    await page.evaluate(() => window.__arcfoundry.startWave());
+    await sleep(3200);
   },
 );
 
@@ -289,16 +301,20 @@ await clip(
       af.startOn("substation", "medium");
       const g = af.game;
       g.devGrant(6000, 100); // grows maxIntegrity to 100 so the low-integrity band is a buffer
-      g.integrity = 20; // ≤ 25% of max → the low-integrity alert shows and leaks bite red
-      g.speed = 2;
+      af.setRefinement(4);
     });
     await buildBoard(page, HEAVY);
-    await page.evaluate(() => window.__arcfoundry.game.devBeginWave(15)); // milestone → Dynamo boss
+    await page.evaluate(() => {
+      const g = window.__arcfoundry.game;
+      g.integrity = 20; // ≤ 25% of max → the low-integrity alert shows and leaks bite red
+      g.speed = 2;
+      g.devBeginWave(15); // milestone → Dynamo boss
+    });
   },
   8,
 );
 
-// ---- functional assertions (state machine, build loop, economy, re-path) ------
+// ---- functional assertions (state machine, build loop, economy, keep-one) -----
 {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   watch(page);
@@ -309,40 +325,59 @@ await clip(
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const af = window.__arcfoundry;
     const g = af.game;
+
+    // Keep-one: place 3 candidates, KEEP one, SEND — exactly the kept one becomes a component,
+    // the other two harden into blockers (specs/build.md).
     af.startOn("substation", "medium");
     g.devGrant(9000, 100);
+    const k1 = g.devCandidate("coil", 1, 6, 10);
+    g.devCandidate("emitter", 1, 10, 10);
+    g.devCandidate("arcnode", 1, 14, 10);
+    g.keep(k1.id);
+    const candCount = g.structures.filter((s) => s.kind === "candidate").length;
+    g.startWave();
+    const keptIsComponent = g.structures.find((s) => s.id === k1.id)?.kind === "component";
+    const blockers = g.structures.filter((s) => s.kind === "blocker").length;
+    const keepOneWorks = candCount === 3 && keptIsComponent && blockers >= 2;
 
-    // Combine: two matching components fold into one a tier higher, freeing one footprint.
-    const a = af.place("capacitor", 2, 6, 4);
-    const b = af.place("capacitor", 2, 10, 4);
+    // Building is BUILD-PHASE ONLY: while a wave runs, the press cannot be pulled or placed.
+    const midWaveNoBuild = g.phase === "wave" && g.pullPress() === false && g.placeStamp(20, 20) === null;
+
+    // Combine: two matching candidates fold into one a tier higher on SEND, freeing a footprint.
+    af.startOn("substation", "medium");
+    g.devGrant(9000, 100);
+    const a = g.devCandidate("capacitor", 2, 6, 4);
+    g.devCandidate("capacitor", 2, 10, 4);
     const before = g.structures.length;
-    g.select(b.id);
-    g.combineSelected();
-    const combined = g.structures.find((s) => s.id === b.id);
-    const combineWorks = combined && combined.tier === 3 && g.structures.length === before - 1;
+    g.combine(a.id);
+    g.startWave();
+    const combined = g.structures.find((s) => s.id === a.id);
+    const combineWorks = !!combined && combined.kind === "component" && combined.tier === 3 && g.structures.length === before - 1;
 
-    // Re-path: a component dropped in front of a walker changes its route.
-    g.devBeginWave(7);
-    for (let i = 0; i < 40 && g.units.length === 0; i++) await sleep(80);
-    const walker = g.units.find((u) => !u.flies);
-    const routeBefore = walker ? walker.route.length : 0;
-    af.place("discharge", 1, 20, 3);
-    af.place("arcnode", 1, 24, 3);
-    const walker2 = walker ? g.units.find((u) => u.id === walker.id) : null;
-    const rePaths = !!walker2; // the walker survived the re-path (route recomputed, not stranded)
+    // UPGRADE QUALITY: buying a Refinement level costs Charge and raises the level.
+    af.startOn("substation", "medium");
+    g.devGrant(9000, 100);
+    const r0 = g.refinement;
+    const cost = g.refineCost();
+    const chargeBefore = g.charge;
+    const bought = g.upgradeQuality();
+    const refineWorks = bought && g.refinement === r0 + 1 && g.charge === chargeBefore - cost;
 
-    // Economy: kills pay Charge; play out the wave and confirm Charge grew from bounties.
+    // Economy: kills pay Charge; play out a wave and confirm Charge grew from bounties.
+    af.startOn("substation", "medium");
+    g.devGrant(1000, 100);
+    af.place("discharge", 4, 8, 4);
+    af.place("arcnode", 4, 16, 4);
+    af.place("coil", 4, 24, 4);
     const startCharge = g.charge;
+    g.devBeginWave(7);
     let maxUnits = 0;
-    let sawBoss = false;
     for (let i = 0; i < 200; i++) {
       maxUnits = Math.max(maxUnits, g.units.length);
-      if (g.units.some((u) => u.type === "dynamo")) sawBoss = true;
       if (g.phase === "build" || g.state !== "playing") break;
       await sleep(60);
     }
     const earned = g.charge >= startCharge; // bounties paid across the wave
-    const held = g.state === "playing" && g.integrity > 0;
 
     // Defeat path: a huge wave onto a stripped board overloads the grid.
     g.devGrant(50, 3);
@@ -355,7 +390,7 @@ await clip(
     }
     const defeatReachable = g.state === "defeat";
 
-    return { combineWorks, rePaths, earned, held, maxUnits, defeatReachable, integrity: Math.floor(g.integrity) };
+    return { keepOneWorks, midWaveNoBuild, combineWorks, refineWorks, earned, maxUnits, defeatReachable, integrity: Math.floor(g.integrity) };
   });
   console.log("functional checks:", JSON.stringify(checks));
   await page.close();
@@ -370,6 +405,13 @@ await browser.close();
 server.close();
 
 const c = globalThis.__checks || {};
-const ok = errors.length === 0 && c.combineWorks && c.rePaths && c.earned && c.defeatReachable;
+const ok =
+  errors.length === 0 &&
+  c.keepOneWorks &&
+  c.midWaveNoBuild &&
+  c.combineWorks &&
+  c.refineWorks &&
+  c.earned &&
+  c.defeatReachable;
 console.log(ok ? "PROOF+VERIFY OK" : "PROBLEMS DETECTED");
 process.exit(ok ? 0 : 1);

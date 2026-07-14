@@ -29,7 +29,8 @@ maps** with their exact waypoint coordinates, placement legality, and the HUD la
 the per-wave HP scaling), `specs/towers.md` (the five **component types**, the
 **quality ladder** and how it scales them, the stat tables, and the rotating head and
 traveling-projectile rules), `specs/build.md` (the **scrap-press build loop** — the
-random type/quality roll, the three fates keep/slag/combine, and the combine recipe),
+on-placement random type/quality roll, the **keep exactly one per level** rule, inert
+**blockers**, the combine recipe, and the **UPGRADE QUALITY** Refinement track),
 `specs/flow.md` (the economy, Grid Integrity, the wave campaign, scoring, states,
 menus, and HUD), `specs/modes.md` (the in-game **Easy/Medium/Hard difficulty** and the
 map- and difficulty-select menus), `specs/controls.md`, `specs/assets.md` (the
@@ -87,13 +88,16 @@ it works. Before you consider the task complete:
   uncaught exceptions.
 - **Drive the game** — choose a map at the map select and a difficulty at the
   difficulty select, lay an opening maze in the untimed build phase, pull the
-  scrap-press and watch it stamp a random component of a random quality, keep a good
-  roll firing, **slag** a roll into inert wall, **combine** two matching components
-  one tier up the quality ladder (and confirm the freed footprint re-paths the floor),
-  start a wave and watch the Load take the shortest **open** route around your maze
-  between the map's waypoints, confirm a **Filament** flyer ignores the maze, reach a
-  **Dynamo** milestone wave, and let the Load ground out at the Collector until Grid
-  Integrity runs out — then reach both the Victory and the Overload screens — and
+  scrap-press and place rocks that **roll a random component of a random quality on
+  placement** (placing back-to-back without re-clicking STAMP, capped at five per
+  level), **KEEP** exactly one roll as a firing tower and confirm the rest harden into
+  inert **blockers** when the wave starts, **COMBINE** two matching rolls one tier up
+  the quality ladder (and confirm the freed footprint re-paths the floor), buy an
+  **UPGRADE QUALITY** level and see rolls bias upward, start a wave and watch the Load
+  take the shortest **open** route around your maze between the map's 4-tile waypoint
+  platforms, confirm a **Filament** flyer appears on a fourth wave and ignores the maze,
+  reach a **Dynamo** milestone wave, and let the Load ground out at the Collector until
+  Grid Integrity runs out — then reach both the Victory and the Overload screens — and
   **screenshot** the title, live-board, and Overload screens. Verify each against the
   specs — treating the `reference/` images as examples of the intended look only, not a
   layout to match — and fix what does not follow the specification before finishing.

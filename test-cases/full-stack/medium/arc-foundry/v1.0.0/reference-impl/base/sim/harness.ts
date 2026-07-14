@@ -1,134 +1,228 @@
-// Arc Foundry — headless balance harness.
+// Arc Foundry — headless balance harness (GemTD keep-one model).
 //
-// Drives the exact game simulation from ../src, with no DOM, no rAF, and no rendering,
-// as fast as the host CPU allows. A `Controller` scripts each build phase by calling
-// ONLY the game's input-free control API (pullPress / placeStamp / combine / slag /
-// sell / setTargeting / startWave / fixedStep, plus devPlace for the funded mechanics
-// mode); the harness sends each wave and steps the fixed simulation to completion,
-// gathering per-wave metrics. Because the sim is deterministic — the wave composition
-// seeds itself per wave, and the scrap-press roll is seeded per MATCH here — a
-// (controller, seed) pair maps to a single reproducible result, which is what makes it
-// useful for balancing.
+// Drives the exact game simulation from ../src — no DOM, no rAF, no rendering — as fast as
+// the host CPU allows, so a controller's play maps to a reproducible result. The game is a
+// faithful GemTD reskin (specs/build.md): each build phase you place up to BUILDS_PER_LEVEL
+// rocks that each roll a random type+quality ON PLACEMENT, you KEEP EXACTLY ONE per level as
+// a firing component (or COMBINE a match to climb the quality ladder), and every rock you do
+// not keep hardens into an inert BLOCKER — the maze. UPGRADE QUALITY (Refinement R0..5) buys
+// better roll odds. Difficulty is wave count + enemy-HP scaling only.
 //
-// GemTD twist (specs/build.md): the press roll is RANDOM (type + quality), so a single
-// seed is not representative of how a controller plays. The harness reseeds the press
-// per match (see newGame) and run.ts averages a controller over MANY seeds to report a
-// WIN RATE. The --funded mode swaps the random press for exact devPlace placements to
-// isolate the MECHANICS (geometry + the quality ladder) from the economy + the roll.
+// Modeling the roll deterministically. The interactive build path (pullPress/placeStamp)
+// rolls off the game's private press RNG, so a single played match is one lucky/unlucky pull
+// sequence — not a fair read on balance. The harness instead lays each strategy's INTENDED
+// board with the game's deterministic dev helpers:
+//   • the QUALITY roll is sampled HERE, per placement, from the REAL odds table
+//     (QUALITY_ODDS_BY_R[R]) using the controller's own seeded rng — so averaging a
+//     controller over many seeds (run.ts) reproduces the true roll distribution as a WIN
+//     RATE, without depending on the game's internal press;
+//   • the kept/combined firing component is planted with devPlace(type, tier) (exact, no
+//     roll, no Charge) and the un-kept rocks with devBlocker (inert wall, no Charge);
+//   • the CHARGE economy is modeled by the harness: the game credits kill bounties, the
+//     wave-clear bonus and interest itself (real income), and the controller DEBITS its own
+//     stamp + UPGRADE-QUALITY spend from game.charge — so a strategy can only lay a board it
+//     could actually afford. A strategy therefore never cheats the economy or the roll.
 //
-// Run the reports with:  npx tsx sim/run.ts   (and  --funded)
+// Because the sim is deterministic in (its wave seeds, the controller's decision rng), a
+// (controller, seed) pair maps to a single reproducible result.
+//
+// Run the reports with:  npx tsx sim/run.ts
 
 import {
+  BUILDS_PER_LEVEL,
   COMPONENT_ORDER,
   DIFFICULTY,
   FIXED_STEP,
+  MAX_REFINEMENT,
   MAX_TIER,
+  QUALITY_ODDS_BY_R,
   STAMP_COST,
+  mapById,
+  nextRefineCost,
   type DifficultyDef,
 } from "../src/constants";
 import { CAMPAIGN } from "../src/mode";
-import { mapById } from "../src/constants";
 import { Game } from "../src/sim";
 import { Rng } from "../src/rng";
-import type { Component, ComponentType, MapDef, Tier } from "../src/types";
+import type { Component, ComponentType, MapDef, Refinement, Tier } from "../src/types";
 import type { Anchor } from "./mazes";
-import { mazeFor } from "./mazes";
 
-export { FIXED_STEP, DIFFICULTY, mapById, COMPONENT_ORDER, MAX_TIER, STAMP_COST };
-export type { DifficultyDef, ComponentType, Tier, Component, MapDef, Anchor };
+export { FIXED_STEP, DIFFICULTY, mapById, COMPONENT_ORDER, MAX_TIER, MAX_REFINEMENT, STAMP_COST, BUILDS_PER_LEVEL };
+export type { DifficultyDef, ComponentType, Tier, Refinement, Component, MapDef, Anchor };
 
-// Build a fresh, started game on `map`/`diff` with its scrap-press reseeded to `seed`.
-// The press field is private on Game (the browser uses one fixed seed), so the harness
-// reaches past `private` to reseed it — the ONLY thing it varies per match, so that a
-// controller's win rate reflects the random roll, not one lucky/unlucky pull sequence.
-export function newGame(map: MapDef, diff: DifficultyDef, seed: number): Game {
+// Build a fresh, started game on `map`/`diff`. The controller drives it only through the
+// input-free control + dev API; the game seeds its own wave composition per wave, so the
+// only per-match variation is the controller's decision rng (passed via BuildCtx).
+export function newGame(map: MapDef, diff: DifficultyDef): Game {
   const g = new Game(CAMPAIGN, map, diff);
   g.start();
-  (g as unknown as { press: Rng }).press = new Rng(seed >>> 0);
   return g;
 }
 
 // ---- Controller contract --------------------------------------------------------
 
-// Per-build-phase context handed to a controller. `funded` selects the mechanics-only
-// path (devPlace exact tiers, no roll, no cost); `anchors` is the map's planned maze;
-// `rng` is the controller's OWN decision rng (seeded per match, kept apart from the
-// game's press) for any tie-breaks so runs stay reproducible.
+// Per-build-phase context handed to a controller. `rng` is the controller's OWN decision
+// rng (seeded per match) — used to sample the quality roll off the real odds table and for
+// any tie-breaks, so a match is reproducible and a win rate averages the true roll spread.
 export interface BuildCtx {
-  funded: boolean;
   wave: number; // the wave about to be launched (1..diff.waves)
-  anchors: Anchor[];
   rng: Rng;
 }
 
-// A controller decides what to build each build phase. It is created fresh per match
-// (so it may keep placement progress in closure state), and touches Game only through
-// the input-free control API.
+// A controller decides what to build each build phase. It is created fresh per match (so it
+// may keep placement progress in closure state) and touches Game only through its control +
+// dev API and the public `charge` / `structures` fields.
 export interface Controller {
   name: string;
   note: string;
   build(game: Game, ctx: BuildCtx): void;
 }
 
-// ---- Placement helpers (drive the two build paths) ------------------------------
+// ---- The modeled scrap-press roll (sampled off the REAL odds) -------------------
 
-// Realistic path: pull the press (spends Charge + a stamp, HOLDS a random roll), then
-// place the held stamp at the nearest legal anchor to `target`. Returns the placed
-// component, or null (a roll that finds nowhere legal is cancelled — a wasted pull, as
-// in real play). The controller does not choose the type/quality — the press does.
-export function pullAndPlace(g: Game, target: Anchor): Component | null {
-  const held = g.pullPress();
-  if (!held) return null;
-  const spot = g.board.nearestLegalAnchor(target.col, target.row, g.structures, g.units);
-  if (!spot) {
-    g.cancelHeld();
-    return null;
+// Roll a rock's TYPE — uniform 20% each (specs/build.md), independent of Refinement.
+export function rollType(rng: Rng): ComponentType {
+  return COMPONENT_ORDER[Math.min(COMPONENT_ORDER.length - 1, Math.floor(rng.next() * COMPONENT_ORDER.length))]!;
+}
+
+// Roll a rock's QUALITY tier off the current Refinement odds (specs/build.md — UPGRADE
+// QUALITY). Samples QUALITY_ODDS_BY_R[R] exactly, so the modeled roll IS the game's roll.
+export function rollTier(rng: Rng, refinement: Refinement): Tier {
+  const odds = QUALITY_ODDS_BY_R[refinement]!;
+  let x = rng.next();
+  for (let t = 1; t <= MAX_TIER; t++) {
+    x -= odds[t - 1]!;
+    if (x <= 0) return t as Tier;
   }
-  return g.placeStamp(spot.col, spot.row);
+  return 1;
 }
 
-// Funded path: place an EXACT (type, tier) at the nearest legal anchor to `target`,
-// with no roll and no Charge (specs/build.md devPlace). Isolates mechanics.
-export function devPlaceNear(g: Game, type: ComponentType, tier: Tier, target: Anchor): Component | null {
-  return g.devPlace(type, tier, target.col, target.row);
+// ---- Board / economy helpers (shared by the strategies) -------------------------
+
+export interface Roll {
+  type: ComponentType;
+  tier: Tier;
 }
 
+export function components(g: Game): Component[] {
+  return g.structures.filter((s): s is Component => s.kind === "component");
+}
 export function activeComponents(g: Game): number {
-  let n = 0;
-  for (const s of g.structures) if (s.kind === "component") n++;
-  return n;
+  return components(g).length;
 }
 
-// Combine matching pairs up the quality ladder, greedily. Combining is free and never
-// seals (it frees a footprint), so it is geometrically safe — BUT every combine removes
-// one wall from the maze (the consumed partner's footprint). In a GemTD you therefore
-// combine only your SURPLUS: `floor` is the number of active components to KEEP as the
-// wall skeleton — the climb stops once the board is down to that many. `only` restricts
-// the climb to one component type (the lean variants). floor 0 climbs everything (used
-// by no-maze, whose clump is not a maze anyway).
-export function combineUp(g: Game, opts?: { floor?: number; only?: ComponentType }): void {
-  const floor = opts?.floor ?? 0;
-  let guard = 0;
-  while (guard++ < 4000) {
-    if (activeComponents(g) <= floor) break;
-    let done = false;
-    for (const s of g.structures) {
-      if (s.kind !== "component" || s.tier >= MAX_TIER) continue;
-      if (opts?.only && s.type !== opts.only) continue;
-      if (g.combinePartnerOf(s)) {
-        g.combine(s.id);
-        done = true;
-        break;
-      }
-    }
-    if (!done) break;
+// How many stamps this build phase can afford: the 5-stamp allowance, capped by Charge at
+// STAMP_COST each (specs/build.md — the cap is five regardless of how much Charge you hold).
+export function affordableStamps(g: Game): number {
+  return Math.min(BUILDS_PER_LEVEL, Math.floor(g.charge / STAMP_COST));
+}
+
+// Debit the modeled stamp spend from the game's Charge (devPlace/devBlocker are free, so the
+// harness charges for them here — the game credits income itself).
+export function debitStamps(g: Game, count: number): void {
+  g.charge = Math.max(0, g.charge - count * STAMP_COST);
+}
+
+// Buy UPGRADE QUALITY levels the strategy can afford, up to a wave-scaled target R, keeping
+// `reserve` Charge back for this level's stamps (so refining never starves the maze). One
+// controller calls this at the top of its build phase (specs/build.md — the Refinement track).
+export function buyRefinement(g: Game, targetR: number, reserve: number): void {
+  while (g.refinement < Math.min(MAX_REFINEMENT, targetR)) {
+    const cost = nextRefineCost(g.refinement);
+    if (cost === null || g.charge - cost < reserve) break;
+    g.charge -= cost;
+    g.devSetRefinement((g.refinement + 1) as Refinement);
   }
 }
 
-// The length (in logical px) of the shortest OPEN route a ground unit must walk through
-// the full waypoint chain, given the current maze — the single number that says how well
-// a controller has MAZED. A straight-through route is short; a good serpentine is many ×
-// longer. Returns Infinity if some segment is (transiently) sealed.
+// Plant this level's kept firing component (an exact type+tier, no roll/Charge) at the
+// nearest legal anchor to `at` (specs/build.md devPlace). Returns it, or null if nowhere legal.
+export function keepComponent(g: Game, type: ComponentType, tier: Tier, at: Anchor): Component | null {
+  return g.devPlace(type, tier, at.col, at.row);
+}
+
+// Climb an EXISTING firing component of (type, tier) one rung in place — the model of a
+// COMBINE that folds a freshly-rolled matching candidate into a standing component (the
+// candidate is consumed, the component rises a tier; specs/build.md §4). Returns true if a
+// match was found and climbed.
+export function climbExisting(g: Game, type: ComponentType, tier: Tier): boolean {
+  for (const c of components(g)) {
+    if (c.type === type && c.tier === tier && c.tier < MAX_TIER) {
+      c.tier = (c.tier + 1) as Tier;
+      return true;
+    }
+  }
+  return false;
+}
+
+// The value of building a carry of `type` at `tier`: higher tier first, then a preference for
+// the AREA / CHAIN types — an Arc-Node's splash and a Coil's leaps at a high tier clear whole
+// swarms, so a few AoE carries add COVERAGE a wide single-target line cannot, which is what
+// makes trading breadth for a merged carry worth it (specs/towers.md §5.3).
+const CARRY_TYPE_SCORE: Record<ComponentType, number> = { arcnode: 4, coil: 3, emitter: 2, discharge: 1, capacitor: 0 };
+function carryScore(type: ComponentType, tier: Tier): number {
+  return tier * 10 + CARRY_TYPE_SCORE[type];
+}
+
+// A pair of standing firing components of the same TYPE and TIER (tier < MAX) that could be
+// COMBINEd — the classic GemTD merge that climbs the quality ladder off your OWN duplicates,
+// independent of the roll. Returns the BEST such pair to fold (an AoE type at the highest tier
+// available — see carryScore), or null.
+export function duplicatePair(g: Game): { type: ComponentType; tier: Tier } | null {
+  let best: { type: ComponentType; tier: Tier } | null = null;
+  const seen = new Set<string>();
+  for (const c of components(g)) {
+    if (c.tier >= MAX_TIER) continue;
+    const key = `${c.type}:${c.tier}`;
+    if (seen.has(key)) {
+      if (!best || carryScore(c.type, c.tier) > carryScore(best.type, best.tier)) best = { type: c.type, tier: c.tier };
+    } else {
+      seen.add(key);
+    }
+  }
+  return best;
+}
+
+// COMBINE two standing duplicates of (type, tier): one rises a rung, the other's footprint is
+// consumed and re-hardens into a BLOCKER (the maze keeps that wall). The GemTD climb that a
+// good player leans on — it needs no lucky roll, only two matching towers — at the cost of one
+// tower off the firing line (breadth-for-tier). Returns true if a pair was merged.
+export function mergeDuplicate(g: Game, type: ComponentType, tier: Tier): boolean {
+  let riser: Component | null = null;
+  let victim: Component | null = null;
+  for (const c of components(g)) {
+    if (c.type !== type || c.tier !== tier || c.tier >= MAX_TIER) continue;
+    if (!riser) riser = c;
+    else if (!victim) {
+      victim = c;
+      break;
+    }
+  }
+  if (!riser || !victim) return false;
+  riser.tier = (riser.tier + 1) as Tier;
+  g.structures = g.structures.filter((s) => s.id !== victim!.id);
+  g.devBlocker(victim.col, victim.row); // the consumed footprint stays a wall
+  return true;
+}
+
+// Drop an inert BLOCKER (an un-kept rock hardening into maze) at the nearest legal anchor to
+// `at`, no Charge (specs/build.md — the maze material). Returns it, or null if nowhere legal.
+export function layBlocker(g: Game, at: Anchor): boolean {
+  return g.devBlocker(at.col, at.row) !== null;
+}
+
+// Point Discharge Rigs at the STRONGEST unit (anti-tank / boss); everything else keeps FIRST
+// (furthest along the chain), the best anti-leak default (specs/towers.md, specs/controls.md).
+export function retarget(g: Game): void {
+  for (const c of components(g)) {
+    if (c.type === "discharge") g.setTargeting(c, "strongest");
+  }
+}
+
+// The length (logical px) of the shortest OPEN route a ground unit walks through the full
+// waypoint chain given the current maze — the single number that says how well a controller
+// MAZED. A straight route is short; a good serpentine is many × longer. Infinity if a
+// segment is (transiently) sealed.
 export function chainPathLength(g: Game): number {
   const occ = g.board.occupancy(g.structures);
   const chain = g.board.chain;
@@ -144,14 +238,9 @@ export function chainPathLength(g: Game): number {
 }
 
 function meanTierOf(g: Game): number {
-  let sum = 0;
-  let n = 0;
-  for (const s of g.structures) {
-    if (s.kind !== "component") continue;
-    sum += s.tier;
-    n++;
-  }
-  return n ? sum / n : 0;
+  const cs = components(g);
+  if (cs.length === 0) return 0;
+  return cs.reduce((a, c) => a + c.tier, 0) / cs.length;
 }
 
 // ---- Match runner ---------------------------------------------------------------
@@ -162,9 +251,10 @@ export interface WaveResult {
   integrityAfter: number;
   leaked: number;
   chargeAfter: number;
-  components: number; // active components on the board after the wave
-  maxTier: number; // highest quality reached
-  meanTier: number; // mean quality of active components (the real "did it climb" read)
+  refinement: number;
+  components: number; // active firing components after the wave
+  maxTier: number;
+  meanTier: number;
   pathLen: number; // shortest chain route length in px (the "did it maze" read)
   kills: number;
   resolved: boolean; // false only if the per-wave step cap was hit
@@ -181,12 +271,13 @@ export interface MatchResult {
   reachedWave: number;
   integrityLeft: number;
   score: number;
-  finalComponents: number; // active components at the end
-  finalStructures: number; // components + slag walls (the whole maze)
+  finalRefinement: number;
+  finalComponents: number; // firing components at the end
+  finalStructures: number; // components + blockers (the whole maze)
   maxTier: number;
   meanTier: number; // mean quality of the final firing line
-  finalPathLen: number; // final maze route length in px
-  tierCounts: number[]; // index 1..5 → count of active components at that tier
+  finalPathLen: number;
+  tierCounts: number[]; // index 1..5 → count of firing components at that tier
   waves: WaveResult[];
 }
 
@@ -194,11 +285,10 @@ function tierHistogram(g: Game): { counts: number[]; maxTier: number; active: nu
   const counts = [0, 0, 0, 0, 0, 0];
   let maxTier = 0;
   let active = 0;
-  for (const s of g.structures) {
-    if (s.kind !== "component") continue;
-    counts[s.tier]!++;
+  for (const c of components(g)) {
+    counts[c.tier]!++;
     active++;
-    if (s.tier > maxTier) maxTier = s.tier;
+    if (c.tier > maxTier) maxTier = c.tier;
   }
   return { counts, maxTier, active };
 }
@@ -207,23 +297,19 @@ export interface MatchOpts {
   map: MapDef;
   diff: DifficultyDef;
   seed: number;
-  funded?: boolean;
   maxWaveSeconds?: number;
 }
 
 export function runMatch(controller: Controller, opts: MatchOpts): MatchResult {
-  const maxSteps = Math.round((opts.maxWaveSeconds ?? 120) / FIXED_STEP);
-  const g = newGame(opts.map, opts.diff, opts.seed);
+  const maxSteps = Math.round((opts.maxWaveSeconds ?? 180) / FIXED_STEP);
+  const g = newGame(opts.map, opts.diff);
   const rng = new Rng((opts.seed ^ 0x9e3779b9) >>> 0);
-  const anchors = mazeFor(opts.map.id);
 
   const waves: WaveResult[] = [];
   let outcome: "victory" | "defeat" = "defeat";
 
   for (let w = 1; w <= opts.diff.waves; w++) {
-    if (opts.funded) g.devGrant(1e9, g.integrity); // unlimited Charge for the funded path
-
-    controller.build(g, { funded: !!opts.funded, wave: w, anchors, rng });
+    controller.build(g, { wave: w, rng });
 
     const integrityBefore = g.integrity;
     const killsBefore = g.kills;
@@ -241,7 +327,8 @@ export function runMatch(controller: Controller, opts: MatchOpts): MatchResult {
       integrityBefore,
       integrityAfter: g.integrity,
       leaked: integrityBefore - g.integrity,
-      chargeAfter: Math.min(g.charge, 999999),
+      chargeAfter: Math.round(g.charge),
+      refinement: g.refinement,
       components: hist.active,
       maxTier: hist.maxTier,
       meanTier: meanTierOf(g),
@@ -273,6 +360,7 @@ export function runMatch(controller: Controller, opts: MatchOpts): MatchResult {
     reachedWave: g.wave,
     integrityLeft: Math.max(0, g.integrity),
     score: g.score,
+    finalRefinement: g.refinement,
     finalComponents: hist.active,
     finalStructures: g.structures.length,
     maxTier: hist.maxTier,
@@ -295,15 +383,16 @@ export interface Aggregate {
   minCleared: number;
   maxCleared: number;
   meanIntegrity: number;
+  meanRefinement: number;
+  meanComponents: number;
   meanTier: number; // mean of each match's mean firing-line tier (did it climb?)
   meanPathLen: number; // mean final maze length in px (did it maze?)
   meanScore: number;
   results: MatchResult[];
 }
 
-// Run one controller over a list of seeds and aggregate. `makeController` is a factory
-// so each seed gets a FRESH controller (its placement progress must not leak between
-// matches).
+// Run one controller over a list of seeds and aggregate. `makeController` is a factory so
+// each seed gets a FRESH controller (placement progress must not leak between matches).
 export function runOverSeeds(
   makeController: () => Controller,
   seeds: number[],
@@ -326,6 +415,8 @@ export function runOverSeeds(
     minCleared: Math.min(...cleared),
     maxCleared: Math.max(...cleared),
     meanIntegrity: mean(results.map((r) => r.integrityLeft)),
+    meanRefinement: mean(results.map((r) => r.finalRefinement)),
+    meanComponents: mean(results.map((r) => r.finalComponents)),
     meanTier: mean(results.map((r) => r.meanTier)),
     meanPathLen: mean(results.map((r) => (isFinite(r.finalPathLen) ? r.finalPathLen : 0))),
     meanScore: mean(results.map((r) => r.score)),

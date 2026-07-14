@@ -119,9 +119,12 @@ Produce at least these, in the palette from `specs/overview.md`:
   tiers. A base sprite plus a produced per-tier finish accent/overlay is an
   acceptable alternative to twenty-five wholly separate heads, **provided each of
   the five tiers is visibly distinct**.
-- **Slag wall** — the inert fused-scrap lump a slagged component becomes
-  (`specs/build.md`): a 2×2 lump that **unmistakably reads as dead** — no head, no
-  glow, just wall. It must never be confused with an active component.
+- **Blocker** — the inert fused-scrap **rock** an unkept rock hardens into at wave
+  start (`specs/build.md`): a 2×2 lump that **unmistakably reads as dead** — no head, no
+  glow, just wall. It must never be confused with a firing component or a still-selectable
+  **candidate**. (A candidate — a placed-but-not-yet-kept roll — is drawn from its rolled
+  component sprite with a code-drawn "uncommitted" treatment; it needs no separate
+  produced sprite.)
 - **Projectiles** — a small **traveling shot sprite** for each single-bolt
   component: the **Capacitor bolt**, the **Emitter spark**, and the **Discharge Rig
   heavy slug** (`specs/towers.md`), each drawn pointing in the **same canonical
@@ -226,13 +229,13 @@ canned frame, and do not substitute a flat opacity flash for the produced system
 Produce the yard's sound with the audio tools and play the resulting `.wav`s via the
 Web Audio API. Land them under, for example, `assets/audio/`.
 
-- **Sound effects** — produce at least: a **press/stamp clunk** (the scrap-press
-  stamping a component), a **fire cue per component family** — a sharp **zap** for
-  the Capacitor / Emitter, a crackling **chain** for the Coil, and a **discharge
-  boom** for the Arc-Node / Discharge Rig — a **combine chime** (the ladder
-  climbing), a **kill / ground-out pop** (a unit destroyed), a **leak alarm** when a
-  unit grounds out at the Collector and Grid Integrity drops, and a **slag thunk**
-  (a component fused into wall), with `sfx-synth` and/or `sfx-sample`. `sfx-synth`
+- **Sound effects** — produce at least: a **press/stamp clunk** (a rock dropped from
+  the scrap-press), a **fire cue per component family** — a sharp **zap** for the
+  Capacitor / Emitter, a crackling **chain** for the Coil, and a **discharge boom** for
+  the Arc-Node / Discharge Rig — a **combine chime** (the ladder climbing), a **kill /
+  ground-out pop** (a unit destroyed), a **leak alarm** when a unit grounds out at the
+  Collector and Grid Integrity drops, and a **rock-settle thunk** (unkept rocks hardening
+  into blockers at wave start), with `sfx-synth` and/or `sfx-sample`. `sfx-synth`
   builds a sound from synth voices alone; `sfx-sample` layers over the baked sample
   pack (browse it via its `--help`) for a richer result — use whichever suits each
   cue.
@@ -244,8 +247,9 @@ Web Audio API. Land them under, for example, `assets/audio/`.
   decode it with the Web Audio API (`decodeAudioData`), and play it on the matching
   event — the fire cue when a component fires, the chain on a Coil's chained shot,
   the discharge boom on an Arc-Node / Discharge Rig, the stamp clunk on a press
-  pull, the combine chime on a combine, the pop on a kill, the slag thunk on a slag,
-  and the alarm on a leak (`specs/flow.md`) — and loop the music bed. **Do not
+  pull, the combine chime on a combine, the pop on a kill, the rock-settle thunk when
+  unkept rocks harden into blockers at wave start, and the alarm on a leak
+  (`specs/flow.md`) — and loop the music bed. **Do not
   autostart audio before the player interacts** (browsers block autoplay), and
   provide a **mute** toggle (`specs/controls.md`, `specs/flow.md`).
 
@@ -256,11 +260,12 @@ menu chrome is drawn in code** (canvas/DOM), in the palette from
 `specs/overview.md`:
 
 - The entire **status bar** and **build panel** — Charge, Grid Integrity, the wave
-  indicator and build-phase countdown, the **scrap-press** control (STAMP, its 18
-  cost, and the remaining stamps of the 7-per-level allowance), the
-  **selected-component inspector** (type, quality tier, live stats, and the SLAG /
-  SELL / COMBINE / targeting controls), the **next-wave preview**, and the
-  wave/speed/mute controls (`specs/board.md`, `specs/flow.md`, `specs/build.md`).
+  indicator and the untimed-build read, the **scrap-press** control (STAMP, its 10
+  cost, and the remaining stamps of the 5-per-level allowance), the **UPGRADE QUALITY**
+  control (the Refinement level and next cost), the **selected candidate/component
+  inspector** (type, quality tier, live stats, and the KEEP / COMBINE / targeting
+  controls), the **next-wave preview**, and the wave/speed/mute controls
+  (`specs/board.md`, `specs/flow.md`, `specs/build.md`).
   Their small **icons** may be produced `draw` sprites, but the panels, bars, text,
   and layout are code.
 - All **menus, overlays, and state screens** — title, **map select** (with each

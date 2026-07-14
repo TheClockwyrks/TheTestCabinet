@@ -17,7 +17,7 @@ building it from the spec; a screenshot shows the target without giving away the
 implementation.
 
 The mockups depict the yard with simple CSS/SVG stand-ins for the concrete substrate,
-the ordered waypoints, the Load's live route, the salvaged components, the slag walls,
+the ordered waypoints, the Load's live route, the salvaged components, the inert blockers,
 the charge units, and the electrical VFX. In the real build every one of those is a
 **produced asset** — sprites, animated sprite sheets, and live particle systems the
 model authors with the on-`PATH` tools (see [`../specs/assets.md`](../specs/assets.md)).
@@ -44,8 +44,8 @@ and map are chosen on the in-game menus that follow `SALVAGE`, not on the title 
 
 The `gameplay.html` frame shows the intended look of a live board on Map A "The
 Substation": the ordered waypoint chain `E -> WP1 -> WP2 -> WP3 -> WP4 -> Collector`,
-the Load's live shortest-open route weaving **around** a maze of stamped components and
-slag walls (every component is also a wall), more than one component **type** and more
+the Load's live shortest-open route weaving **around** a maze of kept components and
+inert blockers (every rock is also a wall), more than one component **type** and more
 than one **quality tier** on the board (the Scrap→Tesla-Prime ladder reading at a
 glance), a scrap-press **stamp** landing with its build spark, a **combine** climbing
 the ladder with its combine flash, and several electrical VFX mid-fire (arc bolt,
@@ -57,8 +57,8 @@ representative moment.
 view and by the specification (the seeded specs under [`../specs/`](../specs/)),
 including the visual language of the five component **types** (Capacitor / Coil /
 Emitter / Arc-Node / Discharge Rig), the five **quality tiers** (Scrap / Tuned /
-Charged / Primed / Tesla-Prime — finish and glow escalate every rung), the inert slag
-wall, the Load roster (Mote / Spark / Slug / Cluster / Filament flyer / Dynamo boss),
+Charged / Primed / Tesla-Prime — finish and glow escalate every rung), the inert blocker
+rock, the Load roster (Mote / Spark / Slug / Cluster / Filament flyer / Dynamo boss),
 and the produced electrical VFX.
 
 ## Generating screenshots

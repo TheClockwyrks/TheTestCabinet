@@ -5,7 +5,7 @@
 # concrete SUBSTRATE (the faint tile grid is drawn in code over it), the glowing feeder-vent
 # ENTRY and hazard-marked grounding COLLECTOR, the small waypoint PYLON stud the code places
 # at each map's waypoint tiles, the steel transformer HOUSING panel that fills Map C's
-# fixed-blocked tiles, the inert SLAG-WALL lump a slagged component becomes (specs/build.md),
+# fixed-blocked tiles, the inert BLOCKER ROCK an unkept rock hardens into (specs/build.md),
 # and a small set of TRACK/DECOR sprites (cable run, floor grate, oil stain, anchor stud,
 # flow chevron) the renderer can scatter across the yard. Electro-industrial, oil-dark: the
 # palette matches specs/overview.md and src/constants.ts (COL).
@@ -27,8 +27,8 @@ fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BOARD="$ROOT/assets/board"
 DECOR="$BOARD/decor"
-SLAG="$ROOT/assets/components/slag"
-mkdir -p "$BOARD" "$DECOR" "$SLAG"
+BLOCKER="$ROOT/assets/components/blocker"
+mkdir -p "$BOARD" "$DECOR" "$BLOCKER"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -179,10 +179,10 @@ d fill-rect --x 18 --y 18 --width 4 --height 4 --color '#232f3c'
 d set-pixel --x 19 --y 19 --color '#ffcf4a'
 d set-pixel --x 20 --y 20 --color '#ffcf4a'
 
-# ============================ SLAG WALL (inert fused scrap) ====================
-# The dead lump a slagged component becomes (specs/build.md): a 2x2 (40x40) fused-scrap
-# wall — NO head, NO glow — that must never be mistaken for an active component.
-newsprite 40 40 "$SLAG/wall.png"
+# ============================ BLOCKER ROCK (inert fused scrap) =================
+# The dead lump an unkept rock hardens into (specs/build.md): a 2x2 (40x40) fused-scrap
+# rock — NO head, NO glow — that must never be mistaken for a firing component.
+newsprite 40 40 "$BLOCKER/rock.png"
 # irregular fused lump (stacked rects → a blobby, un-square silhouette)
 d fill-rect --x 6  --y 8  --width 28 --height 26 --color '#3a4351'
 d fill-rect --x 4  --y 12 --width 32 --height 18 --color '#3a4351'
@@ -262,5 +262,5 @@ d set-pixel --x 11 --y 8 --color '#eaf6ff'
 
 echo "produced Arc Foundry board assets:"
 echo "  $BOARD/{substrate,entry,collector,pylon,housing}.png"
-echo "  $SLAG/wall.png"
+echo "  $BLOCKER/rock.png"
 echo "  $DECOR/{cable,grate,stain,stud,flow}.png"

@@ -7,19 +7,22 @@ automated turrets. Every stamped component is *also* a physical **wall**, so you
 maze of scrap that the Load must crawl around, buying your turrets time to burn it down
 before it grounds out.
 
-Its defining idea — and it is a **GemTD** at heart — is what happens at the press. You
-do **not** buy the component you want: each pull stamps a **random component type at a
-random quality tier**, weighted low, and you decide its fate on the board — **keep** it
-firing, **slag** it into an inert wall, or **combine** it with a match to climb a
-five-rung **quality ladder** (**Scrap -> Tuned -> Charged -> Primed -> Tesla-Prime**).
-Combining two matching components (same type and quality) folds them into one a tier
-higher, freeing a footprint as it climbs, so the **keep-vs-slag-vs-combine decision, and
-which builds you keep as permanent obstacles, is the strategic heart of the game**. The
-Load follows an **ordered chain of waypoints** and takes the shortest **open** route
-around your walls between each pair, and a never-seal rule forbids fully blocking any
-segment. Three maps — an edge-hugging serpentine, a center-crossing star, and one split
-by fixed transformer housings — pose three different mazing problems, and an in-game
-Easy/Medium/Hard menu changes only the wave count and how tough the Load grows.
+Its defining idea — and it is a faithful **GemTD** at heart — is what happens at the
+press. You do **not** buy the component you want: you place a **rock** that **rolls a
+random component type at a random quality tier the moment it lands**, weighted low. Each
+level you place **five** such rocks and **keep exactly one** as a firing tower; every
+rock you do not keep hardens into an inert **blocker** that walls the yard but never
+fires. You climb the five-rung **quality ladder** (**Scrap -> Tuned -> Charged -> Primed
+-> Tesla-Prime**) by **combining** matched rolls, and spend kill income on **UPGRADE
+QUALITY** to bias the press toward stronger gems — so **which single roll to keep, the
+maze you wall from the rest, and the climb, is the strategic heart of the game**. The
+Load follows an **ordered chain of waypoints** — each a 4-tile **platform** you cannot
+build on — and takes the shortest **open** route around your walls between each pair; a
+never-seal rule forbids fully blocking any segment or encircling a waypoint, and a
+**Filament** flyer appears every fourth wave to bypass the maze. Three maps — an
+edge-hugging serpentine, a center-crossing star, and one split by fixed transformer
+housings — pose three different mazing problems, and an in-game Easy/Medium/Hard menu
+changes only the wave count and how tough the Load grows.
 
 Arc Foundry is also a **full-stack** case: the model under test must **produce the
 game's own assets during the run** — the component sprites across all five quality

@@ -59,13 +59,15 @@ scales across waves.
 - **Cluster** — very low HP but arrives in tight packs (many at once), so a single
   Cluster pack floods a chokepoint. **Arc-Node** splash and **Coil** chain
   (`specs/towers.md`) are the natural answers.
-- **Filament** — the **flyer**. It does **not** walk the maze: it flies in a
-  straight line from the Entry through each waypoint in order to the Collector, over
-  every component and wall (`specs/board.md`). The maze cannot slow or redirect it,
-  but any component in range can still fire at it while it is over the yard. Because
-  it bypasses the maze its **exposure window is short**, so it is dangerous not for
-  being tough but for demanding coverage sitting near the straight-line waypoint
-  path — a defense with none starts leaking Filaments.
+- **Filament** — the **flyer**. It appears **only on every fourth wave** (waves `4`,
+  `8`, `12`, … — see *Wave composition* below) and does **not** walk the maze: it flies
+  in a straight line from the Entry through each waypoint in order to the Collector, over
+  every component and wall (`specs/board.md`). The maze cannot slow or redirect it, but
+  any component in range can still fire at it while it is over the yard. Because it
+  bypasses the maze its **exposure window is short**, so it is dangerous not for being
+  tough but for demanding coverage sitting near the straight-line waypoint path — a
+  defense with none starts leaking Filaments. Because the first air wave is Wave 4, a
+  player is never punished for lacking anti-air on the opening waves.
 - **Dynamo** — the **boss**: a massive HP pool that leaks **5** Grid Integrity if it
   grounds out. It seethes with instability (an unstable-overload wobble, and a big
   EMP-style discharge on death — `specs/flow.md`) and anchors the **milestone
@@ -86,11 +88,14 @@ HP(w) = baseHP × baseMult × (1 + k × (w − 1))
 - `baseHP` is the unit's base HP from the roster above.
 - `baseMult` and `k` are set by the chosen **difficulty** and are the **only**
   things difficulty changes about a unit (`specs/modes.md`). On **Medium** they are
-  the reference values `baseMult = 1.0` and `k = 0.26`; **Easy** is gentler
-  (`baseMult = 0.9`, `k = 0.2`) and **Hard** steeper (`baseMult = 1.15`,
-  `k = 0.33`). The full table lives in `specs/modes.md`.
+  the reference values `baseMult = 0.22` and `k = 1.35`; **Easy** is gentler
+  (`baseMult = 0.24`, `k = 0.8`) and **Hard** steeper (`baseMult = 0.24`,
+  `k = 1.75`). The full table lives in `specs/modes.md`.
 - Wave 1 (`w = 1`) yields `baseHP × baseMult`; each later wave adds `k` of that base
-  per wave, so HP climbs linearly across the run. A Hard late wave therefore towers
+  per wave, so HP climbs **steeply** across the run. The low base multiplier keeps the
+  **opening waves gentle** — fitting the GemTD build where you have only a tower or two
+  early — while the steep `k` makes **late waves brutal**, so the run is a climb whose
+  pressure builds as your kept-and-combined firing line does. A Hard late wave towers
   far above a Medium one, which — along with more waves supplying more kill income at
   the same rate — is why the economy (`specs/flow.md`) is held constant across
   difficulty.
@@ -105,11 +110,16 @@ un-climbed maze is overrun:
 - **Early waves** are mostly **Motes** and **Sparks** — light enough to teach the
   maze, the scrap-press, and stamping.
 - **Mid waves** bring **Clusters** (the splash/chain answer) and **Slugs** (the
-  heavy single-hit answer); **Filaments** begin appearing, so a defense with no
-  coverage on the flyer line starts leaking.
+  heavy single-hit answer).
+- **Air waves — every fourth wave (`w % 4 == 0`: waves `4`, `8`, `12`, …)** — carry a
+  **Filament** flyer contingent (alongside whatever ground units fit the progression),
+  and **no other wave spawns Filaments**. This fixed cadence is the anti-air test: a
+  defense with no coverage on the straight-line flyer path starts leaking on those
+  waves. A milestone wave (`round(N/2)` or `N`) that also lands on a multiple of 4
+  carries both its Dynamo and a Filament contingent.
 - **Late waves** are dense mixes that press a maze that has not climbed the quality
-  ladder (`specs/towers.md`) — the power to clear them comes from combining up, not
-  from flooding the board with Scrap.
+  ladder (`specs/towers.md`) — the power to clear them comes from combining up and
+  refining the press, not from flooding the board with Scrap.
 - A **Dynamo** boss anchors each **milestone wave** — the midpoint and the final
   wave of the run (`specs/modes.md`, `specs/flow.md`) — with the surrounding wave
   growing toward the late game.
