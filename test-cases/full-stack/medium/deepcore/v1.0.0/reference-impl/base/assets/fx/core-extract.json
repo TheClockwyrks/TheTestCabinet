@@ -1,0 +1,262 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 920,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "gather",
+      "shape": "disc",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 30.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 26,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 520.0,
+      "lifetimeSpread": 120.0,
+      "speed": 6.0,
+      "speedSpread": 4.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 8,
+      "forces": {
+        "drag": 1.1,
+        "radial": -140.0,
+        "vortex": 60.0,
+        "turbulence": {
+          "amplitude": 16.0,
+          "scale": 0.05
+        }
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-in",
+          "from": 0.7,
+          "to": 0.1
+        },
+        "opacityCurve": {
+          "interp": "ease-in-out",
+          "from": 0.8,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ff6a2a",
+            "at": 0.0
+          },
+          {
+            "color": "#ff4a2a",
+            "at": 0.6
+          },
+          {
+            "color": "#7a1a0a",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.04
+      }
+    },
+    {
+      "name": "flash",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 7,
+        "atMs": 260.0
+      },
+      "lifetimeMs": 300.0,
+      "lifetimeSpread": 70.0,
+      "speed": 22.0,
+      "speedSpread": 11.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 18,
+      "forces": {
+        "drag": 4.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.8,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.9,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#ff6a2a",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "ring",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 20,
+        "atMs": 260.0
+      },
+      "lifetimeMs": 620.0,
+      "lifetimeSpread": 50.0,
+      "speed": 90.0,
+      "speedSpread": 14.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 25,
+      "forces": {
+        "drag": 0.9,
+        "radial": 30.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.5,
+          "to": 0.25
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.9,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffcf9a",
+            "at": 0.0
+          },
+          {
+            "color": "#ff4a2a",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.04
+      }
+    },
+    {
+      "name": "rise",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 14,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 700.0,
+      "lifetimeSpread": 200.0,
+      "speed": 46.0,
+      "speedSpread": 24.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 50.0,
+      "seed": 32,
+      "forces": {
+        "gravity": -14.0,
+        "drag": 1.8
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.45,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.9,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ff8a3a",
+            "at": 0.0
+          },
+          {
+            "color": "#ff4a2a",
+            "at": 1.0
+          }
+        ],
+        "rotation": 60.0,
+        "stretch": 0.05
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}
