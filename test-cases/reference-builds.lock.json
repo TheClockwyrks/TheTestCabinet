@@ -1,4 +1,58 @@
 {
+  "prod": {
+    "cascade": {
+      "v1.0.1": {
+        "draw-one": "https://f52f2267.test-cabinet-references.pages.dev",
+        "draw-three": "https://2b059914.test-cabinet-references.pages.dev"
+      }
+    },
+    "coil": {
+      "v1.0.0": {
+        "base": "https://343f8e4c.test-cabinet-references.pages.dev",
+        "maze": "https://7691c38e.test-cabinet-references.pages.dev"
+      }
+    },
+    "fathom": {
+      "v1.1.0": {
+        "base": "https://02c403a5.test-cabinet-references.pages.dev",
+        "kindle": "https://a977724d.test-cabinet-references.pages.dev"
+      }
+    },
+    "floe": {
+      "v1.0.0": {
+        "base": "https://d948b48e.test-cabinet-references.pages.dev"
+      }
+    },
+    "pong": {
+      "v1.1.0": {
+        "base": "https://17ce241b.test-cabinet-references.pages.dev",
+        "gyre": "https://f9418138.test-cabinet-references.pages.dev",
+        "multi": "https://5c14bd1b.test-cabinet-references.pages.dev"
+      }
+    },
+    "shatter": {
+      "v1.0.1": {
+        "base": "https://03f65c7d.test-cabinet-references.pages.dev",
+        "warhead": "https://3b3cb5a2.test-cabinet-references.pages.dev"
+      }
+    },
+    "spectra": {
+      "v1.0.0": {
+        "base": "https://59b05beb.test-cabinet-references.pages.dev",
+        "overload": "https://d2dba982.test-cabinet-references.pages.dev"
+      }
+    },
+    "valence": {
+      "v1.0.0": {
+        "base": "https://63d0051e.test-cabinet-references.pages.dev"
+      }
+    },
+    "wireworm": {
+      "v1.0.0": {
+        "base": "https://b3cf8b53.test-cabinet-references.pages.dev"
+      }
+    }
+  },
   "staging": {
     "cascade": {
       "v1.0.1": {
