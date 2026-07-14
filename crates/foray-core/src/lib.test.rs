@@ -449,11 +449,13 @@ fn can_move_this_tick_matches_the_speed_model_in_the_observation() {
 }
 
 #[test]
-fn agents_cannot_swap_tiles() {
+fn a_soldier_catches_a_raider_that_tries_to_swap_past_it() {
     // A Blue raider on Red's half and a Red soldier sit adjacent and try to trade
     // tiles in one tick. Swapping would let the raider pass *through* the soldier
-    // untagged, so the swap is cancelled and both hold; the tag lands a tick later
-    // when the soldier steps onto the (now stationary) raider.
+    // untagged, so the swap is cancelled — and the soldier catches the raider where
+    // it stood. Cancelling *without* the tag is what deadlocked real matches: the
+    // pair never share a tile, so tagging never saw them, and two controllers that
+    // both kept issuing the swap simply held forever.
     let board = open_board();
     let mut game = Match::new(board, rules(), sim());
     let res = rules().move_resolution;
@@ -500,17 +502,58 @@ fn agents_cannot_swap_tiles() {
     );
     assert_eq!(
         blue0.pos,
-        Pos::new(2, 1),
-        "the raider holds — no pass-through"
+        game.board.nest(Team::Blue),
+        "the raider does not pass through — it is caught trying, and respawns"
     );
+    assert_eq!(blue0.carrying, 0, "and drops what it was carrying");
     assert_eq!(
-        blue0.carrying, 1,
-        "the raider was not tagged through the swap"
+        game.state.kills,
+        Kills { red: 1, blue: 0 },
+        "the catch is a kill for the defending colony"
     );
+    assert!(
+        game.state.red_caches.contains(&Pos::new(2, 1)),
+        "the dropped load scatters back onto the defender's half, as any tag does"
+    );
+}
 
-    // Next tick the soldier steps onto the raider (a move-onto, not a swap) and
-    // tags it — proving only the exchange was blocked, not contact.
-    game.step(&move_one(0, Dir::E), &stop());
+#[test]
+fn an_immune_raider_kills_a_soldier_it_swaps_past() {
+    // The swap is settled by the same three-line rule as a shared tile, so jelly
+    // flips it: the immune raider is not caught — it kills the defender instead.
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    let res = rules().move_resolution;
+    {
+        let blue0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Blue && a.id == 0)
+            .unwrap();
+        blue0.pos = Pos::new(2, 1); // Red's half -> a raider
+        blue0.immune_ticks = 5;
+        blue0.move_accum = res;
+    }
+    {
+        let red0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Red && a.id == 0)
+            .unwrap();
+        red0.pos = Pos::new(1, 1); // own half -> a soldier
+        red0.move_accum = res;
+    }
+
+    game.step(&move_one(0, Dir::E), &move_one(0, Dir::W));
+
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
     let blue0 = game
         .state
         .agents
@@ -518,9 +561,65 @@ fn agents_cannot_swap_tiles() {
         .find(|a| a.team == Team::Blue && a.id == 0)
         .unwrap();
     assert_eq!(
+        red0.pos,
+        game.board.nest(Team::Red),
+        "the immune raider kills the soldier that tried to block it"
+    );
+    assert_eq!(
         blue0.pos,
-        game.board.nest(Team::Blue),
-        "stepping onto the raider tags it"
+        Pos::new(2, 1),
+        "the immune raider still holds — the swap is cancelled either way"
+    );
+    assert_eq!(game.state.kills, Kills { red: 0, blue: 1 });
+}
+
+#[test]
+fn a_repeated_swap_cannot_deadlock_the_board() {
+    // The regression that matters. Two controllers that each keep issuing the same
+    // swap used to hold forever — agents frozen, score frozen, match run out to the
+    // tick cap. Drive the exact standoff for many ticks and assert the board moves.
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    {
+        let blue0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Blue && a.id == 0)
+            .unwrap();
+        blue0.pos = Pos::new(2, 1);
+        blue0.move_accum = rules().move_resolution;
+    }
+    {
+        let red0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Red && a.id == 0)
+            .unwrap();
+        red0.pos = Pos::new(1, 1);
+        red0.move_accum = rules().move_resolution;
+    }
+
+    // Both sides stubbornly try the same exchange, tick after tick.
+    for _ in 0..50 {
+        game.step(&move_one(0, Dir::E), &move_one(0, Dir::W));
+    }
+
+    assert!(
+        game.state.kills.red > 0,
+        "the standoff resolves — the defender catches the raider instead of freezing",
+    );
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    assert_ne!(
+        red0.pos,
+        Pos::new(1, 1),
+        "and the soldier is free to move again, not pinned on its tile forever",
     );
 }
 
@@ -1340,4 +1439,89 @@ fn reconstruction_is_deterministic_across_runs() {
     assert_eq!(a.state.agents, b.state.agents);
     assert_eq!(a.state.red_caches, b.state.red_caches);
     assert_eq!(a.state.blue_caches, b.state.blue_caches);
+}
+
+// ---------------------------------------------------------------------------
+// Large seeds: drift, containment, and separation.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_large_seed_drifts_to_the_border_and_no_further() {
+    // Drift the real shipped board to rest with nobody playing.
+    //
+    // Nothing but the border stops a large seed: it walks until it physically cannot
+    // go on without crossing, and stops on the last column of its own half. An
+    // ignored seed therefore ends up on the seam — one step from an enemy raider who
+    // can take it and bank it by stepping straight home. What it must never do is
+    // cross: a seed is stolen by a raid, never conceded by the clock.
+    let board = Board::generate(MAP_ID, BoardParams::default(), MAP_SEED);
+    let rules = rules();
+    let mut game = Match::new(board, rules, sim());
+
+    // Long enough for every seed to walk its whole path and come to rest.
+    for _ in 0..(rules.large_seed_drift_ticks * 60) {
+        game.step(&stop(), &stop());
+        let mut seen: Vec<Pos> = Vec::new();
+        for seed in &game.state.large_seeds {
+            // Containment: it may reach the seam, but it may never step over it.
+            match seed.half {
+                Team::Red => assert!(
+                    seed.pos.x < game.board.border_x,
+                    "a Red large seed crossed the border to {:?}",
+                    seed.pos,
+                ),
+                Team::Blue => assert!(
+                    seed.pos.x >= game.board.border_x,
+                    "a Blue large seed crossed the border to {:?}",
+                    seed.pos,
+                ),
+            }
+            // Separation: two large seeds are two objects. Stacked, they become a
+            // single 6-point prize one raider scoops in one step.
+            assert!(
+                !seen.contains(&seed.pos),
+                "two large seeds stacked on {:?}",
+                seed.pos,
+            );
+            seen.push(seed.pos);
+        }
+    }
+
+    // Each seed comes to rest in its OWN lane on the border column, not merely
+    // somewhere in it. Halting at the column was the original bug: both seeds of a
+    // half took the shortest tunnel, were spat out on the same tile, and collapsed
+    // into one objective a single defender could cover.
+    for seed in &game.state.large_seeds {
+        assert_eq!(
+            Some(seed.pos),
+            seed.target,
+            "an unmolested large seed comes to rest in its own lane",
+        );
+        assert_ne!(
+            seed.pos, seed.home,
+            "…having actually drifted there — otherwise the checks above are vacuous",
+        );
+        // It really did walk all the way out, not stop somewhere comfortable.
+        assert_eq!(
+            seed.pos.x,
+            game.board.stop_column(seed.half),
+            "an ignored large seed ends up hard against the border",
+        );
+    }
+
+    // And the two on a half rest genuinely apart, not merely on different tiles.
+    for half in [Team::Red, Team::Blue] {
+        let rows: Vec<i32> = game
+            .state
+            .large_seeds
+            .iter()
+            .filter(|seed| seed.half == half)
+            .map(|seed| seed.pos.y)
+            .collect();
+        assert_eq!(rows.len(), 2, "two large seeds per half");
+        assert!(
+            (rows[0] - rows[1]).abs() >= 2,
+            "{half:?}'s two large seeds rest in distinct lanes, not side by side: {rows:?}",
+        );
+    }
 }

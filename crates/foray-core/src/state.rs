@@ -218,6 +218,11 @@ pub struct LargeSeed {
     pub home: Pos,
     /// Current tile. Meaningless while `carried_by` is set.
     pub pos: Pos,
+    /// The tile this seed drifts toward — its own **lane**, on the stop column. Each
+    /// seed of a half gets a distinct one, so the two do not funnel down the same
+    /// tunnel and come to rest side by side. `None` only if walls cut the stop column
+    /// off from this seed's spawn, in which case it simply never drifts.
+    pub target: Option<Pos>,
     /// Maze distance from [`home`](LargeSeed::home) to every reachable tile of its
     /// half, so the recall guard is an O(1) lookup rather than a per-tick search.
     pub home_dist: BTreeMap<Pos, u32>,
@@ -309,34 +314,37 @@ impl MatchState {
         let blue_caches: BTreeSet<Pos> = board.initial_seeds(Team::Blue).iter().copied().collect();
 
         // Red's large seeds first, then Blue's, so the flat list has a fixed order.
-        let large_seeds: Vec<LargeSeed> = [Team::Red, Team::Blue]
-            .into_iter()
-            .flat_map(|half| {
-                board
-                    .initial_large_seeds(half)
-                    .iter()
-                    .map(move |home| LargeSeed {
-                        half,
-                        home: *home,
-                        pos: *home,
-                        home_dist: board.home_distances(*home, half),
-                        drift_accum: 0,
-                        recall_accum: 0,
-                        carried_by: None,
-                        banked: false,
-                    })
-            })
-            .collect();
+        // Lanes are handed out per half, each seed claiming a stop-column tile no
+        // other seed of that half has taken — otherwise the two converge and rest on
+        // top of each other, and two objectives become one.
+        let mut large_seeds: Vec<LargeSeed> = Vec::new();
+        for half in [Team::Red, Team::Blue] {
+            let mut lanes_taken: Vec<Pos> = Vec::new();
+            for home in board.initial_large_seeds(half) {
+                let target = board.drift_target(*home, half, &lanes_taken);
+                if let Some(lane) = target {
+                    lanes_taken.push(lane);
+                }
+                large_seeds.push(LargeSeed {
+                    half,
+                    home: *home,
+                    pos: *home,
+                    target,
+                    home_dist: board.home_distances(*home, half),
+                    drift_accum: 0,
+                    recall_accum: 0,
+                    carried_by: None,
+                    banked: false,
+                });
+            }
+        }
 
         // The sweep denominator is a half's total *value*, not its number of objects:
         // a large seed is worth `large_seed_value` toward it, exactly as it is worth
         // that much when banked. Counting objects here would make a sweep unreachable
         // (you could bank every seed on the half and still fall short of the bar).
         let large_value = |half: Team| {
-            large_seeds
-                .iter()
-                .filter(|seed| seed.half == half)
-                .count() as u32
+            large_seeds.iter().filter(|seed| seed.half == half).count() as u32
                 * rules.large_seed_value
         };
 

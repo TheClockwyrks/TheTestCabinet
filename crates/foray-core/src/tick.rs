@@ -12,17 +12,20 @@
 //!    agent that has not banked a full step) clamps to `Stop` — never a forfeit.
 //!    The only tile-*swap* forbidden is the tag-dodging one — a soldier and an
 //!    enemy raider trading places in one tick, which would let the raider pass
-//!    *through* the defender untagged; that swap is cancelled and both hold. Any
-//!    other head-on swap (two soldiers crossing the seam, two raiders passing as
+//!    *through* the defender untagged. That swap is cancelled **and settled in the
+//!    tagging phase**, as though the two had met: the defender catches the raider as
+//!    it tries to slip past. Cancelling alone was a deadlock — see the note below.
+//!    Any other head-on swap (two soldiers crossing the seam, two raiders passing as
 //!    each heads home) resolves, since no tag is at stake.
 //! 2. **Eating.** A raider that ends the tick on an enemy seed cache consumes it
 //!    into its carried load.
 //! 3. **Banking.** A raider that crossed back onto its own half this tick adds
 //!    its entire load to the team score and resets the load to zero.
-//! 4. **Tagging.** Two enemies sharing a tile settle it. Because a role is decided
-//!    purely by which half the tile is on, a shared tile is *always* one soldier
-//!    (whose half it is) against one enemy raider — there is no other pairing. The
-//!    outcome turns only on royal jelly:
+//! 4. **Tagging.** Two *engaged* enemies settle it — engaged meaning they share a
+//!    tile, **or** they just tried to trade tiles and movement cancelled the swap.
+//!    Either way the pair is always one soldier (on the half the encounter happens
+//!    on) against one enemy raider, because a role is decided purely by which half a
+//!    tile is on; there is no other pairing. The outcome turns only on royal jelly:
 //!    - **both immune** — nothing happens;
 //!    - **exactly one immune** — the immune one tags the other;
 //!    - **neither immune** — the soldier tags the raider.
@@ -35,6 +38,14 @@
 //!    after `jelly_respawn_ticks`, so the counter to a parked defender is renewable.
 //!
 //! Then immunity decrements and win conditions are checked.
+//!
+//! Settling the cancelled swap in the tagging phase is not a flourish — it is what
+//! keeps the board alive. A cancelled pair never shares a tile, so tagging would
+//! never see the encounter; two controllers that each keep issuing the same swap
+//! would then hold *forever*, neither able to move. That is not hypothetical: it
+//! froze real baseline matches solid for 37,000 ticks, score stuck, running out the
+//! clock. It is the identical trap that was already found and fixed for the
+//! soldier/soldier swap (see [`movement`]) — this is the other half of it.
 //!
 //! Two orderings are load-bearing. **Eating precedes tagging**, so a raider can be
 //! tagged on the very tile it just ate — intentional. **Banking precedes tagging**,
@@ -81,10 +92,10 @@ pub fn advance(
         .map(|a| board.team_of_column(a.pos.x) == a.team)
         .collect();
 
-    movement(board, state, red, blue, rules);
+    let cancelled_swaps = movement(board, state, red, blue, rules);
     eating(board, state);
     banking(board, state, rules, &was_on_own_half);
-    tagging(board, state);
+    tagging(board, state, &cancelled_swaps);
     jelly(board, state, rules);
     regrow_jelly(state);
     large_seeds(board, state, rules);
@@ -99,8 +110,16 @@ pub fn advance(
     result
 }
 
-/// Phase 1 — movement under the carry-weight speed model.
-fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, rules: &Rules) {
+/// Phase 1 — movement under the carry-weight speed model. Returns the soldier/raider
+/// swaps it cancelled, as `(index, index)` pairs, so [`tagging`] can settle them: the
+/// two never share a tile, so tagging would otherwise never see the encounter at all.
+fn movement(
+    board: &Board,
+    state: &mut MatchState,
+    red: &Action,
+    blue: &Action,
+    rules: &Rules,
+) -> Vec<(usize, usize)> {
     // Resolve every agent's intended target first (reads only pre-move state),
     // then apply — so one agent's move never changes another's eligibility within
     // the same tick. Two agents may share a tile, so there is no collision step;
@@ -156,6 +175,15 @@ fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, 
     // face at the seam forever and neither could ever raid — every competent pair
     // drew 0–0. Letting harmless swaps resolve keeps the anti-evasion guarantee
     // while removing the standoff.
+    //
+    // The soldier/raider swap keeps its cancellation — but cancelling *alone* is the
+    // very same deadlock trap, one half of which was already found and fixed above.
+    // Two controllers that each keep issuing the swap simply hold, forever: the pair
+    // never shares a tile, so tagging never sees them, and neither ever moves again.
+    // That is not hypothetical — it froze real baseline matches solid for 37,000
+    // ticks. So the cancelled pair is *reported out* and settled by [`tagging`]: the
+    // defender catches the raider as it tries to slip past. The anti-evasion promise
+    // gets stronger, not weaker, and the standoff cannot form.
     let role_at = |team: Team, pos: Pos| -> Role {
         if board.team_of_column(pos.x) == team {
             Role::Soldier
@@ -163,6 +191,7 @@ fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, 
             Role::Raider
         }
     };
+    let mut cancelled_swaps: Vec<(usize, usize)> = Vec::new();
     for i in 0..n {
         if !moved[i] {
             continue;
@@ -182,6 +211,7 @@ fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, 
                     moved[i] = false;
                     targets[j] = from[j];
                     moved[j] = false;
+                    cancelled_swaps.push((i, j));
                 }
                 break; // agent i has only one target, so only one possible swap
             }
@@ -200,6 +230,8 @@ fn movement(board: &Board, state: &mut MatchState, red: &Action, blue: &Action, 
             charge[i].min(rules.move_resolution)
         };
     }
+
+    cancelled_swaps
 }
 
 /// Phase 2 — eating. A raider on an enemy cache consumes it into its load; a raider
@@ -237,7 +269,7 @@ fn eating(board: &Board, state: &mut MatchState) {
 /// Phase 4 — tagging. Settle every tile two enemies share, under the one rule the
 /// module doc spells out: an immune ant cannot be killed, and kills any non-immune
 /// enemy it meets; absent jelly, the soldier kills the raider.
-fn tagging(board: &Board, state: &mut MatchState) {
+fn tagging(board: &Board, state: &mut MatchState, cancelled_swaps: &[(usize, usize)]) {
     // Decide every tag from ONE read-only snapshot, then apply. This is what makes
     // simultaneous kills order-independent: a soldier sharing a tile with both an
     // immune raider and a plain one kills the plain raider *and* dies to the immune
@@ -246,6 +278,16 @@ fn tagging(board: &Board, state: &mut MatchState) {
     // dependency, which in a replay-reconstructed engine is a silent desync.
     let mut to_respawn: Vec<(usize, Pos, Team, Role, u32)> = Vec::new();
 
+    // Two enemies are *engaged* if they share a tile, or if they just tried to trade
+    // tiles and [`movement`] cancelled it. The second case is what stops a cancelled
+    // swap from becoming a permanent standoff: the pair never shares a tile, so
+    // without this they would face each other forever, neither able to move.
+    let swapped_with = |a: usize, b: usize| {
+        cancelled_swaps
+            .iter()
+            .any(|&(i, j)| (i == a && j == b) || (i == b && j == a))
+    };
+
     for victim_idx in 0..state.agents.len() {
         let victim = &state.agents[victim_idx];
         // Jelly is absolute protection: an immune ant is never a victim.
@@ -253,11 +295,16 @@ fn tagging(board: &Board, state: &mut MatchState) {
             continue;
         }
         let victim_role = victim.role(board);
-        // Any enemy on this tile is, by the positional role rule, the opposite role
-        // to the victim. A raider falls to *any* enemy soldier there; a soldier
-        // falls only to an enemy raider carrying active jelly.
-        let tagged = state.agents.iter().any(|other| {
-            if other.team == victim.team || other.pos != victim.pos {
+        // An engaged enemy is, by the positional role rule, always the opposite role
+        // to the victim — on a shared tile because the tile decides both roles, and
+        // on a cancelled swap because that is the only swap movement cancels. A
+        // raider falls to *any* engaged enemy soldier; a soldier falls only to an
+        // engaged enemy raider carrying active jelly.
+        let tagged = state.agents.iter().enumerate().any(|(other_idx, other)| {
+            if other.team == victim.team {
+                return false;
+            }
+            if other.pos != victim.pos && !swapped_with(victim_idx, other_idx) {
                 return false;
             }
             match victim_role {
@@ -275,7 +322,6 @@ fn tagging(board: &Board, state: &mut MatchState) {
             ));
         }
     }
-
 
     for &(_, _, victim_team, _, _) in &to_respawn {
         // Every tag is one kill credited to the colony that did the tagging — the
@@ -328,6 +374,12 @@ fn tagging(board: &Board, state: &mut MatchState) {
 /// denied forever by a soldier parked on it, but a large seed simply walks out from
 /// under a squatter. A defender who wants it back has to *do* something.
 ///
+/// Nothing but the border stops it. It walks until it cannot go on without crossing
+/// and settles on the last column of its own half, so a seed left alone ends up on
+/// the seam — one step from an enemy raider who can take it and bank it by stepping
+/// straight home. It never crosses of its own accord: a seed is stolen by a raid,
+/// never conceded by the clock.
+///
 /// **Recall** is that something: an ant of the seed's own colony stands on it for
 /// `large_seed_recall_ticks` consecutive ticks and it snaps home. The guard —
 /// `large_seed_recall_min_steps` of maze distance from home before a recall is legal
@@ -369,10 +421,27 @@ fn large_seeds(board: &Board, state: &mut MatchState, rules: &Rules) {
             state.large_seeds[seed_idx].recall_accum = 0;
         }
 
-        // Drift one tile toward the border every `large_seed_drift_ticks`. The step is
+        let Some(target) = state.large_seeds[seed_idx].target else {
+            continue; // walls cut this seed off from the border; it never drifts
+        };
+        // A seed is at rest once it reaches its lane — which sits ON the border column,
+        // so "at its lane" and "as far as it can possibly go" are the same place. It
+        // cannot end up *past* the border: that is the enemy half, and only a raider
+        // carries it there. So there is never anything to walk back from, and drift
+        // never reverses. The only thing that moves a seed backwards is a *recall*,
+        // and that costs a defender a walk out and a stand on it.
+        //
+        // Stopping at the column instead of the lane would re-open the pile-up: a seed
+        // entering the column off its lane would halt on whatever tile the tunnel spat
+        // it out on, and both seeds of a half would converge there again.
+        if pos == target {
+            continue;
+        }
+
+        // Drift one tile toward its lane every `large_seed_drift_ticks`. The step is
         // the first tile of a shortest path through the actual maze, so the seed
-        // threads the tunnels rather than walking into a wall — and it comes to rest
-        // `large_seed_border_margin` columns short of the border, never crossing.
+        // threads the tunnels rather than walking into a wall, and re-paths for itself
+        // if it was dropped somewhere off its route.
         let seed = &mut state.large_seeds[seed_idx];
         seed.drift_accum += 1;
         if seed.drift_accum < rules.large_seed_drift_ticks {
@@ -380,11 +449,23 @@ fn large_seeds(board: &Board, state: &mut MatchState, rules: &Rules) {
         }
         seed.drift_accum = 0;
         let from = seed.pos;
-        if let Some(next) = board
-            .drift_path(from, half, rules.large_seed_border_margin)
-            .first()
-        {
-            state.large_seeds[seed_idx].pos = *next;
+        let Some(next) = board.path_to(from, target, half).first().copied() else {
+            continue;
+        };
+        // Two large seeds must never share a tile. They start on the same half and
+        // drift toward the same border, so their paths converge — without this they
+        // stack on the same rest tile and become, in play, a single 6-point object
+        // that one raider scoops up in one step. A blocked seed simply holds and
+        // tries again next cycle, which staggers them apart.
+        let occupied = state
+            .large_seeds
+            .iter()
+            .enumerate()
+            .any(|(other_idx, other)| {
+                other_idx != seed_idx && other.on_board() && other.pos == next
+            });
+        if !occupied {
+            state.large_seeds[seed_idx].pos = next;
         }
     }
 }
@@ -441,13 +522,7 @@ fn banking(board: &Board, state: &mut MatchState, rules: &Rules, was_on_own_half
     // mutably while iterating `state.agents` mutably.
     let mut banked: Vec<(Team, u32)> = Vec::new();
     let mut banked_by: Vec<usize> = Vec::new();
-    for (i, (agent, was_home)) in state
-        .agents
-        .iter_mut()
-        .zip(was_on_own_half)
-        .enumerate()
-        .map(|(i, pair)| (i, pair))
-    {
+    for (i, (agent, was_home)) in state.agents.iter_mut().zip(was_on_own_half).enumerate() {
         // Banking is a *crossing*: was on the enemy half, now on its own half,
         // still carrying.
         let now_own_half = board.team_of_column(agent.pos.x) == agent.team;
@@ -464,11 +539,12 @@ fn banking(board: &Board, state: &mut MatchState, rules: &Rules, was_on_own_half
     // A banked large seed is out of play for good — the same fate as an eaten cache,
     // and what makes it count toward the sweep.
     for seed in state.large_seeds.iter_mut() {
-        if let Some(carrier) = seed.carried_by {
-            if banked_by.contains(&carrier) {
-                seed.banked = true;
-                seed.carried_by = None;
-            }
+        if seed
+            .carried_by
+            .is_some_and(|carrier| banked_by.contains(&carrier))
+        {
+            seed.banked = true;
+            seed.carried_by = None;
         }
     }
     for (team, load) in banked {

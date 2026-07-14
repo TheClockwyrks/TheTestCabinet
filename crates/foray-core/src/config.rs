@@ -82,12 +82,14 @@ pub struct Rules {
     /// the border along a fixed path through the maze, whether or not anyone stands
     /// on it — which is what stops a defender from simply parking on it: the seed is
     /// a moving target, not a tile to squat.
+    ///
+    /// It drifts until the **border** stops it — the last column of its own half —
+    /// and no further: a seed is stolen by a raid, never conceded by the clock. So an
+    /// ignored seed ends up sitting on the seam, one step from an enemy raider who
+    /// can grab it and bank it by stepping straight back. Leaving it there is a
+    /// choice, and an expensive one.
     #[serde(default = "default_large_seed_drift_ticks")]
     pub large_seed_drift_ticks: u32,
-    /// How many columns short of the border a drifting large seed comes to rest. It
-    /// never crosses on its own: the clock exposes a seed, it does not concede one.
-    #[serde(default = "default_large_seed_border_margin")]
-    pub large_seed_border_margin: i32,
     /// Consecutive ticks an ant must stand on its **own** large seed to recall it to
     /// its spawn tile. The cost of a recall is the walk out and the walk back.
     #[serde(default = "default_large_seed_recall_ticks")]
@@ -126,9 +128,6 @@ fn default_large_seed_value() -> u32 {
 fn default_large_seed_drift_ticks() -> u32 {
     300
 }
-fn default_large_seed_border_margin() -> i32 {
-    3
-}
 fn default_large_seed_recall_ticks() -> u32 {
     150
 }
@@ -147,7 +146,6 @@ impl Default for Rules {
             jelly_respawn_ticks: default_jelly_respawn_ticks(),
             large_seed_value: default_large_seed_value(),
             large_seed_drift_ticks: default_large_seed_drift_ticks(),
-            large_seed_border_margin: default_large_seed_border_margin(),
             large_seed_recall_ticks: default_large_seed_recall_ticks(),
             large_seed_recall_min_steps: default_large_seed_recall_min_steps(),
         }

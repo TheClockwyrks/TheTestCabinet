@@ -136,7 +136,12 @@ impl Board {
             red_jelly: self.red_jelly.iter().copied().map(from_pos).collect(),
             blue_jelly: self.blue_jelly.iter().copied().map(from_pos).collect(),
             red_large_seeds: self.red_large_seeds.iter().copied().map(from_pos).collect(),
-            blue_large_seeds: self.blue_large_seeds.iter().copied().map(from_pos).collect(),
+            blue_large_seeds: self
+                .blue_large_seeds
+                .iter()
+                .copied()
+                .map(from_pos)
+                .collect(),
         };
         toml::to_string_pretty(&doc).expect("a MapDocument always serializes to TOML")
     }

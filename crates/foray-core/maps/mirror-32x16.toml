@@ -1052,7 +1052,7 @@ red_large_seeds = [
 ],
     [
     1,
-    2,
+    6,
 ],
 ]
 blue_large_seeds = [
@@ -1062,6 +1062,6 @@ blue_large_seeds = [
 ],
     [
     30,
-    2,
+    6,
 ],
 ]

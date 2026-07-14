@@ -161,47 +161,72 @@ impl Board {
         }
     }
 
-    /// The tiles a large seed born at `home` on `team`'s half walks through as it
-    /// drifts toward the border, in order, **excluding** `home` itself. The last
-    /// entry is where it comes to rest: `margin` columns short of the border, so it
-    /// never crosses (a seed is stolen by a raid, never conceded by the clock).
+    /// The column a drifting large seed of `team` comes to rest on: the **last column
+    /// of its own half**, hard against the border. Red's is `border_x - 1`, Blue's is
+    /// `border_x`.
     ///
-    /// This is a shortest path through the *actual maze*, so no map surgery is
-    /// needed to give a seed somewhere to go — it threads the tunnels it is given.
-    /// Returns an empty path when the seed already sits at or past the stop column,
-    /// or when walls cut it off entirely (drift then simply never happens, which is
-    /// inert rather than a panic).
-    pub fn drift_path(&self, home: Pos, team: Team, margin: i32) -> Vec<Pos> {
-        // The last column the seed may occupy: `margin` short of its own front line.
-        // Red advances east toward `border_x - 1`; Blue advances west toward
-        // `border_x`. Clamp into the half so a silly `margin` cannot walk it out.
-        let stop_x = match team {
-            Team::Red => (self.border_x - 1 - margin).max(0),
-            Team::Blue => (self.border_x + margin).min(self.width - 1),
-        };
-        let reached = |p: Pos| match team {
-            Team::Red => p.x >= stop_x,
-            Team::Blue => p.x <= stop_x,
-        };
-        if reached(home) || !self.is_passable(home) {
+    /// Nothing but the border stops a large seed. It is not held back at some tuned
+    /// distance — it walks until it physically cannot go further without crossing,
+    /// and there it sits, on the seam, one step from an enemy raider who can take it
+    /// and bank it by stepping straight home. That is the whole pressure of the
+    /// mechanic: a seed you ignore does not merely become *reachable*, it becomes
+    /// nearly free. What it never does is cross on its own — a seed is stolen by a
+    /// raid, never conceded by the clock.
+    pub fn stop_column(&self, team: Team) -> i32 {
+        match team {
+            Team::Red => self.border_x - 1,
+            Team::Blue => self.border_x,
+        }
+    }
+
+    /// The tile a large seed born at `home` drifts toward — its own **lane** on the
+    /// border column.
+    ///
+    /// Each seed gets a distinct destination rather than "any tile in the column".
+    /// Targeting the column alone was subtly wrong: a shortest path finds whichever
+    /// tile of that column is nearest, so two seeds on one half funnel down the same
+    /// tunnel and come to rest side by side — two objectives collapsing into one
+    /// cluster that a single defender covers. Picking the reachable tile closest to
+    /// the seed's own spawn row keeps them in separate lanes, and `taken` stops two
+    /// seeds claiming the same one.
+    ///
+    /// Returns `None` when walls cut the border column off from this spawn; the seed
+    /// then simply never drifts, which is inert rather than a panic.
+    pub fn drift_target(&self, home: Pos, team: Team, taken: &[Pos]) -> Option<Pos> {
+        let stop_x = self.stop_column(team);
+        let reachable = self.home_distances(home, team);
+        let mut lanes: Vec<Pos> = (0..self.height)
+            .map(|y| Pos::new(stop_x, y))
+            .filter(|p| reachable.contains_key(p) && !taken.contains(p))
+            .collect();
+        // Nearest to the seed's own spawn row, ties broken by row for determinism.
+        lanes.sort_by_key(|p| ((p.y - home.y).abs(), p.y));
+        lanes.first().copied()
+    }
+
+    /// The shortest path through the maze from `from` to `to`, staying on `team`'s
+    /// half, **excluding** `from`. Used one step at a time as a large seed drifts, so
+    /// a seed knocked off its route (dropped by a tagged raider) simply re-paths from
+    /// wherever it landed.
+    ///
+    /// Neighbours are expanded in a fixed N/S/E/W order over a FIFO queue, so the path
+    /// is a deterministic function of the board — which it must be: the engine is
+    /// re-simulated from the input log on playback, and a path that varied between
+    /// runs would desync every replay.
+    pub fn path_to(&self, from: Pos, to: Pos, team: Team) -> Vec<Pos> {
+        if from == to || !self.is_passable(from) || !self.is_passable(to) {
             return Vec::new();
         }
-
-        // Breadth-first from `home` over passable tiles of this half only. Neighbours
-        // are expanded in a fixed N/S/E/W order and the queue is FIFO, so the path is
-        // a deterministic function of the board — which it must be: the engine is
-        // re-simulated from the input log on playback, and a path that varied between
-        // runs would desync every replay.
         let mut came_from: std::collections::HashMap<Pos, Pos> = std::collections::HashMap::new();
         let mut seen: std::collections::HashSet<Pos> = std::collections::HashSet::new();
         let mut queue: std::collections::VecDeque<Pos> = std::collections::VecDeque::new();
-        seen.insert(home);
-        queue.push_back(home);
+        seen.insert(from);
+        queue.push_back(from);
 
-        let mut goal: Option<Pos> = None;
+        let mut found = false;
         while let Some(cur) = queue.pop_front() {
-            if reached(cur) {
-                goal = Some(cur);
+            if cur == to {
+                found = true;
                 break;
             }
             for next in [
@@ -220,15 +245,15 @@ impl Board {
                 queue.push_back(next);
             }
         }
-
-        // Walk the parent chain back from the goal, then flip it. `home` is dropped:
-        // the path is the tiles the seed *moves to*, one per drift step.
-        let Some(goal) = goal else {
+        if !found {
             return Vec::new();
-        };
+        }
+
+        // Walk the parent chain back, then flip it. `from` is dropped: the path is the
+        // tiles the seed *moves to*, one per drift step.
         let mut path = Vec::new();
-        let mut cur = goal;
-        while cur != home {
+        let mut cur = to;
+        while cur != from {
             path.push(cur);
             cur = came_from[&cur];
         }
@@ -435,11 +460,38 @@ impl Board {
             .filter(|p| !taken.contains(p))
             .collect();
         deep.sort_by_key(|p| (p.x, p.y));
-        let left_large: Vec<Pos> = deep.into_iter().take(params.large_seeds_per_half).collect();
+
+        // Take the deepest tiles, but keep them APART. Depth alone puts them in the
+        // same back column on adjacent rows, and two large seeds that start together
+        // drift together — they converge on one rest tile and collapse into a single
+        // object a raider scoops up in one step. Spreading them makes each a separate
+        // problem for the defence, which is the entire point of having two.
+        let min_separation = (height / 3).max(2);
+        let mut left_large: Vec<Pos> = Vec::new();
+        for pos in &deep {
+            if left_large.len() >= params.large_seeds_per_half {
+                break;
+            }
+            let far_enough = left_large.iter().all(|other: &Pos| {
+                (pos.x - other.x).abs() + (pos.y - other.y).abs() >= min_separation
+            });
+            if far_enough {
+                left_large.push(*pos);
+            }
+        }
+        // A cramped maze may not offer that much room; rather than place fewer seeds
+        // than asked for, fall back to the deepest tiles left.
+        for pos in &deep {
+            if left_large.len() >= params.large_seeds_per_half {
+                break;
+            }
+            if !left_large.contains(pos) {
+                left_large.push(*pos);
+            }
+        }
 
         left_seeds.sort();
         left_jelly.sort();
-        let mut left_large = left_large;
         left_large.sort();
 
         // 4. Mirror everything to the right half.
