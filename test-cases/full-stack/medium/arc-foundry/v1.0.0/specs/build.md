@@ -21,7 +21,7 @@ is paid in rolls and not in money, and every stamp that is not kept firing still
 ## The build loop in one paragraph
 
 A **level** is one **build phase** plus the **wave** that follows it. At the start of
-each build phase you get a fresh allowance of **5 press stamps**. Each stamp costs
+each build phase you get a fresh allowance of **7 press stamps**. Each stamp costs
 **Charge**, drops a **random component of a random quality** onto a footprint you
 position, and starts **active** — firing and walling. You then shape those stamps and
 everything already on the board: keep the good rolls firing, **slag** the rest into
@@ -32,9 +32,9 @@ sealing a waypoint segment.
 
 ## Builds-per-level (fixed — constant across difficulty)
 
-- Each level grants a fixed **builds-per-level = 5** press stamps.
-- The allowance **refreshes** to 5 at the start of every build phase.
-- You may spend stamps during the build phase **or** during the live wave, up to 5
+- Each level grants a fixed **builds-per-level = 7** press stamps.
+- The allowance **refreshes** to 7 at the start of every build phase.
+- You may spend stamps during the build phase **or** during the live wave, up to 7
   that level. **Unused stamps do not carry over** — an unspent stamp is lost when the
   next build phase refreshes the allowance.
 - **Slagging, selling, and combining do not consume stamps** — only pulling the press
@@ -43,7 +43,7 @@ sealing a waypoint segment.
   the wave count and enemy toughness (`specs/modes.md`); the money rate and this
   allowance never change.
 
-The panel's scrap-press control shows the remaining stamps of the 5-per-level
+The panel's scrap-press control shows the remaining stamps of the 7-per-level
 allowance and the per-stamp cost (`specs/controls.md`, `specs/flow.md`).
 
 ## The stamp — the random roll (fixed odds)
@@ -178,4 +178,4 @@ tends to **lengthen** the Load's route between waypoints, never seal it
 (`specs/board.md`). Read the **next-wave preview** (`specs/flow.md`), pull the press,
 keep the rolls that answer the coming wave (`specs/enemies.md`), slag the rest into
 maze, and combine your matches up the ladder — then send the wave. That between-wave
-cycle, constrained by the 5-stamp allowance and the never-seal rule, is the game.
+cycle, constrained by the 7-stamp allowance and the never-seal rule, is the game.

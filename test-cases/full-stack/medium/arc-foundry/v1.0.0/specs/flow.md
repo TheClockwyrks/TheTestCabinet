@@ -70,7 +70,7 @@ presses against a maze that is still being built up.
   **fully refundable** while it lasts (`specs/build.md`) — the whole opening layout
   can be re-shaped without penalty.
 - Building is allowed during **both** the build phase and the live wave, subject to
-  the fixed allowance of **`5` press stamps per level** (`specs/build.md`).
+  the fixed allowance of **`7` press stamps per level** (`specs/build.md`).
 - During a wave, the Load spawns from the map's **Entry** over time (the exact
   timing and per-wave mix are specified in `specs/enemies.md`). A wave is
   **cleared** when every unit it released has either died or leaked. Clearing a
@@ -81,7 +81,7 @@ presses against a maze that is still being built up.
 - **Difficulty scaling.** Only the **wave count** `N` and the **enemy HP scaling**
   change with difficulty (`specs/modes.md`). A unit's HP on wave `w` is its base HP
   (`specs/enemies.md`) times `baseMult × (1 + k × (w − 1))`, where `baseMult` and
-  `k` are the difficulty's constants (Medium `baseMult = 1.0`, `k = 0.20`). Speeds,
+  `k` are the difficulty's constants (Medium `baseMult = 1.0`, `k = 0.26`). Speeds,
   bounties, and leak values do not scale, and every component stat is unchanged
   across waves — only the Load grows.
 - **Victory.** Clearing the **final wave** (Wave `N`) with **Grid Integrity
@@ -189,7 +189,7 @@ fully visible:
   wave's progress or the build-phase countdown, and the **speed**, **pause**, and
   **mute** controls. A clear `PAUSED` read shows while paused in place.
 - **Build panel** (`x` in `[1000, 1280]`): the **scrap-press** control (STAMP,
-  showing its `18` cost and the remaining stamps of the `5`-per-level allowance);
+  showing its `18` cost and the remaining stamps of the `7`-per-level allowance);
   the **selected-component inspector** (its type, quality tier, live stats — damage,
   range, fire rate, targeting — and the **SLAG / SELL / COMBINE** and **targeting**
   controls, with COMBINE shown only when a match exists, `specs/build.md`); the
@@ -212,7 +212,7 @@ targets:
   then a **DIFFICULTY SELECT** where they pick Easy / Medium / Hard, and plays the
   run on that map at that difficulty (`specs/board.md`, `specs/modes.md`).
 - **Difficulty changes only wave count and enemy toughness.** Starting Charge
-  (`130`), Grid Integrity (`20`), builds-per-level (`5`), stamp cost (`18`), the
+  (`130`), Grid Integrity (`20`), builds-per-level (`7`), stamp cost (`18`), the
   roster, and every economy value are identical on Easy / Medium / Hard
   (`specs/modes.md`).
 - Every component is also a **wall** and you **build the maze**: the Load traverses

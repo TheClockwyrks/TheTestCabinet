@@ -29,7 +29,7 @@ component to position on the grid (`specs/build.md`):
 
 1. **Pull the press.** Click the **STAMP** control in the build panel
    (`specs/board.md`), or press its hotkey **`B`**, to pull the press. Each pull
-   costs **18 Charge** and spends **one** of the level's fixed **5-stamp
+   costs **18 Charge** and spends **one** of the level's fixed **7-stamp
    allowance** (`specs/build.md`); STAMP is refused (clearly) when you cannot
    afford 18 or the allowance is spent. A pull immediately rolls a **random
    component type at a random quality** on the pinned odds (`specs/build.md`) —
@@ -51,7 +51,7 @@ A pull is committed once rolled — there is no cancel that refunds it — but a
 component placed during a build phase can be sold or slagged for its **full**
 invested value until that wave starts (`specs/build.md`, `specs/flow.md`), so the
 opening build is fully re-shapeable. Pulling is allowed during the build phase
-**and** during a live wave, up to the 5-stamp allowance (`specs/build.md`).
+**and** during a live wave, up to the 7-stamp allowance (`specs/build.md`).
 
 ## Selecting and inspecting a component
 

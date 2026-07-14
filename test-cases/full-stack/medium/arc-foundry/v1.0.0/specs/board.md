@@ -251,7 +251,7 @@ small icons may be produced sprites). It is always fully visible and holds, top 
 bottom:
 
 - **The scrap-press** — the **STAMP** control (`specs/build.md`), showing its `18`
-  Charge cost and the remaining stamps of the `5`-per-level allowance. Stamping rolls
+  Charge cost and the remaining stamps of the `7`-per-level allowance. Stamping rolls
   a random component type at a random quality (`specs/build.md`).
 - **The selected-component inspector** — when a placed component is selected, this
   area shows its type, its **quality tier**, and its live stats (damage, range, fire

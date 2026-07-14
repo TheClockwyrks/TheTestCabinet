@@ -70,8 +70,8 @@ tier, by these fixed rules:
   `×5.0`, T4 `×11`, T5 `×24`. The curve is deliberately **steep** so combining two
   components always out-damages the two it consumed (`specs/build.md`) — the
   board's power comes from *climbing*, not from flooding the yard with Scrap.
-- **Range** = base range **+ 6 px per tier above T1** (so T3 is `+12`, T5 is
-  `+24`).
+- **Range** = base range **+ 2 px per tier above T1** (so T3 is `+4`, T5 is
+  `+8`).
 - **Fire rate** is **flat across quality** — a component's firing cadence is part
   of its identity and never changes with tier. Quality is the power axis, cadence
   is the identity axis.
@@ -122,11 +122,11 @@ These are the **base** numbers every higher tier scales from (per the rules abov
 
 | Type | Range | Fire rate | Base dmg (T1) | Firing behavior |
 | --- | --- | --- | --- | --- |
-| **Capacitor** | 110 | 1.6 /s | 8 | single target |
-| **Coil** | 120 | 1.1 /s | 6 | chains to nearby extra targets (below) |
-| **Emitter** | 95 | 4.5 /s | 2 | single target, very fast |
-| **Arc-Node** | 105 | 0.9 /s | 7 | splash: all units within radius of impact (below) |
-| **Discharge Rig** | 170 | 0.5 /s | 22 | single target, long range |
+| **Capacitor** | 80 | 1.6 /s | 8 | single target |
+| **Coil** | 88 | 1.1 /s | 6 | chains to nearby extra targets (below) |
+| **Emitter** | 70 | 4.5 /s | 2 | single target, very fast |
+| **Arc-Node** | 78 | 0.9 /s | 7 | splash: all units within radius of impact (below) |
+| **Discharge Rig** | 130 | 0.5 /s | 22 | single target, long range |
 
 - **Capacitor** — the cheap, reliable workhorse: one clean bolt at a steady cadence.
   The component you keep active in numbers early and climb by combining.
@@ -186,15 +186,15 @@ splash radius.)
 
 ## Full range table (type × quality)
 
-Range in logical pixels, `base + 6·(tier − 1)` — **fixed**:
+Range in logical pixels, `base + 2·(tier − 1)` — **fixed**:
 
 | Type | T1 | T2 | T3 | T4 | T5 |
 | --- | --- | --- | --- | --- | --- |
-| **Capacitor** | 110 | 116 | 122 | 128 | 134 |
-| **Coil** | 120 | 126 | 132 | 138 | 144 |
-| **Emitter** | 95 | 101 | 107 | 113 | 119 |
-| **Arc-Node** | 105 | 111 | 117 | 123 | 129 |
-| **Discharge Rig** | 170 | 176 | 182 | 188 | 194 |
+| **Capacitor** | 80 | 82 | 84 | 86 | 88 |
+| **Coil** | 88 | 90 | 92 | 94 | 96 |
+| **Emitter** | 70 | 72 | 74 | 76 | 78 |
+| **Arc-Node** | 78 | 80 | 82 | 84 | 86 |
+| **Discharge Rig** | 130 | 132 | 134 | 136 | 138 |
 
 ## Cost, invested value, and selling
 

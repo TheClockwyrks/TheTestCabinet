@@ -366,6 +366,7 @@ reskin
 serpentines
 criss
 tanky
+arcnode
 # Arc Foundry reference-mockup CSS identifiers (harness-side only).
 integ
 tchip
