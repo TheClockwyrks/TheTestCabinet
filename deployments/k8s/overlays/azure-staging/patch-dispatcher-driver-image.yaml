@@ -21,6 +21,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:32a551de82dc3237ee32554a71e189a2bc534aa2"
+              value: "ghcr.io/theclockwyrks/tcab-driver:a74d14141c2b0e4d3be6edb0abeca95ea102baa6"
             - name: TCAB_CONTAINER_TAG
-              value: "320297191f77c1401e79fc43e00d809e96a82e96"
+              value: "a74d14141c2b0e4d3be6edb0abeca95ea102baa6"

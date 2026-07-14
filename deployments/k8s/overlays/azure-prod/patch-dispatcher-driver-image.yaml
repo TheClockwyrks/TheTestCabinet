@@ -11,14 +11,12 @@
 # service images and is NOT kept in lockstep: the run images only rebuild when the
 # `build-containers` workflow runs, so this tracks the latest sha at which that
 # workflow published multi-arch (amd64+arm64) run images — required for the arm64
-# nodes — which is `ba19bd69` (the v0.4.0 roll, when `build-containers` last published
-# because v0.4.0 reworked the run-container tooling). As of v0.4.1 this has DIVERGED
-# from the service-image pin (`b3c2b322`): the v0.4.1 changes touched only service
-# crates and the web/UI, none of the asset-generation/foray crates `build-containers`
-# watches, so no new run image exists and TCAB_CONTAINER_TAG stays at `ba19bd69`. Note
-# TCAB_DRIVER_IMAGE below is the driver SERVICE image and DOES move with the service
-# pin. Without this the base default (latest) would leave the run images tracking the
-# mutable tag.
+# nodes — which is `a74d1414` (the v0.5.0 roll). At v0.5.0 this is back IN lockstep
+# with the service-image pin (`a74d1414`): unlike v0.4.1, the v0.5.0 work touched the
+# asset-generation/foray crates `build-containers` watches, so it rebuilt the run
+# images at the same sha. Note TCAB_DRIVER_IMAGE below is the driver SERVICE image and
+# DOES move with the service pin. Without this the base default (latest) would leave
+# the run images tracking the mutable tag.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,6 +29,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:b3c2b32239a21aa9a324d58313a1d56361a25bcd"
+              value: "ghcr.io/theclockwyrks/tcab-driver:a74d14141c2b0e4d3be6edb0abeca95ea102baa6"
             - name: TCAB_CONTAINER_TAG
-              value: "ba19bd69c95402df6e443b08d94250a8aac73eab"
+              value: "a74d14141c2b0e4d3be6edb0abeca95ea102baa6"

@@ -96,72 +96,76 @@ function TournamentBody({
 
       <section className={styles.section}>
         <h2 className={styles.heading}>Standings</h2>
-        <div
-          className={styles.standings}
-          role="table"
-          aria-label="Tournament standings"
-        >
+        <Panel>
           <div
-            className={`${styles.standingsRow} ${styles.head}`}
-            role="row"
-            aria-hidden="true"
+            className={styles.standings}
+            role="table"
+            aria-label="Tournament standings"
           >
-            <span className={styles.rank}>#</span>
-            <span>CONTROLLER</span>
-            <span className={styles.num}>WINS</span>
-            <span className={styles.num}>W–L–D</span>
-          </div>
-          {record.standings.map((standing) => (
             <div
-              className={styles.standingsRow}
+              className={`${styles.standingsRow} ${styles.head}`}
               role="row"
-              key={standing.participantId}
+              aria-hidden="true"
             >
-              <span className={styles.rank}>{standing.rank}</span>
-              <span className={styles.controller}>
-                {labelFor(standing.participantId)}
-              </span>
-              <span className={styles.num}>
-                <span className={styles.wins}>{standing.wins}</span>{" "}
-                <span className={styles.winsUnit}>
-                  {standing.wins === 1 ? "win" : "wins"}
-                </span>
-              </span>
-              <span className={styles.num}>
-                {standing.wins}–{standing.losses}–{standing.draws}
-              </span>
+              <span className={styles.rank}>#</span>
+              <span>CONTROLLER</span>
+              <span className={styles.num}>WINS</span>
+              <span className={styles.num}>W–L–D</span>
             </div>
-          ))}
-        </div>
+            {record.standings.map((standing) => (
+              <div
+                className={styles.standingsRow}
+                role="row"
+                key={standing.participantId}
+              >
+                <span className={styles.rank}>{standing.rank}</span>
+                <span className={styles.controller}>
+                  {labelFor(standing.participantId)}
+                </span>
+                <span className={styles.num}>
+                  <span className={styles.wins}>{standing.wins}</span>{" "}
+                  <span className={styles.winsUnit}>
+                    {standing.wins === 1 ? "win" : "wins"}
+                  </span>
+                </span>
+                <span className={styles.num}>
+                  {standing.wins}–{standing.losses}–{standing.draws}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.heading}>Matches</h2>
-        <div
-          className={styles.matches}
-          role="table"
-          aria-label="Tournament matches"
-        >
+        <Panel>
           <div
-            className={`${styles.matchesRow} ${styles.head}`}
-            role="row"
-            aria-hidden="true"
+            className={styles.matches}
+            role="table"
+            aria-label="Tournament matches"
           >
-            <span>MATCH</span>
-            <span>WINNER</span>
-            <span className={styles.num}>TICKS</span>
-            <span className={styles.num}>KILLS</span>
-            <span />
+            <div
+              className={`${styles.matchesRow} ${styles.head}`}
+              role="row"
+              aria-hidden="true"
+            >
+              <span>MATCH</span>
+              <span>WINNER</span>
+              <span className={styles.num}>TICKS</span>
+              <span className={styles.num}>KILLS</span>
+              <span />
+            </div>
+            {record.matches.map((match) => (
+              <MatchRow
+                key={match.matchId}
+                match={match}
+                labelFor={labelFor}
+                onReplay={() => setOpenMatch(match)}
+              />
+            ))}
           </div>
-          {record.matches.map((match) => (
-            <MatchRow
-              key={match.matchId}
-              match={match}
-              labelFor={labelFor}
-              onReplay={() => setOpenMatch(match)}
-            />
-          ))}
-        </div>
+        </Panel>
       </section>
 
       {openMatch &&

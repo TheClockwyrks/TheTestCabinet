@@ -75,14 +75,67 @@
 .groupTitle {
   display: flex;
   align-items: baseline;
-  gap: t.$space-sm;
-  color: t.$color-text;
+  // 50% wider than the standard row gap, to separate the (orange) case name from
+  // its muted variant/version.
+  gap: calc(#{t.$space-sm} * 1.5);
+  // The case name takes the theme's orange; the variant/version span below stays
+  // muted via its own color.
+  color: t.$color-accent;
   font-size: t.$font-lg;
 }
 
 .groupVersion {
   color: t.$color-text-muted;
   font-size: t.$font-sm;
+}
+
+// The right side of a case's header row: the optional staleness pill followed by
+// the case-wide progress rollup, kept together and pushed to the far right by the
+// header's space-between.
+.groupRight {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+// The case-wide progress: a bar over every combination's runs, plus its
+// done/desired count. Mirrors the per-cell bar but reads as the row's summary.
+.groupProgress {
+  display: flex;
+  align-items: center;
+  // Match the per-cell row's label/bar/count spacing (`.cell` uses `$space-md`).
+  gap: t.$space-md;
+}
+
+.groupBar {
+  display: flex;
+  width: 8rem;
+  height: 0.5rem;
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+  overflow: hidden;
+}
+
+// The completed (green) and in-flight (amber) segments, laid side by side.
+.groupBarDone {
+  display: block;
+  height: 100%;
+  background: t.$color-positive;
+  transition: width 0.2s ease;
+}
+
+.groupBarFlight {
+  display: block;
+  height: 100%;
+  background: t.$color-warning;
+  transition: width 0.2s ease;
+}
+
+.groupCount {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
 }
 
 // The "v1.2.0 → v1.3.0 ↑" pill: shown when the pinned version is stale, and a
@@ -136,22 +189,26 @@
 }
 
 .cellBar {
-  display: block;
+  display: flex;
   height: 0.5rem;
   background: t.$color-bg-2;
   border-radius: t.$radius-sm;
   overflow: hidden;
 }
 
-.cellBarFill {
+// The completed (green) and in-flight (amber) segments, laid side by side.
+.cellBarDone {
   display: block;
   height: 100%;
-  background: t.$color-accent;
+  background: t.$color-positive;
   transition: width 0.2s ease;
+}
 
-  .cellDone & {
-    background: t.$color-positive;
-  }
+.cellBarFlight {
+  display: block;
+  height: 100%;
+  background: t.$color-warning;
+  transition: width 0.2s ease;
 }
 
 .cellCount {
@@ -160,8 +217,15 @@
   white-space: nowrap;
 }
 
-.cellInFlight {
-  color: t.$color-accent;
+// Hold the trigger button's width steady across its "Trigger one" / "Covered"
+// states so the column edge never jumps as cells fill. Sized to the wider
+// "Trigger one" label exactly: in the monospace `--ttc-font`, 11 chars == 11ch,
+// plus the shared button's 1.5rem side padding and 1px borders (border-box). A
+// plain rem min-width has to be guessed against the font's advance and silently
+// fails to engage if it undershoots.
+.cellButton {
+  min-width: calc(11ch + #{t.$space-lg} * 2 + #{t.$border-hairline} * 2);
+  text-align: center;
 }
 
 // The in-page plan editor.

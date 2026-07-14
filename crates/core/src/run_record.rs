@@ -70,6 +70,19 @@ impl HarnessSlug {
         )
     }
 
+    /// Whether this harness reaches its model **through a provider route** whose
+    /// prefix is prepended to the model id at launch — true only for OpenCode and
+    /// Kilo Code, which pass the id verbatim to a CLI that routes through OpenRouter
+    /// and so must launch with the `openrouter/` prefix (see
+    /// [`crate::model_id::launch_model_id`]). The other OpenRouter-authenticated
+    /// harnesses (Cline, Goose, Pi) pass a provider flag internally and launch the
+    /// id unprefixed, so they are **not** included here — contrast the broader
+    /// [`Self::routes_through_openrouter`]. Mirrors the run form's
+    /// `PROVIDER_HARNESSES` set in `packages/ui/src/app/data/providers.ts`.
+    pub fn uses_provider(self) -> bool {
+        matches!(self, HarnessSlug::Opencode | HarnessSlug::Kilo)
+    }
+
     /// The wire slug for this harness, matching the serde representation.
     pub fn as_str(&self) -> &'static str {
         match self {

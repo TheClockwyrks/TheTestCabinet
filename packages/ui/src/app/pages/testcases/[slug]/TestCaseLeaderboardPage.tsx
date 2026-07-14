@@ -1,4 +1,5 @@
 import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { useCaseRunSummaries } from "../../../data/useRuns";
@@ -8,11 +9,15 @@ import {
   RATINGS,
   scoreChecklist,
   worstRating,
+  type ParsedWriteup,
   type Rating,
 } from "../../../data/ratings";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
-import { ColumnMenu, type ColumnMenuHandle } from "../../../components/ColumnMenu";
+import {
+  ColumnMenu,
+  type ColumnMenuHandle,
+} from "../../../components/ColumnMenu";
 import { useColumnVisibility } from "../../../components/useColumnVisibility";
 import { formatCompact, formatUsd, totalTokens } from "../../../format";
 import styles from "./TestCaseLeaderboardPage.module.scss";
@@ -241,22 +246,23 @@ function LeaderboardContent({
         continue;
       }
       // Only a completed run can be ranked: a failed run produced no result and
-      // is never reviewable, so it carries no score. (It has no review either, so
-      // this also guards the scoring below.)
+      // is never reviewable, so it carries no score.
       if (run.state !== "completed") continue;
-      const review = findReview(run.id, localWriteups);
-      if (!review || review.ratings.length === 0) continue;
-      const { earned, total } = scoreChecklist(
-        variant.reviewItems,
-        review.checklist,
-      );
+      // The run's earned/total points and overall rating, read from whichever
+      // source this host populated: a published run arrives as a summary card the
+      // backend/snapshot already enriched with its aggregate score + rating (the
+      // console holds no per-review checklist for it once the summary/detail split
+      // stopped loading whole records), while a local, not-yet-published console
+      // run is scored from its preview writeup. Null drops the run off the board.
+      const scored = resolveRunScore(run, variant, findReview, localWriteups);
+      if (!scored) continue;
+      const { earned, total, rating: overall } = scored;
       // Canonicalized (harness-aware) so an `openrouter/`-prefixed or `:free`-tagged
       // run and its base form fold into one model, not two rows.
       const modelId = canonicalModelId(
         run.subject.modelId,
         run.subject.harnessSlug,
       );
-      const overall = worstRating(review.ratings.map((r) => r.rating));
       // Null when the run's comparable cost / token total is unknown; such runs
       // are excluded from the respective mean rather than folded in as zero.
       const cost = run.metrics.cost.comparable;
@@ -389,6 +395,47 @@ function LeaderboardContent({
       </Panel>
     </section>
   );
+}
+
+// Resolve one run's board contribution — the points it earned, the points
+// available, and its overall rating — from whichever source this host populated.
+//
+// A published run reaches the leaderboard as a summary card the backend (console)
+// or snapshot builder (static site) already enriched with its aggregate `score`
+// (mean earned weight over the shared total) and `rating`; since the summary/detail
+// split, the console no longer loads a published run's full record eagerly, so its
+// per-review checklist is not on hand to re-derive these — the enriched fields are.
+// A console's own produced (local, not-yet-published) run carries no enriched score,
+// so it falls back to the locally-previewed writeup that only such runs have and
+// scores it against the variant's checklist. Returns null when the run has no
+// resolvable review, so it drops off the board.
+export function resolveRunScore(
+  run: RunSummary,
+  variant: VariantSummary,
+  findReview: (
+    runId: string,
+    override?: Readonly<Record<string, string>>,
+  ) => ParsedWriteup | undefined,
+  localWriteups: Readonly<Record<string, string>>,
+): { earned: number; total: number; rating: Rating | null } | null {
+  if (run.score) {
+    return {
+      earned: run.score.earned,
+      total: run.score.total,
+      rating: run.rating,
+    };
+  }
+  const review = findReview(run.id, localWriteups);
+  if (!review || review.ratings.length === 0) return null;
+  const { earned, total } = scoreChecklist(
+    variant.reviewItems,
+    review.checklist,
+  );
+  return {
+    earned,
+    total,
+    rating: worstRating(review.ratings.map((r) => r.rating)),
+  };
 }
 
 // The mean of `values`, or null when there are none — so a metric with no

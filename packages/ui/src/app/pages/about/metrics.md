@@ -14,5 +14,5 @@ implementation can't be scored by a machine, which is exactly why we publish the
 playable builds.
 
 Every implementation is released as code you can clone and run locally. The
-point of The Test Cabinet isn't to crown a winner — it's to show, honestly and
-publicly, what today's models and harnesses can and can't build.
+point of The Test Cabinet isn't to crown a winner. It's to show what today's
+models and harnesses can and can't build.

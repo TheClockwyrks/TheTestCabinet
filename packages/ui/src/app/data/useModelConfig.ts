@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useAuth } from "../../client/auth";
-import { useBackend } from "../../client/context";
+import { useOptionalBackend } from "../../client/context";
 import type { Model, ModelInput, ModelSeed } from "../../client/types";
 import { useGalleryData } from "./galleryContext";
 
@@ -35,7 +35,10 @@ export interface ModelConfigApi {
  */
 export function useModelConfig(): ModelConfigApi | null {
   const { canExecute } = useGalleryData();
-  const { client } = useBackend();
+  // The static site mounts no `BackendProvider`; treat its absence like an
+  // unconfigured backend so the model-config affordance simply hides there
+  // rather than crashing the page.
+  const client = useOptionalBackend()?.client ?? null;
   const { token } = useAuth();
 
   return useMemo<ModelConfigApi | null>(() => {

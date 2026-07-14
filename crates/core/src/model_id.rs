@@ -50,6 +50,34 @@ pub fn canonical_model_id(model_id: &str, harness: HarnessSlug) -> String {
     base.to_string()
 }
 
+/// The default (and, today, only) provider a provider-routed harness reaches its
+/// model through. Mirrors `OPENROUTER_PROVIDER` in the run form
+/// (`packages/ui/src/app/data/providers.ts`).
+const OPENROUTER_PROVIDER: &str = "openrouter";
+
+/// The model id a run is actually **launched** with — the value stored on the
+/// enqueued job and reported by the harness on the produced run, and so the value
+/// coverage counting must match against.
+///
+/// Mirrors the run form's `resolveLaunchModel`: OpenCode and Kilo Code
+/// (see [`HarnessSlug::uses_provider`]) reach their model *through a provider*, so
+/// under the OpenRouter provider their canonical id gains the `openrouter/` prefix
+/// — never double-prefixed. Every other harness (and any non-OpenRouter provider)
+/// launches its id verbatim. `provider` is `None` when the plan combination pinned
+/// none; it then defaults to OpenRouter, exactly as the form's per-combination
+/// `provider ?? OPENROUTER_PROVIDER` fallback does.
+pub fn launch_model_id(model_id: &str, harness: HarnessSlug, provider: Option<&str>) -> String {
+    let provider = provider.unwrap_or(OPENROUTER_PROVIDER);
+    if harness.uses_provider()
+        && provider == OPENROUTER_PROVIDER
+        && !model_id.starts_with(OPENROUTER_PREFIX)
+    {
+        format!("{OPENROUTER_PREFIX}{model_id}")
+    } else {
+        model_id.to_string()
+    }
+}
+
 /// The exact id to query OpenRouter with for a run's comparable price.
 ///
 /// This is the canonical id (see [`canonical_model_id`]) with one provider-prefix

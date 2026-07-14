@@ -16,6 +16,15 @@ The backend regenerates the whole snapshot from its full published set on each
 (coalesced) publish, uploads it, and swaps it into place. Regenerating
 everything rather than applying deltas keeps the operation idempotent.
 
+The JSON documents (the index, run summaries, per-run records, case metadata) are
+small and are rewritten every publish. A run's **media** — proof images/videos and
+an asset-generation run's produced images/logs — is not: it is immutable once a run
+is published, so it lives under a content-stable [`media/`](#run-media) prefix keyed
+by the run id (outside any single snapshot's prefix), is uploaded **once**, and is
+referenced by every later snapshot instead of being re-read and re-uploaded. This is
+what keeps a publish cheap as asset-generation runs accumulate, and it lets a publish
+keep a run's media even after the volumes the bytes were read from are gone.
+
 ## Atomic swap
 
 A site build must never read a half-written dataset. To guarantee that, the
@@ -33,10 +42,19 @@ Old prefixes can be garbage-collected after a grace period.
 ```text
 index.json                                                              # top-level pointer (overwritten last)
 snapshots/<snapshotId>/runs.json                                        # the run index — summaries (published runs only)
-snapshots/<snapshotId>/runs/<run-id>.json                               # per-run: record + reviews + links
+snapshots/<snapshotId>/runs/<run-id>.json                               # per-run: record + reviews + links + media keys
 snapshots/<snapshotId>/cases/<slug>/<version>.json                      # per-case-version metadata
 snapshots/<snapshotId>/cases/<slug>/<version>/references/<scope>/<view>.png  # rendered reference baselines
+media/runs/<run-id>/proof/<proof-id>.<ext>                              # a run's proof media (content-stable; shared across snapshots)
+media/runs/<run-id>/asset/<file>                                        # an asset-generation run's produced media (same)
 ```
+
+The JSON documents and rendered baselines live under the per-snapshot
+`snapshots/<snapshotId>/` prefix and are rewritten each publish. Run **media** lives
+under the snapshot-independent `media/runs/<run-id>/` prefix (see [Run media](#run-media))
+and is written once. A per-run document references its media by these snapshot-relative
+`media/…` keys, so the atomic `index.json` swap still points a site build at a complete,
+self-consistent dataset.
 
 `<scope>` is `_common` for a reference shown on every variant, or a variant slug
 for one scoped to that variant. Each case-metadata file names its baselines by
@@ -140,6 +158,35 @@ export is rewritten.
 ```
 
 Schema: [`snapshot/run.schema.json`](https://docs.testcabinet.ai/schema/snapshot/run.schema.json).
+
+## Run media
+
+A per-run document names its media by snapshot-relative key: `proofMedia[]` for the
+proof-of-implementation images/videos, `assetMedia[]` for an asset-generation run's
+produced images and action logs. Those keys point under `media/runs/<run-id>/`, **not**
+the per-snapshot prefix. A published run's media never changes, so it is keyed by the
+run id and written **once**:
+
+- On each publish the builder lists what is already under `media/runs/` and, for any
+  media object that is already there, references it in the per-run document **without
+  reading the source bytes or re-uploading** — so a run's media is exported exactly
+  once across all snapshots, and a video is transcoded ([webm→mp4](#atomic-swap), for
+  iOS playback) exactly once.
+- Only media not yet in the bucket is read (from the backend store, falling back to
+  the [artifact service](/components/artifacts/overview/)) and uploaded.
+
+Two consequences follow. First, a publish stays cheap as asset-generation runs
+accumulate — it re-uploads only new media, not the entire corpus each time. Second,
+because the media already in the bucket is referenced without needing its source
+bytes, a publish keeps a run's media even when the volumes it was originally read from
+have been lost — for example after a cluster is recreated, which wipes the backend
+store (an ephemeral volume) and the artifact service's disk. To re-seed the bucket
+from a prior snapshot in that recovery case, see
+`scripts/recover-run-media-from-snapshot.sh`.
+
+The media prefix is never garbage-collected today (neither are old snapshot prefixes);
+a run's media at `media/runs/<run-id>/` is orphaned but harmless once the run is
+deleted, since no snapshot references it. Pruning it is a future cleanup.
 
 ## `cases/<slug>/<version>.json` — case metadata
 
