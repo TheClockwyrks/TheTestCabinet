@@ -81,7 +81,7 @@ for (const f of FACINGS) for (const i of STEPS) FRAME_PLAN.push(`raider_${f}_${i
 for (const f of FACINGS) for (const i of STEPS) FRAME_PLAN.push(`raider_laden_${f}_${i}`);
 // Note: the immune (royal-jelly) aura is NOT a sheet frame — the renderer draws
 // it procedurally as a breathing additive glow over an immune agent.
-FRAME_PLAN.push("seed", "jelly_active", "jelly_spent", "nest");
+FRAME_PLAN.push("seed", "large_seed", "jelly_active", "jelly_spent", "nest");
 for (let m = 0; m < 16; m++) FRAME_PLAN.push(`wall_${m}`);
 FRAME_PLAN.push("border_cap_top", "border_mid", "border_cap_bottom", "floor");
 
@@ -178,6 +178,18 @@ const PLACEHOLDER = {
   seed: (cx, cy) => {
     rect(cx, cy, 5, 5, 10, 10, COL.seed);
     rect(cx, cy, 6, 4, 9, 4, COL.seed);
+  },
+  // The large seed reads as the ordinary seed's big sibling: the same seed colour,
+  // filling most of the cell, with an outline so it stays legible against the floor
+  // and a bright core so it is obvious at a glance which of the two you are looking
+  // at. It is worth three ordinary seeds and it MOVES, so it has to be the thing the
+  // eye lands on first.
+  large_seed: (cx, cy) => {
+    rect(cx, cy, 3, 3, 12, 12, COL.outline);
+    rect(cx, cy, 4, 4, 11, 11, COL.seed);
+    rect(cx, cy, 6, 6, 9, 9, COL.accent);
+    rect(cx, cy, 5, 2, 10, 2, COL.seed);
+    rect(cx, cy, 5, 13, 10, 13, COL.seed);
   },
   jelly_active: (cx, cy) => {
     rect(cx, cy, 4, 4, 11, 11, COL.jelly);
