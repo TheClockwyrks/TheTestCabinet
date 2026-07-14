@@ -170,7 +170,21 @@ pub struct OwnAgentView {
     pub x: i32,
     pub y: i32,
     pub role: Role,
+    /// **Ordinary** seeds held. A large seed is not counted here — see
+    /// [`carrying_large`](OwnAgentView::carrying_large) and
+    /// [`load`](OwnAgentView::load).
     pub carrying: u32,
+    /// **Large** seeds held. Each is worth (and weighs) `large_seed_value`.
+    pub carrying_large: u32,
+    /// The agent's total load in seed-equivalents: `carrying + value * carrying_large`.
+    ///
+    /// This is the number that actually matters, and it is given rather than left to
+    /// be derived, because deriving it wrongly is silent: it is **both** what the
+    /// agent banks if it gets home **and** what carry-weight charges it to move. Read
+    /// `carrying` alone and a raider hauling nothing but a large seed looks unladen
+    /// while it is in fact three seeds heavy — one ordinary seed away from losing its
+    /// speed edge over a soldier.
+    pub load: u32,
     pub immune_ticks: u32,
     /// Whether this agent may move this tick under carry-weight (see
     /// [`crate::state::Agent::can_move_this_tick`]). A move submitted for an
@@ -187,7 +201,14 @@ pub struct EnemyAgentView {
     pub x: i32,
     pub y: i32,
     pub role: Role,
+    /// **Ordinary** seeds held.
     pub carrying: u32,
+    /// **Large** seeds held.
+    pub carrying_large: u32,
+    /// Total load in seed-equivalents — how much this enemy raider is worth denying,
+    /// and how slow it is. An enemy hauling a large seed is a fat, slow target; read
+    /// `carrying` alone and it looks empty.
+    pub load: u32,
     pub immune_ticks: u32,
 }
 
@@ -298,6 +319,8 @@ impl World {
                 y: a.pos.y,
                 role: a.role(board),
                 carrying: a.carrying,
+                carrying_large: a.carrying_large,
+                load: a.load(rules),
                 immune_ticks: a.immune_ticks,
                 can_move_this_tick: a.can_move_this_tick(board, rules),
             })
@@ -313,6 +336,8 @@ impl World {
                 y: a.pos.y,
                 role: a.role(board),
                 carrying: a.carrying,
+                carrying_large: a.carrying_large,
+                load: a.load(rules),
                 immune_ticks: a.immune_ticks,
             })
             .collect();
