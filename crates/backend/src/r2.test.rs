@@ -33,6 +33,49 @@ fn trim_scheme_recovers_host() {
 }
 
 #[test]
+fn parse_list_keys_extracts_every_key() {
+    let xml = "<?xml version=\"1.0\"?><ListBucketResult>\
+        <Contents><Key>media/runs/a/proof/title.png</Key><Size>1</Size></Contents>\
+        <Contents><Key>media/runs/b/asset/regenerated-0.png</Key></Contents>\
+        </ListBucketResult>";
+    assert_eq!(
+        parse_list_keys(xml),
+        vec![
+            "media/runs/a/proof/title.png".to_string(),
+            "media/runs/b/asset/regenerated-0.png".to_string(),
+        ],
+    );
+    // An empty listing yields no keys.
+    assert!(parse_list_keys("<ListBucketResult></ListBucketResult>").is_empty());
+}
+
+#[test]
+fn parse_list_keys_decodes_xml_entities() {
+    let xml = "<Contents><Key>a&amp;b/c.json</Key></Contents>";
+    assert_eq!(parse_list_keys(xml), vec!["a&b/c.json".to_string()]);
+}
+
+#[test]
+fn continuation_token_present_only_when_truncated() {
+    let truncated = "<IsTruncated>true</IsTruncated>\
+        <NextContinuationToken>1abc/def=</NextContinuationToken>";
+    assert_eq!(
+        parse_next_continuation_token(truncated),
+        Some("1abc/def=".to_string())
+    );
+    // No token element → the listing is complete.
+    assert_eq!(
+        parse_next_continuation_token("<IsTruncated>false</IsTruncated>"),
+        None
+    );
+    // An empty token element is treated as complete, not an empty page cursor.
+    assert_eq!(
+        parse_next_continuation_token("<NextContinuationToken></NextContinuationToken>"),
+        None
+    );
+}
+
+#[test]
 fn signing_chain_matches_aws_known_vector() {
     // AWS SigV4 documented test vector: deriving the signature for the example
     // string-to-sign with the example key proves the HMAC chain is correct.

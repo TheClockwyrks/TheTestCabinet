@@ -36,7 +36,11 @@ export async function launchBatch(
   for (const item of items) {
     try {
       const runId = await worker.client.launchRun(item.config, token);
-      track({ ...item.track, runId, state: "running" });
+      // A just-enqueued run is `queued` on the backend, not yet `running` — it may
+      // even be held back to `pending` if its harness is at its parallelism cap. Show
+      // the honest initial phase; the active-list reconcile advances it (queued →
+      // pending/starting → running) as the backend reports each transition.
+      track({ ...item.track, runId, state: "queued" });
       results.push({ runId });
     } catch (e) {
       results.push({ error: String(e) });

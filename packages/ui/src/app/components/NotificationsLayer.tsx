@@ -86,12 +86,18 @@ export function NotificationsLayer() {
 
       // toastId dedupes if the same completion is delivered twice (e.g. a brief
       // reconnect); the container owns the close/auto-dismiss behavior.
-      toast(({ closeToast }) => (
-        <NotificationToast notification={notification} closeToast={closeToast} />
-      ), {
-        toastId: notification.id,
-        type: push.outcome === "failed" ? "error" : "success",
-      });
+      toast(
+        ({ closeToast }) => (
+          <NotificationToast
+            notification={notification}
+            closeToast={closeToast}
+          />
+        ),
+        {
+          toastId: notification.id,
+          type: push.outcome === "failed" ? "error" : "success",
+        },
+      );
     },
     [add],
   );
@@ -114,8 +120,12 @@ export function NotificationsLayer() {
         : { ok: false },
     );
     const runtime = runtimeRef.current;
-    const { toTrack, toRemove } = reconcileActiveRuns(runtime.inProgress, results);
+    const { toTrack, toUpdate, toRemove } = reconcileActiveRuns(
+      runtime.inProgress,
+      results,
+    );
     for (const activeRun of toTrack) runtime.track(activeRun);
+    for (const { runId, state } of toUpdate) runtime.update(runId, { state });
     for (const runId of toRemove) runtime.remove(runId);
     // A pruned run has finished; nudge the data source to re-read produced runs so
     // it reappears as a completed run rather than simply vanishing.
