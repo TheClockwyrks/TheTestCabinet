@@ -21,6 +21,7 @@ durably somewhere else.
 | Ingest checkout (`TCAB_BACKEND_CHECKOUT`) | On disk | Yes — it is a git checkout |
 | The [public snapshot](/components/backend/snapshot/) | Cloudflare R2 | Yes — regenerated from the database |
 | Run **outputs** (produced code, playable builds) | Per-run GitHub repos + Cloudflare Pages | Yes — already hosted and replicated there |
+| Run **media** (proof images/videos, produced asset images/logs) | The [artifact service](/components/artifacts/overview/) PVC — and, once published, the R2 [snapshot](/components/backend/snapshot/) under `media/runs/` | Yes — the published copy in R2 is durable; see [recreating a cluster](#recreating-a-cluster) |
 
 So "back up the runs" reduces to "continuously back up one small database" — a
 SQLite file when the backend runs on SQLite, or a managed instance's provider
@@ -43,6 +44,32 @@ is not a substitute for real backups — it is the *public* view and only as fre
 as the last upload — but it means the worst case from losing the database is
 "lose what changed since the last snapshot," not "lose everything." Treat it as
 defense in depth, not your backup.
+
+### Recreating a cluster
+
+If the whole cluster is deleted and recreated while the database survives (an
+external managed PostgreSQL, or a restored SQLite file), the on-cluster volumes do
+not come back with it: the backend's definition store is an ephemeral volume, and
+the [artifact service](/components/artifacts/overview/)'s PVC is a per-cluster disk
+that a full delete destroys. The database still holds every published run, so the
+site is not lost — but the next publish regenerates the snapshot from those
+now-empty volumes, so mind the order of recovery:
+
+1. **Definition store** — re-ingested automatically by the in-pod ingest sidecar on
+   backend start, or on demand with `scripts/reingest-cluster.sh --env <env>`. This
+   restores case metadata, reference baselines, and seeded specs.
+2. **Run media** — the proof/asset bytes are gone from both wiped volumes, but the
+   previous [snapshot](/components/backend/snapshot/) still holds them in R2 (there
+   is no snapshot GC). Re-seed them with
+   `scripts/recover-run-media-from-snapshot.sh --env <env> --source-prefix <prior-snapshots/-prefix>`,
+   which copies each run's media from that prior snapshot back into the store and
+   triggers one refresh. Once the media lands under the content-stable `media/runs/`
+   prefix, later publishes reference it without needing the wiped volumes again.
+
+Do this **before** relying on any publish: a refresh that runs against empty volumes
+(with no recovery) re-exports every run with empty media and cuts the live gallery
+over to it. The media bytes are not lost — they linger in the prior R2 prefix — but
+the live snapshot no longer points at them until you recover.
 
 ## The database choice is linked to where the backend runs
 
