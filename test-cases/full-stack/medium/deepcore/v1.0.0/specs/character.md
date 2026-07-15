@@ -42,10 +42,13 @@ collision is against the tile grid.
   border, or lava; it rests on top of solid tiles and is stopped by walls. It fits in
   a single tile, so a one-tile-wide tunnel is passable.
 
-Movement speeds (logical px/s): **walk / lateral** `150`, **fall terminal** `420`,
+Movement speeds (logical px/s): **walk / lateral** `150`, **fall terminal** `600`,
 **thrust (net climb at full hold)** `200`. Gravity `900 px/s^2`. These are the
 reference feel; tune within a natural range but keep falling faster than climbing so
-depth is easy to gain and expensive to undo.
+depth is easy to gain and expensive to undo. Terminal is high enough that a fall keeps
+accelerating over several tiles before it caps, so **landing speed genuinely separates a
+short hop from a full-depth plunge** — which is what makes fall impact (`specs/hazards.md`)
+scale sensibly instead of maxing out after a tile or two.
 
 ## Drilling
 
