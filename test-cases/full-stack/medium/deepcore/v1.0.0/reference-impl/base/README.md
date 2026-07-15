@@ -29,14 +29,18 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
   physics: gravity, a fuel-burning jetpack (the only way up), and a drill that bites
   **down / left / right, never up**.
 - **The loop** — dig ore → jetpack home → **sell** at the Ore Market → **buy fuel and
-  hull repair** at the Fuel Depot and **buy upgrades** (fuel, drill, cargo, hull, scanner)
-  → dig deeper. Nothing refills for free — fuel and repair are a paid sink, so the tension
-  is both getting home before the tank runs dry *and* affording the trip back down.
+  hull repair** at the Fuel Depot and **buy upgrades** (fuel, drill, cargo, hull, jetpack,
+  radiator, scanner) → **save** at the Save Pad → dig deeper. Nothing refills for free —
+  fuel and repair are a paid sink, so the tension is both getting home before the tank runs
+  dry *and* affording the trip back down. The cargo bay caps ore by **slot count**; ore
+  also has **weight** the jetpack must lift — open the **inventory** (`I`) to **drop** ore
+  when overloaded.
 - **The climax** — extract the **Core Sample** (a 90-second destabilization timer starts),
   race back up past the lava, **fabricate the Ignition Core**, and **launch**.
-- **Modes** — the mine and balance are identical; only death differs. **Standard** drops
-  your haul as a retrievable cache and respawns you at the surface; **Hardcore** ends the
-  run.
+- **Modes** — the mine and balance are identical; only death differs. **Standard** lets you
+  **restore from your last save**; **Hardcore** deletes the save and ends the run.
+- **Saving** — the surface **Save Pad** is the only way to save (one slot); **CONTINUE** on
+  the main menu resumes it.
 
 ## Install
 
@@ -73,7 +77,8 @@ correctly at a host root **or** under a per-run sub-path like `/runs/<id>/build/
 | `A` / `D` or `←` / `→` | Move & drill sideways |
 | `S` or `↓` | Drill down |
 | `W` / `↑` / `Space` | Fire the jetpack (climb; burns fuel) |
-| `E` / `Enter` or click a building | Open a surface building panel |
+| `E` / `Enter` or click a building | Open a surface building panel (Fuel Depot, Ore Market, Save Pad, Upgrade Shop, Launch Pad) |
+| `I` or the **BAG** button | Open the inventory (cargo hold) to review and **drop** ore |
 | `Esc` | Pause (also closes an open panel) |
 | `M` | Mute / unmute |
 | Mouse | Menus, panels, and the SELL / BUY / FABRICATE / LAUNCH buttons |

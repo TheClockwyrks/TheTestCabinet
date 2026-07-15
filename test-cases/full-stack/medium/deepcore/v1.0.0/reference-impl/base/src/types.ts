@@ -150,15 +150,6 @@ export type Mode = "standard" | "hardcore";
 
 export type DeathCause = "fuel-out" | "hull-destroyed" | "core-detonation";
 
-/** A retrievable cache dropped at a Standard death site (never holds the Core Sample). */
-export interface DeathCache {
-  col: number;
-  row: number;
-  cargo: Cargo;
-  resonite: number;
-  cryenite: number;
-}
-
 // ---------------------------------------------------------------------------
 // Game states (specs/flow.md)
 // ---------------------------------------------------------------------------
@@ -172,13 +163,20 @@ export type GamePhase =
   | "victory"
   | "game-over";
 
-/** Which surface building overlay is open, if any. */
+/**
+ * Which overlay panel is open, if any. The first four are the surface buildings (opened
+ * only at the camp); `save-pad` is the fifth surface building; `inventory` is the cargo
+ * hold, openable ANYWHERE (surface or mid-dig) to review and drop ore (specs/mining.md,
+ * specs/flow.md).
+ */
 export type OpenPanel =
   | null
   | "fuel-depot"
   | "ore-market"
   | "upgrade-shop"
-  | "launch-pad";
+  | "launch-pad"
+  | "save-pad"
+  | "inventory";
 
 /** End-screen run summary (specs/flow.md — not persisted). */
 export interface RunSummary {
@@ -213,7 +211,6 @@ export interface GameState {
   coreTimer: number | null;
   deepestRow: number;
   elapsedSeconds: number;
-  cache: DeathCache | null;
   summary: RunSummary | null;
 }
 

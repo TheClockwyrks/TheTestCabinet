@@ -37,6 +37,7 @@ import { SURFACE_BUILDINGS } from "./game";
 import type { Game } from "./game";
 import { MINER_H, MINER_W, SURFACE_FEET_Y, minerCenterX, minerCenterY } from "./physics";
 import { cargoValue, fuelCost, fuelDeficit, hullDeficit, nextUpgradePrice, repairCost } from "./economy";
+import { hasSave } from "./save";
 import { canFabricate, hasMaterial, nextComponent, allInstalled } from "./rocket";
 import type { Assets } from "./assets";
 import { isReady } from "./assets";
@@ -81,11 +82,14 @@ const FPS: Record<MinerState, number> = {
 
 export function menuItems(game: Game): MenuItem[] {
   switch (game.phase) {
-    case "title":
-      return [
-        { label: "NEW EXPEDITION", action: "nav:mode-select" },
-        { label: "HOW TO PLAY", action: "nav:how-to" },
-      ];
+    case "title": {
+      // CONTINUE appears only when a saved expedition exists (specs/flow.md).
+      const items: MenuItem[] = [];
+      if (hasSave()) items.push({ label: "CONTINUE", action: "continue" });
+      items.push({ label: "NEW EXPEDITION", action: "nav:mode-select" });
+      items.push({ label: "HOW TO PLAY", action: "nav:how-to" });
+      return items;
+    }
     case "mode-select":
       return [
         { label: "STANDARD", action: "mode:standard" },
@@ -101,7 +105,19 @@ export function menuItems(game: Game): MenuItem[] {
         { label: "QUIT TO MENU", action: "nav:title" },
       ];
     case "victory":
+      return [
+        { label: "PLAY AGAIN", action: "again" },
+        { label: "MENU", action: "nav:title" },
+      ];
     case "game-over":
+      // A Standard death keeps the save, so it can be restored; Hardcore consumed it, so
+      // the only path on is a fresh expedition (specs/modes.md).
+      if (game.mode === "standard" && hasSave()) {
+        return [
+          { label: "CONTINUE FROM SAVE", action: "continue" },
+          { label: "MENU", action: "nav:title" },
+        ];
+      }
       return [
         { label: "PLAY AGAIN", action: "again" },
         { label: "MENU", action: "nav:title" },
@@ -260,7 +276,6 @@ function drawMine(
   drawGrid(ctx, offX, offY, rowTop, rowBot, colLeft, colRight);
   drawDrillDamage(ctx, game, assets, offX, offY);
   drawSurface(ctx, game, assets, offX, offY);
-  drawCache(ctx, game, offX, offY);
   drawMiner(ctx, game, assets, view, offX, offY);
   bursts.draw(ctx, offX, offY);
 
@@ -730,6 +745,7 @@ function drawBuildingFallback(
   const accent: Record<string, string> = {
     "fuel-depot": P.fuel,
     "ore-market": P.cargo,
+    "save-pad": P.resonite,
     "upgrade-shop": P.hull,
     "launch-pad": P.credits,
   };
@@ -895,19 +911,6 @@ function drawMinerFallback(
   }
 }
 
-function drawCache(ctx: CanvasRenderingContext2D, game: Game, offX: number, offY: number): void {
-  if (!game.cache) return;
-  const cx = GRID_MARGIN_X + game.cache.col * TILE_SIZE + TILE_SIZE / 2 + offX;
-  const cy = game.cache.row * TILE_SIZE + TILE_SIZE / 2 + offY;
-  ctx.fillStyle = P.credits;
-  roundRect(ctx, cx - 16, cy - 11, 32, 22, 4);
-  ctx.fill();
-  ctx.strokeStyle = "#7a5c10";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  text(ctx, "CACHE", cx, cy - 18, { size: 11, color: P.credits, align: "center", bold: true });
-}
-
 // ---------------------------------------------------------------------------
 // Over-world HUD: scanner + core countdown
 // ---------------------------------------------------------------------------
@@ -1023,17 +1026,24 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   gauge(ctx, 16, y, 150, "FUEL", game.miner.fuel, game.maxFuel(), P.fuel, fuelAlert);
   gauge(ctx, 182, y, 150, "HULL", game.miner.hull, game.maxHull(), P.hull, hullAlert);
 
-  // Cargo LOAD in kg (weight-limited bay, specs/mining.md). Turns to the alert color and
-  // reads OVERLOAD when the haul is too heavy for the jetpack to lift (specs/character.md).
+  // Cargo as SLOTS used / capacity (specs/mining.md). Reads OVERLOAD (alert color) when the
+  // haul's WEIGHT is too heavy for the jetpack to lift (specs/character.md), and turns alert
+  // when the bay is full by slot count. The current load in kg rides alongside so the player
+  // can see how close to un-liftable a heavy haul is.
   const overloaded = game.overloaded();
-  text(ctx, overloaded ? "OVERLOAD" : "LOAD", 348, y - 4, {
+  const full = game.cargoUsed() >= game.cargoCap();
+  text(ctx, overloaded ? "OVERLOAD" : "CARGO", 340, y - 4, {
     size: 10,
     color: overloaded ? P.alert : P.textSecondary,
   });
-  text(ctx, `${Math.round(game.cargoWeight())}/${game.cargoCap()}kg`, 348, y + 12, {
+  text(ctx, `${game.cargoUsed()}/${game.cargoCap()}`, 340, y + 12, {
     size: 16,
-    color: overloaded ? P.alert : P.cargo,
+    color: overloaded || full ? P.alert : P.cargo,
     bold: true,
+  });
+  text(ctx, `${Math.round(game.cargoWeight())}kg`, 340, y + 26, {
+    size: 10,
+    color: overloaded ? P.alert : P.textTertiary,
   });
 
   // Credits
@@ -1067,7 +1077,10 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
     ctx.fill();
   }
 
-  // Pause + Mute controls (right).
+  // Inventory (BAG) + Pause + Mute controls (right).
+  button(ctx, cl, view, STAGE_WIDTH - 222, 12, 64, 32, "BAG", "sys:inventory", {
+    selected: game.panel === "inventory",
+  });
   button(ctx, cl, view, STAGE_WIDTH - 150, 12, 64, 32, "PAUSE", "sys:pause", {});
   button(ctx, cl, view, STAGE_WIDTH - 78, 12, 64, 32, view.muted ? "UNMUTE" : "MUTE", "sys:mute", {});
 }
@@ -1117,6 +1130,12 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
       break;
     case "launch-pad":
       drawLaunchPad(ctx, game, view, cl);
+      break;
+    case "save-pad":
+      drawSavePad(ctx, game, view, cl);
+      break;
+    case "inventory":
+      drawInventory(ctx, game, view, cl);
       break;
     default:
       break;
@@ -1214,7 +1233,7 @@ function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   const total = cargoValue(game.cargo);
   y += 8;
   text(ctx, `TOTAL: ${total} Credits`, f.x + 28, y, { size: 18, color: P.credits, bold: true });
-  text(ctx, `Load ${Math.round(game.cargoWeight())}/${game.cargoCap()} kg`, f.x + f.w - 40, y, {
+  text(ctx, `Hold ${game.cargoUsed()}/${game.cargoCap()} slots · ${Math.round(game.cargoWeight())} kg`, f.x + f.w - 40, y, {
     size: 14,
     color: P.textSecondary,
     align: "right",
@@ -1314,6 +1333,95 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   closeButton(ctx, f, view, cl);
 }
 
+function drawSavePad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+  const f = panelFrame(ctx, "SAVE PAD");
+  text(ctx, "Bank your expedition. This pad is the ONLY way to save.", f.x + 28, f.y + 74, {
+    size: 15,
+    color: P.textSecondary,
+  });
+  const exists = hasSave();
+  text(ctx, exists ? "A saved expedition exists — saving overwrites it." : "No expedition saved yet.", f.x + 28, f.y + 118, {
+    size: 14,
+    color: exists ? P.credits : P.textTertiary,
+  });
+  const lines = [
+    "• You have ONE save slot; saving here overwrites it.",
+    "• On the main menu, CONTINUE resumes your saved expedition.",
+    "• In Standard, a death lets you restore from your last save.",
+    "• In Hardcore, a death deletes the save — the run ends for good.",
+  ];
+  let y = f.y + 156;
+  for (const l of lines) {
+    text(ctx, l, f.x + 28, y, { size: 13, color: P.textSecondary });
+    y += 26;
+  }
+  const canSave = game.canSave();
+  if (!canSave) {
+    text(ctx, "Can't save while the unstable Core Sample is in hand — install it first.", f.x + 28, y + 10, {
+      size: 13,
+      color: P.alert,
+    });
+  }
+  button(ctx, cl, view, f.x + 28, f.y + f.h - 108, 260, 48, "SAVE EXPEDITION", "save", {
+    disabled: !canSave,
+    accent: P.credits,
+  });
+  closeButton(ctx, f, view, cl);
+}
+
+function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+  const f = panelFrame(ctx, "CARGO HOLD");
+  text(ctx, "Everything you're carrying. DROP ore to shed weight when overloaded.", f.x + 28, f.y + 72, {
+    size: 15,
+    color: P.textSecondary,
+  });
+  let y = f.y + 104;
+  text(ctx, "ORE", f.x + 48, y, { size: 12, color: P.textTertiary });
+  text(ctx, "HELD", f.x + 232, y, { size: 12, color: P.textTertiary });
+  text(ctx, "WEIGHT", f.x + 320, y, { size: 12, color: P.textTertiary });
+  y += 22;
+  for (const o of Object.keys(ORES) as Ore[]) {
+    const n = game.cargo[o];
+    const w = ORES[o].weightKg;
+    ctx.fillStyle = ORES[o].color;
+    ctx.beginPath();
+    ctx.arc(f.x + 34, y - 5, 6, 0, Math.PI * 2);
+    ctx.fill();
+    text(ctx, o.toUpperCase(), f.x + 48, y, { size: 15, color: n > 0 ? P.textPrimary : P.textTertiary });
+    text(ctx, `${n} × ${w}kg`, f.x + 232, y, { size: 14, color: n > 0 ? P.textSecondary : P.textTertiary });
+    text(ctx, `${n * w} kg`, f.x + 320, y, { size: 15, color: n > 0 ? P.textSecondary : P.textTertiary });
+    button(ctx, cl, view, f.x + f.w - 150, y - 19, 110, 30, "DROP", `drop:${o}`, {
+      disabled: n <= 0,
+      accent: P.alert,
+    });
+    y += 40;
+  }
+  y += 6;
+  const overloaded = game.overloaded();
+  text(ctx, `Slots ${game.cargoUsed()}/${game.cargoCap()}    ·    Load ${Math.round(game.cargoWeight())} kg`, f.x + 28, y, {
+    size: 15,
+    color: overloaded ? P.alert : P.textPrimary,
+    bold: true,
+  });
+  const sat = game.satchel;
+  const matY = overloaded ? y + 44 : y + 24;
+  if (overloaded) {
+    text(ctx, "OVERLOAD — too heavy for the jetpack to lift. Drop ore to fly out.", f.x + 28, y + 22, {
+      size: 13,
+      color: P.alert,
+      bold: true,
+    });
+  }
+  text(
+    ctx,
+    `Satchel — Resonite ×${sat.resonite}, Cryenite ×${sat.cryenite}${sat.coreSample ? ", Core Sample" : ""} (weightless)`,
+    f.x + 28,
+    matY,
+    { size: 13, color: P.textSecondary },
+  );
+  closeButton(ctx, f, view, cl);
+}
+
 // ---------------------------------------------------------------------------
 // Menus & state screens
 // ---------------------------------------------------------------------------
@@ -1375,15 +1483,15 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
 
 function drawModeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
   text(ctx, "CHOOSE MODE", STAGE_WIDTH / 2, 140, { size: 44, color: P.textPrimary, align: "center", bold: true });
-  text(ctx, "Same mine, same rocket — only the price of dying differs.", STAGE_WIDTH / 2, 180, {
+  text(ctx, "Same mine, same rocket — only the price of dying differs. Save at the surface Save Pad.", STAGE_WIDTH / 2, 180, {
     size: 15,
     color: P.textSecondary,
     align: "center",
   });
   // Descriptions beside the buttons.
   const descs = [
-    "STANDARD — die and you drop your haul but respawn at the surface; retrieve it and keep going.",
-    "HARDCORE — one death ends the expedition. Permadeath.",
+    "STANDARD — a death lets you restore from your last save and keep going.",
+    "HARDCORE — a death deletes your save and ends the expedition. Permadeath.",
   ];
   let dy = 260;
   for (const d of descs) {
@@ -1406,22 +1514,26 @@ function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
     "LOOP — Fill cargo with ore, jetpack up, SELL ore, then BUY fuel & repairs at the Fuel Depot and",
     "       UPGRADES at the shop. Nothing refills free — budget Credits for the climb home, not just the dig.",
     "",
+    "CARGO — The bay holds a fixed number of ORE SLOTS; ore also has WEIGHT the jetpack must lift. A",
+    "        heavy haul climbs slowly and, past a point, can't lift at all — open the BAG (I) to DROP ore.",
+    "",
     "MATERIALS — Resonite (rockbed) and Cryenite (deepstone) are guaranteed but hidden; the SCANNER",
     "            points to the nearest one you still need. The rocket's deep parts need them.",
     "",
     "HAZARDS — Gas pockets detonate when drilled, lava drains hull on contact, a hard landing hurts.",
     "          The Core Sample from the bottom is UNSTABLE: a 90s timer runs until you install it.",
     "",
-    "MODES — Standard drops your haul and respawns you; Hardcore ends the run on any death.",
+    "SAVE — The surface SAVE PAD is the only way to save (one slot). Standard lets you restore from",
+    "       your save on a death; Hardcore deletes it — a death ends the run.",
     "",
-    "SYSTEM — Esc pauses (and closes panels), M mutes, E/Enter or click activates a building.",
+    "SYSTEM — Esc pauses (and closes panels), I opens the bag, M mutes, E/Enter or click activates a building.",
   ];
-  let y = 160;
+  let y = 152;
   for (const l of lines) {
-    text(ctx, l, x, y, { size: 15, color: l.includes("—") ? P.textPrimary : P.textSecondary });
-    y += 24;
+    text(ctx, l, x, y, { size: 14, color: l.includes("—") ? P.textPrimary : P.textSecondary });
+    y += 21;
   }
-  menuColumn(ctx, game, view, cl, 620);
+  menuColumn(ctx, game, view, cl, 650);
 }
 
 function causeLabel(cause?: string): string {
@@ -1439,7 +1551,9 @@ function drawEndScreen(
   victory: boolean,
 ): void {
   const s = game.summary;
-  text(ctx, victory ? "ESCAPE!" : "GAME OVER", STAGE_WIDTH / 2, 160, {
+  // A Standard death keeps the save, so the run can be picked back up (specs/modes.md).
+  const restorable = !victory && game.mode === "standard" && hasSave();
+  text(ctx, victory ? "ESCAPE!" : restorable ? "YOU DIED" : "GAME OVER", STAGE_WIDTH / 2, 160, {
     size: 72,
     color: victory ? P.credits : P.alert,
     align: "center",
@@ -1447,7 +1561,11 @@ function drawEndScreen(
   });
   text(
     ctx,
-    victory ? "You lifted off Vhera Deep." : "The expedition ends here.",
+    victory
+      ? "You lifted off Vhera Deep."
+      : restorable
+        ? "Restore your last save to continue the expedition."
+        : "The expedition ends here.",
     STAGE_WIDTH / 2,
     210,
     { size: 20, color: P.textSecondary, align: "center" },

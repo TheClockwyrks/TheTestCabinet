@@ -17,9 +17,9 @@ import { Game } from "./game";
 import { Input } from "./input";
 import { menuItems, render } from "./render";
 import type { Clickable, View } from "./render";
-import { buyFuel, buyRepair, buyUpgrade, sellCargo } from "./economy";
+import { buyFuel, buyRepair, buyUpgrade, dropOre, sellCargo } from "./economy";
 import { fabricate } from "./rocket";
-import type { OpenPanel, UpgradeTrack } from "./types";
+import type { OpenPanel, Ore, UpgradeTrack } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -89,6 +89,10 @@ async function main(): Promise<void> {
       buyUpgrade(game, action.slice(4) as UpgradeTrack);
       return;
     }
+    if (action.startsWith("drop:")) {
+      dropOre(game, action.slice(5) as Ore);
+      return;
+    }
     if (action.startsWith("buyfuel:")) {
       const arg = action.slice(8);
       buyFuel(game, arg === "full" ? Infinity : Number(arg));
@@ -105,11 +109,22 @@ async function main(): Promise<void> {
         game.newExpedition(game.mode);
         menuIndex = 0;
         break;
+      case "continue":
+        // Resume the saved expedition (menu CONTINUE, or a Standard death's restore).
+        game.loadExpedition();
+        menuIndex = 0;
+        break;
+      case "save":
+        game.saveExpedition();
+        break;
       case "resume":
         game.phase = "in-mine";
         break;
       case "sys:pause":
         openPauseMenu();
+        break;
+      case "sys:inventory":
+        game.openInventory();
         break;
       case "sys:mute":
         audio.toggleMute();
@@ -151,9 +166,9 @@ async function main(): Promise<void> {
         openPauseMenu();
       } else if (lower === "e" || k === "Enter") {
         if (!game.panel) game.activateNearbyBuilding();
-      } else if (lower === "q") {
-        // Jettison ore to lighten an overloaded load (specs/character.md, specs/controls.md).
-        game.jettison();
+      } else if (lower === "i") {
+        // Open/close the inventory (cargo hold) to review and drop ore (specs/controls.md).
+        game.openInventory();
       }
       return;
     }

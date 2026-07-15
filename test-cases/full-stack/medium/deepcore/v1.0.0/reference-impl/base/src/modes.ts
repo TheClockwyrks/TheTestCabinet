@@ -2,13 +2,17 @@
 //
 // There is one campaign and one balance; the mode changes ONLY what happens on death.
 // In BOTH modes a death destroys the Core Sample (it never survives) and leaves every
-// already-installed rocket component installed. Standard drops the haul as a retrievable
-// cache and respawns the miner at the surface; Hardcore ends the run at the Game Over
-// screen. The three deaths — out of fuel, hull destroyed, Core Sample detonation — all
-// route through here.
+// already-installed rocket component installed. There is no respawn and no dropped cache:
+// a death always ends the current run at a summary (Game Over) screen. The mode decides
+// what becomes of the single save slot (specs/flow.md, specs/save.md via save.ts):
+//   • Standard — the save is KEPT; from the Game Over screen the player may CONTINUE FROM
+//     SAVE, restoring their last surface save and picking the expedition back up.
+//   • Hardcore — permadeath: the save is DELETED, so the expedition is gone for good and
+//     the only option is a fresh start.
+// The three deaths — out of fuel, hull destroyed, Core Sample detonation — all route here.
 
-import { emptyCargo, cargoUsed } from "./economy";
-import { MINER_H, MINER_W, minerCol, minerRow } from "./physics";
+import { MINER_H, MINER_W } from "./physics";
+import { clearSave } from "./save";
 import type { DeathCause } from "./types";
 import type { Game } from "./game";
 
@@ -37,36 +41,15 @@ export function triggerDeath(game: Game, cause: DeathCause): void {
   game.panel = null;
 }
 
-/** Apply the mode's death outcome once the death animation has played. */
+/** Apply the mode's death outcome once the death animation has played (specs/modes.md). */
 export function finalizeDeath(game: Game): void {
   const cause = game.dying?.cause ?? "hull-destroyed";
   game.dying = null;
 
-  if (game.mode === "standard") {
-    // Drop the carried haul (cargo + uninstalled Resonite/Cryenite, NOT the Core Sample)
-    // as a single most-recent retrievable cache at the death site (specs/modes.md).
-    const hasHaul = cargoUsed(game.cargo) > 0 || game.satchel.resonite > 0 || game.satchel.cryenite > 0;
-    if (hasHaul) {
-      game.cache = {
-        col: minerCol(game.miner),
-        row: Math.max(1, minerRow(game.miner)),
-        cargo: { ...game.cargo },
-        resonite: game.satchel.resonite,
-        cryenite: game.satchel.cryenite,
-      };
-    }
-    game.cargo = emptyCargo();
-    game.satchel.resonite = 0;
-    game.satchel.cryenite = 0;
-    // Respawn at the surface with full fuel + repaired hull; keep Credits, tiers, rocket.
-    game.placeMinerAtSurface();
-    game.miner.fuel = game.maxFuel();
-    game.miner.hull = game.maxHull();
-    game.miner.state = "idle";
-    game.note("HAUL DROPPED — RESPAWNED AT SURFACE");
-  } else {
-    // Hardcore: the run is over (specs/flow.md).
-    game.summary = game.makeSummary(cause);
-    game.phase = "game-over";
-  }
+  // Hardcore is permadeath — consume the save so the expedition cannot be resumed. Standard
+  // keeps the save, so the Game Over screen can offer CONTINUE FROM SAVE (specs/modes.md).
+  if (game.mode === "hardcore") clearSave();
+
+  game.summary = game.makeSummary(cause);
+  game.phase = "game-over";
 }

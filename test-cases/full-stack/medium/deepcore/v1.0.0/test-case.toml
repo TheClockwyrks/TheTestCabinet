@@ -243,12 +243,12 @@ dest = "proof/core-run.webm"
 [[domain]]
 id = "simulation"
 name = "Mine & Expedition Systems"
-description = "The interacting Motherload-style systems: the character drilling down/left/right (never up) and falling/thrusting through a banded tile mine over a vertical camera; the fuel budget that makes every dig a round-trip gamble, with refuel and repair BOUGHT with Credits at the surface (never free); the weight-and-lift model where ore has weight, the jetpack lifts a load only up to a tier limit (an overloaded miner cannot climb and must jettison ore), and a heavier haul climbs slower and burns more fuel; the ore-to-Credits economy (six ores rising steeply in value with depth, value-per-kg climbing with depth, a weight-limited cargo bay, selling at the market) funding a seven-track upgrade shop (fuel, drill, cargo, hull, jetpack, radiator, scanner); the four depth bands whose hardness gates the descent behind drill tiers; the two guaranteed-but-hidden exotic materials found via the scanner; depth-scaling gas/lava hazards cut by the radiator, plus fall impact; the unstable Core Sample extracted from the bottom on a 90-second detonation timer; the five-component escape rocket (two bought, two needing a material, one needing the Core Sample) that is the only win; and the Standard (drop-and-respawn) vs Hardcore (permadeath) death modes, installed rocket parts durable across both."
+description = "The interacting Motherload-style systems: the character drilling down/left/right (never up) and falling/thrusting through a banded tile mine over a vertical camera; the fuel budget that makes every dig a round-trip gamble, with refuel and repair BOUGHT with Credits at the surface (never free); the weight-and-lift model where ore has weight, the jetpack lifts a load only up to a tier limit (an overloaded miner cannot climb and must DROP ore from the inventory), and a heavier haul climbs slower and burns more fuel; the ore-to-Credits economy (six ores rising steeply in value with depth, value-per-kg climbing with depth, a SLOT-limited cargo bay with weight the jetpack must separately lift, selling at the market) funding a seven-track upgrade shop (fuel, drill, cargo, hull, jetpack, radiator, scanner); the four depth bands whose hardness gates the descent behind drill tiers; the two guaranteed-but-hidden exotic materials found via the scanner; depth-scaling gas/lava hazards cut by the radiator, plus fall impact; the unstable Core Sample extracted from the bottom on a 90-second detonation timer; the five-component escape rocket (two bought, two needing a material, one needing the Core Sample) that is the only win; the explicit single-slot SAVE (only at the surface Save Pad) with a CONTINUE on the main menu; and the Standard (restore from your last save on death) vs Hardcore (permadeath, save deleted) death modes, installed rocket parts durable across both."
 
 [[domain]]
 id = "presentation"
 name = "Presentation & Character Animation"
-description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED MINER — the suited prospector with drill and jetpack animating distinctly for idle, walk, drill-down, drill-side, jetpack-ascend, fall, hurt, and out-of-fuel, mirrored to face its direction — plus the four band rock tiles and the carved tunnels, the six ore veins and the two material nodes and the glowing core, the gas and lava hazards (lava shimmering), the four surface buildings and the escape rocket that visibly assembles component by component, the produced particle VFX (drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, core extraction and detonation, launch exhaust, death), and the produced audio (drill/thrust loops, pickups, explosions, alarms, launch roar, and a lonely descent music bed), all wired in, with the in-code HUD, scanner indicator, core countdown, and building panels reading the state at a glance."
+description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED MINER — the suited prospector with drill and jetpack animating distinctly for idle, walk, drill-down, drill-side, jetpack-ascend, fall, hurt, and out-of-fuel, mirrored to face its direction — plus the four band rock tiles and the carved tunnels, the six ore veins and the two material nodes and the glowing core, the gas and lava hazards (lava shimmering), the five surface buildings (including the Save Pad) and the escape rocket that visibly assembles component by component, the produced particle VFX (drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, core extraction and detonation, launch exhaust, death), and the produced audio (drill/thrust loops, pickups, explosions, alarms, launch roar, and a lonely descent music bed), all wired in, with the in-code HUD, scanner indicator, core countdown, and building panels reading the state at a glance."
 
 # Reviewer checklist items, common to every variant. The major, observable
 # requirements a reviewer must explicitly check by playing the build — the things
@@ -270,7 +270,7 @@ proof = "mine"
 [[review_item]]
 id = "fuel-round-trip"
 title = "The fuel/weight round-trip gamble"
-text = "Fuel drains from jetpack thrust (fastest), lateral air drift, a passive underground trickle, and each tile drilled, and is BOUGHT with Credits at the surface Fuel Depot (per unit, never free, never refilling on its own). Ore has WEIGHT: the jetpack lifts a load only up to a per-tier limit — an overloaded miner cannot climb at all and must JETTISON ore (Q) to fly out — and a heavier haul climbs slower and so burns more fuel over the same shaft. The tension of every dig is getting back before Fuel hits 0 — running dry underground strands the miner and is a DEATH (handled by the mode). A low-fuel warning (gauge alert color + alarm) shows under 20%, and an OVERLOAD warning shows when the load exceeds the jetpack's lift. Bigger fuel-tank tiers reach deeper; bigger jetpack tiers lift heavier hauls and climb faster. Hull is likewise BOUGHT-back (repaired per point with Credits at the depot; death at 0)."
+text = "Fuel drains from jetpack thrust (fastest), lateral air drift, a passive underground trickle, and each tile drilled, and is BOUGHT with Credits at the surface Fuel Depot (per unit, never free, never refilling on its own). Ore has WEIGHT: the jetpack lifts a load only up to a per-tier limit — an overloaded miner cannot climb at all and must open the inventory (I / the BAG control) and DROP ore to fly out — and a heavier haul climbs slower and so burns more fuel over the same shaft. The tension of every dig is getting back before Fuel hits 0 — running dry underground strands the miner and is a DEATH (handled by the mode). A low-fuel warning (gauge alert color + alarm) shows under 20%, and an OVERLOAD warning shows when the load exceeds the jetpack's lift. Bigger fuel-tank tiers reach deeper; bigger jetpack tiers lift heavier hauls and climb faster. Hull is likewise BOUGHT-back (repaired per point with Credits at the depot; death at 0)."
 weight = 1
 domain = "simulation"
 proof = "loop"
@@ -278,7 +278,7 @@ proof = "loop"
 [[review_item]]
 id = "ore-economy-upgrades"
 title = "Ore → Credits → upgrades economy"
-text = "Drilling an ore vein adds one unit to a WEIGHT-limited cargo bay (kg, not a unit count — ore left in the ground when the bay is full by weight); the six ores rise steeply in value with depth (Ferron 28 → Adamite 1900) while weight rises only gently, so value-per-kg climbs with depth (a deep gem richly repays its weight; the cheapest ore still clears a dig's fuel cost, so a dig always nets a surplus). Selling the cargo at the Ore Market is the ONLY Credit source; Credits are spent at the Upgrade Shop on seven tracks (fuel tank, drill, cargo bay, hull, jetpack, radiator, scanner), each five tiers bought in order at the pinned prices, and on the rocket. Starting Credits are 0; the loop is dig → fill cargo → climb → sell → refuel/repair → upgrade → deeper."
+text = "Drilling an ore vein adds one unit to a SLOT-limited cargo bay (a fixed number of ore slots, one unit per slot — when the bay is full by slots the drilled tile still clears cleanly but the ore is left behind, never a hard-lock); the six ores rise steeply in value with depth (Ferron 28 → Adamite 1900) while weight rises only gently, so value-per-kg climbs with depth (a deep gem richly repays its weight; the cheapest ore still clears a dig's fuel cost, so a dig always nets a surplus). Weight is a SEPARATE limit (what the jetpack must lift, above), not a cap on how many pieces fit. Selling the cargo at the Ore Market is the ONLY Credit source; Credits are spent at the Upgrade Shop on seven tracks (fuel tank, drill, cargo bay, hull, jetpack, radiator, scanner), each five tiers bought in order at the pinned prices, and on the rocket. Starting Credits are 0; the loop is dig → fill cargo → climb → sell → refuel/repair → upgrade → deeper."
 weight = 1
 domain = "simulation"
 proof = "surface"
@@ -326,10 +326,18 @@ proof = "surface"
 [[review_item]]
 id = "modes-death"
 title = "Standard vs Hardcore modes change only death"
-text = "After NEW EXPEDITION, a MODE SELECT offers Standard and Hardcore, each stating its death rule. In STANDARD, death drops the carried cargo and uninstalled materials as a retrievable cache at the death site and respawns the miner at the surface (full fuel/hull), keeping Credits, upgrades, and installed rocket parts — no Game Over from death. In HARDCORE, death ends the run (permadeath, Game Over → PLAY AGAIN fresh). Everything else — world, economy, hazards, goal — is identical across modes, and the Core Sample never survives a death, while installed rocket parts always do."
+text = "After NEW EXPEDITION, a MODE SELECT offers Standard and Hardcore, each stating its death rule. There is NO respawn and NO dropped cache in either mode: a death ends the run at a Game Over summary screen. In STANDARD, the save survives — if one exists, Game Over offers CONTINUE FROM SAVE to restore the last save; in HARDCORE, death DELETES the save (permadeath, Game Over → PLAY AGAIN fresh). Everything else — world, economy, hazards, goal — is identical across modes, and the Core Sample never survives a death, while installed rocket parts always do."
 weight = 1
 domain = "simulation"
 proof = "game-over"
+
+[[review_item]]
+id = "save-continue-inventory"
+title = "Explicit save, continue, and the inventory"
+text = "Saving is EXPLICIT and RESTRICTED: the surface SAVE PAD is the only way to save (no autosave, no saving underground), there is exactly ONE save slot (saving overwrites it), and a CONTINUE entry appears on the main menu when a save exists and resumes it exactly. Saving is refused while carrying the unstable Core Sample. The single save is the game's one piece of persisted progress and drives the death rules (Standard restores from it; Hardcore deletes it). Separately, the INVENTORY (cargo hold) opens anywhere — surface or mid-dig (I / the BAG control) — showing each ore held with its count and weight, the slots/load readout, and a per-ore DROP that ditches one unit (lost, not sold) so an overloaded miner can shed weight. Drilling an ore vein with the bay full by slots must NOT hard-lock — the tile clears and the ore is simply left behind."
+weight = 1
+domain = "simulation"
+proof = "surface"
 
 # --- Presentation & Character Animation ------------------------------------------
 [[review_item]]
@@ -351,7 +359,7 @@ proof = "mine"
 [[review_item]]
 id = "produced-buildings-rocket"
 title = "Produced surface buildings and the assembling rocket"
-text = "The four surface buildings (Fuel Depot, Ore Market, Upgrade Shop, Launch Pad) are produced sprites that read clearly as what they are on the scrapped surface under the dusk sky, and the escape ROCKET on the pad visibly GAINS each installed component as it is fabricated (assembly-stage frames or stacked per-component sprites) from bare pad to launch-ready — the player's win-progress read and a bespoke centerpiece asset."
+text = "The five surface buildings (Fuel Depot, Ore Market, Save Pad, Upgrade Shop, Launch Pad) are produced sprites that read clearly as what they are on the scrapped surface under the dusk sky, and the escape ROCKET on the pad visibly GAINS each installed component as it is fabricated (assembly-stage frames or stacked per-component sprites) from bare pad to launch-ready — the player's win-progress read and a bespoke centerpiece asset."
 weight = 1
 domain = "presentation"
 proof = "surface"
@@ -375,7 +383,7 @@ proof = "core-run"
 [[review_item]]
 id = "readable-hud"
 title = "Readable HUD, scanner, and panels"
-text = "A player can tell at a glance — Fuel and Hull (turning to the alert color as they run low), the cargo LOAD as kg used/capacity (turning to alert and reading OVERLOAD when the haul is too heavy for the jetpack to lift), Credits, Depth in meters, and which materials are in the satchel — and read the SCANNER indicator (direction + distance to the nearest needed material), the prominent CORE-SAMPLE COUNTDOWN while carrying it, and the surface panels (the Ore Market cargo breakdown, the Upgrade Shop's seven tracks and prices, the Launch Pad rocket checklist). The HUD, scanner, countdown, panels, tile grid, and death-cache marker are drawn in code in the palette; only their small icons may be produced sprites."
+text = "A player can tell at a glance — Fuel and Hull (turning to the alert color as they run low), the cargo as SLOTS used/capacity with the load in kg alongside (turning to alert when the bay is full and reading OVERLOAD when the haul is too heavy for the jetpack to lift), Credits, Depth in meters, and which materials are in the satchel — and read the SCANNER indicator (direction + distance to the nearest needed material), the prominent CORE-SAMPLE COUNTDOWN while carrying it, the INVENTORY overlay (held ore + weights + per-ore DROP), and the surface panels (the Ore Market cargo breakdown, the Save Pad SAVE, the Upgrade Shop's seven tracks and prices, the Launch Pad rocket checklist). The HUD, scanner, countdown, panels, and tile grid are drawn in code in the palette; only their small icons may be produced sprites."
 weight = 1
 domain = "presentation"
 proof = "surface"
@@ -384,7 +392,7 @@ proof = "surface"
 [[review_item]]
 id = "states-complete"
 title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu (NEW EXPEDITION, HOW TO PLAY), mode select (Standard/Hardcore, or back to the menu), how-to-play, the live in-mine state with its HUD and the four surface building panels, the Esc pause menu (resume/restart/quit to menu), Victory after a launch (run summary, PLAY AGAIN in the same mode, MENU), and — in Hardcore only — Game Over on death (Standard instead drops-and-respawns and continues). Each end screen shows the run summary."
+text = "Every game state is reachable and behaves correctly: title menu (NEW EXPEDITION, HOW TO PLAY, plus CONTINUE when a save exists), mode select (Standard/Hardcore, or back to the menu), how-to-play, the live in-mine state with its HUD, the five surface building panels (including the Save Pad), and the inventory overlay, the Esc pause menu (resume/restart/quit to menu), Victory after a launch (run summary, PLAY AGAIN in the same mode, MENU), and Game Over on death (in Standard with a save: CONTINUE FROM SAVE + MENU; otherwise PLAY AGAIN + MENU). Each end screen shows the run summary."
 weight = 1
 proof = "title"
 

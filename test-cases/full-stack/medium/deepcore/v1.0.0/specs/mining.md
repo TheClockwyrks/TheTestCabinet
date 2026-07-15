@@ -12,11 +12,12 @@ tier.
 ## Ore
 
 **Ore veins** (`specs/world.md`) are the routine reward for digging. Drilling an ore
-vein removes the tile and adds **one unit** of that ore to cargo (if cargo has room by
-**weight**; if the bay is full, the ore is left in the ground — the tile stays an ore
-vein — and a "bay full" note shows). Each ore type has a fixed **value** (Credits when
-sold, `specs/flow.md`) and a fixed **weight** in kilograms — the load the jetpack must
-lift on the climb home (`specs/character.md`).
+vein removes the tile and adds **one unit** of that ore to cargo (if the bay has a free
+**slot**). If the bay is **full by slot count**, the tile is still **cleared to tunnel**
+(the drill never jams — you keep digging) but the ore is **left behind** and a "cargo
+full" note shows. Each ore type has a fixed **value** (Credits when sold,
+`specs/flow.md`) and a fixed **weight** in kilograms — the load the jetpack must lift on
+the climb home (`specs/character.md`).
 
 | Ore | Found in bands | Value (Credits/unit) | Weight (kg) | Value per kg | Reads as |
 | --- | --- | --- | --- | --- | --- |
@@ -42,30 +43,51 @@ the **cheapest** ore is worth enough to clear the fuel a dig burns (Ferron `28` 
 units of fuel at the Fuel Depot, `specs/flow.md`) so a dig always nets a real surplus,
 never a fuel-for-fuel treadmill (`specs/world.md`, `specs/flow.md`).
 
-## Cargo — limited by weight
+## Cargo — slots to carry, weight to fly out
 
-Ore is held in the **cargo bay**, whose capacity is a **total weight in kilograms** set
-by the **cargo tier** (`specs/upgrades.md`); the starting bay holds `180 kg`. Cargo is
-**not** counted in slots — a bay full of heavy deep ore holds far fewer pieces than one
-of light shallow ore. The HUD shows the current **Load** as **kg used / kg capacity**
+Ore is held in the **cargo bay**, whose capacity is a **number of ore slots** set by the
+**cargo tier** (`specs/upgrades.md`); the starting bay holds **`15` slots**. **One unit of
+any ore fills one slot**, regardless of its weight — the Motherload cargo model. The HUD
+shows the current cargo as **slots used / capacity**, alongside the current **load in kg**
 (`specs/flow.md`).
 
-- When adding an ore's weight would **exceed** the bay's kg capacity, that ore cannot
-  be picked up — the vein is left in the ground for a later trip, and the game signals
-  "bay full". A bigger bay means fewer surface trips, but a heavier bay is a harder,
-  fuel-hungrier climb — and, past a point, one the **jetpack cannot lift at all**
-  (`specs/character.md`).
-- Cargo weight is what the **jetpack** fights on the way up (`specs/character.md`). The
-  cargo and jetpack tiers are matched so a full bay of the same tier is liftable
-  (slowly, when heavy); upgrading the **bay ahead of the jetpack** can leave a full haul
-  **un-liftable** until the jetpack catches up — at which point the miner must
-  **jettison** ore (`specs/character.md`) to fly out.
+**Weight is a separate mechanic.** Each ore's **weight** (the table above) is the load the
+**jetpack** must lift on the climb home (`specs/character.md`) — it does **not** limit how
+many pieces the bay holds. The two limits pull against each other exactly as in Motherload:
+
+- **Slots limit how much you can pick up.** When the bay is **full by slot count**, an ore
+  vein you drill is still **cleared** (the drill never jams) but the ore is **left behind**,
+  and the game signals "cargo full". A bigger bay means more ore per surface trip.
+- **Weight limits whether you can fly out.** A full bay of **light shallow** ore lifts
+  easily; a bay part-filled with **heavy deep** ore can already exceed the jetpack's lift,
+  so it climbs slowly and, past a point, **cannot lift at all** (`specs/character.md`). When
+  that happens the miner **drops ore from the inventory** (`specs/character.md`) to shed
+  weight until it can lift off — the escape valve for a haul that is rich but too heavy.
 - Cargo is **emptied by selling** at the Ore Market (below). It is **not** emptied by
   refueling or repairing.
-- **On death** (`specs/modes.md`): in **Standard**, the cargo you are carrying is
-  **dropped as a retrievable cache** at the death site; in **Hardcore** the run ends.
-- **Exotic materials do not use cargo** (below) — they ride in a separate satchel,
-  carry **no weight**, and never fill the bay.
+- **On death** (`specs/modes.md`): the run ends at a summary screen — there is **no dropped
+  cache**. In **Standard** the player may **restore from their last save** and pick the
+  expedition back up; in **Hardcore** the run is over.
+- **Exotic materials do not use cargo** (below) — they ride in a separate satchel, carry
+  **no weight**, take **no slot**, and never fill the bay.
+
+## The inventory (cargo hold)
+
+The player can open an **inventory** overlay at **any time** — on the surface or mid-dig
+(`specs/controls.md`, `specs/flow.md`) — to see **exactly what they are carrying** and to
+**ditch specific ore**. It lists **every ore held** with its **count and weight**, the
+current **slots used / capacity** and **total load in kg**, an **OVERLOAD** warning when
+the load is too heavy for the jetpack (`specs/character.md`), and the materials satchel.
+
+- **Drop.** Each ore row has a **drop** control that discards **one unit** of that ore. The
+  dropped ore is **lost** (not sold). This is the deliberate control for shedding weight
+  when overloaded: the player chooses **which** ore to keep and which to ditch, rather than
+  the game deciding for them.
+- Opening the inventory **freezes the world** behind it (like any panel), but the Core
+  Sample timer keeps running (`specs/hazards.md`) — the inventory is not a way to pause the
+  core run.
+- Materials in the satchel are shown for reference but are **not** droppable (they are
+  weightless and needed for the rocket).
 
 ## Exotic materials
 
@@ -90,8 +112,8 @@ spare.
   **unstable**, starting a **destabilization timer** the moment you take it — you must
   install it at the launch pad before it **detonates** (`specs/hazards.md`,
   `specs/rocket.md`). It, too, rides in the satchel (not cargo), but if you **die**
-  while carrying it, it is **destroyed** — dropped caches never contain the Core
-  Sample (`specs/modes.md`).
+  while carrying it, it is **destroyed** — a failed core run always means going back
+  down for a fresh one (`specs/modes.md`).
 
 ## The scanner
 
