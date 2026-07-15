@@ -70,14 +70,16 @@ divided by the total mass. So:
 - Past a point, the load is **too heavy for the jetpack to lift at all**: when the thrust
   acceleration no longer exceeds gravity, holding thrust only **slows the descent** — the
   miner **cannot climb**. This is the Motherload "too heavy to take off" wall, and it is
-  **fixed** behavior. The heaviest liftable load rises with the jetpack tier; the cargo
-  and jetpack tiers are matched so a full bay of the **same** tier is liftable (slowly
-  when heavy), but a **bay upgraded ahead of the jetpack** can strand a full haul.
-- **Jettison.** Because an overloaded miner would otherwise be stranded (it cannot climb
-  and cannot drill up), it can **jettison** ore at any time (`specs/controls.md`),
-  discarding the **least valuable-per-kg** unit it holds to lighten the load until it can
-  lift off again. Jettisoned ore is **lost** (not sold). The HUD warns **OVERLOAD** while
-  the load exceeds what the jetpack can lift (`specs/flow.md`).
+  **fixed** behavior. The heaviest liftable load rises with the jetpack tier. Cargo is
+  capped by **slot count**, not weight (`specs/mining.md`), so a bay full of **light**
+  ore lifts easily while a bay part-filled with **heavy** deep ore can already exceed the
+  jetpack's lift — weight, not the slot cap, is what strands a rich haul.
+- **Drop ore to lift off.** Because an overloaded miner would otherwise be stranded (it
+  cannot climb and cannot drill up), it can open the **inventory** at any time
+  (`specs/mining.md`, `specs/controls.md`) and **drop specific ore** to lighten the load
+  until it can lift off again. Dropped ore is **lost** (not sold), and the player chooses
+  **which** ore to ditch. The HUD warns **OVERLOAD** while the load exceeds what the
+  jetpack can lift (`specs/flow.md`).
 
 The **jetpack (engine) tier** therefore matters as much as the fuel tank on a deep, rich
 haul: a better jetpack both lifts more weight and climbs faster (less fuel per trip),
@@ -160,10 +162,11 @@ never automatically. Running out strands the miner (below).
   Coming home only gives you a **place to buy** more fuel, not free fuel.
 - **Out of fuel.** If Fuel reaches `0` underground, the jetpack dies: the miner can no
   longer thrust and, with no way up, is **stranded** — this is a **death**
-  (`specs/modes.md`): in **Standard** the miner drops its haul and respawns at the
-  surface; in **Hardcore** the run ends. A **low-fuel warning** (the gauge turns to
-  the alert color, plus an alarm cue, `specs/assets.md`) shows while Fuel is under
-  **20%**, so running dry is always the player's own call, never a surprise.
+  (`specs/modes.md`): the run ends at a summary screen, from which **Standard** lets the
+  player **restore their last save** and **Hardcore** does not (permadeath). A
+  **low-fuel warning** (the gauge turns to the alert color, plus an alarm cue,
+  `specs/assets.md`) shows while Fuel is under **20%**, so running dry is always the
+  player's own call, never a surprise.
 
 ## Hull
 
@@ -185,8 +188,8 @@ surface too (a hard landing on the camp floor still hurts, `specs/hazards.md`) �
   scale up sharply, the **hull tier and the radiator tier together** are what make the
   deep bands and the core run survivable — hull alone is not enough down deep.
 - **Hull reaching `0`** destroys the miner — a **death** (`specs/modes.md`), handled
-  exactly as running out of fuel is: Standard drops-and-respawns, Hardcore ends the
-  run.
+  exactly as running out of fuel is: the run ends at a summary screen; Standard offers a
+  restore from the last save, Hardcore is permadeath.
 - **Repair.** Hull does **not** mend on its own. You **buy** repairs with **Credits**
   at the **Fuel Depot** (`specs/world.md`, `specs/flow.md`), per point of hull, up to
   your current maximum.

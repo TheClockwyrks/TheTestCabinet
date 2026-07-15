@@ -178,10 +178,11 @@ Produce at least these, in the palette from `specs/overview.md`:
   **no distinct gas-pocket tile**: a gas pocket is drawn with the **same band rock** as
   ordinary ground (`specs/world.md`) and betrayed only by the subtle **gas seep** particle
   effect below — so gas is hidden, unlike the plainly-visible lava.
-- **Surface buildings** — the four camp structures (`specs/world.md`): the **Fuel
-  Depot**, the **Ore Market**, the **Upgrade Shop**, and the **Launch Pad**, each
-  reading clearly as what it is, sitting on the scrapped surface ground under the dusk
-  sky, plus the **cave mouth** down into the mine.
+- **Surface buildings** — the five camp structures (`specs/world.md`): the **Fuel
+  Depot**, the **Ore Market**, the **Save Pad** (a lit checkpoint dais/beacon that reads
+  as "save here"), the **Upgrade Shop**, and the **Launch Pad**, each reading clearly as
+  what it is, sitting on the scrapped surface ground under the dusk sky, plus the **cave
+  mouth** down into the mine.
 - **The escape rocket** — the rocket on the pad (`specs/rocket.md`). Draw it so it
   **visibly gains each installed component** — either as **assembly-stage frames** (a
   `draw-sheet` set: bare pad → frame → +fuel cells → +guidance → +thruster → +ignition,
@@ -291,9 +292,10 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   material, drawn in code over the world (`specs/mining.md`).
 - The **Core Sample countdown** — the prominent timer readout while carrying the Core
   Sample (`specs/hazards.md`).
-- All **surface building panels** — Fuel Depot, Ore Market (cargo breakdown + SELL),
-  Upgrade Shop (the seven tracks + prices), and Launch Pad (the rocket checklist +
-  FABRICATE / LAUNCH) (`specs/flow.md`, `specs/upgrades.md`, `specs/rocket.md`).
+- All **surface building panels** — Fuel Depot, Ore Market (cargo breakdown + SELL), Save
+  Pad (SAVE), Upgrade Shop (the seven tracks + prices), and Launch Pad (the rocket
+  checklist + FABRICATE / LAUNCH) (`specs/flow.md`, `specs/upgrades.md`, `specs/rocket.md`),
+  plus the **inventory** overlay (held ore, weights, and per-ore DROP, `specs/mining.md`).
 - All **menus, overlays, and state screens** — title, mode select, how-to-play, pause,
   victory, and game over (`specs/flow.md`, `specs/modes.md`).
 - **The carved-tunnel and lava shaping** — the **inset dirt lip and rounded corners** of
@@ -308,9 +310,8 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
 - **The gas seep placement** — firing the subtle gas-seep particle effect over gas
   pockets that are on screen, sparsely, so hidden gas has its faint tell (`specs/hazards.md`).
 - **World feedback** — the faint tile grid over the produced rock tiles, the depth-band
-  transitions, the retrievable **death cache** marker (`specs/modes.md`), the cargo-full
-  note, and any placement/selection cues. The code reads the simulation and draws these
-  over the produced sprites.
+  transitions, the cargo-full note (`specs/mining.md`), and any placement/selection cues.
+  The code reads the simulation and draws these over the produced sprites.
 
 ## Genuinely produce the assets — this is the point here
 

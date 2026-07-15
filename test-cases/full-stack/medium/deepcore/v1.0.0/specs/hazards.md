@@ -96,12 +96,12 @@ gauntlet; the chamber itself is a small bedrock-walled pocket around the glowing
   shop — it runs until the Core is installed or it expires.
 - **If the timer expires, the Core Sample detonates.** It is a violent explosion — a
   large produced **core-detonation VFX** (`specs/assets.md`) — that deals **lethal
-  hull damage**, killing the miner outright (`specs/character.md`, `specs/modes.md`):
-  in **Standard** the miner is dropped-and-respawned (and the Sample is **destroyed**,
-  not dropped — you must return to the Core and extract a fresh one), and in
-  **Hardcore** the run ends. The detonation is deliberately a real, dramatic death —
-  the tension of the climb back is the whole point of the core run, and it replaces
-  the boss fight the game deliberately omits.
+  hull damage**, killing the miner outright (`specs/character.md`, `specs/modes.md`): the
+  run ends at the Game Over screen, from which **Standard** can restore the last save and
+  **Hardcore** cannot (permadeath). The Sample is **destroyed** either way — a failed core
+  run means returning to the Core for a fresh one. The detonation is deliberately a real,
+  dramatic death — the tension of the climb back is the whole point of the core run, and
+  it replaces the boss fight the game deliberately omits.
 - **Dying while carrying it destroys it** regardless of mode (`specs/mining.md`,
   `specs/modes.md`): the Core Sample never survives a death, so a failed core run
   always means going back down for another. Everything already **installed** on the

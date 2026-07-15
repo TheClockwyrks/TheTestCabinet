@@ -37,41 +37,42 @@ rocket checklist is durable progress that no death undoes.
 
 ## Standard
 
-The forgiving mode, modeled on Minecraft / Terraria's normal death: **you lose the
-trip, not the run.**
+The forgiving mode: **a death costs you your progress since the last save, not the whole
+run.** It relies on the **save** system (`specs/flow.md`): the player banks progress at the
+surface **Save Pad**, and a death lets them **restore** it.
 
-- On death, the miner **drops the cargo it was carrying** (all unsold ore) and **any
-  uninstalled exotic materials** in the satchel (Resonite / Cryenite — but **not** the
-  Core Sample, which is destroyed) as a **retrievable cache** at the death site,
-  marked so the player can find it again.
-- The miner **respawns at the surface** with **full fuel and repaired hull**, keeping
-  all banked **Credits**, all **upgrade tiers**, and all **installed rocket components**.
-- To recover the dropped haul, the player **descends to the cache and collects it** —
-  a real risk (the cache may sit in the deep, near the hazards that killed you), but
-  never a run-ender. If the player dies again before retrieving an old cache, the
-  standard behavior is that the newest death drops a fresh cache; keeping the world to
-  a **single** most-recent cache is acceptable (older uncollected caches may be
-  superseded).
-- **Standard has no Game Over from death** (`specs/flow.md`): the expedition continues
-  until the player launches the rocket (Victory) or quits. The cost of dying is the
-  lost trip and the retrieval, plus — on a failed core run — going back down for a
-  fresh Core Sample.
+- On death, the run ends at the **Game Over** screen (`specs/flow.md`) showing the run
+  summary. There is **no respawn and no dropped cache** — a death simply ends the current
+  run.
+- If a **save exists**, the Game Over screen offers **CONTINUE FROM SAVE**, which restores
+  the last save — the world, banked **Credits**, **upgrade tiers**, **installed rocket
+  components**, cargo, materials, and the miner's fuel/hull as they were when saved — and
+  drops the player back at the surface to carry on. The **save survives** the death, so it
+  can be restored again if the next attempt also fails.
+- If there is **no save** (the player never used the Save Pad this run), there is nothing
+  to restore: the Game Over screen offers **PLAY AGAIN** (a fresh Standard expedition) and
+  **MENU**. This is why the Save Pad matters — saving early makes a death recoverable.
+- The cost of dying is therefore the **progress made since the last save**, plus — on a
+  failed core run — going back down for a fresh Core Sample.
 
 ## Hardcore
 
-The unforgiving mode: **death ends the expedition.**
+The unforgiving mode: **death ends the expedition for good.**
 
 - On death, the run is **over immediately** — the game goes to the **Game Over** state
   (`specs/flow.md`), showing the run summary (deepest depth, Credits, components
   installed, and how the miner died).
-- There is **no respawn and no dropped cache** — Hardcore is permadeath. **PLAY AGAIN**
-  starts a completely fresh Hardcore expedition (new world, `0` Credits, tier-1 gear,
-  an empty rocket); **MENU** returns to the title.
+- There is **no respawn and no dropped cache**, and the **save is deleted** — Hardcore is
+  permadeath, so even a save banked at the pad does not survive the death. **PLAY AGAIN**
+  starts a completely fresh Hardcore expedition (new world, `0` Credits, tier-1 gear, an
+  empty rocket); **MENU** returns to the title. (A Hardcore save is still useful for
+  **quitting and resuming** a run in progress via **CONTINUE** — it just cannot rescue a
+  death.)
 - Because a single mistake ends everything, Hardcore rewards caution — banking Credits
   often, upgrading hull and fuel before pushing deep, and treating the 90-second core
   run as the genuine gamble it is.
 
-The mode-select menu makes this contrast explicit: **Standard** — "die and you drop
-your haul but respawn at the surface; retrieve it and keep going"; **Hardcore** — "one
-death ends the expedition." Both play the same mine to the same rocket; only the price
-of dying differs.
+The mode-select menu makes this contrast explicit: **Standard** — "a death lets you
+restore from your last save and keep going"; **Hardcore** — "a death deletes your save
+and ends the expedition." Both play the same mine to the same rocket; only the price of
+dying differs.

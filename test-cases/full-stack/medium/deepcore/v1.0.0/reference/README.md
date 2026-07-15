@@ -30,6 +30,14 @@ The mockups are targets for **layout, palette, type, and readability**, not for 
 art is made — and never a stiff, single-frame miner, which the spec calls a failed
 build.
 
+> **Note — pending refresh.** The committed mockup HTML predates the cargo/save rework:
+> it still shows **four** surface buildings and the older kg-capacity cargo readout, and
+> the menus predate **CONTINUE**. The authoritative design is the specs (a **five**-building
+> camp including the **Save Pad**, a **slot** cargo readout with load-in-kg, the inventory
+> overlay, and the restore-on-death flow). The reference **images** are authored after
+> playtest, so these mockups will be regenerated to match then; treat the prose below as the
+> current design where it and the older HTML disagree.
+
 ## Views
 
 Each file corresponds to a canonical view slug. The `mine`, `surface`, and `game-over`
@@ -61,18 +69,21 @@ distance toward the nearest needed material). The exact mine, ore scatter, depth
 miner pose are just one representative moment — the mine is generated per game within
 the fixed rules of [`../specs/world.md`](../specs/world.md).
 
-The `surface.html` frame shows the dusk-sky camp: the four buildings (**Fuel Depot**,
-**Ore Market**, **Upgrade Shop**, **Launch Pad**), the **escape rocket partway
-assembled** on the pad (2 of 5 components installed, the deep three still ghosted), the
-**cave mouth** down into the mine, the miner standing at a building, and one building's
-**overlay panel** open — here the **Upgrade Shop** with its seven tracks (Fuel Tank,
-Drill, Cargo Bay, Hull, Jetpack, Radiator, Scanner), each showing the current tier, the
-next-tier effect, and its Credits price.
+The `surface.html` frame shows the dusk-sky camp: the surface buildings — in the current
+design **five** of them (**Fuel Depot**, **Ore Market**, **Save Pad**, **Upgrade Shop**,
+**Launch Pad**; the committed mockup still shows the older four, see the note above) — the
+**escape rocket partway assembled** on the pad (2 of 5 components installed, the deep three
+still ghosted), the **cave mouth** down into the mine, the miner standing at a building, and
+one building's **overlay panel** open — here the **Upgrade Shop** with its seven tracks
+(Fuel Tank, Drill, Cargo Bay, Hull, Jetpack, Radiator, Scanner), each showing the current
+tier, the next-tier effect, and its Credits price. The Cargo Bay tier now sets a number of
+**ore slots** (not a kg capacity).
 
-`game-over.html` is the shared end screen (Victory after launch, or the Hardcore Game
-Over from a death) over a dimmed camp, showing the run **summary** (deepest depth
-reached, Credits earned, elapsed time, mode, rocket components installed) with **PLAY
-AGAIN** and **MENU**.
+`game-over.html` is the shared end screen (Victory after launch, or a Game Over from a
+death in either mode) over a dimmed camp, showing the run **summary** (deepest depth
+reached, Credits earned, elapsed time, mode, rocket components installed). Its options
+depend on the mode: a **Standard** death with a save offers **CONTINUE FROM SAVE** and
+**MENU**; otherwise **PLAY AGAIN** and **MENU**.
 
 `theme.css` holds the shared palette, type, and world/HUD furniture referenced by every
 view and by the specification (the seeded specs under [`../specs/`](../specs/)),

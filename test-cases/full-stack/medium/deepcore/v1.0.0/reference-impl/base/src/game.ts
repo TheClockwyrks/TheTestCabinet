@@ -36,7 +36,8 @@ import {
   WORLD_COLS,
   WORLD_ROWS,
 } from "./constants";
-import { collectOre, emptyCargo, cargoUsed, cargoWeight, jettisonOre } from "./economy";
+import { emptyCargo, cargoUsed, cargoWeight } from "./economy";
+import { clearSave, readSave, writeSave } from "./save";
 import { updateDrill } from "./drill";
 import { landImpact, updateLavaContact } from "./hazards";
 import {
@@ -45,7 +46,6 @@ import {
   SURFACE_FEET_Y,
   minerCenterX,
   minerCenterY,
-  minerCol,
   minerRow,
   stepMovement,
 } from "./physics";
@@ -60,7 +60,6 @@ import type { Cue, LoopCue } from "./audio";
 import type { FxEvent } from "./particles";
 import type {
   Cargo,
-  DeathCache,
   DeathCause,
   GamePhase,
   Material,
@@ -81,12 +80,14 @@ export interface Building {
   label: string;
 }
 
-/** The four surface buildings, spread across the wider camp (specs/world.md). */
+/** The five surface buildings, spread across the wider camp (specs/world.md). The Save Pad
+ *  sits near the spawn/cave mouth so a surfacing miner can bank progress right away. */
 export const SURFACE_BUILDINGS: Building[] = [
   { panel: "fuel-depot", col: 5, label: "Fuel Depot" },
   { panel: "ore-market", col: 11, label: "Ore Market" },
-  { panel: "upgrade-shop", col: 20, label: "Upgrade Shop" },
-  { panel: "launch-pad", col: 26, label: "Launch Pad" },
+  { panel: "save-pad", col: 17, label: "Save Pad" },
+  { panel: "upgrade-shop", col: 21, label: "Upgrade Shop" },
+  { panel: "launch-pad", col: 27, label: "Launch Pad" },
 ];
 
 /** How close (in tiles) the miner must stand to a building to activate it with a key. */
@@ -132,7 +133,6 @@ export class Game {
   coreTimer: number | null = null;
   deepestRow = 0;
   elapsedSeconds = 0;
-  cache: DeathCache | null = null;
   summary: RunSummary | null = null;
   deathCause?: DeathCause;
 
@@ -209,7 +209,7 @@ export class Game {
   /**
    * True when the current load is too heavy for the jetpack to climb at all (thrust accel no
    * longer beats gravity, specs/character.md) — the miner can only slow its descent and must
-   * jettison ore (Q) or upgrade the jetpack. The HUD warns when this holds.
+   * drop ore from the inventory or upgrade the jetpack. The HUD warns when this holds.
    */
   overloaded(): boolean {
     return this.thrustAccel() <= GRAVITY;
@@ -227,8 +227,10 @@ export class Game {
     return this.seedCounter;
   }
 
-  /** Start a fresh expedition in the given mode (specs/mode-standard.md). */
+  /** Start a fresh expedition in the given mode (specs/mode.md). Starting anew abandons any
+   *  existing save — there is at most one save slot (specs/flow.md). */
   newExpedition(mode: Mode): void {
+    clearSave();
     this.mode = mode;
     const w = generateWorld(this.nextSeed());
     this.grid = w.grid;
@@ -243,7 +245,6 @@ export class Game {
     this.coreTimer = null;
     this.deepestRow = 0;
     this.elapsedSeconds = 0;
-    this.cache = null;
     this.summary = null;
     this.deathCause = undefined;
     this.panel = null;
@@ -316,6 +317,8 @@ export class Game {
       if (this.launchAnim >= LAUNCH_ANIM_TIME) {
         this.summary = this.makeSummary();
         this.launchAnim = null;
+        // The expedition is won — the save (if any) is spent (specs/flow.md).
+        clearSave();
         this.phase = "victory";
       }
       return;
@@ -381,9 +384,6 @@ export class Game {
     // Fuel and hull are NOT restored by being home — they are only bought at the Fuel
     // Depot (specs/character.md, specs/flow.md). Nothing refills automatically here.
 
-    // Retrieve a dropped Standard cache by reaching it (specs/modes.md).
-    this.retrieveCache();
-
     if (minerRow(this.miner) > this.deepestRow) this.deepestRow = minerRow(this.miner);
 
     this.updateCamera(dt);
@@ -429,25 +429,6 @@ export class Game {
       x: c * TILE_SIZE + TILE_SIZE / 2,
       y: r * TILE_SIZE + TILE_SIZE * 0.35,
     });
-  }
-
-  private retrieveCache(): void {
-    if (!this.cache) return;
-    const mc = minerCol(this.miner);
-    const mr = minerRow(this.miner);
-    if (Math.abs(mc - this.cache.col) <= 1 && Math.abs(mr - this.cache.row) <= 1) {
-      // Reclaim as much of the cache as the bay's WEIGHT capacity allows (specs/mining.md);
-      // ore that no longer fits is left behind.
-      for (const o of Object.keys(this.cache.cargo) as (keyof Cargo)[]) {
-        let n = this.cache.cargo[o];
-        while (n > 0 && collectOre(this, o)) n--;
-      }
-      this.satchel.resonite += this.cache.resonite;
-      this.satchel.cryenite += this.cache.cryenite;
-      this.cache = null;
-      this.sndQueue.push("material-chime");
-      this.note("CACHE RECOVERED");
-    }
   }
 
   private updateCamera(dt: number): void {
@@ -539,17 +520,88 @@ export class Game {
   }
 
   /**
-   * Jettison one unit of the least value-dense ore to lighten the load (specs/character.md) —
-   * the escape valve for an overloaded miner that can no longer lift off. Only during live
-   * play (not while a panel is open, dying, or launching); the ore is lost, not sold.
+   * Toggle the inventory (cargo hold) overlay (specs/mining.md, specs/flow.md). Unlike the
+   * surface building panels it opens ANYWHERE — surface or mid-dig — so the player can review
+   * the haul and drop specific ore to shed weight when overloaded (specs/character.md). Like
+   * every panel it freezes movement while open (the Core timer keeps running — no free pause).
    */
-  jettison(): void {
-    if (this.phase !== "in-mine" || this.panel !== null || this.dying || this.launchAnim !== null) return;
-    const dropped = jettisonOre(this);
-    if (dropped) {
-      this.sndQueue.push("impact");
-      this.note(`JETTISONED ${dropped.toUpperCase()}`);
+  openInventory(): void {
+    if (this.phase !== "in-mine" || this.dying || this.launchAnim !== null) return;
+    this.panel = this.panel === "inventory" ? null : "inventory";
+  }
+
+  // ---- Save / continue (single slot, specs/flow.md, specs/modes.md, save.ts) ----
+
+  /**
+   * Whether the expedition may be saved right now: only at the surface Save Pad, and never
+   * while the unstable Core Sample is in hand — the pad refuses it, so the destabilization
+   * timer is never frozen out by saving-and-quitting (specs/hazards.md, specs/flow.md).
+   */
+  canSave(): boolean {
+    return this.atSurface() && this.coreTimer === null && !this.satchel.coreSample;
+  }
+
+  /** Write the single save slot from the Save Pad (specs/flow.md). Returns false if it can't
+   *  save right now or storage is unavailable. */
+  saveExpedition(): boolean {
+    if (this.phase !== "in-mine" || !this.canSave()) return false;
+    const ok = writeSave({
+      version: 1,
+      mode: this.mode,
+      credits: this.credits,
+      creditsEarned: this.creditsEarned,
+      tiers: { ...this.tiers },
+      installed: [...this.installed],
+      cargo: { ...this.cargo },
+      satchel: { resonite: this.satchel.resonite, cryenite: this.satchel.cryenite },
+      grid: this.grid,
+      nodes: this.nodes,
+      spawnCol: this.spawnCol,
+      deepestRow: this.deepestRow,
+      elapsedSeconds: this.elapsedSeconds,
+      fuel: this.miner.fuel,
+      hull: this.miner.hull,
+    });
+    if (ok) {
+      this.sndQueue.push("fabricate");
+      this.note("EXPEDITION SAVED");
+    } else {
+      this.note("SAVE FAILED");
     }
+    return ok;
+  }
+
+  /** Restore the saved expedition (from the menu CONTINUE or a Standard death), placing the
+   *  miner back at the surface with the saved fuel/hull. Returns false if there is no save. */
+  loadExpedition(): boolean {
+    const data = readSave();
+    if (!data) return false;
+    this.mode = data.mode;
+    this.grid = data.grid;
+    this.nodes = data.nodes;
+    this.spawnCol = data.spawnCol;
+    this.credits = data.credits;
+    this.creditsEarned = data.creditsEarned;
+    this.cargo = { ...emptyCargo(), ...data.cargo };
+    this.satchel = { resonite: data.satchel.resonite, cryenite: data.satchel.cryenite, coreSample: false };
+    this.tiers = { ...data.tiers };
+    this.installed = new Set(data.installed);
+    this.coreTimer = null;
+    this.deepestRow = data.deepestRow;
+    this.elapsedSeconds = data.elapsedSeconds;
+    this.summary = null;
+    this.deathCause = undefined;
+    this.panel = null;
+    this.dying = null;
+    this.launchAnim = null;
+    this.hurtFlash = 0;
+    this.notes = [];
+    this.placeMinerAtSurface();
+    this.miner.fuel = Math.min(this.maxFuel(), data.fuel);
+    this.miner.hull = Math.min(this.maxHull(), data.hull);
+    this.updateCamera(1);
+    this.phase = "in-mine";
+    return true;
   }
 
   /** Begin the launch sequence (all five components installed). */

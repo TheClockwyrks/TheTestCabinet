@@ -16,15 +16,15 @@ import {
 import type { Cargo, Ore, UpgradeTrack } from "./types";
 import type { Game } from "./game";
 
-/** Total units (piece count) currently in the cargo bay. */
+/** Total units (piece count) currently in the cargo bay — the SLOTS filled (specs/mining.md). */
 export function cargoUsed(cargo: Cargo): number {
   let n = 0;
   for (const o of Object.keys(cargo) as Ore[]) n += cargo[o];
   return n;
 }
 
-/** Total WEIGHT (kg) currently in the cargo bay — what the jetpack must lift and the bay
- *  capacity limits (specs/mining.md, specs/character.md). */
+/** Total WEIGHT (kg) currently in the cargo bay — what the jetpack must lift on the climb
+ *  home (specs/character.md). Separate from the slot capacity that limits pickup. */
 export function cargoWeight(cargo: Cargo): number {
   let kg = 0;
   for (const o of Object.keys(cargo) as Ore[]) kg += cargo[o] * ORES[o].weightKg;
@@ -39,36 +39,29 @@ export function cargoValue(cargo: Cargo): number {
 }
 
 /**
- * Try to add one unit of ore to cargo; false if adding its weight would exceed the bay's
- * kg capacity (specs/mining.md). Cargo is limited by WEIGHT, not a unit count — so a bay of
- * heavy deep ore holds far fewer pieces than one of light shallow ore.
+ * Try to add one unit of ore to cargo; false if the bay is already full by SLOT COUNT
+ * (specs/mining.md). Cargo is limited by a number of slots (one unit per slot, any weight),
+ * the Motherload model — weight is a separate concern that the jetpack fights on the climb
+ * (specs/character.md). When this returns false the caller still clears the drilled tile;
+ * the ore is simply left behind, never a hard-lock (specs/mining.md, drill.ts).
  */
 export function collectOre(game: Game, ore: Ore): boolean {
-  if (cargoWeight(game.cargo) + ORES[ore].weightKg > game.cargoCap()) return false;
+  if (cargoUsed(game.cargo) >= game.cargoCap()) return false;
   game.cargo[ore]++;
   return true;
 }
 
 /**
- * Jettison one unit of the LEAST value-dense ore held, to lighten the load so an overloaded
- * miner can lift off again (specs/character.md). The escape valve for the aggressive
- * lift-gating: the discarded ore is lost (not sold). Returns the ore dropped, or null if the
- * bay is empty.
+ * Drop one unit of a SPECIFIC ore from the bay (specs/mining.md) — the player's control for
+ * ditching a heavy haul from the inventory so an overloaded miner can lift off again
+ * (specs/character.md). The dropped ore is lost, not sold. Returns true if a unit was
+ * dropped (false if none of that ore is held).
  */
-export function jettisonOre(game: Game): Ore | null {
-  let worst: Ore | null = null;
-  let worstDensity = Infinity;
-  for (const o of Object.keys(game.cargo) as Ore[]) {
-    if (game.cargo[o] <= 0) continue;
-    const density = ORES[o].value / ORES[o].weightKg;
-    if (density < worstDensity) {
-      worstDensity = density;
-      worst = o;
-    }
-  }
-  if (worst === null) return null;
-  game.cargo[worst]--;
-  return worst;
+export function dropOre(game: Game, ore: Ore): boolean {
+  if (game.cargo[ore] <= 0) return false;
+  game.cargo[ore]--;
+  game.sndQueue.push("impact");
+  return true;
 }
 
 /** Sell the whole cargo for Credits and empty the bay (specs/mining.md). */

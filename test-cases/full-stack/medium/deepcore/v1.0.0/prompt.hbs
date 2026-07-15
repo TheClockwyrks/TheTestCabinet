@@ -22,12 +22,13 @@ matches the specification exactly. It is decomposed by concern: `specs/overview.
 (the pitch and fiction, goals, hard requirements, the stage, the palette and type, and
 the visual design), `specs/world.md` (the tile grid and vertical camera, the four
 **depth bands** and the Core chamber, every tile kind, how ore/materials/hazards are
-placed, and the **surface** with its four buildings), `specs/character.md` (the
+placed, and the **surface** with its five buildings), `specs/character.md` (the
 **prospector**: fall/jetpack/lateral movement, the drill-down/left/right-**never-up**
 rule, dig speed vs hardness, the **fuel** and **hull** models, the **weight-and-lift**
-model (heavy hauls climb slower and, overloaded, cannot lift — **jettison** to escape),
-the **radiator**, and the full set of **animation states**), `specs/mining.md` (the
-**ore** values **and weights**, the **weight-limited cargo**, the two buried **exotic
+model (heavy hauls climb slower and, overloaded, cannot lift — **drop ore** from the
+inventory to escape), the **radiator**, and the full set of **animation states**),
+`specs/mining.md` (the **ore** values **and weights**, the **slot-limited cargo** with
+weight the jetpack must lift, the **inventory** for dropping ore, the two buried **exotic
 materials** and the **scanner**, and selling), `specs/hazards.md` (gas, lava, impact,
 the **radiator**, and the **unstable Core Sample** and its detonation timer),
 `specs/upgrades.md` (the seven upgrade tracks and prices), `specs/rocket.md` (the five-component **escape
@@ -89,16 +90,19 @@ it works. Before you consider the task complete:
   exceptions.
 - **Drive the game** — pick a mode at the mode select, drill down through the bands and
   watch the miner **animate** as it drills and falls and **jetpacks** back up, collect
-  ore into cargo, run low on fuel and make it back to the surface, **sell** at the Ore
-  Market and **buy an upgrade**, use the **scanner** to find a **Resonite** node and a
-  **Cryenite** node, hit a **gas pocket** and brush **lava**, make the **core run** to
-  extract the unstable Core Sample and race its timer to the surface, **fabricate** all
-  five rocket components (confirming the deep parts need their materials), and **LAUNCH**
-  to reach Victory — and confirm a **Standard** death drops a retrievable cache and
-  respawns you while a **Hardcore** death ends the run. **Screenshot** the title, mine,
-  surface, and an end screen. Verify each against the specs — treating the `reference/`
-  images as examples of the intended look only, not a layout to match — and fix what
-  does not follow the specification before finishing.
+  ore into cargo (confirming the bay caps by **slot count** and that drilling ore with a
+  full bay clears the tile rather than jamming), open the **inventory** to **drop** ore
+  and shed weight when overloaded, run low on fuel and make it back to the surface,
+  **sell** at the Ore Market, **save** at the **Save Pad**, and **buy an upgrade**, use
+  the **scanner** to find a **Resonite** node and a **Cryenite** node, hit a **gas
+  pocket** and brush **lava**, make the **core run** to extract the unstable Core Sample
+  and race its timer to the surface, **fabricate** all five rocket components (confirming
+  the deep parts need their materials), and **LAUNCH** to reach Victory — and confirm a
+  **Standard** death lets you **restore from your save** while a **Hardcore** death
+  deletes it and ends the run, and that **CONTINUE** on the main menu resumes a save.
+  **Screenshot** the title, mine, surface, and an end screen. Verify each against the
+  specs — treating the `reference/` images as examples of the intended look only, not a
+  layout to match — and fix what does not follow the specification before finishing.
 - **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
   screenshots and the two short clips, each written to the precise `proof/` path that
   spec names. These are required deliverables of the finished build, not a private

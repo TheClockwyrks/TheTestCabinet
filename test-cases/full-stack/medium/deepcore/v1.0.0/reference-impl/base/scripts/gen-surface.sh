@@ -10,6 +10,7 @@
 #       cave-mouth.png   the shored opening down into row 1 (the way into the mine)
 #       fuel-depot.png   REFUEL/REPAIR — a fuel tank + pump, reads as a fuel depot
 #       ore-market.png   SELL ore — a trading stall with ore crates + a balance scale
+#       save-pad.png     a lit checkpoint dais the miner stands on to save the expedition
 #       upgrade-shop.png BUY upgrades — a fabricator hut with a gear + crossed wrench
 #       launch-pad.png   the derelict launch platform (base only; the rocket is separate)
 #
@@ -374,6 +375,43 @@ d line --x0 96 --y0 83 --x1 91 --y1 102 --color "$MET_XD"
 d line --x0 19 --y0 113 --x1 7  --y1 121 --color "$MET_XD"
 d line --x0 23 --y0 116 --x1 12 --y1 124 --color "$MET_XD"
 
+# ============================ SAVE PAD (bank the expedition) ===================
+# The surface SAVE PAD (specs/flow.md): the only place the expedition can be saved. A raised
+# checkpoint dais with a glowing resonite-cyan ring inset in it, a central data pylon carrying
+# a lit save-disc emblem, and a beacon lamp — reads clearly as "stand here to save". 112×132.
+newsprite 112 132 "$SURF/save-pad.png"
+d fill-rect --x 8 --y 123 --width 95 --height 9 --color "$MET_XD"    # footing
+# raised dais (a low stacked platform)
+d fill-rect --x 16 --y 110 --width 80 --height 14 --color "$MET_D"
+d fill-rect --x 22 --y 102 --width 68 --height 10 --color "$MET_M"
+d fill-rect --x 22 --y 102 --width 68 --height 3  --color "$MET_L"   # deck lip
+# glowing checkpoint ring set into the dais
+d fill-circle --cx 56 --cy 106 --r 26 --color "$MET_XD"
+d fill-circle --cx 56 --cy 106 --r 22 --color '#0e2733'
+d fill-circle --cx 56 --cy 106 --r 18 --color "$RESONITE"
+d fill-circle --cx 56 --cy 106 --r 13 --color '#0e2733'
+d fill-circle --cx 56 --cy 106 --r 4  --color '#bff0ff'             # ring core glint
+# central data pylon rising from the ring
+d fill-rect --x 44 --y 40 --width 24 --height 66 --color "$MET_M"
+d fill-rect --x 44 --y 40 --width 6  --height 66 --color "$MET_L"    # left sheen
+d fill-rect --x 62 --y 40 --width 6  --height 66 --color "$MET_D"    # right shade
+d fill-rect --x 44 --y 40 --width 24 --height 3  --color "$MET_HL"   # top rim
+# lit save-disc emblem on the pylon (a floppy disk: body + shutter + label)
+d fill-rect --x 47 --y 58 --width 18 --height 20 --color "$MET_XD"
+d fill-rect --x 49 --y 60 --width 14 --height 16 --color "$RESONITE"
+d fill-rect --x 52 --y 60 --width 8  --height 6  --color "$MET_XD"   # shutter
+d fill-rect --x 54 --y 60 --width 2  --height 6  --color "$MET_L"
+d fill-rect --x 50 --y 69 --width 12 --height 6  --color '#0e2733'   # label
+d fill-rect --x 51 --y 71 --width 10 --height 1  --color "$RESONITE"
+d fill-rect --x 51 --y 73 --width 7  --height 1  --color "$RESONITE"
+# beacon lamp on top of the pylon
+d fill-rect --x 52 --y 30 --width 8 --height 10 --color "$MET_D"
+d fill-circle --cx 56 --cy 27 --r 6 --color "$RESONITE"
+d fill-circle --cx 56 --cy 27 --r 3 --color '#bff0ff'
+# faint uplight lines catching the beacon
+d line --x0 40 --y0 96 --x1 34 --y1 82 --color "$RESONITE"
+d line --x0 72 --y0 96 --x1 78 --y1 82 --color "$RESONITE"
+
 # =========================================================================================
 #  ESCAPE ROCKET — assembly stages 0..5 (draw-sheet; specs/rocket.md, ASSET-LAYOUT.md)
 # =========================================================================================
@@ -563,6 +601,6 @@ d line --x0 4 --y0 9 --x1 16 --y1 9 --color '#8a5cd0'
 d set-pixel --x 8 --y 6 --color "$WHITE"
 
 echo "produced Deepcore surface + rocket + HUD-icon assets:"
-echo "  $SURF/{sky,ground,cave-mouth,fuel-depot,ore-market,upgrade-shop,launch-pad}.png"
+echo "  $SURF/{sky,ground,cave-mouth,fuel-depot,ore-market,save-pad,upgrade-shop,launch-pad}.png"
 echo "  $ROCK/stage0..stage5.png"
 echo "  $ICON/{fuel,hull,cargo,credits,depth,resonite,cryenite}.png"

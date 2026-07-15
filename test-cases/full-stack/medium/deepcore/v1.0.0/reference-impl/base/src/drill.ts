@@ -172,14 +172,16 @@ function completeDrill(game: Game, d: DrillProgress): void {
     }
     case "ore": {
       const ore = tile.ore!;
+      // The drilled tile ALWAYS becomes tunnel — the cut succeeds whether or not the ore
+      // fits, so a full bay never leaves a solid tile under the miner and hard-locks the
+      // dig (specs/mining.md). If the bay is full by slot count, the ore is left behind.
+      clearToTunnel();
+      spendFuel();
       if (collectOre(game, ore)) {
-        clearToTunnel();
         game.fxQueue.push({ kind: "ore-sparkle", x: cx, y: cy });
         game.sndQueue.push("ore-pickup");
-        spendFuel();
       } else {
-        // Cargo full — leave the vein in the ground (specs/mining.md).
-        game.note("CARGO FULL");
+        game.note("CARGO FULL — ORE LOST");
       }
       break;
     }

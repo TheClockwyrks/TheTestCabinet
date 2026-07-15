@@ -44,15 +44,41 @@ core run), climb back before fuel or hull runs out, sell, **pay to refuel and re
 spend what is left on the upgrade or rocket part this trip earned, and go again — a
 little deeper each time.
 
+## Saving and continuing
+
+The expedition can be **saved** so a session can be resumed later. Saving is **explicit**
+and **restricted**:
+
+- **Only at the Save Pad.** The surface **Save Pad** building (`specs/world.md`) is the
+  **only** way to save — there is no autosave and no saving underground. Activating it and
+  choosing **SAVE** writes the save.
+- **One save at a time.** There is a **single save slot**; saving **overwrites** it.
+  Starting a **NEW EXPEDITION** abandons any existing save.
+- **CONTINUE.** When a save exists, the main menu shows a **CONTINUE** entry that resumes
+  it exactly where it was saved (`specs/flow.md`, Game states).
+- **What a save holds.** Enough to resume the surface state: the generated mine, banked
+  **Credits**, all **upgrade tiers**, **installed rocket components**, the **cargo** and
+  **materials**, and the miner's **fuel** and **hull**. Saving is **refused while carrying
+  the unstable Core Sample** (`specs/hazards.md`), so its timer is never frozen out by
+  saving and quitting.
+- **When the save ends.** A **Hardcore** death **deletes** the save (permadeath); a
+  **victory** consumes it. A **Standard** death **keeps** it, so the run can be restored
+  from the Game Over screen (`specs/modes.md`).
+
+The implementation may persist the save however it likes within the browser (e.g.
+`localStorage`); the game must still run if that storage is unavailable, simply without
+saving. This is the **one** persisted-progress feature — everything else is per-session.
+
 ## Game states
 
 The game is a small state machine. Each state has a clear screen and controls
 (`specs/controls.md`).
 
-1. **Title / main menu.** Shows the title `DEEPCORE`, a tagline, and a vertical menu
-   listing the expedition start defined by `specs/mode.md` (which declares its entry,
-   `NEW EXPEDITION`), followed by `HOW TO PLAY`. The selected item is highlighted. A
-   dim slice of the mine may show behind the menu for atmosphere.
+1. **Title / main menu.** Shows the title `DEEPCORE`, a tagline, and a vertical menu.
+   When a **saved expedition exists** (below), a **`CONTINUE`** entry appears **first**
+   (resuming the save); then the expedition start defined by `specs/mode.md` (which
+   declares its entry, `NEW EXPEDITION`), followed by `HOW TO PLAY`. The selected item is
+   highlighted. A dim slice of the mine may show behind the menu for atmosphere.
 2. **Mode select.** Reached from the expedition start on the main menu
    (`specs/mode.md`). Lets the player choose **Standard** or **Hardcore**
    (`specs/modes.md`), each showing what its death rule is before it is chosen.
@@ -64,9 +90,10 @@ The game is a small state machine. Each state has a clear screen and controls
    the exotic materials and the scanner, and the two modes. Returns to the main menu.
 4. **In mine.** The live game: the tiled world through the vertical camera, the miner
    digging and falling and thrusting, the ore and materials, the hazards, and — when
-   the miner is at the surface — the four buildings and their overlay panels (Fuel
-   Depot, Ore Market, Upgrade Shop, Launch Pad). This one state covers both the
-   surface and the whole descent; the camera and the open building panels are what
+   the miner is at the surface — the **five buildings** and their overlay panels (Fuel
+   Depot, Ore Market, **Save Pad**, Upgrade Shop, Launch Pad). The **inventory** overlay
+   (`specs/mining.md`) can also be opened here, at the surface or mid-dig. This one state
+   covers both the surface and the whole descent; the camera and the open panels are what
    change.
 5. **Paused.** The `Esc` overlay menu, reachable in the mine. Offers **Resume**,
    **Restart**, and **Quit to menu**, over a frozen, dimmed world. Pausing freezes the
@@ -76,13 +103,15 @@ The game is a small state machine. Each state has a clear screen and controls
    where it stopped.
 6. **Victory.** Shown when the rocket launches (`specs/rocket.md`). Displays the run
    summary — deepest depth reached, Credits earned, elapsed time, and mode — with
-   **PLAY AGAIN** (a fresh expedition in the same mode) and **MENU**.
-7. **Game Over.** Shown **only in Hardcore**, when the miner dies (`specs/modes.md`,
+   **PLAY AGAIN** (a fresh expedition in the same mode) and **MENU**. Winning **consumes
+   the save** (below).
+7. **Game Over.** Shown when the miner **dies** in either mode (`specs/modes.md`,
    `specs/character.md`). Displays the run summary — deepest depth reached, Credits,
-   rocket components installed, and how the miner died — with **PLAY AGAIN** (a fresh
-   Hardcore expedition) and **MENU**. **Standard has no Game Over from death**: a
-   Standard death drops the haul and respawns the miner at the surface (`specs/modes.md`),
-   and the run continues until the player wins or quits.
+   rocket components installed, and how the miner died. The options depend on the mode
+   (`specs/modes.md`): in **Standard**, if a save exists, **CONTINUE FROM SAVE** (restore
+   the last save) and **MENU**; in **Hardcore** (or Standard with no save), **PLAY AGAIN**
+   (a fresh expedition in the same mode) and **MENU**. A **Hardcore** death **deletes the
+   save** (permadeath); a **Standard** death leaves it intact so it can be restored.
 
 ## Required menus
 
@@ -91,25 +120,30 @@ Every menu and screen below must be present and reachable. Each entry states its
 and type of `specs/overview.md`. The expedition start's menu entry is in
 `specs/mode.md`; the mode content is in `specs/modes.md`.
 
-- **Main menu** — the title, a tagline, the expedition start from `specs/mode.md`
-  (`NEW EXPEDITION`), then **HOW TO PLAY**. The start → mode select; HOW TO PLAY → the
-  how-to-play screen.
+- **Main menu** — the title, a tagline, a **CONTINUE** entry when a save exists (resumes
+  it), the expedition start from `specs/mode.md` (`NEW EXPEDITION`), then **HOW TO PLAY**.
+  The start → mode select; HOW TO PLAY → the how-to-play screen.
 - **Mode select** — an entry for **Standard** and **Hardcore**, each showing its death
   rule before selection (`specs/modes.md`); choosing one → begins a fresh expedition in
   that mode; **BACK** → the main menu.
 - **How to play** — the goal, the controls, the dig loop, the fuel/climb tension, the
-  hazards, the materials and scanner, and the two modes; a way back to the main menu.
-- **Building panels** — the four surface overlays: **Fuel Depot** (buy fuel and hull
+  cargo (slots + weight and the inventory drop), the hazards, the materials and scanner,
+  saving, and the two modes; a way back to the main menu.
+- **Building panels** — the five surface overlays: **Fuel Depot** (buy fuel and hull
   repair for Credits — a fixed increment or fill/repair-to-full, paying only for the
   missing amount, `specs/character.md`), **Ore Market** (the cargo breakdown and
-  **SELL**), **Upgrade Shop** (the seven tracks with current tier, next-tier effect,
-  and price, `specs/upgrades.md`), and **Launch Pad** (the five-component rocket
-  checklist and **FABRICATE** / **LAUNCH**, `specs/rocket.md`). Each opens when the
-  miner activates the building and closes back to the mine.
+  **SELL**), **Save Pad** (**SAVE** the expedition, `specs/modes.md`), **Upgrade Shop**
+  (the seven tracks with current tier, next-tier effect, and price, `specs/upgrades.md`),
+  and **Launch Pad** (the five-component rocket checklist and **FABRICATE** / **LAUNCH**,
+  `specs/rocket.md`). Each opens when the miner activates the building and closes back to
+  the mine.
+- **Inventory overlay** — the cargo hold (`specs/mining.md`): the held ore with counts and
+  weights, the slots/load readout, and a **drop** control per ore. Openable anywhere.
 - **Pause menu** — **Resume**, **Restart**, and **Quit to menu**, over the frozen mine.
-- **Victory screen** and (Hardcore) **Game Over screen** — the run summary with **PLAY
-  AGAIN** and **MENU**. PLAY AGAIN starts a fresh expedition in the same mode; MENU
-  returns to the main menu.
+- **Victory screen** — the run summary with **PLAY AGAIN** and **MENU**.
+- **Game Over screen** — the run summary with, in **Standard** (save present), **CONTINUE
+  FROM SAVE** and **MENU**, else **PLAY AGAIN** and **MENU** (`specs/modes.md`). PLAY
+  AGAIN starts a fresh expedition in the same mode; MENU returns to the main menu.
 
 Every menu and panel must be operable with the mouse; the keyboard accelerators of
 `specs/controls.md` are an alternative. This specification fixes the **content and
@@ -124,13 +158,13 @@ visible:
 - **Fuel** gauge (turning to the alert color under 20%, with the low-fuel alarm,
   `specs/character.md`);
 - **Hull** gauge (turning to the alert color under 25%);
-- **Load** as **kg used / kg capacity** (`specs/mining.md`), turning to the alert color
-  and reading **OVERLOAD** when the haul is too heavy for the jetpack to lift
-  (`specs/character.md`);
+- **Cargo** as **slots used / capacity** (`specs/mining.md`) with the current **load in
+  kg** alongside, turning to the alert color when the bay is full and reading **OVERLOAD**
+  when the haul is too heavy for the jetpack to lift (`specs/character.md`);
 - **Credits** (`specs/rocket.md`, `specs/upgrades.md`);
 - **Depth** in meters (`specs/world.md`);
 - the **materials satchel** (which of Resonite / Cryenite you hold);
-- the **pause** and **mute** controls.
+- the **inventory (bag)**, **pause**, and **mute** controls.
 
 Over the world, the HUD also draws the **scanner indicator** (the directional arrow +
 distance to the nearest needed material, `specs/mining.md`, drawn in code), and, while
@@ -143,12 +177,13 @@ on the core run — how many seconds remain.
 
 There is no running numeric score. The **end screens** (Victory, Game Over) show a run
 **summary**: deepest depth reached (m), total Credits earned, elapsed time, mode, and
-rocket components installed. It is for the result screen only and is **not persisted**
-between sessions.
+rocket components installed. The summary is for the result screen only and is **not
+persisted**; the only persisted state is the **save** (above).
 
 ## Out of scope
 
-- Network or online multiplayer, and any saved/persisted progress between sessions.
+- Network or online multiplayer, and any cloud/account-based progress. (The single local
+  **save** of "Saving and continuing" above **is** in scope; nothing beyond it.)
 - Touch or gamepad input (mouse and keyboard only for this version).
 - A boss fight or any combat — Deepcore has **no enemies** (`specs/hazards.md`); the
   mine is the only adversary. This is deliberate.

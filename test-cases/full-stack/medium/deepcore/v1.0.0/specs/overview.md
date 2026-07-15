@@ -59,16 +59,17 @@ start; they cross-reference each other by name and form one specification.
   chamber, every **tile kind** (earth, rock, deepstone, coreshell, bedrock border,
   **unbreakable stone**, ore vein, material node, gas pocket, lava, empty tunnel), how
   ore / materials / hazards / stone are **placed** (guaranteed in their band, random
-  position), and the **surface** with its four buildings.
+  position), and the **surface** with its five buildings.
 - `specs/character.md` — the **prospector**: fall / jetpack / lateral movement, the
   fixed rule that you drill **down, left, and right but never up**, dig speed vs tile
   hardness, single-tile collision, the **fuel** consumption model, **hull** and damage,
   the **weight-and-lift** model (heavier hauls climb slower and, overloaded, cannot lift
-  — with **jettison** as the escape valve), the **radiator**'s damage reduction, and the
-  full set of **animation states**. **Read this carefully.**
+  — with **dropping ore from the inventory** as the escape valve), the **radiator**'s
+  damage reduction, and the full set of **animation states**. **Read this carefully.**
 - `specs/mining.md` — the **ore economy**: the ore types, their values **and weights**
-  per band, the **weight-limited cargo** bay, the three **exotic materials** (mid / deep
-  / core) and the **scanner** that locates them, and selling. **Read this carefully.**
+  per band, the **slot-limited cargo** bay (with **weight** the jetpack must lift), the
+  **inventory** for dropping ore, the three **exotic materials** (mid / deep / core) and
+  the **scanner** that locates them, and selling. **Read this carefully.**
 - `specs/hazards.md` — the underground **hazards**: gas pockets (explode), lava
   (contact damage), fall impact, and the **unstable Core Sample** and its
   destabilization timer and detonation.
@@ -78,11 +79,12 @@ start; they cross-reference each other by name and form one specification.
   what each costs and which exotic material it needs, the launch pad, fabrication,
   and **victory**. **Read this carefully.**
 - `specs/flow.md` — the **economy** (Credits, selling, buying, fabricating), the
-  surface loop and refuel/repair, the game state machine, the required menus, the
-  HUD, scoring, and what is out of scope.
+  surface loop and refuel/repair, **saving and continuing** (the Save Pad + single
+  slot), the game state machine, the required menus, the HUD, scoring, and what is out
+  of scope.
 - `specs/modes.md` — the two **modes**, **Standard** and **Hardcore**, chosen at an
-  in-game menu: they change **only** what happens when you die (Standard drops your
-  haul and respawns you; Hardcore ends the run), nothing else.
+  in-game menu: they change **only** what happens when you die (Standard lets you restore
+  from your last **save**; Hardcore deletes it and ends the run), nothing else.
 - `specs/controls.md` — the fixed-timestep simulation and the keyboard and mouse
   controls: moving and drilling, jetpack thrust, opening the surface buildings,
   pause, and mute.
@@ -174,7 +176,7 @@ increases to the right and `y` increases downward.
 The stage is divided into two regions (`specs/world.md` details each):
 
 - a **top status bar** — `y` in `[0, 56]`, full width — with Fuel, Hull, Cargo,
-  Credits, the Depth readout, and the pause/mute controls;
+  Credits, the Depth readout, and the inventory (bag)/pause/mute controls;
 - the **mine viewport** — `x` in `[0, 1280]`, `y` in `[56, 720]` (1280 x 664) — a
   camera-followed view of the tiled world: the mine tiles, the carved tunnels, the
   ore and materials, the hazards, the surface buildings, the miner, and the effects.

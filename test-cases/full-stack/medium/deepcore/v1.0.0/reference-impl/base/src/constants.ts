@@ -223,8 +223,9 @@ export const GRAVITY = 1500;
 // it achieves is that force divided by the loaded mass, so a heavy haul climbs slower —
 // and once the load is heavy enough that the thrust acceleration no longer exceeds
 // GRAVITY, the jetpack can only slow the descent, not climb (the Motherload "too heavy to
-// take off" wall). This is what makes the jetpack and cargo tracks matter together, and
-// why an overloaded miner must JETTISON ore (specs/character.md) to fly out.
+// take off" wall). Cargo is capped by SLOT COUNT (CARGO_CAPACITY), so a heavy-enough haul
+// can hit this lift wall well before the bay is full — at which point the miner must DROP
+// ore from the inventory (specs/mining.md, specs/character.md) or upgrade the jetpack.
 
 /** The miner's own mass (suit + drill + jetpack), in the same kg units as ore weight. */
 export const MINER_BASE_MASS = 200;
@@ -454,13 +455,14 @@ export const DRILL_TIME_BY_TIER: readonly (readonly number[])[] = [
 ];
 
 /**
- * Cargo bay: sets capacity as a TOTAL WEIGHT the bay holds, in kg (specs/mining.md). Ore
- * is limited by weight, not a unit count — a bay full of heavy deep ore holds far fewer
- * pieces than one of light shallow ore. Matched to the jetpack tiers so a full bay of the
- * same tier is liftable (JETPACK_LIFT); upgrading the bay ahead of the jetpack makes a full
- * haul un-liftable until the jetpack catches up (specs/character.md, specs/upgrades.md).
+ * Cargo bay: sets capacity as a NUMBER OF ORE SLOTS the bay holds — one unit of any ore
+ * fills one slot, regardless of its weight (the Motherload cargo model, specs/mining.md).
+ * Weight is a SEPARATE mechanic: each ore's `weightKg` is the load the jetpack must lift
+ * (specs/character.md), so a bay can be full by slot count while still light, or heavy with
+ * far fewer pieces — the two limits (slots to pick up, weight to fly out) pull against each
+ * other exactly as in Motherload. Slot counts follow Motherload's holds (15/25/40/70/120).
  */
-export const CARGO_CAPACITY: readonly number[] = [180, 280, 420, 620, 900];
+export const CARGO_CAPACITY: readonly number[] = [15, 25, 40, 70, 120];
 export const CARGO_PRICES: readonly number[] = [0, 200, 550, 1300, 2800];
 
 /** Hull: sets max hull. */
@@ -481,9 +483,11 @@ export const SCANNER_PRICES: readonly number[] = [0, 180, 480, 1000, 2000];
  *
  * The heaviest cargo a tier can still lift (thrust accel > gravity) is
  *   JETPACK_LIFT * MINER_BASE_MASS / GRAVITY - MINER_BASE_MASS
- * ≈ 256 / 378 / 533 / 733 / 956 kg for tiers 1..5 — each comfortably above the matching
- * cargo tier's kg cap (180/280/420/620/900), so matched gear lifts a full bay (slowly when
- * heavy); a bay upgraded ahead of the jetpack strands a full haul until the jetpack rises.
+ * ≈ 256 / 378 / 533 / 733 / 956 kg for tiers 1..5. Cargo is capped by SLOT COUNT, not
+ * weight (CARGO_CAPACITY, above), so this liftable-mass ceiling is what actually gates a
+ * heavy haul: fill the bay with light shallow ore and the whole load lifts easily, but a
+ * bay part-filled with heavy deep ore can already exceed the jetpack's lift — at which
+ * point the miner must drop ore from the inventory (specs/mining.md) or upgrade the jetpack.
  */
 // Scaled with the 80px tile (×5/3 from the 48px reference: LIFT and CLIMB are px/s²/px/s,
 // but GRAVITY scaled by the same factor, so the heaviest-liftable load stays the same kg
@@ -530,7 +534,7 @@ export const UPGRADE_TRACKS: Record<
     prices: CARGO_PRICES,
     values: CARGO_CAPACITY,
     label: "Cargo Bay",
-    unit: "kg",
+    unit: "ore slots",
   },
   hull: {
     prices: HULL_PRICES,

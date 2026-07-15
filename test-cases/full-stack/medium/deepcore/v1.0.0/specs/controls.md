@@ -33,9 +33,10 @@ discrete tile steps:
   (or hovering at a light hold) and **burning fuel** (`specs/character.md`). How fast it
   climbs depends on the **load** (`specs/character.md`); there is **no drilling up** —
   thrust only moves through open tunnels.
-- **Jettison ore** — `Q`. Discards one unit of the least valuable-per-kg ore held, to
-  **lighten an overloaded load** so the jetpack can lift off again (`specs/character.md`).
-  The escape valve for the weight system; the discarded ore is lost, not sold.
+- **Inventory (cargo hold)** — `I`, or the status-bar **BAG** control. Opens/closes the
+  inventory overlay (`specs/mining.md`) — usable **anywhere**, surface or mid-dig — where
+  the player reviews the haul and **drops specific ore** to lighten an overloaded load so
+  the jetpack can lift off again (`specs/character.md`). Dropped ore is lost, not sold.
 
 Facing follows the last lateral input, and the miner's sprite mirrors to match
 (`specs/character.md`, `specs/assets.md`). Movement is smooth and continuous; the miner
@@ -50,6 +51,8 @@ building's **overlay panel** (`specs/flow.md`):
 - **Fuel Depot** — buy fuel and hull repair for Credits (`specs/flow.md`,
   `specs/character.md`); close to return.
 - **Ore Market** — the cargo breakdown and **SELL** (`specs/mining.md`).
+- **Save Pad** — **SAVE** the expedition to the single save slot (`specs/flow.md`); the
+  only place saving is possible.
 - **Upgrade Shop** — the seven upgrade tracks; click a track's **BUY** to purchase its
   next tier (`specs/upgrades.md`).
 - **Launch Pad** — the rocket checklist; **FABRICATE** the next component, or **LAUNCH**

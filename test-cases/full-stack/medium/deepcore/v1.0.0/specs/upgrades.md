@@ -48,19 +48,20 @@ still drills, but **slowly** — so the deep bands are a soft gate until you buy
 tier-1 drill takes six seconds a tile in the coreshell — passable but punishing — so
 the coreshell is effectively reachable only with a mid-to-high drill.)
 
-## Cargo bay — how much weight you can haul per trip
+## Cargo bay — how many ore you can haul per trip
 
-Sets the **cargo capacity** as a **total weight in kilograms** (`specs/mining.md`) — ore
-is limited by weight, not a unit count. A bigger bay is more ore sold per surface trip,
-but a heavier climb, and only as much as the **jetpack** can lift (`specs/character.md`).
+Sets the **cargo capacity** as a **number of ore slots** (`specs/mining.md`) — one unit of
+any ore fills one slot, regardless of weight (the Motherload model). A bigger bay is more
+ore sold per surface trip. Weight is a **separate** limit: how heavy the haul is decides
+whether the **jetpack** can lift it (`specs/character.md`), independent of the slot count.
 
-| Tier | Capacity (kg) | Price |
+| Tier | Capacity (ore slots) | Price |
 | --- | --- | --- |
-| 1 | `180` | — (start) |
-| 2 | `280` | `200` |
-| 3 | `420` | `550` |
-| 4 | `620` | `1300` |
-| 5 | `900` | `2800` |
+| 1 | `15` | — (start) |
+| 2 | `25` | `200` |
+| 3 | `40` | `550` |
+| 4 | `70` | `1300` |
+| 5 | `120` | `2800` |
 
 ## Hull — surviving the deep
 
@@ -81,8 +82,9 @@ Sets the jetpack's **lift force** and its **climb-speed cap** (`specs/character.
 stronger jetpack lifts a **heavier haul** (the achieved climb acceleration is the lift
 force divided by the loaded mass) and, lightly loaded, simply **climbs faster** — less
 fuel per trip. The **Lift** column is the heaviest total load that tier can still climb
-with (miner `200 kg` + ore); a bay upgraded past this is un-liftable until the jetpack
-catches up (`specs/mining.md`). **Climb** is the tier's empty-load climb-speed cap.
+with (miner `200 kg` + ore weight); a haul heavier than this is un-liftable until the
+jetpack is bought up or ore is dropped (`specs/mining.md`, `specs/character.md`). **Climb**
+is the tier's empty-load climb-speed cap.
 
 | Tier | Lift (kg total) | Climb (px/s) | Price |
 | --- | --- | --- | --- |
@@ -92,9 +94,9 @@ catches up (`specs/mining.md`). **Climb** is the tier's empty-load climb-speed c
 | 4 | `~933` | `285` | `1500` |
 | 5 | `~1156` | `330` | `3200` |
 
-(Each tier's lift comfortably exceeds the **matching** cargo tier's kg cap plus the
-miner's `200 kg`, so matched gear always lifts a full bay — slowly when heavy. The
-tension comes from upgrading the **cargo bay ahead of the jetpack**, `specs/character.md`.)
+(Cargo is capped by **slot count**, not weight, so the jetpack's lift is what actually
+gates a heavy haul: a bay full of light ore lifts on a low tier, but a few pieces of deep,
+heavy ore can exceed it — buy up the jetpack, or drop ore, to fly out, `specs/character.md`.)
 
 ## Radiator — surviving heat
 
@@ -131,9 +133,10 @@ turning a blind search into a confident beeline.
 The prices climb so that the early game is a tight loop of small digs funding tier-2
 buys, and each tier opens a little more depth (**drill**), lift and haul (**jetpack +
 cargo**), range (**scanner**), and survival (**hull + radiator**), while **fuel** sets
-how far a round trip reaches. The **cargo** and **jetpack** tracks pull against each
-other by design — a bigger bay is worthless weight you cannot lift without the jetpack
-to match it (`specs/character.md`), so they tend to be bought in step. The two
+how far a round trip reaches. The **cargo** and **jetpack** tracks complement each other —
+a bigger bay lets you carry **more pieces**, but the **jetpack** is what lets you lift a
+**heavy** haul out (`specs/character.md`), so a deep, rich dig wants both (plus the option
+to drop ore, `specs/mining.md`, when a haul turns out too heavy to fly). The two
 **material** runs (Resonite in the rockbed, Cryenite in the deepstone) want a decent
 **scanner** and enough **fuel + drill** to get down and back; the **core run** wants
 high **fuel**, **hull**, **radiator**, **jetpack**, and **drill** to survive the

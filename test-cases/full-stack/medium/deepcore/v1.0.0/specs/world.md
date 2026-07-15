@@ -2,7 +2,7 @@
 
 This file defines the tiled world the game plays in: the grid and coordinate system,
 the camera, the four **depth bands** and the Core chamber, every **tile kind**, how
-ore, materials, and hazards are placed, and the **surface** and its four buildings.
+ore, materials, and hazards are placed, and the **surface** and its five buildings.
 It is referenced by `specs/character.md` (movement and drilling), `specs/mining.md`
 (ore and materials), `specs/hazards.md` (gas, lava, the core), `specs/upgrades.md`
 and `specs/rocket.md` (the surface buildings), and `specs/flow.md` (the loop). The
@@ -170,7 +170,7 @@ digs, and where the four **buildings** stand. A shallow **cave mouth** in the ca
 floor is the way down into `row 1`. The surface is open space the miner walks and
 hovers across; there is no digging up here.
 
-Four buildings sit on the surface, each a produced sprite (`specs/assets.md`) the
+Five buildings sit on the surface, each a produced sprite (`specs/assets.md`) the
 miner activates by standing at it and which opens an **overlay panel**
 (`specs/controls.md`, `specs/flow.md`):
 
@@ -182,6 +182,8 @@ miner activates by standing at it and which opens an **overlay panel**
   free top-up — refuel and repair compete for Credits with upgrades and rocket parts.
 - **Ore Market** — **sells** the ore in your cargo for Credits at the listed values
   (`specs/mining.md`, `specs/flow.md`), emptying the cargo.
+- **Save Pad** — the checkpoint pad where you **save** the expedition to its single save
+  slot; the **only** way to save (`specs/flow.md`, `specs/modes.md`).
 - **Upgrade Shop** — buys the next tier on any of the seven **upgrade tracks** — fuel
   tank, drill, cargo bay, hull, jetpack, radiator, scanner — for Credits
   (`specs/upgrades.md`).
