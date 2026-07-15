@@ -328,11 +328,17 @@ const SUBSTATION: MapDef = {
   styleLabel: "SERPENTINE",
   entry: { col: 0, row: 4 },
   entryEdge: "left",
+  // Waypoints sit ≥4 tiles inset from every edge (anchors in cols 4..45, rows 4..28).
+  // A platform's side arm sits one tile off the anchor, so the OUTER gap between the arm
+  // and the edge is (inset − 1) = 3 tiles — enough to build a 2×2 wall there AND leave a
+  // 1-tile pass lane, so the maze can wrap the route around a waypoint's far side, not
+  // just its inner side (specs/board.md §4). (Was col 2/47 → outer gap 1: no 2×2 fit and
+  // that whole class of edge mazes was impossible.)
   waypoints: [
-    { col: 47, row: 4 },
-    { col: 47, row: 28 },
-    { col: 2, row: 28 },
-    { col: 2, row: 16 },
+    { col: 45, row: 4 },
+    { col: 45, row: 28 },
+    { col: 4, row: 28 },
+    { col: 4, row: 16 },
   ],
   collector: { col: 49, row: 16 },
   collectorEdge: "right",
@@ -347,11 +353,13 @@ const SWITCHYARD: MapDef = {
   styleLabel: "BUSBAR",
   entry: { col: 25, row: 0 },
   entryEdge: "top",
+  // Corner waypoints pulled ≥4 tiles off the corners (cols 4..45, rows 4..28) so both
+  // sides of each stay buildable; the legs still criss-cross the center (specs/board.md §4).
   waypoints: [
-    { col: 2, row: 30 },
-    { col: 47, row: 2 },
-    { col: 2, row: 2 },
-    { col: 47, row: 30 },
+    { col: 4, row: 28 },
+    { col: 45, row: 4 },
+    { col: 4, row: 4 },
+    { col: 45, row: 28 },
   ],
   collector: { col: 25, row: 32 },
   collectorEdge: "bottom",
@@ -366,10 +374,12 @@ const TRANSFORMER: MapDef = {
   styleLabel: "CHOKEPOINT",
   entry: { col: 0, row: 2 },
   entryEdge: "left",
+  // The right-edge waypoints pulled in to col 45 (was 48, whose arm reached the col-49
+  // edge); WP2 stays the central chokepoint between the housings (specs/board.md §4).
   waypoints: [
-    { col: 48, row: 2 },
+    { col: 45, row: 4 },
     { col: 24, row: 16 },
-    { col: 48, row: 30 },
+    { col: 45, row: 28 },
   ],
   collector: { col: 0, row: 30 },
   collectorEdge: "left",
