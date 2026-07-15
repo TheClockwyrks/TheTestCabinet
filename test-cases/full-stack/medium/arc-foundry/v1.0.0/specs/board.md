@@ -149,6 +149,17 @@ not the numbers, is what differs. Coordinates are **tile `(col, row)`** on the
 below is the anchor of a 4-tile T-shaped waypoint platform** (walkable, non-buildable),
 per *Waypoint platforms* above — the stem points toward the vertical center (row 16).
 
+**Every waypoint anchor sits at least 4 tiles inset from every board edge** (anchors lie
+in `col` `4..45`, `row` `4..28`). This is deliberate. A platform's side arm extends one
+tile off the anchor, so the **outer gap** between the arm and the board edge is `(inset −
+1)` tiles: an anchor inset 4 leaves a **3-tile** outer gap — enough to build a `2 x 2`
+wall there **and** keep a 1-tile pass lane the Load can still cross. An anchor that hugged
+an edge (the old `col` `2`/`47` placements) left only a **1-tile** outer gap, where no
+`2 x 2` fit at all, so **the maze could only wrap the route around a waypoint's inner
+side** and that whole class of edge mazes was impossible. With the inset the player can
+fold the route around *either* side of every waypoint. Only the single-tile **Entry** and
+**Collector** sit on the edges (they are not build-around platforms).
+
 ### Map A — "The Substation" (original layout)
 
 A wide serpentine that hugs the yard's perimeter; the classic Arc Foundry maze where
@@ -157,14 +168,16 @@ you fold each long edge-leg back on itself.
 | Checkpoint | Tile | Edge |
 | --- | --- | --- |
 | **Entry** | `(0, 4)` | left |
-| WP1 | `(47, 4)` | — |
-| WP2 | `(47, 28)` | — |
-| WP3 | `(2, 28)` | — |
-| WP4 | `(2, 16)` | — |
+| WP1 | `(45, 4)` | — |
+| WP2 | `(45, 28)` | — |
+| WP3 | `(4, 28)` | — |
+| WP4 | `(4, 16)` | — |
 | **Collector** | `(49, 16)` | right |
 
 No fixed housings. Five long, near-straight legs (top, right, bottom, up-left,
-middle) reward one big folded maze across the open center.
+middle) reward one big folded maze across the open center. The corner waypoints sit
+a few tiles off each edge, so the perimeter legs have buildable margin on their outer
+side as well as the inner.
 
 ### Map B — "The Switchyard" (different waypoints)
 
@@ -175,10 +188,10 @@ problem from Map A's edge-hugging.
 | Checkpoint | Tile | Edge |
 | --- | --- | --- |
 | **Entry** | `(25, 0)` | top |
-| WP1 | `(2, 30)` | — |
-| WP2 | `(47, 2)` | — |
-| WP3 | `(2, 2)` | — |
-| WP4 | `(47, 30)` | — |
+| WP1 | `(4, 28)` | — |
+| WP2 | `(45, 4)` | — |
+| WP3 | `(4, 4)` | — |
+| WP4 | `(45, 28)` | — |
 | **Collector** | `(25, 32)` | bottom |
 
 No fixed housings. The legs criss-cross the center, so the premium mazing real estate
@@ -193,9 +206,9 @@ maze before the player builds a single wall.
 | Checkpoint | Tile | Edge |
 | --- | --- | --- |
 | **Entry** | `(0, 2)` | left |
-| WP1 | `(48, 2)` | — |
+| WP1 | `(45, 4)` | — |
 | WP2 | `(24, 16)` | center |
-| WP3 | `(48, 30)` | — |
+| WP3 | `(45, 28)` | — |
 | **Collector** | `(0, 30)` | left |
 
 **Fixed-blocked housings** (Fixed-blocked tiles: impassable, never buildable, drawn
