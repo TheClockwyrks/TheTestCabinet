@@ -16,10 +16,14 @@ heavier ore, the two buried materials (**Resonite** in the rockbed, **Cryenite**
 deepstone, both randomly placed but guaranteed and found with a **scanner**), and finally
 the **Core Sample** on its 90-second detonation timer, but keep enough fuel and hull to
 make it home. Sell ore, upgrade the fuel tank, drill, cargo bay, hull, **jetpack**,
-**radiator**, and scanner, and go a little deeper each time. Gas pockets explode harder
-the deeper you go and lava burns (a **radiator** blunts both); there are **no enemies** —
-the mine is the adversary. Two in-game **modes** change only what happens when you die: **Standard**
-drops your haul as a retrievable cache and respawns you at the surface, while
+**radiator**, and scanner, and go a little deeper each time. The mine is wider than the
+screen and scrolls both ways, so the whole width is never in view at once — the scanner
+earns its keep. **Gas pockets** are hidden in the dirt (only a faint seep gives them
+away) and explode harder the deeper you go; **lava** burns on contact; **unbreakable
+stone** boulders block the drill and must be dug around (a **radiator** blunts gas and
+lava). There are **no enemies** — the mine is the adversary. Two in-game **modes** change
+only what happens when you die: **Standard** drops your haul as a retrievable cache and
+respawns you at the surface, while
 **Hardcore** ends the expedition. Winning means fabricating and installing all five
 rocket components and **launching**.
 

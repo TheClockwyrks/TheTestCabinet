@@ -227,6 +227,7 @@ function drawMine(
   cl: Clickable[],
 ): void {
   const cam = game.cameraY;
+  const offX = -game.cameraX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
   const offY = VIEWPORT_Y - cam;
 
   ctx.save();
@@ -243,22 +244,27 @@ function drawMine(
   const worldBottom = WORLD_ROWS * TILE_SIZE + offY;
   if (worldBottom < STAGE_HEIGHT) ctx.fillRect(0, worldBottom, STAGE_WIDTH, STAGE_HEIGHT - worldBottom);
 
-  const rowTop = Math.max(0, Math.floor(cam / TILE_SIZE));
+  // Visible tile window (both axes). Row 0 is the open surface strip — drawn by drawSurface,
+  // not as a mine tile — so the tile loop starts at row 1.
+  const rowTop = Math.max(1, Math.floor(cam / TILE_SIZE));
   const rowBot = Math.min(WORLD_ROWS - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE));
+  const colLeft = Math.max(0, Math.floor(game.cameraX / TILE_SIZE));
+  const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.cameraX + STAGE_WIDTH) / TILE_SIZE));
 
   for (let r = rowTop; r <= rowBot; r++) {
-    for (let c = 0; c < WORLD_COLS; c++) {
-      drawTile(ctx, assets, game.grid[r]![c]!, GRID_MARGIN_X + c * TILE_SIZE, r * TILE_SIZE + offY, view, r, c);
+    for (let c = colLeft; c <= colRight; c++) {
+      drawTile(ctx, assets, game.grid, r, c, GRID_MARGIN_X + c * TILE_SIZE + offX, r * TILE_SIZE + offY, view);
     }
   }
 
-  drawGrid(ctx, offY, rowTop, rowBot);
-  drawSurface(ctx, game, assets, offY);
-  drawCache(ctx, game, offY);
-  drawMiner(ctx, game, assets, view, offY);
-  bursts.draw(ctx, 0, offY);
+  drawGrid(ctx, offX, offY, rowTop, rowBot, colLeft, colRight);
+  drawDrillDamage(ctx, game, assets, offX, offY);
+  drawSurface(ctx, game, assets, offX, offY);
+  drawCache(ctx, game, offX, offY);
+  drawMiner(ctx, game, assets, view, offX, offY);
+  bursts.draw(ctx, offX, offY);
 
-  drawScanner(ctx, game, offY);
+  drawScanner(ctx, game, offX, offY);
   ctx.restore();
 
   drawCoreCountdown(ctx, game, view);
@@ -266,14 +272,20 @@ function drawMine(
   // Building activation hitboxes (only usable at the surface with no panel open).
   if (game.phase === "in-mine" && !game.panel && game.atSurface()) {
     for (const b of SURFACE_BUILDINGS) {
-      const bx = GRID_MARGIN_X + b.col * TILE_SIZE - 8;
-      const by = groundY - 84;
-      cl.push({ x: bx, y: Math.max(VIEWPORT_Y, by), w: 64, h: 84, action: `open:${b.panel}` });
+      const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
+      const by = groundY - BUILDING_H - 6;
+      cl.push({
+        x: bx - BUILDING_W / 2,
+        y: Math.max(VIEWPORT_Y, by),
+        w: BUILDING_W,
+        h: BUILDING_H + 6,
+        action: `open:${b.panel}`,
+      });
     }
     const b = game.nearbyBuilding();
     if (b) {
-      const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2;
-      text(ctx, `[E] ${b.label}`, bx, groundY - 92, {
+      const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
+      text(ctx, `[E] ${b.label}`, bx, groundY - BUILDING_H - 16, {
         size: 14,
         color: P.credits,
         align: "center",
@@ -282,6 +294,15 @@ function drawMine(
     }
   }
 }
+
+// Building / rocket draw sizes (scaled to sit naturally among the 80px tiles).
+const BUILDING_W = 112;
+const BUILDING_H = 132;
+const ROCKET_W = 96;
+const ROCKET_H = 160;
+/** Carved-tunnel dirt lip (px) and rounded-corner radius (px of an 80px tile). */
+const CARVE_INSET = 11;
+const CARVE_RADIUS = 16;
 
 /**
  * A stable per-cell variant index in `[0, n)` from a cell's (row, col) — a small integer
@@ -298,14 +319,15 @@ function tileVariant(row: number, col: number, n: number): number {
 function drawTile(
   ctx: CanvasRenderingContext2D,
   assets: Assets,
-  tile: Tile,
+  grid: Tile[][],
+  row: number,
+  col: number,
   x: number,
   y: number,
   view: View,
-  row: number,
-  col: number,
 ): void {
   const s = TILE_SIZE;
+  const tile = grid[row]![col]!;
   switch (tile.kind) {
     case "bedrock": {
       const img = assets.tile("bedrock");
@@ -317,27 +339,38 @@ function drawTile(
       break;
     }
     case "tunnel": {
-      const img = assets.tile("tunnel");
-      if (isReady(img)) ctx.drawImage(img, x, y, s, s);
-      else {
-        ctx.fillStyle = P.tunnel;
-        ctx.fillRect(x, y, s, s);
-      }
+      // Inset dirt lip + rounded corners, joining open neighbors, in code (specs/world.md).
+      drawCarved(ctx, assets, grid, tile, row, col, x, y, cellOpen, (px, py) => {
+        const img = assets.tile("tunnel");
+        if (isReady(img)) ctx.drawImage(img, px, py, s, s);
+        else {
+          ctx.fillStyle = P.tunnel;
+          ctx.fillRect(px, py, s, s);
+        }
+      });
       break;
     }
     case "lava": {
-      if (assets.lava.length) {
-        const img = assets.lava[Math.floor(view.time * 8) % assets.lava.length]!;
-        if (isReady(img)) {
-          ctx.drawImage(img, x, y, s, s);
-          break;
+      // Dirt-fringed, joining adjacent lava into one pool (specs/world.md, specs/hazards.md).
+      drawCarved(ctx, assets, grid, tile, row, col, x, y, cellLava, (px, py) => {
+        const img = assets.lava.length ? assets.lava[Math.floor(view.time * 8) % assets.lava.length] : undefined;
+        if (isReady(img)) ctx.drawImage(img, px, py, s, s);
+        else {
+          const pulse = 0.5 + 0.5 * Math.sin(view.time * 6 + px * 0.1);
+          ctx.fillStyle = P.lava;
+          ctx.fillRect(px, py, s, s);
+          ctx.fillStyle = `rgba(255,210,120,${0.25 + 0.3 * pulse})`;
+          ctx.fillRect(px + 10, py + 10, s - 20, s - 20);
         }
-      }
-      const pulse = 0.5 + 0.5 * Math.sin(view.time * 6 + x * 0.1);
-      ctx.fillStyle = P.lava;
-      ctx.fillRect(x, y, s, s);
-      ctx.fillStyle = `rgba(255,210,120,${0.25 + 0.3 * pulse})`;
-      ctx.fillRect(x + 4, y + 4, s - 8, s - 8);
+      });
+      break;
+    }
+    case "stone": {
+      // Unbreakable stone — a solid boulder, not inset (specs/world.md).
+      const variants = assets.stone();
+      const img = variants.length ? variants[tileVariant(row, col, variants.length)] : undefined;
+      if (isReady(img)) ctx.drawImage(img, x, y, s, s);
+      else drawStoneFallback(ctx, x, y);
       break;
     }
     case "core": {
@@ -355,17 +388,9 @@ function drawTile(
       break;
     }
     case "gas": {
-      const img = assets.gas;
-      if (isReady(img)) ctx.drawImage(img, x, y, s, s);
-      else {
-        drawBandRock(ctx, assets, tile, x, y, row, col);
-        ctx.fillStyle = "rgba(154,210,74,0.34)";
-        ctx.fillRect(x + 3, y + 3, s - 6, s - 6);
-        ctx.fillStyle = "rgba(154,210,74,0.7)";
-        ctx.beginPath();
-        ctx.arc(x + s / 2, y + s / 2, 7, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      // Hidden: a gas pocket is drawn as ordinary band rock (specs/hazards.md). Its only
+      // tell is the subtle gas-seep VFX fired over it (game.emitGasSeeps / specs/assets.md).
+      drawBandRock(ctx, assets, tile, x, y, row, col);
       break;
     }
     case "ore": {
@@ -386,6 +411,163 @@ function drawTile(
       drawBandRock(ctx, assets, tile, x, y, row, col);
     }
   }
+}
+
+/** Whether a neighbor cell is open tunnel (so a carved hole merges into it). */
+function cellOpen(grid: Tile[][], c: number, r: number): boolean {
+  if (r < 0 || r >= grid.length) return false;
+  const line = grid[r]!;
+  if (c < 0 || c >= line.length) return false;
+  return line[c]!.kind === "tunnel";
+}
+
+/** Whether a neighbor cell is lava (so adjacent lava merges into one pool). */
+function cellLava(grid: Tile[][], c: number, r: number): boolean {
+  if (r < 0 || r >= grid.length) return false;
+  const line = grid[r]!;
+  if (c < 0 || c >= line.length) return false;
+  return line[c]!.kind === "lava";
+}
+
+/**
+ * Build a rounded-rect path with per-corner radii (a radius of 0 gives a sharp corner via
+ * the degenerate arcTo). Used to shape a carved tunnel / lava pool inside a tile.
+ */
+function roundedPath(
+  ctx: CanvasRenderingContext2D,
+  l: number,
+  t: number,
+  r: number,
+  b: number,
+  rTL: number,
+  rTR: number,
+  rBR: number,
+  rBL: number,
+): void {
+  ctx.beginPath();
+  ctx.moveTo(l + rTL, t);
+  ctx.lineTo(r - rTR, t);
+  ctx.arcTo(r, t, r, b, rTR);
+  ctx.lineTo(r, b - rBR);
+  ctx.arcTo(r, b, l, b, rBR);
+  ctx.lineTo(l + rBL, b);
+  ctx.arcTo(l, b, l, t, rBL);
+  ctx.lineTo(l, t + rTL);
+  ctx.arcTo(l, t, r, t, rTL);
+  ctx.closePath();
+}
+
+/**
+ * The carved shape for a tile: inset by CARVE_INSET on any side whose neighbor is solid,
+ * extended to the tile edge on any side where `open(neighbor)` holds (so it joins that
+ * neighbor), with a rounded corner only where BOTH its sides are inset — so orthogonally
+ * adjacent open cells merge while diagonally-touching ones stay separate (specs/world.md).
+ */
+function buildCarvePath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  openL: boolean,
+  openR: boolean,
+  openU: boolean,
+  openD: boolean,
+): void {
+  const s = TILE_SIZE;
+  const m = CARVE_INSET;
+  const rad = CARVE_RADIUS;
+  const l = x + (openL ? 0 : m);
+  const r = x + s - (openR ? 0 : m);
+  const t = y + (openU ? 0 : m);
+  const b = y + s - (openD ? 0 : m);
+  roundedPath(
+    ctx,
+    l,
+    t,
+    r,
+    b,
+    !openU && !openL ? rad : 0,
+    !openU && !openR ? rad : 0,
+    !openD && !openR ? rad : 0,
+    !openD && !openL ? rad : 0,
+  );
+}
+
+/** Paint a carved (inset, rounded, neighbor-joined) region — shared by tunnels and lava. */
+function drawCarved(
+  ctx: CanvasRenderingContext2D,
+  assets: Assets,
+  grid: Tile[][],
+  tile: Tile,
+  row: number,
+  col: number,
+  x: number,
+  y: number,
+  open: (grid: Tile[][], c: number, r: number) => boolean,
+  fill: (px: number, py: number) => void,
+): void {
+  // The dirt lip/fringe is the band rock showing through around the carved region.
+  drawBandRock(ctx, assets, tile, x, y, row, col);
+  const openL = open(grid, col - 1, row);
+  const openR = open(grid, col + 1, row);
+  const openU = open(grid, col, row - 1);
+  const openD = open(grid, col, row + 1);
+  ctx.save();
+  buildCarvePath(ctx, x, y, openL, openR, openU, openD);
+  ctx.clip();
+  fill(x, y);
+  ctx.restore();
+}
+
+function drawStoneFallback(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  const s = TILE_SIZE;
+  ctx.fillStyle = "#3f4652";
+  ctx.fillRect(x, y, s, s);
+  ctx.fillStyle = "#4c5360";
+  roundRect(ctx, x + 6, y + 6, s - 12, s - 12, 14);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.10)";
+  roundRect(ctx, x + 12, y + 12, s - 24, 14, 7);
+  ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,0.30)";
+  roundRect(ctx, x + 10, y + s - 24, s - 20, 14, 7);
+  ctx.fill();
+}
+
+/** Draw the deepening drill-damage crack overlay on the tile the miner is cutting. */
+function drawDrillDamage(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  offX: number,
+  offY: number,
+): void {
+  const d = game.miner.drilling;
+  if (!d) return;
+  const x = GRID_MARGIN_X + d.col * TILE_SIZE + offX;
+  const y = d.row * TILE_SIZE + offY;
+  const prog = d.total > 0 ? Math.min(1, d.elapsed / d.total) : 0;
+  const frames = assets.crack;
+  if (frames.length) {
+    const idx = Math.min(frames.length - 1, Math.floor(prog * frames.length));
+    const img = frames[idx];
+    if (isReady(img)) {
+      ctx.drawImage(img, x, y, TILE_SIZE, TILE_SIZE);
+      return;
+    }
+  }
+  // Fallback code cracks (until the produced sheet is present) so progress still reads.
+  const n = 2 + Math.floor(prog * 5);
+  ctx.strokeStyle = `rgba(20,16,12,${0.35 + 0.5 * prog})`;
+  ctx.lineWidth = 2;
+  const cx = x + TILE_SIZE / 2;
+  const cy = y + TILE_SIZE / 2;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + prog;
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * TILE_SIZE * 0.42 * prog, cy + Math.sin(a) * TILE_SIZE * 0.42 * prog);
+  }
+  ctx.stroke();
 }
 
 function drawBandRock(
@@ -470,56 +652,71 @@ function drawMaterialFallback(ctx: CanvasRenderingContext2D, material: Material,
   ctx.fill();
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, offY: number, rowTop: number, rowBot: number): void {
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  offX: number,
+  offY: number,
+  rowTop: number,
+  rowBot: number,
+  colLeft: number,
+  colRight: number,
+): void {
   ctx.strokeStyle = P.tileGrid;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let c = 0; c <= WORLD_COLS; c++) {
-    const x = GRID_MARGIN_X + c * TILE_SIZE + 0.5;
+  for (let c = colLeft; c <= colRight + 1; c++) {
+    const x = Math.round(GRID_MARGIN_X + c * TILE_SIZE + offX) + 0.5;
     ctx.moveTo(x, VIEWPORT_Y);
     ctx.lineTo(x, STAGE_HEIGHT);
   }
+  const xL = Math.round(GRID_MARGIN_X + colLeft * TILE_SIZE + offX);
+  const xR = Math.round(GRID_MARGIN_X + (colRight + 1) * TILE_SIZE + offX);
   for (let r = rowTop; r <= rowBot + 1; r++) {
     const y = Math.round(r * TILE_SIZE + offY) + 0.5;
-    ctx.moveTo(GRID_MARGIN_X, y);
-    ctx.lineTo(GRID_MARGIN_X + WORLD_COLS * TILE_SIZE, y);
+    ctx.moveTo(xL, y);
+    ctx.lineTo(xR, y);
   }
   ctx.stroke();
 }
 
-function drawSurface(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, offY: number): void {
+function drawSurface(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  offX: number,
+  offY: number,
+): void {
   const groundY = SURFACE_FEET_Y + offY;
-  if (groundY < VIEWPORT_Y - 120 || groundY > STAGE_HEIGHT + 200) return;
+  if (groundY < VIEWPORT_Y - 200 || groundY > STAGE_HEIGHT + 200) return;
 
-  // Camp ground strip on top of row 1.
+  // Camp ground strip on top of row 1 (spanning the whole world width, scrolled by offX).
   ctx.fillStyle = P.surfaceGround;
-  ctx.fillRect(GRID_MARGIN_X, groundY - 8, WORLD_COLS * TILE_SIZE, 8);
+  ctx.fillRect(GRID_MARGIN_X + offX, groundY - 10, WORLD_COLS * TILE_SIZE, 10);
 
-  // The four buildings, resting on the ground line.
+  // The four buildings, centered on their tiles, resting on the ground line.
   for (const b of SURFACE_BUILDINGS) {
-    const bx = GRID_MARGIN_X + b.col * TILE_SIZE;
+    const cxb = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
+    const bx = cxb - BUILDING_W / 2;
     const img = assets.surface(b.panel);
-    const w = 64;
-    const h = 78;
     if (isReady(img)) {
-      ctx.drawImage(img, bx - 8, groundY - h, w, h);
+      ctx.drawImage(img, bx, groundY - BUILDING_H, BUILDING_W, BUILDING_H);
     } else {
-      drawBuildingFallback(ctx, b.panel, bx - 8, groundY - h, w, h);
+      drawBuildingFallback(ctx, b.panel, bx, groundY - BUILDING_H, BUILDING_W, BUILDING_H);
     }
-    text(ctx, b.label.toUpperCase(), bx + TILE_SIZE / 2 - 8, groundY - h - 6, {
-      size: 10,
+    text(ctx, b.label.toUpperCase(), cxb, groundY - BUILDING_H - 8, {
+      size: 11,
       color: P.textSecondary,
       align: "center",
     });
   }
 
   // The assembling escape rocket on the launch pad (specs/rocket.md).
-  drawRocket(ctx, game, assets, offY);
+  drawRocket(ctx, game, assets, offX, offY);
 
   // Cave mouth at the spawn column.
-  const cx = GRID_MARGIN_X + game.spawnCol * TILE_SIZE;
+  const cx = GRID_MARGIN_X + game.spawnCol * TILE_SIZE + offX;
   const cimg = assets.surface("cave-mouth");
-  if (isReady(cimg)) ctx.drawImage(cimg, cx, groundY - 6, TILE_SIZE, 20);
+  if (isReady(cimg)) ctx.drawImage(cimg, cx, groundY - 8, TILE_SIZE, 30);
 }
 
 function drawBuildingFallback(
@@ -547,17 +744,23 @@ function drawBuildingFallback(
   ctx.fillRect(x + 12, y + 24, w - 24, h - 40);
 }
 
-function drawRocket(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, offY: number): void {
+function drawRocket(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  offX: number,
+  offY: number,
+): void {
   const b = SURFACE_BUILDINGS.find((x) => x.panel === "launch-pad")!;
-  const cx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2;
+  const cx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
   const groundY = SURFACE_FEET_Y + offY;
   const stage = game.installed.size; // 0..5 components installed
-  const rise = game.launchAnim !== null ? game.launchAnim * 140 : 0;
+  const rise = game.launchAnim !== null ? game.launchAnim * 230 : 0;
   const baseY = groundY - rise;
 
   const img = assets.rocket[stage];
-  const w = 56;
-  const h = 96;
+  const w = ROCKET_W;
+  const h = ROCKET_H;
   if (isReady(img)) {
     ctx.drawImage(img, cx - w / 2, baseY - h, w, h);
     return;
@@ -602,12 +805,13 @@ function drawMiner(
   game: Game,
   assets: Assets,
   view: View,
+  offX: number,
   offY: number,
 ): void {
   const m = game.miner;
-  const drawW = 48;
-  const drawH = 48;
-  const sx = m.x + MINER_W / 2 - drawW / 2;
+  const drawW = TILE_SIZE; // the miner sprite is authored to fill an 80px tile (with headroom)
+  const drawH = TILE_SIZE;
+  const sx = m.x + MINER_W / 2 - drawW / 2 + offX;
   const sy = m.y + MINER_H - drawH;
   const screenY = sy + offY;
 
@@ -691,28 +895,28 @@ function drawMinerFallback(
   }
 }
 
-function drawCache(ctx: CanvasRenderingContext2D, game: Game, offY: number): void {
+function drawCache(ctx: CanvasRenderingContext2D, game: Game, offX: number, offY: number): void {
   if (!game.cache) return;
-  const cx = GRID_MARGIN_X + game.cache.col * TILE_SIZE + TILE_SIZE / 2;
+  const cx = GRID_MARGIN_X + game.cache.col * TILE_SIZE + TILE_SIZE / 2 + offX;
   const cy = game.cache.row * TILE_SIZE + TILE_SIZE / 2 + offY;
   ctx.fillStyle = P.credits;
-  roundRect(ctx, cx - 12, cy - 8, 24, 16, 3);
+  roundRect(ctx, cx - 16, cy - 11, 32, 22, 4);
   ctx.fill();
   ctx.strokeStyle = "#7a5c10";
   ctx.lineWidth = 2;
   ctx.stroke();
-  text(ctx, "CACHE", cx, cy - 14, { size: 10, color: P.credits, align: "center", bold: true });
+  text(ctx, "CACHE", cx, cy - 18, { size: 11, color: P.credits, align: "center", bold: true });
 }
 
 // ---------------------------------------------------------------------------
 // Over-world HUD: scanner + core countdown
 // ---------------------------------------------------------------------------
 
-function drawScanner(ctx: CanvasRenderingContext2D, game: Game, offY: number): void {
+function drawScanner(ctx: CanvasRenderingContext2D, game: Game, offX: number, offY: number): void {
   const scan = game.scan;
   if (!scan.needed) return;
-  const mx = minerCenterX(game.miner);
-  const my = minerCenterY(game.miner) + offY - 44;
+  const mx = minerCenterX(game.miner) + offX;
+  const my = minerCenterY(game.miner) + offY - 64;
   if (my < VIEWPORT_Y) return;
 
   ctx.save();

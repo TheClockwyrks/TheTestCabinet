@@ -4,7 +4,7 @@
 # centerpiece; specs/character.md "Animation states"; specs/overview.md palette).
 #
 # The prospector is a SUITED figure with a handheld DRILL and a back-mounted JETPACK,
-# drawn ~44x44 facing +x (EAST); the engine MIRRORS the sprite to face west. The
+# drawn ~80x80 facing +x (EAST); the engine MIRRORS the sprite to face west. The
 # silhouette — helmet + suit-lamp, chest lamp, jetpack, and drill — is kept CONSISTENT
 # across every state so it always reads as the same miner, only doing a different thing.
 # The set escalates the sense of effort: idle is a gentle breath, the drill shakes and
@@ -57,18 +57,58 @@ STRIPE='#ffcf4a'                                                               #
 ALERT='#ff5a52'   ; CRED='#ffd23a'                                            # hit shock
 
 # ============================== SHEET PLUMBING =================================
+# The character was authored on a 44x44 canvas; the game's tile grew to 80px, so we
+# now render every cycle at 80x80 native (art ~72px tall with transparent headroom).
+# Rather than hand-edit hundreds of literals, `sf()` scales EVERY geometry value from
+# 44-space to 80-space (x80/44 ~= 1.818, rounded) at the single point it reaches the
+# tool: positions, sizes, radii, and line endpoints all grow proportionally, so the
+# pose logic below is byte-for-byte the original art — only bigger and crisper. A
+# 1px line/rect widens to 2px (never thin), and a single-pixel accent becomes a 2x2
+# dot (DOT) so glints/sparks/flutes stay proportional instead of vanishing.
+SRC=44 ; DST=80 ; DOT=0
+sc() { # sc <v> : round(v * DST / SRC) to the nearest integer (handles negatives)
+  local v=$1
+  if [ "$v" -lt 0 ]; then echo $(( (v*DST - SRC/2) / SRC )); else echo $(( (v*DST + SRC/2) / SRC )); fi
+}
+DOT=$(sc 1)   # a scaled single pixel (== 2): accents render as a DOTxDOT block
+
 STATE="" ; NF=0 ; SDIR="" ; OUT=""
-newsheet() { # newsheet <state> <nframes> : a fresh 44x44 cycle -> scratch frameN.png
+newsheet() { # newsheet <state> <nframes> : a fresh 80x80 cycle -> scratch frameN.png
   STATE=$1 ; NF=$2
   SDIR="$TMP/$STATE" ; mkdir -p "$SDIR"
   OUT="$MINER/$STATE" ; mkdir -p "$OUT"
   local arr="" i
   for ((i=0;i<NF;i++)); do arr="$arr${arr:+,}$i"; done
-  printf '{ "width":44, "height":44, "background":"transparent", "frames":[%s], "actions":"%s", "preview":"%s" }\n' \
-    "$arr" "$SDIR/f_{frame}.json" "$SDIR/frame{frame}.png" > "$CFG"
+  printf '{ "width":%d, "height":%d, "background":"transparent", "frames":[%s], "actions":"%s", "preview":"%s" }\n' \
+    "$DST" "$DST" "$arr" "$SDIR/f_{frame}.json" "$SDIR/frame{frame}.png" > "$CFG"
   draw-sheet init --config "$CFG" >/dev/null
 }
-sf() { local f=$1; shift; draw-sheet "$@" --frame "$f" --config "$CFG" >/dev/null; }  # sf <frame> <op...>
+# sf <frame> <op> <args...> : scale every geometry flag 44->80 before it hits the tool.
+# `set-pixel` is promoted to a DOTxDOT `fill-rect` so accents stay proportional.
+sf() {
+  local f=$1 ; shift
+  local op=$1 ; shift
+  if [ "$op" = "set-pixel" ]; then
+    local px=0 py=0 col=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --x) px=$2; shift 2;; --y) py=$2; shift 2;; --color) col=$2; shift 2;; *) shift;;
+      esac
+    done
+    draw-sheet fill-rect --x "$(sc "$px")" --y "$(sc "$py")" --width "$DOT" --height "$DOT" \
+      --color "$col" --frame "$f" --config "$CFG" >/dev/null
+    return
+  fi
+  local args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --x|--y|--width|--height|--cx|--cy|--r|--x0|--y0|--x1|--y1)
+        args+=("$1" "$(sc "$2")"); shift 2;;
+      *) args+=("$1"); shift;;
+    esac
+  done
+  draw-sheet "$op" "${args[@]}" --frame "$f" --config "$CFG" >/dev/null
+}
 finalize() { # copy the rendered scratch frames to zero-padded committed PNGs
   local i pad
   for ((i=0;i<NF;i++)); do
@@ -420,7 +460,7 @@ state_fuel_out() { # 3 frames: slumped, powerless, jetpack dead
 }
 
 # ============================== PRODUCE EVERYTHING ============================
-echo "producing the animated miner (facing +x, ~44x44) under assets/miner/ ..."
+echo "producing the animated miner (facing +x, ~80x80) under assets/miner/ ..."
 state_idle
 state_walk
 state_drill_down

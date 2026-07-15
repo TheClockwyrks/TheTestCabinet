@@ -21,8 +21,9 @@ import { bandForRow, isMinableKind, isSolidKind, tileLeft, tileTop } from "./wor
 import { BANDS } from "./constants";
 import type { Game } from "./game";
 
-/** How close (px) to the tile edge the miner must be before a LEFT/RIGHT cut begins. */
-const EDGE_MARGIN = 3;
+/** How close (px) to the tile edge the miner must be before a LEFT/RIGHT cut begins
+ *  (scaled with the 80px tile). */
+const EDGE_MARGIN = 5;
 
 /** Drill time for a tile, from the miner's drill tier and the tile's band hardness. */
 export function drillTime(game: Game, tile: Tile): number {
@@ -103,9 +104,9 @@ export function updateDrill(game: Game, dt: number): void {
   m.vx = 0;
   m.vy = 0;
   if (dir === "down") {
-    m.x = ease(m.x, tileLeft(col) + (TILE_SIZE - MINER_W) / 2, 260, dt);
+    m.x = ease(m.x, tileLeft(col) + (TILE_SIZE - MINER_W) / 2, 433, dt);
   } else {
-    m.y = ease(m.y, tileTop(row + 1) - MINER_H - 0.01, 260, dt);
+    m.y = ease(m.y, tileTop(row + 1) - MINER_H - 0.01, 433, dt);
   }
 
   m.drilling.elapsed += dt;

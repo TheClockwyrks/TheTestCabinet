@@ -23,6 +23,7 @@ import {
   JETPACK_CLIMB,
   JETPACK_LIFT,
   LOW_FUEL_FRACTION,
+  MAX_CAMERA_X,
   MAX_TIER,
   METERS_PER_ROW,
   MINER_BASE_MASS,
@@ -31,6 +32,8 @@ import {
   SURFACE_ROW,
   TILE_SIZE,
   VIEWPORT_HEIGHT,
+  VIEWPORT_WIDTH,
+  WORLD_COLS,
   WORLD_ROWS,
 } from "./constants";
 import { collectOre, emptyCargo, cargoUsed, cargoWeight, jettisonOre } from "./economy";
@@ -78,12 +81,12 @@ export interface Building {
   label: string;
 }
 
-/** The four surface buildings, spread across the camp (specs/world.md). */
+/** The four surface buildings, spread across the wider camp (specs/world.md). */
 export const SURFACE_BUILDINGS: Building[] = [
-  { panel: "fuel-depot", col: 3, label: "Fuel Depot" },
-  { panel: "ore-market", col: 7, label: "Ore Market" },
-  { panel: "upgrade-shop", col: 12, label: "Upgrade Shop" },
-  { panel: "launch-pad", col: 18, label: "Launch Pad" },
+  { panel: "fuel-depot", col: 5, label: "Fuel Depot" },
+  { panel: "ore-market", col: 11, label: "Ore Market" },
+  { panel: "upgrade-shop", col: 20, label: "Upgrade Shop" },
+  { panel: "launch-pad", col: 26, label: "Launch Pad" },
 ];
 
 /** How close (in tiles) the miner must stand to a building to activate it with a key. */
@@ -91,13 +94,13 @@ const BUILDING_REACH = 1.6;
 const NOTE_LIFE = 2.4;
 const LAUNCH_ANIM_TIME = 2.6;
 /** Resting top of the camera at the surface (a little sky above the camp is shown). */
-const MIN_CAM = -130;
+const MIN_CAM = -217;
 /**
  * When the miner climbs into the open sky above the surface (no ceiling,
  * specs/character.md), keep it this far below the top of the viewport so the camera
  * follows it up instead of letting it clip off the top of the view (specs/world.md).
  */
-const SKY_FOLLOW_MARGIN = 130;
+const SKY_FOLLOW_MARGIN = 217;
 
 export class Game {
   // --- Persistent expedition state (specs/flow.md) ---
@@ -123,7 +126,8 @@ export class Game {
   };
   grid: Tile[][] = [];
   nodes: MaterialNode[] = [];
-  spawnCol = 11;
+  spawnCol = 15;
+  cameraX = 0;
   cameraY = 0;
   coreTimer: number | null = null;
   deepestRow = 0;
@@ -146,6 +150,7 @@ export class Game {
   drillFxCd = 0;
   thrustFxCd = 0;
   lavaFxCd = 0;
+  gasSeepCd = 0;
   private seedCounter = 0x9e3779b9;
 
   constructor() {
@@ -369,6 +374,10 @@ export class Game {
     updateLavaContact(this, dt);
     if (move.landedSpeed > 0) landImpact(this, move.landedSpeed);
 
+    // The faint gas seep — the ONLY tell that a hidden gas pocket is there (specs/hazards.md,
+    // specs/assets.md). Emitted sparsely over on-screen pockets so it stays very subtle.
+    this.emitGasSeeps(dt);
+
     // Fuel and hull are NOT restored by being home — they are only bought at the Fuel
     // Depot (specs/character.md, specs/flow.md). Nothing refills automatically here.
 
@@ -392,6 +401,36 @@ export class Game {
     this.notes = this.notes.filter((n) => n.t > 0);
   }
 
+  /**
+   * Fire the subtle gas-seep VFX over gas pockets currently on screen (specs/hazards.md,
+   * specs/assets.md). A gas pocket is drawn as ordinary band rock (hidden), so this faint
+   * wisp is its only tell — kept sparse (one wisp every ~0.45s at a random visible pocket)
+   * so a hurried dig misses it but a careful eye catches it. Purely cosmetic (drained to
+   * the particle bursts), so the pick is allowed to be non-deterministic.
+   */
+  private emitGasSeeps(dt: number): void {
+    this.gasSeepCd -= dt;
+    if (this.gasSeepCd > 0) return;
+    this.gasSeepCd = 0.45;
+    const c0 = Math.max(0, Math.floor(this.cameraX / TILE_SIZE));
+    const c1 = Math.min(WORLD_COLS - 1, Math.floor((this.cameraX + VIEWPORT_WIDTH) / TILE_SIZE));
+    const r0 = Math.max(0, Math.floor(this.cameraY / TILE_SIZE));
+    const r1 = Math.min(WORLD_ROWS - 1, Math.floor((this.cameraY + VIEWPORT_HEIGHT) / TILE_SIZE));
+    const gas: [number, number][] = [];
+    for (let r = r0; r <= r1; r++) {
+      const line = this.grid[r];
+      if (!line) continue;
+      for (let c = c0; c <= c1; c++) if (line[c]!.kind === "gas") gas.push([c, r]);
+    }
+    if (!gas.length) return;
+    const [c, r] = gas[Math.floor(Math.random() * gas.length)]!;
+    this.fxQueue.push({
+      kind: "gas-seep",
+      x: c * TILE_SIZE + TILE_SIZE / 2,
+      y: r * TILE_SIZE + TILE_SIZE * 0.35,
+    });
+  }
+
   private retrieveCache(): void {
     if (!this.cache) return;
     const mc = minerCol(this.miner);
@@ -412,14 +451,20 @@ export class Game {
   }
 
   private updateCamera(dt: number): void {
-    // At rest the top clamp is MIN_CAM (frames the camp); once the miner rises into the
-    // sky above the surface, the clamp follows it up so it stays on screen (specs/world.md).
+    // Horizontal: center the miner and clamp so the wide mine never scrolls past its side
+    // bedrock borders (specs/world.md — the mine is wider than the viewport).
+    const targetX = clamp(minerCenterX(this.miner) - VIEWPORT_WIDTH / 2, 0, MAX_CAMERA_X);
+    // Vertical: at rest the top clamp is MIN_CAM (frames the camp); once the miner rises
+    // into the sky above the surface, the clamp follows it up so it stays on screen.
     const topClamp = Math.min(MIN_CAM, minerCenterY(this.miner) - SKY_FOLLOW_MARGIN);
-    const target = clamp(minerCenterY(this.miner) - VIEWPORT_HEIGHT / 2, topClamp, this.maxCam());
+    const targetY = clamp(minerCenterY(this.miner) - VIEWPORT_HEIGHT / 2, topClamp, this.maxCam());
     if (dt >= 1) {
-      this.cameraY = target;
+      this.cameraX = targetX;
+      this.cameraY = targetY;
     } else {
-      this.cameraY += (target - this.cameraY) * Math.min(1, 9 * dt);
+      const k = Math.min(1, 9 * dt);
+      this.cameraX += (targetX - this.cameraX) * k;
+      this.cameraY += (targetY - this.cameraY) * k;
     }
   }
 
@@ -587,8 +632,8 @@ export class Game {
 // A launch-exhaust burst under the rising rocket (kept out of the class for brevity).
 function game_pushLaunchFx(game: Game, rocketX: number): void {
   const pad = SURFACE_FEET_Y - 10;
-  const y = pad - (game.launchAnim ?? 0) * 140;
-  game.fxQueue.push({ kind: "launch-exhaust", x: rocketX, y: y + 40, scale: 1.4 });
+  const y = pad - (game.launchAnim ?? 0) * 230;
+  game.fxQueue.push({ kind: "launch-exhaust", x: rocketX, y: y + 60, scale: 1.4 });
 }
 
 function clamp(v: number, lo: number, hi: number): number {

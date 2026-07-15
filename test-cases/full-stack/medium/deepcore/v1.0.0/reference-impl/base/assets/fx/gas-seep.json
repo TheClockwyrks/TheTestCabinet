@@ -1,0 +1,73 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 950,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "seep",
+      "shape": "disc",
+      "position": [
+        64.0,
+        84.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 7.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 3,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 820.0,
+      "lifetimeSpread": 220.0,
+      "speed": 12.0,
+      "speedSpread": 5.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "coneAngle": 34.0,
+      "seed": 7,
+      "forces": {
+        "gravity": -14.0,
+        "drag": 3.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.35,
+          "to": 1.25
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 0.22,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#c7e89a",
+            "at": 0.0
+          },
+          {
+            "color": "#9ad24a",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

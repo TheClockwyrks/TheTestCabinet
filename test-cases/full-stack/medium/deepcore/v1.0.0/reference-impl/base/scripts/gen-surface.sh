@@ -17,8 +17,13 @@
 #     assembly ladder (specs/rocket.md): bare pad → +Hull Frame → +Fuel Cells →
 #     +Guidance Unit → +Thruster Assembly → +Ignition Core (lit, launch-ready). The
 #     rocket VISIBLY gains each installed component; the engine selects the stage by how
-#     many of the five components are installed. Every stage is the SAME 64×128 canvas so
+#     many of the five components are installed. Every stage is the SAME 96×160 canvas so
 #     the renderer stacks it over launch-pad.png at a fixed offset.
+#
+# NATIVE SIZES (tile size is 80px): the four buildings are 112×132, the cave mouth is a
+# wide, short 120×48 opening in the camp floor, and each rocket-assembly stage is 96×160.
+# These are authored crisp at native size (no upscaling). The HUD icons stay 20×20 and the
+# unused sky/ground strips are left as-is.
 #
 #   • assets/icons/  — the small HUD status-bar glyphs (specs/flow.md), 20×20 each:
 #       fuel hull cargo credits depth resonite cryenite
@@ -163,217 +168,219 @@ d fill-circle --cx 20 --cy 40 --r 5 --color '#191510'
 d fill-circle --cx 22 --cy 41 --r 2 --color '#0f0c09'
 
 # ---------------------------------- CAVE MOUTH (the way down) ---------------------
-# The shored opening in the camp floor down into row 1 (specs/world.md). A dark descending
-# shaft framed by steel headgear + timber shoring, rubble at the lip, a ladder into the
-# dark, and a fade to tunnel-black so it clearly reads "down". Straight alpha above the lip.
-newsprite 96 72 "$SURF/cave-mouth.png"
+# The shored opening in the camp floor down into row 1 (specs/world.md). NATIVE 120×48 —
+# a WIDE, SHORT cave opening: ground shoulders left/right, a dark maw fading to tunnel-black
+# framed by a steel headbeam + side posts with hazard chevrons, a short ladder-top peeking
+# into the dark, and rubble at the lip so it clearly reads "down". Straight alpha above.
+newsprite 120 48 "$SURF/cave-mouth.png"
 # ground shoulders on each side of the mouth
-d fill-rect --x 0  --y 0 --width 22 --height 72 --color "$GROUND"
-d fill-rect --x 74 --y 0 --width 22 --height 72 --color "$GROUND"
-d fill-rect --x 0  --y 0 --width 22 --height 3  --color "$GROUND_L"
-d fill-rect --x 74 --y 0 --width 22 --height 3  --color "$GROUND_L"
-# the shaft: dark throat fading down
-d fill-rect --x 20 --y 8  --width 56 --height 64 --color "$TUNNEL"
-d fill-rect --x 24 --y 6  --width 48 --height 8  --color '#241d16'   # earthy lip
-d fill-rect --x 26 --y 22 --width 44 --height 20 --color '#0c0f13'
-d fill-rect --x 28 --y 40 --width 40 --height 32 --color '#05070a'   # deepening black
-# steel headframe (a small pit-head gantry over the mouth)
-d fill-rect --x 18 --y 4 --width 6  --height 66 --color "$MET_M"     # left post
-d fill-rect --x 72 --y 4 --width 6  --height 66 --color "$MET_M"     # right post
-d fill-rect --x 18 --y 4 --width 6  --height 2  --color "$MET_L"
-d fill-rect --x 72 --y 4 --width 6  --height 2  --color "$MET_L"
-d fill-rect --x 16 --y 0 --width 64 --height 6  --color "$MET_D"     # head beam
-d fill-rect --x 16 --y 0 --width 64 --height 2  --color "$MET_M"
-d fill-rect --x 16 --y 5 --width 64 --height 1  --color "$MET_XD"
-# cross-bracing on the posts
-d line --x0 20 --y0 12 --x1 22 --y1 30 --color "$MET_L"
-d line --x0 76 --y0 12 --x1 74 --y1 30 --color "$MET_L"
+d fill-rect --x 0  --y 0 --width 28 --height 48 --color "$GROUND"
+d fill-rect --x 92 --y 0 --width 28 --height 48 --color "$GROUND"
+d fill-rect --x 0  --y 0 --width 28 --height 3  --color "$GROUND_L"
+d fill-rect --x 92 --y 0 --width 28 --height 3  --color "$GROUND_L"
+# the wide maw: dark throat fading down
+d fill-rect --x 30 --y 2  --width 60 --height 8  --color '#241d16'   # earthy lip
+d fill-rect --x 30 --y 8  --width 60 --height 40 --color "$TUNNEL"
+d fill-rect --x 36 --y 16 --width 48 --height 32 --color '#0c0f13'
+d fill-rect --x 44 --y 26 --width 32 --height 22 --color '#05070a'   # deepening black
+# steel headframe (a wide pit-head beam + side posts over the mouth)
+d fill-rect --x 26 --y 4 --width 5  --height 44 --color "$MET_M"     # left post
+d fill-rect --x 89 --y 4 --width 5  --height 44 --color "$MET_M"     # right post
+d fill-rect --x 26 --y 4 --width 5  --height 2  --color "$MET_L"
+d fill-rect --x 89 --y 4 --width 5  --height 2  --color "$MET_L"
+d fill-rect --x 24 --y 0 --width 72 --height 7  --color "$MET_D"     # head beam
+d fill-rect --x 24 --y 0 --width 72 --height 2  --color "$MET_M"
+d fill-rect --x 24 --y 6 --width 72 --height 1  --color "$MET_XD"
+# cross-bracing angling in from the posts
+d line --x0 30 --y0 10 --x1 34 --y1 30 --color "$MET_L"
+d line --x0 90 --y0 10 --x1 86 --y1 30 --color "$MET_L"
 # hazard chevrons on the head beam
-for x in 22 34 46 58 70; do d fill-rect --x "$x" --y 1 --width 5 --height 3 --color "$FUEL"; done
-# a ladder descending into the dark (rails + rungs)
-d fill-rect --x 40 --y 10 --width 2 --height 60 --color "$MET_L"
-d fill-rect --x 54 --y 10 --width 2 --height 60 --color "$MET_L"
-for y in 16 24 32 40 48 56; do d fill-rect --x 40 --y "$y" --width 16 --height 2 --color "$MET_D"; done
+for x in 28 40 52 64 76 88; do d fill-rect --x "$x" --y 1 --width 6 --height 4 --color "$FUEL"; done
+# a short ladder-top descending into the dark (rails + rungs)
+d fill-rect --x 56 --y 10 --width 2 --height 34 --color "$MET_L"
+d fill-rect --x 64 --y 10 --width 2 --height 34 --color "$MET_L"
+for y in 16 24 32 40; do d fill-rect --x 56 --y "$y" --width 10 --height 2 --color "$MET_D"; done
 # rubble at the lip
-for xy in "24 10" "68 10" "30 12 " "62 14" "48 8"; do
-  set -- $xy; d fill-rect --x "$1" --y "$2" --width 3 --height 2 --color "$GROUND_D"
+for xy in "30 8" "84 8" "38 12" "80 14" "60 6"; do
+  set -- $xy; d fill-rect --x "$1" --y "$2" --width 4 --height 3 --color "$GROUND_D"
 done
 
 # ============================ FUEL DEPOT (refuel / repair) ======================
 # REFUEL + REPAIR, free (specs/world.md/flow.md). A squat fuel tank with a fuel-yellow band
 # and a level gauge, a pump housing with a coiled hose + nozzle, and a fuel-drop emblem — it
-# should read "fuel" at a glance. 72×88, standing on the ground at the bottom.
-newsprite 72 88 "$SURF/fuel-depot.png"
-d fill-rect --x 4 --y 82 --width 64 --height 6 --color "$MET_XD"     # concrete footing
+# should read "fuel" at a glance. 112×132, standing on the ground at the bottom.
+newsprite 112 132 "$SURF/fuel-depot.png"
+d fill-rect --x 6 --y 123 --width 100 --height 9 --color "$MET_XD"   # concrete footing
 # --- the storage tank (left) ---
-d fill-rect --x 8  --y 20 --width 34 --height 62 --color "$MET_M"    # tank body
-d fill-rect --x 8  --y 20 --width 4  --height 62 --color "$MET_L"    # left sheen
-d fill-rect --x 38 --y 20 --width 4  --height 62 --color "$MET_D"    # right shade
-d fill-circle --cx 25 --cy 20 --r 17 --color "$MET_M"               # domed top
-d fill-circle --cx 20 --cy 15 --r 8  --color "$MET_L"               # dome sheen
-d fill-rect --x 8 --y 20 --width 34 --height 2 --color "$MET_HL"     # top rim
-d fill-rect --x 22 --y 4 --width 6 --height 8 --color "$MET_D"       # fill cap / vent
-d fill-rect --x 22 --y 4 --width 6 --height 2 --color "$MET_L"
+d fill-rect --x 12 --y 30 --width 53 --height 93 --color "$MET_M"    # tank body
+d fill-rect --x 12 --y 30 --width 6  --height 93 --color "$MET_L"    # left sheen
+d fill-rect --x 59 --y 30 --width 6  --height 93 --color "$MET_D"    # right shade
+d fill-circle --cx 39 --cy 30 --r 26 --color "$MET_M"               # domed top
+d fill-circle --cx 31 --cy 22 --r 12 --color "$MET_L"               # dome sheen
+d fill-rect --x 12 --y 30 --width 53 --height 3 --color "$MET_HL"    # top rim
+d fill-rect --x 34 --y 6 --width 9 --height 12 --color "$MET_D"      # fill cap / vent
+d fill-rect --x 34 --y 6 --width 9 --height 3 --color "$MET_L"
 # fuel-yellow hazard band + level gauge
-d fill-rect --x 8 --y 40 --width 34 --height 8 --color "$FUEL"
-d fill-rect --x 8 --y 40 --width 34 --height 1 --color '#fff0b0'
-d fill-rect --x 8 --y 47 --width 34 --height 1 --color "$RUST_L"
-d fill-rect --x 12 --y 54 --width 6 --height 22 --color "$MET_XD"    # gauge tube
-d fill-rect --x 13 --y 62 --width 4 --height 13 --color "$FUEL"      # fuel level
-d fill-rect --x 13 --y 62 --width 4 --height 1  --color '#fff0b0'
+d fill-rect --x 12 --y 60 --width 53 --height 12 --color "$FUEL"
+d fill-rect --x 12 --y 60 --width 53 --height 2 --color '#fff0b0'
+d fill-rect --x 12 --y 70 --width 53 --height 2 --color "$RUST_L"
+d fill-rect --x 19 --y 81 --width 9 --height 33 --color "$MET_XD"    # gauge tube
+d fill-rect --x 20 --y 93 --width 6 --height 20 --color "$FUEL"      # fuel level
+d fill-rect --x 20 --y 93 --width 6 --height 2  --color '#fff0b0'
 # fuel-drop emblem on the tank
-d fill-circle --cx 31 --cy 66 --r 5 --color "$FUEL"
-d fill-rect   --x 30 --y 57 --width 2 --height 6 --color "$FUEL"
-d fill-circle --cx 29 --cy 64 --r 1 --color '#fff0b0'
+d fill-circle --cx 48 --cy 99 --r 8 --color "$FUEL"
+d fill-rect   --x 47 --y 85 --width 3 --height 9 --color "$FUEL"
+d fill-circle --cx 45 --cy 96 --r 2 --color '#fff0b0'
 # rivets down the seam
-for y in 26 38 54 70; do d set-pixel --x 40 --y "$y" --color "$MET_HL"; done
+for y in 39 57 81 105; do d fill-rect --x 61 --y "$y" --width 2 --height 2 --color "$MET_HL"; done
 # --- the pump housing (right) ---
-d fill-rect --x 46 --y 44 --width 22 --height 38 --color "$MET_D"    # pump body
-d fill-rect --x 46 --y 44 --width 22 --height 3  --color "$MET_M"
-d fill-rect --x 49 --y 48 --width 16 --height 10 --color "$MET_XD"   # display recess
-d fill-rect --x 51 --y 50 --width 12 --height 6  --color "$FUEL"     # lit readout
-d fill-rect --x 52 --y 52 --width 3 --height 2 --color "$MET_XD"
-d fill-rect --x 57 --y 52 --width 3 --height 2 --color "$MET_XD"
+d fill-rect --x 72 --y 66 --width 34 --height 57 --color "$MET_D"    # pump body
+d fill-rect --x 72 --y 66 --width 34 --height 5  --color "$MET_M"
+d fill-rect --x 76 --y 72 --width 25 --height 15 --color "$MET_XD"   # display recess
+d fill-rect --x 79 --y 75 --width 19 --height 9  --color "$FUEL"     # lit readout
+d fill-rect --x 81 --y 78 --width 5 --height 3 --color "$MET_XD"
+d fill-rect --x 89 --y 78 --width 5 --height 3 --color "$MET_XD"
 # coiled hose + nozzle hung on the pump
-d line --x0 46 --y0 64 --x1 40 --y1 68 --color "$MET_XD"
-d line --x0 40 --y0 68 --x1 44 --y1 74 --color "$MET_XD"
-d line --x0 44 --y0 74 --x1 50 --y1 72 --color "$MET_XD"
-d fill-rect --x 62 --y 62 --width 4 --height 10 --color "$MET_L"     # nozzle holster
-d fill-rect --x 63 --y 60 --width 2 --height 4  --color "$FUEL"
+d line --x0 72 --y0 96  --x1 62 --y1 102 --color "$MET_XD"
+d line --x0 72 --y0 97  --x1 62 --y1 103 --color "$MET_XD"
+d line --x0 62 --y0 102 --x1 68 --y1 111 --color "$MET_XD"
+d line --x0 63 --y0 102 --x1 69 --y1 111 --color "$MET_XD"
+d line --x0 68 --y0 111 --x1 78 --y1 108 --color "$MET_XD"
+d fill-rect --x 96 --y 93 --width 6 --height 15 --color "$MET_L"     # nozzle holster
+d fill-rect --x 98 --y 90 --width 3 --height 6  --color "$FUEL"
 
 # ============================ ORE MARKET (sell ore) ============================
 # SELL cargo for Credits (specs/flow.md/mining.md). A trading stall: a slanted awning on
 # posts, a counter, crates of ore (ferron-brown with a glint), a balance scale, and a stack
-# of Credits — reads as "sell your ore here". 80×88.
-newsprite 80 88 "$SURF/ore-market.png"
-d fill-rect --x 6 --y 82 --width 68 --height 6 --color "$MET_XD"     # footing
+# of Credits — reads as "sell your ore here". 112×132.
+newsprite 112 132 "$SURF/ore-market.png"
+d fill-rect --x 8 --y 123 --width 95 --height 9 --color "$MET_XD"    # footing
 # support posts
-d fill-rect --x 8  --y 24 --width 5 --height 58 --color "$MET_D"
-d fill-rect --x 67 --y 24 --width 5 --height 58 --color "$MET_D"
-d fill-rect --x 8  --y 24 --width 5 --height 2  --color "$MET_M"
-d fill-rect --x 67 --y 24 --width 5 --height 2  --color "$MET_M"
+d fill-rect --x 11 --y 36 --width 7 --height 87 --color "$MET_D"
+d fill-rect --x 94 --y 36 --width 7 --height 87 --color "$MET_D"
+d fill-rect --x 11 --y 36 --width 7 --height 3  --color "$MET_M"
+d fill-rect --x 94 --y 36 --width 7 --height 3  --color "$MET_M"
 # slanted awning (a lean-to roof, ferron-brown canvas over a steel ridge)
-d fill-rect --x 4 --y 18 --width 72 --height 6 --color "$MET_M"      # ridge beam
-d fill-rect --x 4 --y 18 --width 72 --height 2 --color "$MET_L"
+d fill-rect --x 6 --y 27 --width 101 --height 9 --color "$MET_M"     # ridge beam
+d fill-rect --x 6 --y 27 --width 101 --height 3 --color "$MET_L"
 for i in 0 1 2 3 4 5; do                                              # striped awning
-  x=$(( 6 + i * 12 ))
-  d fill-rect --x "$x" --y 24 --width 6 --height 5 --color "$FERRON"
-  d fill-rect --x $(( x + 6 )) --y 24 --width 6 --height 5 --color '#8a5a34'
+  x=$(( 8 + i * 16 ))
+  d fill-rect --x "$x" --y 36 --width 8 --height 8 --color "$FERRON"
+  d fill-rect --x $(( x + 8 )) --y 36 --width 8 --height 8 --color '#8a5a34'
 done
-d fill-rect --x 4 --y 28 --width 72 --height 2 --color "$RUST_D"     # awning fringe
+d fill-rect --x 6 --y 42 --width 101 --height 3 --color "$RUST_D"    # awning fringe
 # the counter
-d fill-rect --x 10 --y 60 --width 60 --height 8 --color "$MET_D"
-d fill-rect --x 10 --y 60 --width 60 --height 2 --color "$MET_L"
-d fill-rect --x 10 --y 68 --width 60 --height 4 --color "$MET_XD"
+d fill-rect --x 14 --y 90 --width 84 --height 12 --color "$MET_D"
+d fill-rect --x 14 --y 90 --width 84 --height 3  --color "$MET_L"
+d fill-rect --x 14 --y 102 --width 84 --height 6 --color "$MET_XD"
 # ore crates on the counter (ferron ore with glints)
-d fill-rect --x 14 --y 44 --width 16 --height 16 --color "$RUST_D"   # crate 1
-d fill-rect --x 14 --y 44 --width 16 --height 2  --color '#6a4526'
-d fill-rect --x 16 --y 46 --width 12 --height 12 --color "$FERRON"
-d set-pixel --x 20 --y 49 --color '#e0a878'
-d set-pixel --x 24 --y 53 --color '#e0a878'
-d fill-rect --x 34 --y 50 --width 12 --height 10 --color "$RUST_D"   # crate 2 (smaller)
-d fill-rect --x 36 --y 52 --width 8  --height 6  --color "$FERRON"
-d set-pixel --x 39 --y 54 --color '#e0a878'
+d fill-rect --x 20 --y 66 --width 22 --height 24 --color "$RUST_D"   # crate 1
+d fill-rect --x 20 --y 66 --width 22 --height 3  --color '#6a4526'
+d fill-rect --x 22 --y 69 --width 17 --height 18 --color "$FERRON"
+d fill-rect --x 28 --y 73 --width 2 --height 2 --color '#e0a878'
+d fill-rect --x 34 --y 79 --width 2 --height 2 --color '#e0a878'
+d fill-rect --x 48 --y 75 --width 17 --height 15 --color "$RUST_D"   # crate 2 (smaller)
+d fill-rect --x 50 --y 78 --width 11 --height 9  --color "$FERRON"
+d fill-rect --x 55 --y 81 --width 2 --height 2 --color '#e0a878'
 # a balance scale on the right of the counter
-d fill-rect --x 56 --y 40 --width 2 --height 20 --color "$MET_L"     # scale post
-d fill-rect --x 50 --y 40 --width 14 --height 2 --color "$MET_L"     # beam
-d line --x0 51 --y0 41 --x1 51 --y1 47 --color "$TXT3"               # left chains
-d line --x0 62 --y0 41 --x1 62 --y1 47 --color "$TXT3"
-d fill-rect --x 48 --y 47 --width 7 --height 2 --color "$MET_M"      # left pan
-d fill-rect --x 59 --y 45 --width 7 --height 2 --color "$MET_M"      # right pan (higher)
+d fill-rect --x 78 --y 60 --width 3 --height 30 --color "$MET_L"     # scale post
+d fill-rect --x 70 --y 60 --width 20 --height 3 --color "$MET_L"     # beam
+d line --x0 71 --y0 61 --x1 71 --y1 70 --color "$TXT3"               # left chains
+d line --x0 87 --y0 61 --x1 87 --y1 70 --color "$TXT3"
+d fill-rect --x 67 --y 70 --width 10 --height 3 --color "$MET_M"     # left pan
+d fill-rect --x 83 --y 67 --width 10 --height 3 --color "$MET_M"     # right pan (higher)
 # a small stack of Credits by the scale
-d fill-circle --cx 40 --cy 74 --r 3 --color "$CREDITS"
-d fill-circle --cx 45 --cy 75 --r 3 --color "$CREDITS"
-d set-pixel --x 39 --y 73 --color '#fff0b0'
+d fill-circle --cx 56 --cy 111 --r 4 --color "$CREDITS"
+d fill-circle --cx 63 --cy 112 --r 4 --color "$CREDITS"
+d fill-rect --x 54 --y 109 --width 2 --height 2 --color '#fff0b0'
 
 # ============================ UPGRADE SHOP (buy upgrades) ======================
 # BUY upgrade tiers (specs/upgrades.md). A fabricator hut: a peaked steel roof, a lit
 # workbench window, and a big gear crossed with a wrench — the universal "upgrades / repairs"
-# read — with a spark of hull-cyan tech light. 80×88.
-newsprite 80 88 "$SURF/upgrade-shop.png"
-d fill-rect --x 6 --y 82 --width 68 --height 6 --color "$MET_XD"     # footing
+# read — with a spark of hull-cyan tech light. 112×132.
+newsprite 112 132 "$SURF/upgrade-shop.png"
+d fill-rect --x 8 --y 123 --width 95 --height 9 --color "$MET_XD"    # footing
 # hut walls
-d fill-rect --x 10 --y 34 --width 60 --height 48 --color "$MET_D"
-d fill-rect --x 10 --y 34 --width 4  --height 48 --color "$MET_M"    # left sheen
-d fill-rect --x 66 --y 34 --width 4  --height 48 --color "$MET_XD"   # right shade
+d fill-rect --x 14 --y 51 --width 84 --height 72 --color "$MET_D"
+d fill-rect --x 14 --y 51 --width 6  --height 72 --color "$MET_M"    # left sheen
+d fill-rect --x 92 --y 51 --width 6  --height 72 --color "$MET_XD"   # right shade
 # peaked roof
-d line --x0 8  --y0 34 --x1 40 --y1 12 --color "$MET_L"
-d line --x0 72 --y0 34 --x1 40 --y1 12 --color "$MET_L"
-d fill-rect --x 8 --y 32 --width 64 --height 4 --color "$MET_M"      # eave beam
-d fill-rect --x 8 --y 32 --width 64 --height 1 --color "$MET_HL"
-d fill-circle --cx 40 --cy 14 --r 2 --color "$HULL"                  # ridge lamp
+d line --x0 11  --y0 51 --x1 56 --y1 18 --color "$MET_L"
+d line --x0 101 --y0 51 --x1 56 --y1 18 --color "$MET_L"
+d fill-rect --x 11 --y 48 --width 90 --height 6 --color "$MET_M"     # eave beam
+d fill-rect --x 11 --y 48 --width 90 --height 2 --color "$MET_HL"
+d fill-circle --cx 56 --cy 21 --r 3 --color "$HULL"                  # ridge lamp
 # lit workbench window
-d fill-rect --x 16 --y 40 --width 18 --height 14 --color "$MET_XD"
-d fill-rect --x 18 --y 42 --width 14 --height 10 --color '#243038'
-d fill-rect --x 18 --y 42 --width 14 --height 4  --color "$HULL"     # cyan work-glow
-d set-pixel --x 20 --y 44 --color "$WHITE"
-d set-pixel --x 27 --y 45 --color "$WHITE"
+d fill-rect --x 22 --y 60 --width 25 --height 21 --color "$MET_XD"
+d fill-rect --x 25 --y 63 --width 20 --height 15 --color '#243038'
+d fill-rect --x 25 --y 63 --width 20 --height 6  --color "$HULL"     # cyan work-glow
+d fill-rect --x 28 --y 66 --width 2 --height 2 --color "$WHITE"
+d fill-rect --x 38 --y 68 --width 2 --height 2 --color "$WHITE"
 # the big gear (right)
-d fill-circle --cx 54 --cy 56 --r 12 --color "$MET_M"
-d fill-circle --cx 54 --cy 56 --r 12 --color "$MET_M"
-for t in "54 42" "54 70" "42 56" "66 56" "45 47" "63 47" "45 65" "63 65"; do
-  set -- $t; d fill-rect --x $(( $1 - 2 )) --y $(( $2 - 2 )) --width 4 --height 4 --color "$MET_M"
+d fill-circle --cx 76 --cy 84 --r 17 --color "$MET_M"
+for t in "76 63" "76 105" "59 84" "92 84" "63 71" "88 71" "63 98" "88 98"; do
+  set -- $t; d fill-rect --x $(( $1 - 3 )) --y $(( $2 - 3 )) --width 6 --height 6 --color "$MET_M"
 done
-d fill-circle --cx 54 --cy 56 --r 9 --color "$MET_L"
-d fill-circle --cx 54 --cy 56 --r 4 --color "$MET_XD"                # hub bore
-d fill-circle --cx 54 --cy 56 --r 2 --color "$HULL"
+d fill-circle --cx 76 --cy 84 --r 13 --color "$MET_L"
+d fill-circle --cx 76 --cy 84 --r 6 --color "$MET_XD"                # hub bore
+d fill-circle --cx 76 --cy 84 --r 3 --color "$HULL"
 # crossed wrench over the gear
-d line --x0 44 --y0 66 --x1 64 --y1 46 --color "$MET_HL"
-d line --x0 44 --y0 65 --x1 63 --y1 46 --color "$MET_L"
-d fill-circle --cx 44 --cy 66 --r 2 --color "$MET_HL"                # wrench jaw
-d fill-rect   --x 43 --y 64 --width 2 --height 2 --color "$MET_XD"
-d fill-circle --cx 64 --cy 46 --r 2 --color "$MET_HL"
+d line --x0 62 --y0 99 --x1 90 --y1 69 --color "$MET_HL"
+d line --x0 62 --y0 98 --x1 88 --y1 69 --color "$MET_L"
+d fill-circle --cx 62 --cy 99 --r 3 --color "$MET_HL"                # wrench jaw
+d fill-rect   --x 60 --y 96 --width 3 --height 3 --color "$MET_XD"
+d fill-circle --cx 90 --cy 69 --r 3 --color "$MET_HL"
 # tool rack on the left wall
-for x in 16 20 24; do d fill-rect --x "$x" --y 60 --width 1 --height 16 --color "$MET_L"; done
-d fill-rect --x 15 --y 60 --width 11 --height 2 --color "$MET_M"
+for x in 22 28 34; do d fill-rect --x "$x" --y 90 --width 2 --height 24 --color "$MET_L"; done
+d fill-rect --x 21 --y 90 --width 15 --height 3 --color "$MET_M"
 
 # ============================ LAUNCH PAD (the rocket base) =====================
 # The derelict launch platform the escape rocket is built on (specs/world.md/rocket.md).
 # This is the BASE structure only — a raised octagonal pad with a flame trench, a lattice
 # gantry tower, cabling and hazard stripes, and an empty central cradle. The rocket stages
-# (below) are drawn as a SEPARATE sprite stacked over this cradle. 96×96.
-newsprite 96 96 "$SURF/launch-pad.png"
-d fill-rect --x 2 --y 88 --width 92 --height 8 --color "$MET_XD"     # ground apron
+# (below) are drawn as a SEPARATE sprite stacked over this cradle. 112×132.
+newsprite 112 132 "$SURF/launch-pad.png"
+d fill-rect --x 2 --y 121 --width 107 --height 11 --color "$MET_XD"  # ground apron
 # raised pad deck (trapezoid: wide base, narrower top → reads as a raised platform)
-d fill-rect --x 10 --y 76 --width 76 --height 14 --color "$MET_D"    # pad skirt
-d fill-rect --x 16 --y 68 --width 64 --height 10 --color "$MET_M"    # deck
-d fill-rect --x 16 --y 68 --width 64 --height 2  --color "$MET_L"    # deck lip
-d fill-rect --x 10 --y 88 --width 76 --height 2  --color "$MET_XD"
+d fill-rect --x 12 --y 105 --width 89 --height 19 --color "$MET_D"   # pad skirt
+d fill-rect --x 19 --y 94  --width 75 --height 14 --color "$MET_M"   # deck
+d fill-rect --x 19 --y 94  --width 75 --height 3  --color "$MET_L"   # deck lip
+d fill-rect --x 12 --y 121 --width 89 --height 3  --color "$MET_XD"
 # flame trench (dark slot under the cradle)
-d fill-rect --x 38 --y 78 --width 20 --height 10 --color "$TUNNEL"
-d fill-rect --x 40 --y 80 --width 16 --height 6  --color '#05070a'
+d fill-rect --x 44 --y 107 --width 23 --height 14 --color "$TUNNEL"
+d fill-rect --x 47 --y 110 --width 19 --height 8  --color '#05070a'
 # central cradle / hold-down clamps (where the rocket sits)
-d fill-rect --x 34 --y 64 --width 6 --height 8 --color "$MET_L"
-d fill-rect --x 56 --y 64 --width 6 --height 8 --color "$MET_L"
-d fill-rect --x 34 --y 64 --width 6 --height 2 --color "$MET_HL"
-d fill-rect --x 56 --y 64 --width 6 --height 2 --color "$MET_HL"
+d fill-rect --x 40 --y 88 --width 7 --height 11 --color "$MET_L"
+d fill-rect --x 65 --y 88 --width 7 --height 11 --color "$MET_L"
+d fill-rect --x 40 --y 88 --width 7 --height 3 --color "$MET_HL"
+d fill-rect --x 65 --y 88 --width 7 --height 3 --color "$MET_HL"
 # hazard stripes on the deck edge
-for x in 18 26 34 62 70 78; do d fill-rect --x "$x" --y 70 --width 4 --height 3 --color "$FUEL"; done
+for x in 21 30 40 72 82 91; do d fill-rect --x "$x" --y 96 --width 5 --height 4 --color "$FUEL"; done
 # lattice gantry tower (right side)
-d fill-rect --x 74 --y 8  --width 4 --height 68 --color "$MET_M"     # tower spine
-d fill-rect --x 88 --y 8  --width 4 --height 68 --color "$MET_M"
-d fill-rect --x 74 --y 8  --width 18 --height 3 --color "$MET_L"     # tower cap
-for y in 16 26 36 46 56 66; do                                       # cross braces
-  d line --x0 78 --y0 "$y" --x1 88 --y1 $(( y + 8 )) --color "$MET_D"
-  d line --x0 88 --y0 "$y" --x1 78 --y1 $(( y + 8 )) --color "$MET_D"
-  d fill-rect --x 74 --y "$y" --width 18 --height 1 --color "$MET_D"
+d fill-rect --x 86  --y 11 --width 5 --height 94 --color "$MET_M"    # tower spine
+d fill-rect --x 103 --y 11 --width 5 --height 94 --color "$MET_M"
+d fill-rect --x 86  --y 11 --width 22 --height 4 --color "$MET_L"    # tower cap
+for y in 22 36 50 63 77 91; do                                       # cross braces
+  d line --x0 91 --y0 "$y" --x1 103 --y1 $(( y + 11 )) --color "$MET_D"
+  d line --x0 103 --y0 "$y" --x1 91 --y1 $(( y + 11 )) --color "$MET_D"
+  d fill-rect --x 86 --y "$y" --width 22 --height 2 --color "$MET_D"
 done
-d fill-circle --cx 83 --cy 6 --r 2 --color "$ALERT"                  # warning beacon
+d fill-circle --cx 97 --cy 8 --r 3 --color "$ALERT"                  # warning beacon
 # swing-arm reaching toward the cradle + cabling to the deck
-d fill-rect --x 62 --y 30 --width 14 --height 3 --color "$MET_L"
-d line --x0 76 --y0 40 --x1 82 --y1 60 --color "$MET_XD"
-d line --x0 82 --y0 60 --x1 78 --y1 74 --color "$MET_XD"
+d fill-rect --x 72 --y 41 --width 16 --height 4 --color "$MET_L"
+d line --x0 89 --y0 55 --x1 96 --y1 83 --color "$MET_XD"
+d line --x0 96 --y0 83 --x1 91 --y1 102 --color "$MET_XD"
 # a couple of ground cables snaking off the pad
-d line --x0 16 --y0 82 --x1 6 --y1 88 --color "$MET_XD"
-d line --x0 20 --y0 84 --x1 10 --y1 90 --color "$MET_XD"
+d line --x0 19 --y0 113 --x1 7  --y1 121 --color "$MET_XD"
+d line --x0 23 --y0 116 --x1 12 --y1 124 --color "$MET_XD"
 
 # =========================================================================================
 #  ESCAPE ROCKET — assembly stages 0..5 (draw-sheet; specs/rocket.md, ASSET-LAYOUT.md)
 # =========================================================================================
-# 64×128, symmetric about x=32. Every stage is drawn as its cumulative LEFT half (cols 0..31)
-# and then `mirror-horizontal --axis-x 32` reflects it to a whole rocket — so a component
-# added at stage N is present in every stage >= N. The engine stacks this over the launch
-# pad's cradle; stage0 is the bare pad, stage5 is the lit, launch-ready rocket.
+# NATIVE 96×160, symmetric about x=48. Every stage is drawn as its cumulative LEFT half
+# (cols 0..48) and then `mirror-horizontal --axis-x 48` reflects it to a whole rocket — so a
+# component added at stage N is present in every stage >= N. The engine stacks this over the
+# launch pad's cradle; stage0 is the bare pad, stage5 is the lit, launch-ready rocket.
 #
 # The five installed components (build order, specs/rocket.md):
 #   stage1  Hull Frame        — the skeletal steel body (struts, no skin)
@@ -382,86 +389,86 @@ d line --x0 20 --y0 84 --x1 10 --y1 90 --color "$MET_XD"
 #   stage4  Thruster Assembly — the engine bell/nozzle cluster at the base, cryenite-violet
 #   stage5  Ignition Core     — the core installed + lit: hot core-glow, launch-ready lamps
 #
-# Left-half layer helpers (each takes the frame index; draw only cols 0..32, mirror does 32..63).
-newsheet 64 128 "$ROCK" "stage"
+# Left-half layer helpers (each takes the frame index; draw only cols 0..48, mirror does 48..95).
+newsheet 96 160 "$ROCK" "stage"
 
 rk_pad() {   # the mounting deck + hold-down clamps every stage stands on (left half)
   local f=$1
-  s fill-rect --frame "$f" --x 6  --y 116 --width 26 --height 8 --color "$MET_D"   # deck
-  s fill-rect --frame "$f" --x 6  --y 116 --width 26 --height 2 --color "$MET_M"
-  s fill-rect --frame "$f" --x 6  --y 122 --width 26 --height 4 --color "$MET_XD"
-  s fill-rect --frame "$f" --x 18 --y 108 --width 6  --height 10 --color "$MET_L"  # clamp arm
-  s fill-rect --frame "$f" --x 18 --y 108 --width 6  --height 2  --color "$MET_HL"
+  s fill-rect --frame "$f" --x 9  --y 145 --width 39 --height 10 --color "$MET_D"  # deck
+  s fill-rect --frame "$f" --x 9  --y 145 --width 39 --height 3  --color "$MET_M"
+  s fill-rect --frame "$f" --x 9  --y 153 --width 39 --height 5  --color "$MET_XD"
+  s fill-rect --frame "$f" --x 27 --y 135 --width 9  --height 13 --color "$MET_L"  # clamp arm
+  s fill-rect --frame "$f" --x 27 --y 135 --width 9  --height 3  --color "$MET_HL"
 }
 rk_frame() { # Hull Frame — the skeletal body outline: nose-to-base struts, ribs (left half)
   local f=$1
-  s line --frame "$f" --x0 32 --y0 14 --x1 20 --y1 44 --color "$MET_L"    # nose taper strut
-  s fill-rect --frame "$f" --x 18 --y 44 --width 3 --height 66 --color "$MET_M"  # outer longeron
-  s fill-rect --frame "$f" --x 18 --y 44 --width 1 --height 66 --color "$MET_L"
-  s fill-rect --frame "$f" --x 28 --y 14 --width 4 --height 96 --color "$MET_M"  # spine (at axis)
-  s fill-rect --frame "$f" --x 28 --y 14 --width 1 --height 96 --color "$MET_L"
-  for y in 52 62 72 82 92 102; do                                        # ladder ribs
-    s fill-rect --frame "$f" --x 18 --y "$y" --width 14 --height 2 --color "$MET_D"
+  s line --frame "$f" --x0 48 --y0 18 --x1 30 --y1 55 --color "$MET_L"    # nose taper strut
+  s fill-rect --frame "$f" --x 27 --y 55 --width 5 --height 83 --color "$MET_M"  # outer longeron
+  s fill-rect --frame "$f" --x 27 --y 55 --width 2 --height 83 --color "$MET_L"
+  s fill-rect --frame "$f" --x 42 --y 18 --width 6 --height 120 --color "$MET_M" # spine (at axis)
+  s fill-rect --frame "$f" --x 42 --y 18 --width 2 --height 120 --color "$MET_L"
+  for y in 65 78 90 103 115 128; do                                      # ladder ribs
+    s fill-rect --frame "$f" --x 27 --y "$y" --width 21 --height 3 --color "$MET_D"
   done
-  s fill-rect --frame "$f" --x 18 --y 108 --width 14 --height 3 --color "$MET_D"  # base ring
+  s fill-rect --frame "$f" --x 27 --y 135 --width 21 --height 4 --color "$MET_D"  # base ring
 }
 rk_fuelcells() { # Fuel Cells — skin the body + fuel-yellow tank cells fill the midriff (left)
   local f=$1
-  s fill-rect --frame "$f" --x 20 --y 46 --width 12 --height 62 --color "$MET_M" # skinned hull
-  s fill-rect --frame "$f" --x 20 --y 46 --width 3  --height 62 --color "$MET_L" # left sheen
-  s fill-rect --frame "$f" --x 20 --y 46 --width 12 --height 2  --color "$MET_HL"
-  s fill-rect --frame "$f" --x 22 --y 60 --width 8 --height 34 --color "$MET_XD" # cell recess
-  for y in 62 74 86; do                                                  # stacked fuel cells
-    s fill-rect --frame "$f" --x 23 --y "$y" --width 6 --height 8 --color "$FUEL"
-    s fill-rect --frame "$f" --x 23 --y "$y" --width 6 --height 1 --color '#fff0b0'
-    s fill-rect --frame "$f" --x 23 --y $(( y + 7 )) --width 6 --height 1 --color "$RUST_L"
+  s fill-rect --frame "$f" --x 30 --y 58 --width 18 --height 78 --color "$MET_M" # skinned hull
+  s fill-rect --frame "$f" --x 30 --y 58 --width 5  --height 78 --color "$MET_L" # left sheen
+  s fill-rect --frame "$f" --x 30 --y 58 --width 18 --height 3  --color "$MET_HL"
+  s fill-rect --frame "$f" --x 33 --y 75 --width 12 --height 43 --color "$MET_XD" # cell recess
+  for y in 78 93 108; do                                                 # stacked fuel cells
+    s fill-rect --frame "$f" --x 35 --y "$y" --width 9 --height 10 --color "$FUEL"
+    s fill-rect --frame "$f" --x 35 --y "$y" --width 9 --height 2 --color '#fff0b0'
+    s fill-rect --frame "$f" --x 35 --y $(( y + 9 )) --width 9 --height 2 --color "$RUST_L"
   done
-  s fill-rect --frame "$f" --x 20 --y 104 --width 12 --height 4 --color "$MET_D" # base band
+  s fill-rect --frame "$f" --x 30 --y 130 --width 18 --height 5 --color "$MET_D" # base band
 }
 rk_guidance() { # Guidance Unit — pointed nose cone + upper guidance fin, avionics light (left)
   local f=$1
-  s fill-rect --frame "$f" --x 26 --y 30 --width 6 --height 18 --color "$MET_L" # nose base
-  s line --frame "$f" --x0 32 --y0 12 --x1 26 --y1 34 --color "$MET_HL"         # cone edge
-  s fill-rect --frame "$f" --x 28 --y 20 --width 4 --height 24 --color "$MET_M" # cone body
-  s fill-rect --frame "$f" --x 30 --y 14 --width 2 --height 8  --color "$MET_L" # cone tip
-  s fill-circle --frame "$f" --cx 29 --cy 40 --r 2 --color "$RESONITE"          # avionics lamp
-  s set-pixel --frame "$f" --x 29 --y 39 --color "$WHITE"
+  s fill-rect --frame "$f" --x 39 --y 38 --width 9 --height 23 --color "$MET_L" # nose base
+  s line --frame "$f" --x0 48 --y0 15 --x1 39 --y1 43 --color "$MET_HL"         # cone edge
+  s fill-rect --frame "$f" --x 42 --y 25 --width 6 --height 30 --color "$MET_M" # cone body
+  s fill-rect --frame "$f" --x 45 --y 18 --width 3 --height 10 --color "$MET_L" # cone tip
+  s fill-circle --frame "$f" --cx 44 --cy 50 --r 3 --color "$RESONITE"          # avionics lamp
+  s fill-rect --frame "$f" --x 43 --y 48 --width 2 --height 2 --color "$WHITE"
   # upper guidance canard fin
-  s line --frame "$f" --x0 20 --y0 50 --x1 12 --y1 46 --color "$MET_L"
-  s line --frame "$f" --x0 20 --y0 58 --x1 12 --y1 46 --color "$MET_M"
-  s fill-rect --frame "$f" --x 14 --y 46 --width 6 --height 12 --color "$MET_M"
-  s fill-rect --frame "$f" --x 14 --y 46 --width 6 --height 2  --color "$MET_L"
+  s line --frame "$f" --x0 30 --y0 63 --x1 18 --y1 58 --color "$MET_L"
+  s line --frame "$f" --x0 30 --y0 73 --x1 18 --y1 58 --color "$MET_M"
+  s fill-rect --frame "$f" --x 21 --y 58 --width 9 --height 15 --color "$MET_M"
+  s fill-rect --frame "$f" --x 21 --y 58 --width 9 --height 3  --color "$MET_L"
 }
 rk_thruster() { # Thruster Assembly — engine bell + lower fin at the base, cryenite accent (left)
   local f=$1
-  s fill-rect --frame "$f" --x 22 --y 108 --width 10 --height 6 --color "$MET_D"  # engine mount
-  s line --frame "$f" --x0 22 --y0 114 --x1 18 --y1 122 --color "$MET_M"          # bell flare
-  s fill-rect --frame "$f" --x 18 --y 114 --width 14 --height 8 --color "$MET_M"  # bell body
-  s fill-rect --frame "$f" --x 18 --y 114 --width 14 --height 2 --color "$MET_L"
-  s fill-rect --frame "$f" --x 20 --y 120 --width 12 --height 3 --color "$MET_XD" # bell throat
-  s fill-rect --frame "$f" --x 25 --y 110 --width 4 --height 12 --color "$CRYENITE" # plasma core
-  s fill-rect --frame "$f" --x 26 --y 110 --width 2 --height 12 --color '#d6bcff'
+  s fill-rect --frame "$f" --x 33 --y 135 --width 15 --height 8 --color "$MET_D"  # engine mount
+  s line --frame "$f" --x0 33 --y0 143 --x1 27 --y1 153 --color "$MET_M"          # bell flare
+  s fill-rect --frame "$f" --x 27 --y 143 --width 21 --height 10 --color "$MET_M" # bell body
+  s fill-rect --frame "$f" --x 27 --y 143 --width 21 --height 3 --color "$MET_L"
+  s fill-rect --frame "$f" --x 30 --y 150 --width 18 --height 4 --color "$MET_XD" # bell throat
+  s fill-rect --frame "$f" --x 38 --y 138 --width 6 --height 15 --color "$CRYENITE" # plasma core
+  s fill-rect --frame "$f" --x 39 --y 138 --width 3 --height 15 --color '#d6bcff'
   # lower stabilizer fin
-  s line --frame "$f" --x0 20 --y0 96  --x1 10 --y1 110 --color "$MET_L"
-  s line --frame "$f" --x0 20 --y0 108 --x1 10 --y1 110 --color "$MET_M"
-  s fill-rect --frame "$f" --x 12 --y 100 --width 8 --height 12 --color "$MET_M"
-  s fill-rect --frame "$f" --x 12 --y 100 --width 8 --height 2  --color "$MET_L"
+  s line --frame "$f" --x0 30 --y0 120 --x1 15 --y1 138 --color "$MET_L"
+  s line --frame "$f" --x0 30 --y0 135 --x1 15 --y1 138 --color "$MET_M"
+  s fill-rect --frame "$f" --x 18 --y 125 --width 12 --height 15 --color "$MET_M"
+  s fill-rect --frame "$f" --x 18 --y 125 --width 12 --height 3  --color "$MET_L"
 }
 rk_ignition() { # Ignition Core — the lit, launch-ready rocket: core glow + running lamps (left)
   local f=$1
   # hot core-glow up the spine (the installed, live Ignition Core)
-  s fill-rect --frame "$f" --x 27 --y 48 --width 5 --height 58 --color "$COREGLOW"
-  s fill-rect --frame "$f" --x 29 --y 48 --width 3 --height 58 --color "$CORE"
-  s fill-rect --frame "$f" --x 30 --y 50 --width 2 --height 54 --color '#ffd9a0'
-  s fill-circle --frame "$f" --cx 30 --cy 74 --r 4 --color "$FLAME"                # core heart
-  s fill-circle --frame "$f" --cx 30 --cy 74 --r 2 --color '#ffe6c0'
+  s fill-rect --frame "$f" --x 40 --y 60 --width 8 --height 73 --color "$COREGLOW"
+  s fill-rect --frame "$f" --x 43 --y 60 --width 5 --height 73 --color "$CORE"
+  s fill-rect --frame "$f" --x 45 --y 63 --width 3 --height 68 --color '#ffd9a0'
+  s fill-circle --frame "$f" --cx 45 --cy 93 --r 5 --color "$FLAME"                # core heart
+  s fill-circle --frame "$f" --cx 45 --cy 93 --r 3 --color '#ffe6c0'
   # engine ignition flare peeking from the bell
-  s fill-circle --frame "$f" --cx 26 --cy 124 --r 5 --color "$FLAME"
-  s fill-circle --frame "$f" --cx 27 --cy 123 --r 3 --color "$FUEL"
-  s fill-circle --frame "$f" --cx 28 --cy 122 --r 1 --color '#fff0d0'
+  s fill-circle --frame "$f" --cx 39 --cy 155 --r 6 --color "$FLAME"
+  s fill-circle --frame "$f" --cx 40 --cy 154 --r 4 --color "$FUEL"
+  s fill-circle --frame "$f" --cx 42 --cy 153 --r 2 --color '#fff0d0'
   # launch-ready running lamps up the hull
-  for y in 56 72 88; do s set-pixel --frame "$f" --x 21 --y "$y" --color "$FUEL"; done
-  s set-pixel --frame "$f" --x 30 --y 18 --color "$WHITE"                          # nose beacon
+  for y in 70 90 110; do s fill-rect --frame "$f" --x 31 --y "$y" --width 2 --height 2 --color "$FUEL"; done
+  s fill-rect --frame "$f" --x 45 --y 23 --width 2 --height 2 --color "$WHITE"      # nose beacon
 }
 
 # stage0 = bare pad; each later stage is the cumulative left-half, then mirror to whole.
@@ -472,7 +479,7 @@ for f in 0 1 2 3 4 5; do
   [ "$f" -ge 3 ] && rk_guidance "$f"
   [ "$f" -ge 4 ] && rk_thruster "$f"
   [ "$f" -ge 5 ] && rk_ignition "$f"
-  s mirror-horizontal --frame "$f" --axis-x 32
+  s mirror-horizontal --frame "$f" --axis-x 48
 done
 
 # =========================================================================================

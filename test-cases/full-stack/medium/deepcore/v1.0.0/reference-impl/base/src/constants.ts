@@ -40,13 +40,19 @@ export const VIEWPORT_HEIGHT = STAGE_HEIGHT - STATUS_BAR_HEIGHT; // 664
 // The tile grid & world (specs/world.md)
 // ---------------------------------------------------------------------------
 
-/** Every tile is 48 x 48 logical pixels. */
-export const TILE_SIZE = 48;
+/**
+ * Every tile is 80 x 80 logical pixels. The world (32 cols) is 2560 px wide — WIDER than
+ * the 1280 viewport — so only ~16 columns are on screen at once and the camera scrolls
+ * horizontally as well as vertically (specs/world.md). The movement/gravity px/s
+ * constants below are scaled with this tile size so the *tiles-per-second* feel — and
+ * every balance number derived in tiles/seconds/kg — is unchanged from the reference.
+ */
+export const TILE_SIZE = 80;
 
-/** 24 columns [0, 23]; columns 0 and 23 are the unminable bedrock border. */
-export const WORLD_COLS = 24;
+/** 32 columns [0, 31]; columns 0 and 31 are the unminable bedrock border. */
+export const WORLD_COLS = 32;
 export const PLAYABLE_COL_MIN = 1;
-export const PLAYABLE_COL_MAX = 22;
+export const PLAYABLE_COL_MAX = 30;
 
 /**
  * Rows: row 0 is the surface; the mine extends to row 96, the Core chamber.
@@ -58,9 +64,15 @@ export const PLAYABLE_ROW_MAX = 95;
 export const CORE_ROW = 96;
 export const WORLD_ROWS = CORE_ROW + 1; // rows 0..96 inclusive
 
-/** The 24 x 48 = 1152 px grid is centered in the 1280-wide viewport (64 px each side). */
-export const GRID_PIXEL_WIDTH = WORLD_COLS * TILE_SIZE; // 1152
-export const GRID_MARGIN_X = (STAGE_WIDTH - GRID_PIXEL_WIDTH) / 2; // 64
+/**
+ * The world is 32 x 80 = 2560 px wide — wider than the 1280 viewport — so it is NOT
+ * centered/letterboxed: its left edge sits at world x 0 and the camera scrolls across it
+ * horizontally (specs/world.md). GRID_MARGIN_X is kept (0) so world x = col*TILE_SIZE.
+ */
+export const GRID_PIXEL_WIDTH = WORLD_COLS * TILE_SIZE; // 2560
+export const GRID_MARGIN_X = 0;
+/** Horizontal camera range: [0, world width − viewport width]. */
+export const MAX_CAMERA_X = GRID_PIXEL_WIDTH - VIEWPORT_WIDTH; // 1280
 
 /** Depth reported to the player: each row below the surface is 5 m. Core chamber = 480 m. */
 export const METERS_PER_ROW = 5;
@@ -187,19 +199,19 @@ export const FONT_STACK =
 // Movement (specs/character.md)
 // ---------------------------------------------------------------------------
 
-/** Walk / lateral speed (logical px/s). */
-export const WALK_SPEED = 150;
+/** Walk / lateral speed (logical px/s). Scaled with the 80px tile (was 150 at 48px). */
+export const WALK_SPEED = 250;
 /**
  * Terminal falling speed (logical px/s). Set high enough that a fall keeps
  * accelerating over several tiles before it caps (terminal is reached at
  * ~4 tiles of free-fall), so landing speed — and thus fall impact
  * (specs/hazards.md) — actually distinguishes a short hop from a full-depth
  * plunge. Only caps *descent*; the climb is capped separately, per jetpack tier
- * (JETPACK_CLIMB, specs/upgrades.md).
+ * (JETPACK_CLIMB, specs/upgrades.md). Scaled with the 80px tile (was 600 at 48px).
  */
-export const FALL_TERMINAL = 600;
-/** Gravity (logical px/s^2). */
-export const GRAVITY = 900;
+export const FALL_TERMINAL = 1000;
+/** Gravity (logical px/s^2). Scaled with the 80px tile (was 900 at 48px). */
+export const GRAVITY = 1500;
 
 // ---------------------------------------------------------------------------
 // Weight & lift (specs/character.md, specs/mining.md)
@@ -266,8 +278,8 @@ export const LOW_HULL_FRACTION = 0.25;
  * meaningful but survivable, and a rounding error to an upgraded hull (specs/upgrades.md).
  */
 export const SAFE_FALL_TILES = 3; // free drop height (tiles) before impact damage begins
-export const SAFE_FALL_SPEED = Math.sqrt(2 * GRAVITY * SAFE_FALL_TILES * TILE_SIZE); // ≈ 509 px/s
-export const FALL_IMPACT_SCALE = 0.2; // hull per (px/s) of excess speed — reference
+export const SAFE_FALL_SPEED = Math.sqrt(2 * GRAVITY * SAFE_FALL_TILES * TILE_SIZE); // ~848 px/s @80px tile
+export const FALL_IMPACT_SCALE = 0.12; // hull per (px/s) of excess speed — scaled with the 80px tile
 
 // ---------------------------------------------------------------------------
 // Fuel Depot pricing (specs/world.md, specs/flow.md, specs/character.md)
@@ -473,8 +485,11 @@ export const SCANNER_PRICES: readonly number[] = [0, 180, 480, 1000, 2000];
  * cargo tier's kg cap (180/280/420/620/900), so matched gear lifts a full bay (slowly when
  * heavy); a bay upgraded ahead of the jetpack strands a full haul until the jetpack rises.
  */
-export const JETPACK_LIFT: readonly number[] = [2050, 2600, 3300, 4200, 5200];
-export const JETPACK_CLIMB: readonly number[] = [180, 210, 245, 285, 330];
+// Scaled with the 80px tile (×5/3 from the 48px reference: LIFT and CLIMB are px/s²/px/s,
+// but GRAVITY scaled by the same factor, so the heaviest-liftable load stays the same kg
+// and the climb-speed cap stays the same tiles/s — matched cargo/jetpack balance unchanged).
+export const JETPACK_LIFT: readonly number[] = [3417, 4333, 5500, 7000, 8667];
+export const JETPACK_CLIMB: readonly number[] = [300, 350, 408, 475, 550];
 export const JETPACK_PRICES: readonly number[] = [0, 240, 640, 1500, 3200];
 
 /**

@@ -21,8 +21,9 @@ export type TileKind =
   | "rock" // plain minable rock of the row's band
   | "ore" // minable rock with an ore deposit
   | "material" // minable rock holding a buried exotic material node
-  | "gas" // gas pocket (detonates when drilled)
+  | "gas" // gas pocket (detonates when drilled) — drawn as ordinary band rock (hidden)
   | "lava" // molten hazard, not minable
+  | "stone" // unbreakable stone boulder — not minable, impassable, scattered obstacle
   | "bedrock" // unminable border / floor / Core-chamber walls
   | "tunnel" // open space (original gap or drilled-out)
   | "core"; // the glowing Core in its chamber (yields the Core Sample)
@@ -203,6 +204,9 @@ export interface GameState {
   miner: Miner;
   /** Grid[row][col] tiles. */
   grid: Tile[][];
+  /** Horizontal camera offset (world x at the left of the viewport) — the mine is wider
+   *  than the viewport, so the camera scrolls across it (specs/world.md). */
+  cameraX: number;
   /** Vertical camera offset (world y at the top of the viewport). */
   cameraY: number;
   /** Seconds remaining on the Core Sample timer, or null if not carrying it. */
@@ -226,14 +230,16 @@ export interface GameState {
 export interface AssetManifest {
   /** Miner animation cycles: state → ordered frame URLs (frame00, frame01, …). */
   miner: Record<MinerState, string[]>;
-  /** Band + tunnel + bedrock tile sprites, keyed by sprite name. */
+  /** Band + unbreakable-stone + tunnel + bedrock tile sprites, keyed by sprite name. */
   tiles: Record<string, string>;
+  /** Drill-damage crack overlay frames (ordered, deepening with the cut). */
+  crack: string[];
   /** Ore vein sprites keyed by ore. */
   ore: Record<Ore, string>;
   /** Material-node / core sprites keyed by sprite name. */
   materials: Record<string, string>;
-  /** Hazard sprites: gas (single) + lava shimmer (ordered frames). */
-  hazards: { gas: string; lava: string[] };
+  /** Hazard sprites: lava shimmer (ordered frames). Gas has no tile — it uses band rock. */
+  hazards: { lava: string[] };
   /** Surface building + camp sprites keyed by name. */
   surface: Record<string, string>;
   /** Rocket assembly-stage frames, ordered stage0..stage5. */

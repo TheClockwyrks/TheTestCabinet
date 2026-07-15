@@ -89,7 +89,7 @@ miner is doing, advancing frames on a timer so the motion reads. This is half of
 the build is scored on; treat it as first-class engineering.
 
 The miner is a **suited character** with a handheld **drill** and a back **jetpack**,
-drawn to fit within a single **`48 x 48` tile** (a little headroom is fine). Draw it
+drawn to fit within a single **`80 x 80` tile** (a little headroom is fine). Draw it
 facing **one canonical direction** (for example facing `+x`, "east") and **mirror it in
 the game** to face the other way, so left/right facing is consistent. Produce **at
 least** these cycles, each a short sequence of frames (land them under, for example,
@@ -118,9 +118,12 @@ important produced asset in the build.
 Produce a **single PNG per sprite** with `draw`, on a transparent (straight-alpha)
 canvas at the sprite's native size, sampled **nearest-neighbor** in the game
 (`imageSmoothingEnabled = false` for Canvas, `image-rendering: pixelated` for DOM) so
-it stays crisp. A tile is `48 x 48`; ore/material overlays and icons are smaller. Land
-them under `assets/` in a sensible layout (for example `assets/tiles/`, `assets/ore/`,
-`assets/materials/`, `assets/hazards/`, `assets/surface/`, `assets/icons/`).
+it stays crisp. **Produce each sprite at the size it is drawn at** — a tile is `80 x 80`,
+so tiles, ore/material overlays that lay over a tile, and hazard tiles are all `80 x 80`;
+do **not** author at a smaller size and let the engine upscale (that is blurry/blocky).
+Icons are smaller (`16–24 px`). Land them under `assets/` in a sensible layout (for
+example `assets/tiles/`, `assets/ore/`, `assets/materials/`, `assets/hazards/`,
+`assets/surface/`, `assets/icons/`).
 
 Produce at least these, in the palette from `specs/overview.md`:
 
@@ -131,11 +134,28 @@ Produce at least these, in the palette from `specs/overview.md`:
   renderer pick one per cell (e.g. a stable hash of the cell's row/col), so a wall of the
   same band does **not visibly repeat a single texture** — the mine should read as
   natural, varied ground, not a grid of one identical stamp. The variants share the
-  band's fill and palette; only the clump/crack/fleck layout differs. The faint tile grid
-  is drawn in code over them.
-- **Tunnel** — the carved-out **empty** cell (dark) and an optional **tunnel-edge /
-  rubble** trim the renderer can lay where rock meets tunnel, so a dug shaft reads as
-  carved, not merely black.
+  band's fill and palette; only the clump/crack/fleck layout differs. The texture must be
+  **roughly uniform dirt/rock** — a fine, even grain filling the whole tile — **not a few
+  large clear blotches** that make the ground look patchy and off (a common failure);
+  Motherload's dirt reads as dirt precisely because it is even. The faint tile grid is
+  drawn in code over them.
+- **Unbreakable stone** — the **boulder** tile (`specs/world.md`): a hard, cold,
+  **smooth** dark stone (a couple of variants) that reads clearly as a **different, harder
+  material** than the grainy band dirt around it, so the player sees at a glance that the
+  drill will not break it. Distinct silhouette (rounded/riveted boulder, a cool steely
+  grey) — never just a re-tinted dirt tile.
+- **Tunnel + dirt lip (drawn in code).** The carved-out **empty** cell is **not** a plain
+  square: it is rendered **inset with a dirt lip and rounded corners** (`specs/world.md`)
+  so a tunnel is slightly narrower than a full tile and adjacent open cells join while
+  diagonally-touching ones stay separate. This inset/rounded shaping is done **in code**
+  over the produced band-dirt tile (the lip is real band dirt showing through); produce
+  the **dark tunnel-interior fill** sprite (and optionally a subtle rubble texture) that
+  the code paints inside the carved shape.
+- **Drill-damage overlay** — a produced **crack sheet** (`draw-sheet`, one PNG per frame;
+  see the animations section) drawn over the tile currently being drilled, its frame
+  deepening with the cut so the dig visibly progresses (`specs/character.md`). A
+  transparent `80 x 80` overlay: light hairline cracks in the first frame through a
+  shattered, about-to-break face in the last.
 - **Ore veins** — a transparent overlay for each of the six ores (**Ferron, Cuprite,
   Argenite, Voltite, Pyronium, Adamite**, `specs/mining.md`) laid over the band rock,
   each reading clearly as its ore by color and glint so a vein stands out from plain
@@ -151,9 +171,13 @@ Produce at least these, in the palette from `specs/overview.md`:
   (violet crystal) embedded in rock (`specs/mining.md`), unmistakably richer and rarer
   than an ore vein, plus the glowing **Core** in its chamber and the **Core Sample**
   icon it yields.
-- **Hazards** — the **gas pocket** tile (faintly glowing green) and the **lava** tile
-  (molten orange; see the lava shimmer under animations). Both must read as danger at a
-  glance against the surrounding rock (`specs/hazards.md`).
+- **Hazards** — the **lava** tile (molten orange; see the lava shimmer under animations),
+  drawn **fringed with the band's dirt** at the cell edges (the dirt border is shaped in
+  code, like the tunnel lip, so lava meets rock through dirt, not a hard square seam, and
+  adjacent lava cells flow into one pool — `specs/world.md`, `specs/hazards.md`). There is
+  **no distinct gas-pocket tile**: a gas pocket is drawn with the **same band rock** as
+  ordinary ground (`specs/world.md`) and betrayed only by the subtle **gas seep** particle
+  effect below — so gas is hidden, unlike the plainly-visible lava.
 - **Surface buildings** — the four camp structures (`specs/world.md`): the **Fuel
   Depot**, the **Ore Market**, the **Upgrade Shop**, and the **Launch Pad**, each
   reading clearly as what it is, sitting on the scrapped surface ground under the dusk
@@ -173,7 +197,13 @@ Beyond the miner cycles above, use `draw-sheet` for the small environment motion
 keep the world alive:
 
 - **Lava shimmer** — a short looping cycle for the lava tile so molten rock glows and
-  churns rather than sitting as a flat orange square (`specs/hazards.md`).
+  churns rather than sitting as a flat orange square (`specs/hazards.md`). The dirt fringe
+  around the lava is shaped in code (above); the shimmer frames are the molten interior.
+- **Drill-damage crack overlay** — a **short progression** of transparent `80 x 80`
+  frames (e.g. 4), from faint hairline cracks to a shattered, about-to-break face, drawn
+  over the tile currently being drilled with the frame chosen by drill progress
+  (`specs/character.md`, `specs/world.md`). Not a loop — it reads front-to-back as the cut
+  deepens.
 - **Rocket assembly** — if you take the frame-based approach above, the assembly-stage
   set is a `draw-sheet` (one frame per completed-component state), selected by how many
   components are installed (`specs/rocket.md`).
@@ -189,6 +219,7 @@ event and position named:
 
 | Effect | Fires when | Character it must carry |
 | --- | --- | --- |
+| **Gas seep** | ambient, over an **on-screen gas pocket** (`specs/hazards.md`) | a **very subtle**, sparse wisp of pale-green gas rising from the tile — the *only* tell that hidden gas is there; faint enough that a hurried dig misses it, noticeable to a careful eye |
 | **Drill debris** | the miner is **drilling** a tile (`specs/character.md`) | a spray of rock chips / dust off the bit, tinted to the band being dug |
 | **Jetpack exhaust** | the miner **thrusts** (`specs/character.md`) | a downward plume of hot exhaust and sparks under the jetpack, pulsing with the hold |
 | **Ore sparkle** | an **ore vein** is collected (`specs/mining.md`) | a brief bright glint at the pickup, tinted to the ore |
@@ -265,6 +296,17 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   FABRICATE / LAUNCH) (`specs/flow.md`, `specs/upgrades.md`, `specs/rocket.md`).
 - All **menus, overlays, and state screens** — title, mode select, how-to-play, pause,
   victory, and game over (`specs/flow.md`, `specs/modes.md`).
+- **The carved-tunnel and lava shaping** — the **inset dirt lip and rounded corners** of
+  a carved tunnel, and the matching **dirt fringe** around a lava tile (`specs/world.md`),
+  are computed **in code** from each open/lava cell's neighbors (which sides are open,
+  which corners are exterior) and painted over the produced band-dirt tile with the
+  produced tunnel-fill / lava-shimmer sprites inside the shaped region. The produced
+  sprites supply the *texture*; the code supplies the *shape* that makes tunnels join
+  orthogonally, stay separate diagonally, and never meet rock at a hard square seam.
+- **The drill-damage overlay** — selecting the crack frame from the current drill's
+  progress and compositing it over the tile being cut (`specs/character.md`).
+- **The gas seep placement** — firing the subtle gas-seep particle effect over gas
+  pockets that are on screen, sparsely, so hidden gas has its faint tell (`specs/hazards.md`).
 - **World feedback** — the faint tile grid over the produced rock tiles, the depth-band
   transitions, the retrievable **death cache** marker (`specs/modes.md`), the cargo-full
   note, and any placement/selection cues. The code reads the simulation and draws these

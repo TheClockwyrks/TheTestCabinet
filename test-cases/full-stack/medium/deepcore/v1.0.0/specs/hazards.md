@@ -24,10 +24,14 @@ gas, appearing from the **rockbed** band down and denser with depth.
   a starting hull, but a coreshell pocket near the Core is **near-lethal without hull
   and radiator investment** — the deep gas is what forces those tiers before the core
   run, exactly as in Motherload.
-- Gas pockets read as a distinct, faintly glowing green tile, so an alert player can
-  spot one before drilling into it and choose to route around — but a careless dig
-  into deep rock will hit them. They are a **scaling hull tax on reckless digging**, not
-  a puzzle.
+- Gas pockets are **hidden in plain sight** (`specs/world.md`): a pocket is drawn with
+  the **same dirt texture as the surrounding band rock**, so it does not stand out as a
+  distinct coloured tile. Its **only** tell is a **very subtle produced particle wisp** —
+  a faint seep of gas rising from the tile — that a careful, watchful player can catch
+  and route around, but that a hurried dig will not notice before drilling in. This makes
+  gas a **trap you learn to read**, distinct from lava, which is plainly visible and
+  simply skirted: two hazards occupying different design space (a hidden blast vs. a seen
+  obstacle). They remain a **scaling hull tax on reckless digging**, not a puzzle.
 
 ## Lava
 
@@ -43,9 +47,12 @@ in the coreshell, forming pools the miner must **route around**.
   **lava-sizzle / ember VFX** and the hurt animation (`specs/assets.md`,
   `specs/character.md`).
 - Lava does **not** flow or spread (it is static terrain), so the player can plan a
-  route around a pool. Generation never fully seals the way down or the way to a
-  material with an unbroken lava wall (`specs/world.md`) — there is always a diggable
-  path through the surrounding rock.
+  route around a pool. It is drawn **fringed with the band's dirt** at the cell edges
+  (`specs/assets.md`) so a lava tile does not meet the surrounding rock at a hard,
+  unnatural square seam — the molten pool sits inside a dirt border, and adjacent lava
+  cells flow together into one pool rather than reading as a grid of squares. Generation
+  never fully seals the way down or the way to a material with an unbroken lava wall
+  (`specs/world.md`) — there is always a diggable path through the surrounding rock.
 
 ## Fall impact
 
