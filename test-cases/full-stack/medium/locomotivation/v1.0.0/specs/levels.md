@@ -95,7 +95,7 @@ Trains:
 | --- | --- | --- | --- | --- | --- |
 | T0 | row 8 | Commuter | → | 5.0 s | 1.0 s |
 
-Shift: clock **90 s**, 3 lives. Quota: **deliver 3 Red**. No optional freight. No
+Shift: clock **60 s**, 3 lives. Quota: **deliver 3 Red**. No optional freight. No
 last train.
 
 ---
@@ -146,7 +146,7 @@ Trains:
 | T0 | row 7 | Commuter | → | 4.5 s | 0.5 s |
 | T1 | row 9 | Freight | ← | 8.0 s | 3.0 s |
 
-Shift: clock **110 s**, 3 lives. Quota: **3 Red + 3 Blue**. Optional: 2 Amber
+Shift: clock **70 s**, 3 lives. Quota: **3 Red + 3 Blue**. Optional: 2 Amber
 (score). No last train.
 
 ---
@@ -200,10 +200,10 @@ Trains:
 
 | Track | Line | Kind | Dir | `T` | `φ` |
 | --- | --- | --- | --- | --- | --- |
-| T0 (Bridge A) | row 4 | Commuter | → | 5.0 s | 1.0 s |
+| T0 (Bridge A) | row 4 | Commuter | → | 7.0 s | 1.0 s |
 | T1 (Bridge B) | row 11 | Freight | ← | 9.0 s | 4.0 s |
 
-Shift: clock **125 s**, 3 lives. Quota: **1 Red (the unique) + 3 Blue**. Optional: 1
+Shift: clock **110 s**, 3 lives. Quota: **1 Red (the unique) + 3 Blue**. Optional: 1
 Amber (score).
 
 **Last train:** on the **Bridge B lane (row 11)**, ← (matching the freight
@@ -268,7 +268,7 @@ Trains:
 | T1 | row 5 (or row 6 if switched) | Bullet | ← | 3.5 s | 2.0 s |
 | T2 | row 10 | Freight | → | 8.5 s | 1.5 s |
 
-Shift: clock **130 s**, 3 lives. Quota: **1 Red + 1 Green (both unique) + 3 Blue**.
+Shift: clock **118 s**, 3 lives. Quota: **1 Red + 1 Green (both unique) + 3 Blue**.
 Optional: 2 Amber. **Last train:** on T2 (row 10), → , freight consist with
 flat-tops; spawn derived to clear at the clock's end.
 
@@ -327,7 +327,7 @@ Trains:
 | T2 | row 7 | Bullet | → | 3.0 s | 1.0 s |
 | T3 | row 11 | Commuter | ← | 4.5 s | 2.5 s |
 
-Shift: clock **135 s**, 3 lives. Quota: **1 Red unique, 1 Green unique, 3 Blue, and
+Shift: clock **80 s**, 3 lives. Quota: **1 Red unique, 1 Green unique, 3 Blue, and
 2 Green (dispenser)**. Optional: 1 Amber. **Last train:** on T3 (row 11), ←,
 commuter-length consist with flat-tops (a faster, tighter board than a freight last
 train); spawn derived to clear at the clock's end.
@@ -394,11 +394,11 @@ Trains:
 | T1 | row 5 (or row 4 if switched) | Commuter | ← | 4.0 s | 1.0 s |
 | T2 (with bridge) | row 10 | Freight | → | 9.0 s | 3.0 s |
 
-Shift: clock **150 s**, 3 lives. Quota: **1 Green + 1 Red + 1 Blue (all unique) + 2
+Shift: clock **64 s**, 3 lives. Quota: **1 Green + 1 Red + 1 Blue (all unique) + 2
 Blue (dispenser) + 1 Green (dispenser)**. Optional: 3 Amber (a big score payout).
 **Last train:** the long **freight** last train on **T2 (row 10)**, →, its consist
 rich in flat-tops (regular and half-length) so the finale rewards a confident board;
-spawn derived so its tail clears the map exactly as the 150 s clock ends.
+spawn derived so its tail clears the map exactly as the 64 s clock ends.
 
 ---
 
@@ -410,10 +410,15 @@ spawn derived so its tail clears the map exactly as the 150 s clock ends.
 - **Difficulty ramp** — Level 1 is a tutorial (one train, roomy clock); Levels 2-3
   add colors, a second train, bridges, and the first unique and last train; Levels
   4-5 add the bullet, switches, multiple uniques, and tighten the clock; Level 6 is
-  the dense finale. Some levels are meant to be clearly harder than others — the
-  balance pass confirms each is beatable while preserving that spread.
+  the dense finale. Some levels are meant to be clearly harder than others. The
+  balanced clocks above give a competent route a **shrinking margin** from L1 to L6
+  — measured as the shift clock still on the board the moment the quota is met: about
+  **L1 ~54 s, L2 ~32 s, L3 ~21 s, L4 ~19 s, L5 ~12 s, L6 ~6 s** — so the finale is
+  the tightest shift while every level stays beatable with room to spare.
 - **Beatability is a hard invariant.** The reference implementation's headless
-  **simulation mode** (scripted routes run at max speed) must show a skilled route
-  completing every level within its clock and lives; the balance pass adjusts the
-  data above until that holds with a sensible margin and the intended difficulty
-  spread.
+  **simulation mode** (`reference-impl/base/sim/`) drives scripted competent routes
+  through the pure core at the fixed timestep and asserts each level clears within
+  its clock and 3 lives with that margin spread; it also confirms a **reckless** route
+  (ignoring the schedules) and a **greedy** route (overloading past the sprint
+  threshold) both do clearly worse — the timing and carry-weight pressures bite. The
+  balance pass adjusts the data above until those goals hold.
