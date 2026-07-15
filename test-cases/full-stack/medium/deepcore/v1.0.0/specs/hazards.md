@@ -13,14 +13,21 @@ A **gas pocket** (`specs/world.md`) is a minable-looking tile filled with volati
 gas, appearing from the **rockbed** band down and denser with depth.
 
 - **Drilling into a gas pocket detonates it.** Instead of a clean tunnel, the tile
-  **explodes**: it deals a **`25` hull** hit (`specs/character.md`) to the miner if
-  the miner is adjacent, throws a produced **gas-explosion VFX** (`specs/assets.md`),
-  and **knocks the miner back** a short distance (a hard shove away from the blast).
-  The tile itself is cleared to tunnel by the blast.
+  **explodes**: it deals a **hull hit** (`specs/character.md`) to the miner if the miner
+  is adjacent, throws a produced **gas-explosion VFX** (`specs/assets.md`), and **knocks
+  the miner back** a short distance (a hard shove away from the blast). The tile itself
+  is cleared to tunnel by the blast.
+- **Gas damage scales with depth.** The raw hit is `~20` hull where gas first appears
+  (rockbed, `125 m`) and rises to `~119` at the Core (`480 m`) — the formula is
+  `max(20, 20 + 0.28 × (depth_m − 125))`. The **radiator** (`specs/upgrades.md`) then
+  cuts it by its effectiveness (`0%`–`80%`). So a rockbed pocket is a survivable tax on
+  a starting hull, but a coreshell pocket near the Core is **near-lethal without hull
+  and radiator investment** — the deep gas is what forces those tiers before the core
+  run, exactly as in Motherload.
 - Gas pockets read as a distinct, faintly glowing green tile, so an alert player can
   spot one before drilling into it and choose to route around — but a careless dig
-  into deep rock will hit them. They are a **hull tax on reckless digging**, not a
-  puzzle.
+  into deep rock will hit them. They are a **scaling hull tax on reckless digging**, not
+  a puzzle.
 
 ## Lava
 
@@ -28,8 +35,11 @@ gas, appearing from the **rockbed** band down and denser with depth.
 in the coreshell, forming pools the miner must **route around**.
 
 - Lava is **not minable** — no drill breaks it.
-- **Touching lava drains hull fast**: `20 hull/s` while in contact (`specs/character.md`).
-  A brush is survivable; sitting in it is fatal. Contact throws a produced
+- **Touching lava drains hull fast**: `32 hull/s` while in contact, before the radiator
+  (`specs/character.md`). The **radiator** (`specs/upgrades.md`) cuts this by its
+  effectiveness, so a well-cooled miner (up to `80%`) takes only a fraction of the drain
+  — but even then a **brush** is survivable and **sitting in it** is fatal. Dense
+  coreshell lava with no radiator is deadly on contact. Contact throws a produced
   **lava-sizzle / ember VFX** and the hurt animation (`specs/assets.md`,
   `specs/character.md`).
 - Lava does **not** flow or spread (it is static terrain), so the player can plan a

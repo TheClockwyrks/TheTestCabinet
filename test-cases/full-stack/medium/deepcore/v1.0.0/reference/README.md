@@ -65,9 +65,9 @@ The `surface.html` frame shows the dusk-sky camp: the four buildings (**Fuel Dep
 **Ore Market**, **Upgrade Shop**, **Launch Pad**), the **escape rocket partway
 assembled** on the pad (2 of 5 components installed, the deep three still ghosted), the
 **cave mouth** down into the mine, the miner standing at a building, and one building's
-**overlay panel** open — here the **Upgrade Shop** with its five tracks (Fuel Tank,
-Drill, Cargo Bay, Hull, Scanner), each showing the current tier, the next-tier effect,
-and its Credits price.
+**overlay panel** open — here the **Upgrade Shop** with its seven tracks (Fuel Tank,
+Drill, Cargo Bay, Hull, Jetpack, Radiator, Scanner), each showing the current tier, the
+next-tier effect, and its Credits price.
 
 `game-over.html` is the shared end screen (Victory after launch, or the Hardcore Game
 Over from a death) over a dimmed camp, showing the run **summary** (deepest depth

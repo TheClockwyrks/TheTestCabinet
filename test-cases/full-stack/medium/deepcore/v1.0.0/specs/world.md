@@ -134,8 +134,9 @@ miner activates by standing at it and which opens an **overlay panel**
   free top-up — refuel and repair compete for Credits with upgrades and rocket parts.
 - **Ore Market** — **sells** the ore in your cargo for Credits at the listed values
   (`specs/mining.md`, `specs/flow.md`), emptying the cargo.
-- **Upgrade Shop** — buys the next tier on any of the five **upgrade tracks** — fuel
-  tank, drill, cargo bay, hull, scanner — for Credits (`specs/upgrades.md`).
+- **Upgrade Shop** — buys the next tier on any of the seven **upgrade tracks** — fuel
+  tank, drill, cargo bay, hull, jetpack, radiator, scanner — for Credits
+  (`specs/upgrades.md`).
 - **Launch Pad** — the **escape rocket** under construction: the component checklist,
   **fabricating** the next component (Credits, plus its exotic material if it needs
   one), and, once all five are installed, **LAUNCH** (`specs/rocket.md`). The rocket
@@ -143,7 +144,8 @@ miner activates by standing at it and which opens an **overlay panel**
 
 Because fuel and repair are **bought**, a dig has **two** costs: the **round trip**
 ("can I get back before I run dry or am destroyed?") *and* the **Credits** the fuel and
-repairs will cost once I do. The fuel tank and hull tiers (`specs/upgrades.md`) set how
-deep a round trip can reach; Credits are spent on **fuel, repairs, upgrades, and the
-rocket** — the depot is the third demand on every payday, so a reckless dig that burns
-a full tank and takes heavy damage can cost more to recover from than it earned.
+repairs will cost once I do. The fuel tank, hull, radiator, and **jetpack** tiers
+(`specs/upgrades.md`) set how deep — and how heavy a haul — a round trip can reach and
+survive; Credits are spent on **fuel, repairs, upgrades, and the rocket** — the depot is
+the third demand on every payday, so a reckless dig that burns a full tank and takes
+heavy damage can cost more to recover from than it earned.

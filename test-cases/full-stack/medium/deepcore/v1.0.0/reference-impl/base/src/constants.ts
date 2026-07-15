@@ -8,7 +8,7 @@
 //   specs/character.md  — movement, fuel, hull
 //   specs/mining.md     — ore values/bands, cargo
 //   specs/hazards.md    — gas, lava, core timer
-//   specs/upgrades.md   — the five upgrade tracks
+//   specs/upgrades.md   — the seven upgrade tracks
 //   specs/rocket.md     — the five rocket components
 
 import type {
@@ -194,13 +194,28 @@ export const WALK_SPEED = 150;
  * accelerating over several tiles before it caps (terminal is reached at
  * ~4 tiles of free-fall), so landing speed — and thus fall impact
  * (specs/hazards.md) — actually distinguishes a short hop from a full-depth
- * plunge. Only caps *descent*; the climb is capped separately by THRUST_CLIMB.
+ * plunge. Only caps *descent*; the climb is capped separately, per jetpack tier
+ * (JETPACK_CLIMB, specs/upgrades.md).
  */
 export const FALL_TERMINAL = 600;
-/** Net climb speed at full jetpack hold (logical px/s). */
-export const THRUST_CLIMB = 200;
 /** Gravity (logical px/s^2). */
 export const GRAVITY = 900;
+
+// ---------------------------------------------------------------------------
+// Weight & lift (specs/character.md, specs/mining.md)
+// ---------------------------------------------------------------------------
+//
+// Ore has WEIGHT (each ore's `weightKg`, below). The miner's total mass is its own
+// hull/suit/drill/jetpack (MINER_BASE_MASS) plus the weight of the ore in the bay. The
+// jetpack pushes up with a fixed FORCE per tier (JETPACK_LIFT); the upward *acceleration*
+// it achieves is that force divided by the loaded mass, so a heavy haul climbs slower —
+// and once the load is heavy enough that the thrust acceleration no longer exceeds
+// GRAVITY, the jetpack can only slow the descent, not climb (the Motherload "too heavy to
+// take off" wall). This is what makes the jetpack and cargo tracks matter together, and
+// why an overloaded miner must JETTISON ore (specs/character.md) to fly out.
+
+/** The miner's own mass (suit + drill + jetpack), in the same kg units as ore weight. */
+export const MINER_BASE_MASS = 200;
 
 // ---------------------------------------------------------------------------
 // Fuel (specs/character.md)
@@ -221,10 +236,19 @@ export const LOW_FUEL_FRACTION = 0.2;
 // Hull (specs/character.md, specs/hazards.md)
 // ---------------------------------------------------------------------------
 
-/** Hull lost to a gas explosion (if adjacent). */
-export const GAS_DAMAGE = 25;
-/** Hull drained per second while in contact with lava. */
-export const LAVA_DAMAGE_RATE = 20;
+/**
+ * Gas-explosion hull damage SCALES WITH DEPTH (specs/hazards.md): a rockbed pocket is a
+ * survivable tax, but a coreshell pocket near the Core is near-lethal on a starting hull —
+ * so the deep bands demand hull *and* radiator tiers. The raw (pre-radiator) damage is
+ *   max(GAS_BASE_DAMAGE, GAS_BASE_DAMAGE + GAS_DAMAGE_PER_METER * (depthM - GAS_BASE_DEPTH_M))
+ * then reduced by the radiator's effectiveness (RADIATOR_EFFECTIVENESS). Anchored so gas is
+ * ~20 where it first appears (rockbed top, 125 m) and ~119 at the Core (480 m).
+ */
+export const GAS_BASE_DAMAGE = 20;
+export const GAS_BASE_DEPTH_M = 125; // rockbed top, where gas first appears
+export const GAS_DAMAGE_PER_METER = 0.28;
+/** Hull drained per second while in contact with lava, before the radiator reduces it. */
+export const LAVA_DAMAGE_RATE = 32;
 /** Low-hull warning threshold (fraction of max). */
 export const LOW_HULL_FRACTION = 0.25;
 
@@ -277,6 +301,13 @@ export interface OreDef {
   readonly ore: Ore;
   /** Credits per unit when sold. */
   readonly value: number;
+  /**
+   * Weight per unit (kg) — the load the jetpack must lift (specs/character.md). Value rises
+   * steeply with depth while weight rises only gently, so value-per-kg climbs with depth: a
+   * shallow ore is barely worth hauling up, a deep one richly repays its weight. Cargo is
+   * limited by TOTAL WEIGHT, not a unit count (specs/mining.md).
+   */
+  readonly weightKg: number;
   /** Bands this ore is found in. */
   readonly bands: readonly Band[];
   /** Palette color the vein reads as. */
@@ -285,45 +316,55 @@ export interface OreDef {
   readonly rare: boolean;
 }
 
+// Value floor is set so the cheapest ore buys a meaningful amount of fuel (Ferron 28 ≈ 28
+// fuel, at 1 Credit/unit) — a dig nets a real surplus over its refuel cost, never a
+// fuel-for-fuel treadmill. The curve is steep (28 → 1900, ~68×) but its ceiling stays far
+// below Motherload's (there is no boss run to fund); value-per-kg runs 2.8 → 41 kg⁻¹.
 export const ORES: Record<Ore, OreDef> = {
   ferron: {
     ore: "ferron",
-    value: 6,
+    value: 28,
+    weightKg: 10,
     bands: ["topsoil", "rockbed"],
     color: PALETTE.ferron,
     rare: false,
   },
   cuprite: {
     ore: "cuprite",
-    value: 14,
+    value: 65,
+    weightKg: 12,
     bands: ["topsoil", "rockbed"],
     color: PALETTE.cuprite,
     rare: false,
   },
   argenite: {
     ore: "argenite",
-    value: 30,
+    value: 150,
+    weightKg: 16,
     bands: ["rockbed", "deepstone"],
     color: PALETTE.argenite,
     rare: false,
   },
   voltite: {
     ore: "voltite",
-    value: 65,
+    value: 380,
+    weightKg: 24,
     bands: ["deepstone", "coreshell"],
     color: PALETTE.voltite,
     rare: false,
   },
   pyronium: {
     ore: "pyronium",
-    value: 140,
+    value: 820,
+    weightKg: 34,
     bands: ["coreshell"],
     color: PALETTE.pyronium,
     rare: false,
   },
   adamite: {
     ore: "adamite",
-    value: 300,
+    value: 1900,
+    weightKg: 46,
     bands: ["deepstone", "coreshell"],
     color: PALETTE.adamite,
     rare: true,
@@ -400,8 +441,14 @@ export const DRILL_TIME_BY_TIER: readonly (readonly number[])[] = [
   [0.18, 0.32, 0.45, 0.6], // tier 5, power 5
 ];
 
-/** Cargo bay: sets capacity in ore units. */
-export const CARGO_CAPACITY: readonly number[] = [15, 25, 40, 65, 100];
+/**
+ * Cargo bay: sets capacity as a TOTAL WEIGHT the bay holds, in kg (specs/mining.md). Ore
+ * is limited by weight, not a unit count — a bay full of heavy deep ore holds far fewer
+ * pieces than one of light shallow ore. Matched to the jetpack tiers so a full bay of the
+ * same tier is liftable (JETPACK_LIFT); upgrading the bay ahead of the jetpack makes a full
+ * haul un-liftable until the jetpack catches up (specs/character.md, specs/upgrades.md).
+ */
+export const CARGO_CAPACITY: readonly number[] = [180, 280, 420, 620, 900];
 export const CARGO_PRICES: readonly number[] = [0, 200, 550, 1300, 2800];
 
 /** Hull: sets max hull. */
@@ -412,10 +459,37 @@ export const HULL_PRICES: readonly number[] = [0, 240, 640, 1500, 3100];
 export const SCANNER_RANGE: readonly number[] = [6, 12, 20, 32, 48];
 export const SCANNER_PRICES: readonly number[] = [0, 180, 480, 1000, 2000];
 
+/**
+ * Jetpack (the engine track): sets both the lift FORCE and the empty-load climb SPEED CAP
+ * (specs/upgrades.md, specs/character.md). JETPACK_LIFT is the upward acceleration the
+ * jetpack achieves at the miner's base mass (MINER_BASE_MASS); loaded, the achieved
+ * acceleration is JETPACK_LIFT * MINER_BASE_MASS / totalMass, so a heavier haul climbs
+ * slower and, past a point, cannot climb at all. JETPACK_CLIMB caps the climb speed when
+ * lightly loaded, so a better jetpack also simply climbs faster (less fuel per trip).
+ *
+ * The heaviest cargo a tier can still lift (thrust accel > gravity) is
+ *   JETPACK_LIFT * MINER_BASE_MASS / GRAVITY - MINER_BASE_MASS
+ * ≈ 256 / 378 / 533 / 733 / 956 kg for tiers 1..5 — each comfortably above the matching
+ * cargo tier's kg cap (180/280/420/620/900), so matched gear lifts a full bay (slowly when
+ * heavy); a bay upgraded ahead of the jetpack strands a full haul until the jetpack rises.
+ */
+export const JETPACK_LIFT: readonly number[] = [2050, 2600, 3300, 4200, 5200];
+export const JETPACK_CLIMB: readonly number[] = [180, 210, 245, 285, 330];
+export const JETPACK_PRICES: readonly number[] = [0, 240, 640, 1500, 3200];
+
+/**
+ * Radiator: reduces gas-explosion and lava-contact damage by its effectiveness fraction
+ * (specs/upgrades.md, specs/hazards.md). Tier 1 is the bare stock plating (no reduction);
+ * the deep bands' depth-scaled gas and dense lava make an upgraded radiator essential for
+ * the core run. Effectiveness never reaches 100% — the deep is always dangerous.
+ */
+export const RADIATOR_EFFECTIVENESS: readonly number[] = [0, 0.25, 0.45, 0.65, 0.8];
+export const RADIATOR_PRICES: readonly number[] = [0, 300, 700, 1500, 3000];
+
 /** Number of tiers per track. */
 export const MAX_TIER = 5;
 
-/** Grouped view of the five tracks for shop iteration. */
+/** Grouped view of the seven tracks for shop iteration. */
 export const UPGRADE_TRACKS: Record<
   UpgradeTrack,
   {
@@ -441,13 +515,25 @@ export const UPGRADE_TRACKS: Record<
     prices: CARGO_PRICES,
     values: CARGO_CAPACITY,
     label: "Cargo Bay",
-    unit: "units",
+    unit: "kg",
   },
   hull: {
     prices: HULL_PRICES,
     values: HULL_MAX,
     label: "Hull",
     unit: "max hull",
+  },
+  jetpack: {
+    prices: JETPACK_PRICES,
+    values: JETPACK_CLIMB,
+    label: "Jetpack",
+    unit: "lift",
+  },
+  radiator: {
+    prices: RADIATOR_PRICES,
+    values: RADIATOR_EFFECTIVENESS,
+    label: "Radiator",
+    unit: "dmg cut",
   },
   scanner: {
     prices: SCANNER_PRICES,

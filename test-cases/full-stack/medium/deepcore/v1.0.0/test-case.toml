@@ -24,9 +24,10 @@ type = "full-stack"
 # Relative difficulty (easy | medium | hard), surfaced on the site. Deepcore is
 # medium: it asks for a Motherload-style dig-and-build — a fixed-step simulation of a
 # character drilling and falling and jetpacking through a banded tile mine over a
-# vertical camera, a fuel-and-hull budget that makes the descent a round-trip gamble,
-# an ore-to-Credits economy with a five-track upgrade shop, a guaranteed-but-hidden
-# exotic-material hunt with a scanner, gas/lava/impact hazards, an unstable Core Sample
+# vertical camera, a fuel-and-hull budget and a weight-vs-lift jetpack model that make
+# the descent a round-trip gamble, an ore-to-Credits economy with a seven-track upgrade
+# shop, a guaranteed-but-hidden exotic-material hunt with a scanner, depth-scaling
+# gas/lava/impact hazards (with a radiator), an unstable Core Sample
 # on a countdown, a five-component escape-rocket win condition, Standard and Hardcore
 # death modes, and multiple states — AND, on top of that, for the model to author every
 # sprite, animation, particle effect, and sound the game plays, with the produced
@@ -65,8 +66,9 @@ prompt = "prompt.hbs"
 
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
 # stopped. Deepcore is a large build — a fixed-step mining simulation with tile physics,
-# a fuel/hull/ore/Credits economy, an upgrade shop, a scanner-driven material hunt,
-# hazards, an unstable-core timed climax, a five-part rocket win condition, two death
+# a fuel/hull/ore/Credits economy with weight-and-lift jetpack physics, a seven-track
+# upgrade shop, a scanner-driven material hunt, depth-scaling hazards, an unstable-core
+# timed climax, a five-part rocket win condition, two death
 # modes, and multiple states, plus a full asset-production pass through six tools with an
 # animated character at its center — so it gets eight hours: comfortably more than a
 # healthy build needs while still bounding a runaway session.
@@ -240,7 +242,7 @@ dest = "proof/core-run.webm"
 [[domain]]
 id = "simulation"
 name = "Mine & Expedition Systems"
-description = "The interacting Motherload-style systems: the character drilling down/left/right (never up) and falling/thrusting through a banded tile mine over a vertical camera; the fuel budget that makes every dig a round-trip gamble with free refuel/repair only at the surface; the ore-to-Credits economy (six ores rising in value with depth, a cargo cap, selling at the market) funding a five-track upgrade shop (fuel, drill, cargo, hull, scanner); the four depth bands whose hardness gates the descent behind drill tiers; the two guaranteed-but-hidden exotic materials found via the scanner; gas/lava/impact hazards; the unstable Core Sample extracted from the bottom on a 90-second detonation timer; the five-component escape rocket (two bought, two needing a material, one needing the Core Sample) that is the only win; and the Standard (drop-and-respawn) vs Hardcore (permadeath) death modes, installed rocket parts durable across both."
+description = "The interacting Motherload-style systems: the character drilling down/left/right (never up) and falling/thrusting through a banded tile mine over a vertical camera; the fuel budget that makes every dig a round-trip gamble, with refuel and repair BOUGHT with Credits at the surface (never free); the weight-and-lift model where ore has weight, the jetpack lifts a load only up to a tier limit (an overloaded miner cannot climb and must jettison ore), and a heavier haul climbs slower and burns more fuel; the ore-to-Credits economy (six ores rising steeply in value with depth, value-per-kg climbing with depth, a weight-limited cargo bay, selling at the market) funding a seven-track upgrade shop (fuel, drill, cargo, hull, jetpack, radiator, scanner); the four depth bands whose hardness gates the descent behind drill tiers; the two guaranteed-but-hidden exotic materials found via the scanner; depth-scaling gas/lava hazards cut by the radiator, plus fall impact; the unstable Core Sample extracted from the bottom on a 90-second detonation timer; the five-component escape rocket (two bought, two needing a material, one needing the Core Sample) that is the only win; and the Standard (drop-and-respawn) vs Hardcore (permadeath) death modes, installed rocket parts durable across both."
 
 [[domain]]
 id = "presentation"
@@ -266,8 +268,8 @@ proof = "mine"
 
 [[review_item]]
 id = "fuel-round-trip"
-title = "The fuel budget and the round-trip gamble"
-text = "Fuel drains from jetpack thrust (fastest), lateral air drift, a passive underground trickle, and each tile drilled, and refills to the tank maximum ONLY at the surface (free). The tension of every dig is getting back before Fuel hits 0 — running dry underground strands the miner and is a DEATH (handled by the mode). A low-fuel warning (gauge alert color + alarm) shows under 20%. Bigger fuel-tank tiers are what let a round trip reach deeper. Hull works the same way (damaged by hazards, repaired free at the surface, death at 0)."
+title = "The fuel/weight round-trip gamble"
+text = "Fuel drains from jetpack thrust (fastest), lateral air drift, a passive underground trickle, and each tile drilled, and is BOUGHT with Credits at the surface Fuel Depot (per unit, never free, never refilling on its own). Ore has WEIGHT: the jetpack lifts a load only up to a per-tier limit — an overloaded miner cannot climb at all and must JETTISON ore (Q) to fly out — and a heavier haul climbs slower and so burns more fuel over the same shaft. The tension of every dig is getting back before Fuel hits 0 — running dry underground strands the miner and is a DEATH (handled by the mode). A low-fuel warning (gauge alert color + alarm) shows under 20%, and an OVERLOAD warning shows when the load exceeds the jetpack's lift. Bigger fuel-tank tiers reach deeper; bigger jetpack tiers lift heavier hauls and climb faster. Hull is likewise BOUGHT-back (repaired per point with Credits at the depot; death at 0)."
 weight = 1
 domain = "simulation"
 proof = "loop"
@@ -275,7 +277,7 @@ proof = "loop"
 [[review_item]]
 id = "ore-economy-upgrades"
 title = "Ore → Credits → upgrades economy"
-text = "Drilling an ore vein adds one unit to a capped cargo bay (ore left in the ground when full); the six ores rise steeply in value with depth (Ferron 6 → Adamite 300). Selling the cargo at the Ore Market is the ONLY Credit source; Credits are spent at the Upgrade Shop on five tracks (fuel tank, drill, cargo bay, hull, scanner), each five tiers bought in order at the pinned prices, and on the rocket. Starting Credits are 0; the loop is dig → fill cargo → climb → sell → upgrade → deeper."
+text = "Drilling an ore vein adds one unit to a WEIGHT-limited cargo bay (kg, not a unit count — ore left in the ground when the bay is full by weight); the six ores rise steeply in value with depth (Ferron 28 → Adamite 1900) while weight rises only gently, so value-per-kg climbs with depth (a deep gem richly repays its weight; the cheapest ore still clears a dig's fuel cost, so a dig always nets a surplus). Selling the cargo at the Ore Market is the ONLY Credit source; Credits are spent at the Upgrade Shop on seven tracks (fuel tank, drill, cargo bay, hull, jetpack, radiator, scanner), each five tiers bought in order at the pinned prices, and on the rocket. Starting Credits are 0; the loop is dig → fill cargo → climb → sell → refuel/repair → upgrade → deeper."
 weight = 1
 domain = "simulation"
 proof = "surface"
@@ -291,7 +293,7 @@ proof = "mine"
 [[review_item]]
 id = "materials-scanner"
 title = "Guaranteed-but-hidden exotic materials and the scanner"
-text = "Two buried materials — Resonite in the Rockbed band, Cryenite in the Deepstone band — are placed at RANDOM positions within their band but GUARANTEED to exist there (the Terraria model), and are located by an always-on SCANNER that points (direction + distance) to the nearest material the player still needs, within a range set by the scanner tier. Materials ride in a separate satchel — never sold, never taking a cargo slot. A run can never be soft-locked by an unlucky map."
+text = "Two buried materials — Resonite in the Rockbed band, Cryenite in the Deepstone band — are placed at RANDOM positions within their band but GUARANTEED to exist there (the Terraria model), and are located by an always-on SCANNER that points (direction + distance) to the nearest material the player still needs, within a range set by the scanner tier. Materials ride in a separate satchel — never sold, weighing nothing and never filling the cargo bay. A run can never be soft-locked by an unlucky map."
 weight = 1
 domain = "simulation"
 proof = "mine"
@@ -299,7 +301,7 @@ proof = "mine"
 [[review_item]]
 id = "hazards"
 title = "Gas, lava, and impact hazards"
-text = "The deep dig is a gauntlet with NO enemies — the mine itself is the adversary. Drilling into a gas pocket DETONATES it (a hull hit + knockback + burst VFX). Lava is unminable and drains hull fast on contact, so it must be routed around (it never fully seals the way down). Landing too fast deals impact hull damage scaled to the excess speed, rewarding feathering the descent. Gas appears from the rockbed down and lava from the deepstone down, denser with depth."
+text = "The deep dig is a gauntlet with NO enemies — the mine itself is the adversary. Drilling into a gas pocket DETONATES it (a hull hit + knockback + burst VFX) whose damage SCALES WITH DEPTH (~20 hull in the rockbed rising to ~119 near the Core). Lava is unminable and drains hull fast on contact, so it must be routed around (it never fully seals the way down). Both gas and lava damage are cut by the RADIATOR tier (0%–80%), so the deep bands demand hull AND radiator investment. Landing too fast deals impact hull damage scaled to the excess speed, rewarding feathering the descent. Gas appears from the rockbed down and lava from the deepstone down, denser and more damaging with depth."
 weight = 1
 domain = "simulation"
 proof = "core-run"
@@ -372,7 +374,7 @@ proof = "core-run"
 [[review_item]]
 id = "readable-hud"
 title = "Readable HUD, scanner, and panels"
-text = "A player can tell at a glance — Fuel and Hull (turning to the alert color as they run low), Cargo as used/capacity, Credits, Depth in meters, and which materials are in the satchel — and read the SCANNER indicator (direction + distance to the nearest needed material), the prominent CORE-SAMPLE COUNTDOWN while carrying it, and the surface panels (the Ore Market cargo breakdown, the Upgrade Shop's five tracks and prices, the Launch Pad rocket checklist). The HUD, scanner, countdown, panels, tile grid, and death-cache marker are drawn in code in the palette; only their small icons may be produced sprites."
+text = "A player can tell at a glance — Fuel and Hull (turning to the alert color as they run low), the cargo LOAD as kg used/capacity (turning to alert and reading OVERLOAD when the haul is too heavy for the jetpack to lift), Credits, Depth in meters, and which materials are in the satchel — and read the SCANNER indicator (direction + distance to the nearest needed material), the prominent CORE-SAMPLE COUNTDOWN while carrying it, and the surface panels (the Ore Market cargo breakdown, the Upgrade Shop's seven tracks and prices, the Launch Pad rocket checklist). The HUD, scanner, countdown, panels, tile grid, and death-cache marker are drawn in code in the palette; only their small icons may be produced sprites."
 weight = 1
 domain = "presentation"
 proof = "surface"

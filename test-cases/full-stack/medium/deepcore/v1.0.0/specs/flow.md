@@ -18,8 +18,8 @@ hazards (`specs/hazards.md`), the modes (`specs/modes.md`), and the controls
   **Fuel Depot** (`specs/character.md`, `specs/world.md`), per unit / per point. Fuel
   and hull **never** refill for free or on their own — restoring them is a running cost
   of every trip.
-- **Sink — upgrades.** Buying tiers on the five upgrade tracks at the **Upgrade Shop**
-  (`specs/upgrades.md`).
+- **Sink — upgrades.** Buying tiers on the seven upgrade tracks (fuel tank, drill, cargo
+  bay, hull, jetpack, radiator, scanner) at the **Upgrade Shop** (`specs/upgrades.md`).
 - **Sink — the rocket.** Fabricating the five rocket components at the **Launch Pad**
   (`specs/rocket.md`).
 
@@ -102,7 +102,7 @@ and type of `specs/overview.md`. The expedition start's menu entry is in
 - **Building panels** — the four surface overlays: **Fuel Depot** (buy fuel and hull
   repair for Credits — a fixed increment or fill/repair-to-full, paying only for the
   missing amount, `specs/character.md`), **Ore Market** (the cargo breakdown and
-  **SELL**), **Upgrade Shop** (the five tracks with current tier, next-tier effect,
+  **SELL**), **Upgrade Shop** (the seven tracks with current tier, next-tier effect,
   and price, `specs/upgrades.md`), and **Launch Pad** (the five-component rocket
   checklist and **FABRICATE** / **LAUNCH**, `specs/rocket.md`). Each opens when the
   miner activates the building and closes back to the mine.
@@ -124,7 +124,9 @@ visible:
 - **Fuel** gauge (turning to the alert color under 20%, with the low-fuel alarm,
   `specs/character.md`);
 - **Hull** gauge (turning to the alert color under 25%);
-- **Cargo** as **used / capacity** (`specs/mining.md`);
+- **Load** as **kg used / kg capacity** (`specs/mining.md`), turning to the alert color
+  and reading **OVERLOAD** when the haul is too heavy for the jetpack to lift
+  (`specs/character.md`);
 - **Credits** (`specs/rocket.md`, `specs/upgrades.md`);
 - **Depth** in meters (`specs/world.md`);
 - the **materials satchel** (which of Resonite / Cryenite you hold);

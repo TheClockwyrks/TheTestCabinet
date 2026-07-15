@@ -779,11 +779,16 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   gauge(ctx, 16, y, 150, "FUEL", game.miner.fuel, game.maxFuel(), P.fuel, fuelAlert);
   gauge(ctx, 182, y, 150, "HULL", game.miner.hull, game.maxHull(), P.hull, hullAlert);
 
-  // Cargo used/capacity
-  text(ctx, "CARGO", 348, y - 4, { size: 10, color: P.textSecondary });
-  text(ctx, `${game.cargoUsed()}/${game.cargoCap()}`, 348, y + 12, {
+  // Cargo LOAD in kg (weight-limited bay, specs/mining.md). Turns to the alert color and
+  // reads OVERLOAD when the haul is too heavy for the jetpack to lift (specs/character.md).
+  const overloaded = game.overloaded();
+  text(ctx, overloaded ? "OVERLOAD" : "LOAD", 348, y - 4, {
+    size: 10,
+    color: overloaded ? P.alert : P.textSecondary,
+  });
+  text(ctx, `${Math.round(game.cargoWeight())}/${game.cargoCap()}kg`, 348, y + 12, {
     size: 16,
-    color: P.cargo,
+    color: overloaded ? P.alert : P.cargo,
     bold: true,
   });
 
@@ -965,7 +970,7 @@ function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   const total = cargoValue(game.cargo);
   y += 8;
   text(ctx, `TOTAL: ${total} Credits`, f.x + 28, y, { size: 18, color: P.credits, bold: true });
-  text(ctx, `Cargo ${game.cargoUsed()}/${game.cargoCap()}`, f.x + f.w - 40, y, {
+  text(ctx, `Load ${Math.round(game.cargoWeight())}/${game.cargoCap()} kg`, f.x + f.w - 40, y, {
     size: 14,
     color: P.textSecondary,
     align: "right",
@@ -980,31 +985,35 @@ function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
   const f = panelFrame(ctx, "UPGRADE SHOP");
   const tracks = Object.keys(UPGRADE_TRACKS) as (keyof typeof UPGRADE_TRACKS)[];
-  let y = f.y + 78;
+  // Seven tracks (fuel, drill, cargo, hull, jetpack, radiator, scanner) — rows are packed
+  // to fit them all above the close button (specs/upgrades.md).
+  let y = f.y + 70;
   for (const t of tracks) {
     const def = UPGRADE_TRACKS[t];
     const tier = game.tiers[t];
     const price = nextUpgradePrice(game, t);
     const maxed = price === null;
-    const curVal = def.values[tier - 1];
-    const nextVal = maxed ? null : def.values[tier];
-    text(ctx, def.label.toUpperCase(), f.x + 28, y + 6, { size: 16, color: P.textPrimary, bold: true });
-    text(ctx, `Tier ${tier}/${MAX_TIER} — ${curVal} ${def.unit}`, f.x + 28, y + 26, {
+    // Radiator effectiveness reads best as a percentage; the rest read as their raw value.
+    const fmt = (v: number): string => (t === "radiator" ? `${Math.round(v * 100)}%` : `${v}`);
+    const curVal = def.values[tier - 1]!;
+    const nextVal = maxed ? null : def.values[tier]!;
+    text(ctx, def.label.toUpperCase(), f.x + 28, y + 6, { size: 15, color: P.textPrimary, bold: true });
+    text(ctx, `Tier ${tier}/${MAX_TIER} — ${fmt(curVal)} ${def.unit}`, f.x + 28, y + 24, {
       size: 12,
       color: P.textSecondary,
     });
     if (!maxed) {
-      text(ctx, `Next: ${nextVal} ${def.unit}`, f.x + 300, y + 12, { size: 13, color: P.hull });
-      text(ctx, `${price} Cr`, f.x + 300, y + 30, {
+      text(ctx, `Next: ${fmt(nextVal!)} ${def.unit}`, f.x + 300, y + 10, { size: 13, color: P.hull });
+      text(ctx, `${price} Cr`, f.x + 300, y + 27, {
         size: 13,
         color: game.credits >= price! ? P.credits : P.alert,
       });
     }
     const label = maxed ? "MAX" : "BUY";
-    button(ctx, cl, view, f.x + f.w - 148, y - 4, 120, 40, label, `buy:${t}`, {
+    button(ctx, cl, view, f.x + f.w - 148, y - 4, 120, 36, label, `buy:${t}`, {
       disabled: maxed || game.credits < (price ?? Infinity),
     });
-    y += 60;
+    y += 52;
   }
   closeButton(ctx, f, view, cl);
 }

@@ -61,16 +61,18 @@ start; they cross-reference each other by name and form one specification.
   their band, random position), and the **surface** with its four buildings.
 - `specs/character.md` — the **prospector**: fall / jetpack / lateral movement, the
   fixed rule that you drill **down, left, and right but never up**, dig speed vs tile
-  hardness, single-tile collision, the **fuel** consumption model, **hull** and
-  damage, and the full set of **animation states**. **Read this carefully.**
-- `specs/mining.md` — the **ore economy**: the ore types and their values per band,
-  **cargo** capacity, the three **exotic materials** (mid / deep / core) and the
-  **scanner** that locates them, and selling. **Read this carefully.**
+  hardness, single-tile collision, the **fuel** consumption model, **hull** and damage,
+  the **weight-and-lift** model (heavier hauls climb slower and, overloaded, cannot lift
+  — with **jettison** as the escape valve), the **radiator**'s damage reduction, and the
+  full set of **animation states**. **Read this carefully.**
+- `specs/mining.md` — the **ore economy**: the ore types, their values **and weights**
+  per band, the **weight-limited cargo** bay, the three **exotic materials** (mid / deep
+  / core) and the **scanner** that locates them, and selling. **Read this carefully.**
 - `specs/hazards.md` — the underground **hazards**: gas pockets (explode), lava
   (contact damage), fall impact, and the **unstable Core Sample** and its
   destabilization timer and detonation.
-- `specs/upgrades.md` — the **upgrade shop**: the five upgrade tracks (fuel tank,
-  drill, cargo bay, hull, scanner), their tiers, and their prices.
+- `specs/upgrades.md` — the **upgrade shop**: the seven upgrade tracks (fuel tank,
+  drill, cargo bay, hull, jetpack, radiator, scanner), their tiers, and their prices.
 - `specs/rocket.md` — the **escape rocket** you build to win: its five components,
   what each costs and which exotic material it needs, the launch pad, fabrication,
   and **victory**. **Read this carefully.**

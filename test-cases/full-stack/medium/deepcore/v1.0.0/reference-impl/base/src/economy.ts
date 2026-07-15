@@ -3,7 +3,7 @@
 // One source (selling ore at the Ore Market) and three sinks (Fuel Depot fuel/repair,
 // upgrades, rocket parts). Credits are banked and never go negative; an action you cannot
 // afford is disabled. This module owns cargo accounting, selling, buying fuel/repair at
-// the Fuel Depot, and buying the five upgrade tracks; the rocket sink lives in rocket.ts.
+// the Fuel Depot, and buying the seven upgrade tracks; the rocket sink lives in rocket.ts.
 
 import {
   CARGO_CAPACITY,
@@ -16,11 +16,19 @@ import {
 import type { Cargo, Ore, UpgradeTrack } from "./types";
 import type { Game } from "./game";
 
-/** Total units currently in the cargo bay. */
+/** Total units (piece count) currently in the cargo bay. */
 export function cargoUsed(cargo: Cargo): number {
   let n = 0;
   for (const o of Object.keys(cargo) as Ore[]) n += cargo[o];
   return n;
+}
+
+/** Total WEIGHT (kg) currently in the cargo bay — what the jetpack must lift and the bay
+ *  capacity limits (specs/mining.md, specs/character.md). */
+export function cargoWeight(cargo: Cargo): number {
+  let kg = 0;
+  for (const o of Object.keys(cargo) as Ore[]) kg += cargo[o] * ORES[o].weightKg;
+  return kg;
 }
 
 /** Value the current cargo would fetch at the Ore Market. */
@@ -30,11 +38,37 @@ export function cargoValue(cargo: Cargo): number {
   return total;
 }
 
-/** Try to add one unit of ore to cargo; false if the bay is full (specs/mining.md). */
+/**
+ * Try to add one unit of ore to cargo; false if adding its weight would exceed the bay's
+ * kg capacity (specs/mining.md). Cargo is limited by WEIGHT, not a unit count — so a bay of
+ * heavy deep ore holds far fewer pieces than one of light shallow ore.
+ */
 export function collectOre(game: Game, ore: Ore): boolean {
-  if (cargoUsed(game.cargo) >= game.cargoCap()) return false;
+  if (cargoWeight(game.cargo) + ORES[ore].weightKg > game.cargoCap()) return false;
   game.cargo[ore]++;
   return true;
+}
+
+/**
+ * Jettison one unit of the LEAST value-dense ore held, to lighten the load so an overloaded
+ * miner can lift off again (specs/character.md). The escape valve for the aggressive
+ * lift-gating: the discarded ore is lost (not sold). Returns the ore dropped, or null if the
+ * bay is empty.
+ */
+export function jettisonOre(game: Game): Ore | null {
+  let worst: Ore | null = null;
+  let worstDensity = Infinity;
+  for (const o of Object.keys(game.cargo) as Ore[]) {
+    if (game.cargo[o] <= 0) continue;
+    const density = ORES[o].value / ORES[o].weightKg;
+    if (density < worstDensity) {
+      worstDensity = density;
+      worst = o;
+    }
+  }
+  if (worst === null) return null;
+  game.cargo[worst]--;
+  return worst;
 }
 
 /** Sell the whole cargo for Credits and empty the bay (specs/mining.md). */

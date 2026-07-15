@@ -17,18 +17,23 @@ import {
   FUEL_LIFE_SUPPORT_RATE,
   FUEL_TANK_MAX,
   FUEL_THRUST_RATE,
+  GRAVITY,
   GRID_MARGIN_X,
   HULL_MAX,
+  JETPACK_CLIMB,
+  JETPACK_LIFT,
   LOW_FUEL_FRACTION,
   MAX_TIER,
   METERS_PER_ROW,
+  MINER_BASE_MASS,
+  RADIATOR_EFFECTIVENESS,
   SCANNER_RANGE,
   SURFACE_ROW,
   TILE_SIZE,
   VIEWPORT_HEIGHT,
   WORLD_ROWS,
 } from "./constants";
-import { emptyCargo, cargoUsed } from "./economy";
+import { collectOre, emptyCargo, cargoUsed, cargoWeight, jettisonOre } from "./economy";
 import { updateDrill } from "./drill";
 import { landImpact, updateLavaContact } from "./hazards";
 import {
@@ -103,7 +108,7 @@ export class Game {
   creditsEarned = 0;
   cargo: Cargo = emptyCargo();
   satchel: Satchel = { resonite: 0, cryenite: 0, coreSample: false };
-  tiers: UpgradeTiers = { fuel: 1, drill: 1, cargo: 1, hull: 1, scanner: 1 };
+  tiers: UpgradeTiers = { fuel: 1, drill: 1, cargo: 1, hull: 1, jetpack: 1, radiator: 1, scanner: 1 };
   installed = new Set<RocketComponentId>();
   miner: Miner = {
     x: 0,
@@ -172,6 +177,38 @@ export class Game {
   cargoUsed(): number {
     return cargoUsed(this.cargo);
   }
+  /** Weight (kg) currently in the bay (specs/mining.md). */
+  cargoWeight(): number {
+    return cargoWeight(this.cargo);
+  }
+  /** Total mass the jetpack must lift: the miner plus its cargo (specs/character.md). */
+  totalMass(): number {
+    return MINER_BASE_MASS + this.cargoWeight();
+  }
+  /** Radiator damage-reduction fraction 0..0.8 (specs/upgrades.md, specs/hazards.md). */
+  radiatorEff(): number {
+    return RADIATOR_EFFECTIVENESS[this.tiers.radiator - 1]!;
+  }
+  /**
+   * Upward acceleration the jetpack achieves at the CURRENT loaded mass (specs/character.md):
+   * the tier's lift force divided by the mass ratio, so a heavy haul climbs slower and, once
+   * this drops to/below gravity, cannot climb at all until the miner sheds weight or upgrades.
+   */
+  thrustAccel(): number {
+    return (JETPACK_LIFT[this.tiers.jetpack - 1]! * MINER_BASE_MASS) / this.totalMass();
+  }
+  /** The jetpack tier's climb-speed cap when lightly loaded (specs/upgrades.md). */
+  jetpackClimb(): number {
+    return JETPACK_CLIMB[this.tiers.jetpack - 1]!;
+  }
+  /**
+   * True when the current load is too heavy for the jetpack to climb at all (thrust accel no
+   * longer beats gravity, specs/character.md) — the miner can only slow its descent and must
+   * jettison ore (Q) or upgrade the jetpack. The HUD warns when this holds.
+   */
+  overloaded(): boolean {
+    return this.thrustAccel() <= GRAVITY;
+  }
   depthMeters(): number {
     return Math.max(0, minerRow(this.miner)) * METERS_PER_ROW;
   }
@@ -196,7 +233,7 @@ export class Game {
     this.creditsEarned = 0;
     this.cargo = emptyCargo();
     this.satchel = { resonite: 0, cryenite: 0, coreSample: false };
-    this.tiers = { fuel: 1, drill: 1, cargo: 1, hull: 1, scanner: 1 };
+    this.tiers = { fuel: 1, drill: 1, cargo: 1, hull: 1, jetpack: 1, radiator: 1, scanner: 1 };
     this.installed = new Set();
     this.coreTimer = null;
     this.deepestRow = 0;
@@ -283,7 +320,7 @@ export class Game {
     if (this.dying) {
       this.dying.t += dt;
       this.miner.state = this.dying.cause === "fuel-out" ? "fuel-out" : "hurt";
-      stepMovement(this.miner, this.grid, { left: false, right: false, down: false, thrust: false }, false, dt);
+      stepMovement(this.miner, this.grid, { left: false, right: false, down: false, thrust: false }, false, dt, this.thrustAccel(), this.jetpackClimb());
       this.updateCamera(dt);
       this.activeLoops.clear();
       if (this.dying.t >= DEATH_ANIM) finalizeDeath(this);
@@ -309,7 +346,7 @@ export class Game {
       this.miner.vy = 0;
       move = { grounded: true, thrusting: false, lateralAir: false, landedSpeed: 0 };
     } else {
-      move = stepMovement(this.miner, this.grid, this.input, this.miner.fuel > 0, dt);
+      move = stepMovement(this.miner, this.grid, this.input, this.miner.fuel > 0, dt, this.thrustAccel(), this.jetpackClimb());
     }
 
     // Jetpack exhaust while thrusting (specs/assets.md).
@@ -360,13 +397,11 @@ export class Game {
     const mc = minerCol(this.miner);
     const mr = minerRow(this.miner);
     if (Math.abs(mc - this.cache.col) <= 1 && Math.abs(mr - this.cache.row) <= 1) {
-      const cap = this.cargoCap();
+      // Reclaim as much of the cache as the bay's WEIGHT capacity allows (specs/mining.md);
+      // ore that no longer fits is left behind.
       for (const o of Object.keys(this.cache.cargo) as (keyof Cargo)[]) {
         let n = this.cache.cargo[o];
-        while (n > 0 && cargoUsed(this.cargo) < cap) {
-          this.cargo[o]++;
-          n--;
-        }
+        while (n > 0 && collectOre(this, o)) n--;
       }
       this.satchel.resonite += this.cache.resonite;
       this.satchel.cryenite += this.cache.cryenite;
@@ -458,6 +493,20 @@ export class Game {
     this.panel = null;
   }
 
+  /**
+   * Jettison one unit of the least value-dense ore to lighten the load (specs/character.md) —
+   * the escape valve for an overloaded miner that can no longer lift off. Only during live
+   * play (not while a panel is open, dying, or launching); the ore is lost, not sold.
+   */
+  jettison(): void {
+    if (this.phase !== "in-mine" || this.panel !== null || this.dying || this.launchAnim !== null) return;
+    const dropped = jettisonOre(this);
+    if (dropped) {
+      this.sndQueue.push("impact");
+      this.note(`JETTISONED ${dropped.toUpperCase()}`);
+    }
+  }
+
   /** Begin the launch sequence (all five components installed). */
   startLaunch(): void {
     if (!allInstalled(this) || this.launchAnim !== null) return;
@@ -479,7 +528,7 @@ export class Game {
   grantGear(tiers: number | Partial<UpgradeTiers>): void {
     if (typeof tiers === "number") {
       const t = clampInt(tiers, 1, MAX_TIER);
-      this.tiers = { fuel: t, drill: t, cargo: t, hull: t, scanner: t };
+      this.tiers = { fuel: t, drill: t, cargo: t, hull: t, jetpack: t, radiator: t, scanner: t };
     } else {
       for (const k of Object.keys(tiers) as UpgradeTrack[]) {
         const v = tiers[k];
