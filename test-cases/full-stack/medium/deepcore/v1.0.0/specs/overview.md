@@ -54,11 +54,12 @@ start; they cross-reference each other by name and form one specification.
 - `specs/overview.md` — this file: the pitch, the fiction, goals, hard requirements,
   free choices, the coordinate system, the stage layout, the palette and type, and
   the visual design.
-- `specs/world.md` — the **mine**: the tile grid and coordinate system, the vertical
-  camera, the four **depth bands** and the Core chamber, every **tile kind** (earth,
-  rock, deepstone, coreshell, bedrock border, ore vein, material node, gas pocket,
-  lava, empty tunnel), how ore / materials / hazards are **placed** (guaranteed in
-  their band, random position), and the **surface** with its four buildings.
+- `specs/world.md` — the **mine**: the tile grid and coordinate system, the both-axis
+  camera over a mine wider than the viewport, the four **depth bands** and the Core
+  chamber, every **tile kind** (earth, rock, deepstone, coreshell, bedrock border,
+  **unbreakable stone**, ore vein, material node, gas pocket, lava, empty tunnel), how
+  ore / materials / hazards / stone are **placed** (guaranteed in their band, random
+  position), and the **surface** with its four buildings.
 - `specs/character.md` — the **prospector**: fall / jetpack / lateral movement, the
   fixed rule that you drill **down, left, and right but never up**, dig speed vs tile
   hardness, single-tile collision, the **fuel** consumption model, **hull** and damage,
@@ -179,9 +180,11 @@ The stage is divided into two regions (`specs/world.md` details each):
   ore and materials, the hazards, the surface buildings, the miner, and the effects.
 
 The status bar is fixed and always fully visible; the viewport shows the world
-through a camera that follows the miner **vertically** (the world is exactly the
-viewport's width, so it never scrolls horizontally). Surface buildings and menus open
-as **overlays** over the viewport, not as a persistent side panel.
+through a camera that follows the miner **in both axes** — the mine is **wider than the
+viewport** (about 16 of its 32 columns on screen at once), so the world **scrolls
+horizontally** as well as vertically as the camera tracks the miner across and down
+(`specs/world.md`). Surface buildings and menus open as **overlays** over the viewport,
+not as a persistent side panel.
 
 ## Visual design
 
@@ -202,8 +205,9 @@ palette and type are below; match them.
 | Coreshell (band 4 fill) | `#3a1512` |
 | Core glow (band 4 accent) | `#ff6a2a` |
 | Bedrock border (unminable) | `#0c0f14` |
+| Unbreakable stone (obstacle) | `#4c5360` |
 | Carved tunnel (empty) | `#0a0d12` |
-| Tunnel edge / rubble | `#171b22` |
+| Tunnel edge / dirt lip | `#171b22` |
 | Faint tile grid | `#ffffff14` |
 | Ferron ore (common) | `#b8794a` |
 | Cuprite ore | `#4fb0a0` |
@@ -233,7 +237,10 @@ palette and type are below; match them.
   so the game renders identically offline.
 - Keep the mine legible: a player must be able to tell an unmined tile from a carved
   tunnel, one depth band's rock from another's, an ore vein from plain rock, a
-  material node from ore, and a **hazard** (gas, lava) from safe ground, at a glance.
+  material node from ore, an **unbreakable stone** boulder from diggable rock, and
+  **lava** from safe ground, at a glance. **Gas** is the deliberate exception — it is
+  hidden in the dirt and betrayed only by a faint seep, a trap the player learns to read
+  rather than one they simply see (`specs/world.md`, `specs/hazards.md`).
 - **The depth bands must read at a glance.** As the camera descends, the surrounding
   rock must visibly change — warm topsoil, grey rockbed, black deepstone, red-glowing
   coreshell — so the player always knows how deep they are without reading the meter,

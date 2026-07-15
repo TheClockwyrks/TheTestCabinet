@@ -50,18 +50,19 @@ export function detonateGas(game: Game, col: number, row: number): void {
     game.hurtFlash = 0.35;
     const nx = dist > 0.01 ? dx / dist : 0;
     const ny = dist > 0.01 ? dy / dist : -1;
-    m.vx += nx * 300;
-    m.vy += ny * 260 - 120; // shove away, with a little lift
+    // Knockback impulse (px/s) scaled with the 80px tile.
+    m.vx += nx * 500;
+    m.vy += ny * 433 - 200; // shove away, with a little lift
   }
 }
 
 /** Whether the miner's (slightly expanded) box touches any lava tile. */
 function lavaContact(game: Game): { x: number; y: number } | null {
   const m = game.miner;
-  const x = m.x - 3;
-  const y = m.y - 3;
-  const w = MINER_W + 6;
-  const h = MINER_H + 6;
+  const x = m.x - 5;
+  const y = m.y - 5;
+  const w = MINER_W + 10;
+  const h = MINER_H + 10;
   const c0 = colAtX(x);
   const c1 = colAtX(x + w);
   const r0 = rowAtY(y);

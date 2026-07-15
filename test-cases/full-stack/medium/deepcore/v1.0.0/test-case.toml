@@ -23,8 +23,9 @@ type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Deepcore is
 # medium: it asks for a Motherload-style dig-and-build — a fixed-step simulation of a
-# character drilling and falling and jetpacking through a banded tile mine over a
-# vertical camera, a fuel-and-hull budget and a weight-vs-lift jetpack model that make
+# character drilling and falling and jetpacking through a banded tile mine wider than
+# the viewport over a both-axis scrolling camera, a fuel-and-hull budget and a
+# weight-vs-lift jetpack model that make
 # the descent a round-trip gamble, an ore-to-Credits economy with a seven-track upgrade
 # shop, a guaranteed-but-hidden exotic-material hunt with a scanner, depth-scaling
 # gas/lava/impact hazards (with a radiator), an unstable Core Sample
@@ -285,7 +286,7 @@ proof = "surface"
 [[review_item]]
 id = "depth-bands-hardness"
 title = "Four depth bands whose hardness gates the descent"
-text = "The mine is banded — Topsoil (soft), Rockbed, Deepstone, Coreshell (very hard) — each visibly distinct (its own rock fill, a rising glow toward the core) so depth reads from the world, not just the meter, and each harder to drill than the last. A tile whose hardness exceeds the drill's power still drills but PUNISHINGLY slowly, so reaching the deepstone and coreshell at a workable pace requires buying up the drill tier — one of the ways the economy paces the descent. Depth is shown in meters."
+text = "The mine is banded — Topsoil (soft), Rockbed, Deepstone, Coreshell (very hard) — each visibly distinct (its own rock fill, a rising glow toward the core) so depth reads from the world, not just the meter, and each harder to drill than the last. A tile whose hardness exceeds the drill's power still drills but PUNISHINGLY slowly, so reaching the deepstone and coreshell at a workable pace requires buying up the drill tier — one of the ways the economy paces the descent. Depth is shown in meters. UNBREAKABLE STONE boulders are scattered through the rock (denser with depth) as an obstacle no drill breaks: the miner must route AROUND them (a straight shaft has to jog sideways), and generation never seals the only route down or to a material with stone. A tile being drilled shows a damage-crack overlay that deepens with progress."
 weight = 1
 domain = "simulation"
 proof = "mine"
@@ -293,7 +294,7 @@ proof = "mine"
 [[review_item]]
 id = "materials-scanner"
 title = "Guaranteed-but-hidden exotic materials and the scanner"
-text = "Two buried materials — Resonite in the Rockbed band, Cryenite in the Deepstone band — are placed at RANDOM positions within their band but GUARANTEED to exist there (the Terraria model), and are located by an always-on SCANNER that points (direction + distance) to the nearest material the player still needs, within a range set by the scanner tier. Materials ride in a separate satchel — never sold, weighing nothing and never filling the cargo bay. A run can never be soft-locked by an unlucky map."
+text = "Two buried materials — Resonite in the Rockbed band, Cryenite in the Deepstone band — are placed at RANDOM positions within their band but GUARANTEED to exist there (the Terraria model), and are located by an always-on SCANNER that points (direction + distance) to the nearest material the player still needs, within a range set by the scanner tier. Materials ride in a separate satchel — never sold, weighing nothing and never filling the cargo bay. A run can never be soft-locked by an unlucky map. Because the mine is wider than the viewport (only ~16 of 32 columns on screen), a material off to one side is out of view until the scanner points the way and the player digs across — the scanner is a genuine tool, not a freebie."
 weight = 1
 domain = "simulation"
 proof = "mine"
@@ -301,7 +302,7 @@ proof = "mine"
 [[review_item]]
 id = "hazards"
 title = "Gas, lava, and impact hazards"
-text = "The deep dig is a gauntlet with NO enemies — the mine itself is the adversary. Drilling into a gas pocket DETONATES it (a hull hit + knockback + burst VFX) whose damage SCALES WITH DEPTH (~20 hull in the rockbed rising to ~119 near the Core). Lava is unminable and drains hull fast on contact, so it must be routed around (it never fully seals the way down). Both gas and lava damage are cut by the RADIATOR tier (0%–80%), so the deep bands demand hull AND radiator investment. Landing too fast deals impact hull damage scaled to the excess speed, rewarding feathering the descent. Gas appears from the rockbed down and lava from the deepstone down, denser and more damaging with depth."
+text = "The deep dig is a gauntlet with NO enemies — the mine itself is the adversary. Drilling into a gas pocket DETONATES it (a hull hit + knockback + burst VFX) whose damage SCALES WITH DEPTH (~20 hull in the rockbed rising to ~119 near the Core). Gas is HIDDEN — a pocket is drawn with the same dirt texture as ordinary band rock, betrayed only by a very subtle produced gas-seep particle wisp, so it is a trap the player learns to read rather than a coloured tile they simply see (deliberately unlike lava). Lava is unminable, plainly visible, and drains hull fast on contact, so it must be routed around (it never fully seals the way down); it is drawn dirt-fringed so it meets rock through dirt, not a hard square seam. Both gas and lava damage are cut by the RADIATOR tier (0%–80%), so the deep bands demand hull AND radiator investment. Landing too fast deals impact hull damage scaled to the excess speed, rewarding feathering the descent. Gas appears from the rockbed down and lava from the deepstone down, denser and more damaging with depth."
 weight = 1
 domain = "simulation"
 proof = "core-run"
@@ -342,7 +343,7 @@ proof = "loop"
 [[review_item]]
 id = "produced-environment"
 title = "Produced band tiles, ore, materials, and hazards"
-text = "The four band rock tiles (topsoil earth, rockbed stone, deepstone, red-glowing coreshell) — each drawn from SEVERAL tile variants chosen per cell so a wall of one band does NOT visibly repeat a single texture — the bedrock border, the carved tunnels, the six ore veins (each an embedded SMEAR of its mineral run through the dirt, spreading to the tile edges, NOT a discrete dot on top), the two material nodes (Resonite, Cryenite) and the glowing core, and the gas-pocket and lava tiles are all drawn from sprites the build produced with draw/draw-sheet (the lava shimmering), in the palette — so the band a player is in, an ore vein against plain rock, a material against ore, and a hazard against safe ground all read at a glance. Not flat rectangles, a single repeated tile, or ad-hoc canvas fills."
+text = "The four band rock tiles (topsoil earth, rockbed stone, deepstone, red-glowing coreshell) — each drawn from SEVERAL tile variants chosen per cell so a wall of one band does NOT visibly repeat a single texture, and each a roughly UNIFORM dirt grain (not a few large clear blotches that look patchy) — the bedrock border, the UNBREAKABLE STONE boulder (a distinct harder-looking material), the carved tunnels (rendered inset with a dirt lip and rounded corners so a shaft is slightly narrower than a full tile, joins its neighbors orthogonally, and stays separate from diagonally-touching holes), the six ore veins (each an embedded SMEAR of its mineral run through the dirt, spreading to the tile edges, NOT a discrete dot on top), the two material nodes (Resonite, Cryenite) and the glowing core, the DRILL-DAMAGE crack overlay (frames that deepen with the cut), and the dirt-fringed lava tile are all drawn from sprites the build produced with draw/draw-sheet (the lava shimmering), in the palette — so the band a player is in, an ore vein against plain rock, a material against ore, an unbreakable boulder against diggable rock, and lava against safe ground all read at a glance. Gas has NO distinct tile (it uses the band rock, hidden). Not flat rectangles, a single repeated tile, or ad-hoc canvas fills."
 weight = 1
 domain = "presentation"
 proof = "mine"
@@ -358,7 +359,7 @@ proof = "surface"
 [[review_item]]
 id = "produced-vfx"
 title = "Produced particle VFX"
-text = "The drill debris, jetpack exhaust, ore sparkle, material shimmer, gas explosion, lava embers, impact dust, core extraction pulse, the big core detonation, the launch exhaust, and the death burst are particle systems the build authored with particle-2d and plays live through @test-cabinet/particle-runtime's canvas binding — simulated bursts fired at the moment and position of each event, VARYING shot to shot, not flat flashes or hand-coded loops. The core detonation and launch exhaust in particular read as dramatic, produced effects."
+text = "The subtle gas seep (the faint tell over a hidden gas pocket), drill debris, jetpack exhaust, ore sparkle, material shimmer, gas explosion, lava embers, impact dust, core extraction pulse, the big core detonation, the launch exhaust, and the death burst are particle systems the build authored with particle-2d and plays live through @test-cabinet/particle-runtime's canvas binding — simulated bursts fired at the moment and position of each event, VARYING shot to shot, not flat flashes or hand-coded loops. The gas seep in particular is very subtle (the only tell that hidden gas is there); the core detonation and launch exhaust read as dramatic, produced effects."
 weight = 1
 domain = "presentation"
 proof = "core-run"
@@ -390,5 +391,5 @@ proof = "title"
 [[review_item]]
 id = "fits-window"
 title = "Window fit"
-text = "The entire 1280x720 stage — the top status bar and the full mine viewport, all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input. The mine world is exactly the viewport width (no horizontal scroll); the camera follows the miner vertically only."
+text = "The entire 1280x720 stage — the top status bar and the full mine viewport, all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input. The mine world is WIDER than the viewport (32 columns of 80px, ~16 on screen at once), so the camera follows the miner in BOTH axes — scrolling horizontally across the mine as well as vertically down the shaft — clamped so it never scrolls past the world's edges. The whole width can never be seen at once, which is what makes the scanner worth having."
 weight = 1

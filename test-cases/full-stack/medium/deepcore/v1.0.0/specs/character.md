@@ -11,7 +11,7 @@ tier.
 
 The prospector is a **suited miner character**, not a vehicle: a figure with a
 handheld **drill** and a back-mounted **jetpack**, roughly the size of **one tile**
-(a `48 x 48` cell), so it fits cleanly in the mine and drills the tile immediately
+(an `80 x 80` cell), so it fits cleanly in the mine and drills the tile immediately
 ahead of it. How believably it **moves and animates** is half of what this build is
 judged on (`specs/overview.md`, `specs/assets.md`).
 
@@ -43,9 +43,12 @@ collision is against the tile grid.
   border, or lava; it rests on top of solid tiles and is stopped by walls. It fits in
   a single tile, so a one-tile-wide tunnel is passable.
 
-Movement speeds (logical px/s): **walk / lateral** `150`, **fall terminal** `600`.
-Gravity `900 px/s^2`. The **climb** speed is not a single number: it is capped per
-**jetpack tier** (`180` at tier 1 rising to `330` at tier 5, `specs/upgrades.md`) and,
+Movement speeds (logical px/s): **walk / lateral** `250`, **fall terminal** `1000`.
+Gravity `1500 px/s^2`. (These are scaled to the `80 px` tile so the *feel in
+tiles-per-second* — how many tiles a walk or a fall covers per second — matches the
+reference; tune within a natural range.) The **climb** speed is not a single number: it
+is capped per **jetpack tier** (`300` at tier 1 rising to `550` at tier 5,
+`specs/upgrades.md`) and,
 more importantly, throttled by the **load** (**Weight and lift**, below). These are the
 reference feel; tune within a natural range but keep falling faster than climbing so
 depth is easy to gain and expensive to undo. Terminal is high enough that a fall keeps
@@ -113,9 +116,17 @@ Drilling is how the miner removes tiles and gathers ore and materials
 - **Drilling a tile** takes a **drill time** set by the tile's band **hardness**
   (`specs/world.md`) and the miner's **drill tier** (`specs/upgrades.md`); while
   drilling, the miner is braced against that tile and the drill animation plays
-  (below). When the timer completes, the tile becomes an **empty tunnel**; an **ore
-  vein** also drops its ore into cargo, and a **material node** its material
-  (`specs/mining.md`).
+  (below). The tile being cut shows a **damage overlay** — a produced crack sprite whose
+  frame **deepens with the drill's progress** (light hairlines early, a shattered face
+  as it nears breaking) — so the player can see the cut advancing rather than staring at
+  an unchanged tile (`specs/assets.md`). When the timer completes, the tile becomes an
+  **empty tunnel**; an **ore vein** also drops its ore into cargo, and a **material
+  node** its material (`specs/mining.md`).
+- **Unbreakable stone and bedrock never yield.** A drill aimed into an **unbreakable
+  stone** boulder or the **bedrock** border does nothing — no cut starts, no damage
+  overlay, no progress (`specs/world.md`). The miner must **route around** it: dig
+  sideways and continue past, rather than straight through. This is the whole point of
+  the stone — it bends a straight shaft.
 - **Hardness vs drill tier.** Each tile has a hardness `1..4` (its band); each drill
   tier has a **power**. Drill time scales with `hardness / power` — a higher tier
   drills everything faster, and a tile whose hardness **exceeds** the drill's power

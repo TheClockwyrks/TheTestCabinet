@@ -10,28 +10,32 @@ numeric values here are **fixed**; implement them exactly.
 
 ## The tile grid
 
-The world is a grid of square **tiles**, each **48 x 48 logical pixels**.
+The world is a grid of square **tiles**, each **80 x 80 logical pixels**.
 
-- The mine is **24 columns** wide, `col` in `[0, 23]`. Columns `0` and `23` are the
-  unminable **bedrock border** (below). Playable columns are `1..22`.
-- The grid is **24 columns x 48 = 1152 px** wide, drawn **centered** in the 1280-wide
-  viewport with a 64 px letterbox of dark rock on each side. The world **never
-  scrolls horizontally** — its full width is always on screen.
+- The mine is **32 columns** wide, `col` in `[0, 31]`. Columns `0` and `31` are the
+  unminable **bedrock border** (below). Playable columns are `1..30`.
+- The grid is **32 columns x 80 = 2560 px** wide — **wider than the 1280-wide
+  viewport**, so only about **16 columns are on screen at once** and the world
+  **scrolls horizontally** as the camera follows the miner across it. This is the
+  Motherload framing: you can never see the whole width of the mine at once, which is
+  what makes the **scanner** (`specs/mining.md`) worth having — a buried material off to
+  one side is out of view until you scan toward it and dig across.
 - Rows are numbered from the surface down: `row 0` is the **surface** (open ground /
   sky, where the buildings sit and the miner spawns), and the mine extends down to
   `row 96`, the **Core chamber**. Playable minable rows are `1..95`; `row 96` is the
   Core chamber (below).
 - **Depth** is reported to the player in **meters**: each row below the surface is
   **5 m**, so `row r` is at depth `5 x r` m and the Core chamber is at **480 m**.
-- The camera follows the miner **vertically only**. At rest on the surface it frames
-  the camp, and the Core chamber floor never scrolls below the bottom of the viewport.
-  There is **open sky above the surface with no ceiling** (`specs/character.md`): when
-  the miner thrusts up out of the mine, the camera **follows it up** into that sky —
-  there is nothing up there to reach, so the climb only burns fuel, but the miner is
-  shown ascending rather than clipped at the top of the view. A tile at `(col, row)`
-  occupies world-space
-  `x in [64 + 48*col, 64 + 48*col + 48]`, `y = 48*row` in world coordinates, drawn at
-  `y - cameraY` on screen (offset by the `56 px` status bar).
+- The camera follows the miner **in both axes** — horizontally across the wide mine and
+  vertically down the shaft — keeping the miner near the centre of the viewport and
+  clamped so it never scrolls past the world's edges (the bedrock borders on the sides,
+  the Core-chamber floor at the bottom). There is **open sky above the surface with no
+  ceiling** (`specs/character.md`): when the miner thrusts up out of the mine, the camera
+  **follows it up** into that sky — there is nothing up there to reach, so the climb only
+  burns fuel, but the miner is shown ascending rather than clipped at the top of the
+  view. A tile at `(col, row)` occupies world-space
+  `x in [80*col, 80*col + 80]`, `y = 80*row` in world coordinates, drawn at
+  `x - cameraX`, `y - cameraY` on screen (the `y` offset by the `56 px` status bar).
 
 ## The four depth bands + the Core chamber
 
@@ -62,17 +66,30 @@ dig at a workable speed — one of the ways the economy paces the descent.
 Every grid cell is one of these kinds. A cell's kind is fixed at world generation
 except that any **minable** cell becomes an **empty tunnel** once drilled.
 
-- **Bedrock border** — columns `0` and `23`, the mine floor beneath `row 95`, and the
+- **Bedrock border** — columns `0` and `31`, the mine floor beneath `row 95`, and the
   walls of the Core chamber. **Unminable and impassable**: no drill breaks it and the
   miner cannot enter it. It bounds the playable space.
-- **Earth / Rock / Deepstone / Coreshell** — the plain **minable** rock of each band.
-  Drilling one (`specs/character.md`) removes it, leaving an **empty tunnel**, and
+- **Earth / Rock / Deepstone / Coreshell** — the plain **minable dirt/rock** of each
+  band. Drilling one (`specs/character.md`) removes it, leaving an **empty tunnel**, and
   yields nothing. Its drill time is set by the band's hardness and the miner's drill
   tier. Each band's rock must be drawn from **several interchangeable tile variants**
   (at least three), chosen per cell so that a wall of the same band does **not visibly
   repeat a single tiled texture** — the rock should read as natural, varied ground, not
   a grid of one identical stamp. The variants share the band's fill and palette (so they
-  read as the same depth); only the clump/crack/fleck layout differs (`specs/assets.md`).
+  read as the same depth); only the clump/crack/fleck layout differs. The texture must
+  read as **roughly uniform dirt/rock** — a fine, even grain across the whole tile, **not
+  a few large clear blotches** that make the ground look patchy and artificial
+  (`specs/assets.md`). While a tile is being drilled, a **damage overlay** (a produced
+  crack sprite that deepens over several frames as the cut progresses) is drawn on it so
+  the dig visibly makes progress (`specs/character.md`, `specs/assets.md`).
+- **Unbreakable stone** — a hard, dark **boulder** tile scattered through the rock from
+  the topsoil down (below). **Unminable and impassable** like the bedrock border — **no
+  drill breaks it** — but, unlike the border, it sits *inside* the playable field as an
+  **obstacle the player must route around**: a straight vertical shaft that runs into one
+  must jog sideways to get past it. It reads clearly as a **different, harder material**
+  than the surrounding dirt (a smooth, cold stone against the grainy band rock), so the
+  player can tell at a glance that it will not yield to the drill. Generation never uses
+  unbreakable stone to seal the only route down or to a material (below).
 - **Ore vein** — a minable tile of the band's rock with an **ore deposit** in it
   (`specs/mining.md`). Drilling it removes the tile *and* adds that ore to cargo (if
   cargo has room). Ore veins are scattered through every band; the ore type and its
@@ -84,28 +101,52 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
   materials**, **Resonite** (rockbed) or **Cryenite** (deepstone) (`specs/mining.md`,
   `specs/rocket.md`). Drilling it collects the material. Placement is **guaranteed
   but hidden** (below); the **scanner** points the player to the nearest one.
-- **Gas pocket** — a hazard tile (`specs/hazards.md`): drilling into it (or a drilled
-  tile exposing it) triggers a gas explosion. It reads as a distinct, faintly glowing
-  green tile.
+- **Gas pocket** — a hazard tile (`specs/hazards.md`): drilling into it triggers a gas
+  explosion. Crucially, a gas pocket is **hidden** — it is drawn with the **same dirt
+  texture as the surrounding band rock**, so a cursory glance cannot tell it from plain
+  ground. Its **only** tell is a **very subtle produced particle effect** — a faint wisp
+  of gas seeping from the tile that an alert, careful player can notice but that a hurried
+  dig will drill straight into (`specs/hazards.md`, `specs/assets.md`). This is a
+  deliberate departure from lava (which is plainly visible): gas is a trap you learn to
+  read, not an obstacle you simply see and skirt.
 - **Lava** — a hazard tile (`specs/hazards.md`): **not minable**, and touching it
-  drains hull fast. The miner must route around it. It reads as molten orange and may
-  animate (`specs/assets.md`).
+  drains hull fast. The miner must route around it. It reads as **molten orange** and
+  animates, but it is **fringed with the band's dirt** around the cell edges so a lava
+  tile does not meet the surrounding rock at a hard, unnatural square seam — the molten
+  pool sits *inside* a dirt border and adjacent lava cells flow together into one pool
+  (`specs/assets.md`).
 - **Empty tunnel** — a cell that is open space: either an original gap (the surface,
   a natural cavern) or a minable tile that has been drilled out. The miner falls
-  through it under gravity and thrusts through it on the jetpack.
+  through it under gravity and thrusts through it on the jetpack. A drilled tunnel is
+  **slightly narrower than a full tile**: drilling clears the middle of the cell but
+  leaves a **dirt lip around the edges** where the tunnel meets solid rock, with
+  **rounded corners** — so a carved shaft reads as a hewn passage, not a stack of clean
+  squares. Adjacent open cells **join** into one continuous tunnel (their shared lip
+  disappears), but two open cells that touch **only at a corner** (diagonally) stay
+  **two distinct holes**, separated by the rounded dirt between them, exactly as in
+  Motherload (`specs/assets.md`).
 
 ## Placing ore, materials, and hazards
 
 The mine is **generated per game** within these rules; there is no single fixed map,
 but every rule below is fixed. Generation must obey them so a run is always winnable:
 
-- **Playable region.** Columns `1..22`, rows `1..95` are minable rock of the row's
-  band, except the cells made into ore veins, material nodes, hazards, and the natural
-  tunnels/caverns generation may carve. A **clear vertical shaft** need not be
-  provided — the player drills their own way down.
+- **Playable region.** Columns `1..30`, rows `1..95` are minable rock of the row's
+  band, except the cells made into ore veins, material nodes, hazards, unbreakable
+  stone, and the natural tunnels/caverns generation may carve. A **clear vertical
+  shaft** need not be provided — the player drills their own way down.
 - **Ore.** Ore veins are scattered through all four bands at that band's ore mix and
   density (`specs/mining.md`). Ore is the routine reward for digging; a player who
   digs steadily always finds ore to sell.
+- **Unbreakable stone.** Boulders of unbreakable stone are scattered through the
+  playable rows from the **topsoil** down, growing **denser with depth** so the deep
+  bands are more of a maze. They are never so dense as to wall off a band: generation
+  must **never seal the only route** down, to a material node, or to the Core with
+  unbreakable stone (as with lava, below) — a determined driller can always find a
+  diggable path through the surrounding rock, even if it means a shaft that jogs sideways
+  rather than running straight down. They force the player to **route around** them (or,
+  in a later addition, blast through) rather than always digging a perfectly straight
+  hole.
 - **Exotic materials — guaranteed but hidden.** **At least three** Resonite nodes
   exist somewhere in the **rockbed** band and **at least three** Cryenite nodes exist
   somewhere in the **deepstone** band, at **random positions within that band** —

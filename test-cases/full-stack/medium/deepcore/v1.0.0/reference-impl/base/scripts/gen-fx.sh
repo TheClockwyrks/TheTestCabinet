@@ -7,7 +7,7 @@
 # @test-cabinet/particle-runtime's ParticleCanvasPlayer. Because they are simulated they vary
 # shot to shot — that variation is the point (specs/assets.md).
 #
-# Eleven systems land under assets/fx/, one per effect the game loads (ASSET-LAYOUT.md):
+# Twelve systems land under assets/fx/, one per effect the game loads (ASSET-LAYOUT.md):
 #   drill-debris     the miner drills a tile — rock chips + dust off the bit (character.md)
 #   jetpack-exhaust  the miner thrusts — a downward hot plume + sparks (character.md)
 #   ore-sparkle      an ore vein is collected — a brief bright glint (mining.md)
@@ -60,6 +60,24 @@ newfx() {
   particle-2d init --config "$CFG" >/dev/null
 }
 p() { particle-2d "$@" --config "$CFG" >/dev/null; }
+
+# ============================ GAS SEEP (the ONLY tell a hidden gas pocket is there) ====
+# A gas pocket is drawn as ordinary band rock (hidden, specs/hazards.md); this VERY SUBTLE
+# wisp is its only tell — a faint, sparse breath of pale-green gas that rises slowly and
+# fades, so a hurried dig misses it but a careful eye catches it. The sim fires one wisp
+# every ~0.45s over a random on-screen pocket (game.emitGasSeeps), so keep it small, faint,
+# and short. Composited "over" (not additive) so it stays a soft haze, never a bright glow.
+newfx false 950 "$FX/gas-seep.json"
+p add-emitter --name seep --shape disc --x 64 --y 84 --radius 7 \
+  --burst 3 --at 0 --lifetime 820 --lifetime-spread 220 --speed 12 --speed-spread 5 \
+  --dir-y -1 --cone-angle 34 --seed 7
+p set-forces --emitter seep --gravity -14 --drag 3.0
+p set-particle --emitter seep --size-curve ease-out --size-from 0.35 --size-to 1.25 \
+  --opacity-curve ease-out --opacity-from 0.22 --opacity-to 0.0 \
+  --color-gradient "#c7e89a@0,#9ad24a@1"
+p set-timeline --loop false
+p render
+echo "produced gas-seep.json"
 
 # ============================ DRILL DEBRIS (bit bites rock, one-shot, fires often) =====
 # The drill chews a tile: a low spray of rock chips that arc up and rain down, plus a soft

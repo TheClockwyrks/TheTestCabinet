@@ -11,15 +11,18 @@ import { FALL_TERMINAL, GRAVITY, TILE_SIZE, WALK_SPEED } from "./constants";
 import type { Miner, Tile } from "./types";
 import { colAtX, isSolidKind, rowAtY, tileLeft, tileTop } from "./world";
 
-/** Collision box (a little narrower than a tile so a one-tile-wide tunnel is passable). */
-export const MINER_W = 34;
-export const MINER_H = 44;
+/**
+ * Collision box (a little narrower/shorter than an 80px tile so a one-tile-wide tunnel is
+ * passable). Scaled with the tile size from the 48px reference (34×44 → 57×73).
+ */
+export const MINER_W = 57;
+export const MINER_H = 73;
 
-/** Lateral acceleration toward the walk speed. */
-const LATERAL_ACCEL = 1700;
-/** Velocity decay when no lateral input (px/s^2): strong on the ground, light in air. */
-const GROUND_FRICTION = 2600;
-const AIR_FRICTION = 500;
+/** Lateral acceleration toward the walk speed (px/s^2, scaled with the 80px tile). */
+const LATERAL_ACCEL = 2833;
+/** Velocity decay when no lateral input (px/s^2, scaled): strong on the ground, light in air. */
+const GROUND_FRICTION = 4333;
+const AIR_FRICTION = 833;
 
 export interface MoveInput {
   left: boolean;

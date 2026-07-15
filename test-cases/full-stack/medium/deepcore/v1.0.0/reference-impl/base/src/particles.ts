@@ -12,6 +12,7 @@ import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 
 export type FxKind =
+  | "gas-seep"
   | "drill-debris"
   | "jetpack-exhaust"
   | "ore-sparkle"
@@ -32,23 +33,25 @@ export interface FxEvent {
   scale?: number;
 }
 
-/** The on-screen footprint (logical px) each effect's field maps to. */
+/** The on-screen footprint (logical px) each effect's field maps to (scaled with the 80px tile). */
 const FOOTPRINT: Record<FxKind, number> = {
-  "drill-debris": 48,
-  "jetpack-exhaust": 56,
-  "ore-sparkle": 40,
-  "material-shimmer": 52,
-  "gas-explosion": 96,
-  "lava-embers": 44,
-  "impact-dust": 56,
-  "core-extract": 110,
-  "core-detonation": 260,
-  "launch-exhaust": 200,
-  "death-burst": 90,
+  "gas-seep": 44,
+  "drill-debris": 72,
+  "jetpack-exhaust": 84,
+  "ore-sparkle": 60,
+  "material-shimmer": 78,
+  "gas-explosion": 144,
+  "lava-embers": 66,
+  "impact-dust": 84,
+  "core-extract": 165,
+  "core-detonation": 390,
+  "launch-exhaust": 300,
+  "death-burst": 135,
 };
 
 /** Effects that read best composited additively (fire/energy) vs. over (smoke/debris). */
 const ADDITIVE: Record<FxKind, boolean> = {
+  "gas-seep": false,
   "drill-debris": false,
   "jetpack-exhaust": true,
   "ore-sparkle": true,

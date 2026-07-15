@@ -1,12 +1,13 @@
 // Deepcore — the mine: per-game generation and the tile/coordinate helpers.
 //
-// Implements specs/world.md exactly: a 24×97 grid (cols 0..23, rows 0..96), bedrock
-// border columns 0/23 and the mine floor, the four depth bands + the Core chamber, ore
-// veins at each band's mix, gas from the rockbed down and lava from the deepstone down
-// (denser with depth), and — GUARANTEED — at least three Resonite nodes in the rockbed
-// and three Cryenite nodes in the deepstone at random positions. A final connectivity
-// repair guarantees a run is always winnable: every material node and the Core are
-// reachable from the surface through minable rock (lava never seals the only route).
+// Implements specs/world.md exactly: a 32×97 grid (cols 0..31, rows 0..96), bedrock
+// border columns 0/31 and the mine floor, the four depth bands + the Core chamber, ore
+// veins at each band's mix, gas from the rockbed down and lava from the deepstone down,
+// unbreakable STONE obstacles from the topsoil down (all denser with depth), and —
+// GUARANTEED — at least three Resonite nodes in the rockbed and three Cryenite nodes in
+// the deepstone at random positions. A final connectivity repair guarantees a run is
+// always winnable: every material node and the Core are reachable from the surface
+// through minable rock (lava/stone never seal the only route).
 
 import {
   BANDS,
@@ -63,11 +64,16 @@ export function isSolidKind(kind: Tile["kind"]): boolean {
     kind === "gas" ||
     kind === "bedrock" ||
     kind === "lava" ||
+    kind === "stone" ||
     kind === "core"
   );
 }
 
-/** Kinds a drill can remove (specs/world.md — everything but bedrock/lava/tunnel). */
+/**
+ * Kinds a drill can remove (specs/world.md). Everything solid EXCEPT bedrock, lava, and
+ * unbreakable STONE — the stone is the in-field obstacle the player must route around, no
+ * drill breaks it (specs/character.md, specs/world.md).
+ */
 export function isMinableKind(kind: Tile["kind"]): boolean {
   return kind === "rock" || kind === "ore" || kind === "material" || kind === "gas" || kind === "core";
 }
@@ -94,15 +100,21 @@ const ORE_MIX: Record<Band, OreMix> = {
 const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.08, coreshell: 0.12 };
 /** Lava density per band (denser in the coreshell — specs/hazards.md). */
 const LAVA_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0, deepstone: 0.1, coreshell: 0.2 };
+/**
+ * Unbreakable-stone density per band — scattered obstacles that DENSIFY with depth so the
+ * deep bands are more of a maze (specs/world.md). Kept modest, and never allowed to seal a
+ * route: the connectivity repair below carves stone (like lava) off any path it would block.
+ */
+const STONE_DENSITY: Record<Band, number> = { topsoil: 0.03, rockbed: 0.05, deepstone: 0.07, coreshell: 0.09 };
 
 // ---------------------------------------------------------------------------
 // The Core chamber pocket (specs/world.md — row 96)
 // ---------------------------------------------------------------------------
 
-/** The Core tile column at the bottom pocket. */
-export const CORE_COL = 11;
+/** The Core tile column at the bottom pocket (roughly centered in the 32-col world). */
+export const CORE_COL = 15;
 /** Columns of the open Core-chamber pocket (drill down into these from row 95). */
-const CORE_POCKET_COLS = [9, 10, 11, 12, 13, 14];
+const CORE_POCKET_COLS = [13, 14, 15, 16, 17, 18];
 
 // ---------------------------------------------------------------------------
 // A located material / core node the scanner and world queries use
@@ -165,8 +177,11 @@ export function generateWorld(seed: number): World {
     for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
       const tile = grid[row]![col]!;
       if (tile.kind !== "rock") continue;
-      // Lava first (not minable), then gas, then ore — mutually exclusive per cell.
-      if (LAVA_DENSITY[band] > 0 && rng.chance(LAVA_DENSITY[band])) {
+      // Unbreakable stone first (an impassable obstacle), then lava (not minable), then
+      // gas, then ore — mutually exclusive per cell. Connectivity is guaranteed below.
+      if (STONE_DENSITY[band] > 0 && rng.chance(STONE_DENSITY[band])) {
+        tile.kind = "stone";
+      } else if (LAVA_DENSITY[band] > 0 && rng.chance(LAVA_DENSITY[band])) {
         tile.kind = "lava";
       } else if (GAS_DENSITY[band] > 0 && rng.chance(GAS_DENSITY[band])) {
         tile.kind = "gas";
@@ -177,18 +192,21 @@ export function generateWorld(seed: number): World {
     }
   }
 
-  // Never let lava span an entire row (that would seal the descent). Keep a healthy
-  // fraction of each row minable (specs/world.md — a determined driller always gets through).
+  // Never let a row be sealed by lava/stone (that would wall off the descent). Keep a
+  // healthy fraction of each deep row diggable (specs/world.md — a determined driller
+  // always gets through); convert stray lava/stone back to rock until it is.
   for (let row = BANDS.deepstone.rowMin; row <= BANDS.coreshell.rowMax; row++) {
     const band = bandForRow(row);
     let minable = 0;
     for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
-      if (grid[row]![col]!.kind !== "lava") minable++;
+      if (isMinableKind(grid[row]![col]!.kind)) minable++;
     }
     const cols = PLAYABLE_COL_MAX - PLAYABLE_COL_MIN + 1;
-    while (minable < Math.ceil(cols * 0.45)) {
+    let guard = 0;
+    while (minable < Math.ceil(cols * 0.45) && guard++ < 400) {
       const col = rng.int(PLAYABLE_COL_MIN, PLAYABLE_COL_MAX);
-      if (grid[row]![col]!.kind === "lava") {
+      const k = grid[row]![col]!.kind;
+      if (k === "lava" || k === "stone") {
         grid[row]![col] = makeTile("rock", band);
         minable++;
       }
@@ -200,7 +218,7 @@ export function generateWorld(seed: number): World {
   placeMaterialNodes(grid, rng, nodes, "resonite", BANDS.rockbed.rowMin, BANDS.rockbed.rowMax);
   placeMaterialNodes(grid, rng, nodes, "cryenite", BANDS.deepstone.rowMin, BANDS.deepstone.rowMax);
 
-  const spawnCol = 11;
+  const spawnCol = 15;
 
   // Guarantee winnability: every material node and the Core must be reachable from the
   // surface through non-lava rock. Carve any lava that would seal a required route.
@@ -245,7 +263,8 @@ function placeMaterialNodes(
       const nc = col + dc;
       const nr = row + dr;
       if (nc < PLAYABLE_COL_MIN || nc > PLAYABLE_COL_MAX || nr < 1 || nr > BANDS.coreshell.rowMax) continue;
-      if (grid[nr]![nc]!.kind === "lava") grid[nr]![nc] = makeTile("rock", bandForRow(nr));
+      const nk = grid[nr]![nc]!.kind;
+      if (nk === "lava" || nk === "stone") grid[nr]![nc] = makeTile("rock", bandForRow(nr));
     }
   }
 }
@@ -260,7 +279,9 @@ function repairConnectivity(grid: Tile[][], spawnCol: number, targets: { col: nu
   const passable = (c: number, r: number): boolean => {
     if (c < 0 || c >= WORLD_COLS || r < 0 || r >= WORLD_ROWS) return false;
     const k = grid[r]![c]!.kind;
-    return k !== "bedrock" && k !== "lava";
+    // The miner can dig through anything but bedrock, lava, and unbreakable stone; a target
+    // reachable only past those must be re-carved (below).
+    return k !== "bedrock" && k !== "lava" && k !== "stone";
   };
 
   const floodFrom = (): Set<number> => {
@@ -323,12 +344,13 @@ function repairConnectivity(grid: Tile[][], spawnCol: number, targets: { col: nu
       }
     }
     if (hit < 0) break; // should not happen; bedrock only borders
-    // Walk the path back, clearing lava.
+    // Walk the path back, clearing any lava or stone that blocked the route to rock.
     let node = prev.get(hit) ?? -1;
     while (node !== -1 && node !== start) {
       const c = node % WORLD_COLS;
       const r = Math.floor(node / WORLD_COLS);
-      if (grid[r]![c]!.kind === "lava") grid[r]![c] = makeTile("rock", bandForRow(r));
+      const k = grid[r]![c]!.kind;
+      if (k === "lava" || k === "stone") grid[r]![c] = makeTile("rock", bandForRow(r));
       node = prev.get(node) ?? -1;
     }
   }

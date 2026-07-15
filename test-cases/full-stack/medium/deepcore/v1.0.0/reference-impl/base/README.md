@@ -15,11 +15,15 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
 
 ## What it is
 
-- **The mine** — a 24×97 tile grid (`specs/world.md`): a surface camp, then four bands —
-  **topsoil**, **rockbed**, **deepstone**, **coreshell** — of increasing hardness, with
-  the glowing **Core** in its chamber at the bottom. Ore veins, buried **Resonite** /
-  **Cryenite** material nodes, **gas pockets**, and **lava** are scattered by band; a
-  connectivity pass guarantees every run is winnable.
+- **The mine** — a 32×97 grid of 80px tiles (`specs/world.md`), **wider than the
+  viewport** so the camera scrolls both ways (only ~16 columns on screen at once): a
+  surface camp, then four bands — **topsoil**, **rockbed**, **deepstone**, **coreshell** —
+  of increasing hardness, with the glowing **Core** in its chamber at the bottom. Ore
+  veins, buried **Resonite** / **Cryenite** material nodes, **hidden gas pockets** (drawn
+  as ordinary dirt, betrayed only by a faint seep), **lava** (dirt-fringed), and
+  **unbreakable-stone** boulders (routed around, never breakable) are scattered by band;
+  carved tunnels are rendered with a Motherload-style inset dirt lip and rounded corners;
+  a connectivity pass guarantees every run is winnable.
 - **The miner** — a suited character animated across eight produced sprite-sheet cycles
   (idle, walk, drill-down, drill-side, jetpack, fall, hurt, fuel-out), driven by real
   physics: gravity, a fuel-burning jetpack (the only way up), and a drill that bites

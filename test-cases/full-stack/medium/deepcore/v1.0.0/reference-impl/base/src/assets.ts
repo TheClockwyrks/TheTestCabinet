@@ -51,6 +51,7 @@ const MINER_STATES: MinerState[] = [
 ];
 
 const FX_KINDS: FxKind[] = [
+  "gas-seep",
   "drill-debris",
   "jetpack-exhaust",
   "ore-sparkle",
@@ -92,9 +93,12 @@ export interface Assets {
    * older/partial asset set still renders.
    */
   tileVariants(band: string): HTMLImageElement[];
+  /** The unbreakable-stone tile variants (`tiles/stone-0/1/…`). */
+  stone(): HTMLImageElement[];
+  /** Drill-damage crack overlay frames (deepening with the cut), ordered. */
+  crack: HTMLImageElement[];
   ore(o: Ore): HTMLImageElement | undefined;
   material(name: string): HTMLImageElement | undefined;
-  gas: HTMLImageElement | undefined;
   lava: HTMLImageElement[];
   surface(name: string): HTMLImageElement | undefined;
   rocket: HTMLImageElement[]; // stage0..stage5
@@ -126,8 +130,10 @@ export async function loadAssets(): Promise<Assets> {
   for (const s of MINER_STATES) miner[s] = framesFor(`miner/${s}/frame`);
 
   const lava = framesFor("hazards/lava/frame");
+  const crack = framesFor("tiles/crack/frame");
 
-  // Band tile variants: gather `tiles/<band>-<n>` into an ordered array per band.
+  // Band tile variants: gather `tiles/<band>-<n>` into an ordered array per band (this
+  // also captures `tiles/stone-<n>` under the key "stone").
   const bandVariants = new Map<string, HTMLImageElement[]>();
   for (const [k, img] of imgs) {
     const m = k.match(/^tiles\/([a-z]+)-(\d+)$/);
@@ -163,9 +169,10 @@ export async function loadAssets(): Promise<Assets> {
       const single = imgs.get(`tiles/${band}`);
       return single ? [single] : [];
     },
+    stone: () => bandVariants.get("stone")?.filter(Boolean) ?? [],
+    crack,
     ore: (o) => imgs.get(`ore/${o}`),
     material: (name) => imgs.get(`materials/${name}`),
-    gas: imgs.get("hazards/gas"),
     lava,
     surface: (name) => imgs.get(`surface/${name}`),
     rocket,
