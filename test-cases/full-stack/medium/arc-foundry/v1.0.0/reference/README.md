@@ -42,24 +42,34 @@ The `title` view has one mockup per variant: `menu-base.html` (`SALVAGE` /
 `HOW TO PLAY`), matching the variant's seeded mode spec (`../specs/modes.md`). Difficulty
 and map are chosen on the in-game menus that follow `SALVAGE`, not on the title menu.
 
+> **These mockups depict the redesigned roster.** They were updated for the
+> GemTD-fidelity redesign: **eight** base component types (the original five plus
+> **Choke**, **Rectifier**, and the non-firing **Regulator**), the twelve single-grade
+> **combination towers** a recipe combine assembles, a **six-waypoint** serpentine on
+> every map, and **50**-wave Medium campaigns. The old five-type / three-to-four-waypoint
+> / 20–30–40-wave depictions are gone.
+
 The `gameplay.html` frame shows the intended look of a live board on Map A "The
-Substation": the ordered waypoint chain `E -> WP1 -> WP2 -> WP3 -> WP4 -> Collector`,
-the Load's live shortest-open route weaving **around** a maze of kept components and
-inert blockers (every rock is also a wall), more than one component **type** and more
-than one **quality tier** on the board (the Scrap→Tesla-Prime ladder reading at a
-glance), a scrap-press **stamp** landing with its build spark, a **combine** climbing
-the ladder with its combine flash, and several electrical VFX mid-fire (arc bolt,
-chain-lightning, discharge ring, spark-burst impacts, a death discharge, a leak alarm).
-The exact waypoints, the maze, the component mix, and the Load shown are just one
-representative moment.
+Substation": the ordered **six-waypoint** chain `E -> WP1 .. WP6 -> Collector` (a long
+perimeter spiral), the Load's live shortest-open route weaving **around** a maze of kept
+components and inert blockers (every rock is also a wall), more than one component
+**type** (of the eight) and more than one **quality tier** on the board (the
+Scrap→Tesla-Prime ladder reading at a glance), a non-firing **Regulator** projecting its
+lime support **aura**, a gold **combination tower** selected in the inspector with its
+recipe and abilities, a slowed unit and a burning unit, a scrap-press **stamp** landing
+with its build spark, and several electrical VFX mid-fire (arc bolt, chain-lightning,
+discharge ring, aura pulse, slow/burn snaps, a death discharge, a leak alarm). The exact
+waypoints, the maze, the component mix, and the Load shown are just one representative
+moment.
 
 `theme.css` holds the shared palette, type, and board furniture referenced by every
 view and by the specification (the seeded specs under [`../specs/`](../specs/)),
-including the visual language of the five component **types** (Capacitor / Coil /
-Emitter / Arc-Node / Discharge Rig), the five **quality tiers** (Scrap / Tuned /
-Charged / Primed / Tesla-Prime — finish and glow escalate every rung), the inert blocker
-rock, the Load roster (Mote / Spark / Slug / Cluster / Filament flyer / Dynamo boss),
-and the produced electrical VFX.
+including the visual language of the eight component **types** (Capacitor / Coil /
+Emitter / Arc-Node / Discharge Rig / Choke / Rectifier / Regulator), the single-grade
+gold **combination towers**, the five **quality tiers** (Scrap / Tuned / Charged / Primed
+/ Tesla-Prime — finish and glow escalate every rung), the inert blocker rock, the Load
+roster (Mote / Spark / Slug / Cluster / Filament flyer / Dynamo boss), the slow/burn/aura
+status VFX, and the produced electrical VFX.
 
 ## Generating screenshots
 

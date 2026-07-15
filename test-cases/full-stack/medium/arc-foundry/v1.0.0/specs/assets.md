@@ -32,7 +32,7 @@ menu chrome is drawn **in code** (below):
 | --- | --- | --- |
 | `draw` | one sprite → a PNG | the yard, entry/collector, components across quality tiers, projectiles, the Load, HUD icons |
 | `draw-sheet` | a sprite sheet, **one PNG per frame** | the enemy charge cycles, component firing cycles, and the press-stamp cycle |
-| `particle-2d` | a particle system → a `system.json` | the electrical VFX — build spark, combine flash, arc bolts, chain-lightning, spark spray, discharge ring, impacts, deaths, leak alarm |
+| `particle-2d` | a particle system → a `system.json` | the electrical VFX — build spark, combine flash, arc bolts, chain-lightning, spark spray, discharge ring, impacts, deaths, leak alarm, and the status/aura effects (slow, burn, aura) |
 | `sfx-synth` | a procedural sound → a `.wav` | stamp / zap / discharge / alarm cues from raw synthesis |
 | `sfx-sample` | a sampled sound over a baked pack → a `.wav` | richer chain / discharge / combine / ground-out cues |
 | `music` | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the industrial-electro reactor bed |
@@ -104,21 +104,36 @@ Produce at least these, in the palette from `specs/overview.md`:
   heavy steel box that reads as impassable, `specs/board.md`). The goal is that the
   yard, its flow direction toward the Collector, and each map's waypoints read at a
   glance.
-- **Components — 5 types × 5 quality tiers.** Draw each of the five component types
-  (Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, `specs/towers.md`) at **each
-  of the five quality tiers** (Scrap → Tuned → Charged → Primed → Tesla-Prime), so
-  the **quality ladder reads at a glance**: the finish must escalate every rung — a
-  Scrap component is pitted, rusted, dimly flickering; a Tesla-Prime is
-  mirror-chromed and wreathed in arcs (`specs/towers.md`). A component must read as
-  its **type** and as **which quality tier** it is. Author each firing component as
-  a **rotatable head on a fixed base**: draw the head pointing in a **single
-  canonical direction** (for example toward `+x`, "east") so the game **rotates the
-  whole head to aim it at the target** (`specs/towers.md`), and produce a separate
-  **non-rotatable base/mount** sprite to sit under it (the head rotates; the base
-  does not). Keep the head's canonical facing consistent across a component's five
-  tiers. A base sprite plus a produced per-tier finish accent/overlay is an
-  acceptable alternative to twenty-five wholly separate heads, **provided each of
-  the five tiers is visibly distinct**.
+- **Components — 8 base types × 5 quality tiers.** Draw each of the eight base
+  component types (Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, **Choke**,
+  **Rectifier**, and **Regulator**, `specs/towers.md`) at **each of the five quality
+  tiers** (Scrap → Tuned → Charged → Primed → Tesla-Prime), so the **quality ladder
+  reads at a glance**: the finish must escalate every rung — a Scrap component is
+  pitted, rusted, dimly flickering; a Tesla-Prime is mirror-chromed and wreathed in
+  arcs (`specs/towers.md`). A component must read as its **type** and as **which
+  quality tier** it is. Author each **firing** component as a **rotatable head on a
+  fixed base**: draw the head pointing in a **single canonical direction** (for
+  example toward `+x`, "east") so the game **rotates the whole head to aim it at the
+  target** (`specs/towers.md`), and produce a separate **non-rotatable base/mount**
+  sprite to sit under it (the head rotates; the base does not). Keep the head's
+  canonical facing consistent across a component's five tiers. A base sprite plus a
+  produced per-tier finish accent/overlay is an acceptable alternative to wholly
+  separate heads, **provided each of the five tiers is visibly distinct**. The
+  **Choke** (a slow bolt) and the **Rectifier** (a burn bolt) are ordinary firing
+  components — each a rotatable head over a base, across all five tiers. The
+  **Regulator** is the exception: it **never fires** (`specs/towers.md`), so draw it as
+  a **non-firing support sprite** — a static aura emitter with **no rotating firing
+  head** and **no fire cycle** — still across its **five tier finishes plus a base** so
+  its quality still reads.
+- **Combination towers — 12 unique turrets.** Draw each of the roughly **twelve
+  combination towers** (`specs/towers.md`, `specs/build.md`) — the terminal,
+  **single-grade** turrets assembled from a recipe. Each is **one unique sprite** with
+  no quality tiers (a combo has one fixed grade): a single **rotatable head** on a
+  **fixed base**, drawn facing the same canonical direction as the base types so the
+  game aims it, plus a fire cycle (below). Give each a look that reads its dominant
+  ability and wear the **combination-tower gold accent** (`#ffe9a8`,
+  `specs/overview.md`) so a combo is unmistakable next to a base component; a
+  **Regulator-derived or aura combo** may take an aura-emitter look.
 - **Blocker** — the inert fused-scrap **rock** an unkept rock hardens into at wave
   start (`specs/build.md`): a 2×2 lump that **unmistakably reads as dead** — no head, no
   glow, just wall. It must never be confused with a firing component or a still-selectable
@@ -126,14 +141,15 @@ Produce at least these, in the palette from `specs/overview.md`:
   component sprite with a code-drawn "uncommitted" treatment; it needs no separate
   produced sprite.)
 - **Projectiles** — a small **traveling shot sprite** for each single-bolt
-  component: the **Capacitor bolt**, the **Emitter spark**, and the **Discharge Rig
-  heavy slug** (`specs/towers.md`), each drawn pointing in the **same canonical
-  direction** as the heads so the game rotates each to its heading as it flies. The
-  projectile is the object that **carries the hit** on impact (`specs/towers.md`),
-  so it must be a **visible traveling sprite** — not a static dot at the muzzle, and
-  not omitted in favour of an instant hitscan. (The Coil's chain and the Arc-Node's
-  discharge are **particle effects**, below — they carry their hits, not a
-  projectile sprite.)
+  component: the **Capacitor bolt**, the **Emitter spark**, the **Discharge Rig
+  heavy slug**, a **Choke bolt**, and a **Rectifier bolt** (`specs/towers.md`), each
+  drawn pointing in the **same canonical direction** as the heads so the game rotates
+  each to its heading as it flies. The projectile is the object that **carries the
+  hit** on impact (`specs/towers.md`), so it must be a **visible traveling sprite** —
+  not a static dot at the muzzle, and not omitted in favour of an instant hitscan.
+  (The **Regulator** does not fire, so it has **no projectile**; the Coil's chain and
+  the Arc-Node's discharge are **particle effects**, below — they carry their hits,
+  not a projectile sprite.)
 - **The Load** — the six enemy types (`specs/enemies.md`): **Mote** (baseline charge
   unit), **Spark** (small, fast, fragile), **Slug** (big, slow, capacitive tank),
   **Cluster** (tiny, arrives in packs), **Filament** (the **flyer** — must read as
@@ -141,8 +157,9 @@ Produce at least these, in the palette from `specs/overview.md`:
   Each carries a health bar drawn in code over it.
 - **HUD icons** — the small marks the status bar and build panel use
   (`specs/board.md`, `specs/flow.md`): **Charge** (money), **Grid Integrity**
-  (lives), and a glyph for each of the five component types, and optionally one per
-  Load type for the next-wave preview. These sit inside the in-code HUD, `16–24 px`.
+  (lives), and a glyph for each of the **eight** base component types (and
+  **optionally** one per combination tower), and optionally one per Load type for the
+  next-wave preview. These sit inside the in-code HUD, `16–24 px`.
 
 ## Animations — `draw-sheet` (charge cycles, firing cycles, the press stamp)
 
@@ -155,11 +172,15 @@ short sequence of frames (land them under, for example, `assets/load/<type>/`,
   **seethe** with charge rather than sit static as they crawl the maze. The
   **Dynamo** gets a distinct **unstable-overload wobble/pulse** (`specs/enemies.md`)
   so the boss visibly seethes as it is worn down.
-- **Component firing cycles** — a **charge-and-discharge** cycle per firing
+- **Component firing cycles** — a **charge-and-discharge** cycle per **firing**
   component type so a firing component animates rather than sitting inert: the
   Capacitor's charge pulse, the Coil's wind-up, the Emitter's rapid flicker, the
-  Arc-Node's ring wind-up, and the Discharge Rig's bank charge (`specs/towers.md`).
-  Play it when the component fires.
+  Arc-Node's ring wind-up, the Discharge Rig's bank charge, the **Choke**'s throttle
+  pulse, and the **Rectifier**'s overcurrent surge (`specs/towers.md`). Play it when
+  the component fires. The **Regulator never fires**, so it gets **no firing cycle** —
+  give it instead a slow **aura idle pulse** (its non-firing support animation). Each
+  of the twelve **combination towers** also gets its own **firing cycle** (an
+  aura-type combo may pulse its aura instead).
 - **Press-stamp cycle** — the scrap-press **stamping** a component, played on the
   build panel and/or at the stamp site when a component is stamped
   (`specs/build.md`).
@@ -180,7 +201,7 @@ system (emitters, forces, per-particle size/opacity/color curves) whose
 `assets/fx/`. This is half of what the build is scored on — treat it as first-class
 engineering.
 
-Produce **at least** these nine systems; each entry names when it fires and the
+Produce **at least** these twelve systems; each entry names when it fires and the
 character it must carry:
 
 | Effect | Fires when | Character it must carry |
@@ -194,6 +215,14 @@ character it must carry:
 | **Spark-burst impact** | any projectile or arc **hits a unit** | a small **burst of sparks** at the point of impact |
 | **Discharge / death burst** | a unit **dies** (`specs/enemies.md`) | an electrical **pop**; the **Dynamo's death is a big EMP-style discharge**, much larger than a Mote's |
 | **Leak alarm** | a unit **grounds out** at the Collector (`specs/flow.md`) | a **warning surge / flare at the sink** as Grid Integrity drops — the "you took damage" read |
+| **Slow snap** | a **Choke** or a slow-carrying combo **hits a unit** (`specs/towers.md`) | a brief **frost / EM-drag snap** clinging to the slowed unit, in the Choke blue `#66d9e8` — the "it's slowed" read |
+| **Burn / DoT** | a **Rectifier** or a burn-carrying combo **hits a unit** (`specs/towers.md`) | an **ember flare** on impact and a low **ember-ticking** flicker on the unit while the burn keeps ticking, in the Rectifier orange `#ff6b3d` |
+| **Aura pulse** | a **Regulator** or an aura combo sits on the board (`specs/towers.md`) | a slow **support pulse ring** at the source in the Regulator green `#b6e05a`, marking the aura it projects — it never fires |
+
+**crit** and **multishot** (combination-tower abilities, `specs/towers.md`) need **no
+new particle system**: a **crit** reuses the **spark-burst impact** at a **larger**
+scale (a bigger burst), and a **multishot** is simply **several normal projectiles**
+fired at once, each carrying the usual impact burst.
 
 **Escalate the firing effects with quality.** A firing effect's intensity must
 **scale with the component's quality tier** (`specs/towers.md`) so the ladder reads
@@ -234,11 +263,14 @@ Web Audio API. Land them under, for example, `assets/audio/`.
   Capacitor / Emitter, a crackling **chain** for the Coil, and a **discharge boom** for
   the Arc-Node / Discharge Rig — a **combine chime** (the ladder climbing), a **kill /
   ground-out pop** (a unit destroyed), a **leak alarm** when a unit grounds out at the
-  Collector and Grid Integrity drops, and a **rock-settle thunk** (unkept rocks hardening
-  into blockers at wave start), with `sfx-synth` and/or `sfx-sample`. `sfx-synth`
-  builds a sound from synth voices alone; `sfx-sample` layers over the baked sample
-  pack (browse it via its `--help`) for a richer result — use whichever suits each
-  cue.
+  Collector and Grid Integrity drops, a **slow hum** (an icy / EM shimmer when a **Choke**
+  or slow combo slows a unit), a **burn sizzle** (a crackling sizzle while a **Rectifier**
+  or burn combo's damage-over-time ticks), and a **rock-settle thunk** (unkept rocks
+  hardening into blockers at wave start), with `sfx-synth` and/or `sfx-sample`. The
+  **combine chime** doubles as the **combination-tower spawn** cue — a recipe assembling
+  into a combo reuses it, no separate sound needed. `sfx-synth` builds a sound from synth
+  voices alone; `sfx-sample` layers over the baked sample pack (browse it via its
+  `--help`) for a richer result — use whichever suits each cue.
 - **Music** — produce a tense, driving **industrial-electro reactor bed** with
   `music`: a low, atmospheric loop under the board. `music` emits both a `.wav` (the
   ready asset you play) and a `.mid` score alongside it; **play the `.wav`** (the

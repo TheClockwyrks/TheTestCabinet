@@ -19,10 +19,40 @@
 
 // ---- Kinds (the two orthogonal component axes, the Load, difficulty) -----------
 
-// The five COMPONENT TYPES — an electrical part with a distinct firing identity and
+// The eight BASE COMPONENT TYPES — an electrical part with a distinct firing identity and
 // signature VFX (specs/towers.md). Kept distinct from the quality-TIER names so the two
-// axes never collide.
-export type ComponentType = "capacitor" | "coil" | "emitter" | "arcnode" | "discharge";
+// axes never collide. The last three are the redesign additions: `choke` slows the units
+// it hits, `rectifier` applies an overcurrent burn (damage-over-time), and `regulator` is
+// a NON-firing support node that buffs the damage of nearby towers via an aura.
+export type ComponentType =
+  | "capacitor"
+  | "coil"
+  | "emitter"
+  | "arcnode"
+  | "discharge"
+  | "choke"
+  | "rectifier"
+  | "regulator";
+
+// The twelve COMBINATION TOWERS (specs/towers.md, specs/build.md). Each is assembled by a
+// RECIPE — a specific multiset of base (type, quality) ingredients folds into one unique
+// combo tower. Combos are SINGLE-GRADE and TERMINAL: no quality tier, cannot be
+// quality-combined, cannot be an ingredient in another recipe. Their stats live in
+// constants.ts (COMBOS); each carries its own ability mix (splash/chain/slow/burn/crit/
+// multishot/aura).
+export type ComboType =
+  | "fusecluster"
+  | "staticweb"
+  | "slagdriver"
+  | "corroder"
+  | "ionprism"
+  | "forkarray"
+  | "nullcore"
+  | "rupturenode"
+  | "blightcoil"
+  | "reactorpile"
+  | "auroralance"
+  | "singularity";
 
 // The QUALITY tier on the five-rung ladder (specs/towers.md): 1 = Scrap, 2 = Tuned,
 // 3 = Charged, 4 = Primed, 5 = Tesla-Prime. The power axis; combining climbs one rung.
@@ -111,14 +141,16 @@ export interface StructureBase {
 // by a COMBINE (specs/build.md). Permanent — there is no selling.
 export interface Component extends StructureBase {
   kind: "component";
-  type: ComponentType;
-  tier: Tier;
-  targeting: TargetingMode; // "first" by default
+  type: ComponentType; // for a combo, the initiating ingredient's type (drives base tint only)
+  tier: Tier; // for a combo, always 5 (a sentinel; combo stats do not scale by tier)
+  combo?: ComboType; // set → this is a COMBINATION TOWER; stats come from COMBOS[combo]
+  targeting: TargetingMode; // "first" by default (unused by the non-firing Regulator)
   cooldown: number; // seconds until it may fire again
   fireAnim: number; // seconds since last shot (drives the firing sheet / muzzle)
   aimAngle: number; // the head's heading — tracks the current target
   kills: number; // units this component has destroyed (inspector tally, specs/towers.md)
   damageDealt: number; // total damage this component has applied (inspector tally)
+  auraBonus: number; // cached external aura buff (sum of nearby Regulator/aura auras, 0..1); recomputed on maze change
 }
 
 // A CANDIDATE: a rock placed THIS build phase that has rolled a random type + quality and
@@ -148,7 +180,12 @@ export type Structure = Component | Candidate | Blocker;
 export type Harvest =
   | { mode: "none" }
   | { mode: "keep"; id: number }
-  | { mode: "combine"; id: number; partnerId: number };
+  | { mode: "combine"; id: number; partnerId: number }
+  // A RECIPE combine (specs/build.md): the selected candidate `id` plus the exact
+  // ingredient structures `ingredientIds` (candidates and/or existing components matching a
+  // COMBOS recipe) fold into the combination tower `combo` at `id`'s footprint. Every
+  // consumed ingredient footprint hardens into a blocker (wall-neutral). Reversible until SEND.
+  | { mode: "recipe"; id: number; combo: ComboType; ingredientIds: number[] };
 
 // ---- The Load (units) ----------------------------------------------------------
 
@@ -173,6 +210,14 @@ export interface Unit {
   progress: number; // scalar "how far along the chain" for first/last targeting
   animT: number; // seconds alive (charge-cycle / boss wobble frame)
   hitFlash: number; // seconds since last hit (a brief flash)
+  // Status effects (specs/enemies.md, specs/towers.md). No armor/damage-type system —
+  // these only change speed or apply extra HP loss. Strongest active effect wins; a fresh
+  // hit refreshes its duration.
+  slowFactor: number; // effective-speed multiplier while slowed (1 = unslowed); min over active slows
+  slowUntil: number; // sim time (s) the slow expires
+  burnDps: number; // active overcurrent burn damage per second (0 = none)
+  burnUntil: number; // sim time (s) the burn expires
+  burnSourceId: number; // firing component id the burn attributes kills/damage back to
   dead: boolean;
 }
 
@@ -187,18 +232,25 @@ export interface Projectile {
   sourceId: number; // the firing component's id, so kills/damage attribute back to it
   type: ComponentType; // which component fired it (sprite + effect)
   tier: Tier; // for VFX intensity escalation
+  combo?: ComboType; // set → fired by a combination tower (drives its signature VFX)
   dmg: number;
   x: number;
   y: number;
   angle: number; // heading, for the sprite's rotation
   speed: number;
   targetId: number; // the homed unit
-  // Shot-shape snapshot (from CompStats).
-  splash: number; // Arc-Node: area-of-effect radius on impact (0 = single target)
-  chain: number; // Coil: extra leaps after the primary hit (0 = no chain)
-  chainRange: number; // Coil: max jump distance between hit units
-  chainFalloff: number; // Coil: damage multiplier applied per leap
-  hitIds: number[]; // units already struck (so a chain does not re-hit one)
+  // Shot-shape snapshot (from the firing tower's effective stats).
+  splash: number; // area-of-effect radius on impact (0 = single target)
+  chain: number; // extra leaps after the primary hit (0 = no chain)
+  chainRange: number; // max jump distance between hit units
+  chainFalloff: number; // damage multiplier applied per leap
+  // Status-effect payload carried to impact (specs/towers.md).
+  slowAmt: number; // 0 = no slow; else the fraction of speed removed
+  slowDur: number; // slow duration (s)
+  burnFrac: number; // 0 = no burn; else DoT-per-second as a fraction of this shot's dmg
+  burnDur: number; // burn duration (s)
+  isCrit: boolean; // this shot rolled a crit (dmg already multiplied) → bigger impact FX
+  hitIds: number[]; // units already struck (so a chain / splash does not re-hit one)
   dead: boolean;
 }
 
@@ -241,15 +293,18 @@ export type Phase = "build" | "wave";
 // HEADLINE). A firing effect's intensity escalates with the component's quality tier.
 export type FxKind =
   | "buildspark" // a rock is placed / a candidate revealed at the press
-  | "combine" // a combine resolves into a higher tier (also reused for a KEEP flourish)
-  | "arcbolt" // a Capacitor / Discharge Rig fires its single bolt
+  | "combine" // a combine resolves (quality-climb OR a combination-tower recipe) / a KEEP flourish
+  | "arcbolt" // a Capacitor / Discharge Rig / Choke fires its single bolt
   | "chain" // a Coil fires and chains between hit units
   | "spray" // an Emitter fires its fast spark fan
   | "ring" // an Arc-Node's shot lands (expanding discharge ring)
-  | "impact" // any projectile / arc hits a unit
+  | "impact" // any projectile / arc hits a unit (a crit hit is drawn bigger)
   | "death" // a unit dies (much larger for the Dynamo)
   | "leak" // a unit grounds out at the Collector
-  | "muzzle"; // a small glow at a firing head
+  | "muzzle" // a small glow at a firing head
+  | "slowhit" // a slow effect lands on a unit (frost / EM-drag snap)
+  | "burnhit" // an overcurrent burn ticks on a unit (ember flare)
+  | "aura"; // a support pulse ring at a Regulator / aura combo
 
 // A queued particle burst. Point effects use (x, y); a segment effect (arc bolt / a chain
 // leap) also carries the far end (x2, y2). `tier` drives the quality escalation; `big`
@@ -267,7 +322,7 @@ export interface FxEvent {
 // The produced sound cues (specs/assets.md "Audio"). Music is looped separately.
 // `settle` is the rock-settle thunk played when unkept candidates harden into blockers at
 // wave start (it replaces the old "slag" cue).
-export type Cue = "stamp" | "zap" | "chain" | "discharge" | "combine" | "kill" | "leak" | "settle";
+export type Cue = "stamp" | "zap" | "chain" | "discharge" | "combine" | "kill" | "leak" | "settle" | "slow" | "burn";
 
 // A hit-testable UI region emitted by the renderer and routed by the input layer.
 export interface Clickable {

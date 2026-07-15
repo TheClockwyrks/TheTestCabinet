@@ -20,12 +20,14 @@ import {
   BOARD_Y1,
   BUILDS_PER_LEVEL,
   COL,
+  COMBOS,
   COMPONENT_COLOR,
   COMPONENT_DESC,
   COMPONENT_LABEL,
   DIFFICULTY,
   DIFFICULTY_ORDER,
   FONT,
+  type ComboDef,
   FOOTPRINT_PX,
   GRID_COLS,
   GRID_ROWS,
@@ -398,10 +400,16 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   const sel = game.selected();
   if (sel && sel.kind === "component") {
     const ctr = footprintCenter(sel.col, sel.row);
-    drawRange(ctx, ctr.x, ctr.y, game.statsOf(sel).range, COMPONENT_COLOR[sel.type]);
+    const st = game.statsOf(sel);
+    const col = sel.combo ? COMBOS[sel.combo].color : COMPONENT_COLOR[sel.type];
+    if (st.fires && st.range > 0) drawRange(ctx, ctr.x, ctr.y, st.range, col);
+    // A Regulator or an aura combo also previews its aura RADIUS in the support color.
+    if (st.auraRadius > 0) drawAuraRange(ctx, ctr.x, ctr.y, st.auraRadius);
   } else if (sel && sel.kind === "candidate") {
     const ctr = footprintCenter(sel.col, sel.row);
-    drawRange(ctx, ctr.x, ctr.y, deriveStats(sel.type, sel.tier).range, COMPONENT_COLOR[sel.type]);
+    const st = deriveStats(sel.type, sel.tier);
+    if (st.range > 0) drawRange(ctx, ctr.x, ctr.y, st.range, COMPONENT_COLOR[sel.type]);
+    if (st.auraRadius > 0) drawAuraRange(ctx, ctr.x, ctr.y, st.auraRadius);
   }
 
   // The maze: firing components, this-level candidates, and inert blockers — every piece is
@@ -505,14 +513,140 @@ function drawRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
   ctx.restore();
 }
 
+// ---- code-drawn fallbacks (so the game is fully playable before new art lands) ----------
+// Every produced-sprite lookup below has a code fallback in the piece's accent, so a type or
+// combo with no PNG yet still reads at a glance (specs/assets.md — art is produced during a
+// run; the reference build must stand on its own until it is).
+
+// A simple base plate in the type/combo accent, drawn under a code head when no base sprite
+// exists.
+function codeBasePlate(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string): void {
+  ctx.save();
+  ctx.fillStyle = hexA(color, 0.16);
+  roundRect(ctx, cx - size / 2 + 3, cy - size / 2 + 3, size - 6, size - 6, 5);
+  ctx.fill();
+  ctx.strokeStyle = hexA(color, 0.5);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// A rotating firing head (a barrel + core) in the accent — the code stand-in for a produced
+// head sprite. Angle 0 points right, matching the produced heads.
+function codeHead(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, angle: number, color: string): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.fillStyle = hexA(color, 0.9);
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = hexA(color, 0.85);
+  roundRect(ctx, size * 0.05, -size * 0.09, size * 0.4, size * 0.18, 3);
+  ctx.fill();
+  ctx.fillStyle = hexA(COL.spark, 0.75);
+  ctx.fillRect(size * 0.4, -size * 0.05, size * 0.08, size * 0.1);
+  ctx.restore();
+}
+
+// The Regulator's read: a pulsing hex support core with NO barrel — it must never look like it
+// shoots (specs/towers.md — a non-firing buff node).
+function supportCore(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string): void {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 4);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+    const r = size * 0.28;
+    const px = Math.cos(a) * r;
+    const py = Math.sin(a) * r;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = hexA(color, 0.45 + 0.2 * pulse);
+  ctx.fill();
+  ctx.strokeStyle = hexA(color, 0.9);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = hexA(COL.spark, 0.55 + 0.3 * pulse);
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// A faint aura pulse ring drawn ON the board around an aura source (Regulator / aura combo), so
+// its support role reads without cluttering — the full aura RADIUS shows only when selected.
+function auraPulse(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 3);
+  ring(ctx, cx, cy, size / 2 + 4 + pulse * 2, COL.regulator, 0.3 + 0.25 * pulse, 1.5);
+}
+
+// The full aura RADIUS ring (support color, dashed) — shown when an aura tower is selected, so
+// the player sees exactly which towers a Regulator / aura combo buffs (specs/towers.md).
+function drawAuraRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  ctx.save();
+  ctx.strokeStyle = hexA(COL.regulator, 0.7);
+  ctx.fillStyle = hexA(COL.regulator, 0.05);
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// The gold combo badge — a COL.combo diamond with the combo's initial, so a combination tower
+// reads instantly as a special TERMINAL tower, never a tiered base component (no pips/Roman).
+function comboBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, initial: string): void {
+  const bx = cx - size / 2 + 9;
+  const by = cy - size / 2 + 9;
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = hexA(COL.combo, 0.95);
+  roundRect(ctx, -7, -7, 14, 14, 2);
+  ctx.fill();
+  ctx.strokeStyle = hexA("#05080c", 0.6);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+  text(ctx, initial, bx, by + 0.5, 9, COL.void, "center", "800");
+}
+
+// The one-line ability tag list for a combo recipe preview (splash·burn·crit …).
+function abilityTags(def: ComboDef): string {
+  const t: string[] = [];
+  if (def.splash > 0) t.push("splash");
+  if (def.chainLeaps > 0) t.push("chain");
+  if (def.slowAmt > 0) t.push("slow");
+  if (def.burnFrac > 0) t.push("burn");
+  if (def.critChance > 0) t.push("crit");
+  if (def.multishot > 1) t.push("multi");
+  if (def.auraRadius > 0) t.push("aura");
+  return t.join("·");
+}
+
 // A single component: fixed base + rotatable per-tier head, the tier finish escalating each
 // rung (glow, an at-rest arc from Primed up), the firing cycle when it just fired, plus a
-// glanceable quality read — a tier ring, pips, and a Roman badge (specs/towers.md).
+// glanceable quality read — a tier ring, pips, and a Roman badge (specs/towers.md). A
+// combination tower (c.combo set) is drawn distinctly by drawComboTower; the Regulator draws a
+// non-firing support core instead of a gun head.
 function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, A: Assets): void {
   const ctr = footprintCenter(c.col, c.row);
+  const size = FOOTPRINT_PX;
+
+  // A COMBINATION TOWER reads as its own special tower, not a tiered base component.
+  if (c.combo) {
+    drawComboTower(ctx, game, c, A, ctr, size);
+    return;
+  }
+
   const tierC = TIER_COLOR[c.tier];
   const typeC = COMPONENT_COLOR[c.type];
-  const size = FOOTPRINT_PX;
+  const nonFiring = c.type === "regulator"; // the support node never fires
 
   // Type-coded mount ring beneath the base.
   ring(ctx, ctr.x, ctr.y, size / 2 - 2, typeC, 0.5, 2);
@@ -522,6 +656,7 @@ function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, 
 
   const base = A.componentBase(c.type);
   if (base) blit(ctx, base, ctr.x, ctr.y, size, size, 0);
+  else codeBasePlate(ctx, ctr.x, ctr.y, size, typeC);
 
   // High tiers arc continuously at rest — a Tesla-Prime "wreathed in arcs" read.
   if (c.tier >= 4) {
@@ -540,18 +675,28 @@ function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, 
     ctx.restore();
   }
 
-  const head = A.componentHead(c.type, c.tier);
-  if (head) blit(ctx, head, ctr.x, ctr.y, size, size, c.aimAngle);
+  if (nonFiring) {
+    // Regulator: a support core (NO gun head) + a faint aura pulse — it never shoots, it buffs.
+    supportCore(ctx, ctr.x, ctr.y, size, typeC);
+    auraPulse(ctx, ctr.x, ctr.y, size);
+  } else {
+    const head = A.componentHead(c.type, c.tier);
+    if (head) blit(ctx, head, ctr.x, ctr.y, size, size, c.aimAngle);
+    else codeHead(ctx, ctr.x, ctr.y, size, c.aimAngle, typeC);
+    // Choke reads icy (slow / EM-drag); Rectifier reads ember (overcurrent burn).
+    if (c.type === "choke") ring(ctx, ctr.x, ctr.y, size / 2 - 4, COL.choke, 0.35 + 0.2 * Math.sin(time * 3 + c.id), 1);
+    else if (c.type === "rectifier") glow(ctx, ctr.x, ctr.y, 10, COL.rectifier, 0.16 + 0.12 * (0.5 + 0.5 * Math.sin(time * 9 + c.id)));
 
-  // Firing cycle overlay right after a shot (specs/assets.md — components visibly discharge).
-  const fire = A.componentFire(c.type);
-  if (fire.length && c.fireAnim < 0.22) {
-    const idx = Math.min(fire.length - 1, Math.floor((c.fireAnim / 0.22) * fire.length));
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.9;
-    blit(ctx, fire[idx]!, ctr.x, ctr.y, size, size, c.aimAngle);
-    ctx.restore();
+    // Firing cycle overlay right after a shot (specs/assets.md — components visibly discharge).
+    const fire = A.componentFire(c.type);
+    if (fire.length && c.fireAnim < 0.22) {
+      const idx = Math.min(fire.length - 1, Math.floor((c.fireAnim / 0.22) * fire.length));
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.9;
+      blit(ctx, fire[idx]!, ctr.x, ctr.y, size, size, c.aimAngle);
+      ctx.restore();
+    }
   }
 
   // Selection outline.
@@ -578,6 +723,85 @@ function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, 
   ctx.fillStyle = hexA("#05080c", 0.75);
   ctx.fill();
   text(ctx, ROMAN[c.tier], bx + bw / 2, by + 6, 8, tierC, "center", "800");
+}
+
+// A COMBINATION TOWER (specs/towers.md, specs/build.md): a single-grade, terminal tower with
+// its own accent + a gold combo badge and a rotating head (combos fire). No quality tier is
+// drawn (no pips / Roman). An aura combo also shows the faint on-board aura pulse.
+function drawComboTower(ctx: CanvasRenderingContext2D, game: Game, c: Component, A: Assets, ctr: { x: number; y: number }, size: number): void {
+  const def = COMBOS[c.combo!];
+  const comboC = def.color;
+  const stats = game.statsOf(c);
+
+  // A bright accent mount + a gold shimmer, so it reads as a keystone tower.
+  ring(ctx, ctr.x, ctr.y, size / 2 - 2, comboC, 0.6, 2.5);
+  glow(ctx, ctr.x, ctr.y, 18, comboC, 0.2);
+  glow(ctx, ctr.x, ctr.y, 12, COL.combo, 0.12 + 0.06 * (0.5 + 0.5 * Math.sin(time * 3 + c.id)));
+
+  const base = A.comboBase(c.combo!);
+  if (base) blit(ctx, base, ctr.x, ctr.y, size, size, 0);
+  else {
+    // Code-drawn octagonal base plate in the combo accent.
+    ctx.save();
+    ctx.translate(ctr.x, ctr.y);
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const r = size / 2 - 3;
+      i === 0 ? ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fillStyle = hexA(comboC, 0.22);
+    ctx.fill();
+    ctx.strokeStyle = hexA(comboC, 0.7);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Combos are always "charged" — a couple of slow at-rest arcs.
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = hexA(COL.combo, 0.4);
+  ctx.lineWidth = 1;
+  for (let k = 0; k < 3; k++) {
+    const a0 = (k / 3) * Math.PI * 2 + time * 2.2;
+    ctx.beginPath();
+    ctx.moveTo(ctr.x + Math.cos(a0) * 6, ctr.y + Math.sin(a0) * 6);
+    ctx.lineTo(ctr.x + Math.cos(a0 + 1.1) * (size / 2 - 3), ctr.y + Math.sin(a0 + 1.1) * (size / 2 - 3));
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Rotating head (combos fire) — produced sprite if present, else a code head in the accent.
+  const head = A.comboHead(c.combo!);
+  if (head) blit(ctx, head, ctr.x, ctr.y, size, size, c.aimAngle);
+  else codeHead(ctx, ctr.x, ctr.y, size, c.aimAngle, comboC);
+
+  // Firing cycle overlay right after a shot.
+  const fire = A.comboFire(c.combo!);
+  if (fire.length && c.fireAnim < 0.22) {
+    const idx = Math.min(fire.length - 1, Math.floor((c.fireAnim / 0.22) * fire.length));
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.9;
+    blit(ctx, fire[idx]!, ctr.x, ctr.y, size, size, c.aimAngle);
+    ctx.restore();
+  }
+
+  // An aura combo shows the same on-board support pulse a Regulator does.
+  if (stats.auraRadius > 0) auraPulse(ctx, ctr.x, ctr.y, size);
+
+  // Selection outline.
+  if (game.selectedId === c.id) {
+    ctx.strokeStyle = COL.text;
+    ctx.lineWidth = 2;
+    roundRect(ctx, ctr.x - size / 2, ctr.y - size / 2, size, size, 5);
+    ctx.stroke();
+  }
+
+  // The gold combo badge (never tier pips / Roman).
+  comboBadge(ctx, ctr.x, ctr.y, size, def.name.charAt(0));
 }
 
 // An inert BLOCKER — a hardened fused-scrap rock with no head, unmistakably dead: it walls
@@ -616,13 +840,20 @@ function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, 
   // A faint tier glow so quality still reads, but muted (this rock is not committed yet).
   glow(ctx, ctr.x, ctr.y, 10 + c.tier * 3, tierC, 0.08 + 0.03 * c.tier);
 
-  // The rolled component sprite, dimmed.
+  // The rolled component sprite, dimmed (with code fallbacks so any rolled type still reads).
+  // A rolled Regulator shows its non-firing support core instead of a gun head.
   ctx.save();
   ctx.globalAlpha = 0.6;
   const base = A.componentBase(c.type);
   if (base) blit(ctx, base, ctr.x, ctr.y, size, size, 0);
-  const head = A.componentHead(c.type, c.tier);
-  if (head) blit(ctx, head, ctr.x, ctr.y, size, size, 0);
+  else codeBasePlate(ctx, ctr.x, ctr.y, size, typeC);
+  if (c.type === "regulator") {
+    supportCore(ctx, ctr.x, ctr.y, size, typeC);
+  } else {
+    const head = A.componentHead(c.type, c.tier);
+    if (head) blit(ctx, head, ctr.x, ctr.y, size, size, 0);
+    else codeHead(ctx, ctr.x, ctr.y, size, 0, typeC);
+  }
   ctx.restore();
 
   // Uncommitted pulsing dashed outline in the type accent.
@@ -645,8 +876,8 @@ function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, 
   text(ctx, ROMAN[c.tier], bx + bw / 2, by + 6, 8, tierC, "center", "800");
 
   if (kept) {
-    // The level's committed harvest — a bright marker ring + a KEEP / COMBINE tag.
-    const label = game.harvest.mode === "combine" ? "COMBINE" : "KEEP";
+    // The level's committed harvest — a bright marker ring + a KEEP / COMBINE / COMBO tag.
+    const label = game.harvest.mode === "combine" ? "COMBINE" : game.harvest.mode === "recipe" ? "COMBO" : "KEEP";
     glow(ctx, ctr.x, ctr.y, size / 2 + 4, COL.charge, 0.2 + 0.1 * pulse);
     ring(ctx, ctr.x, ctr.y, size / 2 + 2, COL.charge, 0.9, 2);
     const tw = 8 + label.length * 6;
@@ -734,6 +965,18 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, A: Assets): void {
     ctx.beginPath();
     ctx.arc(u.x, u.y, u.radius, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  // Status readouts (specs/enemies.md, specs/towers.md) — kept small and off the health bar.
+  // Slowed: a thin icy ring + faint cyan wash (Choke's EM-drag). Burning: an ember flicker
+  // (Rectifier's overcurrent DoT). Both read at 2× speed without clutter.
+  if (u.slowFactor < 1) {
+    ring(ctx, u.x, u.y, u.radius + 3, COL.choke, 0.75, 1.5);
+    glow(ctx, u.x, u.y, u.radius + 2, COL.choke, 0.16);
+  }
+  if (u.burnDps > 0) {
+    const fl = 0.22 + 0.18 * (0.5 + 0.5 * Math.sin(time * 22 + u.id));
+    glow(ctx, u.x, u.y, u.radius + 4, COL.rectifier, fl);
   }
 
   // Hit flash.
@@ -953,17 +1196,37 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   }
 
   const isCand = s.kind === "candidate";
-  const stats = isCand ? deriveStats(s.type, s.tier) : game.statsOf(s);
-  const typeC = COMPONENT_COLOR[s.type];
+  const comp = s.kind === "component" ? s : null;
+  const isCombo = comp !== null && !!comp.combo;
+  const stats = isCand ? deriveStats(s.type, s.tier) : game.statsOf(comp!);
 
-  const head = A.componentHead(s.type, s.tier);
-  if (head) blit(ctx, head, x + 18, y + 20, 40, 40, 0);
-  text(ctx, COMPONENT_LABEL[s.type], x + 44, y + 12, 13, typeC, "left", "700", 0.5);
-  text(ctx, `${TIER_NAME[s.tier]} · ${ROMAN[s.tier]}`, x + 44, y + 28, 11, TIER_COLOR[s.tier], "left", "600", 0.5);
-  text(ctx, isCand ? "UNCOMMITTED ROLL" : "HITS GROUND & AIR", x + 44, y + 42, 8, isCand ? COL.charge : COL.text3, "left", "500", 0.5);
+  // Header. A COMBINATION TOWER reads by its combo name + gold badge (no quality tier); a base
+  // component / candidate reads by its type + quality rung. A Regulator shows its support core.
+  if (isCombo) {
+    const def = COMBOS[comp!.combo!];
+    const chead = A.comboHead(comp!.combo!);
+    if (chead) blit(ctx, chead, x + 18, y + 20, 40, 40, 0);
+    else codeHead(ctx, x + 18, y + 20, 40, 0, def.color);
+    comboBadge(ctx, x + 18, y + 20, 40, def.name.charAt(0));
+    text(ctx, def.name, x + 44, y + 12, 13, def.color, "left", "700", 0.3);
+    text(ctx, "COMBINATION TOWER", x + 44, y + 28, 9, COL.combo, "left", "700", 0.3);
+    text(ctx, "TERMINAL · HITS GROUND & AIR", x + 44, y + 42, 8, COL.text3, "left", "500", 0.3);
+  } else {
+    const typeC = COMPONENT_COLOR[s.type];
+    const head = A.componentHead(s.type, s.tier);
+    if (head) blit(ctx, head, x + 18, y + 20, 40, 40, 0);
+    else if (s.type === "regulator") supportCore(ctx, x + 18, y + 20, 40, typeC);
+    else codeHead(ctx, x + 18, y + 20, 40, 0, typeC);
+    text(ctx, COMPONENT_LABEL[s.type], x + 44, y + 12, 13, typeC, "left", "700", 0.5);
+    text(ctx, `${TIER_NAME[s.tier]} · ${ROMAN[s.tier]}`, x + 44, y + 28, 11, TIER_COLOR[s.tier], "left", "600", 0.5);
+    const sub = isCand ? "UNCOMMITTED ROLL" : !stats.fires ? "SUPPORT · DOES NOT FIRE" : "HITS GROUND & AIR";
+    const subC = isCand ? COL.charge : !stats.fires ? COL.regulator : COL.text3;
+    text(ctx, sub, x + 44, y + 42, 8, subC, "left", "500", 0.5);
+  }
 
-  // What this component does (specs/towers.md) — so the player knows its role at a glance.
-  const descEnd = wrap(ctx, COMPONENT_DESC[s.type], x, y + 68, w, 10, COL.text2, 14);
+  // What this piece does (specs/towers.md) — its role at a glance.
+  const desc = isCombo ? COMBOS[comp!.combo!].desc : COMPONENT_DESC[s.type];
+  const descEnd = wrap(ctx, desc, x, y + 68, w, 10, COL.text2, 14);
 
   let row = descEnd + 4;
   const line = (k: string, v: string, col: string = COL.text): void => {
@@ -971,30 +1234,79 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     text(ctx, v, x + w, row, 12, col, "right", "700");
     row += 18;
   };
-  line("DAMAGE", `${stats.dmg}`);
-  line("RANGE", `${Math.round(stats.range)}`);
-  line("FIRE RATE", `${stats.fireRate.toFixed(1)}/s`);
-  if (stats.splash > 0) line("SPLASH", `${Math.round(stats.splash)}`, COL.arcnode);
-  if (stats.chainLeaps > 0) line("CHAIN", `+${stats.chainLeaps} leaps`, COL.coil);
-  if (!isCand) {
-    line("TARGET", TARGETING_LABEL[s.targeting], COL.integrity);
+  if (!stats.fires) {
+    // A Regulator (non-firing support node): show its aura instead of dmg / rate / targeting.
+    line("AURA RADIUS", `${Math.round(stats.auraRadius)}`, COL.regulator);
+    line("DMG BONUS", `+${Math.round(stats.auraBonus * 100)}%`, COL.regulator);
+  } else {
+    line("DAMAGE", `${stats.dmg}`);
+    line("RANGE", `${Math.round(stats.range)}`);
+    line("FIRE RATE", `${stats.fireRate.toFixed(1)}/s`);
+    if (stats.splash > 0) line("SPLASH", `${Math.round(stats.splash)}`, COL.arcnode);
+    if (stats.chainLeaps > 0) line("CHAIN", `+${stats.chainLeaps} leaps`, COL.coil);
+    if (stats.slowAmt > 0) line("SLOW", `-${Math.round(stats.slowAmt * 100)}% · ${stats.slowDur.toFixed(1)}s`, COL.choke);
+    if (stats.burnFrac > 0) line("BURN", `${Math.round(stats.burnFrac * 100)}%/s · ${stats.burnDur.toFixed(1)}s`, COL.rectifier);
+    if (stats.critChance > 0) line("CRIT", `${Math.round(stats.critChance * 100)}% · ×${stats.critMult.toFixed(1)}`, COL.combo);
+    if (stats.multishot > 1) line("MULTISHOT", `${stats.multishot} targets`, COL.emitter);
+    if (stats.auraRadius > 0) line("AURA", `+${Math.round(stats.auraBonus * 100)}% · r${Math.round(stats.auraRadius)}`, COL.regulator);
+    if (comp && comp.auraBonus > 0) line("AURA BUFF", `+${Math.round(comp.auraBonus * 100)}%`, COL.regulator);
+  }
+  if (comp) {
+    if (stats.fires) line("TARGET", TARGETING_LABEL[comp.targeting], COL.integrity);
     // Per-component performance tally (specs/towers.md) — like Meltdown's tower inspector.
-    line("KILLS", `${s.kills}`, COL.charge);
-    line("DMG DEALT", `${Math.round(s.damageDealt).toLocaleString()}`, COL.spark);
+    line("KILLS", `${comp.kills}`, COL.charge);
+    line("DMG DEALT", `${Math.round(comp.damageDealt).toLocaleString()}`, COL.spark);
   }
 
   if (isCand) {
-    // The one keep-or-combine choice per level (specs/build.md). Reversible until SEND.
-    const kept = game.keptId() === s.id;
-    const canComb = game.canCombine(s);
-    const nt = Math.min(MAX_TIER, s.tier + 1) as Tier;
-    const by = baseY - 64; // keep/combine row; dismantle sits below it
-    // What a combine would produce (specs/build.md) — so the player knows the merge target.
+    const cand = s as Candidate;
+    const by = baseY - 64; // quality keep/combine row; dismantle sits below it
+
+    // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — the headline of
+    // the combine system. Each reachable combo is a one-click "COMBINE → <tower>" that folds the
+    // exact ingredients on the board (this candidate + matching partners) into one terminal combo.
+    const recipes = game.reachableCombosFor(cand.id);
+    const h0 = game.harvest;
+    const committedCombo = h0.mode === "recipe" && h0.id === cand.id ? h0.combo : null;
+    if (recipes.length > 0) {
+      text(ctx, "COMBINE → TOWER", x, row + 4, 9, COL.combo, "left", "700", 0.5);
+      let ry = row + 16;
+      const rh = 30;
+      const maxRy = by - 40; // keep clear of the quality keep/combine block below
+      let shown = 0;
+      for (const rec of recipes) {
+        if (ry + rh > maxRy) break;
+        const def = COMBOS[rec.combo];
+        const on = committedCombo === rec.combo;
+        roundRect(ctx, x, ry, w, rh, 5);
+        ctx.fillStyle = on ? hexA(def.color, 0.24) : hexA(def.color, 0.1);
+        ctx.fill();
+        ctx.strokeStyle = on ? def.color : hexA(def.color, 0.5);
+        ctx.lineWidth = on ? 2 : 1;
+        ctx.stroke();
+        text(ctx, `${def.name}${on ? " ✓" : ""}`, x + 8, ry + 10, 10, def.color, "left", "700", 0.3);
+        const tags = abilityTags(def);
+        const prev = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
+        text(ctx, prev, x + 8, ry + 22, 8, COL.text2, "left", "500", 0.2);
+        clicks.push({ x, y: ry, w, h: rh, action: "comborecipe", payload: rec.combo });
+        ry += rh + 4;
+        shown++;
+      }
+      if (shown < recipes.length && ry + 2 < by - 40)
+        text(ctx, `+${recipes.length - shown} more (dismantle to free space)`, x, ry + 2, 8, COL.text3, "left", "500");
+    }
+
+    // The one QUALITY keep-or-combine choice per level (specs/build.md). Reversible until SEND.
+    const kept = game.keptId() === cand.id;
+    const canComb = game.canCombine(cand);
+    const nt = Math.min(MAX_TIER, cand.tier + 1) as Tier;
     if (canComb) {
-      text(ctx, `COMBINE → ${TIER_NAME[nt]} ${COMPONENT_LABEL[s.type]} · ${ROMAN[nt]}`, x, by - 26, 9, TIER_COLOR[nt], "left", "700", 0.3);
-      text(ctx, `DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}`, x, by - 14, 9, COL.text3, "left", "600", 0.3);
+      text(ctx, `COMBINE → ${TIER_NAME[nt]} ${COMPONENT_LABEL[cand.type]} · ${ROMAN[nt]}`, x, by - 26, 9, TIER_COLOR[nt], "left", "700", 0.3);
+      text(ctx, `DMG ${stats.dmg} → ${deriveStats(cand.type, nt).dmg}`, x, by - 14, 9, COL.text3, "left", "600", 0.3);
     } else if (kept) {
-      const msg = game.harvest.mode === "combine" ? "COMBINING THIS LEVEL" : "KEPT THIS LEVEL";
+      const h = game.harvest;
+      const msg =
+        h.mode === "combine" ? "COMBINING THIS LEVEL" : h.mode === "recipe" ? `ASSEMBLING ${COMBOS[h.combo].name}` : "KEPT THIS LEVEL";
       text(ctx, msg, x, by - 14, 10, COL.charge, "left", "700", 1);
     } else {
       text(ctx, "KEEP ONE ROLL PER LEVEL", x, by - 14, 10, COL.text3, "left", "600", 1);
@@ -1011,13 +1323,14 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     // Dismantle clears a misplaced rock's footprint — no refund (specs/towers.md).
     button(ctx, clicks, x, baseY - 26, w, 24, "DISMANTLE — NO REFUND", "remove", COL.alert, true);
   } else {
-    // A firing component: cycle its targeting priority (specs/towers.md), and — between waves
-    // only — dismantle it if it was misplaced.
+    // A firing component (base OR combination tower) cycles its TARGET; the non-firing Regulator
+    // has no targeting. Between waves, any component can be dismantled if it was misplaced.
+    const hasTarget = stats.fires;
     if (inBuild) {
-      button(ctx, clicks, x, baseY - 60, w, 26, `TARGET · ${TARGETING_LABEL[s.targeting]}`, "targeting", COL.integrity, true);
-      button(ctx, clicks, x, baseY - 28, w, 26, "DISMANTLE COMPONENT", "remove", COL.alert, true);
-    } else {
-      button(ctx, clicks, x, baseY - 26, w, 26, `TARGET · ${TARGETING_LABEL[s.targeting]}`, "targeting", COL.integrity, true);
+      if (hasTarget) button(ctx, clicks, x, baseY - 60, w, 26, `TARGET · ${TARGETING_LABEL[comp!.targeting]}`, "targeting", COL.integrity, true);
+      button(ctx, clicks, x, baseY - 28, w, 26, isCombo ? "DISMANTLE TOWER" : "DISMANTLE COMPONENT", "remove", COL.alert, true);
+    } else if (hasTarget) {
+      button(ctx, clicks, x, baseY - 26, w, 26, `TARGET · ${TARGETING_LABEL[comp!.targeting]}`, "targeting", COL.integrity, true);
     }
   }
 }
@@ -1281,9 +1594,10 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
     ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to arm a BLANK rock, then drop it on a legal spot — the instant it lands it ROLLS a random component type and quality (weighted low). Place up to 5 rocks per level, 10 Charge each; keep placing back-to-back until the allowance or Charge runs out."],
     ["KEEP ONE PER LEVEL", "Select a placed rock and KEEP (K) exactly ONE per level to make it a firing tower — every rock you don't keep hardens into an inert BLOCKER. Or COMBINE (C) two same-TYPE + same-QUALITY rolls into one a tier higher (the inspector shows what it becomes), which counts as the level's keep. Choose KEEP or COMBINE, then SEND: the mobs enter. Misplaced one? Between waves DISMANTLE (X) any selected rock, blocker, or component to clear its footprint — no refund (dismantling never gives Charge or a stamp back, so you cannot re-roll for free)."],
     ["UPGRADE QUALITY", "Spend Charge on UPGRADE QUALITY (U) to raise your Refinement level R0→R5, biasing every future roll toward the higher tiers of the ladder Scrap→Tuned→Charged→Primed→Tesla-Prime. Refinement is the odds; combining is the direct climb."],
-    ["COMPONENTS", "Capacitor (single bolt), Coil (chain-lightning), Emitter (rapid spark), Arc-Node (area discharge), Discharge Rig (heavy long-range bolt). All hit ground and air. Select one to read its stats and cycle its TARGET (T). The Filament flies and ignores the maze — air only arrives every 4th wave."],
+    ["COMPONENTS", "Eight base types: Capacitor (single bolt), Coil (chain-lightning), Emitter (rapid spark), Arc-Node (area discharge), Discharge Rig (heavy long-range bolt), Choke (slows what it hits), Rectifier (overcurrent burn / damage-over-time), and Regulator (a NON-firing support node whose aura buffs nearby towers). All firing types hit ground and air. Select one to read its stats and cycle its TARGET (T). The Filament flies and ignores the maze — air only arrives every 4th wave."],
+    ["COMBINATION TOWERS", "The apex play: some multisets of base rolls fold into a unique COMBINATION TOWER (splash + burn + crit + aura in one). Select a candidate — the inspector lists every combo it can assemble right now; click COMBINE → <tower> to commit it as the level's harvest (it consumes the ingredients, which harden into wall). Combos are single-grade and terminal (marked with a gold badge)."],
     ["ECONOMY", "Kills pay Charge bounty; clearing a wave pays a bonus; banked Charge earns interest each build phase. Build phases are UNTIMED — take your time, then SEND when ready. There is no selling."],
-    ["CONTROLS", "B stamp · click place · click select · K keep · C combine · X dismantle (between waves) · U upgrade quality · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · Esc cancel then pause menu · M mute."],
+    ["CONTROLS", "B stamp · click place · click select · K keep · C combine · G assemble combination tower · X dismantle (between waves) · U upgrade quality · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · Esc cancel then pause menu · M mute."],
   ];
   let y = 100;
   for (const [k, v] of lines) {

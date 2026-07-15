@@ -30,6 +30,8 @@
 
 import {
   BUILDS_PER_LEVEL,
+  COMBOS,
+  COMBO_ORDER,
   COMPONENT_ORDER,
   DIFFICULTY,
   FIXED_STEP,
@@ -44,11 +46,11 @@ import {
 import { CAMPAIGN } from "../src/mode";
 import { Game } from "../src/sim";
 import { Rng } from "../src/rng";
-import type { Component, ComponentType, MapDef, Refinement, Tier } from "../src/types";
+import type { ComboType, Component, ComponentType, MapDef, Refinement, Tier } from "../src/types";
 import type { Anchor } from "./mazes";
 
-export { FIXED_STEP, DIFFICULTY, mapById, COMPONENT_ORDER, MAX_TIER, MAX_REFINEMENT, STAMP_COST, BUILDS_PER_LEVEL };
-export type { DifficultyDef, ComponentType, Tier, Refinement, Component, MapDef, Anchor };
+export { FIXED_STEP, DIFFICULTY, mapById, COMBOS, COMBO_ORDER, COMPONENT_ORDER, MAX_TIER, MAX_REFINEMENT, STAMP_COST, BUILDS_PER_LEVEL };
+export type { DifficultyDef, ComboType, ComponentType, Tier, Refinement, Component, MapDef, Anchor };
 
 // Build a fresh, started game on `map`/`diff`. The controller drives it only through the
 // input-free control + dev API; the game seeds its own wave composition per wave, so the
@@ -80,7 +82,9 @@ export interface Controller {
 
 // ---- The modeled scrap-press roll (sampled off the REAL odds) -------------------
 
-// Roll a rock's TYPE — uniform 20% each (specs/build.md), independent of Refinement.
+// Roll a rock's TYPE — uniform 12.5% each across the EIGHT base types (specs/build.md),
+// independent of Refinement. COMPONENT_ORDER now carries choke / rectifier / regulator too, so
+// sampling its length reproduces the 1/8 uniform draw without hardcoding.
 export function rollType(rng: Rng): ComponentType {
   return COMPONENT_ORDER[Math.min(COMPONENT_ORDER.length - 1, Math.floor(rng.next() * COMPONENT_ORDER.length))]!;
 }
@@ -109,6 +113,23 @@ export function components(g: Game): Component[] {
 }
 export function activeComponents(g: Game): number {
   return components(g).length;
+}
+
+// A firing BASE component (a kept/climbed rock, not an assembled combination tower). These are
+// the FEEDSTOCK the harness climbs and the ingredients a recipe consumes.
+export function baseComponents(g: Game): Component[] {
+  return components(g).filter((c) => !c.combo);
+}
+// The assembled COMBINATION TOWERS standing on the board.
+export function comboComponents(g: Game): Array<Component & { combo: ComboType }> {
+  return components(g).filter((c): c is Component & { combo: ComboType } => !!c.combo);
+}
+// How many DISTINCT combination-tower kinds a strategy has assembled (the combo-gate read: a
+// competent late game reaches ≥1–2, a no-combo line reaches 0).
+export function distinctComboCount(g: Game): number {
+  const set = new Set<ComboType>();
+  for (const c of comboComponents(g)) set.add(c.combo);
+  return set.size;
 }
 
 // How many stamps this build phase can afford: the 5-stamp allowance, capped by Charge at
@@ -156,10 +177,22 @@ export function climbExisting(g: Game, type: ComponentType, tier: Tier): boolean
 }
 
 // The value of building a carry of `type` at `tier`: higher tier first, then a preference for
-// the AREA / CHAIN types — an Arc-Node's splash and a Coil's leaps at a high tier clear whole
-// swarms, so a few AoE carries add COVERAGE a wide single-target line cannot, which is what
-// makes trading breadth for a merged carry worth it (specs/towers.md §5.3).
-const CARRY_TYPE_SCORE: Record<ComponentType, number> = { arcnode: 4, coil: 3, emitter: 2, discharge: 1, capacitor: 0 };
+// the AREA / CHAIN / status types — an Arc-Node's splash and a Coil's leaps at a high tier clear
+// whole swarms, and a Rectifier's burn / Choke's slow add pressure a plain single-target line
+// cannot, which is what makes trading breadth for a merged carry worth it (specs/towers.md §5.3).
+// All EIGHT base types must appear (Record<ComponentType>). The Regulator never fires, so it
+// scores as pure maze/support — the LOWEST carry value (you do not climb a non-firing node for
+// DPS; its worth is the aura, handled where the maze is walled in).
+const CARRY_TYPE_SCORE: Record<ComponentType, number> = {
+  arcnode: 7,
+  coil: 6,
+  discharge: 5,
+  rectifier: 4,
+  choke: 3,
+  emitter: 2,
+  capacitor: 1,
+  regulator: 0,
+};
 function carryScore(type: ComponentType, tier: Tier): number {
   return tier * 10 + CARRY_TYPE_SCORE[type];
 }
@@ -211,6 +244,44 @@ export function layBlocker(g: Game, at: Anchor): boolean {
   return g.devBlocker(at.col, at.row) !== null;
 }
 
+// ---- Combination towers (specs/towers.md, specs/build.md — the redesign headline) ----------
+//
+// Base towers are now WEAK feedstock; the power comes from assembling COMBINATION TOWERS via a
+// RECIPE (a multiset of base (type,tier) ingredients folds into one fixed, far stronger combo).
+//
+// The harness models a competent player ASSEMBLING a combo, but it does not book-keep the exact
+// ingredient multiset a real recipe demands (which T5 arcnode etc. the player rolled/merged) —
+// that would require replaying the whole random press. Instead the COST of a combo is modeled
+// faithfully to the mechanic: a recipe CONSUMES ingredient structures off the board, each
+// hardening into a blocker (wall-neutral). So assembling a combo eats `recipe.length − 1` of the
+// firing line's WEAKEST base towers as feedstock (the initiator being the level's own harvest),
+// then stands the combo up with the deterministic `devPlaceCombo`, whose stats are EXACT once
+// placed (the real sim fires it with its real splash/burn/crit/multishot/aura). The abstraction
+// is only in WHICH ingredients were spent and WHEN a player could afford the high-tier ones —
+// paced by the strategy's combo schedule and gated on having the feedstock to spend.
+
+// The `k` weakest firing BASE towers (lowest carryScore = lowest tier, then least-useful type),
+// the ones a competent player would feed into a recipe first. Returns fewer than k if the line
+// is not yet that wide.
+export function weakestBaseComponents(g: Game, k: number): Component[] {
+  return baseComponents(g)
+    .slice()
+    .sort((a, b) => carryScore(a.type, a.tier) - carryScore(b.type, b.tier))
+    .slice(0, Math.max(0, k));
+}
+
+// Assemble a combination tower: spend `ingredients` (existing base towers) as recipe feedstock —
+// each hardens into a blocker in place (wall-neutral, the maze wall is preserved) — and stand the
+// combo up at the nearest legal anchor to `at`. Returns true if it landed. Mirrors the real
+// resolveCombo: consumed ingredient footprints stay walls, the combo occupies one firing slot.
+export function assembleCombo(g: Game, combo: ComboType, ingredients: Component[], at: Anchor): boolean {
+  for (const ing of ingredients) {
+    g.structures = g.structures.filter((s) => s.id !== ing.id);
+    g.devBlocker(ing.col, ing.row); // the spent ingredient's footprint stays a wall
+  }
+  return g.devPlaceCombo(combo, at.col, at.row) !== null;
+}
+
 // Point Discharge Rigs at the STRONGEST unit (anti-tank / boss); everything else keeps FIRST
 // (furthest along the chain), the best anti-leak default (specs/towers.md, specs/controls.md).
 export function retarget(g: Game): void {
@@ -237,8 +308,10 @@ export function chainPathLength(g: Game): number {
   return total;
 }
 
+// The mean quality of the BASE firing line (combos are single-grade / terminal, so their
+// sentinel tier does not describe "how far the ladder climbed").
 function meanTierOf(g: Game): number {
-  const cs = components(g);
+  const cs = baseComponents(g);
   if (cs.length === 0) return 0;
   return cs.reduce((a, c) => a + c.tier, 0) / cs.length;
 }
@@ -256,6 +329,8 @@ export interface WaveResult {
   maxTier: number;
   meanTier: number;
   pathLen: number; // shortest chain route length in px (the "did it maze" read)
+  combos: number; // combination towers standing after the wave
+  distinctCombos: number; // distinct combo KINDS assembled (the "did it combine" read)
   kills: number;
   resolved: boolean; // false only if the per-wave step cap was hit
 }
@@ -275,17 +350,21 @@ export interface MatchResult {
   finalComponents: number; // firing components at the end
   finalStructures: number; // components + blockers (the whole maze)
   maxTier: number;
-  meanTier: number; // mean quality of the final firing line
+  meanTier: number; // mean quality of the final firing line (base towers)
   finalPathLen: number;
-  tierCounts: number[]; // index 1..5 → count of firing components at that tier
+  finalCombos: number; // combination towers standing at the end
+  distinctCombos: number; // distinct combo KINDS assembled over the run (0 for a no-combo line)
+  tierCounts: number[]; // index 1..5 → count of firing BASE components at that tier
   waves: WaveResult[];
 }
 
+// Tier histogram over the BASE firing line (combos excluded — they carry no quality tier). The
+// combination towers are tallied separately (comboComponents / distinctComboCount).
 function tierHistogram(g: Game): { counts: number[]; maxTier: number; active: number } {
   const counts = [0, 0, 0, 0, 0, 0];
   let maxTier = 0;
   let active = 0;
-  for (const c of components(g)) {
+  for (const c of baseComponents(g)) {
     counts[c.tier]!++;
     active++;
     if (c.tier > maxTier) maxTier = c.tier;
@@ -333,6 +412,8 @@ export function runMatch(controller: Controller, opts: MatchOpts): MatchResult {
       maxTier: hist.maxTier,
       meanTier: meanTierOf(g),
       pathLen: chainPathLength(g),
+      combos: comboComponents(g).length,
+      distinctCombos: distinctComboCount(g),
       kills: g.kills - killsBefore,
       resolved: steps < maxSteps,
     });
@@ -366,6 +447,8 @@ export function runMatch(controller: Controller, opts: MatchOpts): MatchResult {
     maxTier: hist.maxTier,
     meanTier: meanTierOf(g),
     finalPathLen: chainPathLength(g),
+    finalCombos: comboComponents(g).length,
+    distinctCombos: distinctComboCount(g),
     tierCounts: hist.counts,
     waves,
   };
@@ -385,8 +468,10 @@ export interface Aggregate {
   meanIntegrity: number;
   meanRefinement: number;
   meanComponents: number;
-  meanTier: number; // mean of each match's mean firing-line tier (did it climb?)
+  meanTier: number; // mean of each match's mean base firing-line tier (did it climb?)
   meanPathLen: number; // mean final maze length in px (did it maze?)
+  meanCombos: number; // mean combination towers standing at the end (did it combine?)
+  meanDistinctCombos: number; // mean distinct combo kinds assembled (the combo-gate read)
   meanScore: number;
   results: MatchResult[];
 }
@@ -419,6 +504,8 @@ export function runOverSeeds(
     meanComponents: mean(results.map((r) => r.finalComponents)),
     meanTier: mean(results.map((r) => r.meanTier)),
     meanPathLen: mean(results.map((r) => (isFinite(r.finalPathLen) ? r.finalPathLen : 0))),
+    meanCombos: mean(results.map((r) => r.finalCombos)),
+    meanDistinctCombos: mean(results.map((r) => r.distinctCombos)),
     meanScore: mean(results.map((r) => r.score)),
     results,
   };

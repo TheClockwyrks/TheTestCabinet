@@ -19,8 +19,8 @@
 //   assets/audio/*.wav       the produced sfx + music
 
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import { COMPONENT_ORDER, LOAD_ORDER } from "./constants";
-import type { ComponentType, Cue, FxKind, LoadType, Tier } from "./types";
+import { COMBO_ORDER, COMPONENT_ORDER, LOAD_ORDER } from "./constants";
+import type { ComboType, ComponentType, Cue, FxKind, LoadType, Tier } from "./types";
 
 const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });
 const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", { eager: true, import: "default" });
@@ -55,6 +55,13 @@ export const BLOCKER_SPRITE = "components/blocker/rock";
 export function projSprite(type: ComponentType): string {
   return `projectiles/${type}`;
 }
+// A combination tower's single-grade head / base (specs/assets.md) — no quality tiers.
+export function comboHeadSprite(combo: ComboType): string {
+  return `components/combo/${combo}/head`;
+}
+export function comboBaseSprite(combo: ComboType): string {
+  return `components/combo/${combo}/base`;
+}
 
 // Which produced particle system plays for each electrical event (1:1 by name).
 const FX_SOURCE: Record<FxKind, string> = {
@@ -68,6 +75,9 @@ const FX_SOURCE: Record<FxKind, string> = {
   death: "death",
   leak: "leak",
   muzzle: "muzzle",
+  slowhit: "slowhit", // frost / EM-drag snap on a slowed unit
+  burnhit: "burnhit", // ember flare of an overcurrent burn ticking
+  aura: "aura", // support pulse ring at a Regulator / aura combo
 };
 
 // Which produced .wav plays for each sound cue (1:1 by name).
@@ -80,6 +90,8 @@ const CUE_SOURCE: Record<Cue, string> = {
   kill: "kill",
   leak: "leak",
   settle: "settle",
+  slow: "slow", // icy hum of a slow landing
+  burn: "burn", // sizzle of an overcurrent burn
 };
 
 export interface Assets {
@@ -88,6 +100,9 @@ export interface Assets {
   componentBase(type: ComponentType): HTMLImageElement | undefined;
   componentHead(type: ComponentType, tier: Tier): HTMLImageElement | undefined;
   componentFire(type: ComponentType): HTMLImageElement[]; // firing-cycle frames
+  comboBase(combo: ComboType): HTMLImageElement | undefined;
+  comboHead(combo: ComboType): HTMLImageElement | undefined;
+  comboFire(combo: ComboType): HTMLImageElement[]; // combination-tower firing-cycle frames
   blocker: HTMLImageElement | undefined;
   projectile(type: ComponentType): HTMLImageElement | undefined;
   loadFrames: Record<LoadType, HTMLImageElement[]>; // per-type charge cycle
@@ -136,12 +151,18 @@ export async function loadAssets(): Promise<Assets> {
   const componentFireCache = {} as Record<ComponentType, HTMLImageElement[]>;
   for (const c of COMPONENT_ORDER) componentFireCache[c] = framesFor(`components/${c}/fire`, 6);
 
+  const comboFireCache = {} as Record<ComboType, HTMLImageElement[]>;
+  for (const c of COMBO_ORDER) comboFireCache[c] = framesFor(`components/combo/${c}/fire`, 6);
+
   return {
     sprite,
     has: (name: string) => imgs.has(name),
     componentBase: (type) => imgs.get(componentBaseSprite(type)),
     componentHead: (type, tier) => imgs.get(componentHeadSprite(type, tier)),
     componentFire: (type) => componentFireCache[type],
+    comboBase: (combo) => imgs.get(comboBaseSprite(combo)),
+    comboHead: (combo) => imgs.get(comboHeadSprite(combo)),
+    comboFire: (combo) => comboFireCache[combo],
     blocker: imgs.get(BLOCKER_SPRITE),
     projectile: (type) => imgs.get(projSprite(type)),
     loadFrames,

@@ -5,13 +5,16 @@
 // exactly as written, and this is the single balance surface a later workflow tunes
 // (specs/towers.md, specs/build.md, specs/enemies.md, specs/flow.md, specs/modes.md).
 //
-// The model (specs/overview.md): a GemTD reskin. A component has a TYPE (one of five
-// firing identities) and a quality TIER (Scrap → Tesla-Prime). Damage/range derive from
-// base (Scrap) stats times the tier; fire rate is flat across quality. Every component,
-// candidate, and blocker is a 2×2 wall; the Load mazes the shortest OPEN route through
-// ordered waypoint platforms, never fully sealable.
+// The model (specs/overview.md): a GemTD reskin. A base component has a TYPE (one of eight
+// firing/support identities) and a quality TIER (Scrap → Tesla-Prime); damage/range derive
+// from base (Scrap) stats times the tier, fire rate flat across quality. Base towers are weak
+// FEEDSTOCK — the payoff is assembling the twelve terminal COMBINATION TOWERS by recipe, which
+// carry the exotic abilities (slow/burn/crit/multishot/aura). Every component, candidate, and
+// blocker is a 2×2 wall; the Load mazes the shortest OPEN route through ordered waypoint
+// platforms, never fully sealable.
 
 import type {
+  ComboType,
   ComponentType,
   Difficulty,
   LoadType,
@@ -89,13 +92,28 @@ export const COL = {
   emitter: "#7fe6b0",
   arcnode: "#ffb347",
   discharge: "#ff5470",
+  choke: "#66d9e8", // slow (EM drag) — icy cyan
+  rectifier: "#ff6b3d", // burn (overcurrent DoT) — ember orange
+  regulator: "#b6e05a", // aura/support (non-firing) — lime
+  combo: "#ffe9a8", // combination-tower accent (badge) — special gold
   blocker: "#3a4351", // inert fused-scrap rock (was "slag")
 } as const;
 
 export const FONT = `"SF Mono", "JetBrains Mono", "Fira Mono", "DejaVu Sans Mono", "Menlo", "Consolas", monospace`;
 
 // ---- Component types (specs/towers.md) -----------------------------------------
-export const COMPONENT_ORDER: ComponentType[] = ["capacitor", "coil", "emitter", "arcnode", "discharge"];
+// Eight base types: the five original firing identities plus Choke (slow), Rectifier
+// (burn/DoT), and Regulator (a non-firing aura/support node).
+export const COMPONENT_ORDER: ComponentType[] = [
+  "capacitor",
+  "coil",
+  "emitter",
+  "arcnode",
+  "discharge",
+  "choke",
+  "rectifier",
+  "regulator",
+];
 
 export const COMPONENT_LABEL: Record<ComponentType, string> = {
   capacitor: "CAPACITOR",
@@ -103,6 +121,9 @@ export const COMPONENT_LABEL: Record<ComponentType, string> = {
   emitter: "EMITTER",
   arcnode: "ARC-NODE",
   discharge: "DISCHARGE RIG",
+  choke: "CHOKE",
+  rectifier: "RECTIFIER",
+  regulator: "REGULATOR",
 };
 
 // A one-to-two-sentence description of each component, shown in the inspector when a
@@ -113,6 +134,9 @@ export const COMPONENT_DESC: Record<ComponentType, string> = {
   emitter: "A rapid, low-damage spark stream. Its high fire rate shreds swarms of fast, fragile units up close.",
   arcnode: "An area discharge — its shot detonates a ring that damages every unit near the impact. The answer to tight packs.",
   discharge: "A slow, long-range heavy bolt. Huge per-hit damage and the longest reach — the anti-tank pick against Slugs and the Dynamo.",
+  choke: "Drags the Load — every hit slows the struck unit for a moment. Low damage, but it stacks the whole yard against speed.",
+  rectifier: "Overcurrent burn — its hit sets a damage-over-time that keeps ticking after the shot lands. Low direct hit, high sustained pressure.",
+  regulator: "A support node — it never fires, but every firing tower inside its aura deals more damage. A force multiplier you wall in among your line.",
 };
 
 export const COMPONENT_COLOR: Record<ComponentType, string> = {
@@ -121,6 +145,9 @@ export const COMPONENT_COLOR: Record<ComponentType, string> = {
   emitter: COL.emitter,
   arcnode: COL.arcnode,
   discharge: COL.discharge,
+  choke: COL.choke,
+  rectifier: COL.rectifier,
+  regulator: COL.regulator,
 };
 
 // ---- The quality ladder (specs/towers.md §1.2, §5.2) ---------------------------
@@ -147,71 +174,277 @@ export const TARGETING_LABEL: Record<TargetingMode, string> = {
   weakest: "WEAKEST",
 };
 
-// ---- Base (Scrap / T1) component stats (specs/towers.md §5.3) -------------------
+// ---- Base (Scrap / T1) component stats (specs/towers.md) ------------------------
+// Base towers are FEEDSTOCK — deliberately weak; the power comes from climbing the
+// quality ladder and, above all, assembling COMBINATION TOWERS (below). `crit` and
+// `multishot` are combo-only, so base types never carry them.
 export interface ComponentDef {
   type: ComponentType;
   name: string;
   role: string; // one-line role (inspector)
   color: string;
-  range: number; // T1 range (px)
-  fireRate: number; // shots/sec — FLAT across quality
-  dmg: number; // T1 base damage (× QUALITY_MULT for higher tiers)
+  fires: boolean; // false for the Regulator (a non-firing aura node)
+  range: number; // T1 range (px); 0 for the Regulator
+  fireRate: number; // shots/sec — FLAT across quality; 0 for the Regulator
+  dmg: number; // T1 base damage (× QUALITY_MULT for higher tiers); 0 for the Regulator
   splashT1: number; // Arc-Node: T1 splash radius (0 for the others)
   splashPerTier: number; // Arc-Node: +radius per tier above T1
+  // Slow (Choke): each hit slows the unit's speed by `slowAmt` for `slowDur` s.
+  slowAmt0?: number; // T1 slow fraction
+  slowPerTier?: number; // + fraction per tier above T1
+  slowDur?: number; // slow duration (s), flat across tiers
+  // Burn (Rectifier): each hit applies DoT = burnFrac × shot-dmg per second for burnDur s.
+  burnFrac?: number;
+  burnDur?: number;
+  // Aura (Regulator): buffs the damage of firing towers whose center lies within radius.
+  auraRadius0?: number;
+  auraRadiusPerTier?: number;
+  auraBonus0?: number; // fractional damage bonus at T1
+  auraBonusPerTier?: number;
 }
 
 export const COMPONENTS: Record<ComponentType, ComponentDef> = {
-  capacitor: { type: "capacitor", name: "CAPACITOR", role: "Balanced single-target zap", color: COL.capacitor, range: 104, fireRate: 1.6, dmg: 8, splashT1: 0, splashPerTier: 0 },
-  coil: { type: "coil", name: "COIL", role: "Chain-lightning — leaps to nearby units", color: COL.coil, range: 114, fireRate: 1.1, dmg: 6, splashT1: 0, splashPerTier: 0 },
-  emitter: { type: "emitter", name: "EMITTER", role: "Rapid low-damage spark; anti-swarm", color: COL.emitter, range: 92, fireRate: 4.5, dmg: 2, splashT1: 0, splashPerTier: 0 },
-  arcnode: { type: "arcnode", name: "ARC-NODE", role: "Area discharge — damages everything near impact", color: COL.arcnode, range: 100, fireRate: 0.9, dmg: 7, splashT1: 45, splashPerTier: 5 },
-  discharge: { type: "discharge", name: "DISCHARGE RIG", role: "Slow, long-range heavy bolt; anti-tank", color: COL.discharge, range: 165, fireRate: 0.5, dmg: 22, splashT1: 0, splashPerTier: 0 },
+  capacitor: { type: "capacitor", name: "CAPACITOR", role: "Balanced single-target zap", color: COL.capacitor, fires: true, range: 100, fireRate: 1.6, dmg: 6, splashT1: 0, splashPerTier: 0 },
+  coil: { type: "coil", name: "COIL", role: "Chain-lightning — leaps to nearby units", color: COL.coil, fires: true, range: 110, fireRate: 1.0, dmg: 5, splashT1: 0, splashPerTier: 0 },
+  emitter: { type: "emitter", name: "EMITTER", role: "Rapid low-damage spark; anti-swarm", color: COL.emitter, fires: true, range: 88, fireRate: 4.5, dmg: 2, splashT1: 0, splashPerTier: 0 },
+  arcnode: { type: "arcnode", name: "ARC-NODE", role: "Area discharge — damages everything near impact", color: COL.arcnode, fires: true, range: 96, fireRate: 0.85, dmg: 5, splashT1: 42, splashPerTier: 5 },
+  discharge: { type: "discharge", name: "DISCHARGE RIG", role: "Slow, long-range heavy bolt; anti-tank", color: COL.discharge, fires: true, range: 160, fireRate: 0.5, dmg: 18, splashT1: 0, splashPerTier: 0 },
+  choke: { type: "choke", name: "CHOKE", role: "Slows every unit it hits (EM drag)", color: COL.choke, fires: true, range: 104, fireRate: 1.3, dmg: 3, splashT1: 0, splashPerTier: 0, slowAmt0: 0.22, slowPerTier: 0.03, slowDur: 1.2 },
+  rectifier: { type: "rectifier", name: "RECTIFIER", role: "Overcurrent burn — damage over time", color: COL.rectifier, fires: true, range: 96, fireRate: 1.1, dmg: 2, splashT1: 0, splashPerTier: 0, burnFrac: 0.5, burnDur: 2.0 },
+  regulator: { type: "regulator", name: "REGULATOR", role: "Support aura — buffs nearby towers (does not fire)", color: COL.regulator, fires: false, range: 0, fireRate: 0, dmg: 0, splashT1: 0, splashPerTier: 0, auraRadius0: 90, auraRadiusPerTier: 6, auraBonus0: 0.1, auraBonusPerTier: 0.03 },
 };
 
-// Coil chain (specs/towers.md §5.3): the bolt leaps to the nearest not-yet-hit unit
-// within CHAIN_RANGE, each leap dealing ×CHAIN_FALLOFF of the previous. Max ADDITIONAL
-// leaps by tier: 2 (T1–T2), 3 (T3–T4), 4 (Tesla-Prime).
+// Coil chain (specs/towers.md): the bolt leaps to the nearest not-yet-hit unit within
+// CHAIN_RANGE, each leap dealing ×CHAIN_FALLOFF of the previous. Max ADDITIONAL leaps by
+// tier: 2 (T1–T2), 3 (T3–T4), 4 (Tesla-Prime).
 export const COIL_CHAIN_RANGE = 70;
 export const COIL_CHAIN_FALLOFF = 0.7;
 export function coilLeaps(tier: Tier): number {
   return tier >= 5 ? 4 : tier >= 3 ? 3 : 2;
 }
 
+// Aura buffs stack additively but are capped so a wall of Regulators cannot run away.
+export const AURA_BONUS_CAP = 1.0; // +100% max total external aura on any one tower
+
 // Projectile travel speed by component (logical px/s). A shot is a real travelling
-// projectile that deals its effect on impact, not a hitscan (specs/towers.md).
+// projectile that deals its effect on impact, not a hitscan (specs/towers.md). The
+// non-firing Regulator launches none (0 is a placeholder to satisfy the record).
 export const PROJECTILE_SPEED: Record<ComponentType, number> = {
   capacitor: 560,
   coil: 640,
   emitter: 680,
   arcnode: 460,
   discharge: 760,
+  choke: 600,
+  rectifier: 560,
+  regulator: 0,
 };
+export const COMBO_PROJECTILE_SPEED = 620; // combination towers share one travel speed
 
-// ---- Derived effective stats (the single source, specs/towers.md §5.2) ---------
+// ---- Derived effective stats (the single source, specs/towers.md) --------------
+// The complete live behaviour of ANY firing tower — base component OR combination tower —
+// reduces to a CompStats. `deriveStats(type,tier)` builds one for a base component;
+// `comboStats(combo)` (below) builds one for a combination tower.
 export interface CompStats {
+  fires: boolean;
   range: number;
   fireRate: number;
-  dmg: number; // per shot
-  splash: number; // Arc-Node area radius (0 = single target)
-  chainLeaps: number; // Coil extra leaps (0 = no chain)
+  dmg: number; // per shot (before external aura)
+  splash: number; // area radius (0 = single target)
+  chainLeaps: number; // extra chain leaps (0 = no chain)
   chainRange: number;
   chainFalloff: number;
+  slowAmt: number; // fraction of speed removed on hit (0 = no slow)
+  slowDur: number;
+  burnFrac: number; // DoT-per-second as a fraction of the shot's dmg (0 = no burn)
+  burnDur: number;
+  critChance: number; // 0..1 (combo-only)
+  critMult: number; // ×dmg on a crit
+  multishot: number; // distinct simultaneous targets per cadence (1 = single)
+  auraRadius: number; // this tower's own aura radius (0 = no aura)
+  auraBonus: number; // this tower's own aura damage bonus
 }
 
-// A component's live behaviour is fully derived from (type, tier).
+const EMPTY_ABILITIES = {
+  slowAmt: 0,
+  slowDur: 0,
+  burnFrac: 0,
+  burnDur: 0,
+  critChance: 0,
+  critMult: 1,
+  multishot: 1,
+  auraRadius: 0,
+  auraBonus: 0,
+} as const;
+
+// A base component's live behaviour is fully derived from (type, tier).
 export function deriveStats(type: ComponentType, tier: Tier): CompStats {
   const def = COMPONENTS[type];
   const mult = QUALITY_MULT[tier]!;
   return {
-    range: def.range + RANGE_PER_TIER * (tier - 1),
+    ...EMPTY_ABILITIES,
+    fires: def.fires,
+    range: def.fires ? def.range + RANGE_PER_TIER * (tier - 1) : 0,
     fireRate: def.fireRate, // flat across quality
     dmg: Math.round(def.dmg * mult),
     splash: def.splashT1 > 0 ? def.splashT1 + def.splashPerTier * (tier - 1) : 0,
     chainLeaps: type === "coil" ? coilLeaps(tier) : 0,
     chainRange: COIL_CHAIN_RANGE,
     chainFalloff: COIL_CHAIN_FALLOFF,
+    slowAmt: def.slowAmt0 ? def.slowAmt0 + (def.slowPerTier ?? 0) * (tier - 1) : 0,
+    slowDur: def.slowDur ?? 0,
+    burnFrac: def.burnFrac ?? 0,
+    burnDur: def.burnDur ?? 0,
+    auraRadius: def.auraRadius0 ? def.auraRadius0 + (def.auraRadiusPerTier ?? 0) * (tier - 1) : 0,
+    auraBonus: def.auraBonus0 ? def.auraBonus0 + (def.auraBonusPerTier ?? 0) * (tier - 1) : 0,
   };
 }
+
+// ---- Combination towers (specs/towers.md, specs/build.md) ----------------------
+// Assembled by a RECIPE — a specific multiset of base (type, quality) ingredients folds
+// into one unique combination tower. Single-grade + terminal (no quality tier, cannot
+// quality-combine, cannot be an ingredient). Each carries its own fixed stat block and
+// ability mix. Recipe tiers span all-Scrap (early, accessible) to Tesla-gated (apex), so
+// combining is a strategic gate throughout the run, not just an endgame flourish.
+export interface RecipeIngredient {
+  type: ComponentType;
+  tier: Tier;
+}
+
+export interface ComboDef {
+  combo: ComboType;
+  name: string;
+  desc: string;
+  color: string;
+  recipe: RecipeIngredient[]; // the exact ingredient multiset (order irrelevant)
+  range: number;
+  fireRate: number;
+  dmg: number;
+  splash: number;
+  chainLeaps: number;
+  chainRange: number;
+  chainFalloff: number;
+  slowAmt: number;
+  slowDur: number;
+  burnFrac: number;
+  burnDur: number;
+  critChance: number;
+  critMult: number;
+  multishot: number;
+  auraRadius: number;
+  auraBonus: number;
+}
+
+// Shorthand for a recipe ingredient (type at a tier).
+function ing(type: ComponentType, tier: Tier): RecipeIngredient {
+  return { type, tier };
+}
+
+// Ability-field defaults so each combo only lists what it actually carries.
+type ComboSpec = Partial<Omit<ComboDef, "combo" | "name" | "desc" | "color" | "recipe" | "range" | "fireRate" | "dmg">>;
+function combo(
+  combo: ComboType,
+  name: string,
+  color: string,
+  recipe: RecipeIngredient[],
+  range: number,
+  fireRate: number,
+  dmg: number,
+  abilities: ComboSpec,
+  desc: string,
+): ComboDef {
+  return {
+    combo,
+    name,
+    desc,
+    color,
+    recipe,
+    range,
+    fireRate,
+    dmg,
+    splash: abilities.splash ?? 0,
+    chainLeaps: abilities.chainLeaps ?? 0,
+    chainRange: abilities.chainRange ?? COIL_CHAIN_RANGE,
+    chainFalloff: abilities.chainFalloff ?? COIL_CHAIN_FALLOFF,
+    slowAmt: abilities.slowAmt ?? 0,
+    slowDur: abilities.slowDur ?? 0,
+    burnFrac: abilities.burnFrac ?? 0,
+    burnDur: abilities.burnDur ?? 0,
+    critChance: abilities.critChance ?? 0,
+    critMult: abilities.critMult ?? 1,
+    multishot: abilities.multishot ?? 1,
+    auraRadius: abilities.auraRadius ?? 0,
+    auraBonus: abilities.auraBonus ?? 0,
+  };
+}
+
+export const COMBOS: Record<ComboType, ComboDef> = {
+  fusecluster: combo("fusecluster", "FUSE CLUSTER", COL.arcnode, [ing("regulator", 1), ing("rectifier", 1), ing("arcnode", 1)], 108, 1.0, 40, { splash: 55, burnFrac: 0.4, burnDur: 2 }, "An early splash-and-burn node — cheap to assemble, and the first taste of what a combine can do."),
+  staticweb: combo("staticweb", "STATIC WEB", COL.coil, [ing("coil", 1), ing("capacitor", 1), ing("choke", 1)], 120, 1.2, 34, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.75, slowAmt: 0.25, slowDur: 1.2 }, "A chaining web that slows every unit it forks through — an early crowd-control staple."),
+  slagdriver: combo("slagdriver", "SLAG DRIVER", COL.discharge, [ing("discharge", 2), ing("discharge", 1), ing("emitter", 1)], 175, 0.6, 120, { critChance: 0.25, critMult: 2.0 }, "A long-range slug thrower that occasionally lands a crushing crit. The early anti-tank answer."),
+  corroder: combo("corroder", "CORRODER", COL.rectifier, [ing("rectifier", 3), ing("regulator", 3), ing("choke", 2)], 110, 1.1, 30, { burnFrac: 0.6, burnDur: 3, slowAmt: 0.2, slowDur: 1.0, auraRadius: 80, auraBonus: 0.1 }, "A corrosive support tower — it burns, slows, AND buffs the towers around it. Wall it into a cluster of your line."),
+  ionprism: combo("ionprism", "ION PRISM", COL.rectifier, [ing("discharge", 3), ing("rectifier", 4), ing("emitter", 2)], 140, 0.9, 90, { splash: 50, burnFrac: 0.5, burnDur: 2, critChance: 0.2, critMult: 1.8 }, "A burning splash cannon that can crit — mid-game area pressure that scales into the late waves."),
+  forkarray: combo("forkarray", "FORK ARRAY", COL.emitter, [ing("emitter", 3), ing("capacitor", 3), ing("coil", 2)], 118, 1.8, 55, { multishot: 3 }, "A rapid array that forks at three targets at once — the dedicated swarm-shredder."),
+  nullcore: combo("nullcore", "NULL CORE", COL.regulator, [ing("regulator", 5), ing("capacitor", 4), ing("arcnode", 3)], 120, 1.0, 70, { splash: 55, auraRadius: 100, auraBonus: 0.2 }, "A splash core wrapped in a powerful damage aura — a keystone that lifts every tower near it."),
+  rupturenode: combo("rupturenode", "RUPTURE NODE", COL.arcnode, [ing("discharge", 5), ing("arcnode", 4), ing("emitter", 3)], 150, 0.7, 180, { splash: 60, burnFrac: 0.5, burnDur: 2 }, "A heavy rupture that detonates a burning shockwave — late-game area annihilation."),
+  blightcoil: combo("blightcoil", "BLIGHT COIL", COL.rectifier, [ing("rectifier", 5), ing("choke", 4), ing("coil", 2)], 128, 1.1, 80, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.7, burnFrac: 0.6, burnDur: 3, slowAmt: 0.3, slowDur: 1.5 }, "A chaining blight that slows and burns everything it forks through — total crowd denial."),
+  reactorpile: combo("reactorpile", "REACTOR PILE", COL.coil, [ing("coil", 5), ing("choke", 3), ing("regulator", 2)], 130, 1.4, 90, { chainLeaps: 4, chainRange: 85, chainFalloff: 0.75, multishot: 2 }, "A reactor that forks two heavy chains at once — a late-game chain-lightning engine."),
+  auroralance: combo("auroralance", "AURORA LANCE", COL.choke, [ing("choke", 5), ing("coil", 4), ing("discharge", 4)], 190, 0.7, 260, { chainLeaps: 2, chainRange: 75, chainFalloff: 0.6, slowAmt: 0.4, slowDur: 1.8 }, "An apex lance: enormous reach, a hard slow, and a chaining strike. Needs Tesla-Prime ingredients."),
+  singularity: combo("singularity", "SINGULARITY", COL.combo, [ing("arcnode", 5), ing("regulator", 4), ing("rectifier", 2), ing("arcnode", 2)], 150, 1.0, 320, { splash: 65, burnFrac: 0.6, burnDur: 2.5, critChance: 0.3, critMult: 2.2, auraRadius: 90, auraBonus: 0.15 }, "The apex — splash, burn, crit, and an aura in one tower. The four-ingredient masterwork that ends a run."),
+};
+
+export const COMBO_ORDER: ComboType[] = [
+  "fusecluster",
+  "staticweb",
+  "slagdriver",
+  "corroder",
+  "ionprism",
+  "forkarray",
+  "nullcore",
+  "rupturenode",
+  "blightcoil",
+  "reactorpile",
+  "auroralance",
+  "singularity",
+];
+
+// A combination tower's live stats (fires: true always; no tier scaling).
+export function comboStats(c: ComboType): CompStats {
+  const d = COMBOS[c];
+  return {
+    fires: true,
+    range: d.range,
+    fireRate: d.fireRate,
+    dmg: d.dmg,
+    splash: d.splash,
+    chainLeaps: d.chainLeaps,
+    chainRange: d.chainRange,
+    chainFalloff: d.chainFalloff,
+    slowAmt: d.slowAmt,
+    slowDur: d.slowDur,
+    burnFrac: d.burnFrac,
+    burnDur: d.burnDur,
+    critChance: d.critChance,
+    critMult: d.critMult,
+    multishot: d.multishot,
+    auraRadius: d.auraRadius,
+    auraBonus: d.auraBonus,
+  };
+}
+
+// The multiset key of a recipe (sorted "type@tier" tokens) — used to match an assembled
+// set of ingredients against a combo recipe.
+export function recipeKey(ings: RecipeIngredient[]): string {
+  return ings
+    .map((i) => `${i.type}@${i.tier}`)
+    .sort()
+    .join(",");
+}
+
+// combo recipe → its multiset key, precomputed for matching.
+export const RECIPE_INDEX: Map<string, ComboType> = new Map(
+  COMBO_ORDER.map((c) => [recipeKey(COMBOS[c].recipe), c] as const),
+);
 
 // ---- The scrap-press build loop (specs/build.md) -------------------------------
 // GemTD-faithful: place up to BUILDS_PER_LEVEL rocks a level, keep exactly one, the rest
@@ -219,24 +452,30 @@ export function deriveStats(type: ComponentType, tier: Tier): CompStats {
 export const BUILDS_PER_LEVEL = 5; // fixed 5-stamp allowance per level (hard cap, constant across difficulty)
 export const STAMP_COST = 10; // Charge to place one rock (capped at 5 placements/level regardless of Charge)
 
-// Type roll: uniform 20% each (specs/build.md). Independent of Refinement.
+// Type roll: uniform 12.5% each across the eight types (specs/build.md). Independent of
+// Refinement.
 export const STAMP_TYPE_WEIGHT: Record<ComponentType, number> = {
-  capacitor: 0.2,
-  coil: 0.2,
-  emitter: 0.2,
-  arcnode: 0.2,
-  discharge: 0.2,
+  capacitor: 0.125,
+  coil: 0.125,
+  emitter: 0.125,
+  arcnode: 0.125,
+  discharge: 0.125,
+  choke: 0.125,
+  rectifier: 0.125,
+  regulator: 0.125,
 };
 
 // Quality roll by Refinement level R (specs/build.md — UPGRADE QUALITY). Each row is a
 // 5-tier distribution [T1..T5] that sums to 1.0; higher R biases upward. Indexed R = 0..5.
+// GemTD-faithful: at R0 the press rolls ONLY Scrap (T1) — every higher quality is earned by
+// refining the press, and Primed/Tesla-Prime (T4/T5) are always combine-only (columns 0).
 export const QUALITY_ODDS_BY_R: number[][] = [
-  [0.72, 0.26, 0.02, 0.0, 0.0], //  R0 (base — Scrap-heavy; Primed/Tesla-Prime are combine-only)
-  [0.55, 0.36, 0.09, 0.0, 0.0], //  R1
-  [0.4, 0.42, 0.18, 0.0, 0.0], //   R2
-  [0.28, 0.44, 0.28, 0.0, 0.0], //  R3
-  [0.18, 0.44, 0.38, 0.0, 0.0], //  R4
-  [0.1, 0.42, 0.48, 0.0, 0.0], //   R5
+  [1.0, 0.0, 0.0, 0.0, 0.0], //   R0 (100% Scrap — the GemTD level-1 roll)
+  [0.8, 0.2, 0.0, 0.0, 0.0], //   R1
+  [0.62, 0.32, 0.06, 0.0, 0.0], // R2
+  [0.46, 0.4, 0.14, 0.0, 0.0], //  R3
+  [0.32, 0.44, 0.24, 0.0, 0.0], // R4
+  [0.2, 0.45, 0.35, 0.0, 0.0], //  R5
 ];
 
 // Legacy alias: the R0 quality distribution as a tier-indexed array (index 0 unused), so
@@ -247,7 +486,7 @@ export const MAX_REFINEMENT: Refinement = 5;
 
 // UPGRADE QUALITY cost to REACH each Refinement level (from the previous), Charge.
 // Indexed by target level; index 0 unused (you start at R0). specs/build.md.
-export const REFINE_COST: number[] = [0, 55, 110, 200, 340, 520];
+export const REFINE_COST: number[] = [0, 60, 130, 240, 400, 620];
 
 // Cost to buy the next level from the current one, or null if already at the apex.
 export function nextRefineCost(r: Refinement): number | null {
@@ -325,9 +564,9 @@ export interface DifficultyDef {
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
-  easy: { key: "easy", label: "EASY", waves: 20, baseMult: 0.24, k: 0.8, milestones: [10, 20], note: "Shorter siege, gentler HP ramp." },
-  medium: { key: "medium", label: "MEDIUM", waves: 30, baseMult: 0.22, k: 1.35, milestones: [15, 30], note: "The reference balance." },
-  hard: { key: "hard", label: "HARD", waves: 40, baseMult: 0.24, k: 1.75, milestones: [20, 40], note: "Dozens of waves, a steep HP climb." },
+  easy: { key: "easy", label: "EASY", waves: 40, baseMult: 0.2, k: 0.5, milestones: [20, 40], note: "A shorter siege with the gentlest HP ramp." },
+  medium: { key: "medium", label: "MEDIUM", waves: 50, baseMult: 0.22, k: 1.17, milestones: [25, 50], note: "The reference balance — a true GemTD-length campaign." },
+  hard: { key: "hard", label: "HARD", waves: 60, baseMult: 0.24, k: 1.3, milestones: [30, 60], note: "A long siege with the steepest HP climb." },
 };
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard"];
@@ -341,66 +580,71 @@ export function isMilestoneWave(wave: number, diff: DifficultyDef): boolean {
 // Every map plays the same campaign; only the topology (waypoint placement and Map C's
 // fixed housings) differs. The pathing chain is [entry, ...waypoints, collector].
 
-// Map A — "The Substation": a wide serpentine hugging the perimeter (five long legs).
+// Every waypoint anchor sits ≥4 tiles inset from every edge (cols 4..45, rows 4..28). A
+// platform's side arm sits one tile off the anchor, so the OUTER gap between the arm and
+// the edge is (inset − 1) ≥ 3 tiles — enough to build a 2×2 wall there AND keep a 1-tile
+// pass lane, so the maze can wrap the route around a waypoint's far side, not just its
+// inner side (specs/board.md). Each map now runs SIX waypoints (a longer, loopier route),
+// so mazing matters far more.
+
+// Map A — "The Substation": a perimeter spiral serpentine (six long legs) that folds
+// inward then exits right.
 const SUBSTATION: MapDef = {
   id: "substation",
   name: "The Substation",
-  blurb: "A wide serpentine hugging the yard's edge — fold one big maze across the open center.",
+  blurb: "A perimeter spiral — fold the route down the edges, then in through the center to the right-side sink.",
   styleLabel: "SERPENTINE",
-  entry: { col: 0, row: 4 },
+  entry: { col: 0, row: 5 },
   entryEdge: "left",
-  // Waypoints sit ≥4 tiles inset from every edge (anchors in cols 4..45, rows 4..28).
-  // A platform's side arm sits one tile off the anchor, so the OUTER gap between the arm
-  // and the edge is (inset − 1) = 3 tiles — enough to build a 2×2 wall there AND leave a
-  // 1-tile pass lane, so the maze can wrap the route around a waypoint's far side, not
-  // just its inner side (specs/board.md §4). (Was col 2/47 → outer gap 1: no 2×2 fit and
-  // that whole class of edge mazes was impossible.)
   waypoints: [
-    { col: 45, row: 4 },
-    { col: 45, row: 28 },
-    { col: 4, row: 28 },
-    { col: 4, row: 16 },
+    { col: 44, row: 5 },
+    { col: 44, row: 27 },
+    { col: 5, row: 27 },
+    { col: 5, row: 14 },
+    { col: 36, row: 14 },
+    { col: 36, row: 20 },
   ],
-  collector: { col: 49, row: 16 },
+  collector: { col: 49, row: 20 },
   collectorEdge: "right",
   housings: [],
 };
 
-// Map B — "The Switchyard": a crossing star whose legs cut through the center four times.
+// Map B — "The Switchyard": a crossing star whose six legs criss-cross the center band.
 const SWITCHYARD: MapDef = {
   id: "switchyard",
   name: "The Switchyard",
-  blurb: "A crossing star — the legs criss-cross the middle, so the center band is the premium maze.",
+  blurb: "A crossing star — six legs cut back and forth through the middle, so the center band is the premium maze.",
   styleLabel: "BUSBAR",
   entry: { col: 25, row: 0 },
   entryEdge: "top",
-  // Corner waypoints pulled ≥4 tiles off the corners (cols 4..45, rows 4..28) so both
-  // sides of each stay buildable; the legs still criss-cross the center (specs/board.md §4).
   waypoints: [
-    { col: 4, row: 28 },
-    { col: 45, row: 4 },
-    { col: 4, row: 4 },
-    { col: 45, row: 28 },
+    { col: 5, row: 26 },
+    { col: 44, row: 6 },
+    { col: 5, row: 6 },
+    { col: 44, row: 26 },
+    { col: 24, row: 16 },
+    { col: 5, row: 16 },
   ],
   collector: { col: 25, row: 32 },
   collectorEdge: "bottom",
   housings: [],
 };
 
-// Map C — "The Transformer Yard": two fixed housings split the yard; WP2 forces the gap.
+// Map C — "The Transformer Yard": two fixed housings split the yard; WP2 threads the gap.
 const TRANSFORMER: MapDef = {
   id: "transformer",
   name: "The Transformer Yard",
-  blurb: "Two fixed transformer housings split the yard on a diagonal; the center waypoint threads the gap.",
+  blurb: "Two fixed transformer housings split the yard; the center waypoint threads the gap as the route loops the corridors.",
   styleLabel: "CHOKEPOINT",
   entry: { col: 0, row: 2 },
   entryEdge: "left",
-  // The right-edge waypoints pulled in to col 45 (was 48, whose arm reached the col-49
-  // edge); WP2 stays the central chokepoint between the housings (specs/board.md §4).
   waypoints: [
-    { col: 45, row: 4 },
+    { col: 44, row: 5 },
     { col: 24, row: 16 },
-    { col: 45, row: 28 },
+    { col: 44, row: 28 },
+    { col: 24, row: 28 },
+    { col: 6, row: 28 },
+    { col: 6, row: 16 },
   ],
   collector: { col: 0, row: 30 },
   collectorEdge: "left",

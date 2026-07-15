@@ -49,7 +49,10 @@ Each tile is in one of four states:
 `0..31`. The placement preview snaps the `2 x 2` block to the grid under the cursor
 (`specs/controls.md`). A component's **center** — used for range, targeting, and
 drawing — is `(20 * (col + 1), 56 + 20 * (row + 1))`. Footprints are uniform at
-**every** quality tier; there are no size variants (`specs/towers.md`).
+**every** quality tier; there are no size variants (`specs/towers.md`). All **eight**
+component types share this footprint — including the non-firing **Regulator**, which
+never fires but still occupies and **walls** its `2 x 2` (`specs/towers.md`) — as do
+the **combination towers** assembled by a recipe combine.
 
 ## Waypoint pathing and mazing
 
@@ -146,7 +149,10 @@ straight-line waypoint path.
 Arc Foundry ships **three maps**, chosen at a **MAP SELECT** screen
 (`specs/flow.md`, `specs/modes.md`). Every map plays the **same** campaign, economy,
 roster, and scaling — the **topology** (waypoint placement and any fixed housings),
-not the numbers, is what differs. Coordinates are **tile `(col, row)`** on the
+not the numbers, is what differs. Each map's waypoint chain now runs **six waypoints**
+(`WP1..WP6`) between the Entry and the Collector — a long, loopy route that folds back
+across the yard several times, so **mazing matters far more** than a short chain would
+allow. Coordinates are **tile `(col, row)`** on the
 `50 x 33` grid. The Entry and Collector are on board edges. **Each `WP` coordinate
 below is the anchor of a 4-tile T-shaped waypoint platform** (walkable, non-buildable),
 per *Waypoint platforms* above — the stem points toward the vertical center (row 16).
@@ -164,53 +170,67 @@ fold the route around *either* side of every waypoint. Only the single-tile **En
 
 ### Map A — "The Substation" (original layout)
 
-A wide serpentine that hugs the yard's perimeter; the classic Arc Foundry maze where
-you fold each long edge-leg back on itself.
+A perimeter **spiral serpentine**: the route runs the top edge, down the right side,
+back along the bottom, and up the left — then folds **inward** across the middle and
+drops before breaking out to the right. It winds toward the center and then escapes to
+the Collector, the classic Arc Foundry maze where you fold each long leg back on itself.
 
 | Checkpoint | Tile | Edge |
 | --- | --- | --- |
-| **Entry** | `(0, 4)` | left |
-| WP1 | `(45, 4)` | — |
-| WP2 | `(45, 28)` | — |
-| WP3 | `(4, 28)` | — |
-| WP4 | `(4, 16)` | — |
-| **Collector** | `(49, 16)` | right |
+| **Entry** | `(0, 5)` | left |
+| WP1 | `(44, 5)` | — |
+| WP2 | `(44, 27)` | — |
+| WP3 | `(5, 27)` | — |
+| WP4 | `(5, 14)` | — |
+| WP5 | `(36, 14)` | — |
+| WP6 | `(36, 20)` | — |
+| **Collector** | `(49, 20)` | right |
 
-No fixed housings. Five long, near-straight legs (top, right, bottom, up-left,
-middle) reward one big folded maze across the open center. The corner waypoints sit
-a few tiles off each edge, so the perimeter legs have buildable margin on their outer
-side as well as the inner.
+No fixed housings. **Seven** long, near-straight legs (across the top, down the right,
+back along the bottom, up the left, inward across the middle, a short drop, then out to
+the right) spiral the perimeter inward and reward one big folded maze that thickens
+every leg. The corner and mid waypoints sit a few tiles off each edge, so each leg has
+buildable margin on its outer side as well as its inner.
 
 ### Map B — "The Switchyard" (different waypoints)
 
-A crossing star whose legs cut diagonally through the **center** repeatedly, so the
-middle of the yard is contested four times over — a completely different mazing
-problem from Map A's edge-hugging.
+A crossing star whose legs cut diagonally through the **center** again and again: from
+the top the route whips down to the bottom-left, up to the top-right, across to the
+top-left, down to the bottom-right, into the center, out to the left, and finally down
+to the Collector. The middle of the yard is contested over **six** legs — a completely
+different mazing problem from Map A's edge-hugging.
 
 | Checkpoint | Tile | Edge |
 | --- | --- | --- |
 | **Entry** | `(25, 0)` | top |
-| WP1 | `(4, 28)` | — |
-| WP2 | `(45, 4)` | — |
-| WP3 | `(4, 4)` | — |
-| WP4 | `(45, 28)` | — |
+| WP1 | `(5, 26)` | — |
+| WP2 | `(44, 6)` | — |
+| WP3 | `(5, 6)` | — |
+| WP4 | `(44, 26)` | — |
+| WP5 | `(24, 16)` | — |
+| WP6 | `(5, 16)` | — |
 | **Collector** | `(25, 32)` | bottom |
 
-No fixed housings. The legs criss-cross the center, so the premium mazing real estate
-is the middle band, not the edges.
+No fixed housings. The legs criss-cross the center repeatedly, so the premium mazing
+real estate is the middle band, not the edges.
 
 ### Map C — "The Transformer Yard" (different waypoints **and** pre-blocked tiles)
 
-Two large fixed **transformer housings** split the yard on a diagonal; the center
-waypoint forces the Load through the gap between them, and the housings pre-shape the
-maze before the player builds a single wall.
+Two large fixed **transformer housings** split the yard on a diagonal; the central
+`WP2` still forces the Load through the gap between them, and the housings pre-shape the
+maze before the player builds a single wall. The six-waypoint route threads that gap,
+sweeps down the right side and along the bottom, then climbs the left back to the
+Collector.
 
 | Checkpoint | Tile | Edge |
 | --- | --- | --- |
 | **Entry** | `(0, 2)` | left |
-| WP1 | `(45, 4)` | — |
+| WP1 | `(44, 5)` | — |
 | WP2 | `(24, 16)` | center |
-| WP3 | `(45, 28)` | — |
+| WP3 | `(44, 28)` | — |
+| WP4 | `(24, 28)` | — |
+| WP5 | `(6, 28)` | — |
+| WP6 | `(6, 16)` | — |
 | **Collector** | `(0, 30)` | left |
 
 **Fixed-blocked housings** (Fixed-blocked tiles: impassable, never buildable, drawn
@@ -219,9 +239,10 @@ as steel transformer boxes — `specs/overview.md`, `specs/assets.md`):
 - **Housing 1:** tiles `col 12..19` by `row 6..12`.
 - **Housing 2:** tiles `col 30..37` by `row 20..26`.
 
-The `WP2` center passage is a natural chokepoint between the housings; the housings
-block off big rectangles, so the player mazes the corridors around them rather than an
-open field. The base route `E->WP1->WP2->WP3->C` stays open around both housings.
+The `WP2` center passage — threading the gap between the two housings — is a natural
+chokepoint; the housings block off big rectangles, so the player mazes the corridors
+around them rather than an open field. The base route
+`E->WP1->WP2->WP3->WP4->WP5->WP6->C` stays open around both housings.
 
 Every map exposes its **Entry** (a blown feeder vent, glowing) and **Collector** (a
 grounding sink, hazard-marked), and renders a clear sense of **flow direction** toward
@@ -296,10 +317,14 @@ bottom:
   of the next level; buying it biases future rolls upward (`specs/build.md`). Disabled
   at `R5` or when unaffordable.
 - **The selected candidate/component inspector** — when a candidate or component is
-  selected, this area shows its type, its **quality tier**, and its live stats (damage,
-  range, fire rate, targeting), plus its **KEEP / COMBINE** and **targeting** controls —
-  KEEP/COMBINE offered on a **candidate during the build phase** (only one keep per
-  level), `COMBINE` shown only when a same-type + same-quality match exists on the board
+  selected, this area shows its type (one of the **eight** component types, or a
+  **combination tower**), its **quality tier**, and its live stats (damage, range, fire
+  rate, targeting — a non-firing **Regulator** shows its aura in place of damage/rate),
+  plus its **KEEP / COMBINE** and **targeting** controls — KEEP/COMBINE offered on a
+  **candidate during the build phase** (only one keep per level). `COMBINE` covers both
+  the **quality combine** (a same-type + same-quality match on the board → one tier
+  higher) and a **combination-tower recipe combine** (when the board holds a matching
+  recipe's ingredients); the inspector previews which combos are within reach
   (`specs/build.md`, `specs/towers.md`, `specs/controls.md`).
 - **The next-wave preview** — when nothing is selected, this area shows the coming
   wave's types so the player can re-shape the maze for it (`specs/enemies.md`,

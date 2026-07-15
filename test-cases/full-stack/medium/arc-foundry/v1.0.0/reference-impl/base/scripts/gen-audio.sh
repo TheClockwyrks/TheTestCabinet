@@ -18,6 +18,8 @@
 #   kill.wav    — ground-out pop               (a unit is destroyed; specs/enemies.md)
 #   leak.wav    — leak alarm                   (a unit grounds out, Grid Integrity drops; flow.md)
 #   settle.wav  — rock-settle thunk            (unkept rocks harden into blockers; specs/build.md)
+#   slow.wav    — icy hum                      (a Choke / slow combo slows a unit; specs/towers.md)
+#   burn.wav    — overcurrent sizzle           (a Rectifier / burn combo's DoT ticks; specs/towers.md)
 #   music.wav (+ music.mid) — the tense electro-industrial reactor bed, looped under the board
 #
 # Usage:  bash scripts/gen-audio.sh    (sfx-synth/music must be on PATH, or built under
@@ -210,6 +212,54 @@ x set-envelope --voice scrape --env pluck
 x add-filter --voice scrape --type lowpass --cutoff 700 --resonance 1.0
 x add-filter --bus master --type lowpass --cutoff 900 --resonance 0.7
 x add-reverb --bus master --size 0.3 --mix 0.1
+x render
+
+# =================================== SLOW =====================================
+# The ICY HUM when a Choke (or a slow combo) lands its drag on a unit (specs/towers.md): a
+# cold EM shimmer, not a zap. A pair of high triangle/sine tones swelling in and sagging
+# gently downward (the "slowed" glide), sweetened with a ring-mod for the inharmonic EM
+# shimmer and a slow vibrato so it glistens, plus an airy highpassed frost transient. A
+# highpassed master keeps it thin and glassy. Choke blue #66d9e8 in sound: cold, shimmering.
+newsfx stereo 820 "$AUD/slow.wav"
+x add-voice --name hum1 --wave triangle --freq 1046 --gain -8 --start 0 --dur 520 --pan -0.15
+x set-envelope --voice hum1 --env swell
+x set-pitch --voice hum1 --slide-to 860 --over 480
+x add-vibrato --voice hum1 --rate 7 --depth 0.4
+x add-ringmod --voice hum1 --freq 220
+x add-voice --name hum2 --wave sine --freq 1568 --gain -11 --start 30 --dur 500 --pan 0.15
+x set-envelope --voice hum2 --env swell
+x set-pitch --voice hum2 --slide-to 1320 --over 460
+x add-vibrato --voice hum2 --rate 6 --depth 0.35
+x add-voice --name shimmer --wave sine --freq 2093 --gain -16 --start 40 --dur 440
+x set-envelope --voice shimmer --env swell
+x add-voice --name frost --wave noise --gain -14 --start 0 --dur 180
+x set-envelope --voice frost --env pluck
+x add-filter --voice frost --type highpass --cutoff 4200 --resonance 1.6
+x add-filter --bus master --type highpass --cutoff 520 --resonance 0.7
+x add-reverb --bus master --size 0.5 --mix 0.22
+x render
+
+# =================================== BURN =====================================
+# The overcurrent SIZZLE while a Rectifier (or burn combo) DoT keeps ticking (specs/towers.md):
+# a crackling electric fry, not a one-shot pop. A sustained bandpassed noise SIZZLE whose
+# filter sweeps down as it burns, a highpassed CRACKLE fed through a short feedback delay so
+# it retriggers as a string of ticks (the DoT keeping on), and a low ring-modded saw EMBER
+# buzz underneath. Soft-clip distortion gives it the frying grit. Rectifier orange #ff6b3d.
+newsfx stereo 720 "$AUD/burn.wav"
+x add-voice --name sizzle --wave noise --gain -6 --start 0 --dur 560 --pan -0.1
+x set-envelope --voice sizzle --attack 8 --decay 200 --sustain 0.4 --release 260
+x add-filter --voice sizzle --type bandpass --cutoff 3200 --sweep-to 1800 --over 500 --resonance 2.4
+x add-voice --name crackle --wave noise --gain -9 --start 30 --dur 520 --pan 0.1
+x set-envelope --voice crackle --attack 4 --decay 120 --sustain 0.3 --release 200
+x add-filter --voice crackle --type highpass --cutoff 2600 --resonance 1.3
+x add-voice --name ember --wave saw --freq 220 --gain -14 --start 0 --dur 500
+x set-envelope --voice ember --env swell
+x set-pitch --voice ember --slide-to 150 --over 460
+x add-ringmod --voice ember --freq 55
+x add-delay --bus master --time 60 --feedback 0.4 --mix 0.3
+x add-distortion --bus master --drive 1.6
+x add-filter --bus master --type lowpass --cutoff 5200 --resonance 0.8
+x add-reverb --bus master --size 0.3 --mix 0.12
 x render
 
 # ================================== MUSIC =====================================

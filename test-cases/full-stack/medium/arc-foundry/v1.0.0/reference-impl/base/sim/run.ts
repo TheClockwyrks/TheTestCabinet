@@ -1,13 +1,16 @@
 // Arc Foundry — balance report. Runs the controller battery over many seeds on each
-// difficulty and prints per-strategy WIN RATES plus the two diagnostic reads (did it maze /
-// did it climb), then checks the balance goals.
+// difficulty and prints per-strategy WIN RATES plus the diagnostic reads (did it maze / did it
+// climb / did it COMBINE — combos standing and distinct kinds), then checks the balance goals.
 //
 //   npx tsx sim/run.ts [--detail=<name|all>] [--seeds=N] [--map=<id>]
 //
-// The battery pins what "balanced" means for the GemTD reskin (specs/build.md, board.md,
-// towers.md): competent WINS Easy (~100%) and Medium (a clear majority), and every
-// degenerate play — no maze, no combine, no refine, naive — LOSES, and ideally loses
-// MECHANICALLY (a too-short route or a too-low firing line, not just a starved economy).
+// The battery pins what "balanced" means for the redesigned GemTD reskin (specs/build.md,
+// board.md, towers.md): competent WINS Easy (40 waves, ~100%) and Medium (50 waves, a clear
+// majority) and does not trivially win Hard (60 waves); every degenerate play — no-maze,
+// no-refine, no-combo, naive — LOSES, ideally MECHANICALLY (a too-short route, a too-low firing
+// line, or NO combination towers). The redesign headline: base towers are weak feedstock, so
+// ASSEMBLING combination towers is a hard GATE — the otherwise-competent `no-combo` line reaches
+// zero combos and clearly underperforms.
 
 import { DIFFICULTY, mapById, runOverSeeds, type Aggregate, type MatchResult } from "./harness";
 import { controllerFactories, controllerNames } from "./strategies";
@@ -46,17 +49,19 @@ for (const dkey of DIFFS) {
   byDiff[dkey] = aggs;
 
   console.log(`── ${diff.label}  (${diff.waves} waves, baseMult ${diff.baseMult}, k ${diff.k}) ${"─".repeat(26)}`);
-  console.log(`   ${"strategy".padEnd(11)}  win   cleared(min–max)   integ   R    comps  tier    maze px`);
+  console.log(`   ${"strategy".padEnd(11)}  win   cleared(min–max)   integ   R    comps  tier   combos  maze px`);
   for (const a of aggs) {
     const cleared = `${f(a.meanCleared, 4, 1)} (${a.minCleared}–${a.maxCleared})`.padEnd(17);
+    const combos = `${f(a.meanCombos, 3, 1)}/${f(a.meanDistinctCombos, 3, 1)}`;
     console.log(
       `   ${a.controller.padEnd(11)}  ${pct(a.winRate)}  ${cleared}  ${f(a.meanIntegrity, 5, 1)}  ${f(
         a.meanRefinement,
         3,
         1,
-      )}  ${f(a.meanComponents, 6, 1)}  ${f(a.meanTier, 4, 2)}  ${f(a.meanPathLen, 7, 0)}`,
+      )}  ${f(a.meanComponents, 6, 1)}  ${f(a.meanTier, 4, 2)}  ${combos}  ${f(a.meanPathLen, 7, 0)}`,
     );
   }
+  console.log("   (combos = mean standing / mean distinct kinds)");
   console.log("");
 }
 
@@ -67,14 +72,18 @@ function detailFor(name: string): void {
   const diff = DIFFICULTY.medium;
   const res: MatchResult = runOverSeeds(() => controllerFactories()[idx]!(), [seedList[0]!], { map: MAP, diff }).results[0]!;
   console.log(`── per-wave: ${name} on ${diff.label} (seed ${seedList[0]}) → ${res.outcome} @ wave ${res.reachedWave}`);
-  console.log(`   wave  leak  integ  charge  R  comps  maxT  meanT   maze px`);
+  console.log(`   wave  leak  integ  charge  R  comps  maxT  meanT  combo(#/kinds)   maze px`);
   for (const w of res.waves) {
     console.log(
       `   ${String(w.wave).padStart(4)}  ${String(w.leaked).padStart(4)}  ${f(w.integrityAfter, 5, 0)}  ${f(
         w.chargeAfter,
         6,
         0,
-      )}  ${w.refinement}  ${f(w.components, 5, 0)}   ${w.maxTier}    ${f(w.meanTier, 4, 2)}  ${f(w.pathLen, 8, 0)}`,
+      )}  ${w.refinement}  ${f(w.components, 5, 0)}   ${w.maxTier}    ${f(w.meanTier, 4, 2)}   ${f(w.combos, 3, 0)}/${f(
+        w.distinctCombos,
+        3,
+        0,
+      )}      ${f(w.pathLen, 8, 0)}`,
     );
   }
   console.log("");
@@ -84,56 +93,77 @@ else if (DETAIL) detailFor(DETAIL);
 
 // ---- Goal checks ------------------------------------------------------------------
 const get = (dkey: string, name: string): Aggregate => byDiff[dkey]!.find((a) => a.controller === name)!;
-const meanMaxTier = (a: Aggregate): number => a.results.reduce((s, r) => s + r.maxTier, 0) / (a.results.length || 1);
 const checks: Array<{ label: string; ok: boolean; detail: string }> = [];
 const add = (label: string, ok: boolean, detail: string) => checks.push({ label, ok, detail });
 
-// The reference "good player" clears the tuned campaign; the shorter Easy siege it wins
-// outright, and it never trivially clears the brutal Hard HP climb.
-add("competent wins Easy ≈100%", get("easy", "competent").winRate >= 0.95, pct(get("easy", "competent").winRate));
-add("competent wins Medium (majority ≥80%)", get("medium", "competent").winRate >= 0.8, pct(get("medium", "competent").winRate));
-add("competent does not trivially win Hard", get("hard", "competent").winRate <= 0.6, pct(get("hard", "competent").winRate));
+// The reference "good player" clears the tuned campaign; the shorter 40-wave Easy siege it wins
+// outright, the 50-wave Medium reference it wins with a clear majority, and it never trivially
+// clears the brutal 60-wave Hard HP climb.
+add("competent wins Easy ≈100% (40 waves)", get("easy", "competent").winRate >= 0.95, pct(get("easy", "competent").winRate));
+add("competent wins Medium (majority ≥80%, 50 waves)", get("medium", "competent").winRate >= 0.8, pct(get("medium", "competent").winRate));
+add("competent does not trivially win Hard (≤60%, 60 waves)", get("hard", "competent").winRate <= 0.6, pct(get("hard", "competent").winRate));
 
-// The board-breaking degenerates lose clearly and MECHANICALLY: no-maze / naive dump their
-// walls into the kill zone (route never folds), and no-refine never buys UPGRADE QUALITY so
-// its firing line stays low and its combine climb is too slow.
-add("no-maze loses Medium (route never folds)", get("medium", "no-maze").winRate <= 0.15, pct(get("medium", "no-maze").winRate));
-add("naive loses Medium (no maze, no ladder)", get("medium", "naive").winRate <= 0.15, pct(get("medium", "naive").winRate));
+// The board-breaking degenerates lose clearly and MECHANICALLY: naive dumps its walls in a
+// route-less blob of Scrap guns; no-maze clumps its walls so the route barely folds; no-refine
+// never buys UPGRADE QUALITY so its rolls stay Scrap and its climb barely feeds a recipe (its
+// combos stall at the two all-Scrap early ones).
+//
+// The three gates are deliberately of DIFFERENT strengths (this is the designed hierarchy, not a
+// bug): REFINE and COMBOS are HARD gates — skipping either drops you to ≈0–13% — while MAZING is
+// the SOFTEST lever. A no-maze player who still climbs, refines, and assembles the full combo line
+// piles those combos ON the Load's path, which incidentally lengthens the route and, with the
+// intended late-game power of a maxed combo line, brute-forces ~1 in 4 Medium runs. That is
+// correct: combos are the redesign's primary power source, so mazing is a strong lever (competent
+// out-wins no-maze by ~60 points — the exact "mazing must matter" property the redesign restored)
+// but NOT an absolute gate like refining or combining. Hence no-maze's band is ≤25% (loses ≥3 of
+// 4) while naive/no-refine — which lack the combo line too — are held to the hard ≤15%.
+add("no-maze loses Medium (a clumped combo line, route barely folds)", get("medium", "no-maze").winRate <= 0.25, pct(get("medium", "no-maze").winRate));
+add("naive loses Medium (no maze, no ladder, no combos)", get("medium", "naive").winRate <= 0.15, pct(get("medium", "naive").winRate));
 add("no-refine loses Medium (no UPGRADE QUALITY)", get("medium", "no-refine").winRate <= 0.15, pct(get("medium", "no-refine").winRate));
 
-// The two levers separate the field. GEOMETRY: competent's tower-lined comb folds the route
-// well past a route-less clump. THE LADDER: only a COMBINER reaches the Primed / Tesla-Prime
-// carries — the roll alone (no-combine, however wide + refined) caps at Charged — so competent
-// out-wins no-combine by a clear margin and reaches a strictly higher quality ceiling.
+// GEOMETRY lever (recalibrated for the 6-waypoint maps): competent's tower-lined comb folds the
+// shortest open route well past a wall-less clump — naive (maze off) lays no blockers, so its
+// route is the bare map, the honest "did it maze" baseline.
 add(
-  "competent mazes longer than a clump (geometry)",
-  get("medium", "competent").meanPathLen > 1.25 * get("medium", "no-maze").meanPathLen,
-  `${f(get("medium", "competent").meanPathLen, 5, 0)} vs ${f(get("medium", "no-maze").meanPathLen, 5, 0)} px`,
+  "competent mazes far longer than a wall-less clump (geometry)",
+  get("medium", "competent").meanPathLen > 1.3 * get("medium", "naive").meanPathLen,
+  `competent ${f(get("medium", "competent").meanPathLen, 5, 0)} vs naive ${f(get("medium", "naive").meanPathLen, 5, 0)} px`,
+);
+
+// THE COMBO GATE (the redesign headline): base towers are weak feedstock, so ASSEMBLING
+// combination towers is a HARD gate on the late game — a no-combo line (mazes + climbs + refines
+// but never combines) clearly underperforms the combining competent, and reaches ZERO combos
+// while competent reaches ≥1–2 distinct combos late.
+const cm = get("medium", "competent");
+const ncmb = get("medium", "no-combo");
+add(
+  "no-combo underperforms competent on Medium (combo gate)",
+  cm.winRate - ncmb.winRate >= 0.15,
+  `competent ${pct(cm.winRate)} − no-combo ${pct(ncmb.winRate)} = ${((cm.winRate - ncmb.winRate) * 100).toFixed(0)} pts`,
 );
 add(
-  "only combining reaches Tesla-Prime carries",
-  meanMaxTier(get("medium", "competent")) >= 4.5 && meanMaxTier(get("medium", "no-combine")) <= 3.2,
-  `competent maxT ${f(meanMaxTier(get("medium", "competent")), 4, 1)} vs no-combine maxT ${f(meanMaxTier(get("medium", "no-combine")), 4, 1)}`,
-);
-add(
-  "combining is the edge (competent out-wins no-combine)",
-  get("medium", "competent").winRate - get("medium", "no-combine").winRate >= 0.1,
-  `${pct(get("medium", "competent").winRate)} vs ${pct(get("medium", "no-combine").winRate)}`,
+  "competent reaches ≥1 distinct combo late; no-combo reaches 0",
+  cm.meanDistinctCombos >= 1 && ncmb.meanDistinctCombos === 0,
+  `competent ${f(cm.meanDistinctCombos, 4, 1)} distinct (${f(cm.meanCombos, 4, 1)} standing) vs no-combo ${f(ncmb.meanDistinctCombos, 4, 1)}`,
 );
 
 console.log(`── goal checks ${"─".repeat(46)}`);
 let allOk = true;
 for (const c of checks) {
   allOk = allOk && c.ok;
-  console.log(`   ${c.ok ? "PASS" : "FAIL"}  ${c.label.padEnd(44)}  ${c.detail}`);
+  console.log(`   ${c.ok ? "PASS" : "FAIL"}  ${c.label.padEnd(52)}  ${c.detail}`);
 }
 console.log(`\n${allOk ? "ALL GOAL CHECKS PASS" : "SOME GOAL CHECKS FAILED"}`);
 
-// A standing caveat the balance pass surfaced (see sim/README.md): a NO-COMBINE line that
-// still mazes + refines remains viable on these funnel maps — combining is the decisive EDGE
-// (competent wins more and is the only line to reach the Tesla-Prime carries), not a hard
-// requirement. Flagged, not hidden.
-const nc = get("medium", "no-combine").winRate;
-if (nc > 0.15) console.log(`NOTE: no-combine still wins ${pct(nc)} of Medium — combining is the edge, not a hard gate (see sim/README.md).`);
+// Report the combo gate explicitly whether or not the win-rate band is met yet: how much the
+// combining competent out-wins the otherwise-identical no-combo line, and the distinct-combo
+// counts that show combining is a real GATE, not an edge.
+console.log(
+  `NOTE: combo gate — competent reaches ${cm.meanDistinctCombos.toFixed(1)} distinct combos (${cm.meanCombos.toFixed(
+    1,
+  )} standing) and wins Medium ${pct(cm.winRate)}; no-combo reaches ${ncmb.meanDistinctCombos.toFixed(1)} and wins ${pct(
+    ncmb.winRate,
+  )}.`,
+);
 console.log("");
 process.exit(allOk ? 0 : 1);

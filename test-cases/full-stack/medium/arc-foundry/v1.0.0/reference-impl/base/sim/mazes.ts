@@ -8,14 +8,15 @@
 // the Load is under fire the whole crawl (never sealing a waypoint segment — a sealing
 // placement is refused).
 //
-// The maze is TOWER-LINED and grows CENTER-OUT. The maps funnel every unit across a central
-// crossing leg (row ~16), so the maze is a comb of full-height vertical TEETH built outward
-// from the middle: the central tooth (a firing wall) rises first — a tight early choke on the
-// funnel that a 1–4 tower opening can hold — and each further tooth widens the weave. Within a
-// tooth the cells nearest the crossing are FIRING slots (kept components that cover the two
-// corridors the Load weaves through on either side); the rest are BLOCKERS that raise the wall.
-// So the firing line spreads only as fast as the maze that carries it, and coverage stays
-// concentrated where the Load actually is — the coverage a central clump cannot fold up.
+// The maze is TOWER-LINED and grows CENTER-OUT. Each map now runs SIX waypoints, so its route
+// already sweeps the whole yard; the maze is a comb of full-height vertical TEETH built outward
+// from the middle that folds that route into a deep serpentine: the central tooth (a firing
+// wall) rises first — a tight early choke that a 1–4 tower opening can hold — and each further
+// tooth widens the weave across the middle band so the Load cannot slip through. Within a tooth
+// the cells nearest the crossing are FIRING slots (kept
+// components that cover the two corridors the Load weaves through on either side); the rest are
+// BLOCKERS that raise the wall. So the firing line spreads only as fast as the maze that carries
+// it, and coverage stays concentrated where the Load is — coverage a central clump cannot fold up.
 //
 // An "anchor" is a 2×2 footprint top-left tile (col, row) on the 50×33 grid (specs/board.md
 // §2.2). A controller builds TOWARD these anchors in order; the exact tile is not load-bearing
@@ -27,8 +28,11 @@ export interface Anchor {
   row: number;
 }
 
-// The map's central crossing row — where the waypoint chain funnels the Load and the maze is
-// centred (Substation WP4→Collector at row 16; the WP2 chokepoint on the others).
+// The board's central row. Each map now runs SIX waypoints spread across cols 5..44 / rows
+// 5..28, so the inherent route already sweeps the whole yard; a FULL-HEIGHT comb centred here
+// folds that route into a deep serpentine regardless of which leg happens to funnel. CROSS_ROW
+// only decides which cells of a tooth are FIRING slots (nearest the middle, best corridor
+// coverage) vs raise-the-wall BLOCKERS — the wall SHAPE is the same either way.
 const CROSS_ROW = 16;
 
 // A vertical "tooth": a stack of 2×2 blocks at column `col`, from row r0 down to a block
@@ -82,9 +86,15 @@ export function clump(c0: number, r0: number, cols: number, rows: number): Ancho
 }
 
 // ---- The three maps' planned boards (specs/board.md §4) -------------------------
-// A tower-lined comb centred on col 24 / the crossing row, full height (rows 0..31) with an
-// 8-row alternating gap and teeth every 4 columns, spanning the full width so the Load cannot
-// route around it. Transformer is pulled in a touch (housings/waypoints auto-avoided by snap).
+// A tower-lined comb centred on col 24, full height (rows 0..31), teeth every 4 columns
+// (nEachSide 4 → cols 8..40) with an 8-row alternating gap (top on odd teeth, bottom on even)
+// that forces the up/down serpentine, spanning the width so the Load cannot route around it.
+// Verified against the SIX-waypoint maps: this folds every map's route to ~1.4× the bare-board
+// route (substation ×1.45, switchyard ×1.39, transformer ×1.43) while leaving the early central
+// choke loose enough that a competent opening survives Wave 1–5 (a tighter gap / wider span
+// spreads the sparse early firing line too thin and it leaks out before it can climb). The
+// housings + waypoint platforms are auto-avoided by nearestLegalAnchor's snap; Transformer keeps
+// a slightly deeper gap (9) so its teeth thread cleanly past the two fixed housings.
 const COMBS: Record<string, { firing: Anchor[]; blockers: Anchor[] }> = {
   substation: towerLinedComb(24, 4, 4, 0, 31, 8, 3),
   switchyard: towerLinedComb(24, 4, 4, 0, 31, 8, 3),

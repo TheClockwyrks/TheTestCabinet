@@ -24,6 +24,9 @@ const FOOTPRINT: Record<FxKind, number> = {
   death: 50,
   leak: 60,
   muzzle: 24,
+  slowhit: 34, // frost snap on a slowed unit
+  burnhit: 30, // ember flare of an overcurrent burn tick
+  aura: 96, // support pulse ring at a Regulator / aura combo
 };
 
 // The quality tier scales a firing burst's size so the ladder reads in the VFX

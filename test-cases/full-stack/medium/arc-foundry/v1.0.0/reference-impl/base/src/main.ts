@@ -16,7 +16,7 @@ import { Game } from "./sim";
 import { Input } from "./input";
 import { menuItems } from "./menus";
 import { render, setMenuIndex, setMuted, setRenderTime } from "./render";
-import type { Clickable, ComponentType, Difficulty, MapDef, Tier } from "./types";
+import type { Clickable, ComboType, ComponentType, Difficulty, MapDef, Tier } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -68,6 +68,9 @@ async function main(): Promise<void> {
     blocker: (col: number, row: number) => game.devBlocker(col, row),
     keep: (id: number) => game.keep(id),
     combine: (id: number) => game.combine(id),
+    // Assemble a candidate into a COMBINATION TOWER by recipe (deterministic driver path).
+    combineRecipe: (id: number, combo: ComboType) => game.combineRecipe(id, combo),
+    reachableCombos: (id: number) => game.reachableCombosFor(id),
     remove: (id: number) => game.removeStructure(id),
     upgradeQuality: () => game.upgradeQuality(),
     setRefinement: (r: 0 | 1 | 2 | 3 | 4 | 5) => game.devSetRefinement(r),
@@ -81,7 +84,7 @@ async function main(): Promise<void> {
     void audio.resume();
   };
 
-  function activate(action: string): void {
+  function activate(action: string, payload?: string): void {
     if (action.startsWith("map:")) {
       // A map-select choice — remember it and advance to the difficulty select.
       pendingMap = mapById(action.slice(4));
@@ -137,6 +140,10 @@ async function main(): Promise<void> {
       case "combine":
         game.combineSelected();
         break;
+      case "comborecipe":
+        // Assemble the selected candidate into the chosen COMBINATION TOWER (specs/build.md).
+        if (payload) game.combineRecipeSelected(payload as ComboType);
+        break;
       case "upgrade":
         game.upgradeQuality();
         break;
@@ -178,7 +185,7 @@ async function main(): Promise<void> {
       // Outside play, only navigation clicks fire (menu items and map/difficulty cards).
       if (game.state !== "playing" && !c.action.startsWith("menu:") && !c.action.startsWith("map:") && !c.action.startsWith("diff:")) continue;
       if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
-        activate(c.action);
+        activate(c.action, c.payload);
         return;
       }
     }
@@ -219,6 +226,15 @@ async function main(): Promise<void> {
       }
       if (lower === "c") {
         game.combineSelected();
+        return;
+      }
+      if (lower === "g") {
+        // Assemble the selected candidate into its first reachable COMBINATION TOWER (a quick
+        // keyboard commit; the inspector lists every reachable combo for a precise pick).
+        if (game.selectedId != null) {
+          const opts = game.reachableCombosFor(game.selectedId);
+          if (opts[0]) game.combineRecipeSelected(opts[0].combo);
+        }
         return;
       }
       if (lower === "u") {

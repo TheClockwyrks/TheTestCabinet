@@ -4,11 +4,13 @@
   Canonical view slug: map-select
   Render at a 1280x720 viewport. See ../specs/modes.md (the map-select menu: choose
   one of the three maps, then difficulty) and ../specs/board.md (the three maps and
-  their exact waypoint coordinates; Map C's two fixed transformer housings). Each
+  their exact SIX-waypoint coordinates; Map C's two fixed transformer housings). Each
   card shows a mini preview of the map's ordered waypoint layout so the player can
   tell them apart before choosing; a way back to the title menu is offered. The
   mini-board waypoint positions are scaled from the board-local tile coordinates in
-  specs/board.md (sec. 4); layout/wording are illustrative, the topology is not.
+  specs/board.md (sec. maps) by ~0.268; layout/wording are illustrative, the topology
+  is not. Every map now carries SIX waypoints (WP1..WP6) — a longer, loopier route on
+  which mazing matters much more.
 -->
 <html lang="en">
   <head>
@@ -24,69 +26,76 @@
       </div>
 
       <div class="cards">
-        <!-- Map A — The Substation (original layout, no housings). -->
+        <!-- Map A — The Substation (perimeter spiral, six waypoints, no housings). -->
         <div class="card selected">
           <div class="mini">
             <svg viewBox="0 0 268 178">
-              <polyline points="3,24 255,24 255,153 13,153 13,88 265,88"
+              <polyline points="3,29 239,29 239,147 29,147 29,78 196,78 196,110 265,110"
                 fill="none" stroke="#3a5f7d" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" opacity="0.9" />
             </svg>
-            <div class="m-entry" style="left: 3px; top: 24px"></div>
-            <div class="m-pylon" style="left: 255px; top: 24px"></div>
-            <div class="m-pylon" style="left: 255px; top: 153px"></div>
-            <div class="m-pylon" style="left: 13px; top: 153px"></div>
-            <div class="m-pylon" style="left: 13px; top: 88px"></div>
-            <div class="m-coll" style="left: 265px; top: 88px"></div>
+            <div class="m-entry" style="left: 3px; top: 29px"></div>
+            <div class="m-pylon" style="left: 239px; top: 29px"></div>
+            <div class="m-pylon" style="left: 239px; top: 147px"></div>
+            <div class="m-pylon" style="left: 29px; top: 147px"></div>
+            <div class="m-pylon" style="left: 29px; top: 78px"></div>
+            <div class="m-pylon" style="left: 196px; top: 78px"></div>
+            <div class="m-pylon" style="left: 196px; top: 110px"></div>
+            <div class="m-coll" style="left: 265px; top: 110px"></div>
           </div>
-          <div class="card-h"><span class="nm">THE SUBSTATION</span><span class="tag">ORIGINAL</span></div>
-          <div class="desc">A wide serpentine hugging the perimeter. Five long edge-legs fold into one big maze across the open center.</div>
+          <div class="card-h"><span class="nm">THE SUBSTATION</span><span class="tag">SPIRAL</span></div>
+          <div class="desc">A perimeter spiral serpentine: top edge, down the right, back along the bottom, up the left, then folding inward across the middle. Seven long legs to thicken into one big folded maze.</div>
           <div class="facts">
-            <div class="fact"><span>WAYPOINTS</span><b>4</b></div>
+            <div class="fact"><span>WAYPOINTS</span><b>6</b></div>
             <div class="fact"><span>FIXED HOUSINGS</span><b>NONE</b></div>
           </div>
         </div>
 
-        <!-- Map B — The Switchyard (different waypoints, no housings). -->
+        <!-- Map B — The Switchyard (center-crossing star, six waypoints, no housings). -->
         <div class="card">
           <div class="mini">
             <svg viewBox="0 0 268 178">
-              <polyline points="137,3 13,163 255,13 13,13 255,163 137,174"
+              <polyline points="137,3 29,142 239,35 29,35 239,142 131,88 29,88 137,174"
                 fill="none" stroke="#3a5f7d" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" opacity="0.9" />
             </svg>
             <div class="m-entry" style="left: 137px; top: 3px"></div>
-            <div class="m-pylon" style="left: 13px; top: 163px"></div>
-            <div class="m-pylon" style="left: 255px; top: 13px"></div>
-            <div class="m-pylon" style="left: 13px; top: 13px"></div>
-            <div class="m-pylon" style="left: 255px; top: 163px"></div>
+            <div class="m-pylon" style="left: 29px; top: 142px"></div>
+            <div class="m-pylon" style="left: 239px; top: 35px"></div>
+            <div class="m-pylon" style="left: 29px; top: 35px"></div>
+            <div class="m-pylon" style="left: 239px; top: 142px"></div>
+            <div class="m-pylon" style="left: 131px; top: 88px"></div>
+            <div class="m-pylon" style="left: 29px; top: 88px"></div>
             <div class="m-coll" style="left: 137px; top: 174px"></div>
           </div>
-          <div class="card-h"><span class="nm">THE SWITCHYARD</span><span class="tag">CROSSING</span></div>
-          <div class="desc">A crossing star whose legs cut through the center four times. The contested middle band is the premium mazing real estate.</div>
+          <div class="card-h"><span class="nm">THE SWITCHYARD</span><span class="tag">STAR</span></div>
+          <div class="desc">A crossing star whose six legs cut diagonally through the center again and again. The contested middle band is the premium mazing real estate, not the edges.</div>
           <div class="facts">
-            <div class="fact"><span>WAYPOINTS</span><b>4</b></div>
+            <div class="fact"><span>WAYPOINTS</span><b>6</b></div>
             <div class="fact"><span>FIXED HOUSINGS</span><b>NONE</b></div>
           </div>
         </div>
 
-        <!-- Map C — The Transformer Yard (different waypoints + two fixed housings). -->
+        <!-- Map C — The Transformer Yard (six waypoints + two fixed housings). -->
         <div class="card">
           <div class="mini">
             <div class="m-house" style="left: 64px; top: 32px; width: 43px; height: 37px"></div>
             <div class="m-house" style="left: 161px; top: 107px; width: 43px; height: 37px"></div>
             <svg viewBox="0 0 268 178">
-              <polyline points="3,13 260,13 131,88 260,163 3,163"
+              <polyline points="3,13 239,29 131,88 239,153 131,153 35,153 35,88 3,163"
                 fill="none" stroke="#3a5f7d" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" opacity="0.9" />
             </svg>
             <div class="m-entry" style="left: 3px; top: 13px"></div>
-            <div class="m-pylon" style="left: 260px; top: 13px"></div>
+            <div class="m-pylon" style="left: 239px; top: 29px"></div>
             <div class="m-pylon" style="left: 131px; top: 88px"></div>
-            <div class="m-pylon" style="left: 260px; top: 163px"></div>
+            <div class="m-pylon" style="left: 239px; top: 153px"></div>
+            <div class="m-pylon" style="left: 131px; top: 153px"></div>
+            <div class="m-pylon" style="left: 35px; top: 153px"></div>
+            <div class="m-pylon" style="left: 35px; top: 88px"></div>
             <div class="m-coll" style="left: 3px; top: 163px"></div>
           </div>
           <div class="card-h"><span class="nm">TRANSFORMER YARD</span><span class="tag">PRE-BLOCKED</span></div>
-          <div class="desc">Two fixed transformer housings split the yard on a diagonal; the center waypoint forces the Load through the gap between them.</div>
+          <div class="desc">Two fixed transformer housings split the yard on a diagonal; the central WP2 forces the Load through the gap between them. Six waypoints threading pre-shaped corridors.</div>
           <div class="facts">
-            <div class="fact"><span>WAYPOINTS</span><b>3</b></div>
+            <div class="fact"><span>WAYPOINTS</span><b>6</b></div>
             <div class="fact"><span>FIXED HOUSINGS</span><b>2</b></div>
           </div>
         </div>
