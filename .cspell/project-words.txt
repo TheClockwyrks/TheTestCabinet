@@ -419,3 +419,12 @@ debuff
 crits
 hoverable
 transpiles
+
+# Locomotivation (Frogger-style rail-yard hauling full-stack case): title + coined/domain terms.
+locomotivation
+stardew
+frogger
+boardable
+beatability
+subfolders
+cutscenes
