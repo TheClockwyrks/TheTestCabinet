@@ -19,11 +19,16 @@ interpolates or samples the latest state; logic never runs faster on a faster ma
 The miner is driven continuously (hold a direction to keep moving/drilling), not by
 discrete tile steps:
 
-- **Move / drill left** — `A` or `Left Arrow`. In open space, moves left; against a
-  minable tile, **drills it** (`specs/character.md`), then moves into the tunnel.
+- **Move / drill left** — `A` or `Left Arrow`. In open space, moves left; once the
+  miner reaches the **edge** of its tile against a **minable** tile — and only while
+  **standing on solid ground** — it **drills** that tile (`specs/character.md`), then
+  moves into the tunnel. Pressing left in **mid-tile** walks first; pressing left while
+  **falling** does not drill.
 - **Move / drill right** — `D` or `Right Arrow`. Symmetric.
-- **Drill down** — `S` or `Down Arrow`. Drills the tile below and descends into it;
-  with open space below, does nothing special (gravity already pulls the miner down).
+- **Drill down** — `S` or `Down Arrow`. While **grounded**, drills the tile the miner
+  is standing on and steps down into it, digging a shaft **tile by tile**; it drills
+  **only while grounded** — with open space below (or while falling) it does nothing
+  special and the miner simply falls (`specs/character.md`).
 - **Jetpack thrust (up)** — `W`, `Up Arrow`, or `Space`. Fires the jetpack, climbing
   (or hovering at a light hold) and **burning fuel** (`specs/character.md`). There is
   **no drilling up** — thrust only moves through open tunnels.
@@ -38,7 +43,8 @@ At the surface, the miner activates a building by **standing at it** and pressin
 **activate** key (`E` or `Enter`), or by **clicking** the building — either opens that
 building's **overlay panel** (`specs/flow.md`):
 
-- **Fuel Depot** — shows fuel/hull topped up (free); close to return.
+- **Fuel Depot** — buy fuel and hull repair for Credits (`specs/flow.md`,
+  `specs/character.md`); close to return.
 - **Ore Market** — the cargo breakdown and **SELL** (`specs/mining.md`).
 - **Upgrade Shop** — the five upgrade tracks; click a track's **BUY** to purchase its
   next tier (`specs/upgrades.md`).

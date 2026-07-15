@@ -11,13 +11,16 @@
 
 import {
   BANDS,
+  DEPOT_INCREMENT,
   FONT_STACK,
+  FUEL_COST_PER_UNIT,
   GRID_MARGIN_X,
   LOW_FUEL_FRACTION,
   LOW_HULL_FRACTION,
   MAX_TIER,
   ORES,
   PALETTE,
+  REPAIR_COST_PER_POINT,
   ROCKET_COMPONENTS,
   STAGE_HEIGHT,
   STAGE_WIDTH,
@@ -33,7 +36,7 @@ import type { Material, MinerState, Ore, Tile } from "./types";
 import { SURFACE_BUILDINGS } from "./game";
 import type { Game } from "./game";
 import { MINER_H, MINER_W, SURFACE_FEET_Y, minerCenterX, minerCenterY } from "./physics";
-import { cargoValue, nextUpgradePrice } from "./economy";
+import { cargoValue, fuelCost, fuelDeficit, hullDeficit, nextUpgradePrice, repairCost } from "./economy";
 import { canFabricate, hasMaterial, nextComponent, allInstalled } from "./rocket";
 import type { Assets } from "./assets";
 import { isReady } from "./assets";
@@ -877,14 +880,60 @@ function closeButton(ctx: CanvasRenderingContext2D, f: { x: number; y: number; w
 
 function drawFuelDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
   const f = panelFrame(ctx, "FUEL DEPOT");
-  text(ctx, "Jetpack refueled and hull repaired — free.", f.x + 28, f.y + 96, {
-    size: 16,
+  text(ctx, "Buy fuel and hull repair with Credits — nothing refills for free.", f.x + 28, f.y + 74, {
+    size: 15,
     color: P.textSecondary,
   });
-  gauge(ctx, f.x + 28, f.y + 150, 300, "FUEL", game.miner.fuel, game.maxFuel(), P.fuel, false);
-  gauge(ctx, f.x + 28, f.y + 210, 300, "HULL", game.miner.hull, game.maxHull(), P.hull, false);
-  text(ctx, "This is the safe haven your whole fuel budget is measured against.", f.x + 28, f.y + 280, {
-    size: 13,
+  text(ctx, `Credits: ${game.credits}`, f.x + f.w - 28, f.y + 40, {
+    size: 18,
+    color: P.credits,
+    align: "right",
+    bold: true,
+  });
+
+  // ---- Fuel row ----
+  const fuelD = fuelDeficit(game);
+  const fuelFill = fuelCost(fuelD);
+  const fuelFull = fuelD <= 0;
+  const cantBuyFuel = fuelFull || game.credits < FUEL_COST_PER_UNIT;
+  const fuelY = f.y + 150;
+  gauge(ctx, f.x + 28, fuelY, 300, "FUEL", game.miner.fuel, game.maxFuel(), P.fuel, false);
+  text(ctx, `${FUEL_COST_PER_UNIT} Cr / unit`, f.x + 28, fuelY + 34, { size: 12, color: P.textTertiary });
+  button(ctx, cl, view, f.x + 352, fuelY - 12, 78, 38, `+${DEPOT_INCREMENT}`, "buyfuel:25", {
+    disabled: cantBuyFuel,
+    accent: P.fuel,
+  });
+  button(ctx, cl, view, f.x + 442, fuelY - 12, 200, 38, fuelFull ? "FULL" : `FILL ${fuelFill} Cr`, "buyfuel:full", {
+    disabled: cantBuyFuel,
+    accent: P.fuel,
+  });
+
+  // ---- Hull row ----
+  const hullD = hullDeficit(game);
+  const hullRepair = repairCost(hullD);
+  const hullFull = hullD <= 0;
+  const cantBuyRepair = hullFull || game.credits < REPAIR_COST_PER_POINT;
+  const hullY = f.y + 240;
+  gauge(ctx, f.x + 28, hullY, 300, "HULL", game.miner.hull, game.maxHull(), P.hull, false);
+  text(ctx, `${REPAIR_COST_PER_POINT} Cr / hull`, f.x + 28, hullY + 34, { size: 12, color: P.textTertiary });
+  button(ctx, cl, view, f.x + 352, hullY - 12, 78, 38, `+${DEPOT_INCREMENT}`, "buyrepair:25", {
+    disabled: cantBuyRepair,
+    accent: P.hull,
+  });
+  button(ctx, cl, view, f.x + 442, hullY - 12, 200, 38, hullFull ? "FULL" : `REPAIR ${hullRepair} Cr`, "buyrepair:full", {
+    disabled: cantBuyRepair,
+    accent: P.hull,
+  });
+
+  text(
+    ctx,
+    "Fuel burns whenever the jetpack fires (even above ground); hull is dented by",
+    f.x + 28,
+    f.y + 340,
+    { size: 12, color: P.textTertiary },
+  );
+  text(ctx, "blasts, lava, and hard landings — none of it comes back on its own.", f.x + 28, f.y + 360, {
+    size: 12,
     color: P.textTertiary,
   });
   closeButton(ctx, f, view, cl);
@@ -1097,11 +1146,12 @@ function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
   const lines = [
     "GOAL — Build the five-component escape rocket at the Launch Pad and LAUNCH to win.",
     "",
-    "DIG — A/D or ←/→ move & drill sideways, S or ↓ drills down. You drill DOWN, LEFT, RIGHT —",
-    "      never UP. W/↑/Space fires the jetpack to climb (it burns FUEL; falling is free).",
+    "DIG — A/D or ←/→ walk, and drill sideways once you reach a wall; S or ↓ drills down. You drill",
+    "      DOWN, LEFT, RIGHT — never UP, and only while standing on solid ground (not while falling).",
+    "      W/↑/Space fires the jetpack to climb (it burns FUEL; falling is free). There is no ceiling.",
     "",
-    "LOOP — Fill cargo with ore, jetpack back up, SELL at the Ore Market, buy UPGRADES, dig deeper.",
-    "       Fuel & Hull refill FREE at the surface — the tension is getting home before you run dry.",
+    "LOOP — Fill cargo with ore, jetpack up, SELL ore, then BUY fuel & repairs at the Fuel Depot and",
+    "       UPGRADES at the shop. Nothing refills free — budget Credits for the climb home, not just the dig.",
     "",
     "MATERIALS — Resonite (rockbed) and Cryenite (deepstone) are guaranteed but hidden; the SCANNER",
     "            points to the nearest one you still need. The rocket's deep parts need them.",

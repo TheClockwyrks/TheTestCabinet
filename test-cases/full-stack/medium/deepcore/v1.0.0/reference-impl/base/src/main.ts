@@ -17,7 +17,7 @@ import { Game } from "./game";
 import { Input } from "./input";
 import { menuItems, render } from "./render";
 import type { Clickable, View } from "./render";
-import { buyUpgrade, sellCargo } from "./economy";
+import { buyFuel, buyRepair, buyUpgrade, sellCargo } from "./economy";
 import { fabricate } from "./rocket";
 import type { OpenPanel, UpgradeTrack } from "./types";
 
@@ -87,6 +87,16 @@ async function main(): Promise<void> {
     }
     if (action.startsWith("buy:")) {
       buyUpgrade(game, action.slice(4) as UpgradeTrack);
+      return;
+    }
+    if (action.startsWith("buyfuel:")) {
+      const arg = action.slice(8);
+      buyFuel(game, arg === "full" ? Infinity : Number(arg));
+      return;
+    }
+    if (action.startsWith("buyrepair:")) {
+      const arg = action.slice(10);
+      buyRepair(game, arg === "full" ? Infinity : Number(arg));
       return;
     }
     switch (action) {
@@ -182,6 +192,8 @@ async function main(): Promise<void> {
     startExpedition: (m: "standard" | "hardcore") => game.startExpedition(m),
     sell: () => sellCargo(game),
     buyUpgrade: (t: UpgradeTrack) => buyUpgrade(game, t),
+    buyFuel: (n: number) => buyFuel(game, n),
+    buyRepair: (n: number) => buyRepair(game, n),
     fabricate: () => fabricate(game),
     launch: () => game.startLaunch(),
     openPanel: (p: Exclude<OpenPanel, null>) => game.openPanel(p),

@@ -84,7 +84,14 @@ export const SURFACE_BUILDINGS: Building[] = [
 const BUILDING_REACH = 1.6;
 const NOTE_LIFE = 2.4;
 const LAUNCH_ANIM_TIME = 2.6;
+/** Resting top of the camera at the surface (a little sky above the camp is shown). */
 const MIN_CAM = -130;
+/**
+ * When the miner climbs into the open sky above the surface (no ceiling,
+ * specs/character.md), keep it this far below the top of the viewport so the camera
+ * follows it up instead of letting it clip off the top of the view (specs/world.md).
+ */
+const SKY_FOLLOW_MARGIN = 130;
 
 export class Game {
   // --- Persistent expedition state (specs/flow.md) ---
@@ -283,9 +290,9 @@ export class Game {
     }
 
     // A building panel is open at the surface — the world behind it is frozen (the miner is
-    // safe), but the Core timer (above) still ran, and refuel/repair still applies.
+    // safe), but the Core timer (above) still ran. Fuel and hull do NOT refill here; they
+    // are only restored by buying at the Fuel Depot panel (specs/character.md, specs/flow.md).
     if (this.panel !== null) {
-      this.refuelIfSurface();
       this.activeLoops.clear();
       if (this.coreTimer !== null) this.activeLoops.add("alarm-core");
       return;
@@ -320,12 +327,12 @@ export class Game {
     if (underground) this.miner.fuel -= FUEL_LIFE_SUPPORT_RATE * dt;
     if (this.miner.fuel < 0) this.miner.fuel = 0;
 
-    // Hazards.
+    // Hazards (a hard landing hurts even on the surface camp floor — specs/hazards.md).
     updateLavaContact(this, dt);
     if (move.landedSpeed > 0) landImpact(this, move.landedSpeed);
 
-    // Free refuel/repair the moment the miner is home (specs/world.md, specs/flow.md).
-    this.refuelIfSurface();
+    // Fuel and hull are NOT restored by being home — they are only bought at the Fuel
+    // Depot (specs/character.md, specs/flow.md). Nothing refills automatically here.
 
     // Retrieve a dropped Standard cache by reaching it (specs/modes.md).
     this.retrieveCache();
@@ -345,13 +352,6 @@ export class Game {
   private decayNotes(dt: number): void {
     for (const n of this.notes) n.t -= dt;
     this.notes = this.notes.filter((n) => n.t > 0);
-  }
-
-  private refuelIfSurface(): void {
-    if (this.atSurface()) {
-      this.miner.fuel = this.maxFuel();
-      this.miner.hull = this.maxHull();
-    }
   }
 
   private retrieveCache(): void {
@@ -376,7 +376,10 @@ export class Game {
   }
 
   private updateCamera(dt: number): void {
-    const target = clamp(minerCenterY(this.miner) - VIEWPORT_HEIGHT / 2, MIN_CAM, this.maxCam());
+    // At rest the top clamp is MIN_CAM (frames the camp); once the miner rises into the
+    // sky above the surface, the clamp follows it up so it stays on screen (specs/world.md).
+    const topClamp = Math.min(MIN_CAM, minerCenterY(this.miner) - SKY_FOLLOW_MARGIN);
+    const target = clamp(minerCenterY(this.miner) - VIEWPORT_HEIGHT / 2, topClamp, this.maxCam());
     if (dt >= 1) {
       this.cameraY = target;
     } else {
