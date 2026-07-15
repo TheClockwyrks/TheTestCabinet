@@ -17,6 +17,7 @@ import {
   FUEL_LIFE_SUPPORT_RATE,
   FUEL_TANK_MAX,
   FUEL_THRUST_RATE,
+  GRID_MARGIN_X,
   HULL_MAX,
   LOW_FUEL_FRACTION,
   MAX_TIER,
@@ -218,7 +219,7 @@ export class Game {
   /** Position the miner standing on the surface floor above the spawn column. */
   placeMinerAtSurface(): void {
     const m = this.miner;
-    m.x = TILE_SIZE + this.spawnCol * TILE_SIZE + (TILE_SIZE - MINER_W) / 2;
+    m.x = GRID_MARGIN_X + this.spawnCol * TILE_SIZE + (TILE_SIZE - MINER_W) / 2;
     m.y = SURFACE_FEET_Y - MINER_H;
     m.vx = 0;
     m.vy = 0;
@@ -266,7 +267,7 @@ export class Game {
       if (this.thrustFxCd <= 0) {
         this.thrustFxCd = 0.12;
         const b = SURFACE_BUILDINGS.find((x) => x.panel === "launch-pad")!;
-        const rx = TILE_SIZE + b.col * TILE_SIZE + TILE_SIZE / 2;
+        const rx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2;
         game_pushLaunchFx(this, rx);
       }
       this.activeLoops.clear();
@@ -431,7 +432,7 @@ export class Game {
     let best: Building | null = null;
     let bestD = BUILDING_REACH * TILE_SIZE;
     for (const b of SURFACE_BUILDINGS) {
-      const bx = TILE_SIZE + b.col * TILE_SIZE + TILE_SIZE / 2;
+      const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2;
       const d = Math.abs(bx - mcx);
       if (d <= bestD) {
         bestD = d;
@@ -501,7 +502,7 @@ export class Game {
       line[col] = { kind: "tunnel", band: line[col]!.band };
     }
     const m = this.miner;
-    m.x = TILE_SIZE + col * TILE_SIZE + (TILE_SIZE - MINER_W) / 2;
+    m.x = GRID_MARGIN_X + col * TILE_SIZE + (TILE_SIZE - MINER_W) / 2;
     m.y = (row + 1) * TILE_SIZE - MINER_H; // feet on the bottom of the carved cell
     m.vx = 0;
     m.vy = 0;
