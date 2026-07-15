@@ -189,8 +189,14 @@ export const FONT_STACK =
 
 /** Walk / lateral speed (logical px/s). */
 export const WALK_SPEED = 150;
-/** Terminal falling speed (logical px/s). */
-export const FALL_TERMINAL = 420;
+/**
+ * Terminal falling speed (logical px/s). Set high enough that a fall keeps
+ * accelerating over several tiles before it caps (terminal is reached at
+ * ~4 tiles of free-fall), so landing speed — and thus fall impact
+ * (specs/hazards.md) — actually distinguishes a short hop from a full-depth
+ * plunge. Only caps *descent*; the climb is capped separately by THRUST_CLIMB.
+ */
+export const FALL_TERMINAL = 600;
 /** Net climb speed at full jetpack hold (logical px/s). */
 export const THRUST_CLIMB = 200;
 /** Gravity (logical px/s^2). */
@@ -226,9 +232,18 @@ export const LOW_HULL_FRACTION = 0.25;
  * Fall impact: a landing above SAFE_FALL_SPEED deals impact damage scaled to the
  * excess speed. The threshold and scale are reference feel (specs/hazards.md gives the
  * rule, not exact numbers); tune in the sim.
+ *
+ * The safe threshold is pinned to a *drop height* (SAFE_FALL_TILES) rather than a bare
+ * fraction of terminal, so short, ordinary drops — stepping off a ledge, dropping down a
+ * shaft you already carved — never chip the hull (specs/hazards.md). A miner in free-fall
+ * clears this many tiles before it lands hard enough to hurt; only genuinely long plunges
+ * exceed it, and feathering the jetpack over the last couple of tiles keeps a deep drop
+ * under the line. A full terminal-velocity slam costs ~18 hull on the starting hull —
+ * meaningful but survivable, and a rounding error to an upgraded hull (specs/upgrades.md).
  */
-export const SAFE_FALL_SPEED = FALL_TERMINAL * 0.7; // reference threshold
-export const FALL_IMPACT_SCALE = 0.12; // hull per (px/s) of excess speed — reference
+export const SAFE_FALL_TILES = 3; // free drop height (tiles) before impact damage begins
+export const SAFE_FALL_SPEED = Math.sqrt(2 * GRAVITY * SAFE_FALL_TILES * TILE_SIZE); // ≈ 509 px/s
+export const FALL_IMPACT_SCALE = 0.2; // hull per (px/s) of excess speed — reference
 
 // ---------------------------------------------------------------------------
 // Fuel Depot pricing (specs/world.md, specs/flow.md, specs/character.md)

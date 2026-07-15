@@ -42,10 +42,27 @@ in the coreshell, forming pools the miner must **route around**.
 Falling is free (`specs/character.md`), but **landing too fast hurts**. A landing at a
 speed above a **safe threshold** deals **impact hull damage scaled to the excess
 speed** — a gentle touchdown is harmless, but plummeting the full depth of a long
-shaft and slamming into the floor costs hull. This rewards feathering the jetpack on
-the way down rather than free-falling into the deep, and makes the hull tier
-(`specs/upgrades.md`) matter for how boldly you can drop. Impact throws the hurt
-animation and a small dust VFX (`specs/assets.md`).
+shaft and slamming into the floor costs hull.
+
+The safe threshold must be **generous**: ordinary movement never chips the hull. A
+free-fall **drop of roughly three tiles or less lands under the threshold and does no
+damage at all** — stepping off a ledge, hopping down a short step, or dropping down a
+shaft you already carved is always safe, and the miner should *not* be taking a steady
+tax of chip damage just for descending. Impact damage begins only past that leeway and
+then **ramps up smoothly with the excess landing speed**, so it is a consequence of a
+genuine long, un-feathered plunge, not of routine drops. Because the miner reaches
+terminal speed only after several tiles of free-fall (`specs/character.md`), landing
+speed keeps climbing well past the safe drop, so a real plunge lands measurably harder
+than a short one — the impact model has room to scale instead of pinning to a flat
+maximum after a tile or two.
+
+Even a full terminal-velocity slam is **survivable** — on the order of a fifth of the
+starting hull, never a one-hit kill — so the hazard shapes how you descend without
+punishing every drop. This rewards feathering the jetpack over the last stretch of a
+deep drop rather than free-falling into the floor, and makes the hull tier
+(`specs/upgrades.md`) matter for how boldly you can plunge: an upgraded hull shrugs off
+an impact that would sting a starting one. Impact throws the hurt animation and a small
+dust VFX (`specs/assets.md`).
 
 ## The unstable Core Sample
 
