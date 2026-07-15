@@ -101,6 +101,14 @@ files; the tools are not invoked by the build. The particle bursts are played li
 - **Speed** — **F** cycles 1× / 2×. **Esc** cancels a held rock / deselects, otherwise
   opens
   the pause **menu** (also freezes the board). **M** mutes.
+- **HUD readouts** — the status bar shows the **maze length** (how long the ground route
+  the Load walks is, in tiles); **hover** it to draw the full path on the yard (air units
+  ignore the maze). The scrap-press shows the **current quality-roll odds** for the next
+  rock at your Refinement level. When a candidate can (or does) combine, the pieces that
+  will merge **pulse** on the board.
+- **Overlays** — **V** / the **COMBOS** button toggles the combination-tower **recipe
+  book**; **L** / the **DMG BOARD** button toggles the **live tower damage leaderboard**
+  (updates in real time). Both are read-only.
 - Every menu is fully operable with the mouse; `↑`/`↓` + `Enter` are keyboard
   alternatives.
 

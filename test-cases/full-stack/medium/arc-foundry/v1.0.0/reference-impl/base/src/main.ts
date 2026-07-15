@@ -15,7 +15,7 @@ import { Bursts } from "./particles";
 import { Game } from "./sim";
 import { Input } from "./input";
 import { menuItems } from "./menus";
-import { render, setMenuIndex, setMuted, setRenderTime } from "./render";
+import { render, setMenuIndex, setMuted, setOverlays, setRenderTime } from "./render";
 import type { Clickable, ComboType, ComponentType, Difficulty, MapDef, Tier } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
@@ -47,6 +47,11 @@ async function main(): Promise<void> {
   let clickables: Clickable[] = [];
   let gestured = false;
   let elapsed = 0;
+  // View-only HUD overlays toggled from the top bar / keyboard (specs/controls.md): the COMBOS
+  // recipe book and the live tower DAMAGE BOARD. Kept here (not in the sim) — they never touch
+  // the deterministic game state.
+  let showCombos = false;
+  let showBoard = false;
   // The Salvage flow picks a map, THEN a difficulty, before a run starts (specs/modes.md).
   let pendingMap: MapDef | null = null;
 
@@ -167,6 +172,15 @@ async function main(): Promise<void> {
       case "mute":
         audio.toggleMute();
         break;
+      case "toggleCombos":
+        showCombos = !showCombos;
+        break;
+      case "toggleLeaderboard":
+        showBoard = !showBoard;
+        break;
+      case "noop":
+        // A click swallowed by an open overlay's backdrop — intentionally does nothing.
+        break;
     }
   }
 
@@ -254,6 +268,16 @@ async function main(): Promise<void> {
         game.cycleSpeed();
         return;
       }
+      if (lower === "v") {
+        // Toggle the COMBINATIONS recipe book overlay (specs/controls.md).
+        showCombos = !showCombos;
+        return;
+      }
+      if (lower === "l") {
+        // Toggle the live tower DAMAGE BOARD overlay (specs/controls.md).
+        showBoard = !showBoard;
+        return;
+      }
       if (k === "Escape") {
         // Esc first cancels a held rock / selection; otherwise it opens the pause MENU.
         if (game.holding) game.cancelHeld();
@@ -339,6 +363,7 @@ async function main(): Promise<void> {
     setRenderTime(elapsed);
     setMuted(audio.muted);
     setMenuIndex(menuIndex);
+    setOverlays(showCombos, showBoard);
 
     const sx = canvas.width / STAGE_W;
     const sy = canvas.height / STAGE_H;
