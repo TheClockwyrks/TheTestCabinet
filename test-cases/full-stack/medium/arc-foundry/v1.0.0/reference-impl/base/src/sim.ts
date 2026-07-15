@@ -32,6 +32,7 @@ import {
   STAMP_COST,
   STAMP_TYPE_WEIGHT,
   TARGETING_ORDER,
+  TILE,
   comboStats,
   deriveStats,
   footprintCenter,
@@ -60,6 +61,7 @@ import type {
   MapDef,
   Phase,
   Projectile,
+  Pt,
   Refinement,
   Structure,
   TargetingMode,
@@ -129,6 +131,10 @@ export class Game {
   private press: Rng;
   private combat: Rng; // crit rolls (specs/towers.md) — deterministic, separate from the press
   private occ: Occupancy; // cached occupancy of the current structures + housings
+  // Cached ground maze route + its length in tiles (the HUD readout + hover overlay). The
+  // route only changes when the walls do, so it is recomputed lazily and invalidated on any
+  // structure change (specs/board.md — the Load takes the shortest OPEN route). Null = dirty.
+  private mazeCache: { path: Pt[]; lenTiles: number } | null = null;
 
   constructor(campaign: Campaign, map: MapDef = DEFAULT_MAP, diff: DifficultyDef = DIFFICULTY.medium) {
     this.campaign = campaign;
@@ -183,6 +189,7 @@ export class Game {
     this.combat = new Rng(COMBAT_SEED);
     this.nextWave = buildWave(1, this.diff);
     this.occ = this.board.occupancy(this.structures);
+    this.mazeCache = null;
   }
 
   // Reseed the scrap-press so the roll sequence differs (specs/build.md). The interactive
@@ -267,6 +274,7 @@ export class Game {
   // called whenever the maze changes (a rock placed, a combine freeing a footprint).
   private rePath(): void {
     this.occ = this.board.occupancy(this.structures);
+    this.mazeCache = null; // the walls moved — the maze readout / overlay must recompute
     for (const u of this.units) {
       if (u.dead) continue;
       u.route = this.board.routeFor({ x: u.x, y: u.y }, u.wpIndex, this.occ, u.flies);
@@ -704,6 +712,7 @@ export class Game {
     this.spawnCursor = 0;
     this.waveClock = 0;
     this.occ = this.board.occupancy(this.structures);
+    this.mazeCache = null; // the harvest changed the walls (kept/consumed footprints)
     this.recomputeAuras(); // the harvest may have added an aura source / a buffable tower
     this.nextWave = buildWave(Math.min(this.wave + 1, this.diff.waves), this.diff);
   }
@@ -1227,6 +1236,73 @@ export class Game {
     const w = this.activeWave;
     if (!w || w.events.length === 0) return 0;
     return Math.min(1, this.spawnCursor / w.events.length);
+  }
+
+  // ---- Maze length (specs/board.md, specs/controls.md) ------------------------
+  // The GROUND route the Load walks: the shortest OPEN path through the ordered waypoint
+  // chain around the current walls, as tile-center points. Flyers ignore the maze, so this is
+  // the walking units' route only. Cached until the walls change (lazy; recomputed here).
+  private computeMaze(): { path: Pt[]; lenTiles: number } {
+    if (this.mazeCache) return this.mazeCache;
+    const occ = this.board.occupancy(this.structures);
+    const chain = this.board.chain;
+    const path: Pt[] = [];
+    const c0 = chain[0]!;
+    path.push(tileCenter(c0.col, c0.row));
+    for (let i = 1; i < chain.length; i++) {
+      const a = chain[i - 1]!;
+      const b = chain[i]!;
+      const seg = this.board.pathTiles(a, b, occ);
+      if (seg && seg.length > 0) {
+        for (let j = 1; j < seg.length; j++) path.push(seg[j]!);
+      } else {
+        // Never-seal keeps every segment open, so this is a safety fallback only.
+        path.push(tileCenter(b.col, b.row));
+      }
+    }
+    let d = 0;
+    for (let i = 1; i < path.length; i++) {
+      d += Math.hypot(path[i]!.x - path[i - 1]!.x, path[i]!.y - path[i - 1]!.y);
+    }
+    this.mazeCache = { path, lenTiles: d / TILE };
+    return this.mazeCache;
+  }
+  // The ground maze route as tile-center points (for the hover overlay).
+  mazePath(): Pt[] {
+    return this.computeMaze().path;
+  }
+  // The ground maze length in TILES (the HUD readout) — longer maze = more time under fire.
+  mazeLengthTiles(): number {
+    return this.computeMaze().lenTiles;
+  }
+
+  // ---- Merge highlight (specs/build.md) ---------------------------------------
+  // The structures that will FOLD TOGETHER for the current level's harvest, so the renderer
+  // can pulse them and the player sees exactly what merges. When a combine/recipe is already
+  // committed, these are the exact partner(s) consumed; otherwise, when a candidate is
+  // selected, they are every eligible partner it COULD merge with (its quality-combine match
+  // plus every reachable combination-tower ingredient). Build phase only in practice.
+  mergeHighlight(): { primaryId: number | null; partnerIds: Set<number>; committed: boolean } {
+    const partnerIds = new Set<number>();
+    const h = this.harvest;
+    if (h.mode === "combine") {
+      partnerIds.add(h.partnerId);
+      return { primaryId: h.id, partnerIds, committed: true };
+    }
+    if (h.mode === "recipe") {
+      for (const id of h.ingredientIds) if (id !== h.id) partnerIds.add(id);
+      return { primaryId: h.id, partnerIds, committed: true };
+    }
+    const sel = this.selected();
+    if (sel && sel.kind === "candidate") {
+      const qp = this.combinePartnerOf(sel);
+      if (qp) partnerIds.add(qp.id);
+      for (const rec of this.reachableCombos(sel)) {
+        for (const id of rec.ingredientIds) if (id !== sel.id) partnerIds.add(id);
+      }
+      return { primaryId: sel.id, partnerIds, committed: false };
+    }
+    return { primaryId: null, partnerIds, committed: false };
   }
 
   // ---- Speed / pause (specs/controls.md) --------------------------------------

@@ -61,6 +61,12 @@ pull** (`specs/build.md`):
 Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh candidate
 (spending a stamp + Charge), the way you turn an old wall into a tower (`specs/build.md`).
 
+The scrap-press area of the build panel must **always show the current quality-roll
+odds** — the probability of each quality tier for the next rock at the live **Refinement**
+level (`specs/build.md`) — so the player can read what a placement is likely to roll
+**before** committing a stamp, and see how buying **UPGRADE QUALITY** shifts those odds.
+Show the same odds while a blank rock is held.
+
 ## Selecting and inspecting a candidate or component
 
 - **Select.** Left-click a placed candidate, component, or blocker (when not holding a
@@ -86,7 +92,11 @@ Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh c
   becomes this level's single harvest (the alternative to a plain keep). Both are
   reversible until you send the wave, both cost **no Charge**, and both fire a **combine
   flash** VFX (`specs/assets.md`); committing either **replaces** a keep or the other
-  combine, since only one harvest is ever set (`specs/build.md`).
+  combine, since only one harvest is ever set (`specs/build.md`). While a candidate is
+  selected — and, once a combine is committed, until the wave is sent — the pieces that
+  will **fold together** must be marked on the yard with a **pulsing highlight** (a glow /
+  ring) so the player can see exactly what merges: the eligible partners a selection *could*
+  combine with, and, once committed, the exact partner(s) the harvest *will* consume.
   - **Quality-combine.** A **COMBINE** (quality) action appears **only** when the
     selected candidate has a matching **candidate or component** of the same type **and**
     same quality on the board (`specs/build.md`). Clicking it, or pressing **`C`**, sets
@@ -156,6 +166,30 @@ Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh c
   in-place pause.
 - **Mute.** **`M`** — or the status-bar control — toggles audio mute (`specs/flow.md`).
 
+## HUD readouts and overlays
+
+Beyond the core resources, the status bar carries a few **information aids** the player
+can read or toggle at any time during play (both build and live-wave phases). Each must be
+operable with the **mouse alone**, with a keyboard accelerator as an alternative.
+
+- **Maze length.** The status bar shows **how long the current maze is** — the length of
+  the **ground route** the Load walks through the ordered waypoint chain around your walls
+  (`specs/board.md`), expressed in a stable unit (e.g. tiles). It updates live as you build,
+  so the player can see a placement lengthen the route. **Hovering** the readout draws the
+  **full ground path** on the yard (a highlighted line from Entry through every waypoint to
+  the Collector). This is the **walking** route only: **air units ignore the maze**
+  (`specs/enemies.md`, `specs/board.md`), so the flyers' straight-line path is not part of
+  this figure and is not drawn.
+- **Combinations (recipe book).** A **COMBOS** toggle — or **`V`** — opens an in-game
+  reference listing **every combination tower**, each with its exact **recipe**
+  (`(type, quality)` ingredients) and headline stats (`specs/towers.md`, `specs/build.md`),
+  so the player can plan combines without leaving the game. Toggling it again (or its close
+  control) dismisses it. It is a read-only overlay and does not pause or alter the game.
+- **Damage leaderboard.** A **DMG BOARD** toggle — or **`L`** — opens a **live ranking of
+  the player's towers by total damage dealt**, updating in **real time** as the wave runs
+  (it may also show each tower's kills). Toggling it again (or its close control) dismisses
+  it. Like the recipe book, it is a read-only overlay.
+
 ## Menu navigation
 
 In the title, map-select, difficulty-select, how-to-play, pause, victory, and overload
@@ -182,6 +216,8 @@ wave, toggling speed, pausing, cycling targeting):
 - **Cancel held rock / deselect / back:** `Esc`
 - **Send wave; in-place pause once live:** `Space`
 - **Speed toggle (`1×`/`2×`):** `F`
+- **Toggle the combinations recipe book:** `V`
+- **Toggle the live tower damage leaderboard:** `L`
 - **Mute:** `M`
 
 Whatever exact keys you choose, list them in the in-game **How to play** screen

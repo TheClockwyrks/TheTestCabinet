@@ -21,6 +21,7 @@ import {
   BUILDS_PER_LEVEL,
   COL,
   COMBOS,
+  COMBO_ORDER,
   COMPONENT_COLOR,
   COMPONENT_DESC,
   COMPONENT_LABEL,
@@ -38,6 +39,7 @@ import {
   MAPS,
   MAX_TIER,
   PANEL_X,
+  QUALITY_ODDS_BY_R,
   STAGE_H,
   STAGE_W,
   STATUS_H,
@@ -68,6 +70,10 @@ import type {
 let time = 0;
 let menuIndex = 0;
 let muted = false;
+// Player-toggled HUD overlays (specs/controls.md): the COMBOS recipe book and the live tower
+// DAMAGE BOARD. Held in the loop (main.ts) and pushed in each frame — they are view-only.
+let showCombos = false;
+let showBoard = false;
 
 export function setRenderTime(t: number): void {
   time = t;
@@ -77,6 +83,10 @@ export function setMenuIndex(i: number): void {
 }
 export function setMuted(m: boolean): void {
   muted = m;
+}
+export function setOverlays(combos: boolean, board: boolean): void {
+  showCombos = combos;
+  showBoard = board;
 }
 
 // The quality ladder's per-tier accent (specs/overview.md) — the SECOND, non-color read of
@@ -318,9 +328,16 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
   drawProjectiles(ctx, game, A);
   bursts.draw(ctx);
   drawBuildCursor(ctx, game, A);
+  // Waypoint index numbers are drawn LAST of the board layer so towers / rocks / units never
+  // render over them (specs/board.md — the ordered chain must always read).
+  drawWaypointNumbers(ctx, game.board.chain);
   drawStatusBar(ctx, game, A, clicks);
   drawPanel(ctx, game, A, clicks);
   drawTooltip(ctx);
+
+  // Player-toggled HUD overlays sit above the board / panel but below the modal menus.
+  if (game.state === "playing" && showCombos) drawCombosBook(ctx, game, clicks);
+  if (game.state === "playing" && showBoard) drawLeaderboard(ctx, game, clicks);
 
   if (game.state === "paused") drawPauseMenu(ctx, game, clicks);
   if (game.state === "victory") drawEnd(ctx, game, clicks, true);
@@ -419,6 +436,40 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
     else if (s.kind === "candidate") drawCandidate(ctx, game, s, A);
     else drawBlocker(ctx, game, s, A);
   }
+
+  // Pulse the pieces that will FOLD TOGETHER for this level's harvest (specs/build.md) so the
+  // player can see exactly what merges — drawn over the pieces so it always reads.
+  drawMergePulses(ctx, game);
+}
+
+// A pulsing marker on every structure involved in the current combine/recipe (specs/build.md).
+// The selected candidate (primary) pulses in the harvest accent; each partner it will consume
+// pulses too. Committed harvests use the gold combo accent; a not-yet-committed selection uses
+// the neutral charge accent to read as "these COULD merge".
+function drawMergePulses(ctx: CanvasRenderingContext2D, game: Game): void {
+  const mh = game.mergeHighlight();
+  if (mh.primaryId == null && mh.partnerIds.size === 0) return;
+  const accent = mh.committed ? COL.combo : COL.charge;
+  const pulse = 0.5 + 0.5 * Math.sin(time * 6); // 0..1
+  const byId = new Map<number, Structure>();
+  for (const s of game.structures) byId.set(s.id, s);
+  const markOne = (id: number, primary: boolean): void => {
+    const s = byId.get(id);
+    if (!s) return;
+    const ctr = footprintCenter(s.col, s.row);
+    const half = FOOTPRINT_PX / 2;
+    const grow = primary ? 4 + 3 * pulse : 3 + 3 * pulse;
+    ctx.save();
+    // A soft glow, then a pulsing rounded ring hugging the 2×2 footprint.
+    glow(ctx, ctr.x, ctr.y, half + 12 + 6 * pulse, accent, 0.12 + 0.14 * pulse);
+    roundRect(ctx, ctr.x - half - grow, ctr.y - half - grow, (half + grow) * 2, (half + grow) * 2, 6);
+    ctx.strokeStyle = hexA(accent, 0.5 + 0.45 * pulse);
+    ctx.lineWidth = primary ? 2.5 : 2;
+    ctx.stroke();
+    ctx.restore();
+  };
+  if (mh.primaryId != null) markOne(mh.primaryId, true);
+  for (const id of mh.partnerIds) markOne(id, false);
 }
 
 // The waypoint PLATFORMS — each interior waypoint is a 4-tile T of walkable-but-never-
@@ -493,11 +544,30 @@ function drawWaypoints(ctx: CanvasRenderingContext2D, chain: { col: number; row:
       glow(ctx, p.x, p.y, 28, COL.collector, 0.26 + 0.06 * Math.sin(time * 5));
       if (A.has("board/collector")) blit(ctx, A.sprite("board/collector"), p.x, p.y, FOOTPRINT_PX, FOOTPRINT_PX);
     } else {
-      // Ordered waypoint pylon with its index.
+      // Ordered waypoint pylon (its index number is drawn later, on top of everything).
       if (A.has("board/pylon")) blit(ctx, A.sprite("board/pylon"), p.x, p.y, 22, 22);
       else ring(ctx, p.x, p.y, 8, COL.flow, 0.8);
-      text(ctx, `${i}`, p.x, p.y - 14, 9, hexA(COL.integrity, 0.9), "center", "700");
     }
+  }
+}
+
+// The waypoint index badges, drawn LAST (after the maze / units) so a placed tower or a
+// walking unit can never obscure the ordered chain (specs/board.md). Each interior waypoint
+// gets a small pill with its 1-based order number.
+function drawWaypointNumbers(ctx: CanvasRenderingContext2D, chain: { col: number; row: number }[]): void {
+  for (let i = 1; i < chain.length - 1; i++) {
+    const p = tileCenter(chain[i]!.col, chain[i]!.row);
+    const bx = p.x;
+    const by = p.y - 15;
+    ctx.save();
+    roundRect(ctx, bx - 8, by - 7, 16, 14, 4);
+    ctx.fillStyle = "rgba(5,8,12,0.82)";
+    ctx.fill();
+    ctx.strokeStyle = hexA(COL.integrity, 0.7);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+    text(ctx, `${i}`, bx, by + 0.5, 10, COL.integrity, "center", "800");
   }
 }
 
@@ -1069,11 +1139,82 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   }
   text(ctx, sub, 470, 37, 12, subColor, "left", "600", 1);
 
-  text(ctx, `SCORE ${game.score.toLocaleString()}`, 640, 30, 12, COL.text2, "left", "500", 1);
+  text(ctx, `SCORE ${game.score.toLocaleString()}`, 588, 30, 12, COL.text2, "left", "500", 1);
+
+  // MAZE LENGTH readout (specs/board.md, specs/controls.md) — how long the ground route the
+  // Load walks is, in tiles. A longer maze keeps the Load under fire longer. Hovering it draws
+  // the full ground path on the board (air units ignore the maze, so they are not shown).
+  const mazeLen = Math.round(game.mazeLengthTiles());
+  const mzX = 700;
+  const mzY = 8;
+  const mzW = 120;
+  const mzH = 40;
+  const mzHover = inRect(game.pointerX, game.pointerY, mzX, mzY, mzW, mzH);
+  roundRect(ctx, mzX, mzY, mzW, mzH, 6);
+  ctx.fillStyle = mzHover ? hexA(COL.flow, 0.22) : "rgba(255,255,255,0.05)";
+  ctx.fill();
+  ctx.strokeStyle = mzHover ? COL.arc : "rgba(255,255,255,0.10)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  text(ctx, "MAZE", mzX + 10, mzY + 12, 9, COL.text3, "left", "700", 1);
+  text(ctx, mzHover ? "▸ PATH" : "hover ▸", mzX + mzW - 9, mzY + 12, 8, mzHover ? COL.arc : COL.text3, "right", "600");
+  const numStr = `${mazeLen}`;
+  text(ctx, numStr, mzX + 10, mzY + 28, 16, COL.arc, "left", "700");
+  text(ctx, "tiles", mzX + 10 + numStr.length * 10 + 6, mzY + 30, 10, COL.text3, "left", "500");
+  if (mzHover) drawMazePath(ctx, game);
+
+  // COMBOS recipe book + live DAMAGE BOARD toggles (specs/controls.md).
+  toggle(ctx, clicks, 838, "COMBOS", "toggleCombos", showCombos);
+  toggle(ctx, clicks, 926, "DMG BOARD", "toggleLeaderboard", showBoard);
 
   ctrl(ctx, clicks, 1112, `${game.speed}×`, "speed", COL.text, 52);
   ctrl(ctx, clicks, 1172, game.paused ? "▶" : "❚❚", "pause", game.paused ? COL.alert : COL.text, 40);
   ctrl(ctx, clicks, 1220, muted ? "♪̸" : "♪", "mute", muted ? COL.text3 : COL.text, 40);
+}
+
+// A top-bar TOGGLE button (a lit state when its overlay is open). Mirrors ctrl() but shows an
+// on/off accent so the player can see which HUD overlays are active (specs/controls.md).
+function toggle(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, label: string, action: string, on: boolean): void {
+  const y = 12;
+  const h = 32;
+  const w = 80;
+  roundRect(ctx, x, y, w, h, 6);
+  ctx.fillStyle = on ? hexA(COL.integrity, 0.2) : "rgba(255,255,255,0.06)";
+  ctx.fill();
+  ctx.strokeStyle = on ? COL.integrity : "rgba(255,255,255,0.10)";
+  ctx.lineWidth = on ? 1.5 : 1;
+  ctx.stroke();
+  text(ctx, label, x + w / 2, y + h / 2 + 1, 11, on ? COL.integrity : COL.text2, "center", "700", 0.3);
+  clicks.push({ x, y, w, h, action });
+}
+
+// Draw the ground maze route as a bright line with a start/end marker, over the board — the
+// hover preview for the MAZE readout (specs/board.md). Flyers are not shown (they ignore it).
+function drawMazePath(ctx: CanvasRenderingContext2D, game: Game): void {
+  const pts = game.mazePath();
+  if (pts.length < 2) return;
+  ctx.save();
+  // A dark under-stroke for contrast against a busy board, then the bright route.
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(5,8,12,0.7)";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.stroke();
+  ctx.strokeStyle = hexA(COL.arc, 0.9);
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([9, 6]);
+  ctx.lineDashOffset = -(time * 40) % 15;
+  ctx.beginPath();
+  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.stroke();
+  ctx.restore();
+  // Endpoints: a green start dot, a red grounding-sink dot.
+  const a = pts[0]!;
+  const b = pts[pts.length - 1]!;
+  glow(ctx, a.x, a.y, 12, COL.legal, 0.5);
+  glow(ctx, b.x, b.y, 12, COL.collector, 0.5);
 }
 
 function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, label: string, action: string, color: string, w: number): void {
@@ -1123,11 +1264,15 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), px + w - 40, stampY + 33, 12, 12);
   clicks.push({ x: px, y: stampY, w, h: stampH, action: "stamp", disabled: !canStamp });
 
+  // --- Live QUALITY ODDS for the next roll (specs/build.md) ---
+  // Always visible so the player can read the quality probabilities before placing a rock.
+  const oddsBottom = drawQualityOdds(ctx, game, px, stampY + stampH + 6, w);
+
   // --- UPGRADE QUALITY (Refinement track) control (specs/build.md) ---
   // Spend Charge to raise Refinement R, biasing every future roll toward higher tiers.
-  const upHeadY = stampY + stampH + 22;
+  const upHeadY = oddsBottom + 6;
   text(ctx, "UPGRADE QUALITY", px, upHeadY, 11, COL.text3, "left", "700", 1);
-  const upY = stampY + stampH + 32;
+  const upY = upHeadY + 10;
   const upH = 44;
   const canUp = game.canUpgradeQuality();
   const refCost = game.refineCost(); // number | null (null at max R)
@@ -1167,6 +1312,39 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   drawWaveControl(ctx, game, px, w, clicks);
 }
 
+// The current QUALITY ROLL odds for a placed rock at the live Refinement level (specs/build.md
+// — UPGRADE QUALITY). A stacked bar over the five tiers (Scrap…Tesla-Prime) plus a legend, so
+// the player can always see the probability of each quality BEFORE placing. Returns the y just
+// below the block it drew.
+function drawQualityOdds(ctx: CanvasRenderingContext2D, game: Game, x: number, y: number, w: number): number {
+  const odds = QUALITY_ODDS_BY_R[game.refinement]!;
+  text(ctx, "QUALITY ODDS", x, y + 5, 9, COL.text3, "left", "700", 0.5);
+  text(ctx, `R${game.refinement}`, x + w, y + 5, 9, COL.integrity, "right", "700", 0.5);
+  const barY = y + 14;
+  const barH = 12;
+  let cx = x;
+  for (let t = 1 as Tier; t <= 5; t = (t + 1) as Tier) {
+    const frac = odds[t - 1]!;
+    const segW = frac * w;
+    if (segW > 0.5) {
+      ctx.fillStyle = hexA(TIER_COLOR[t], 0.9);
+      ctx.fillRect(cx, barY, Math.max(1, segW - 1), barH);
+      if (segW >= 30) text(ctx, `${Math.round(frac * 100)}%`, cx + segW / 2, barY + barH / 2 + 1, 8, COL.void, "center", "800");
+    }
+    cx += segW;
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.10)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, barY + 0.5, w - 1, barH - 1);
+  // Legend: the nonzero tiers as "roman pct".
+  const parts: string[] = [];
+  for (let t = 1 as Tier; t <= 5; t = (t + 1) as Tier) {
+    if (odds[t - 1]! > 0) parts.push(`${ROMAN[t]} ${Math.round(odds[t - 1]! * 100)}%`);
+  }
+  text(ctx, parts.join("  ·  "), x, barY + barH + 9, 8, COL.text2, "left", "500", 0.2);
+  return barY + barH + 18;
+}
+
 // While a blank rock is on the cursor: no type/quality yet — it rolls only when it lands.
 function drawHeldInfo(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {
   text(ctx, "PLACING ROCK", x, y + 6, 11, COL.charge, "left", "700", 1);
@@ -1178,7 +1356,8 @@ function drawHeldInfo(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
   }
   text(ctx, "?", x + 24, y + 44, 20, COL.spark, "center", "800");
   wrap(ctx, "Drop it on a legal spot — it rolls a RANDOM component type and quality the instant it lands. Esc / right-click cancels for free.", x, y + 82, w, 11, COL.text2, 15);
-  text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, x, y + 150, 10, COL.text3, "left", "500", 0.5);
+  text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, x, y + 148, 10, COL.text3, "left", "500", 0.5);
+  drawQualityOdds(ctx, game, x, y + 162, w);
 }
 
 // The selected-piece inspector (specs/board.md, specs/build.md, specs/controls.md).
@@ -1404,6 +1583,138 @@ function drawWaveControl(ctx: CanvasRenderingContext2D, game: Game, px: number, 
   }
 }
 
+// ---- HUD overlays (COMBOS book + live DAMAGE BOARD) — specs/controls.md --------
+
+// A combo recipe as a readable ingredient list ("REGULATOR I + RECTIFIER I + ARC-NODE I").
+function recipeText(def: ComboDef): string {
+  return def.recipe.map((i) => `${COMPONENT_LABEL[i.type]} ${ROMAN[i.tier]}`).join(" + ");
+}
+
+// The COMBINATIONS reference book (specs/build.md, specs/towers.md) — every combination tower
+// with its exact recipe and stats, so the player can plan combines in-game. A modal panel over
+// the board; a background swallow keeps a click behind it from reaching the yard.
+function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+  void game;
+  const x0 = BOARD_X0 + 18;
+  const y0 = STATUS_H + 14;
+  const x1 = BOARD_X1 - 18;
+  const y1 = STAGE_H - 14;
+  const w = x1 - x0;
+  const h = y1 - y0;
+  // Backdrop + swallow (over the whole board so a stray click cannot place a rock).
+  ctx.fillStyle = "rgba(4,6,10,0.55)";
+  ctx.fillRect(BOARD_X0, STATUS_H, BOARD_X1 - BOARD_X0, STAGE_H - STATUS_H);
+  clicks.push({ x: BOARD_X0, y: STATUS_H, w: BOARD_X1 - BOARD_X0, h: STAGE_H - STATUS_H, action: "noop" });
+  // Panel.
+  roundRect(ctx, x0, y0, w, h, 12);
+  ctx.fillStyle = "rgba(12,17,24,0.98)";
+  ctx.fill();
+  ctx.strokeStyle = hexA(COL.combo, 0.5);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  clicks.push({ x: x0, y: y0, w, h, action: "noop" }); // swallow clicks on the panel body
+  text(ctx, "COMBINATION TOWERS", x0 + 18, y0 + 22, 15, COL.combo, "left", "800", 1);
+  text(ctx, "Assemble a rock plus the exact ingredients on the board into a terminal tower.", x0 + 18, y0 + 40, 10, COL.text2, "left", "500", 0.2);
+  // Close button (also re-clickable via the top-bar COMBOS toggle).
+  const cb = 26;
+  const cx = x1 - cb - 12;
+  const cy = y0 + 12;
+  roundRect(ctx, cx, cy, cb, cb, 6);
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  text(ctx, "✕", cx + cb / 2, cy + cb / 2 + 1, 14, COL.text2, "center", "700");
+  clicks.push({ x: cx, y: cy, w: cb, h: cb, action: "toggleCombos" });
+
+  // 12 combos in a 2×6 grid.
+  const gridY = y0 + 56;
+  const gap = 12;
+  const cols = 2;
+  const rows = 6;
+  const cellW = (w - 36 - gap) / cols;
+  const cellH = (y1 - gridY - 16 - (rows - 1) * gap) / rows;
+  for (let idx = 0; idx < COMBO_ORDER.length; idx++) {
+    const combo = COMBO_ORDER[idx]!;
+    const def = COMBOS[combo];
+    const c = idx % cols;
+    const r = Math.floor(idx / cols);
+    const cxp = x0 + 18 + c * (cellW + gap);
+    const cyp = gridY + r * (cellH + gap);
+    roundRect(ctx, cxp, cyp, cellW, cellH, 8);
+    ctx.fillStyle = hexA(def.color, 0.08);
+    ctx.fill();
+    ctx.strokeStyle = hexA(def.color, 0.45);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    text(ctx, def.name, cxp + 12, cyp + 15, 12, def.color, "left", "800", 0.3);
+    const tags = abilityTags(def);
+    const statLine = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
+    text(ctx, statLine, cxp + 12, cyp + 31, 8, COL.text2, "left", "600", 0.2);
+    text(ctx, "RECIPE", cxp + 12, cyp + 45, 7, COL.text3, "left", "700", 0.5);
+    wrap(ctx, recipeText(def), cxp + 12, cyp + 57, cellW - 24, 9, COL.text, 12);
+  }
+}
+
+// The live tower DAMAGE BOARD (specs/controls.md) — a real-time ranking of every firing tower
+// by total damage dealt, updated each frame. A compact panel in the board's top-left corner.
+function drawLeaderboard(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+  const comps = game.structures.filter((s): s is Component => s.kind === "component" && s.damageDealt > 0);
+  comps.sort((a, b) => b.damageDealt - a.damageDealt);
+  const top = comps.slice(0, 8);
+  const x = BOARD_X0 + 12;
+  const y = STATUS_H + 12;
+  const w = 250;
+  const rowH = 26;
+  const headH = 30;
+  const h = headH + 8 + Math.max(1, top.length) * rowH + 8;
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur = 16;
+  roundRect(ctx, x, y, w, h, 10);
+  ctx.fillStyle = "rgba(10,15,22,0.94)";
+  ctx.fill();
+  ctx.restore();
+  roundRect(ctx, x, y, w, h, 10);
+  ctx.strokeStyle = hexA(COL.spark, 0.35);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  clicks.push({ x, y, w, h, action: "noop" }); // do not let clicks fall through to the yard
+  text(ctx, "DAMAGE BOARD", x + 12, y + 16, 11, COL.spark, "left", "800", 1);
+  // Close button.
+  const cb = 20;
+  const cbx = x + w - cb - 8;
+  const cby = y + 6;
+  roundRect(ctx, cbx, cby, cb, cb, 5);
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  ctx.fill();
+  text(ctx, "✕", cbx + cb / 2, cby + cb / 2 + 1, 12, COL.text2, "center", "700");
+  clicks.push({ x: cbx, y: cby, w: cb, h: cb, action: "toggleLeaderboard" });
+
+  if (top.length === 0) {
+    text(ctx, "No damage dealt yet.", x + 12, y + headH + 14, 10, COL.text3, "left", "500");
+    return;
+  }
+  const maxDmg = top[0]!.damageDealt || 1;
+  let ry = y + headH + 6;
+  for (let i = 0; i < top.length; i++) {
+    const c = top[i]!;
+    const accent = c.combo ? COMBOS[c.combo].color : COMPONENT_COLOR[c.type];
+    const name = c.combo ? COMBOS[c.combo].name : `${COMPONENT_LABEL[c.type]} ${ROMAN[c.tier]}`;
+    // Damage bar behind the row.
+    const barW = (c.damageDealt / maxDmg) * (w - 24);
+    ctx.fillStyle = hexA(accent, 0.16);
+    roundRect(ctx, x + 12, ry, barW, rowH - 4, 4);
+    ctx.fill();
+    text(ctx, `${i + 1}`, x + 12, ry + (rowH - 4) / 2, 10, COL.text3, "left", "700");
+    text(ctx, name, x + 28, ry + (rowH - 4) / 2, 10, accent, "left", "700", 0.2);
+    text(ctx, `${Math.round(c.damageDealt).toLocaleString()}`, x + w - 12, ry + (rowH - 4) / 2 - 5, 10, COL.spark, "right", "700");
+    text(ctx, `${c.kills} kills`, x + w - 12, ry + (rowH - 4) / 2 + 6, 8, COL.charge, "right", "500");
+    ry += rowH;
+  }
+}
+
 // ---- title --------------------------------------------------------------------
 
 function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
@@ -1587,25 +1898,26 @@ function drawDifficultySelect(ctx: CanvasRenderingContext2D, game: Game, clicks:
 function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
-  text(ctx, "HOW TO PLAY", STAGE_W / 2, 56, 30, COL.text, "center", "700", 4);
+  text(ctx, "HOW TO PLAY", STAGE_W / 2, 44, 26, COL.text, "center", "700", 4);
   const lines: [string, string][] = [
     ["GOAL", "The Load spills from the feeder vent and crawls to the grounding collector. Every unit that grounds out costs Grid Integrity; at 0 the grid overloads and you lose. Clear all the waves with integrity left to win."],
     ["THE MAZE", "Every component, candidate, AND blocker is a 2×2 WALL. The Load must reach each ordered 4-tile waypoint PLATFORM in sequence, taking the shortest OPEN route around your walls — so building lengthens its route. You cannot build on a platform and can never fully seal a segment (a sealing placement is refused); the floor re-paths live as walls change."],
     ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to arm a BLANK rock, then drop it on a legal spot — the instant it lands it ROLLS a random component type and quality (weighted low). Place up to 5 rocks per level, 10 Charge each; keep placing back-to-back until the allowance or Charge runs out."],
-    ["KEEP ONE PER LEVEL", "Select a placed rock and KEEP (K) exactly ONE per level to make it a firing tower — every rock you don't keep hardens into an inert BLOCKER. Or COMBINE (C) two same-TYPE + same-QUALITY rolls into one a tier higher (the inspector shows what it becomes), which counts as the level's keep. Choose KEEP or COMBINE, then SEND: the mobs enter. Misplaced one? Between waves DISMANTLE (X) any selected rock, blocker, or component to clear its footprint — no refund (dismantling never gives Charge or a stamp back, so you cannot re-roll for free)."],
+    ["KEEP ONE PER LEVEL", "Select a placed rock and KEEP (K) exactly ONE per level to make it a firing tower — every rock you don't keep hardens into an inert BLOCKER. Or COMBINE (C) two same-TYPE + same-QUALITY rolls into one a tier higher, which counts as the level's keep. Choose KEEP or COMBINE, then SEND. Misplaced one? Between waves DISMANTLE (X) a selected rock/blocker/component — no refund (so you cannot re-roll for free)."],
     ["UPGRADE QUALITY", "Spend Charge on UPGRADE QUALITY (U) to raise your Refinement level R0→R5, biasing every future roll toward the higher tiers of the ladder Scrap→Tuned→Charged→Primed→Tesla-Prime. Refinement is the odds; combining is the direct climb."],
     ["COMPONENTS", "Eight base types: Capacitor (single bolt), Coil (chain-lightning), Emitter (rapid spark), Arc-Node (area discharge), Discharge Rig (heavy long-range bolt), Choke (slows what it hits), Rectifier (overcurrent burn / damage-over-time), and Regulator (a NON-firing support node whose aura buffs nearby towers). All firing types hit ground and air. Select one to read its stats and cycle its TARGET (T). The Filament flies and ignores the maze — air only arrives every 4th wave."],
     ["COMBINATION TOWERS", "The apex play: some multisets of base rolls fold into a unique COMBINATION TOWER (splash + burn + crit + aura in one). Select a candidate — the inspector lists every combo it can assemble right now; click COMBINE → <tower> to commit it as the level's harvest (it consumes the ingredients, which harden into wall). Combos are single-grade and terminal (marked with a gold badge)."],
     ["ECONOMY", "Kills pay Charge bounty; clearing a wave pays a bonus; banked Charge earns interest each build phase. Build phases are UNTIMED — take your time, then SEND when ready. There is no selling."],
-    ["CONTROLS", "B stamp · click place · click select · K keep · C combine · G assemble combination tower · X dismantle (between waves) · U upgrade quality · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · Esc cancel then pause menu · M mute."],
+    ["READ THE YARD", "The top bar shows your MAZE LENGTH — hover it to trace the Load's full ground path (air ignores the maze). The scrap-press shows live QUALITY ODDS for your next roll, and combinable rocks PULSE to show what will merge. Toggle the COMBOS recipe book (V) and the live DMG BOARD (L) ranking your towers by damage."],
+    ["CONTROLS", "B stamp · click place · click select · K keep · C combine · G assemble combination tower · X dismantle (between waves) · U upgrade quality · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · V combos book · L damage board · Esc cancel then pause menu · M mute."],
   ];
-  let y = 100;
+  let y = 82;
   for (const [k, v] of lines) {
-    text(ctx, k, 120, y, 13, COL.integrity, "left", "700", 1);
-    y = wrap(ctx, v, 300, y, 840, 13, COL.text2, 18) + 8;
+    text(ctx, k, 110, y, 12, COL.integrity, "left", "700", 1);
+    y = wrap(ctx, v, 288, y, 860, 12, COL.text2, 15) + 5;
   }
   const bx = STAGE_W / 2 - 90;
-  button(ctx, clicks, bx, STAGE_H - 60, 180, 42, "BACK", "menu:back", COL.text, true);
+  button(ctx, clicks, bx, STAGE_H - 44, 180, 34, "BACK", "menu:back", COL.text, true);
 }
 
 // ---- overlays -----------------------------------------------------------------

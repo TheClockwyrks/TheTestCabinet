@@ -105,6 +105,11 @@ Type and quality roll **independently**. A stamp costs 10 Charge whatever it rol
 can never go below 0 Charge, so the press is disabled when you cannot afford a pull or
 the allowance is spent (`specs/flow.md`).
 
+The **current quality odds** for the live Refinement level must be **visible in the
+scrap-press UI** so the player can read the probability of each quality tier before
+placing a rock, and see how buying **UPGRADE QUALITY** shifts them (`specs/board.md`,
+`specs/controls.md`).
+
 ### Placement, continuous placement, and cancelling
 
 A held rock is positioned on a legal **2×2** footprint the player snaps to the grid,
@@ -145,6 +150,10 @@ thing you carry out of the build phase as firepower. That harvest is **exactly o
 - The harvest choice is **reversible until you send the wave**: choosing KEEP on a
   different candidate **moves** the choice; setting a combine (either kind) **replaces**
   a keep, and vice versa; only one harvest is ever set.
+- When a combine (either kind) is available or committed, the pieces that will **fold
+  together** are marked on the board with a **pulsing highlight** so the player can see
+  exactly what merges — the eligible partners a selected candidate *could* combine with,
+  and, once committed, the exact partner(s) the harvest *will* consume (`specs/controls.md`).
 - **Combining — of either kind — is the alternative to keeping** (below): a combine you
   set this level is the level's single commit instead of a plain keep.
 - You may also harvest **nothing** — a level where every rock becomes a blocker (a pure

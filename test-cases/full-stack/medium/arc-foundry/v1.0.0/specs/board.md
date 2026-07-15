@@ -77,6 +77,10 @@ waypoints. The unit targets the waypoint's **anchor tile** center. The **Entry**
 **Collector** sit on a board edge (`specs/overview.md` fixes the Entry vent and
 Collector sink art and the sense of flow toward the collector).
 
+Each interior waypoint is drawn with its **order number** (`1…k`), and those numbers must
+be rendered **last** — on top of the walls, towers, rocks, and units — so a placed piece
+or a passing unit can never obscure the ordered chain the player is reading.
+
 ### Waypoint platforms (4-tile zones)
 
 A waypoint is not a bare tile but a **4-tile platform** the Load crosses and the
@@ -297,6 +301,15 @@ be produced sprites):
   current wave's progress or a **BUILD** read during the untimed between-wave phase, and
   a clear **PAUSED** read while the game is paused in place (`specs/flow.md`,
   `specs/controls.md`).
+- **Maze length** — a readout of **how long the current maze is**: the length of the
+  ground route the Load walks through the ordered waypoint chain around the walls,
+  updating live as the player builds. **Hovering** it draws the full ground path on the
+  yard (Entry → waypoints → Collector). Air units ignore the maze, so the figure and the
+  drawn path are the **walking** route only (`specs/controls.md`, `specs/enemies.md`).
+- **Overlay toggles** — a **COMBOS** toggle opening the combination-tower **recipe book**
+  and a **DMG BOARD** toggle opening the **live tower damage leaderboard**; each is a
+  read-only overlay the player can toggle at any time and reflects its open/closed state
+  (`specs/controls.md`).
 - **Global controls** — the game **speed** toggle and its current setting, a **pause**
   toggle that pauses and resumes **in place** (freezing the game without a menu) and
   reflects the paused state, and a **mute** toggle (`specs/controls.md`,
@@ -312,7 +325,9 @@ bottom:
 - **The scrap-press** — the **STAMP** control (`specs/build.md`), showing its `10`
   Charge cost and the remaining stamps of the `5`-per-level allowance. Stamping arms a
   rock that rolls a random component type at a random quality **on placement**
-  (`specs/build.md`).
+  (`specs/build.md`). This area also shows the **current quality-roll odds** at the live
+  Refinement level, so the player can read the probability of each quality tier before
+  placing a rock (`specs/controls.md`).
 - **The UPGRADE QUALITY control** — the current **Refinement** level `R` and the cost
   of the next level; buying it biases future rolls upward (`specs/build.md`). Disabled
   at `R5` or when unaffordable.
