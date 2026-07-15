@@ -10,8 +10,9 @@ implement them exactly.
 Each track has **five tiers**; you start at **tier 1** on every track and buy the next
 tier in order (you cannot skip). The shop shows, per track, the current tier, what the
 next tier gives, and its price, greying out a track that is maxed or unaffordable. A
-purchase deducts the price immediately and applies at once (a bigger tank refills on
-the next surface refuel; a stronger drill takes effect on the next dig).
+purchase deducts the price immediately and applies at once (a bigger tank raises your
+maximum fuel — you still buy the extra fuel itself at the Fuel Depot, `specs/flow.md`;
+a stronger drill takes effect on the next dig).
 
 ## Fuel tank — how deep a round trip reaches
 

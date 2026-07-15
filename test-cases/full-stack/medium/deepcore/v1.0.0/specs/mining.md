@@ -44,7 +44,7 @@ cargo as **used / capacity** (`specs/flow.md`).
   a bigger bay means fewer surface trips, but you still need the fuel to climb back
   with a heavy haul.
 - Cargo is **emptied by selling** at the Ore Market (below). It is **not** emptied by
-  refueling.
+  refueling or repairing.
 - **On death** (`specs/modes.md`): in **Standard**, the cargo you are carrying is
   **dropped as a retrievable cache** at the death site; in **Hardcore** the run ends.
 - **Exotic materials do not use cargo** (below) — they ride in a separate satchel and

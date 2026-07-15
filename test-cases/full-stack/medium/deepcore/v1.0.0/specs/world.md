@@ -23,9 +23,13 @@ The world is a grid of square **tiles**, each **48 x 48 logical pixels**.
   Core chamber (below).
 - **Depth** is reported to the player in **meters**: each row below the surface is
   **5 m**, so `row r` is at depth `5 x r` m and the Core chamber is at **480 m**.
-- The camera follows the miner **vertically only**, clamped so the surface never
-  scrolls above the top of the viewport and the Core chamber floor never scrolls
-  below its bottom. A tile at `(col, row)` occupies world-space
+- The camera follows the miner **vertically only**. At rest on the surface it frames
+  the camp, and the Core chamber floor never scrolls below the bottom of the viewport.
+  There is **open sky above the surface with no ceiling** (`specs/character.md`): when
+  the miner thrusts up out of the mine, the camera **follows it up** into that sky —
+  there is nothing up there to reach, so the climb only burns fuel, but the miner is
+  shown ascending rather than clipped at the top of the view. A tile at `(col, row)`
+  occupies world-space
   `x in [64 + 48*col, 64 + 48*col + 48]`, `y = 48*row` in world coordinates, drawn at
   `y - cameraY` on screen (offset by the `56 px` status bar).
 
@@ -122,9 +126,12 @@ Four buildings sit on the surface, each a produced sprite (`specs/assets.md`) th
 miner activates by standing at it and which opens an **overlay panel**
 (`specs/controls.md`, `specs/flow.md`):
 
-- **Fuel Depot** — refuels the jetpack. Standing at the surface (or docking at the
-  depot) **refills Fuel to full and repairs Hull to full, for free** (`specs/flow.md`).
-  This is the safe haven the whole fuel budget is measured against.
+- **Fuel Depot** — where you **buy** fuel and hull repair. Nothing refills on its own;
+  at the depot you spend **Credits** to add **fuel** (per unit) and to **repair hull**
+  (per point), up to your current maxima (`specs/flow.md`, `specs/character.md`). The
+  panel lets you buy a fixed increment or **fill / repair to full** (paying only for
+  what is missing, and only as far as you can afford). The depot is a **shop**, not a
+  free top-up — refuel and repair compete for Credits with upgrades and rocket parts.
 - **Ore Market** — **sells** the ore in your cargo for Credits at the listed values
   (`specs/mining.md`, `specs/flow.md`), emptying the cargo.
 - **Upgrade Shop** — buys the next tier on any of the five **upgrade tracks** — fuel
@@ -134,7 +141,9 @@ miner activates by standing at it and which opens an **overlay panel**
   one), and, once all five are installed, **LAUNCH** (`specs/rocket.md`). The rocket
   on the pad visibly gains each installed component (`specs/assets.md`).
 
-Refuel/repair being **free** at the surface means the tension of a dig is never
-"can I afford fuel" but **"can I get back before I run dry or am destroyed"** — the
-fuel tank and hull tiers (`specs/upgrades.md`) set how deep a round trip can safely
-go, and Credits are spent only on **upgrades and the rocket**.
+Because fuel and repair are **bought**, a dig has **two** costs: the **round trip**
+("can I get back before I run dry or am destroyed?") *and* the **Credits** the fuel and
+repairs will cost once I do. The fuel tank and hull tiers (`specs/upgrades.md`) set how
+deep a round trip can reach; Credits are spent on **fuel, repairs, upgrades, and the
+rocket** — the depot is the third demand on every payday, so a reckless dig that burns
+a full tank and takes heavy damage can cost more to recover from than it earned.

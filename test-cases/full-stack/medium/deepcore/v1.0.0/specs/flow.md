@@ -9,11 +9,15 @@ hazards (`specs/hazards.md`), the modes (`specs/modes.md`), and the controls
 
 ## Credits and the economy
 
-**Credits** are the currency. There is exactly **one source** and **two sinks**:
+**Credits** are the currency. There is exactly **one source** and **three sinks**:
 
 - **Source — selling ore.** Selling your cargo at the **Ore Market**
   (`specs/mining.md`) pays each ore's listed value and empties the bay. This is the
   only way to earn Credits.
+- **Sink — fuel and repair.** Buying jetpack **fuel** and **hull repair** at the
+  **Fuel Depot** (`specs/character.md`, `specs/world.md`), per unit / per point. Fuel
+  and hull **never** refill for free or on their own — restoring them is a running cost
+  of every trip.
 - **Sink — upgrades.** Buying tiers on the five upgrade tracks at the **Upgrade Shop**
   (`specs/upgrades.md`).
 - **Sink — the rocket.** Fabricating the five rocket components at the **Launch Pad**
@@ -28,15 +32,17 @@ safe, and they **survive death** in both modes (`specs/modes.md`).
 The surface camp (`specs/world.md`) is the hub every dig returns to. Arriving at the
 surface:
 
-- **Refuels and repairs for free** — Fuel and Hull refill to their current maxima the
-  moment the miner is home (`specs/character.md`, `specs/world.md`). The whole fuel
-  budget of a dig is measured against this safe return.
-- lets you **sell** (Ore Market), **upgrade** (Upgrade Shop), and **fabricate rocket
-  parts** (Launch Pad) via each building's overlay panel (`specs/controls.md`).
+- **Does not refuel or repair on its own** — Fuel and Hull are exactly what the miner
+  climbed out of the mine with (`specs/character.md`, `specs/world.md`). The surface is
+  where you can **pay to restore them**, not where they restore for free.
+- lets you **sell** (Ore Market), **buy fuel and hull repair** (Fuel Depot), **upgrade**
+  (Upgrade Shop), and **fabricate rocket parts** (Launch Pad) via each building's
+  overlay panel (`specs/controls.md`).
 
 The rhythm of the game is: descend and fill cargo (and hunt a material, or make the
-core run), climb back before fuel or hull runs out, sell, spend on the upgrade or
-rocket part this trip earned, and go again — a little deeper each time.
+core run), climb back before fuel or hull runs out, sell, **pay to refuel and repair**,
+spend what is left on the upgrade or rocket part this trip earned, and go again — a
+little deeper each time.
 
 ## Game states
 
@@ -93,8 +99,9 @@ and type of `specs/overview.md`. The expedition start's menu entry is in
   that mode; **BACK** → the main menu.
 - **How to play** — the goal, the controls, the dig loop, the fuel/climb tension, the
   hazards, the materials and scanner, and the two modes; a way back to the main menu.
-- **Building panels** — the four surface overlays: **Fuel Depot** (a confirmation that
-  fuel and hull are topped up — free), **Ore Market** (the cargo breakdown and
+- **Building panels** — the four surface overlays: **Fuel Depot** (buy fuel and hull
+  repair for Credits — a fixed increment or fill/repair-to-full, paying only for the
+  missing amount, `specs/character.md`), **Ore Market** (the cargo breakdown and
   **SELL**), **Upgrade Shop** (the five tracks with current tier, next-tier effect,
   and price, `specs/upgrades.md`), and **Launch Pad** (the five-component rocket
   checklist and **FABRICATE** / **LAUNCH**, `specs/rocket.md`). Each opens when the
@@ -143,7 +150,8 @@ between sessions.
 - Touch or gamepad input (mouse and keyboard only for this version).
 - A boss fight or any combat — Deepcore has **no enemies** (`specs/hazards.md`); the
   mine is the only adversary. This is deliberate.
-- Buying or selling fuel/hull — refuel and repair are **free at the surface**
-  (`specs/world.md`); Credits are spent only on upgrades and the rocket.
+- **Selling** fuel or hull back for Credits — the Fuel Depot only **sells** fuel and
+  repair to the miner (`specs/character.md`, `specs/world.md`); there is no buy-back and
+  no fuel/hull market beyond the depot.
 - Any ore, material, hazard, building, upgrade track, or mechanic beyond those
   specified here — keep the scope to the systems above, done well.

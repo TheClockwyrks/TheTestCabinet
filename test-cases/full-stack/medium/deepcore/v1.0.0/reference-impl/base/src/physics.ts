@@ -22,8 +22,6 @@ const LATERAL_ACCEL = 1700;
 /** Velocity decay when no lateral input (px/s^2): strong on the ground, light in air. */
 const GROUND_FRICTION = 2600;
 const AIR_FRICTION = 500;
-/** The miner cannot rise past this world-y (a little sky above the surface). */
-const SKY_CEIL_Y = -130;
 
 export interface MoveInput {
   left: boolean;
@@ -58,8 +56,9 @@ export function solidBox(grid: Tile[][], x: number, y: number, w: number, h: num
   const r1 = rowAtY(y + h - 0.001);
   for (let r = r0; r <= r1; r++) {
     for (let c = c0; c <= c1; c++) {
-      if (c < 0 || c >= grid[0]!.length || r < 0) return true; // side/top-out-of-grid = wall
+      if (c < 0 || c >= grid[0]!.length) return true; // off the sides = wall
       if (r >= grid.length) return true; // below the world floor = wall
+      if (r < 0) continue; // above the world top = OPEN SKY, no ceiling (specs/character.md)
       if (isSolidKind(grid[r]![c]!.kind)) return true;
     }
   }
@@ -119,10 +118,9 @@ export function stepMovement(m: Miner, grid: Tile[][], input: MoveInput, canThru
     }
     m.vy = 0;
   }
-  if (m.y < SKY_CEIL_Y) {
-    m.y = SKY_CEIL_Y;
-    if (m.vy < 0) m.vy = 0;
-  }
+  // No ceiling above the surface (specs/character.md): the miner may thrust up into the
+  // open sky as far as its fuel lasts, wasting fuel, then fall back down. Nothing clamps
+  // its rise — the only limit is the fuel it burns getting there.
 
   if (!grounded) grounded = solidBox(grid, m.x, m.y + 2, MINER_W, MINER_H);
 

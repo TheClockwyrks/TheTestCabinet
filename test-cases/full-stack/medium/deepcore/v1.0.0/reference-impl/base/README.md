@@ -24,9 +24,10 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
   (idle, walk, drill-down, drill-side, jetpack, fall, hurt, fuel-out), driven by real
   physics: gravity, a fuel-burning jetpack (the only way up), and a drill that bites
   **down / left / right, never up**.
-- **The loop** — dig ore → jetpack home → **sell** at the Ore Market → **buy upgrades**
-  (fuel, drill, cargo, hull, scanner) → dig deeper. Fuel and hull refill free at the
-  surface; the tension is getting home before the tank runs dry.
+- **The loop** — dig ore → jetpack home → **sell** at the Ore Market → **buy fuel and
+  hull repair** at the Fuel Depot and **buy upgrades** (fuel, drill, cargo, hull, scanner)
+  → dig deeper. Nothing refills for free — fuel and repair are a paid sink, so the tension
+  is both getting home before the tank runs dry *and* affording the trip back down.
 - **The climax** — extract the **Core Sample** (a 90-second destabilization timer starts),
   race back up past the lava, **fabricate the Ignition Core**, and **launch**.
 - **Modes** — the mine and balance are identical; only death differs. **Standard** drops

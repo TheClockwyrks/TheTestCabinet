@@ -231,6 +231,23 @@ export const SAFE_FALL_SPEED = FALL_TERMINAL * 0.7; // reference threshold
 export const FALL_IMPACT_SCALE = 0.12; // hull per (px/s) of excess speed — reference
 
 // ---------------------------------------------------------------------------
+// Fuel Depot pricing (specs/world.md, specs/flow.md, specs/character.md)
+// ---------------------------------------------------------------------------
+//
+// Fuel and hull are NEVER free and never refill on their own: they are bought here with
+// Credits, a running cost of every trip alongside upgrades and the rocket. Prices are
+// kept modest so a sensible dig still nets Credits (drilling already costs 1 fuel/tile,
+// specs/character.md) while a reckless, fuel-guzzling, damage-taking run can cost more to
+// recover than it earned.
+
+/** Credits per unit of fuel bought at the Fuel Depot. */
+export const FUEL_COST_PER_UNIT = 1;
+/** Credits per point of hull repaired at the Fuel Depot. */
+export const REPAIR_COST_PER_POINT = 2;
+/** The fixed amount the depot's "+N" buttons add per click (fuel units / hull points). */
+export const DEPOT_INCREMENT = 25;
+
+// ---------------------------------------------------------------------------
 // The unstable Core Sample (specs/hazards.md)
 // ---------------------------------------------------------------------------
 
