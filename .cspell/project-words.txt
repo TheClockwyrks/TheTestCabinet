@@ -399,3 +399,23 @@ activatable
 bpanel
 retarget
 xtal
+# Arc Foundry redesign — combination-tower ids, abilities, terms.
+fusecluster
+staticweb
+slagdriver
+corroder
+ionprism
+forkarray
+nullcore
+rupturenode
+blightcoil
+reactorpile
+auroralance
+overcurrent
+multishot
+multishots
+multiset
+debuff
+crits
+hoverable
+transpiles

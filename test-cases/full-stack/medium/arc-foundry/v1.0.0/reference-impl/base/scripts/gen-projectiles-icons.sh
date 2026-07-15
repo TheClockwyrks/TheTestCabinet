@@ -92,6 +92,36 @@ d set-pixel --x 8 --y 6 --color '#ffd0d8'                # crackle
 d set-pixel --x 10 --y 10 --color '#ffb0c0'
 d set-pixel --x 6 --y 10 --color '#ff8fa0'
 
+# --- Choke bolt: an icy-cyan slow round, a heavy frosted drag-slug ------------------------
+newsprite 16 16 "$PROJ/choke.png"
+d fill-circle --cx 9 --cy 8 --r 5 --color '#66d9e833'    # frosty halo
+d fill-rect --x 3 --y 6 --width 11 --height 4 --color '#2f7d8a'  # dim outer slug
+d fill-rect --x 4 --y 6 --width 10 --height 4 --color '#66d9e8'  # body
+d fill-rect --x 5 --y 7 --width 9 --height 2 --color '#a6ecf3'   # frost band
+d line --x0 5 --y0 8 --x1 14 --y1 8 --color '#eaf6ff'    # cold core
+d fill-circle --cx 14 --cy 8 --r 3 --color '#a6ecf3'     # heavy nose
+d fill-circle --cx 14 --cy 8 --r 1 --color '#ffffff'
+d line --x0 3 --y0 8 --x1 0 --y1 4 --color '#66d9e8'     # frost-fork tail
+d line --x0 3 --y0 8 --x1 0 --y1 12 --color '#66d9e8'
+d set-pixel --x 8 --y 5 --color '#e6fbff'               # frost crystals
+d set-pixel --x 10 --y 11 --color '#a6ecf3'
+d set-pixel --x 6 --y 11 --color '#e6fbff'
+
+# --- Rectifier bolt: an ember burn round, glowing hot with a smouldering trail ------------
+newsprite 16 16 "$PROJ/rectifier.png"
+d fill-circle --cx 9 --cy 8 --r 5 --color '#ff6b3d33'    # ember halo
+d fill-rect --x 3 --y 6 --width 11 --height 4 --color '#a8401c'  # dim outer ember
+d fill-rect --x 4 --y 6 --width 10 --height 4 --color '#ff6b3d'  # body
+d fill-rect --x 5 --y 7 --width 9 --height 2 --color '#ff9e72'   # hot band
+d line --x0 5 --y0 8 --x1 14 --y1 8 --color '#fff0d6'    # white-hot core
+d fill-circle --cx 14 --cy 8 --r 2 --color '#ffc79e'     # burning nose
+d fill-circle --cx 14 --cy 8 --r 1 --color '#ffffff'
+d line --x0 3 --y0 8 --x1 0 --y1 5 --color '#ff6b3d'     # smouldering fork tail
+d line --x0 3 --y0 8 --x1 0 --y1 11 --color '#c9531f'
+d set-pixel --x 7 --y 5 --color '#ffd0a8'               # sparks
+d set-pixel --x 9 --y 11 --color '#ff9e72'
+d set-pixel --x 5 --y 10 --color '#ffb680'
+
 echo "produced projectile sprites under $PROJ"
 
 # =========================================================================================
@@ -195,7 +225,74 @@ d fill-rect --x 4  --y 17 --width 16 --height 4 --color '#ff5470'   # capacitor-
 d fill-rect --x 5  --y 18 --width 14 --height 2 --color '#ff8fa0'
 d set-pixel --x 11 --y 16 --color '#ffffff'                          # strike point
 
+# --- Choke glyph: a narrowing throat with a frosted slow-arrow (icy cyan) -----------------
+newsprite 24 24 "$ICON/choke.png"
+d line --x0 3  --y0 4  --x1 11 --y1 12 --color '#3d8a99'            # converging throat walls
+d line --x0 3  --y0 20 --x1 11 --y1 12 --color '#3d8a99'
+d line --x0 21 --y0 4  --x1 13 --y1 12 --color '#66d9e8'
+d line --x0 21 --y0 20 --x1 13 --y1 12 --color '#66d9e8'
+d fill-circle --cx 12 --cy 12 --r 3 --color '#66d9e8'              # constricted core
+d fill-circle --cx 12 --cy 12 --r 2 --color '#a6ecf3'
+d set-pixel --x 12 --y 12 --color '#ffffff'
+d set-pixel --x 6  --y 6  --color '#e6fbff'                          # frost specks
+d set-pixel --x 6  --y 18 --color '#e6fbff'
+d set-pixel --x 18 --y 6  --color '#a6ecf3'
+d set-pixel --x 18 --y 18 --color '#a6ecf3'
+
+# --- Rectifier glyph: a diode triangle-bar cracking into an ember flare (ember orange) ----
+newsprite 24 24 "$ICON/rectifier.png"
+d fill-rect --x 4  --y 11 --width 4  --height 2 --color '#ff6b3d'   # left lead
+d fill-rect --x 16 --y 11 --width 4  --height 2 --color '#ff6b3d'   # right lead
+d line --x0 8  --y0 5  --x1 8  --y1 19 --color '#ff6b3d'            # diode triangle (anode side)
+d line --x0 8  --y0 5  --x1 15 --y1 12 --color '#ff6b3d'
+d line --x0 8  --y0 19 --x1 15 --y1 12 --color '#ff6b3d'
+d fill-rect --x 15 --y 5  --width 2  --height 14 --color '#ff6b3d'  # cathode bar
+d fill-rect --x 15 --y 5  --width 2  --height 4  --color '#ff9e72'  # bar glint
+d fill-circle --cx 11 --cy 12 --r 2 --color '#ff9e72'              # ember heat in the junction
+d set-pixel --x 11 --y 12 --color '#fff0d6'
+d set-pixel --x 17 --y 9  --color '#ffd0a8'                          # heat sparks
+d set-pixel --x 6  --y 15 --color '#ffb680'
+
+# --- Regulator glyph: an aura node with concentric support rings, NO barrel (lime) --------
+newsprite 24 24 "$ICON/regulator.png"
+d stroke-circle --cx 12 --cy 12 --r 10 --color '#7d9a3470'          # faint outer support ring
+d stroke-circle --cx 12 --cy 12 --r 7  --color '#b6e05a'           # aura ring
+d fill-circle --cx 12 --cy 12 --r 3 --color '#b6e05a'              # emitter core
+d fill-circle --cx 12 --cy 12 --r 2 --color '#d3ee96'
+d set-pixel --x 12 --y 12 --color '#ffffff'
+d fill-circle --cx 12 --cy 2  --r 1 --color '#d3ee96'              # four antenna prongs
+d fill-circle --cx 22 --cy 12 --r 1 --color '#d3ee96'
+d fill-circle --cx 12 --cy 22 --r 1 --color '#d3ee96'
+d fill-circle --cx 2  --cy 12 --r 1 --color '#d3ee96'
+
 echo "produced HUD/type/Load icons under $ICON"
+
+# =========================================================================================
+# COMBO ICONS (optional) — one gold-ringed accent glyph per combination tower, so a combo
+# reads as a "superior" mark next to the base-type glyphs. 12x, keyed combo_<comboId>.
+# =========================================================================================
+combo_ids=(fusecluster staticweb slagdriver corroder ionprism forkarray \
+           nullcore rupturenode blightcoil reactorpile auroralance singularity)
+combo_acc=(  '#ff6b3d' '#9b7bff' '#ff5470' '#b6e05a' '#5ac8ff' '#7fe6b0' \
+             '#8fe0b0' '#ffb347' '#c46bff' '#9be07a' '#66d9e8' '#a45cff')
+combo_hot=(  '#ffb694' '#cbb8ff' '#ff9aac' '#dcef9e' '#a6e2ff' '#b6f2d6' \
+             '#c4f0d8' '#ffd28a' '#e0b6ff' '#cff0b0' '#a6ecf3' '#d8b0ff')
+for i in "${!combo_ids[@]}"; do
+  id=${combo_ids[$i]}; acc=${combo_acc[$i]}; hot=${combo_hot[$i]}
+  newsprite 24 24 "$ICON/combo_$id.png"
+  d fill-circle --cx 12 --cy 12 --r 10 --color '#c9a24e'            # gold badge ring
+  d fill-circle --cx 12 --cy 12 --r 9  --color '#0d141b'           # dark field
+  d stroke-circle --cx 12 --cy 12 --r 9 --color '#ffe9a8'          # bright gold rim
+  d fill-circle --cx 12 --cy 12 --r 6  --color "$acc"              # accent core
+  d fill-circle --cx 12 --cy 12 --r 3  --color "$hot"
+  d set-pixel --x 12 --y 12 --color '#ffffff'
+  d set-pixel --x 12 --y 3  --color '#ffe9a8'                       # gold cardinal studs
+  d set-pixel --x 21 --y 12 --color '#ffe9a8'
+  d set-pixel --x 12 --y 21 --color '#ffe9a8'
+  d set-pixel --x 3  --y 12 --color '#ffe9a8'
+done
+
+echo "produced combo icons under $ICON"
 
 # --- Load-type preview marks (optional, next-wave preview) --------------------------------
 # Mote — a plain charge blob.

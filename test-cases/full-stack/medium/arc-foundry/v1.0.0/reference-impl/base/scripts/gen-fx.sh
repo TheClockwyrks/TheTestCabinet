@@ -5,7 +5,7 @@
 # size/opacity/color curves), NOT baked frames: `render` emits a compact `system.json` the
 # game plays LIVE via @test-cabinet/particle-runtime's ParticleCanvasPlayer (src/particles.ts).
 #
-# Ten systems land under assets/fx/, one per FxKind the game loads (src/assets.ts FX_SOURCE):
+# Thirteen systems land under assets/fx/, one per FxKind the game loads (src/assets.ts FX_SOURCE):
 #   buildspark  a stamp lands hot — spark shower + arc snap (specs/build.md)
 #   combine     two components combine — convergent implosion → payoff flash (specs/build.md)
 #   arcbolt     a Capacitor / Discharge Rig fires its single bolt — blue-white crackle (towers.md)
@@ -16,6 +16,9 @@
 #   death       a unit dies — an electrical pop; the Dynamo's is a big EMP (`big`) (enemies.md)
 #   leak        a unit grounds out at the Collector — a red warning surge at the sink (flow.md)
 #   muzzle      a firing head's muzzle glow — a small hot puff (welcome extra, assets.md)
+#   slowhit     a Choke / slow combo hits — a frost / EM-drag snap that converges + clings (towers.md)
+#   burnhit     a Rectifier / burn combo ticks — an ember flare + small rising embers (towers.md)
+#   aura        a Regulator / aura combo sits on the board — a soft expanding support pulse ring (towers.md)
 #
 # The quality-tier escalation is applied in code (particles.ts tierScale scales the burst),
 # and the Dynamo's EMP via the `big` flag (2.2x) — so one authored system serves every tier.
@@ -345,5 +348,100 @@ p set-particle --emitter spark --size-curve ease-out --size-from 0.4 --size-to 0
 p set-timeline --loop false
 p render
 echo "produced muzzle.system.json"
+
+# ============================ SLOW SNAP (Choke / slow combo hits, one-shot) ====
+# A Choke or a slow-carrying combo lands its drag on a unit: a brief FROST / EM-DRAG snap
+# that reads as "it's slowed". Icy shards CONVERGE inward and crystallize (a negative radial
+# pulls them in, size grows in as they set), a cold pin-flash at the hit, and a scatter of
+# slow-drifting icy motes that cling to the unit as its speed sags. Choke blue #66d9e8,
+# frost-white #eaffff core.
+newfx false 640 "$FX/slowhit.system.json"
+p add-emitter --name frost --shape disc --x 64 --y 64 --radius 26 \
+  --burst 22 --at 0 --lifetime 380 --lifetime-spread 90 --speed 6 --speed-spread 4 \
+  --dir-y 1 --cone-angle 360 --seed 5
+p set-forces --emitter frost --radial -240 --drag 1.4
+p set-particle --emitter frost --size-curve ease-in --size-from 0.75 --size-to 0.18 \
+  --opacity-curve ease-in-out --opacity-from 0.9 --opacity-to 0.0 --stretch 0.05 \
+  --color-gradient "#eaffff@0,#66d9e8@1"
+p add-emitter --name snap --shape point --x 64 --y 64 \
+  --burst 6 --at 0 --lifetime 200 --lifetime-spread 50 --speed 20 --speed-spread 10 \
+  --dir-y 1 --cone-angle 360 --seed 14
+p set-forces --emitter snap --drag 5
+p set-particle --emitter snap --size-curve ease-out --size-from 1.6 --size-to 0.0 \
+  --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 \
+  --color-gradient "#ffffff@0,#a8f0f5@1"
+p add-emitter --name motes --shape point --x 64 --y 64 \
+  --burst 11 --at 0 --lifetime 560 --lifetime-spread 160 --speed 34 --speed-spread 20 \
+  --dir-y 1 --cone-angle 360 --seed 21
+p set-forces --emitter motes --gravity 22 --drag 3.6
+p set-particle --emitter motes --size-curve ease-out --size-from 0.45 --size-to 0.0 \
+  --opacity-curve ease-out --opacity-from 0.9 --opacity-to 0.0 --stretch 0.04 \
+  --color-gradient "#cbeef2@0,#66d9e8@1"
+p set-timeline --loop false
+p render
+echo "produced slowhit.system.json"
+
+# ============================ BURN FLARE (Rectifier / burn combo, one-shot) ====
+# A Rectifier or a burn-carrying combo's overcurrent DoT ticks: a small EMBER FLARE on the
+# hit and a lift of small RISING embers/sparks that curl up and settle (launched up in a
+# narrow fan; the positive gravity lets them rise then sag), plus a low ember-ticking
+# flicker on the unit. Rectifier orange #ff6b3d, hot ember #ff8a3d, spark-gold #ffd98a.
+newfx false 720 "$FX/burnhit.system.json"
+p add-emitter --name flare --shape point --x 64 --y 64 \
+  --burst 6 --at 0 --lifetime 190 --lifetime-spread 45 --speed 22 --speed-spread 12 \
+  --dir-y 1 --cone-angle 360 --seed 8
+p set-forces --emitter flare --drag 4.5
+p set-particle --emitter flare --size-curve ease-out --size-from 1.4 --size-to 0.0 \
+  --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 \
+  --color-gradient "#fff2d0@0,#ff6b3d@1"
+p add-emitter --name embers --shape point --x 64 --y 60 \
+  --burst 16 --at 0 --lifetime 620 --lifetime-spread 180 --speed 60 --speed-spread 30 \
+  --dir-y 1 --cone-angle 48 --seed 16
+p set-forces --emitter embers --gravity 55 --drag 1.8
+p set-particle --emitter embers --size-curve ease-out --size-from 0.5 --size-to 0.0 \
+  --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 --stretch 0.05 \
+  --color-gradient "#ffd98a@0,#ff8a3d@0.5,#ff5a2a@1"
+p add-emitter --name flicker --shape point --x 64 --y 64 \
+  --burst 8 --at 0 --lifetime 460 --lifetime-spread 150 --speed 30 --speed-spread 16 \
+  --dir-y 1 --cone-angle 360 --seed 29
+p set-forces --emitter flicker --gravity 30 --drag 2.6
+p set-particle --emitter flicker --size-curve ease-out --size-from 0.4 --size-to 0.0 \
+  --opacity-curve ease-out --opacity-from 0.85 --opacity-to 0.0 \
+  --color-gradient "#ffb347@0,#ff6b3d@1"
+p set-timeline --loop false
+p render
+echo "produced burnhit.system.json"
+
+# ============================ AURA PULSE (Regulator / aura combo, one-shot) ====
+# A Regulator (or an aura combo) sits on the board and PROJECTS its support field — it never
+# fires. A slow, soft SUPPORT PULSE RING marks the aura: a coherent shell of light expands
+# outward (uniform launch speed + tight spread + a gentle radial), a soft core swell blooms
+# at the source, and a few gentle motes lift and linger. Regulator lime #b6e05a, pale
+# #eaffcf core. Reads calm and supportive, not a violent burst.
+newfx false 820 "$FX/aura.system.json"
+p add-emitter --name ring --shape point --x 64 --y 64 \
+  --burst 40 --at 0 --lifetime 620 --lifetime-spread 40 --speed 95 --speed-spread 10 \
+  --dir-y 1 --cone-angle 360 --seed 6
+p set-forces --emitter ring --radial 40 --drag 1.1
+p set-particle --emitter ring --size-curve ease-out --size-from 0.5 --size-to 0.26 \
+  --opacity-curve ease-out --opacity-from 0.85 --opacity-to 0.0 --stretch 0.04 \
+  --color-gradient "#eaffcf@0,#b6e05a@1"
+p add-emitter --name glow --shape point --x 64 --y 64 \
+  --burst 8 --at 0 --lifetime 480 --lifetime-spread 120 --speed 14 --speed-spread 8 \
+  --dir-y 1 --cone-angle 360 --seed 15
+p set-forces --emitter glow --drag 4.0
+p set-particle --emitter glow --size-curve ease-out --size-from 1.8 --size-to 0.3 \
+  --opacity-curve ease-out --opacity-from 0.8 --opacity-to 0.0 \
+  --color-gradient "#f4ffd8@0,#b6e05a@1"
+p add-emitter --name motes --shape point --x 64 --y 64 \
+  --burst 12 --at 0 --lifetime 700 --lifetime-spread 200 --speed 42 --speed-spread 22 \
+  --dir-y 1 --cone-angle 360 --seed 24
+p set-forces --emitter motes --gravity 25 --drag 2.2
+p set-particle --emitter motes --size-curve ease-out --size-from 0.42 --size-to 0.0 \
+  --opacity-curve ease-out --opacity-from 0.75 --opacity-to 0.0 --stretch 0.04 \
+  --color-gradient "#d8f0a8@0,#b6e05a@1"
+p set-timeline --loop false
+p render
+echo "produced aura.system.json"
 
 echo "all electrical particle systems produced under $FX"

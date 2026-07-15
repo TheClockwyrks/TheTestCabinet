@@ -26,15 +26,24 @@ Its defining idea is the GemTD **scrap-press** loop — you do **not** buy speci
   **blocker** (a 2×2 rock wall that never fires — the maze material). Keeping or
   combining is
   the level's single commit; then you SEND and the mobs enter.
-- **Combine** two candidates (or a candidate and an existing component) of the **same
-  type +
-  same quality** into one a **tier higher** on the ladder Scrap → Tuned → Charged →
-  Primed →
-  Tesla-Prime — that counts as the level's keep. Combining is the direct climb.
+- **Quality-combine** two candidates (or a candidate and an existing component) of the
+  **same type + same quality** into one a **tier higher** on the ladder Scrap → Tuned →
+  Charged → Primed → Tesla-Prime — that counts as the level's keep. Combining is the
+  direct climb.
+- **Recipe-combine** — assemble a specific multiset of base components at specific
+  qualities into one of the **combination towers** (single-grade, terminal turrets with
+  exotic abilities — chain, splash, slow, burn, crit, multishot, aura). Base towers are
+  weak feedstock; combos are the payoff and carry the late game. A recipe-combine is also
+  the level's single commit; consumed ingredients harden into blockers in place
+  (wall-neutral).
 - **Upgrade Quality** — spend Charge to raise your run's **Refinement** level (R0 → R5),
-  biasing every future roll toward the higher tiers. Refinement is the odds; combining
-  is the
+  biasing every future roll toward the higher tiers. At R0 the press rolls only Scrap;
+  Primed/Tesla-Prime come only from combining. Refinement is the odds; combining is the
   climb.
+
+There are **eight base component types** — Capacitor, Coil, Emitter, Arc-Node, Discharge
+Rig, the slowing **Choke**, the burning **Rectifier**, and the non-firing support
+**Regulator** (whose aura buffs nearby towers).
 
 Every component, candidate, and blocker is a **2×2 wall**; the Load pathfinds the shortest
 **open** route around them between the ordered **4-tile waypoint platforms** (walkable but
@@ -75,11 +84,11 @@ files; the tools are not invoked by the build. The particle bursts are played li
   legal spot on the yard to drop it (it rolls its component on landing), and the press
   re-arms so you can keep placing. `Esc` / right-click cancels a held rock for free.
 - **Keep / combine** — **click** a placed candidate to select it, then **K** keeps it
-  (this
-  level's one firing tower) or **C** combines it with a matching partner (one tier
-  higher).
-  Only one keep/combine per level; the rest harden into blockers at SEND. Reversible until
-  you send.
+  (this level's one firing tower), **C** quality-combines it with a matching partner (one
+  tier higher), or click a **COMBINE →** combo button (or **G** for the first reachable
+  recipe) to assemble a **combination tower** when its recipe's ingredients are on the
+  board. Only one keep/combine per level; the rest harden into blockers at SEND.
+  Reversible until you send.
 - **Upgrade Quality** — **U** / the **UPGRADE** button spends Charge to raise your
   Refinement
   level, biasing future rolls upward.

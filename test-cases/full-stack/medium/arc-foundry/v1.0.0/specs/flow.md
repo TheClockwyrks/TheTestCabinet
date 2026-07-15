@@ -33,7 +33,7 @@ interest, so the Load always presses against a maze that is still being built up
   QUALITY**. Placing a rock costs `10` Charge and rolls one component where it lands,
   up to the `5`-per-level allowance (`specs/build.md`); Charge never goes below `0`,
   so the press is disabled when you cannot afford `10`. **UPGRADE QUALITY** buys the
-  next Refinement level for its fixed cost (`55 / 110 / 200 / 340 / 520` up the R1–R5
+  next Refinement level for its fixed cost (`60 / 130 / 240 / 400 / 620` up the R1–R5
   track, `specs/build.md`). **Combining costs nothing.** There is **no selling** — nothing
   you place is ever refunded for Charge, so the only Charge sinks are stamps and
   refinement. You may **dismantle** a misplaced structure between waves as a correction,
@@ -54,14 +54,16 @@ interest, so the Load always presses against a maze that is still being built up
 
 - A run is a fixed sequence of **`N` waves** on the **map the player chose** at the
   map-select screen (`specs/board.md`), where `N` is set by the selected difficulty
-  (`specs/modes.md`); the reference **Medium** run is `30`. Waves are numbered
+  (`specs/modes.md`); the reference **Medium** run is `50`. Waves are numbered
   `WAVE 1` … `WAVE N`.
 - Between waves there is an **untimed build phase**, during which the Load is not
   spawning and you place rocks, keep, combine, and upgrade quality (`specs/build.md`).
   It shows **no countdown** and never starts on its own; interest is paid at its
   start. The player re-shapes the maze at leisure and presses **SEND** (the wave
-  control, `specs/controls.md`) to resolve the level (the kept candidate becomes a
-  component, the rest harden into blockers, `specs/build.md`) and start the next wave.
+  control, `specs/controls.md`) to resolve the level — the level's single **harvest**
+  lands (a **KEEP** of one rolled candidate, a **quality-combine** a tier up the
+  ladder, or a **combination-tower recipe**, `specs/build.md`, `specs/towers.md`) and
+  every other rock hardens into a blocker — and start the next wave.
 - **The opening build phase — before Wave 1 — is also untimed**, reads **START**
   instead of SEND, and pays no interest (interest is paid only at the start of the
   between-wave phases). The `130` opening Charge lays the first partial maze, not a
@@ -75,11 +77,11 @@ interest, so the Load always presses against a maze that is still being built up
   wave pays its bonus and opens the next build phase.
 - **Milestone waves.** A **Dynamo** boss (`specs/enemies.md`) anchors two waves:
   the **final wave** (Wave `N`) always, and one **midpoint** wave (`round(N / 2)`)
-  always. In the reference `30`-wave Medium run these are Wave `15` and Wave `30`.
+  always. In the reference `50`-wave Medium run these are Wave `25` and Wave `50`.
 - **Difficulty scaling.** Only the **wave count** `N` and the **enemy HP scaling**
   change with difficulty (`specs/modes.md`). A unit's HP on wave `w` is its base HP
   (`specs/enemies.md`) times `baseMult × (1 + k × (w − 1))`, where `baseMult` and
-  `k` are the difficulty's constants (Medium `baseMult = 0.22`, `k = 1.35`). Speeds,
+  `k` are the difficulty's constants (Medium `baseMult = 0.22`, `k = 1.17`). Speeds,
   bounties, and leak values do not scale, and every component stat is unchanged
   across waves — only the Load grows.
 - **Victory.** Clearing the **final wave** (Wave `N`) with **Grid Integrity
@@ -193,9 +195,12 @@ fully visible:
   its `10` cost and the remaining stamps of the `5`-per-level allowance); the **UPGRADE
   QUALITY** control (the current Refinement level `R` and the next level's cost,
   `specs/build.md`); the **selected candidate/component inspector** (its type, quality
-  tier, live stats — damage, range, fire rate, targeting — and the **KEEP / COMBINE**
-  and **targeting** controls, with KEEP/COMBINE on candidates during the build phase and
-  COMBINE shown only when a match exists, `specs/build.md`); the **next-wave preview**
+  tier, live stats — damage, range, fire rate, targeting; a **combination tower**
+  instead reads its recipe and abilities, and a **Regulator** reads an **aura**
+  radius/bonus readout since it does not fire, `specs/towers.md`) and the **KEEP /
+  COMBINE** and **targeting** controls, with KEEP/COMBINE on candidates during the
+  build phase and COMBINE shown only when a match exists (a quality match **or** a
+  combination-tower recipe), `specs/build.md`); the **next-wave preview**
   (the coming wave's types, shown when nothing is selected); and the **wave control**
   (START / SEND) with the speed toggle.
 
@@ -227,11 +232,14 @@ targets:
 - The **scrap-press** places a rock that **rolls a random component type at a random
   quality on placement** (biased upward by Refinement); you **keep exactly one** roll
   per level as a firing component, every other rock hardens into an inert **blocker**,
-  and **combining** a match (same type + quality → one tier higher) is the level's
-  alternative keep (`specs/build.md`, `specs/towers.md`).
+  and **combining** — either a quality match (same type + quality → one tier higher)
+  or a **combination-tower recipe** — is the level's alternative harvest
+  (`specs/build.md`, `specs/towers.md`).
 - Components **fire automatically** at valid in-range units with selectable targeting,
-  throwing visible traveling arcs that carry the hit; **flyers** (every fourth wave)
-  ignore the maze but can still be hit in range (`specs/towers.md`, `specs/enemies.md`).
+  throwing visible traveling arcs that carry the hit — the **Regulator** is the one
+  exception, a **non-firing** support type that projects a buff aura instead
+  (`specs/towers.md`); **flyers** (every fourth wave) ignore the maze but can still be
+  hit in range (`specs/towers.md`, `specs/enemies.md`).
 - The **economy** runs on kill bounties, the wave-clear bonus, and interest, spent on
   stamps and **UPGRADE QUALITY** (no selling); a **leak** costs Grid Integrity; **`0`**
   integrity overloads and ends the game; clearing the **final wave** with integrity left

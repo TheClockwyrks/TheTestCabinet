@@ -16,7 +16,9 @@
   <body>
     <div class="stage">
       <!-- Dim yard furniture behind the menu: a scrap of maze, a waypoint route,
-           salvaged components across a couple of quality tiers, and a charge unit. -->
+           salvaged components across the eight base types + quality tiers (including a
+           non-firing Regulator projecting its aura and a gold combination tower), and a
+           charge unit. -->
       <div class="board dim" style="top: 0; height: 720px; width: 1280px">
         <svg class="field" viewBox="0 0 1280 720" style="width: 1280px; height: 720px">
           <polyline points="80,610 300,610 300,560 240,560 240,640 1040,640 1040,560 1180,560"
@@ -29,6 +31,13 @@
         </div>
         <div class="comp coil t2" style="left: 280px; top: 600px; transform: rotate(18deg)">
           <span class="core">L</span><span class="head"></span><span class="pips"><i></i><i></i></span>
+        </div>
+        <div class="aura-ring" style="left: 720px; top: 600px; width: 150px; height: 150px"></div>
+        <div class="comp reg t3" style="left: 700px; top: 580px">
+          <span class="core">G</span>
+        </div>
+        <div class="comp combo" style="left: 820px; top: 580px; transform: rotate(-10deg)">
+          <span class="core">&#10022;</span><span class="head"></span>
         </div>
         <div class="slag" style="left: 980px; top: 600px"></div>
         <div class="comp node t3" style="left: 1080px; top: 560px">

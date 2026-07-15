@@ -45,12 +45,18 @@
   --arc: #cfe8ff;         /* blue-white arc / discharge core */
   --arc-dim: #6fa8d8;     /* dim arc / cable */
 
-  /* ---- Component TYPE colors (the five salvaged parts) ---- */
+  /* ---- Component TYPE colors (the eight salvaged parts) ---- */
   --cap: #4aa6ff;         /* Capacitor — crisp blue bolt */
   --coil: #b06bff;        /* Coil — chain-lightning violet */
   --emit: #40e0c2;        /* Emitter — rapid spark teal */
   --node: #ff9a46;        /* Arc-Node — discharge-ring amber-orange */
   --rig: #ff5470;         /* Discharge Rig — heavy-bolt red */
+  --choke: #66d9e8;       /* Choke — slow, icy clamp-arc cyan */
+  --rect: #ff6b3d;        /* Rectifier — overcurrent-burn ember */
+  --reg: #b6e05a;         /* Regulator — non-firing support aura lime */
+
+  /* ---- Combination tower accent (single-grade, terminal) ---- */
+  --combo: #ffe9a8;       /* Combination tower — special gold badge */
 
   /* ---- Quality TIER finishes (Scrap -> Tesla-Prime) ---- */
   --t1: #5c636b;          /* Scrap — pitted, dim */
@@ -366,6 +372,32 @@ body {
 .comp.node .core { background: var(--node); }
 .comp.rig { color: var(--rig); }
 .comp.rig .core { background: var(--rig); }
+.comp.choke { color: var(--choke); }
+.comp.choke .core { background: var(--choke); }
+.comp.rect { color: var(--rect); }
+.comp.rect .core { background: var(--rect); }
+/* Regulator — a non-firing support node: lime core, NO firing head. */
+.comp.reg { color: var(--reg); }
+.comp.reg .core { background: var(--reg); }
+.comp.reg .head { display: none; }
+
+/* Combination tower — single-grade, terminal, gold-accented. No quality pips;
+ * it reads as a special gold turret rather than a laddered tier. */
+.comp.combo {
+  color: var(--combo);
+  border-color: var(--combo);
+  background: linear-gradient(180deg, #2b2617, #17110726);
+  box-shadow: 0 0 24px rgba(255, 233, 168, 0.7), 0 0 0 1px rgba(255, 233, 168, 0.5);
+}
+.comp.combo .core { background: var(--combo); }
+.comp.combo::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 233, 168, 0.6);
+  box-shadow: 0 0 12px rgba(255, 233, 168, 0.45);
+}
 
 /* Quality-tier finish: border escalates dull->chrome, glow spreads and brightens.
  * The tier's glow reuses the component's type color; intensity is the tier read. */
@@ -434,6 +466,23 @@ body {
   transform: translate(-50%, -50%);
   border: 1px solid rgba(74, 166, 255, 0.5);
   background: rgba(74, 166, 255, 0.06);
+  z-index: 1;
+}
+/* A selected combination tower's range ring wears the gold accent. */
+.range.gold {
+  border-color: rgba(255, 233, 168, 0.6);
+  background: rgba(255, 233, 168, 0.06);
+}
+
+/* A Regulator's passive support aura — a steady lime field (not a range ring):
+ * every firing tower whose center falls inside it deals more damage. Placed
+ * inline at the Regulator's center in board-local px; centered by transform. */
+.aura-ring {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 1px dashed rgba(182, 224, 90, 0.55);
+  background: radial-gradient(circle, rgba(182, 224, 90, 0.12), rgba(182, 224, 90, 0.03) 60%, transparent 72%);
   z-index: 1;
 }
 
@@ -505,6 +554,35 @@ body {
 }
 .unit.dynamo .hp { width: 64px; height: 5px; top: -14px; }
 
+/* Status tints (produced status VFX in the real build). A unit under a Choke's
+ * slow wears an icy-cyan clamp ring; a unit lit by a Rectifier's overcurrent burn
+ * wears an ember halo. Both reuse the ability colors (specs/overview.md). */
+.unit.slowed .body { box-shadow: 0 0 11px rgba(102, 217, 232, 0.9), inset 0 0 6px rgba(102, 217, 232, 0.5); }
+.unit.slowed::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(102, 217, 232, 0.75);
+  box-shadow: 0 0 9px rgba(102, 217, 232, 0.55);
+}
+.unit.burning .body { box-shadow: 0 0 13px rgba(255, 107, 61, 0.95); }
+.unit.burning::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 107, 61, 0.5), transparent 66%);
+}
+
 /* ---- Electrical VFX (produced particle systems in the real game) ---- */
 /* Radial spark shower — build spark at a fresh stamp. */
 .vfx {
@@ -569,6 +647,27 @@ body {
   height: 18px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.95), transparent 68%);
+}
+/* Aura pulse — a Regulator's (or aura combo's) support ring flaring out. */
+.vfx.aura {
+  border-radius: 50%;
+  border: 2px solid rgba(182, 224, 90, 0.8);
+  box-shadow: 0 0 18px rgba(182, 224, 90, 0.5), inset 0 0 14px rgba(182, 224, 90, 0.3);
+  background: radial-gradient(circle, rgba(182, 224, 90, 0.12), transparent 62%);
+}
+/* Slow snap — a cold clamp-arc burst where a Choke's bolt grips its target. */
+.vfx.slowhit {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(102, 217, 232, 0.9), transparent 66%);
+}
+/* Burn flare — an ember burst where a Rectifier's overcurrent DoT ticks. */
+.vfx.burnhit {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 107, 61, 0.9), transparent 64%);
 }
 
 /* ---- Right build panel (x[1000,1280] y[56,720]) --------------------- */
@@ -643,8 +742,14 @@ body {
 }
 .press .allow .dots i.spent { background: rgba(255, 207, 58, 0.18); box-shadow: none; }
 
-/* Legend: the five component types (also the stamp roll pool). */
+/* Legend: the eight component types (also the stamp roll pool). Laid out as a
+ * two-column grid so all eight fit; a note below points at the combos. */
 .legend { display: flex; flex-direction: column; gap: 4px; }
+.legend.grid8 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
 .legend-item {
   display: flex;
   align-items: center;
@@ -654,6 +759,7 @@ body {
   background: rgba(0, 0, 0, 0.22);
   border: 1px solid var(--frame);
 }
+.legend.grid8 .legend-item { gap: 7px; padding: 4px 8px; }
 .legend-item .glyph {
   width: 20px;
   height: 20px;
@@ -670,8 +776,54 @@ body {
 .legend-item .glyph.emit { background: var(--emit); }
 .legend-item .glyph.node { background: var(--node); }
 .legend-item .glyph.rig { background: var(--rig); }
+.legend-item .glyph.choke { background: var(--choke); }
+.legend-item .glyph.rect { background: var(--rect); }
+.legend-item .glyph.reg { background: var(--reg); }
+.legend-item .glyph.combo { background: var(--combo); }
 .legend-item .nm { flex: 1; font-size: 12px; letter-spacing: 1px; }
+.legend.grid8 .legend-item .nm { font-size: 11px; letter-spacing: 0.5px; }
 .legend-item .role { font-size: 10px; letter-spacing: 1px; color: var(--text-faint); }
+/* Callout under the roster: the combination towers assembled by a recipe combine. */
+.legend-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 233, 168, 0.4);
+  background: rgba(255, 233, 168, 0.05);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--combo);
+}
+.legend-note .glyph {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #060a0e;
+  background: var(--combo);
+}
+
+/* UPGRADE QUALITY control — refines the press so future rolls skew to higher tiers. */
+.upgrade {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--frame);
+}
+.upgrade .nm { font-size: 13px; font-weight: 700; letter-spacing: 2px; }
+.upgrade .lvl { font-size: 11px; letter-spacing: 1px; color: var(--text-dim); margin-left: 8px; }
+.upgrade .cost { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--charge); }
+.upgrade.maxed .cost { color: var(--text-faint); }
 
 /* Selected-component inspector. */
 .inspect {
@@ -699,7 +851,36 @@ body {
 .inspect .title .tchip.t4 { background: var(--t4); }
 .inspect .title .tchip.t5 { background: var(--t5); }
 .inspect .title .tchip.t3 { background: var(--t3); }
+.inspect .title .tchip.combo { background: var(--combo); }
+.inspect .title .tchip.reg { background: var(--reg); }
 .inspect .sub { font-size: 11px; letter-spacing: 1px; color: var(--text-dim); margin-top: 4px; }
+/* Abilities the component / combo carries (slow, burn, crit, multishot, aura, ...). */
+.inspect .abil { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.inspect .abil .a {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 9px;
+  border: 1px solid var(--frame);
+  color: var(--text-dim);
+}
+.inspect .abil .a.slow { border-color: var(--choke); color: var(--choke); }
+.inspect .abil .a.burn { border-color: var(--rect); color: var(--rect); }
+.inspect .abil .a.aura { border-color: var(--reg); color: var(--reg); }
+.inspect .abil .a.splash { border-color: var(--node); color: var(--node); }
+.inspect .abil .a.chain { border-color: var(--coil); color: var(--coil); }
+.inspect .abil .a.crit { border-color: var(--charge); color: var(--charge); }
+/* The recipe a combination tower was folded from (the multiset of base parts). */
+.inspect .recipe {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--frame);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  line-height: 1.55;
+  color: var(--text-faint);
+}
+.inspect .recipe b { color: var(--combo); font-weight: 700; }
 .inspect .row {
   display: flex;
   justify-content: space-between;

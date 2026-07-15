@@ -64,37 +64,63 @@ Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh c
 ## Selecting and inspecting a candidate or component
 
 - **Select.** Left-click a placed candidate, component, or blocker (when not holding a
-  rock) to select it. The selection shows its **range ring** on the yard (components and
-  candidates only), and the **inspector** in the build panel (`specs/board.md`) shows
-  its **type**, **quality tier**, a short **description** of what the component does, live
+  rock) to select it. The selection shows its **range ring** on the yard (firing
+  components and candidates only), and the **inspector** in the build panel
+  (`specs/board.md`) shows its **type** — one of the **eight** base component types
+  (Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, Choke, Rectifier, Regulator) or a
+  **combination tower** (`specs/towers.md`) — its **quality tier** (base types only;
+  combos are single-grade), a short **description** of what the component does, live
   stats (damage, range, fire rate, targeting), and its action controls. For a **firing
   component** it also shows a per-component performance tally — its **kills** and **total
-  damage dealt** — so the player can read which towers are carrying. A blocker reads as
-  inert (no range, no targeting) and offers only a **DISMANTLE** action (below).
+  damage dealt** — so the player can read which towers are carrying. A **Regulator**, and
+  any other non-firing support piece, shows its **aura** (radius and damage bonus) in
+  place of damage/rate and **has no targeting control** (below). A blocker reads as inert
+  (no range, no targeting) and offers only a **DISMANTLE** action (below).
 - **Keep.** With a **candidate** selected during the build phase, click **KEEP** or
   press **`K`** to mark it as this level's kept roll (`specs/build.md`). Only one
   candidate is ever the kept one; keeping another moves the choice. The keep is
   reversible until you send the wave, when the kept candidate becomes a permanent firing
   component and every other candidate hardens into a blocker.
-- **Combine.** **COMBINE** appears in the inspector **only** when the selected
-  **candidate** (build phase only) has a matching **candidate or component** of the same
-  type and same quality on the board (`specs/build.md`). Clicking it, or pressing
-  **`C`**, sets this level's harvest to that combine (the alternative to a plain keep);
-  the inspector **previews what it produces** (the component's type at the higher tier).
-  It resolves at wave start, producing one component one tier higher at the candidate's
-  footprint and consuming the partner — whose footprint **hardens into a blocker** so the
-  maze is unchanged — for **no Charge**, with a **combine flash** VFX (`specs/assets.md`).
-  A **Tesla-Prime** candidate offers no COMBINE.
+- **Combine — two kinds.** With a **candidate** selected in the build phase, the
+  inspector may offer up to two distinct combine actions, each of which — if committed —
+  becomes this level's single harvest (the alternative to a plain keep). Both are
+  reversible until you send the wave, both cost **no Charge**, and both fire a **combine
+  flash** VFX (`specs/assets.md`); committing either **replaces** a keep or the other
+  combine, since only one harvest is ever set (`specs/build.md`).
+  - **Quality-combine.** A **COMBINE** (quality) action appears **only** when the
+    selected candidate has a matching **candidate or component** of the same type **and**
+    same quality on the board (`specs/build.md`). Clicking it, or pressing **`C`**, sets
+    the harvest to that pair; the inspector **previews what it produces** (the component's
+    type at the next higher tier). It resolves at wave start, producing one component one
+    tier higher at the candidate's footprint and consuming the partner — whose footprint
+    **hardens into a blocker** so the maze is unchanged. A **Tesla-Prime** candidate
+    offers no quality-combine.
+  - **Recipe-combine.** When the board (candidates **and/or** existing components),
+    together with the selected candidate, holds the exact multiset of `(type, quality)`
+    ingredients a **combination recipe** needs (`specs/towers.md`), the inspector shows
+    each reachable recipe and a **COMBINE → `<combo name>`** action naming the combination
+    tower it would build. Clicking that action sets the harvest to that recipe; the
+    inspector previews the resulting combo and its stats. If more than one recipe is
+    within reach, each is offered as its own **COMBINE → `<combo name>`** entry so the
+    player chooses which combo to assemble. It resolves at wave start: the combination
+    tower lands at the selected (initiating) candidate's footprint, and **every consumed
+    ingredient footprint hardens into a blocker** — wall-neutral, never opening a hole
+    (`specs/build.md`, `specs/board.md`). A combination tower is single-grade and
+    terminal, so it never itself offers a COMBINE.
 - **Upgrade quality.** The build panel's **UPGRADE QUALITY** control — or **`U`** —
   spends Charge to buy the next **Refinement** level, biasing future rolls toward higher
   qualities (`specs/build.md`). It is disabled at **R5** or when you cannot afford the
   next cost.
-- **Targeting.** With a **component** selected, the inspector shows a **targeting**
-  control that **cycles** its priority — `first` → `last` → `nearest` → `strongest` →
-  `weakest` and back — on each click or press of **`T`**. The priority applies to that
-  component only, defaults to **`first`** (furthest along the waypoint chain), and takes
-  effect immediately (`specs/towers.md`). Targeting may be changed at any time, including
-  during a live wave, since it is not a build action.
+- **Targeting.** With a **firing component** selected, the inspector shows a
+  **targeting** control that **cycles** its priority — `first` → `last` → `nearest` →
+  `strongest` → `weakest` and back — on each click or press of **`T`**. The priority
+  applies to that component only, defaults to **`first`** (furthest along the waypoint
+  chain), and takes effect immediately (`specs/towers.md`). Targeting may be changed at
+  any time, including during a live wave, since it is not a build action. A **non-firing**
+  piece — the **Regulator**, whose only effect is its aura (`specs/towers.md`) — has **no
+  targeting control**, since it never picks a target. The automatic abilities (slow,
+  burn, crit, multishot, aura) need **no player controls** — they apply on their own when
+  a component that carries them fires or radiates.
 - **Dismantle.** With a structure selected **during the build phase**, the inspector shows
   a **DISMANTLE** control — or press **`X`** (also `Delete` / `Backspace`) — that removes
   it, clears its footprint, and **re-paths the floor live** (`specs/board.md`). It is a
@@ -148,7 +174,9 @@ wave, toggling speed, pausing, cycling targeting):
 
 - **Pull the scrap-press (STAMP):** `B`
 - **Keep selected candidate:** `K`
-- **Combine selected candidate (when a match exists):** `C`
+- **Quality-combine selected candidate (when a same-type/quality match exists):** `C`
+  (recipe-combines are committed with the mouse via the named **COMBINE → `<combo name>`**
+  action, since a candidate may have several within reach)
 - **Upgrade quality (Refinement):** `U`
 - **Cycle targeting priority (component selected):** `T`
 - **Cancel held rock / deselect / back:** `Esc`

@@ -4,7 +4,8 @@
 // A fixed-step model of the Load mazing the ordered-waypoint chain around the walls, the
 // GemTD scrap-press build (place a rock that rolls a random component ON PLACEMENT, KEEP
 // exactly one a level, the rest harden into inert blockers), the combine quality ladder and
-// the UPGRADE QUALITY refinement track, five components firing automatically with travelling
+// the UPGRADE QUALITY refinement track, eight base component types plus assembled combination
+// towers firing automatically with travelling
 // projectiles / arcs, the economy and Grid Integrity, and the wave campaign with its Dynamo
 // boss. The simulation is DOM-free and its control API is INPUT-FREE and DETERMINISTIC — no
 // pointer, no clock, no rng from the wall — so the browser and the headless balance harness
@@ -12,7 +13,11 @@
 // Rendering, audio, and particles read this state and drain its fx/sound queues each frame.
 
 import {
+  AURA_BONUS_CAP,
   BUILDS_PER_LEVEL,
+  COMBOS,
+  COMBO_ORDER,
+  COMBO_PROJECTILE_SPEED,
   COMPONENT_ORDER,
   DEFAULT_MAP,
   DIFFICULTY,
@@ -27,9 +32,11 @@ import {
   STAMP_COST,
   STAMP_TYPE_WEIGHT,
   TARGETING_ORDER,
+  comboStats,
   deriveStats,
   footprintCenter,
   nextRefineCost,
+  recipeKey,
   scaledHp,
   tileCenter,
   waveClearBonus,
@@ -43,6 +50,7 @@ import type { Wave } from "./types";
 import type {
   Blocker,
   Candidate,
+  ComboType,
   Component,
   ComponentType,
   Cue,
@@ -63,6 +71,10 @@ import { Rng } from "./rng";
 // The seed for the scrap-press roll. Fixed so a given sequence of placements reproduces
 // exactly; the wave composition seeds itself per wave (waves.ts).
 const PRESS_SEED = 0x51a6c0de;
+
+// The seed for the COMBAT rng — crit rolls (specs/towers.md). Separate from the press so
+// build rolls and combat randomness are independent and each stays deterministic.
+const COMBAT_SEED = 0x2f9d3b17;
 
 export class Game {
   readonly campaign: Campaign;
@@ -112,8 +124,10 @@ export class Game {
   private nextWave: Wave;
   private spawnCursor = 0;
   private waveClock = 0; // ms into the active wave
+  private simTime = 0; // seconds of live-wave sim elapsed this run (drives status-effect timers)
   private nextId = 1;
   private press: Rng;
+  private combat: Rng; // crit rolls (specs/towers.md) — deterministic, separate from the press
   private occ: Occupancy; // cached occupancy of the current structures + housings
 
   constructor(campaign: Campaign, map: MapDef = DEFAULT_MAP, diff: DifficultyDef = DIFFICULTY.medium) {
@@ -122,6 +136,7 @@ export class Game {
     this.diff = diff;
     this.board = new Board(map);
     this.press = new Rng(this.pressSeed);
+    this.combat = new Rng(COMBAT_SEED);
     this.nextWave = buildWave(1, diff);
     this.occ = this.board.occupancy([]);
   }
@@ -162,8 +177,10 @@ export class Game {
     this.activeWave = null;
     this.spawnCursor = 0;
     this.waveClock = 0;
+    this.simTime = 0;
     this.nextId = 1;
     this.press = new Rng(this.pressSeed);
+    this.combat = new Rng(COMBAT_SEED);
     this.nextWave = buildWave(1, this.diff);
     this.occ = this.board.occupancy(this.structures);
   }
@@ -174,6 +191,7 @@ export class Game {
   reseedPress(seed: number): void {
     this.pressSeed = seed >>> 0;
     this.press = new Rng(this.pressSeed);
+    this.combat = new Rng((seed ^ 0x9e3779b9) >>> 0); // vary crit rolls per interactive run too
   }
 
   // ---- Fixed simulation step (specs/controls.md) ------------------------------
@@ -189,6 +207,7 @@ export class Game {
 
     // Wave phase.
     this.waveClock += dt * 1000;
+    this.simTime += dt;
     this.spawnDue();
     this.stepComponents(dt);
     this.stepUnits(dt);
@@ -231,6 +250,11 @@ export class Game {
       progress: 0,
       animT: 0,
       hitFlash: 999,
+      slowFactor: 1,
+      slowUntil: 0,
+      burnDps: 0,
+      burnUntil: 0,
+      burnSourceId: 0,
       dead: false,
     };
     u.route = this.board.routeFor({ x: u.x, y: u.y }, u.wpIndex, this.occ, u.flies);
@@ -248,6 +272,47 @@ export class Game {
       u.route = this.board.routeFor({ x: u.x, y: u.y }, u.wpIndex, this.occ, u.flies);
       u.routeStep = 0;
     }
+    this.recomputeAuras();
+  }
+
+  // ---- Aura (specs/towers.md) -------------------------------------------------
+  // A Regulator (and some combination towers) projects a passive damage aura. Cache each
+  // firing tower's total external aura bonus (sum of every aura source whose radius covers
+  // its center, capped) so firing reads it cheaply. Recomputed whenever the maze changes and
+  // at wave start. A tower does not buff itself.
+  private recomputeAuras(): void {
+    // Collect aura sources: any component whose OWN stats carry an aura radius.
+    const sources: { x: number; y: number; r2: number; bonus: number; id: number }[] = [];
+    for (const s of this.structures) {
+      if (s.kind !== "component") continue;
+      const st = this.baseStatsOf(s);
+      if (st.auraRadius > 0 && st.auraBonus > 0) {
+        const ctr = footprintCenter(s.col, s.row);
+        sources.push({ x: ctr.x, y: ctr.y, r2: st.auraRadius * st.auraRadius, bonus: st.auraBonus, id: s.id });
+      }
+    }
+    for (const s of this.structures) {
+      if (s.kind !== "component") continue;
+      if (!this.baseStatsOf(s).fires) {
+        s.auraBonus = 0;
+        continue;
+      }
+      const ctr = footprintCenter(s.col, s.row);
+      let sum = 0;
+      for (const src of sources) {
+        if (src.id === s.id) continue; // no self-buff
+        const dx = ctr.x - src.x;
+        const dy = ctr.y - src.y;
+        if (dx * dx + dy * dy <= src.r2) sum += src.bonus;
+      }
+      s.auraBonus = Math.min(AURA_BONUS_CAP, sum);
+    }
+  }
+
+  // A component's UNBUFFED effective stats: a combination tower's fixed block, or a base
+  // component's (type, tier) derivation. Aura is applied on top by statsOf().
+  private baseStatsOf(c: Component): CompStats {
+    return c.combo ? comboStats(c.combo) : deriveStats(c.type, c.tier);
   }
 
   // ---- Component fire (specs/towers.md) ---------------------------------------
@@ -256,30 +321,43 @@ export class Game {
       if (s.kind !== "component") continue;
       const c = s;
       c.fireAnim += dt;
-      const stats = deriveStats(c.type, c.tier);
+      const stats = this.statsOf(c);
+      if (!stats.fires) continue; // Regulator (and any non-firing node): aura only
       const center = footprintCenter(c.col, c.row);
-      const target = this.pickTarget(c, stats, center);
-      if (target) c.aimAngle = Math.atan2(target.y - center.y, target.x - center.x);
+      const targets = this.pickTargets(c, stats, center);
+      if (targets.length > 0) c.aimAngle = Math.atan2(targets[0]!.y - center.y, targets[0]!.x - center.x);
       c.cooldown -= dt;
-      if (c.cooldown > 0 || !target) continue;
+      if (c.cooldown > 0 || targets.length === 0) continue;
       c.cooldown = 1 / stats.fireRate;
       c.fireAnim = 0;
-      this.launchProjectile(c, stats, center, target);
+      // A shot per target (multishot fires at up to `stats.multishot` distinct units at once).
+      for (const t of targets) this.launchProjectile(c, stats, center, t);
+      this.fireCue(c, stats);
     }
   }
 
-  // The valid in-range unit this component fires at, under its targeting priority.
-  private pickTarget(c: Component, stats: CompStats, center: { x: number; y: number }): Unit | null {
+  // The valid in-range units this component fires at this cadence, under its targeting
+  // priority: one for a single-target tower, up to `stats.multishot` distinct units for a
+  // multishot combo (each gets its own projectile).
+  private pickTargets(c: Component, stats: CompStats, center: { x: number; y: number }): Unit[] {
     const r2 = stats.range * stats.range;
-    let best: Unit | null = null;
+    const inRange: Unit[] = [];
     for (const u of this.units) {
       if (u.dead) continue;
       const dx = u.x - center.x;
       const dy = u.y - center.y;
-      if (dx * dx + dy * dy > r2) continue;
-      if (!best || this.better(c.targeting, u, best, center)) best = u;
+      if (dx * dx + dy * dy <= r2) inRange.push(u);
     }
-    return best;
+    if (inRange.length === 0) return [];
+    const n = Math.max(1, stats.multishot);
+    if (n === 1) {
+      let best = inRange[0]!;
+      for (let i = 1; i < inRange.length; i++) if (this.better(c.targeting, inRange[i]!, best, center)) best = inRange[i]!;
+      return [best];
+    }
+    // Stable sort by priority (JS sort is stable → ties keep spawn order, deterministic).
+    inRange.sort((a, b) => (this.better(c.targeting, a, b, center) ? -1 : this.better(c.targeting, b, a, center) ? 1 : 0));
+    return inRange.slice(0, n);
   }
 
   // Is candidate `a` a better target than the incumbent `b` under `mode`? (specs/towers.md:
@@ -312,48 +390,52 @@ export class Game {
     const muzzle = 16;
     const mx = center.x + Math.cos(c.aimAngle) * muzzle;
     const my = center.y + Math.sin(c.aimAngle) * muzzle;
+    // Crit (combo-only): roll off the deterministic combat rng; a crit multiplies the shot.
+    const isCrit = stats.critChance > 0 && this.combat.next() < stats.critChance;
+    const dmg = isCrit ? Math.round(stats.dmg * stats.critMult) : stats.dmg;
     this.projectiles.push({
       id: this.nextId++,
       sourceId: c.id,
       type: c.type,
       tier: c.tier,
-      dmg: stats.dmg,
+      combo: c.combo,
+      dmg,
       x: mx,
       y: my,
       angle: c.aimAngle,
-      speed: PROJECTILE_SPEED[c.type],
+      speed: c.combo ? COMBO_PROJECTILE_SPEED : PROJECTILE_SPEED[c.type],
       targetId: target.id,
       splash: stats.splash,
       chain: stats.chainLeaps,
       chainRange: stats.chainRange,
       chainFalloff: stats.chainFalloff,
+      slowAmt: stats.slowAmt,
+      slowDur: stats.slowDur,
+      burnFrac: stats.burnFrac,
+      burnDur: stats.burnDur,
+      isCrit,
       hitIds: [],
       dead: false,
     });
-    // Fire VFX + sound cue, keyed on the component's firing identity (specs/assets.md §11.3).
+    // Muzzle glow at the head, plus the travelling bolt/spray FX for a single-bolt shot. A
+    // chain (Coil) draws its arcs at impact and a splash (Arc-Node) its ring at impact, so
+    // those emit no travelling-bolt FX here (specs/assets.md).
     this.fxQueue.push({ kind: "muzzle", x: mx, y: my, tier: c.tier });
-    switch (c.type) {
-      case "capacitor":
-        this.fxQueue.push({ kind: "arcbolt", x: mx, y: my, x2: target.x, y2: target.y, tier: c.tier });
-        this.sndQueue.push("zap");
-        break;
-      case "discharge":
-        this.fxQueue.push({ kind: "arcbolt", x: mx, y: my, x2: target.x, y2: target.y, tier: c.tier, big: true });
-        this.sndQueue.push("discharge");
-        break;
-      case "emitter":
-        this.fxQueue.push({ kind: "spray", x: mx, y: my, x2: target.x, y2: target.y, tier: c.tier });
-        this.sndQueue.push("zap");
-        break;
-      case "coil":
-        this.sndQueue.push("chain"); // the chain arcs are emitted at impact, unit-to-unit
-        break;
-      case "arcnode":
-        this.sndQueue.push("discharge"); // the discharge ring is emitted at impact
-        break;
-      default:
-        break;
+    if (stats.chainLeaps === 0 && stats.splash === 0) {
+      const spray = c.type === "emitter" && !c.combo;
+      const big = !spray && (c.type === "discharge" || stats.dmg >= 120);
+      this.fxQueue.push({ kind: spray ? "spray" : "arcbolt", x: mx, y: my, x2: target.x, y2: target.y, tier: c.tier, big });
     }
+  }
+
+  // One sound cue per volley, keyed on the tower's firing signature (specs/assets.md).
+  private fireCue(c: Component, stats: CompStats): void {
+    if (stats.chainLeaps > 0) this.sndQueue.push("chain");
+    else if (stats.splash > 0) this.sndQueue.push("discharge");
+    else if (c.type === "discharge" || stats.dmg >= 120) this.sndQueue.push("discharge");
+    else if (c.type === "choke" && !c.combo) this.sndQueue.push("slow");
+    else if (c.type === "rectifier" && !c.combo) this.sndQueue.push("burn");
+    else this.sndQueue.push("zap");
   }
 
   // ---- Projectiles in flight (specs/towers.md) --------------------------------
@@ -384,7 +466,7 @@ export class Game {
 
   private onImpact(pr: Projectile, primary: Unit): void {
     this.hit(pr, primary, pr.dmg);
-    this.fxQueue.push({ kind: "impact", x: pr.x, y: pr.y, tier: pr.tier });
+    this.fxQueue.push({ kind: "impact", x: pr.x, y: pr.y, tier: pr.tier, big: pr.isCrit });
 
     // Arc-Node: an expanding discharge ring dealing full damage to every unit in the splash
     // radius of the impact point (specs/towers.md §5.3).
@@ -443,7 +525,32 @@ export class Game {
     if (u.hp <= 0) {
       if (src) src.kills += 1;
       this.kill(u);
+      return;
     }
+    // The unit survived: apply the shot's status effects (specs/towers.md). A burn's DoT is a
+    // fraction of the primary shot's damage, and attributes its ticks back to the firing tower.
+    if (pr.slowAmt > 0) this.applySlow(u, pr.slowAmt, pr.slowDur);
+    if (pr.burnFrac > 0) this.applyBurn(u, pr.dmg * pr.burnFrac, pr.burnDur, pr.sourceId);
+  }
+
+  // Slow (specs/towers.md): a unit's effective speed becomes base × slowFactor while active.
+  // The strongest active slow wins; each hit refreshes the duration.
+  private applySlow(u: Unit, amt: number, dur: number): void {
+    const activeFactor = this.simTime < u.slowUntil ? u.slowFactor : 1;
+    u.slowFactor = Math.min(activeFactor, 1 - amt);
+    u.slowUntil = this.simTime + dur;
+    this.fxQueue.push({ kind: "slowhit", x: u.x, y: u.y });
+  }
+
+  // Burn (specs/towers.md): an overcurrent DoT ticking each step. Strongest burnDps wins; each
+  // hit refreshes the duration. The ticks (in stepUnits) attribute to the applying tower.
+  private applyBurn(u: Unit, dps: number, dur: number, srcId: number): void {
+    const activeDps = this.simTime < u.burnUntil ? u.burnDps : 0;
+    if (dps >= activeDps) {
+      u.burnDps = dps;
+      u.burnSourceId = srcId;
+    }
+    u.burnUntil = this.simTime + dur;
   }
 
   private kill(u: Unit): void {
@@ -471,6 +578,25 @@ export class Game {
       if (u.dead) continue;
       u.animT += dt;
       u.hitFlash += dt;
+      // Expire a slow whose timer has run out.
+      if (u.slowFactor < 1 && this.simTime >= u.slowUntil) u.slowFactor = 1;
+      // Tick an active burn (overcurrent DoT); it can kill and pays its bounty to the tower.
+      if (u.burnDps > 0 && this.simTime < u.burnUntil) {
+        const bd = u.burnDps * dt;
+        const applied = Math.min(bd, Math.max(0, u.hp));
+        u.hp -= bd;
+        const src = this.componentById(u.burnSourceId);
+        if (src) src.damageDealt += applied;
+        // An ember flare a few times a second so the DoT reads without spamming.
+        if (Math.floor(u.animT / 0.25) !== Math.floor((u.animT - dt) / 0.25)) this.fxQueue.push({ kind: "burnhit", x: u.x, y: u.y });
+        if (u.hp <= 0) {
+          if (src) src.kills += 1;
+          this.kill(u);
+          continue;
+        }
+      } else if (u.burnDps > 0) {
+        u.burnDps = 0; // burn expired
+      }
       this.moveUnit(u, dt);
       if (!u.dead) u.progress = this.progressOf(u);
     }
@@ -481,7 +607,7 @@ export class Game {
       u.route = this.board.routeFor({ x: u.x, y: u.y }, u.wpIndex, this.occ, u.flies);
       u.routeStep = 0;
     }
-    let budget = u.speed * dt;
+    let budget = u.speed * u.slowFactor * dt; // slowed units cover less ground (specs/towers.md)
     while (budget > 0 && u.routeStep < u.route.length) {
       const tgt = u.route[u.routeStep]!;
       const dx = tgt.x - u.x;
@@ -578,6 +704,7 @@ export class Game {
     this.spawnCursor = 0;
     this.waveClock = 0;
     this.occ = this.board.occupancy(this.structures);
+    this.recomputeAuras(); // the harvest may have added an aura source / a buffable tower
     this.nextWave = buildWave(Math.min(this.wave + 1, this.diff.waves), this.diff);
   }
 
@@ -590,6 +717,8 @@ export class Game {
       if (cand) this.promoteToComponent(cand);
     } else if (h.mode === "combine") {
       this.resolveCombine(h.id, h.partnerId);
+    } else if (h.mode === "recipe") {
+      this.resolveCombo(h.id, h.combo, h.ingredientIds);
     }
     // Every leftover candidate becomes a blocker.
     let hardened = false;
@@ -621,6 +750,7 @@ export class Game {
       aimAngle: 0,
       kills: 0,
       damageDealt: 0,
+      auraBonus: 0,
     };
     this.structures[i] = comp;
     const ctr = footprintCenter(comp.col, comp.row);
@@ -663,11 +793,62 @@ export class Game {
       aimAngle: 0,
       kills: 0,
       damageDealt: 0,
+      auraBonus: 0,
     };
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
+    this.sndQueue.push("combine");
+  }
+
+  // Resolve a RECIPE combine (specs/build.md, specs/towers.md): the initiating candidate `id`
+  // plus every ingredient in `ingredientIds` fold into the combination tower `combo` at `id`'s
+  // footprint. Each consumed ingredient (candidate OR existing component) that is not the
+  // initiator HARDENS INTO A BLOCKER in place, so the maze is preserved (wall-neutral). Combos
+  // are single-grade and terminal.
+  private resolveCombo(id: number, combo: ComboType, ingredientIds: number[]): void {
+    const cand = this.candidateById(id);
+    if (!cand) {
+      // Initiator gone — fall back to consuming nothing (the leftover-candidate pass handles it).
+      return;
+    }
+    // Re-validate the recipe still holds; if not, fall back to a plain keep of the initiator.
+    if (!this.recipeSatisfied(combo, ingredientIds)) {
+      this.promoteToComponent(cand);
+      return;
+    }
+    // Harden every consumed ingredient (except the initiator) into a blocker in place.
+    for (const iid of ingredientIds) {
+      if (iid === cand.id) continue;
+      const pIdx = this.structures.findIndex((s) => s.id === iid);
+      if (pIdx >= 0) {
+        const p = this.structures[pIdx]!;
+        this.structures[pIdx] = { id: p.id, kind: "blocker", col: p.col, row: p.row } as Blocker;
+      }
+    }
+    // The initiator's footprint becomes the combination tower.
+    const i = this.structures.findIndex((s) => s.id === cand.id);
+    const comp: Component = {
+      id: cand.id,
+      kind: "component",
+      type: cand.type, // an ingredient type, drives the base tint only
+      tier: MAX_TIER, // sentinel; combo stats do not scale by tier
+      combo,
+      col: cand.col,
+      row: cand.row,
+      targeting: "first",
+      cooldown: 0,
+      fireAnim: 999,
+      aimAngle: 0,
+      kills: 0,
+      damageDealt: 0,
+      auraBonus: 0,
+    };
+    if (i >= 0) this.structures[i] = comp;
+    else this.structures.push(comp);
+    const ctr = footprintCenter(comp.col, comp.row);
+    this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: MAX_TIER, big: true });
     this.sndQueue.push("combine");
   }
 
@@ -812,14 +993,17 @@ export class Game {
     if (this.state !== "playing" || this.phase !== "build") return false;
     const i = this.structures.findIndex((s) => s.id === id);
     if (i < 0) return false;
-    const s = this.structures[i]!;
-    if (s.kind === "candidate") {
-      // No stamp/Charge refund — the roll is spent for good. Only drop the level's harvest if
-      // it referenced this candidate (as the keep or the combine partner).
-      const h = this.harvest;
-      if (h.mode !== "none" && (h.id === id || (h.mode === "combine" && h.partnerId === id))) {
-        this.harvest = { mode: "none" };
-      }
+    // No stamp/Charge refund — the roll is spent for good. Drop the level's harvest if this
+    // structure was part of it (the keep, a quality-combine partner, or a recipe ingredient —
+    // a recipe ingredient may be an existing component, so this is not candidate-only).
+    const h = this.harvest;
+    if (
+      h.mode !== "none" &&
+      (h.id === id ||
+        (h.mode === "combine" && h.partnerId === id) ||
+        (h.mode === "recipe" && h.ingredientIds.includes(id)))
+    ) {
+      this.harvest = { mode: "none" };
     }
     this.structures.splice(i, 1);
     if (this.selectedId === id) this.selectedId = null;
@@ -883,6 +1067,92 @@ export class Game {
   combineSelected(): void {
     const s = this.selected();
     if (s && s.kind === "candidate" && this.canCombine(s)) this.combine(s.id);
+  }
+
+  // ---- Recipe combine — assemble a combination tower (specs/build.md, specs/towers.md) ---
+  // The board's INGREDIENT pool: candidates and base components (not blockers, not existing
+  // combos — combos are terminal and cannot be ingredients). Each contributes its (type,tier).
+  private ingredientKeyOf(s: Structure): string | null {
+    if (s.kind === "candidate") return `${s.type}@${s.tier}`;
+    if (s.kind === "component" && !s.combo) return `${s.type}@${s.tier}`;
+    return null;
+  }
+
+  // Every combination-tower recipe the board can satisfy INCLUDING the given candidate as one
+  // ingredient, each with a concrete set of ingredient ids (the candidate first). Used by the
+  // inspector to offer COMBINE → <combo> and by the harness to drive a build (specs/build.md).
+  reachableCombos(cand: Candidate): { combo: ComboType; ingredientIds: number[] }[] {
+    const candKey = `${cand.type}@${cand.tier}`;
+    const avail = new Map<string, number[]>();
+    for (const s of this.structures) {
+      const k = this.ingredientKeyOf(s);
+      if (!k) continue;
+      if (!avail.has(k)) avail.set(k, []);
+      avail.get(k)!.push(s.id);
+    }
+    const out: { combo: ComboType; ingredientIds: number[] }[] = [];
+    for (const combo of COMBO_ORDER) {
+      const need = new Map<string, number>();
+      for (const ing of COMBOS[combo].recipe) {
+        const k = `${ing.type}@${ing.tier}`;
+        need.set(k, (need.get(k) ?? 0) + 1);
+      }
+      if (!need.has(candKey)) continue; // the candidate must be one of the ingredients
+      let ok = true;
+      for (const [k, c] of need) {
+        if ((avail.get(k)?.length ?? 0) < c) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+      const ids: number[] = [];
+      for (const [k, c] of need) {
+        let list = avail.get(k)!.slice();
+        if (k === candKey) list = [cand.id, ...list.filter((id) => id !== cand.id)]; // spend THIS candidate
+        for (let i = 0; i < c; i++) ids.push(list[i]!);
+      }
+      out.push({ combo, ingredientIds: ids });
+    }
+    return out;
+  }
+
+  // Convenience for the UI: the reachable combos for a candidate id (empty if not a candidate).
+  reachableCombosFor(id: number): { combo: ComboType; ingredientIds: number[] }[] {
+    const cand = this.candidateById(id);
+    return cand ? this.reachableCombos(cand) : [];
+  }
+
+  // Does `ingredientIds` still exactly match combo's recipe multiset (all present, distinct,
+  // valid ingredient structures)? Guards resolveCombo against a board changed since the offer.
+  private recipeSatisfied(combo: ComboType, ingredientIds: number[]): boolean {
+    const seen = new Set<number>();
+    const keys: string[] = [];
+    for (const id of ingredientIds) {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      const s = this.structures.find((x) => x.id === id);
+      if (!s) return false;
+      const k = this.ingredientKeyOf(s);
+      if (!k) return false;
+      keys.push(k);
+    }
+    return keys.sort().join(",") === recipeKey(COMBOS[combo].recipe);
+  }
+
+  // Set this level's harvest to a recipe combine of candidate `id` into `combo` (resolved at
+  // SEND). Build phase only; only if that combo is actually reachable from this candidate.
+  combineRecipe(id: number, combo: ComboType): void {
+    if (this.phase !== "build") return;
+    const cand = this.candidateById(id);
+    if (!cand) return;
+    const opt = this.reachableCombos(cand).find((o) => o.combo === combo);
+    if (!opt) return;
+    this.harvest = { mode: "recipe", id, combo, ingredientIds: opt.ingredientIds };
+  }
+  combineRecipeSelected(combo: ComboType): void {
+    const s = this.selected();
+    if (s && s.kind === "candidate") this.combineRecipe(s.id, combo);
   }
 
   // ---- UPGRADE QUALITY — the Refinement track (specs/build.md) -----------------
@@ -970,8 +1240,12 @@ export class Game {
 
   // ---- Queries ----------------------------------------------------------------
 
+  // A component's live stats INCLUDING its cached external aura buff (specs/towers.md). A
+  // combination tower reads its fixed block; a base component derives from (type, tier).
   statsOf(c: Component): CompStats {
-    return deriveStats(c.type, c.tier);
+    const st = this.baseStatsOf(c);
+    if (c.auraBonus > 0 && st.dmg > 0) return { ...st, dmg: Math.round(st.dmg * (1 + c.auraBonus)) };
+    return st;
   }
 
   // ---- Headless / dev helpers (drive the balance harness) ---------------------
@@ -1023,6 +1297,35 @@ export class Game {
       aimAngle: 0,
       kills: 0,
       damageDealt: 0,
+      auraBonus: 0,
+    };
+    this.structures.push(comp);
+    this.selectedId = comp.id;
+    this.rePath();
+    return comp;
+  }
+
+  // Place a COMBINATION TOWER of an exact combo at (or nearest-legal to) an anchor, no cost,
+  // landing active — the deterministic counterpart to a recipe combine, used by the balance
+  // harness / dev drivers to lay out a board with combos without assembling ingredients.
+  devPlaceCombo(combo: ComboType, col: number, row: number): Component | null {
+    const anchor = this.board.nearestLegalAnchor(col, row, this.structures, this.units);
+    if (!anchor) return null;
+    const comp: Component = {
+      id: this.nextId++,
+      kind: "component",
+      type: COMBOS[combo].recipe[0]!.type,
+      tier: MAX_TIER,
+      combo,
+      col: anchor.col,
+      row: anchor.row,
+      targeting: "first",
+      cooldown: 0,
+      fireAnim: 999,
+      aimAngle: 0,
+      kills: 0,
+      damageDealt: 0,
+      auraBonus: 0,
     };
     this.structures.push(comp);
     this.selectedId = comp.id;

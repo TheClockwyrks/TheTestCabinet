@@ -25,12 +25,19 @@ so the **which-single-roll-to-keep decision, the maze you wall from the rest, an
 climb — is the strategic heart of the game** (`specs/build.md`). This is a faithful
 reskin of Gem Tower Defense.
 
-Components come in five **types**, each an electrical part with a distinct firing
-identity and signature VFX: the **Capacitor** (a crisp single-target bolt), the
+Components come in **eight** base **types**, each an electrical part with a distinct
+firing identity and signature VFX: the **Capacitor** (a crisp single-target bolt), the
 **Coil** (chain-lightning that leaps between units), the **Emitter** (a rapid
-low-damage spark), the **Arc-Node** (an area discharge), and the **Discharge Rig**
-(a slow long-range heavy bolt). Cutting across the types is a five-rung **quality
-ladder** — **Scrap → Tuned → Charged → Primed → Tesla-Prime** — that is the game's
+low-damage spark), the **Arc-Node** (an area discharge), the **Discharge Rig**
+(a slow long-range heavy bolt), the **Choke** (a low-damage bolt that **slows** the
+unit it strikes), the **Rectifier** (a hit that sets an overcurrent **burn**, a
+damage-over-time), and the **Regulator** (a **non-firing** support node that projects an
+**aura**, buffing every firing tower around it). Beyond the base types, matched
+ingredients can be assembled by **recipe** into roughly a dozen unique **combination
+towers** — terminal, single-grade turrets with their own stat blocks and abilities
+(slow, burn, crit, multishot, aura) that are the payoff of climbing the board
+(`specs/towers.md`, `specs/build.md`). Cutting across the base types is a five-rung
+**quality ladder** — **Scrap → Tuned → Charged → Primed → Tesla-Prime** — that is the game's
 power axis: a component's damage and range climb steeply with its tier, and the only
 way up the ladder is to **combine** two matching components (same type and same
 quality) into one a tier higher. A board full of Scrap looks like a junkyard and
@@ -76,10 +83,13 @@ start; they cross-reference each other by name and form one specification.
 - `specs/enemies.md` — the **Load** roster: each unit type and its trait, the flyer
   that bypasses the maze, the Dynamo boss, the per-wave HP-scaling formula, and
   wave-composition guidance. **Read this carefully.**
-- `specs/towers.md` — the five **component types** and their firing identities, the
-  **quality ladder** and how damage and range scale by tier, the full stat tables,
-  the Coil chain and Arc-Node splash specifics, targeting priorities and head
-  rotation, and the projectile-carries-the-hit rule. **Read this carefully.**
+- `specs/towers.md` — the **eight** base **component types** and their firing
+  identities (including the **Choke**'s slow, the **Rectifier**'s burn, and the
+  **non-firing Regulator**'s aura), the **combination towers** and the full ability
+  vocabulary (slow, burn, crit, multishot, aura), the **quality ladder** and how damage
+  and range scale by tier, the full stat tables, the Coil chain and Arc-Node splash
+  specifics, targeting priorities and head rotation, and the projectile-carries-the-hit
+  rule. **Read this carefully.**
 - `specs/build.md` — the **scrap-press build loop**: the fixed 5-stamp allowance, the
   stamp cost and the on-placement random type/quality roll odds, the **keep exactly one
   per level** rule and inert **blockers**, the **combine recipe**, and the **UPGRADE
@@ -113,8 +123,9 @@ This is a substantial front-end task: a fixed-step real-time simulation of the L
 pathfinding an ordered-waypoint maze (with 4-tile waypoint platforms) across three maps
 with live re-pathing, a random scrap-press build with the place-and-reveal stamp, the
 keep-one-per-level rule, inert blockers, a combine climb and an UPGRADE QUALITY track
-over a five-rung quality ladder, five component types with automatic targeting and
-traveling electrical projectiles, an economy of Charge and interest and Grid Integrity,
+over a five-rung quality ladder, eight base component types (plus recipe-assembled
+combination towers) with automatic targeting and traveling electrical projectiles, an
+economy of Charge and interest and Grid Integrity,
 an escalating wave campaign that ends in a Dynamo boss, multiple game states and menus,
 and a HUD
 — **and** a full pass of producing the game's art, effects, and audio with the
@@ -225,6 +236,10 @@ unloading. The canonical palette and type are below; match them.
 | Emitter (rapid spark) | `#7fe0c0` |
 | Arc-Node (area discharge) | `#ff9a46` |
 | Discharge Rig (heavy bolt) | `#ff5470` |
+| Choke (slow) | `#66d9e8` |
+| Rectifier (burn) | `#ff6b3d` |
+| Regulator (aura / support) | `#b6e05a` |
+| Combination-tower accent | `#ffe9a8` |
 | Quality — Scrap (T1) | `#7a8794` |
 | Quality — Tuned (T2) | `#8fd0a0` |
 | Quality — Charged (T3) | `#6cb6ff` |
@@ -242,6 +257,11 @@ unloading. The canonical palette and type are below; match them.
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do not
   depend on a web font that must be downloaded; a system monospace stack is required
   so the game renders identically offline.
+- **The status and support VFX reuse the ability colors** (`specs/assets.md`): the
+  **slow** snap uses the Choke blue `#66d9e8`, the **burn** damage-over-time uses the
+  Rectifier orange `#ff6b3d`, and the **aura** pulse uses the Regulator green
+  `#b6e05a`; a **combination tower** wears the gold accent `#ffe9a8` so it reads as
+  distinct from a base component on the board.
 - Keep the board legible: a player must be able to tell open yard from a wall, a
   legal placement spot from an illegal one, a waypoint from open floor, and the flow
   direction toward the collector, at a glance.
