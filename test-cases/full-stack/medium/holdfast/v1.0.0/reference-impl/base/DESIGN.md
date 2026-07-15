@@ -396,15 +396,13 @@ set. Every file:
 | `hud.ts` | The **in-code HUD dashboard** (drawn by `render.ts`): the **top strip** (stock readouts with produced icons, colony state, day/time clock + speed, and the prominent threat/raid warning), the **bottom strip** (settler **roster** cards + **build palette / tool bar**), and the **work-priority grid** panel. Emits its `Clickable[]` regions. | `drawTopHud`, `drawBottomHud`, `drawWorkGrid`, `drawTooltip`. |
 | `screens.ts` | The menu/overlay **state screens**: title + main menu (`NEW COLONY`, `HOW TO PLAY`), how-to-play, the `Esc` pause overlay (Resume/Restart/Quit to menu), and the colony-lost screen (days survived + tally, RESTART/MENU). | `drawTitle`, `drawHowto`, `drawPause`, `drawGameOver`. |
 | `menus.ts` | The menu-item list per state (labels + actions) for keyboard/pointer selection. | `menuItems(state, game): MenuItem[]`. |
-| `main.ts` | Bootstrap: load assets, **fit** the 1280×720 stage (letterbox/center, crisp at any DPR, correct on load), wire input, run the fixed-timestep loop (accumulator scaled by speed, frozen when paused/off-play), drain `fxQueue`/`sndQueue`, route clicks/keys to `Game`, and expose the `window.__holdfast` debug hooks for the proof script (§9). Same shape as valence's `main.ts`. | `main()`. |
+| `main.ts` | Bootstrap: load assets, **fit** the 1280×720 stage (letterbox/center, crisp at any DPR, correct on load), wire input, run the fixed-timestep loop (accumulator scaled by speed, frozen when paused/off-play), drain `fxQueue`/`sndQueue`, route clicks/keys to `Game`, and expose the `window.__holdfast` debug hooks for deterministic dev driving. Same shape as valence's `main.ts`. | `main()`. |
 | `vite-env.d.ts` | Vite client types. | — |
 
 Supporting (mirrors valence, dev-only, excluded from the build):
 
 - `scripts/gen-assets.sh` — produces every asset in `ASSETS.md` with the on-`PATH` tools
   (resolving them from `PATH` or `/cargo-target/the-test-cabinet/release`). Re-runnable.
-- `scripts/proof.mjs` — captures the five `proof/` artifacts with project-local Playwright
-  via the `window.__holdfast` hooks (§9).
 - `sim/` — an optional headless deterministic **balance harness** (`npx tsx sim/run.ts`)
   asserting the survival goals: a do-nothing colony is overrun within a few raids; a
   competent controller (gather → wall + turret + food chain → man the wall) survives
@@ -524,43 +522,7 @@ population** — shown on the colony-lost screen. Not persisted between sessions
 
 ---
 
-## 9. Proof plan (`scripts/proof.mjs`, exact paths from `specs/proof.md`)
-
-`main.ts` exposes `window.__holdfast` for deterministic driving (inert in normal play), the
-analogue of valence's `window.__valence`:
-
-```ts
-window.__holdfast = {
-  game, audio,
-  startBase(),                       // enter playing on the base start
-  setState(s),                       // force a GameState
-  camTo(tx, ty),                     // center camera on a tile
-  designate(kind, tx0, ty0, tx1, ty1), // rectangle chop/mine designation
-  build(kind, tx, ty),               // place a ghost (and mark it prebuilt for setup)
-  grant(res, n),                     // add to a stock (setup)
-  setPriority(settlerId, work, p),   // poke the work grid
-  advance(seconds),                  // run N sim-seconds fast (setup fast-forward)
-  triggerRaid(n?),                   // announce + spawn a raid now
-  forcePhase("night"),               // jump the clock to a phase
-  hurtSettler(id, dmg), killAll(),   // drive toward the loss state
-};
-```
-
-| Proof path | What it drives / captures |
-| --- | --- |
-| `proof/title.png` | Load the built site; stay on `title`. Capture the full stage — title `HOLDFAST`, tagline, and the menu (`NEW COLONY`, `HOW TO PLAY`) all visible. |
-| `proof/gameplay.png` | `startBase()`, then set up a working colony: `advance()` a couple of days with a scripted controller (or `build(...)` a wall run, a stove, a farm, a turret, and `grant` modest stock), leave settlers mid-work, `camTo` the base. Capture the live in-colony frame — produced terrain/node/structure sprites, animated settlers, and the full HUD (top vitals + bottom roster & palette). |
-| `proof/game-over.png` | From a short-lived colony, `killAll()` (or `triggerRaid` an overwhelming wave and let it resolve) so the last settler dies; capture the colony-lost screen with **days survived** shown. |
-| `proof/colony.webm` | `recordVideo` ~6 s of the **economy**: `designate("chop", …)` and a `mine`, a settler walks to a node and works it (dust puffing), the node clears and drops wood/ore, a haul carries it to the stockpile, a build consumes it, and a farm/stove produces food. |
-| `proof/raid.webm` | `recordVideo` ~6 s of a **raid**: `forcePhase("night")` then `triggerRaid()` — the warning banner + `alarm`, raiders entering and advancing, settler/turret fire with produced **muzzle flash** and **impact/blood** particles, a settler taking **cover** behind a wall, and ideally a settler **downed** or the colony reaching its loss state. Let the produced audio play if it is captured. |
-
-Both clips are native `.webm` from Playwright `recordVideo`; screenshots are PNG of the
-full fitted `1280×720` stage, framed as the reference mockups are. Files land at exactly the
-paths above and are committed alongside the build (not served by it).
-
----
-
-## 10. Build & load rules (non-negotiable)
+## 9. Build & load rules (non-negotiable)
 
 - Node project, `package.json` at root, `package-lock.json` committed. `npm ci` then
   `npm run build` (`tsc --noEmit && vite build`) produces a self-contained static site into

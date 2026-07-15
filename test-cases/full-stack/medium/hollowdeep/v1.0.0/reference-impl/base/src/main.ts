@@ -77,8 +77,8 @@ async function main(): Promise<void> {
   let pointerX = -1;
   let pointerY = -1;
 
-  // Expose the live game for the Playwright proof-capture script (DESIGN §8). Helpers take
-  // tile coordinates directly and drive the game's dev/control surface — inert during play.
+  // Expose the live game for headless / dev driving. Helpers take tile coordinates directly
+  // and drive the game's dev/control surface — inert during normal play.
   (window as unknown as { __hollowdeep?: unknown }).__hollowdeep = {
     game,
     audio,

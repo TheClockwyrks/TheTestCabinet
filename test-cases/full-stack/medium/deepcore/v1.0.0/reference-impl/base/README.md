@@ -81,31 +81,10 @@ mute.
 ```
 src/            the engine — game state machine + fixed-timestep sim + Canvas 2D renderer
 assets/         the PRODUCED art, VFX, and audio (committed; see ASSET-LAYOUT.md)
-scripts/        the asset-generation scripts (gen-*.sh) and the proof harness (proof.mjs)
+scripts/        the asset-generation scripts (gen-*.sh)
 vendor/         the vendored @test-cabinet/particle-runtime (prebuilt)
-proof/          the proof-of-implementation captures (committed; see below)
 dist/           the production build (git-ignored)
 ```
 
 Balance/tuning constants (fuel rates, drill times, ore values, upgrade prices, rocket
 component costs) live in [`src/constants.ts`](src/constants.ts), each pinned to a spec.
-
-## Proof of implementation
-
-`scripts/proof.mjs` (project-local Playwright + Chromium) serves the **built** `dist/`
-from a **non-root** sub-path (`/runs/demo/build`, proving base-path safety), drives the
-game through the `window.__deepcore` dev hooks, and writes the six artifacts
-`specs/proof.md` declares into [`proof/`](proof/): `title.png`, `mine.png`, `surface.png`,
-`game-over.png`, `loop.webm`, `core-run.webm`. Setup is fast-forwarded (fund Credits,
-grant gear, teleport, seed tiles); every system **shown** is real — drilling, moving, and
-jetpacking are driven by real held keyboard input, advanced only by the game's own loop.
-
-```
-npm run build
-node scripts/proof.mjs     # exits 0 with all six artifacts + zero console errors
-```
-
-Beyond capturing, the harness asserts the real systems work end-to-end: drilling, fuel
-burn, ore and material collection, selling, upgrading, Core-Sample extraction + timer,
-fabrication, launch → victory, a Standard death dropping a retrievable cache, and a
-Hardcore death ending the run.

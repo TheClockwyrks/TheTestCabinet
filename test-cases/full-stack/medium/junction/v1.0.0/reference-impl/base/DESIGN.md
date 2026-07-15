@@ -19,7 +19,7 @@ camera, input, audio, and particle playback. The renderer reads the tile arrays 
 as typed-array views over the wasm module's linear memory; the moving agents, HUD stats,
 menus, and notifications cross as small per-frame copies — so a frame is one `step` call
 plus direct reads. The same `sim-core` crate compiles **natively** for the balance harness
-(`§7`), exactly as the adversarial case's `foray-core` compiles both native and to wasm.
+(`§6`), exactly as the adversarial case's `foray-core` compiles both native and to wasm.
 
 Read the specs first — they are authoritative. This document does not restate them; it
 pins the **numbers, types, module boundaries, layout, and proof plan** the engineers work
@@ -187,7 +187,7 @@ in the Rust core at **`sim-core/src/constants.rs`**, and the **presentation** co
 view needs (the palette `COL`, `FONT`, stage/camera geometry, `NET_*` bit values the renderer
 tests, the tool palette metadata) stay in **`src/constants.ts`**. Values the spec leaves to
 us are fixed in `constants.rs` and restated in the `README`. The **native balance harness**
-(`sim-core/tests/balance.rs`, `§7`) validates the tunables; treat the economy numbers as its
+(`sim-core/tests/balance.rs`, `§6`) validates the tunables; treat the economy numbers as its
 starting point — a tuning change is a one-line edit in `constants.rs` re-checked with
 `cargo test`.
 
@@ -334,7 +334,7 @@ Two halves: the **Rust simulation core** (`sim-core/src/*.rs`, compiled to wasm)
 | `menus.rs` | The core owns each state's menu list (title/howto/paused/bankrupt) so render + keyboard nav agree; the highlight index lives on the `Game`. | `menu_items(state)` |
 | `game.rs` | The `Game`: owns world/economy state, the **state machine**, the menu index; `fixed_step(dt)` orders the tick; tool/selection/tax actions; `snd`/`fx` queues; the scripted proof surface. DOM-free — the camera is a front-end concern. | `Game` |
 | `wasm.rs` (wasm only) | The `#[wasm_bindgen]` boundary: `step`, tile-array pointers (zero-copy), packed vehicle/signal/source snapshots, scalar getters, menus, `tool_preview`, action + proof methods, `drain_sounds`/`drain_fx`. | `Sim`, `wasm_memory` |
-| `tests/balance.rs` | The native balance harness (`§7`) — `cargo test`. | — |
+| `tests/balance.rs` | The native balance harness (`§6`) — `cargo test`. | — |
 
 ### 4.2 TypeScript view layer — `src/*.ts`
 
@@ -422,40 +422,12 @@ over water/hill priced up in the readout. Speed keys `1/2/3` (or `+`/`-`), `Spac
 
 ---
 
-## 6. Proof plan (`specs/proof.md`)
-
-Captured from the **built** game with the project-local Playwright (`scripts/proof.mjs`,
-pinned in `package.json`), driven through a `window.__junction` test hook that `main.ts`
-exposes. The hook offers deterministic helpers so the captures are reproducible:
-`newCity(seed)`, `zoneRect(kind,c0,r0,c1,r1)`, `road(c0,r0,c1,r1)`, `rail(...)`,
-`station(c,r)`, `plant(c,r)`, `source(c,r)`, `wire(...)`, `pipe(...)`, `setTax(rate)`,
-`setTreasury(v)`, `setSpeed(n)`, `setOverlay(o)`, `centerOn(c,r)`, `advance(months)`,
-`snapshot()` (population/treasury/balance), and `forceBankruptcy()` (drops tax to 0 and
-strips income for the crisis clip). Each helper drives the real **wasm core** through the
-`Game` binding — no fake state. Because the core lives in wasm linear memory, the mjs reads
-tile state through the live `g.world` view (a step can grow memory and detach an earlier
-view) and stages the treasury via `setTreasury` rather than writing a field.
-
-| Artifact | What to drive & capture |
-| --- | --- |
-| `proof/title.png` | Load the built site → title state. Screenshot the full 1280×720 stage: `JUNCTION`, tagline `ZONE. CONNECT. GROW.`, menu `NEW CITY` / `HOW TO PLAY` (first highlighted), dim city slice behind. |
-| `proof/gameplay.png` | `newCity(SEED)`; script a healthy city: zone R (left), C (centre), I (by the river); lay a road grid + one **rail line with two stations** along the busy corridor; place a **power plant + wires** and a **water source + pipes**; `advance(≈24)` months so districts **develop to tiers 1–3** (produced sprites), vehicles are pathing, and the **pollution haze** sits over industry. `centerOn` the developed core, ensure the full HUD (top vitals + bottom RCI + palette) reads, screenshot. |
-| `proof/game-over.png` | From a developed city, `forceBankruptcy()` (tax→0 / strip income) or over-build networks; `advance` until the treasury crosses `DEBT_LIMIT` and the settle flips to **bankrupt**. Screenshot the bankruptcy screen with `PEAK POPULATION`, `SURVIVED N MONTHS`, `FINAL DEBT`, `TRY AGAIN`/`MENU`. |
-| `proof/systems.webm` | `recordVideo` a few seconds: zone a fresh block and lay road/rail/utilities into it → watch it **develop** (construction dust puffing, buildings rising through tiers); vehicles pathing; then `setOverlay("traffic")` to show a corridor **congesting** (orange→red) and **ease** after the rail line pulls trips off it, with the **RCI meters** and **utility balances** visibly responding. |
-| `proof/crisis.webm` | `recordVideo` the **budget pressure**: over-extend (or `setTax(0)`) so the per-period **balance goes negative** and the **treasury falls**, the **ALERT chip** shows (losing money / near debt limit / network over-drawn), sliding toward — ideally reaching — **bankruptcy**. Leave audio un-muted so the produced alert/ambient are captured. |
-
-`scripts/proof.mjs` launches the preview server (or dev server), sets a 1280×720 viewport,
-and writes each file to the exact `proof/…` path; `proof/` is an output committed beside the
-build, not served by it.
-
----
-
-## 7. Balance harness (`sim-core/tests/balance.rs`, native `cargo test`)
+## 6. Balance harness (`sim-core/tests/balance.rs`, native `cargo test`)
 
 Because the `sim-core` crate compiles **natively** as well as to wasm, the balance goals are
 asserted with plain `cargo test` — no browser, no wasm, no separate tsx harness. Each test
-drives the real `Game` with a scripted "player" strategy (the same build the proof capture
-uses) and asserts the economy behaves, validating the `§3` numbers rather than guessing them:
+drives the real `Game` with a scripted "player" strategy (a scripted reference build-out)
+and asserts the economy behaves, validating the `§3` numbers rather than guessing them:
 
 - **A competent build-out** (zone to demand, connect+serve before developing, add rail when
   a corridor congests, keep tax ~9%) must **grow population** and stay **solvent for many

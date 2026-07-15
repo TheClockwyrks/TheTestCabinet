@@ -7,7 +7,7 @@
 // ticks (scaled by the speed control, frozen while paused or on a menu) decoupled from
 // rendering, which interpolates and draws every frame. Each frame it drains the core's
 // sound/fx queues into the Web Audio layer and the particle players, and exposes the
-// `window.__junction` test hook so the Playwright proof captures drive the real core. The
+// `window.__junction` test hook so headless / dev drivers exercise the real core. The
 // simulation is the wasm core; this file owns only presentation and I/O (specs/simulation.md).
 
 import { EDGE_MARGIN, FIXED_STEP, PAN_SPEED, STAGE_H, STAGE_W, VIEW_Y0, VIEW_Y1 } from "./constants";
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   // An in-progress camera drag-pan — the mouse button held and the last pointer position.
   let pan: { button: number; lastX: number; lastY: number; dist: number } | null = null;
 
-  // ---- The scripted control surface for the Playwright proof captures (DESIGN §6) --------
+  // ---- The scripted control surface for headless / dev driving --------
   // Every helper drives the real wasm core through the front-end binding — no fake state.
   (window as unknown as { __junction?: unknown }).__junction = {
     game,
