@@ -13,7 +13,7 @@
 // sheet, and a regeneration shows up as an ordinary diff.
 //
 // Frame names the packer reads from source/ (others are placeholder until then):
-//   nest, seed, jelly_active, jelly_spent                      (committed today)
+//   nest, seed, large_seed, jelly_active, jelly_spent          (committed today)
 //   soldier_{s,n,w,e}_{0..3}                                   (foray-soldier)
 //   raider_{s,n,w,e}_{0..3}, raider_laden_{s,n,w,e}_{0..3}     (foray-raider)
 //   wall_{0..15}, border_{cap_top,mid,cap_bottom}, floor       (foray-walls)
