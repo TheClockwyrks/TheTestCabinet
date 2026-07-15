@@ -371,6 +371,9 @@ arcnode
 integ
 tchip
 targ
+abil
+slowhit
+burnhit
 # Deepcore (Motherload-style dig-and-build full-stack case): fiction + coined ore/material names.
 deepcore
 vhera
