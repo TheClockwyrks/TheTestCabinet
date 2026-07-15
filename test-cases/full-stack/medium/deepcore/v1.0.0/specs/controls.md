@@ -30,8 +30,12 @@ discrete tile steps:
   **only while grounded** — with open space below (or while falling) it does nothing
   special and the miner simply falls (`specs/character.md`).
 - **Jetpack thrust (up)** — `W`, `Up Arrow`, or `Space`. Fires the jetpack, climbing
-  (or hovering at a light hold) and **burning fuel** (`specs/character.md`). There is
-  **no drilling up** — thrust only moves through open tunnels.
+  (or hovering at a light hold) and **burning fuel** (`specs/character.md`). How fast it
+  climbs depends on the **load** (`specs/character.md`); there is **no drilling up** —
+  thrust only moves through open tunnels.
+- **Jettison ore** — `Q`. Discards one unit of the least valuable-per-kg ore held, to
+  **lighten an overloaded load** so the jetpack can lift off again (`specs/character.md`).
+  The escape valve for the weight system; the discarded ore is lost, not sold.
 
 Facing follows the last lateral input, and the miner's sprite mirrors to match
 (`specs/character.md`, `specs/assets.md`). Movement is smooth and continuous; the miner
@@ -46,7 +50,7 @@ building's **overlay panel** (`specs/flow.md`):
 - **Fuel Depot** — buy fuel and hull repair for Credits (`specs/flow.md`,
   `specs/character.md`); close to return.
 - **Ore Market** — the cargo breakdown and **SELL** (`specs/mining.md`).
-- **Upgrade Shop** — the five upgrade tracks; click a track's **BUY** to purchase its
+- **Upgrade Shop** — the seven upgrade tracks; click a track's **BUY** to purchase its
   next tier (`specs/upgrades.md`).
 - **Launch Pad** — the rocket checklist; **FABRICATE** the next component, or **LAUNCH**
   when all five are installed (`specs/rocket.md`).

@@ -151,6 +151,9 @@ async function main(): Promise<void> {
         openPauseMenu();
       } else if (lower === "e" || k === "Enter") {
         if (!game.panel) game.activateNearbyBuilding();
+      } else if (lower === "q") {
+        // Jettison ore to lighten an overloaded load (specs/character.md, specs/controls.md).
+        game.jettison();
       }
       return;
     }

@@ -8,14 +8,17 @@ cut from the planet's molten heart and hauled back up before it detonates.
 
 The loop that drives the game is a **fuel-budgeted descent**: digging **down** is cheap
 (you drill through a tile and fall through the tunnel you carve), but climbing **back
-up** burns **jetpack fuel**, and fuel only refills at the surface. Every trip is a
-gamble on depth — go deep enough to reach the richer ore, the two buried materials
-(**Resonite** in the rockbed, **Cryenite** in the deepstone, both randomly placed but
-guaranteed and found with a **scanner**), and finally the **Core Sample** on its
-90-second detonation timer, but keep enough fuel and hull to make it home. Sell ore,
-upgrade the fuel tank, drill, cargo, hull, and scanner, and go a little deeper each
-time. Gas pockets explode and lava burns; there are **no enemies** — the mine is the
-adversary. Two in-game **modes** change only what happens when you die: **Standard**
+up** burns **jetpack fuel**, which is **bought** with Credits at the surface (never
+free). Ore has **weight**, and the jetpack can only lift so much: a rich, heavy haul
+climbs slowly and, if it outweighs the jetpack, cannot lift at all until you **jettison**
+some or upgrade. Every trip is a gamble on depth — go deep enough to reach the richer,
+heavier ore, the two buried materials (**Resonite** in the rockbed, **Cryenite** in the
+deepstone, both randomly placed but guaranteed and found with a **scanner**), and finally
+the **Core Sample** on its 90-second detonation timer, but keep enough fuel and hull to
+make it home. Sell ore, upgrade the fuel tank, drill, cargo bay, hull, **jetpack**,
+**radiator**, and scanner, and go a little deeper each time. Gas pockets explode harder
+the deeper you go and lava burns (a **radiator** blunts both); there are **no enemies** —
+the mine is the adversary. Two in-game **modes** change only what happens when you die: **Standard**
 drops your haul as a retrievable cache and respawns you at the surface, while
 **Hardcore** ends the expedition. Winning means fabricating and installing all five
 rocket components and **launching**.

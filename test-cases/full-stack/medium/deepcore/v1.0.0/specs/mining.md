@@ -12,49 +12,63 @@ tier.
 ## Ore
 
 **Ore veins** (`specs/world.md`) are the routine reward for digging. Drilling an ore
-vein removes the tile and adds **one unit** of that ore to cargo (if cargo has room;
-if it is full, the ore is left in the ground — the tile stays an ore vein — and a
-"cargo full" note shows). Each ore type has a fixed **value** (Credits when sold,
-`specs/flow.md`) and each unit takes **one** cargo slot.
+vein removes the tile and adds **one unit** of that ore to cargo (if cargo has room by
+**weight**; if the bay is full, the ore is left in the ground — the tile stays an ore
+vein — and a "bay full" note shows). Each ore type has a fixed **value** (Credits when
+sold, `specs/flow.md`) and a fixed **weight** in kilograms — the load the jetpack must
+lift on the climb home (`specs/character.md`).
 
-| Ore | Found in bands | Value (Credits/unit) | Reads as |
-| --- | --- | --- | --- |
-| **Ferron** | Topsoil, Rockbed | `6` | dull rust-brown flecks |
-| **Cuprite** | Topsoil, Rockbed | `14` | teal-green nodules |
-| **Argenite** | Rockbed, Deepstone | `30` | bright silver seams |
-| **Voltite** | Deepstone, Coreshell | `65` | electric-blue crystals |
-| **Pyronium** | Coreshell | `140` | glowing orange ore |
-| **Adamite** | Deepstone, Coreshell (rare) | `300` | rare aquamarine gem |
+| Ore | Found in bands | Value (Credits/unit) | Weight (kg) | Value per kg | Reads as |
+| --- | --- | --- | --- | --- | --- |
+| **Ferron** | Topsoil, Rockbed | `28` | `10` | 2.8 | dull rust-brown flecks |
+| **Cuprite** | Topsoil, Rockbed | `65` | `12` | 5.4 | teal-green nodules |
+| **Argenite** | Rockbed, Deepstone | `150` | `16` | 9.4 | bright silver seams |
+| **Voltite** | Deepstone, Coreshell | `380` | `24` | 15.8 | electric-blue crystals |
+| **Pyronium** | Coreshell | `820` | `34` | 24.1 | glowing orange ore |
+| **Adamite** | Deepstone, Coreshell (rare) | `1900` | `46` | 41.3 | rare aquamarine gem |
 
-Value climbs steeply with depth, so the descent pays for itself: a full cargo of
-topsoil Ferron is pocket change next to a single deep Adamite. Each band's ore **mix**
+Value climbs **steeply** with depth while weight rises only gently, so **value-per-kg
+climbs with depth**: a full bay of topsoil Ferron is pocket change — and barely worth
+its weight on the climb — next to a single deep Adamite. This is the engine of the
+descent: shallow ore keeps you afloat, but the money is deep. Each band's ore **mix**
 (which of the above appear and how often) follows the table — shallow bands are mostly
 cheap ore, deep bands mostly rich ore, with Adamite a rare glint anywhere deep. Ore
-density is generous enough that steady digging always funds the next upgrade
-(`specs/world.md`, `specs/flow.md`).
+density is generous enough that steady digging always funds the next upgrade, and even
+the **cheapest** ore is worth enough to clear the fuel a dig burns (Ferron `28` ≈ 28
+units of fuel at the Fuel Depot, `specs/flow.md`) so a dig always nets a real surplus,
+never a fuel-for-fuel treadmill (`specs/world.md`, `specs/flow.md`).
 
-## Cargo
+## Cargo — limited by weight
 
-Ore is held in the **cargo bay**, which has a fixed **capacity** in units set by the
-**cargo tier** (`specs/upgrades.md`); the starting bay holds `15` units. The HUD shows
-cargo as **used / capacity** (`specs/flow.md`).
+Ore is held in the **cargo bay**, whose capacity is a **total weight in kilograms** set
+by the **cargo tier** (`specs/upgrades.md`); the starting bay holds `180 kg`. Cargo is
+**not** counted in slots — a bay full of heavy deep ore holds far fewer pieces than one
+of light shallow ore. The HUD shows the current **Load** as **kg used / kg capacity**
+(`specs/flow.md`).
 
-- When the bay is **full**, further ore cannot be picked up — the vein is left in the
-  ground for a later trip, and the game signals "cargo full". This is a real decision:
-  a bigger bay means fewer surface trips, but you still need the fuel to climb back
-  with a heavy haul.
+- When adding an ore's weight would **exceed** the bay's kg capacity, that ore cannot
+  be picked up — the vein is left in the ground for a later trip, and the game signals
+  "bay full". A bigger bay means fewer surface trips, but a heavier bay is a harder,
+  fuel-hungrier climb — and, past a point, one the **jetpack cannot lift at all**
+  (`specs/character.md`).
+- Cargo weight is what the **jetpack** fights on the way up (`specs/character.md`). The
+  cargo and jetpack tiers are matched so a full bay of the same tier is liftable
+  (slowly, when heavy); upgrading the **bay ahead of the jetpack** can leave a full haul
+  **un-liftable** until the jetpack catches up — at which point the miner must
+  **jettison** ore (`specs/character.md`) to fly out.
 - Cargo is **emptied by selling** at the Ore Market (below). It is **not** emptied by
   refueling or repairing.
 - **On death** (`specs/modes.md`): in **Standard**, the cargo you are carrying is
   **dropped as a retrievable cache** at the death site; in **Hardcore** the run ends.
-- **Exotic materials do not use cargo** (below) — they ride in a separate satchel and
-  never take a cargo slot.
+- **Exotic materials do not use cargo** (below) — they ride in a separate satchel,
+  carry **no weight**, and never fill the bay.
 
 ## Exotic materials
 
 Three **exotic materials** exist, one per source, and each is needed for one rocket
-component (`specs/rocket.md`). They are **not ore**: they are **not sold**, take **no
-cargo slot**, and are held in a small **materials satchel** shown in the HUD. You
+component (`specs/rocket.md`). They are **not ore**: they are **not sold**, carry **no
+weight and take no room in the cargo bay**, and are held in a small **materials satchel**
+shown in the HUD. You
 carry at most what you have found; collecting one you already hold simply banks a
 spare.
 

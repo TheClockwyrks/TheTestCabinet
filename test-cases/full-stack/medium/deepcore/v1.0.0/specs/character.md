@@ -26,7 +26,8 @@ collision is against the tile grid.
   down is cheap, which is the whole point of the loop (`specs/overview.md`).
 - **Jetpack thrust (up).** Holding **thrust** (`specs/controls.md`) fires the jetpack,
   pushing the miner **up** against gravity — a hover at partial hold, a climb at full
-  hold. Thrust is the **only** way to gain height, and it **burns fuel** (below).
+  hold. Thrust is the **only** way to gain height, and it **burns fuel** (below). How
+  fast it climbs depends on the **load** it is lifting — see **Weight and lift** below.
 - **No ceiling above the surface.** The sky over the camp is **open and unbounded**:
   the miner can thrust straight up out of the mine and keep climbing as long as it has
   fuel. There is **nothing up there** to reach — climbing into the sky only **wastes
@@ -42,13 +43,43 @@ collision is against the tile grid.
   border, or lava; it rests on top of solid tiles and is stopped by walls. It fits in
   a single tile, so a one-tile-wide tunnel is passable.
 
-Movement speeds (logical px/s): **walk / lateral** `150`, **fall terminal** `600`,
-**thrust (net climb at full hold)** `200`. Gravity `900 px/s^2`. These are the
+Movement speeds (logical px/s): **walk / lateral** `150`, **fall terminal** `600`.
+Gravity `900 px/s^2`. The **climb** speed is not a single number: it is capped per
+**jetpack tier** (`180` at tier 1 rising to `330` at tier 5, `specs/upgrades.md`) and,
+more importantly, throttled by the **load** (**Weight and lift**, below). These are the
 reference feel; tune within a natural range but keep falling faster than climbing so
 depth is easy to gain and expensive to undo. Terminal is high enough that a fall keeps
 accelerating over several tiles before it caps, so **landing speed genuinely separates a
 short hop from a full-depth plunge** — which is what makes fall impact (`specs/hazards.md`)
 scale sensibly instead of maxing out after a tile or two.
+
+## Weight and lift — the engine tension
+
+Every unit of ore has a **weight** (`specs/mining.md`); the miner's **total mass** is its
+own mass (`200 kg` — suit, drill, jetpack) plus the weight of the ore in the bay. The
+jetpack pushes up with a fixed **lift force** set by the **jetpack tier**
+(`specs/upgrades.md`); the upward **acceleration** it actually achieves is that force
+divided by the total mass. So:
+
+- A **heavier haul climbs slower** — and, because thrust is billed per second (below), a
+  heavy climb burns **far more fuel** than a light one over the same shaft. Weight is
+  what makes cargo a genuine cost, not just a number.
+- Past a point, the load is **too heavy for the jetpack to lift at all**: when the thrust
+  acceleration no longer exceeds gravity, holding thrust only **slows the descent** — the
+  miner **cannot climb**. This is the Motherload "too heavy to take off" wall, and it is
+  **fixed** behavior. The heaviest liftable load rises with the jetpack tier; the cargo
+  and jetpack tiers are matched so a full bay of the **same** tier is liftable (slowly
+  when heavy), but a **bay upgraded ahead of the jetpack** can strand a full haul.
+- **Jettison.** Because an overloaded miner would otherwise be stranded (it cannot climb
+  and cannot drill up), it can **jettison** ore at any time (`specs/controls.md`),
+  discarding the **least valuable-per-kg** unit it holds to lighten the load until it can
+  lift off again. Jettisoned ore is **lost** (not sold). The HUD warns **OVERLOAD** while
+  the load exceeds what the jetpack can lift (`specs/flow.md`).
+
+The **jetpack (engine) tier** therefore matters as much as the fuel tank on a deep, rich
+haul: a better jetpack both lifts more weight and climbs faster (less fuel per trip),
+and the deep bands' heavy, valuable ore cannot be brought up in bulk until it is bought
+up (`specs/upgrades.md`).
 
 ## Drilling
 
@@ -108,6 +139,10 @@ never automatically. Running out strands the miner (below).
   `2.0 fuel/s`; a passive **life-support drain** `0.4 fuel/s` at all times while
   underground (below the surface); and **`1.0 fuel` per tile drilled**. Walking and
   standing still cost no fuel (on the surface or on any solid floor below).
+- **Weight raises the fuel cost of the climb.** Thrust is billed per second, and a heavy
+  haul climbs slower (**Weight and lift**, above), so the same shaft costs **more fuel**
+  to ascend the heavier you are. A deep, rich, heavy haul is expensive to lift both in
+  jetpack tier and in fuel — factor it into whether the round trip fits the tank.
 - **Refuel.** Fuel does **not** refill on its own — not by returning to the surface,
   not by rising into the sky above it. You **buy** it with **Credits** at the **Fuel
   Depot** (`specs/world.md`, `specs/flow.md`), per unit, up to your current maximum.
@@ -128,11 +163,16 @@ surface too (a hard landing on the camp floor still hurts, `specs/hazards.md`) �
 
 - **Maximum hull** is set by the **hull tier** (`specs/upgrades.md`); the starting
   hull is `100`.
-- **Damage** comes from a **gas explosion** (a chunk, `specs/hazards.md`), **lava
-  contact** (a fast drain while touching, `specs/hazards.md`), a **hard landing** (a
-  fall faster than a safe threshold deals impact damage scaled to the excess speed),
-  and the **Core Sample detonation** (`specs/hazards.md`). A **low-hull warning**
-  shows under **25%**.
+- **Damage** comes from a **gas explosion** (a chunk that **scales with depth**,
+  `specs/hazards.md`), **lava contact** (a fast drain while touching, `specs/hazards.md`),
+  a **hard landing** (a fall faster than a safe threshold deals impact damage scaled to
+  the excess speed), and the **Core Sample detonation** (`specs/hazards.md`). A
+  **low-hull warning** shows under **25%**.
+- **The radiator reduces heat damage.** Gas-explosion and lava-contact damage are cut by
+  the **radiator tier**'s effectiveness (`0%` at tier 1 up to `80%` at tier 5,
+  `specs/upgrades.md`, `specs/hazards.md`). Because deep gas and dense coreshell lava
+  scale up sharply, the **hull tier and the radiator tier together** are what make the
+  deep bands and the core run survivable — hull alone is not enough down deep.
 - **Hull reaching `0`** destroys the miner — a **death** (`specs/modes.md`), handled
   exactly as running out of fuel is: Standard drops-and-respawns, Hardcore ends the
   run.

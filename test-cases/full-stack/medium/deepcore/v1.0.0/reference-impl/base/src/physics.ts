@@ -7,7 +7,7 @@
 // hull damage (specs/hazards.md). This module applies forces and resolves collision; the
 // fuel/hull economy and the animation-state choice live in game.ts.
 
-import { FALL_TERMINAL, GRAVITY, THRUST_CLIMB, TILE_SIZE, WALK_SPEED } from "./constants";
+import { FALL_TERMINAL, GRAVITY, TILE_SIZE, WALK_SPEED } from "./constants";
 import type { Miner, Tile } from "./types";
 import { colAtX, isSolidKind, rowAtY, tileLeft, tileTop } from "./world";
 
@@ -15,8 +15,6 @@ import { colAtX, isSolidKind, rowAtY, tileLeft, tileTop } from "./world";
 export const MINER_W = 34;
 export const MINER_H = 44;
 
-/** How hard the jetpack pushes up, above gravity, for a snappy climb. */
-const THRUST_FORCE = GRAVITY + 1700;
 /** Lateral acceleration toward the walk speed. */
 const LATERAL_ACCEL = 1700;
 /** Velocity decay when no lateral input (px/s^2): strong on the ground, light in air. */
@@ -74,8 +72,23 @@ function approach(cur: number, target: number, maxDelta: number): number {
 /**
  * Advance the miner one fixed step under gravity/thrust/lateral input and resolve grid
  * collision. `canThrust` gates the jetpack on remaining fuel (specs/character.md).
+ *
+ * `thrustAccel` is the upward acceleration the jetpack achieves at the miner's CURRENT
+ * loaded mass (the caller computes JETPACK_LIFT[tier] * MINER_BASE_MASS / totalMass,
+ * specs/character.md) — so a heavier haul climbs slower, and when `thrustAccel <= GRAVITY`
+ * the net motion is still downward: the jetpack only slows the fall and the miner cannot
+ * climb until it sheds weight or upgrades the jetpack (the aggressive lift-gating). `climbCap`
+ * is the jetpack tier's climb-speed cap (JETPACK_CLIMB[tier]).
  */
-export function stepMovement(m: Miner, grid: Tile[][], input: MoveInput, canThrust: boolean, dt: number): MoveResult {
+export function stepMovement(
+  m: Miner,
+  grid: Tile[][],
+  input: MoveInput,
+  canThrust: boolean,
+  dt: number,
+  thrustAccel: number,
+  climbCap: number,
+): MoveResult {
   // --- Horizontal intent ---
   const targetVx = (input.right ? WALK_SPEED : 0) - (input.left ? WALK_SPEED : 0);
   const groundedNow = solidBox(grid, m.x, m.y + 2, MINER_W, MINER_H);
@@ -86,10 +99,13 @@ export function stepMovement(m: Miner, grid: Tile[][], input: MoveInput, canThru
   }
 
   // --- Vertical intent ---
+  // Gravity pulls down; the jetpack pushes up with a mass-scaled acceleration. If the load
+  // is heavy enough that thrustAccel <= GRAVITY the miner still sinks — that is the "too
+  // heavy to take off" wall (specs/character.md), handled with no special case here.
   m.vy += GRAVITY * dt;
   const thrusting = input.thrust && canThrust;
-  if (thrusting) m.vy -= THRUST_FORCE * dt;
-  if (m.vy < -THRUST_CLIMB) m.vy = -THRUST_CLIMB;
+  if (thrusting) m.vy -= thrustAccel * dt;
+  if (m.vy < -climbCap) m.vy = -climbCap;
   if (m.vy > FALL_TERMINAL) m.vy = FALL_TERMINAL;
 
   // --- Horizontal collision ---

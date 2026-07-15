@@ -69,7 +69,14 @@ export interface Satchel {
 // Upgrades (specs/upgrades.md)
 // ---------------------------------------------------------------------------
 
-export type UpgradeTrack = "fuel" | "drill" | "cargo" | "hull" | "scanner";
+export type UpgradeTrack =
+  | "fuel"
+  | "drill"
+  | "cargo"
+  | "hull"
+  | "jetpack"
+  | "radiator"
+  | "scanner";
 
 /** Current tier (1..5) on each upgrade track. */
 export type UpgradeTiers = Record<UpgradeTrack, number>;

@@ -248,7 +248,7 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
 - The **Core Sample countdown** — the prominent timer readout while carrying the Core
   Sample (`specs/hazards.md`).
 - All **surface building panels** — Fuel Depot, Ore Market (cargo breakdown + SELL),
-  Upgrade Shop (the five tracks + prices), and Launch Pad (the rocket checklist +
+  Upgrade Shop (the seven tracks + prices), and Launch Pad (the rocket checklist +
   FABRICATE / LAUNCH) (`specs/flow.md`, `specs/upgrades.md`, `specs/rocket.md`).
 - All **menus, overlays, and state screens** — title, mode select, how-to-play, pause,
   victory, and game over (`specs/flow.md`, `specs/modes.md`).

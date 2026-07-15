@@ -1,11 +1,14 @@
-# Upgrades — the five tracks, their tiers, and prices
+# Upgrades — the seven tracks, their tiers, and prices
 
-This file defines the **Upgrade Shop** on the surface (`specs/world.md`): the five
+This file defines the **Upgrade Shop** on the surface (`specs/world.md`): the seven
 upgrade tracks, what each tier gives, and what it costs in **Credits**
 (`specs/flow.md`). Upgrades are the main thing Credits buy (the other is the rocket,
-`specs/rocket.md`), and they are what gears the miner to dig deeper and survive
-(`specs/character.md`, `specs/mining.md`). The numeric values here are **fixed**;
-implement them exactly.
+`specs/rocket.md`), and they are what gears the miner to dig deeper, haul more, and
+survive (`specs/character.md`, `specs/mining.md`). The numeric values here are
+**fixed**; implement them exactly.
+
+The seven tracks are **fuel tank**, **drill**, **cargo bay**, **hull**, **jetpack**,
+**radiator**, and **scanner**.
 
 Each track has **five tiers**; you start at **tier 1** on every track and buy the next
 tier in order (you cannot skip). The shop shows, per track, the current tier, what the
@@ -45,18 +48,19 @@ still drills, but **slowly** — so the deep bands are a soft gate until you buy
 tier-1 drill takes six seconds a tile in the coreshell — passable but punishing — so
 the coreshell is effectively reachable only with a mid-to-high drill.)
 
-## Cargo bay — ore per trip
+## Cargo bay — how much weight you can haul per trip
 
-Sets the **cargo capacity** in ore units (`specs/mining.md`). A bigger bay is more
-ore sold per surface trip, but a heavier climb.
+Sets the **cargo capacity** as a **total weight in kilograms** (`specs/mining.md`) — ore
+is limited by weight, not a unit count. A bigger bay is more ore sold per surface trip,
+but a heavier climb, and only as much as the **jetpack** can lift (`specs/character.md`).
 
-| Tier | Capacity (units) | Price |
+| Tier | Capacity (kg) | Price |
 | --- | --- | --- |
-| 1 | `15` | — (start) |
-| 2 | `25` | `200` |
-| 3 | `40` | `550` |
-| 4 | `65` | `1300` |
-| 5 | `100` | `2800` |
+| 1 | `180` | — (start) |
+| 2 | `280` | `200` |
+| 3 | `420` | `550` |
+| 4 | `620` | `1300` |
+| 5 | `900` | `2800` |
 
 ## Hull — surviving the deep
 
@@ -70,6 +74,43 @@ lava brushes, and hard landings — essential for the core run.
 | 3 | `220` | `640` |
 | 4 | `320` | `1500` |
 | 5 | `450` | `3100` |
+
+## Jetpack (engine) — lifting weight and climbing speed
+
+Sets the jetpack's **lift force** and its **climb-speed cap** (`specs/character.md`). A
+stronger jetpack lifts a **heavier haul** (the achieved climb acceleration is the lift
+force divided by the loaded mass) and, lightly loaded, simply **climbs faster** — less
+fuel per trip. The **Lift** column is the heaviest total load that tier can still climb
+with (miner `200 kg` + ore); a bay upgraded past this is un-liftable until the jetpack
+catches up (`specs/mining.md`). **Climb** is the tier's empty-load climb-speed cap.
+
+| Tier | Lift (kg total) | Climb (px/s) | Price |
+| --- | --- | --- | --- |
+| 1 | `~455` | `180` | — (start) |
+| 2 | `~578` | `210` | `240` |
+| 3 | `~733` | `245` | `640` |
+| 4 | `~933` | `285` | `1500` |
+| 5 | `~1156` | `330` | `3200` |
+
+(Each tier's lift comfortably exceeds the **matching** cargo tier's kg cap plus the
+miner's `200 kg`, so matched gear always lifts a full bay — slowly when heavy. The
+tension comes from upgrading the **cargo bay ahead of the jetpack**, `specs/character.md`.)
+
+## Radiator — surviving heat
+
+Reduces **gas-explosion** and **lava-contact** damage by its **effectiveness**
+(`specs/hazards.md`, `specs/character.md`). Tier 1 is bare stock plating (no reduction);
+because deep gas scales sharply with depth and coreshell lava is dense, an upgraded
+radiator — alongside the hull tier — is what makes the deep bands and the core run
+survivable. Effectiveness never reaches 100%; the deep is always dangerous.
+
+| Tier | Effectiveness | Price |
+| --- | --- | --- |
+| 1 | `0%` | — (start) |
+| 2 | `25%` | `300` |
+| 3 | `45%` | `700` |
+| 4 | `65%` | `1500` |
+| 5 | `80%` | `3000` |
 
 ## Scanner — finding the materials
 
@@ -88,10 +129,14 @@ turning a blind search into a confident beeline.
 ## How the tracks pace the game
 
 The prices climb so that the early game is a tight loop of small digs funding tier-2
-buys, and each tier opens a little more depth (drill), range (scanner), safety (hull),
-and reach (fuel + cargo). The two **material** runs (Resonite in the rockbed, Cryenite
-in the deepstone) want a decent **scanner** and enough **fuel + drill** to get down
-and back; the **core run** wants high **fuel**, **hull**, and **drill** to survive the
-coreshell and beat the 90-second climb (`specs/hazards.md`). You will not max every
-track before winning — the game is about spending Credits where each dig most needs
-them, alongside fabricating the rocket (`specs/rocket.md`).
+buys, and each tier opens a little more depth (**drill**), lift and haul (**jetpack +
+cargo**), range (**scanner**), and survival (**hull + radiator**), while **fuel** sets
+how far a round trip reaches. The **cargo** and **jetpack** tracks pull against each
+other by design — a bigger bay is worthless weight you cannot lift without the jetpack
+to match it (`specs/character.md`), so they tend to be bought in step. The two
+**material** runs (Resonite in the rockbed, Cryenite in the deepstone) want a decent
+**scanner** and enough **fuel + drill** to get down and back; the **core run** wants
+high **fuel**, **hull**, **radiator**, **jetpack**, and **drill** to survive the
+coreshell's scaling gas and dense lava and beat the 90-second climb (`specs/hazards.md`).
+You will not max every track before winning — the game is about spending Credits where
+each dig most needs them, alongside fabricating the rocket (`specs/rocket.md`).
