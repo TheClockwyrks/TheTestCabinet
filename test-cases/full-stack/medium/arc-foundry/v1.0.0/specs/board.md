@@ -122,13 +122,15 @@ waypoint**. The build UI shows a refused placement as invalid and does not place
 
 ### Live re-path
 
-The floor's pathing is **recomputed live** whenever it changes — a rock placed (a new
-candidate/wall), or a **combine** resolving (which frees the consumed partner's
-footprint) (`specs/build.md`, `specs/towers.md`) — **re-routes every unit currently
-walking**, smoothly redirecting it from where it stands (no teleporting or snapping
-backward). A unit already past a junction follows the new shortest route for its current
-leg from its current tile. (Rocks are placed only during the build phase, when no units
-are on the floor; a combine resolves at wave start.)
+The floor's pathing is **recomputed live** whenever the walls change — a rock placed (a
+new candidate/wall), or a structure **dismantled** (which frees its footprint,
+`specs/towers.md`) — **re-routes every unit currently walking**, smoothly redirecting it
+from where it stands (no teleporting or snapping backward). A unit already past a junction
+follows the new shortest route for its current leg from its current tile. (Rocks are
+placed and structures dismantled only during the build phase, when no units are on the
+floor.) A **combine** is wall-neutral: the riser stays a wall at the candidate's footprint
+and the consumed partner's footprint **hardens into a blocker**, so it opens no tile
+(`specs/build.md`, `specs/towers.md`).
 
 ### Flyers
 
@@ -241,9 +243,10 @@ A rock may be dropped **only** where its full `2 x 2` footprint is legal:
 
 The placement preview snaps the `2 x 2` block to the grid, shows those tiles, and
 clearly marks a legal spot versus a refused one (occupied, on a waypoint, out of bounds,
-never-seal, or unaffordable) — see `specs/controls.md`. When a **combine** resolves it
-reopens every tile in the consumed partner's footprint immediately and the floor
-re-paths (`specs/towers.md`, `specs/build.md`).
+never-seal, or unaffordable) — see `specs/controls.md`. A **combine** keeps every tile a
+wall (the consumed partner's footprint hardens into a blocker), so it never reopens the
+maze; the floor only re-paths when a rock is placed or a structure is **dismantled**
+(`specs/towers.md`, `specs/build.md`).
 
 ## Range and targeting geometry
 

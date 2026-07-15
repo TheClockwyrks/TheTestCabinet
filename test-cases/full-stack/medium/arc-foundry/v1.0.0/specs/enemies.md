@@ -128,4 +128,6 @@ un-climbed maze is overrun:
   and chain, Filaments want anti-flyer coverage on the straight-line path, and a
   Dynamo wants raw climbed output. Reading the **next-wave preview** in the build
   panel (`specs/board.md`, `specs/flow.md`) and re-shaping the maze for it is the
-  between-wave game.
+  between-wave game. Each unit name in the next-wave preview is **hoverable**: pointing at
+  it floats a **tooltip** describing that unit's defining trait, so the player can learn
+  the roster without leaving the board.

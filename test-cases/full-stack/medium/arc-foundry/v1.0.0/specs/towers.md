@@ -208,15 +208,23 @@ match (`specs/build.md`); it is never bought at a chosen quality. What you spend
 on is **stamping rocks** (10 Charge each, capped at five per level) and **UPGRADE
 QUALITY** (`specs/build.md`) — not on the components themselves, and combining is free.
 
-- Placed rocks, blockers, and kept components are **permanent**. There is **no
-  selling** and **no slagging**: a rock you do not keep hardens into an inert **blocker**
-  at wave start and stays part of the maze for the rest of the run (`specs/build.md`).
-  The only structure ever removed is a combine partner, whose footprint is freed when the
-  combine resolves.
+- There is **no selling**: nothing you place is ever refunded for Charge. A rock you do
+  not keep hardens into an inert **blocker** at wave start and stays part of the maze for
+  the rest of the run (`specs/build.md`). **Combining** consumes the partner, but the
+  partner's 2×2 footprint **hardens into a blocker** rather than being freed — so a
+  combine **never opens a hole** in the maze.
+- You **may dismantle** a misplaced structure, but only in the **build phase** (between
+  waves), and it is a *correction tool, not a sale*: selecting a rock, blocker, or
+  component and dismantling it clears its 2×2 footprint (the floor re-paths live) and
+  **returns nothing** — no Charge and no stamp, ever, including for a candidate you just
+  placed this phase. This is deliberate: refunding a dismantled rock would let a player
+  place a rock, reject its roll, dismantle it, and re-roll indefinitely, which would defeat
+  the scrap-press RNG. A dismantled roll is spent for good. There is no mid-wave removal.
 - The steep damage curve is why **combining always pays**: two matching components fold
-  into one that out-damages them both, and it costs no Charge and frees a tile. The only
-  question is whether you rolled a match this level and want to spend your **one keep** on
-  the climb rather than on a new tower (`specs/build.md`, `specs/board.md`).
+  into one that out-damages them both at no Charge, while the maze is unchanged (the
+  partner's footprint stays a wall). The only question is whether you rolled a match this
+  level and want to spend your **one keep** on the climb rather than on a new tower
+  (`specs/build.md`, `specs/board.md`).
 
 Keeping, combining, upgrading quality, and setting targeting all happen through the
 selected-candidate / component inspector and the scrap-press in the build panel

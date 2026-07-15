@@ -34,9 +34,11 @@ interest, so the Load always presses against a maze that is still being built up
   up to the `5`-per-level allowance (`specs/build.md`); Charge never goes below `0`,
   so the press is disabled when you cannot afford `10`. **UPGRADE QUALITY** buys the
   next Refinement level for its fixed cost (`55 / 110 / 200 / 340 / 520` up the R1–R5
-  track, `specs/build.md`). **Combining costs nothing.** There is **no selling and no
-  slagging** — rocks, blockers, and kept components are permanent (`specs/towers.md`,
-  `specs/build.md`), so the only Charge sinks are stamps and refinement.
+  track, `specs/build.md`). **Combining costs nothing.** There is **no selling** — nothing
+  you place is ever refunded for Charge, so the only Charge sinks are stamps and
+  refinement. You may **dismantle** a misplaced structure between waves as a correction,
+  but it **returns nothing** — no Charge and no stamp, ever (a refund would let you re-roll
+  the press for free, `specs/towers.md`).
 
 ## Grid Integrity and leaks
 
