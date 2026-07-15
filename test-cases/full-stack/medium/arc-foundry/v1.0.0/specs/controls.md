@@ -66,9 +66,11 @@ Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh c
 - **Select.** Left-click a placed candidate, component, or blocker (when not holding a
   rock) to select it. The selection shows its **range ring** on the yard (components and
   candidates only), and the **inspector** in the build panel (`specs/board.md`) shows
-  its **type**, **quality tier**, live stats (damage, range, fire rate, targeting), and
-  its action controls. A blocker reads as inert (no range, no targeting) and offers no
-  actions.
+  its **type**, **quality tier**, a short **description** of what the component does, live
+  stats (damage, range, fire rate, targeting), and its action controls. For a **firing
+  component** it also shows a per-component performance tally — its **kills** and **total
+  damage dealt** — so the player can read which towers are carrying. A blocker reads as
+  inert (no range, no targeting) and offers only a **DISMANTLE** action (below).
 - **Keep.** With a **candidate** selected during the build phase, click **KEEP** or
   press **`K`** to mark it as this level's kept roll (`specs/build.md`). Only one
   candidate is ever the kept one; keeping another moves the choice. The keep is
@@ -78,9 +80,11 @@ Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh c
   **candidate** (build phase only) has a matching **candidate or component** of the same
   type and same quality on the board (`specs/build.md`). Clicking it, or pressing
   **`C`**, sets this level's harvest to that combine (the alternative to a plain keep);
-  it resolves at wave start, producing one component one tier higher at the candidate's
-  footprint and consuming the partner, for **no Charge**, with a **combine flash** VFX
-  (`specs/assets.md`). A **Tesla-Prime** candidate offers no COMBINE.
+  the inspector **previews what it produces** (the component's type at the higher tier).
+  It resolves at wave start, producing one component one tier higher at the candidate's
+  footprint and consuming the partner — whose footprint **hardens into a blocker** so the
+  maze is unchanged — for **no Charge**, with a **combine flash** VFX (`specs/assets.md`).
+  A **Tesla-Prime** candidate offers no COMBINE.
 - **Upgrade quality.** The build panel's **UPGRADE QUALITY** control — or **`U`** —
   spends Charge to buy the next **Refinement** level, biasing future rolls toward higher
   qualities (`specs/build.md`). It is disabled at **R5** or when you cannot afford the
@@ -91,6 +95,13 @@ Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh c
   component only, defaults to **`first`** (furthest along the waypoint chain), and takes
   effect immediately (`specs/towers.md`). Targeting may be changed at any time, including
   during a live wave, since it is not a build action.
+- **Dismantle.** With a structure selected **during the build phase**, the inspector shows
+  a **DISMANTLE** control — or press **`X`** (also `Delete` / `Backspace`) — that removes
+  it, clears its footprint, and **re-paths the floor live** (`specs/board.md`). It is a
+  misplacement correction, **not a sale**: it returns **nothing** — no Charge and no stamp,
+  ever, including for a candidate placed that same phase (a refund would let you re-roll the
+  press for free, defeating the RNG, `specs/towers.md`). Dismantling is disabled during a
+  live wave.
 - **Deselect.** Click empty yard or press **`Esc`** to deselect.
 
 ## Waves, speed, and pause

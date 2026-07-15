@@ -105,6 +105,16 @@ export const COMPONENT_LABEL: Record<ComponentType, string> = {
   discharge: "DISCHARGE RIG",
 };
 
+// A one-to-two-sentence description of each component, shown in the inspector when a
+// component or candidate is selected (specs/towers.md) so the player knows what it does.
+export const COMPONENT_DESC: Record<ComponentType, string> = {
+  capacitor: "A balanced single-target zap — reliable damage and reach at a steady rate. The dependable backbone of any line.",
+  coil: "Chain-lightning: its bolt leaps from the struck unit to nearby ones, each leap weaker. Melts the dense Cluster packs.",
+  emitter: "A rapid, low-damage spark stream. Its high fire rate shreds swarms of fast, fragile units up close.",
+  arcnode: "An area discharge — its shot detonates a ring that damages every unit near the impact. The answer to tight packs.",
+  discharge: "A slow, long-range heavy bolt. Huge per-hit damage and the longest reach — the anti-tank pick against Slugs and the Dynamo.",
+};
+
 export const COMPONENT_COLOR: Record<ComponentType, string> = {
   capacitor: COL.capacitor,
   coil: COL.coil,
@@ -267,6 +277,17 @@ export const LOAD: Record<LoadType, LoadDef> = {
 };
 
 export const LOAD_ORDER: LoadType[] = ["mote", "spark", "slug", "cluster", "filament", "dynamo"];
+
+// A one-line description of each Load type (specs/enemies.md), shown as a tooltip when the
+// player hovers a unit's name in the next-wave panel so they know what they are facing.
+export const LOAD_DESC: Record<LoadType, string> = {
+  mote: "Baseline charge unit — the bulk of the early waves. Everything else is a variation on it.",
+  spark: "Fast and fragile: half a Mote's HP at double the speed. Punishes a defense with no coverage near the Entry.",
+  slug: "A slow, capacitive tank with a huge HP pool; leaks 2 Grid Integrity. Rewards concentrated single-hit damage.",
+  cluster: "Tiny and low-HP but arrives in dense packs, flooding a chokepoint. Splash and chain are the natural answers.",
+  filament: "The flyer — ignores the maze and straight-lines over your walls. Appears every 4th wave; needs coverage near the path.",
+  dynamo: "The boss: a massive HP pool that leaks 5 Grid Integrity. Anchors the milestone waves — the trial of your climbed line.",
+};
 
 // Per-wave HP scaling (specs/enemies.md §7.1): HP(w) = baseHP × baseMult × (1 + k·(w−1)).
 // baseMult and k are set by difficulty; only HP grows — speeds, bounties, leaks are fixed.

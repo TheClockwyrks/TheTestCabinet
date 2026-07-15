@@ -117,6 +117,8 @@ export interface Component extends StructureBase {
   cooldown: number; // seconds until it may fire again
   fireAnim: number; // seconds since last shot (drives the firing sheet / muzzle)
   aimAngle: number; // the head's heading — tracks the current target
+  kills: number; // units this component has destroyed (inspector tally, specs/towers.md)
+  damageDealt: number; // total damage this component has applied (inspector tally)
 }
 
 // A CANDIDATE: a rock placed THIS build phase that has rolled a random type + quality and
@@ -141,7 +143,8 @@ export type Structure = Component | Candidate | Blocker;
 // The level's single harvest choice (specs/build.md): what the SEND resolves into the one
 // new/upgraded firing component. `keep` promotes a candidate; `combine` merges a candidate
 // with a partner (another candidate or an existing component of the same type + tier) one
-// tier higher, consuming the partner. Reversible until SEND.
+// tier higher, consuming the partner — whose footprint HARDENS INTO A BLOCKER so the maze wall
+// is preserved (a combine never opens a hole). Reversible until SEND.
 export type Harvest =
   | { mode: "none" }
   | { mode: "keep"; id: number }
@@ -181,6 +184,7 @@ export interface Unit {
 // is later combined, and misses harmlessly if its target is gone.
 export interface Projectile {
   id: number;
+  sourceId: number; // the firing component's id, so kills/damage attribute back to it
   type: ComponentType; // which component fired it (sprite + effect)
   tier: Tier; // for VFX intensity escalation
   dmg: number;

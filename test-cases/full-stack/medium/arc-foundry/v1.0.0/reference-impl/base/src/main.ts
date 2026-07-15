@@ -50,7 +50,11 @@ async function main(): Promise<void> {
   // The Salvage flow picks a map, THEN a difficulty, before a run starts (specs/modes.md).
   let pendingMap: MapDef | null = null;
 
-  // Expose the live game for the Playwright proof-capture script (inert in play).
+  // A fresh 32-bit seed for the scrap-press, so each interactive run rolls a DIFFERENT
+  // component sequence (specs/build.md). Headless / dev drivers keep the fixed default.
+  const randomSeed = (): number => Math.floor(Math.random() * 0x100000000) >>> 0;
+
+  // Expose the live game for headless / dev driving (inert during normal play).
   (window as unknown as { __arcfoundry?: unknown }).__arcfoundry = {
     game,
     audio,
@@ -58,12 +62,13 @@ async function main(): Promise<void> {
     // Drop a rock at a 2×2 anchor (rolls a candidate on placement), for scripted layouts.
     placeStamp: (col: number, row: number) => game.placeStamp(col, row),
     // Place an EXACT type + quality COMPONENT at a named anchor (no roll / no cost) — the
-    // deterministic board-layout path the proof-capture script drives (specs/proof.md).
+    // deterministic board-layout path a headless driver uses (specs/build.md).
     place: (type: ComponentType, tier: Tier, col: number, row: number) => game.devPlace(type, tier, col, row),
     // Drop an inert BLOCKER at a named anchor (no roll / no cost) — for scripted mazes.
     blocker: (col: number, row: number) => game.devBlocker(col, row),
     keep: (id: number) => game.keep(id),
     combine: (id: number) => game.combine(id),
+    remove: (id: number) => game.removeStructure(id),
     upgradeQuality: () => game.upgradeQuality(),
     setRefinement: (r: 0 | 1 | 2 | 3 | 4 | 5) => game.devSetRefinement(r),
     startWave: () => game.startWave(),
@@ -88,6 +93,7 @@ async function main(): Promise<void> {
       // A difficulty choice — start the campaign on the chosen map + difficulty.
       const d = action.slice(5) as Difficulty;
       game.startOn(pendingMap ?? game.map, DIFFICULTY[d]);
+      game.reseedPress(randomSeed()); // fresh press roll sequence for this run
       menuIndex = 0;
       return;
     }
@@ -100,6 +106,7 @@ async function main(): Promise<void> {
       case "menu:again":
         // Replay the same campaign on the same chosen map + difficulty (specs/flow.md).
         game.startOn(game.map, game.diff);
+        game.reseedPress(randomSeed()); // a fresh roll sequence on the replay too
         menuIndex = 0;
         break;
       case "menu:howto":
@@ -135,6 +142,10 @@ async function main(): Promise<void> {
         break;
       case "targeting":
         game.cycleTargetingSelected();
+        break;
+      case "remove":
+        // Dismantle the selected structure (build phase only) — a misplacement correction.
+        game.removeSelected();
         break;
       case "startWave":
         game.startWave();
@@ -216,6 +227,11 @@ async function main(): Promise<void> {
       }
       if (lower === "t") {
         game.cycleTargetingSelected();
+        return;
+      }
+      if (lower === "x" || k === "Delete" || k === "Backspace") {
+        // Dismantle the selected structure (build phase only), for a misplacement.
+        game.removeSelected();
         return;
       }
       if (lower === "f") {

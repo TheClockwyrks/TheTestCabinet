@@ -85,6 +85,11 @@ export class Game {
   projectiles: Projectile[] = []; // shots / arcs in flight (specs/towers.md)
   structures: Structure[] = []; // components, candidates, and blockers — the maze (specs/board.md)
 
+  // The scrap-press seed. Fixed by default so the headless balance harness and any dev
+  // driver reproduce exactly; the interactive build (main.ts) reseeds it to a fresh random
+  // value each run so real playthroughs draw a different roll sequence.
+  pressSeed = PRESS_SEED;
+
   // Build / selection UI state.
   holding = false; // a blank rock is on the cursor (rolls on placement, specs/build.md)
   selectedId: number | null = null;
@@ -116,7 +121,7 @@ export class Game {
     this.map = map;
     this.diff = diff;
     this.board = new Board(map);
-    this.press = new Rng(PRESS_SEED);
+    this.press = new Rng(this.pressSeed);
     this.nextWave = buildWave(1, diff);
     this.occ = this.board.occupancy([]);
   }
@@ -158,9 +163,17 @@ export class Game {
     this.spawnCursor = 0;
     this.waveClock = 0;
     this.nextId = 1;
-    this.press = new Rng(PRESS_SEED);
+    this.press = new Rng(this.pressSeed);
     this.nextWave = buildWave(1, this.diff);
     this.occ = this.board.occupancy(this.structures);
+  }
+
+  // Reseed the scrap-press so the roll sequence differs (specs/build.md). The interactive
+  // build calls this once per run with a fresh random seed so no two playthroughs draw the
+  // same components; the harness and proof leave the fixed default for reproducibility.
+  reseedPress(seed: number): void {
+    this.pressSeed = seed >>> 0;
+    this.press = new Rng(this.pressSeed);
   }
 
   // ---- Fixed simulation step (specs/controls.md) ------------------------------
@@ -301,6 +314,7 @@ export class Game {
     const my = center.y + Math.sin(c.aimAngle) * muzzle;
     this.projectiles.push({
       id: this.nextId++,
+      sourceId: c.id,
       type: c.type,
       tier: c.tier,
       dmg: stats.dmg,
@@ -416,12 +430,20 @@ export class Game {
   }
 
   // Apply one landed shot to one unit (once), removing HP and killing it if it hits zero.
+  // The damage and any kill are attributed back to the firing component for its inspector
+  // tally (specs/towers.md) via the projectile's sourceId.
   private hit(pr: Projectile, u: Unit, dmg: number): void {
     if (u.dead || pr.hitIds.includes(u.id)) return;
     pr.hitIds.push(u.id);
+    const applied = Math.min(dmg, Math.max(0, u.hp)); // count only damage that lands, not overkill
     u.hp -= dmg;
     u.hitFlash = 0;
-    if (u.hp <= 0) this.kill(u);
+    const src = this.componentById(pr.sourceId);
+    if (src) src.damageDealt += applied;
+    if (u.hp <= 0) {
+      if (src) src.kills += 1;
+      this.kill(u);
+    }
   }
 
   private kill(u: Unit): void {
@@ -435,6 +457,11 @@ export class Game {
 
   private unitById(id: number): Unit | null {
     for (const u of this.units) if (u.id === id) return u;
+    return null;
+  }
+
+  private componentById(id: number): Component | null {
+    for (const s of this.structures) if (s.id === id && s.kind === "component") return s;
     return null;
   }
 
@@ -592,6 +619,8 @@ export class Game {
       cooldown: 0,
       fireAnim: 999,
       aimAngle: 0,
+      kills: 0,
+      damageDealt: 0,
     };
     this.structures[i] = comp;
     const ctr = footprintCenter(comp.col, comp.row);
@@ -600,7 +629,8 @@ export class Game {
 
   // Resolve a combine harvest: the candidate `id` and its `partnerId` (another candidate or an
   // existing component of the same type + tier) fold into one a tier higher at the candidate's
-  // footprint; the partner is consumed and its footprint freed.
+  // footprint; the partner is consumed but its footprint HARDENS INTO A BLOCKER so the maze wall
+  // is preserved (specs/build.md — a combine never opens a hole).
   private resolveCombine(id: number, partnerId: number): void {
     const cand = this.candidateById(id);
     const partner = this.structures.find((s) => s.id === partnerId) as Candidate | Component | undefined;
@@ -610,7 +640,15 @@ export class Game {
       return;
     }
     const newTier = (cand.tier + 1) as Tier;
-    this.structures = this.structures.filter((s) => s.id !== partner.id);
+    // The partner is consumed INTO the higher-tier component, but its 2×2 footprint must stay a
+    // WALL: replace it IN PLACE with an inert blocker rather than freeing its tiles, so a combine
+    // never opens a hole in the maze (specs/build.md). This matches the balance harness's
+    // mergeDuplicate, which re-hardens the consumed footprint into a blocker. The riser lands on
+    // the candidate's footprint.
+    const pIdx = this.structures.findIndex((s) => s.id === partner.id);
+    if (pIdx >= 0) {
+      this.structures[pIdx] = { id: partner.id, kind: "blocker", col: partner.col, row: partner.row } as Blocker;
+    }
     const i = this.structures.findIndex((s) => s.id === cand.id);
     const comp: Component = {
       id: cand.id,
@@ -623,6 +661,8 @@ export class Game {
       cooldown: 0,
       fireAnim: 999,
       aimAngle: 0,
+      kills: 0,
+      damageDealt: 0,
     };
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
@@ -743,7 +783,11 @@ export class Game {
     };
     this.structures.push(cand);
     this.selectedId = cand.id;
-    this.holding = this.canStamp(); // continuous placement: re-arm if a stamp + Charge remain
+    // Continuous placement (specs/build.md): release the placed rock, then immediately re-arm
+    // another if the allowance + Charge still permit. canStamp() requires !holding, so holding
+    // MUST be cleared first — otherwise it always reads false and the hand empties after one drop.
+    this.holding = false;
+    this.holding = this.canStamp();
     this.rePath();
     const ctr = footprintCenter(col, row);
     this.fxQueue.push({ kind: "buildspark", x: ctr.x, y: ctr.y, tier: cand.tier });
@@ -753,6 +797,38 @@ export class Game {
 
   cancelHeld(): void {
     this.holding = false; // nothing was rolled or spent — cancelling a held rock is free
+  }
+
+  // ---- Dismantle — remove a misplaced structure between waves (specs/build.md) --
+  // A correction tool, BUILD-PHASE only: clears a component, candidate, or blocker's 2×2
+  // footprint and re-paths live. It NEVER refunds the stamp or Charge — a refund would let a
+  // player place a rock, reject its roll, dismantle it, and re-roll indefinitely, defeating the
+  // scrap-press RNG. A dismantle only ever OPENS routes, so it can never seal a segment.
+  canRemove(id: number): boolean {
+    if (this.state !== "playing" || this.phase !== "build") return false;
+    return this.structures.some((s) => s.id === id);
+  }
+  removeStructure(id: number): boolean {
+    if (this.state !== "playing" || this.phase !== "build") return false;
+    const i = this.structures.findIndex((s) => s.id === id);
+    if (i < 0) return false;
+    const s = this.structures[i]!;
+    if (s.kind === "candidate") {
+      // No stamp/Charge refund — the roll is spent for good. Only drop the level's harvest if
+      // it referenced this candidate (as the keep or the combine partner).
+      const h = this.harvest;
+      if (h.mode !== "none" && (h.id === id || (h.mode === "combine" && h.partnerId === id))) {
+        this.harvest = { mode: "none" };
+      }
+    }
+    this.structures.splice(i, 1);
+    if (this.selectedId === id) this.selectedId = null;
+    this.rePath();
+    this.sndQueue.push("settle"); // a rock-settle thunk for the dismantle
+    return true;
+  }
+  removeSelected(): void {
+    if (this.selectedId != null) this.removeStructure(this.selectedId);
   }
 
   // ---- Keep / combine — the one harvest per level (specs/build.md) -------------
@@ -929,8 +1005,8 @@ export class Game {
   // Place a component of an EXACT type + quality at (or nearest-legal to) an anchor, with no
   // press roll and no Charge cost, landing ACTIVE with a live re-path (specs/build.md). The
   // deterministic counterpart to the random scrap-press, used by the headless balance harness
-  // and the proof-capture script to lay out a named board; the interactive build path stays
-  // the random press + placeStamp. Returns the placed component, or null if nowhere is legal.
+  // and dev drivers to lay out a named board; the interactive build path stays the random
+  // press + placeStamp. Returns the placed component, or null if nowhere is legal.
   devPlace(type: ComponentType, tier: Tier, col: number, row: number): Component | null {
     const anchor = this.board.nearestLegalAnchor(col, row, this.structures, this.units);
     if (!anchor) return null;
@@ -945,6 +1021,8 @@ export class Game {
       cooldown: 0,
       fireAnim: 999,
       aimAngle: 0,
+      kills: 0,
+      damageDealt: 0,
     };
     this.structures.push(comp);
     this.selectedId = comp.id;
@@ -953,8 +1031,8 @@ export class Game {
   }
 
   // Drop a CANDIDATE of an EXACT type + quality at (or nearest-legal to) an anchor, with no
-  // press roll and no Charge cost — the deterministic counterpart used by the proof-capture
-  // script to demonstrate keep / combine without depending on a random roll. Build phase only.
+  // press roll and no Charge cost — the deterministic counterpart used by a dev driver to
+  // demonstrate keep / combine without depending on a random roll. Build phase only.
   devCandidate(type: ComponentType, tier: Tier, col: number, row: number): Candidate | null {
     if (this.phase !== "build") return null;
     const anchor = this.board.nearestLegalAnchor(col, row, this.structures, this.units);

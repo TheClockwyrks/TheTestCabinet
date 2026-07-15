@@ -21,6 +21,7 @@ import {
   BUILDS_PER_LEVEL,
   COL,
   COMPONENT_COLOR,
+  COMPONENT_DESC,
   COMPONENT_LABEL,
   DIFFICULTY,
   DIFFICULTY_ORDER,
@@ -31,6 +32,7 @@ import {
   GRID_X0,
   GRID_Y0,
   LOAD,
+  LOAD_DESC,
   MAPS,
   MAX_TIER,
   PANEL_X,
@@ -98,6 +100,10 @@ const LOAD_ICON: Record<LoadType, string> = {
 
 // A cached repeating pattern of the produced substrate tile (built once from the sprite).
 let substratePattern: CanvasPattern | null = null;
+
+// A hover tooltip queued during panel drawing (e.g. an enemy name in the next-wave list),
+// drawn last so it floats above everything on the board (specs/enemies.md).
+let pendingTooltip: { title: string; body: string; color: string; y: number } | null = null;
 
 // ---- small drawing helpers ----------------------------------------------------
 
@@ -206,6 +212,53 @@ function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, ma
   return yy + lineHeight;
 }
 
+// Break a string into lines that each fit `maxW` at `size`, for measuring before drawing.
+function wrapLines(ctx: CanvasRenderingContext2D, s: string, maxW: number, size: number): string[] {
+  ctx.font = `400 ${size}px ${FONT}`;
+  const words = s.split(" ");
+  const lines: string[] = [];
+  let line = "";
+  for (const w of words) {
+    const test = line ? `${line} ${w}` : w;
+    if (ctx.measureText(test).width > maxW && line) {
+      lines.push(line);
+      line = w;
+    } else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// Draw the queued hover tooltip (an enemy description) as a floating card to the LEFT of the
+// build panel, clamped inside the stage (specs/enemies.md).
+function drawTooltip(ctx: CanvasRenderingContext2D): void {
+  if (!pendingTooltip) return;
+  const { title, body, color } = pendingTooltip;
+  const boxW = 250;
+  const pad = 12;
+  const bodyLines = wrapLines(ctx, body, boxW - pad * 2, 11);
+  const h = pad + 16 + 6 + bodyLines.length * 15 + pad - 4;
+  const bx = PANEL_X - boxW - 14;
+  const by = Math.max(STATUS_H + 8, Math.min(STAGE_H - h - 8, pendingTooltip.y - h / 2));
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = 18;
+  roundRect(ctx, bx, by, boxW, h, 10);
+  ctx.fillStyle = "rgba(12,17,24,0.97)";
+  ctx.fill();
+  ctx.restore();
+  roundRect(ctx, bx, by, boxW, h, 10);
+  ctx.strokeStyle = hexA(color, 0.6);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  text(ctx, title, bx + pad, by + pad + 6, 13, color, "left", "800", 0.5);
+  let yy = by + pad + 24;
+  for (const ln of bodyLines) {
+    text(ctx, ln, bx + pad, yy, 11, COL.text2, "left", "400");
+    yy += 15;
+  }
+}
+
 function drawSpaced(ctx: CanvasRenderingContext2D, s: string, cx: number, y: number, size: number, letter: number): void {
   const chars = [...s];
   const adv = size * 0.62 + letter;
@@ -257,6 +310,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
   }
 
   // The live board (also seen frozen behind the pause menu / end screens).
+  pendingTooltip = null; // recomputed each frame during panel drawing
   drawBoard(ctx, game, A);
   drawUnits(ctx, game, A);
   drawProjectiles(ctx, game, A);
@@ -264,6 +318,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
   drawBuildCursor(ctx, game, A);
   drawStatusBar(ctx, game, A, clicks);
   drawPanel(ctx, game, A, clicks);
+  drawTooltip(ctx);
 
   if (game.state === "paused") drawPauseMenu(ctx, game, clicks);
   if (game.state === "victory") drawEnd(ctx, game, clicks, true);
@@ -887,9 +942,13 @@ function drawHeldInfo(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
 // A CANDIDATE offers KEEP / COMBINE (build phase); a COMPONENT offers the targeting cycle;
 // a BLOCKER is inert (no stats, no actions).
 function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, A: Assets, x: number, y: number, w: number, clicks: Clickable[]): void {
+  const baseY = STAGE_H - 62 - 8; // just above the wave control
+  const inBuild = game.phase === "build"; // dismantling is a build-phase-only correction
+
   if (s.kind === "blocker") {
     text(ctx, "INERT BLOCKER", x, y + 6, 14, COL.text2, "left", "700", 0.5);
     wrap(ctx, "A hardened scrap rock — it walls the Load's route but never fires. Drop a fresh rock onto it to reroll a new component.", x, y + 32, w, 11, COL.text2, 15);
+    if (inBuild) button(ctx, clicks, x, baseY - 30, w, 30, "DISMANTLE ROCK", "remove", COL.alert, true);
     return;
   }
 
@@ -903,7 +962,10 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   text(ctx, `${TIER_NAME[s.tier]} · ${ROMAN[s.tier]}`, x + 44, y + 28, 11, TIER_COLOR[s.tier], "left", "600", 0.5);
   text(ctx, isCand ? "UNCOMMITTED ROLL" : "HITS GROUND & AIR", x + 44, y + 42, 8, isCand ? COL.charge : COL.text3, "left", "500", 0.5);
 
-  let row = y + 66;
+  // What this component does (specs/towers.md) — so the player knows its role at a glance.
+  const descEnd = wrap(ctx, COMPONENT_DESC[s.type], x, y + 68, w, 10, COL.text2, 14);
+
+  let row = descEnd + 4;
   const line = (k: string, v: string, col: string = COL.text): void => {
     text(ctx, k, x, row, 11, COL.text3, "left", "500", 0.5);
     text(ctx, v, x + w, row, 12, col, "right", "700");
@@ -914,34 +976,49 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   line("FIRE RATE", `${stats.fireRate.toFixed(1)}/s`);
   if (stats.splash > 0) line("SPLASH", `${Math.round(stats.splash)}`, COL.arcnode);
   if (stats.chainLeaps > 0) line("CHAIN", `+${stats.chainLeaps} leaps`, COL.coil);
-  if (!isCand) line("TARGET", TARGETING_LABEL[s.targeting], COL.integrity);
-
-  const baseY = STAGE_H - 62 - 8; // just above the wave control
+  if (!isCand) {
+    line("TARGET", TARGETING_LABEL[s.targeting], COL.integrity);
+    // Per-component performance tally (specs/towers.md) — like Meltdown's tower inspector.
+    line("KILLS", `${s.kills}`, COL.charge);
+    line("DMG DEALT", `${Math.round(s.damageDealt).toLocaleString()}`, COL.spark);
+  }
 
   if (isCand) {
     // The one keep-or-combine choice per level (specs/build.md). Reversible until SEND.
     const kept = game.keptId() === s.id;
-    const half = (w - 8) / 2;
-    const by = baseY - 30;
-    // A status line above the buttons.
-    if (kept) {
+    const canComb = game.canCombine(s);
+    const nt = Math.min(MAX_TIER, s.tier + 1) as Tier;
+    const by = baseY - 64; // keep/combine row; dismantle sits below it
+    // What a combine would produce (specs/build.md) — so the player knows the merge target.
+    if (canComb) {
+      text(ctx, `COMBINE → ${TIER_NAME[nt]} ${COMPONENT_LABEL[s.type]} · ${ROMAN[nt]}`, x, by - 26, 9, TIER_COLOR[nt], "left", "700", 0.3);
+      text(ctx, `DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}`, x, by - 14, 9, COL.text3, "left", "600", 0.3);
+    } else if (kept) {
       const msg = game.harvest.mode === "combine" ? "COMBINING THIS LEVEL" : "KEPT THIS LEVEL";
-      text(ctx, msg, x, by - 12, 10, COL.charge, "left", "700", 1);
+      text(ctx, msg, x, by - 14, 10, COL.charge, "left", "700", 1);
     } else {
-      text(ctx, "KEEP ONE ROLL PER LEVEL", x, by - 12, 10, COL.text3, "left", "600", 1);
+      text(ctx, "KEEP ONE ROLL PER LEVEL", x, by - 14, 10, COL.text3, "left", "600", 1);
     }
+    const half = (w - 8) / 2;
     const keepLabel = kept && game.harvest.mode === "keep" ? "KEEP ✓" : "KEEP";
-    if (game.canCombine(s)) {
+    if (canComb) {
       const combLabel = kept && game.harvest.mode === "combine" ? "COMBINE ✓" : "COMBINE";
       button(ctx, clicks, x, by, half, 30, keepLabel, "keep", COL.charge, true);
-      button(ctx, clicks, x + half + 8, by, half, 30, combLabel, "combine", TIER_COLOR[Math.min(MAX_TIER, s.tier + 1) as Tier], true);
+      button(ctx, clicks, x + half + 8, by, half, 30, combLabel, "combine", TIER_COLOR[nt], true);
     } else {
       button(ctx, clicks, x, by, w, 30, keepLabel, "keep", COL.charge, true);
     }
+    // Dismantle clears a misplaced rock's footprint — no refund (specs/towers.md).
+    button(ctx, clicks, x, baseY - 26, w, 24, "DISMANTLE — NO REFUND", "remove", COL.alert, true);
   } else {
-    // A firing component: cycle its targeting priority (specs/towers.md).
-    const cy = baseY - 26;
-    button(ctx, clicks, x, cy, w, 26, `TARGET · ${TARGETING_LABEL[s.targeting]}`, "targeting", COL.integrity, true);
+    // A firing component: cycle its targeting priority (specs/towers.md), and — between waves
+    // only — dismantle it if it was misplaced.
+    if (inBuild) {
+      button(ctx, clicks, x, baseY - 60, w, 26, `TARGET · ${TARGETING_LABEL[s.targeting]}`, "targeting", COL.integrity, true);
+      button(ctx, clicks, x, baseY - 28, w, 26, "DISMANTLE COMPONENT", "remove", COL.alert, true);
+    } else {
+      button(ctx, clicks, x, baseY - 26, w, 26, `TARGET · ${TARGETING_LABEL[s.targeting]}`, "targeting", COL.integrity, true);
+    }
   }
 }
 
@@ -949,6 +1026,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
 function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {
   const wv = game.nextWavePreview();
   text(ctx, "NEXT WAVE", x, y + 6, 11, COL.text3, "left", "700", 1);
+  text(ctx, "HOVER A NAME FOR INTEL", x + w, y + 6, 8, COL.text3, "right", "500", 0.5);
   const label = wv.hasBoss ? `WAVE ${wv.wave} · BOSS` : `WAVE ${wv.wave}`;
   text(ctx, label, x, y + 26, 15, wv.hasBoss ? COL.boss : COL.text, "left", "700", 0.5);
 
@@ -956,14 +1034,25 @@ function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
   const counts = new Map<LoadType, number>();
   for (const e of wv.events) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
 
+  const rowH = 22;
   let row = y + 48;
   for (const t of wv.types) {
     const def = LOAD[t];
+    // Each row is a hover target: hovering it floats a tooltip describing the unit.
+    const hover = inRect(game.pointerX, game.pointerY, x - 4, row - 2, w + 8, rowH);
+    if (hover) {
+      roundRect(ctx, x - 4, row - 2, w + 8, rowH - 2, 4);
+      ctx.fillStyle = "rgba(255,255,255,0.05)";
+      ctx.fill();
+    }
     if (A.has(LOAD_ICON[t])) blit(ctx, A.sprite(LOAD_ICON[t]), x + 9, row + 7, 18, 18);
-    text(ctx, def.label, x + 24, row + 7, 11, t === "dynamo" ? COL.boss : COL.text2, "left", "600", 0.5);
+    text(ctx, def.label, x + 24, row + 7, 11, t === "dynamo" ? COL.boss : hover ? COL.text : COL.text2, "left", "600", 0.5);
     const n = counts.get(t) ?? 0;
     text(ctx, n > 1 ? `×${n}` : def.flies ? "FLYER" : "", x + w, row + 7, 10, COL.text3, "right", "500");
-    row += 22;
+    if (hover) {
+      pendingTooltip = { title: def.label, body: LOAD_DESC[t], color: t === "dynamo" ? COL.boss : COL.integrity, y: row + 7 };
+    }
+    row += rowH;
   }
 }
 
@@ -1190,11 +1279,11 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
     ["GOAL", "The Load spills from the feeder vent and crawls to the grounding collector. Every unit that grounds out costs Grid Integrity; at 0 the grid overloads and you lose. Clear all the waves with integrity left to win."],
     ["THE MAZE", "Every component, candidate, AND blocker is a 2×2 WALL. The Load must reach each ordered 4-tile waypoint PLATFORM in sequence, taking the shortest OPEN route around your walls — so building lengthens its route. You cannot build on a platform and can never fully seal a segment (a sealing placement is refused); the floor re-paths live as walls change."],
     ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to arm a BLANK rock, then drop it on a legal spot — the instant it lands it ROLLS a random component type and quality (weighted low). Place up to 5 rocks per level, 10 Charge each; keep placing back-to-back until the allowance or Charge runs out."],
-    ["KEEP ONE PER LEVEL", "Select a placed rock and KEEP (K) exactly ONE per level to make it a firing tower — every rock you don't keep hardens into an inert BLOCKER. Or COMBINE (C) two same-TYPE + same-QUALITY rolls into one a tier higher, which counts as the level's keep. Choose KEEP or COMBINE, then SEND: the mobs enter."],
+    ["KEEP ONE PER LEVEL", "Select a placed rock and KEEP (K) exactly ONE per level to make it a firing tower — every rock you don't keep hardens into an inert BLOCKER. Or COMBINE (C) two same-TYPE + same-QUALITY rolls into one a tier higher (the inspector shows what it becomes), which counts as the level's keep. Choose KEEP or COMBINE, then SEND: the mobs enter. Misplaced one? Between waves DISMANTLE (X) any selected rock, blocker, or component to clear its footprint — no refund (dismantling never gives Charge or a stamp back, so you cannot re-roll for free)."],
     ["UPGRADE QUALITY", "Spend Charge on UPGRADE QUALITY (U) to raise your Refinement level R0→R5, biasing every future roll toward the higher tiers of the ladder Scrap→Tuned→Charged→Primed→Tesla-Prime. Refinement is the odds; combining is the direct climb."],
     ["COMPONENTS", "Capacitor (single bolt), Coil (chain-lightning), Emitter (rapid spark), Arc-Node (area discharge), Discharge Rig (heavy long-range bolt). All hit ground and air. Select one to read its stats and cycle its TARGET (T). The Filament flies and ignores the maze — air only arrives every 4th wave."],
     ["ECONOMY", "Kills pay Charge bounty; clearing a wave pays a bonus; banked Charge earns interest each build phase. Build phases are UNTIMED — take your time, then SEND when ready. There is no selling."],
-    ["CONTROLS", "B stamp · click place · click select · K keep · C combine · U upgrade quality · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · Esc cancel then pause menu · M mute."],
+    ["CONTROLS", "B stamp · click place · click select · K keep · C combine · X dismantle (between waves) · U upgrade quality · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · Esc cancel then pause menu · M mute."],
   ];
   let y = 100;
   for (const [k, v] of lines) {

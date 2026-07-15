@@ -166,9 +166,10 @@ is the single thing you harvest from the level.
   live, or when the candidate is already Tesla-Prime.
 - Choosing COMBINE sets this level's harvest to that pair (reversible until send, like
   KEEP). When you **send the wave** it resolves: it **produces** the higher-tier
-  component **at the candidate's footprint** and **consumes the partner** — freeing the
-  partner's footprint (its tiles become Open, which **re-paths** the floor,
-  `specs/board.md`) if the partner was a separate structure.
+  component **at the candidate's footprint** and **consumes the partner** — but the
+  partner's 2×2 footprint **hardens into an inert blocker** rather than being freed, so
+  the maze wall is preserved and a combine **never opens a hole** (`specs/board.md`,
+  `specs/towers.md`). A combine is therefore wall-neutral: both footprints stay walls.
 - Combining **costs no Charge** — the climb is paid in rolls, not money.
 - A **combine flash** VFX fires as the tier climbs (`specs/assets.md`), with a combine
   chime (`specs/assets.md`).
@@ -232,9 +233,11 @@ the press will never roll on its own.
 
 ## How the loop drives the maze
 
-Every rock you place — kept or not — **walls** its footprint, and only a combine ever
-frees a footprint (the consumed partner's). So building always tends to **lengthen** the
-Load's route between waypoints, never seal it (`specs/board.md`). Read the **next-wave
+Every rock you place — kept or not — **walls** its footprint, and a combine keeps both
+footprints walled (the consumed partner hardens into a blocker), so the only way to free
+a footprint is to **dismantle** a structure between waves (`specs/towers.md`). So building
+always tends to **lengthen** the Load's route between waypoints, never seal it
+(`specs/board.md`). Read the **next-wave
 preview** (`specs/flow.md`), place your five rocks to both extend the maze and fish for a
 good roll, keep the one that best answers the coming wave (`specs/enemies.md`), let the
 rest harden into blockers, and spend banked Charge on UPGRADE QUALITY to lift your future
