@@ -9,7 +9,16 @@
 //!   writes the replay JSON there. The guest owns its linear memory; this is the
 //!   only way the host can hand bytes in.
 //! - `replay_load(ptr, len) -> 1|0` — parse the replay JSON at `ptr..ptr+len`,
-//!   reconstruct the match, and hold it in a module global. `1` on success.
+//!   reconstruct the match, and hold it in a module global. `1` on success; `0` if
+//!   the replay does not parse *or* does not reconstruct — including
+//!   [`ReplayError::Drift`](crate::replay::ReplayError::Drift), where re-running
+//!   the recorded inputs through *this* engine disagrees with the committed
+//!   result. Rejecting a drifted replay is the whole point of loading through
+//!   [`Replay::reconstruct_on`]: a playback engine that has diverged from the one
+//!   that produced the run (a stale wasm against a changed rules engine) would
+//!   otherwise silently render a *different match* than the one the run recorded,
+//!   with a running score that contradicts the run's final score. Better to show
+//!   nothing than to show a fiction.
 //! - `replay_board() -> i64` — pack `(ptr<<32)|len` of the static board JSON (the
 //!   walls, dimensions, border, nests) the renderer draws once.
 //! - `replay_step() -> i64` — advance one frame and pack `(ptr<<32)|len` of the
@@ -24,6 +33,7 @@
 use crate::board::Board;
 use crate::engine::Match;
 use crate::replay::Replay;
+use crate::state::{Ended, MatchResult};
 
 /// The reconstructed match and the static board, held across calls. Single-
 /// threaded wasm, so a plain `static mut` accessed through a small unsafe shim is
@@ -92,6 +102,15 @@ pub unsafe extern "C" fn replay_load(ptr: i32, len: i32) -> i32 {
         Ok(board) => board,
         Err(_) => return 0,
     };
+    // Reconstruct before we play a single frame: re-run the recorded inputs through
+    // this engine and require them to reproduce the committed result. This is the
+    // drift gate — it is what makes the frames we go on to render *the match the
+    // run recorded* rather than merely a plausible match. We throw the reconstructed
+    // `Match` away and step a pristine one below (the board is cheap to clone), so
+    // the renderer still starts from frame zero.
+    if replay.reconstruct_on(board.clone()).is_err() {
+        return 0;
+    }
     match build_playback(replay, board) {
         Some(playback) => {
             unsafe {
@@ -154,16 +173,27 @@ pub extern "C" fn replay_step() -> i64 {
             let input = &playback.ticks[playback.cursor];
             playback.game.step(&input.red, &input.blue);
             playback.cursor += 1;
-        } else {
-            // No more recorded input but the match was not flagged over — stamp
-            // the committed result so the final frame shows the outcome.
-            playback.game.state.result = Some(crate::state::MatchResult {
+        } else if playback.replay.result.ended == Ended::Forfeit {
+            // The tick log ran out without the engine ending the match, and the
+            // replay says a forfeit decided it. A forfeit is the *host's* call (a
+            // controller trapped, ran out of fuel, or returned an invalid action) —
+            // it cannot be re-derived from the inputs, which is exactly why
+            // `Replay::reconstruct_on` trusts it too. Stamp the committed result so
+            // the final frame shows the outcome.
+            playback.game.state.result = Some(MatchResult {
                 winner: playback.replay.result.winner,
                 score: playback.replay.result.score,
                 kills: playback.replay.result.kills,
                 ended: playback.replay.result.ended,
                 ticks: playback.replay.result.ticks,
             });
+        } else {
+            // Any other ending is re-derived from the inputs, and `replay_load`'s
+            // reconstruction already proved these inputs produce it — so running dry
+            // here is unreachable. Stop rather than stamp: stamping a result over a
+            // sim that never reached it is what let a stale playback engine show a
+            // final score its own frames had contradicted.
+            return 0;
         }
         let snapshot = playback.game.snapshot();
         playback.out = serde_json::to_vec(&snapshot).unwrap_or_default();

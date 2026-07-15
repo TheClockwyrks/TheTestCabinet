@@ -14,10 +14,14 @@ Foray is a capture-the-flag-style game on a mirror-symmetric maze. Each agent is
 **soldier** (defender) on its own half and a **raider** (forager) on the enemy
 half — its role flips at the border. Raiders eat the enemy's seed caches and bank
 them by carrying them home; soldiers tag enemy raiders, sending them back to their
-nest and dropping their load. Two rules make Foray its own game: a raider's speed
-**degrades with its load** (carry weight), and eating **royal jelly** grants the
-eater tag-immunity (not the inverse). Read the specs for the exact rules — your
-controller has to reason about both twists to win.
+nest and dropping their load. Three rules make Foray its own game: a raider's speed
+**degrades with its load** (carry weight), so *when to break off and bank* is a real
+decision; eating **royal jelly** makes an ant briefly untouchable **and lethal** —
+it cannot be tagged, and it kills any non-immune enemy it meets, even a defender
+standing safely at home; and each half holds two **large seeds** worth (and
+weighing) three ordinary ones, which **drift toward the border on their own** until
+they sit on the seam, one step from an enemy raider. Read the specs for the exact
+rules — your controller has to reason about all three to win.
 
 Your controller is invoked **once per tick** with your colony's observation (the
 `world`) and must return the moves for your three agents (the `action`). The
@@ -72,11 +76,13 @@ crate-type `cdylib` so that path is stable. The wasm target is already installed
 A controller that **beats the baselines comfortably** — decisively beating
 `border-soldier`, the canonical scoring opponent, on the shipped map — and that
 plays the actual game: it balances offense and defense across its three agents tick
-by tick, times each bank against carry weight rather than over-loading, and spends
-royal jelly to run a heavy load home through a defended border. A controller ported
-straight from a published capture-the-flag strategy will over-load and ignore
-jelly's inversion, and lose; the work of this case is to play *Foray*, not generic
-CTF.
+by tick, times each bank against carry weight rather than over-loading, spends royal
+jelly on both sides of the ball (running a heavy load home behind immunity, and
+breaking a defender who has parked on something it wants), and contests the large
+seeds instead of letting its own drift onto the seam to be scooped for free. A
+controller ported straight from a published capture-the-flag strategy will
+over-load, sit on its own caches, and concede six points of large seed without ever
+noticing; the work of this case is to play *Foray*, not generic CTF.
 
 Iterate locally with the preinstalled `foray` CLI: run your controller against
 `$FORAY_HOME/references/border-soldier.wasm` (and the other two, and a few seeds),
