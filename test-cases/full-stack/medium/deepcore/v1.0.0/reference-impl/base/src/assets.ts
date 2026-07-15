@@ -85,6 +85,13 @@ export interface Assets {
   miner: Record<MinerState, HTMLImageElement[]>;
   /** A band/tunnel/bedrock tile sprite by name, or undefined. */
   tile(name: string): HTMLImageElement | undefined;
+  /**
+   * The produced tile variants for a band (`<band>-0/1/2.png`), so a wall of one band
+   * does not visibly repeat a single texture (specs/world.md). Falls back to the single
+   * `tiles/<band>` sprite (then `[]`) when no numbered variants are present, so an
+   * older/partial asset set still renders.
+   */
+  tileVariants(band: string): HTMLImageElement[];
   ore(o: Ore): HTMLImageElement | undefined;
   material(name: string): HTMLImageElement | undefined;
   gas: HTMLImageElement | undefined;
@@ -120,6 +127,16 @@ export async function loadAssets(): Promise<Assets> {
 
   const lava = framesFor("hazards/lava/frame");
 
+  // Band tile variants: gather `tiles/<band>-<n>` into an ordered array per band.
+  const bandVariants = new Map<string, HTMLImageElement[]>();
+  for (const [k, img] of imgs) {
+    const m = k.match(/^tiles\/([a-z]+)-(\d+)$/);
+    if (!m) continue;
+    const arr = bandVariants.get(m[1]!) ?? [];
+    arr[parseInt(m[2]!, 10)] = img;
+    bandVariants.set(m[1]!, arr);
+  }
+
   const rocket: HTMLImageElement[] = [];
   for (let i = 0; i <= 5; i++) {
     const img = imgs.get(`rocket/stage${i}`);
@@ -140,6 +157,12 @@ export async function loadAssets(): Promise<Assets> {
   return {
     miner,
     tile: (name) => imgs.get(`tiles/${name}`),
+    tileVariants: (band) => {
+      const v = bandVariants.get(band)?.filter(Boolean);
+      if (v && v.length) return v;
+      const single = imgs.get(`tiles/${band}`);
+      return single ? [single] : [];
+    },
     ore: (o) => imgs.get(`ore/${o}`),
     material: (name) => imgs.get(`materials/${name}`),
     gas: imgs.get("hazards/gas"),

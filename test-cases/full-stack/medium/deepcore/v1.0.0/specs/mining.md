@@ -27,6 +27,10 @@ lift on the climb home (`specs/character.md`).
 | **Pyronium** | Coreshell | `820` | `34` | 24.1 | glowing orange ore |
 | **Adamite** | Deepstone, Coreshell (rare) | `1900` | `46` | 41.3 | rare aquamarine gem |
 
+The "reads as" column is each ore's visual identity; each is drawn as a **smear of that
+mineral run through the dirt** — embedded in the rock and spreading to the tile edges, not
+a discrete dot on top of it (the Motherload look — `specs/world.md`, `specs/assets.md`).
+
 Value climbs **steeply** with depth while weight rises only gently, so **value-per-kg
 climbs with depth**: a full bay of topsoil Ferron is pocket change — and barely worth
 its weight on the climb — next to a single deep Adamite. This is the engine of the

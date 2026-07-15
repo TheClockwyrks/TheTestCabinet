@@ -68,11 +68,18 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
 - **Earth / Rock / Deepstone / Coreshell** — the plain **minable** rock of each band.
   Drilling one (`specs/character.md`) removes it, leaving an **empty tunnel**, and
   yields nothing. Its drill time is set by the band's hardness and the miner's drill
-  tier.
+  tier. Each band's rock must be drawn from **several interchangeable tile variants**
+  (at least three), chosen per cell so that a wall of the same band does **not visibly
+  repeat a single tiled texture** — the rock should read as natural, varied ground, not
+  a grid of one identical stamp. The variants share the band's fill and palette (so they
+  read as the same depth); only the clump/crack/fleck layout differs (`specs/assets.md`).
 - **Ore vein** — a minable tile of the band's rock with an **ore deposit** in it
   (`specs/mining.md`). Drilling it removes the tile *and* adds that ore to cargo (if
   cargo has room). Ore veins are scattered through every band; the ore type and its
-  odds are per band (`specs/mining.md`).
+  odds are per band (`specs/mining.md`). An ore deposit reads as a **smear of mineral
+  run through the dirt** — embedded in the rock and spreading toward the tile's edges
+  (so adjacent ore cells read as one continuous vein), **not** a discrete nugget or dot
+  sitting on top of the rock (`specs/mining.md`, `specs/assets.md`).
 - **Material node** — a minable tile holding one of the two **buried exotic
   materials**, **Resonite** (rockbed) or **Cryenite** (deepstone) (`specs/mining.md`,
   `specs/rocket.md`). Drilling it collects the material. Placement is **guaranteed

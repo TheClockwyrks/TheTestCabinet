@@ -342,7 +342,7 @@ proof = "loop"
 [[review_item]]
 id = "produced-environment"
 title = "Produced band tiles, ore, materials, and hazards"
-text = "The four band rock tiles (topsoil earth, rockbed stone, deepstone, red-glowing coreshell), the bedrock border, the carved tunnels, the six ore veins (each reading as its ore), the two material nodes (Resonite, Cryenite) and the glowing core, and the gas-pocket and lava tiles are all drawn from sprites the build produced with draw/draw-sheet (the lava shimmering), in the palette — so the band a player is in, an ore vein against plain rock, a material against ore, and a hazard against safe ground all read at a glance. Not flat rectangles or ad-hoc canvas fills."
+text = "The four band rock tiles (topsoil earth, rockbed stone, deepstone, red-glowing coreshell) — each drawn from SEVERAL tile variants chosen per cell so a wall of one band does NOT visibly repeat a single texture — the bedrock border, the carved tunnels, the six ore veins (each an embedded SMEAR of its mineral run through the dirt, spreading to the tile edges, NOT a discrete dot on top), the two material nodes (Resonite, Cryenite) and the glowing core, and the gas-pocket and lava tiles are all drawn from sprites the build produced with draw/draw-sheet (the lava shimmering), in the palette — so the band a player is in, an ore vein against plain rock, a material against ore, and a hazard against safe ground all read at a glance. Not flat rectangles, a single repeated tile, or ad-hoc canvas fills."
 weight = 1
 domain = "presentation"
 proof = "mine"
