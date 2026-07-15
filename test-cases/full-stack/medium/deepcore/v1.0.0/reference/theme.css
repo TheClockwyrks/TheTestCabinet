@@ -355,20 +355,28 @@ body {
   border-radius: 3px;
 }
 
-/* ---- Ore veins: rock cell with an ore deposit, tinted by ore type ---- */
+/* ---- Ore veins: a SMEAR of mineral run through the rock (Motherload look), tinted by
+   ore type — a diagonal streak that spreads across the cell and feathers into the rock,
+   NOT a couple of discrete dots on top (../specs/mining.md, ../specs/assets.md). ---- */
 .vein {
   background:
-    radial-gradient(9px 7px at 32% 34%, currentColor, transparent 70%),
-    radial-gradient(7px 6px at 64% 60%, currentColor, transparent 70%),
-    radial-gradient(6px 5px at 44% 74%, currentColor, transparent 72%);
+    /* a broad diagonal smear body */
+    radial-gradient(20px 12px at 42% 44%, currentColor, transparent 74%),
+    /* lobes reaching toward opposite corners so it reads as an embedded vein */
+    radial-gradient(11px 9px at 24% 28%, currentColor, transparent 72%),
+    radial-gradient(11px 9px at 68% 66%, currentColor, transparent 72%),
+    /* feathered specks bleeding the ore out toward the tile edges */
+    radial-gradient(3px 3px at 82% 40%, currentColor, transparent 80%),
+    radial-gradient(3px 3px at 16% 66%, currentColor, transparent 80%);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transform: rotate(-24deg);
 }
 .vein::after {
   /* a bright glint so the vein pops from plain rock */
   content: "";
   position: absolute;
-  left: 30%;
-  top: 30%;
+  left: 38%;
+  top: 40%;
   width: 5px;
   height: 5px;
   border-radius: 50%;

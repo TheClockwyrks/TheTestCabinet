@@ -124,16 +124,29 @@ them under `assets/` in a sensible layout (for example `assets/tiles/`, `assets/
 
 Produce at least these, in the palette from `specs/overview.md`:
 
-- **Band rock tiles** — one tileable rock tile per band so the depth reads at a glance
+- **Band rock tiles** — tileable rock tiles per band so the depth reads at a glance
   (`specs/world.md`): **topsoil** earth, **rockbed** grey stone, **deepstone** near-black
   rock, and **coreshell** red-glowing rock, plus the unminable **bedrock border** tile.
-  The faint tile grid is drawn in code over them.
+  Produce **several variants (at least three) of each band's rock tile** and have the
+  renderer pick one per cell (e.g. a stable hash of the cell's row/col), so a wall of the
+  same band does **not visibly repeat a single texture** — the mine should read as
+  natural, varied ground, not a grid of one identical stamp. The variants share the
+  band's fill and palette; only the clump/crack/fleck layout differs. The faint tile grid
+  is drawn in code over them.
 - **Tunnel** — the carved-out **empty** cell (dark) and an optional **tunnel-edge /
   rubble** trim the renderer can lay where rock meets tunnel, so a dug shaft reads as
   carved, not merely black.
-- **Ore veins** — an overlay/variant for each of the six ores (**Ferron, Cuprite,
-  Argenite, Voltite, Pyronium, Adamite**, `specs/mining.md`) embedded in rock, each
-  reading clearly as its ore by color and glint, so a vein stands out from plain rock.
+- **Ore veins** — a transparent overlay for each of the six ores (**Ferron, Cuprite,
+  Argenite, Voltite, Pyronium, Adamite**, `specs/mining.md`) laid over the band rock,
+  each reading clearly as its ore by color and glint so a vein stands out from plain
+  rock. Draw each as a **smear of mineral run through the dirt** — a streak that spreads
+  across much of the tile, feathers into the surrounding rock at the edges (transparent
+  gaps let the band rock show through, so the ore reads as mixed *into* the dirt), and
+  reaches the tile's edges so adjacent ore cells read as one continuous vein. This is the
+  Motherload look; do **not** draw an ore as a discrete nugget or a couple of dots
+  sitting on top of the rock. Each ore still keeps its own character on the smear
+  (Ferron flecky, Cuprite nodular, Argenite seamy, Voltite crystalline, Pyronium
+  glowing, Adamite a rare bright gem — `specs/mining.md`).
 - **Material nodes** — a distinct tile for **Resonite** (blue crystal) and **Cryenite**
   (violet crystal) embedded in rock (`specs/mining.md`), unmistakably richer and rarer
   than an ore vein, plus the glowing **Core** in its chamber and the **Core Sample**

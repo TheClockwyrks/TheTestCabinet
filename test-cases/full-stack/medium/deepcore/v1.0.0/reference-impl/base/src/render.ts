@@ -248,7 +248,7 @@ function drawMine(
 
   for (let r = rowTop; r <= rowBot; r++) {
     for (let c = 0; c < WORLD_COLS; c++) {
-      drawTile(ctx, assets, game.grid[r]![c]!, GRID_MARGIN_X + c * TILE_SIZE, r * TILE_SIZE + offY, view);
+      drawTile(ctx, assets, game.grid[r]![c]!, GRID_MARGIN_X + c * TILE_SIZE, r * TILE_SIZE + offY, view, r, c);
     }
   }
 
@@ -283,6 +283,18 @@ function drawMine(
   }
 }
 
+/**
+ * A stable per-cell variant index in `[0, n)` from a cell's (row, col) — a small integer
+ * hash so a band's rock does not visibly repeat one texture (specs/world.md). Stable
+ * across frames (depends only on the grid position), well-scattered (no diagonal banding).
+ */
+function tileVariant(row: number, col: number, n: number): number {
+  if (n <= 1) return 0;
+  let h = (row * 73856093) ^ (col * 19349663);
+  h ^= h >>> 13;
+  return ((h % n) + n) % n;
+}
+
 function drawTile(
   ctx: CanvasRenderingContext2D,
   assets: Assets,
@@ -290,6 +302,8 @@ function drawTile(
   x: number,
   y: number,
   view: View,
+  row: number,
+  col: number,
 ): void {
   const s = TILE_SIZE;
   switch (tile.kind) {
@@ -330,7 +344,7 @@ function drawTile(
       const img = assets.material("core");
       if (isReady(img)) ctx.drawImage(img, x, y, s, s);
       else {
-        drawBandRock(ctx, assets, tile, x, y);
+        drawBandRock(ctx, assets, tile, x, y, row, col);
         const g = ctx.createRadialGradient(x + s / 2, y + s / 2, 2, x + s / 2, y + s / 2, s / 2);
         g.addColorStop(0, "#fff3d0");
         g.addColorStop(0.5, P.coreSample);
@@ -344,7 +358,7 @@ function drawTile(
       const img = assets.gas;
       if (isReady(img)) ctx.drawImage(img, x, y, s, s);
       else {
-        drawBandRock(ctx, assets, tile, x, y);
+        drawBandRock(ctx, assets, tile, x, y, row, col);
         ctx.fillStyle = "rgba(154,210,74,0.34)";
         ctx.fillRect(x + 3, y + 3, s - 6, s - 6);
         ctx.fillStyle = "rgba(154,210,74,0.7)";
@@ -355,27 +369,38 @@ function drawTile(
       break;
     }
     case "ore": {
-      drawBandRock(ctx, assets, tile, x, y);
+      drawBandRock(ctx, assets, tile, x, y, row, col);
       const img = assets.ore(tile.ore!);
       if (isReady(img)) ctx.drawImage(img, x, y, s, s);
       else drawOreFallback(ctx, tile.ore!, x, y);
       break;
     }
     case "material": {
-      drawBandRock(ctx, assets, tile, x, y);
+      drawBandRock(ctx, assets, tile, x, y, row, col);
       const img = assets.material(tile.material!);
       if (isReady(img)) ctx.drawImage(img, x, y, s, s);
       else drawMaterialFallback(ctx, tile.material!, x, y);
       break;
     }
     default: {
-      drawBandRock(ctx, assets, tile, x, y);
+      drawBandRock(ctx, assets, tile, x, y, row, col);
     }
   }
 }
 
-function drawBandRock(ctx: CanvasRenderingContext2D, assets: Assets, tile: Tile, x: number, y: number): void {
-  const img = assets.tile(tile.band);
+function drawBandRock(
+  ctx: CanvasRenderingContext2D,
+  assets: Assets,
+  tile: Tile,
+  x: number,
+  y: number,
+  row: number,
+  col: number,
+): void {
+  // Pick one of the band's produced tile variants by a stable per-cell hash, so a wall
+  // of the same band does not visibly repeat a single texture (specs/world.md).
+  const variants = assets.tileVariants(tile.band);
+  const img = variants.length ? variants[tileVariant(row, col, variants.length)] : undefined;
   if (isReady(img)) {
     ctx.drawImage(img, x, y, TILE_SIZE, TILE_SIZE);
   } else {
@@ -394,19 +419,34 @@ function drawBandRock(ctx: CanvasRenderingContext2D, assets: Assets, tile: Tile,
 
 function drawOreFallback(ctx: CanvasRenderingContext2D, ore: Ore, x: number, y: number): void {
   const col = ORES[ore].color;
+  // A diagonal smear of overlapping lobes (echoing the produced ore vein) — an embedded
+  // streak through the rock, not discrete dots — used only until the sprite decodes.
   ctx.fillStyle = col;
   for (const [dx, dy, r] of [
-    [16, 18, 5],
-    [30, 28, 6],
-    [22, 34, 4],
+    [13, 15, 5],
+    [20, 20, 6],
+    [28, 27, 6],
+    [35, 33, 5],
+    [33, 16, 3],
+    [11, 30, 3],
   ] as const) {
     ctx.beginPath();
     ctx.arc(x + dx, y + dy, r, 0, Math.PI * 2);
     ctx.fill();
   }
+  // feathered specks bleeding toward the edges so adjacent ore cells read continuous
+  for (const [dx, dy] of [
+    [7, 12],
+    [40, 38],
+    [42, 22],
+    [9, 38],
+    [24, 42],
+  ] as const) {
+    ctx.fillRect(x + dx, y + dy, 1, 1);
+  }
   ctx.fillStyle = "rgba(255,255,255,0.55)";
   ctx.beginPath();
-  ctx.arc(x + 29, y + 26, 2, 0, Math.PI * 2);
+  ctx.arc(x + 26, y + 25, 2, 0, Math.PI * 2);
   ctx.fill();
 }
 

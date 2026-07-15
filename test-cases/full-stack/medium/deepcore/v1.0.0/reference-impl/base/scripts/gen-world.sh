@@ -4,13 +4,16 @@
 # script owns the environment the mine is built from — everything the vertical camera
 # scrolls past as the miner digs down through the four depth bands (specs/world.md):
 #
-#   • the five 48x48 TILES the bands and their bounds are drawn from — a tileable rock
-#     tile per band so the depth reads at a glance (topsoil earth, rockbed grey stone,
-#     deepstone near-black, coreshell red-glowing), plus the unminable BEDROCK border,
-#     the carved TUNNEL cell, and a TUNNEL-EDGE rubble trim (specs/world.md tile kinds);
+#   • the 48x48 band TILES the bands and their bounds are drawn from — THREE tileable
+#     variants per band ("<band>-0/1/2.png") so a wall of the same band does not visibly
+#     repeat one texture (topsoil earth, rockbed grey stone, deepstone near-black,
+#     coreshell red-glowing; the renderer picks a variant per cell — specs/world.md),
+#     plus the unminable BEDROCK border, the carved TUNNEL cell, and a TUNNEL-EDGE rubble
+#     trim (specs/world.md tile kinds);
 #   • the six 48x48 ORE VEINS (Ferron, Cuprite, Argenite, Voltite, Pyronium, Adamite)
-#     as transparent overlays the renderer lays over the band rock — each reading clearly
-#     as its ore by colour and glint so a vein stands out from plain rock (specs/mining.md);
+#     as transparent overlays the renderer lays over the band rock — each an embedded
+#     SMEAR spread through the dirt (not a discrete dot) that reads clearly as its ore by
+#     colour and glint so a vein stands out from plain rock (specs/mining.md);
 #   • the MATERIAL NODES — the Resonite (blue crystal) and Cryenite (violet crystal)
 #     buried nodes, the glowing CORE in its chamber, and the extracted, unstable CORE
 #     SAMPLE icon it yields (specs/mining.md, specs/hazards.md);
@@ -75,87 +78,244 @@ s() { draw-sheet "$@" --config "$CFG" >/dev/null; }
 
 # ================================================================================
 # BAND ROCK TILES (48x48, tileable) — the depth must read at a glance (specs/world.md).
-# Each is a full opaque tile: flood the band fill, then texture the INTERIOR (kept off
-# the 0/1 outer rows) so neighbouring tiles seam cleanly across the mine.
+# Each band ships THREE interchangeable variants ("<band>-0/1/2.png") so a wall of the
+# same band does NOT visibly repeat a single texture: the renderer picks a variant per
+# cell by a stable hash of its (row, col) (specs/world.md, specs/assets.md). All three
+# share the band's fill + palette so they read as the same depth; only the clump/crack/
+# fleck layout differs. Each is a full opaque tile: flood the band fill, then texture the
+# INTERIOR so neighbouring tiles still seam acceptably across the mine.
 # ================================================================================
 
 # -------- Topsoil (band 1) — warm brown earth, #3a2c1f -----------------------
-newsprite 48 48 "$TILES/topsoil.png"
-d fill-background --color '#3a2c1f'
-# darker soil clumps
-d fill-circle --cx 14 --cy 16 --r 6 --color '#2f2318'
-d fill-circle --cx 34 --cy 30 --r 7 --color '#2f2318'
-d fill-circle --cx 34 --cy 30 --r 3 --color '#241a11'
-d fill-circle --cx 24 --cy 40 --r 5 --color '#2f2318'
-d fill-circle --cx 10 --cy 36 --r 3 --color '#241a11'
-# lighter grit + pebbles
-d fill-circle --cx 20 --cy 12 --r 2 --color '#4a3a28'
-d fill-circle --cx 38 --cy 14 --r 2 --color '#574530'
-d fill-circle --cx 30 --cy 22 --r 2 --color '#4a3a28'
-d set-pixel --x 16 --y 26 --color '#574530'
-d set-pixel --x 27 --y 33 --color '#4a3a28'
-d set-pixel --x 40 --y 38 --color '#574530'
-d set-pixel --x 12 --y 44 --color '#4a3a28'
-d set-pixel --x 8  --y 20 --color '#241a11'
-d set-pixel --x 44 --y 26 --color '#241a11'
-d set-pixel --x 22 --y 8  --color '#241a11'
-d set-pixel --x 33 --y 44 --color '#241a11'
+# 3 variants: darker soil clumps + lighter grit/pebbles, laid out differently each.
+band_topsoil() {
+  newsprite 48 48 "$1"
+  d fill-background --color '#3a2c1f'
+  case "$2" in
+    0)
+      d fill-circle --cx 14 --cy 16 --r 6 --color '#2f2318'
+      d fill-circle --cx 34 --cy 30 --r 7 --color '#2f2318'
+      d fill-circle --cx 34 --cy 30 --r 3 --color '#241a11'
+      d fill-circle --cx 24 --cy 40 --r 5 --color '#2f2318'
+      d fill-circle --cx 10 --cy 36 --r 3 --color '#241a11'
+      d fill-circle --cx 20 --cy 12 --r 2 --color '#4a3a28'
+      d fill-circle --cx 38 --cy 14 --r 2 --color '#574530'
+      d fill-circle --cx 30 --cy 22 --r 2 --color '#4a3a28'
+      d set-pixel --x 16 --y 26 --color '#574530'
+      d set-pixel --x 27 --y 33 --color '#4a3a28'
+      d set-pixel --x 40 --y 38 --color '#574530'
+      d set-pixel --x 12 --y 44 --color '#4a3a28'
+      d set-pixel --x 8  --y 20 --color '#241a11'
+      d set-pixel --x 44 --y 26 --color '#241a11'
+      d set-pixel --x 22 --y 8  --color '#241a11'
+      d set-pixel --x 33 --y 44 --color '#241a11'
+      ;;
+    1)
+      d fill-circle --cx 32 --cy 14 --r 7 --color '#2f2318'
+      d fill-circle --cx 12 --cy 28 --r 6 --color '#2f2318'
+      d fill-circle --cx 12 --cy 28 --r 3 --color '#241a11'
+      d fill-circle --cx 38 --cy 40 --r 5 --color '#2f2318'
+      d fill-circle --cx 26 --cy 38 --r 3 --color '#241a11'
+      d fill-circle --cx 40 --cy 22 --r 2 --color '#4a3a28'
+      d fill-circle --cx 18 --cy 12 --r 2 --color '#574530'
+      d fill-circle --cx 24 --cy 24 --r 2 --color '#4a3a28'
+      d set-pixel --x 34 --y 30 --color '#574530'
+      d set-pixel --x 20 --y 42 --color '#4a3a28'
+      d set-pixel --x 8  --y 40 --color '#574530'
+      d set-pixel --x 44 --y 34 --color '#4a3a28'
+      d set-pixel --x 30 --y 8  --color '#241a11'
+      d set-pixel --x 6  --y 16 --color '#241a11'
+      d set-pixel --x 44 --y 12 --color '#241a11'
+      d set-pixel --x 16 --y 44 --color '#241a11'
+      ;;
+    2)
+      d fill-circle --cx 22 --cy 20 --r 8 --color '#2f2318'
+      d fill-circle --cx 22 --cy 20 --r 4 --color '#241a11'
+      d fill-circle --cx 40 --cy 32 --r 5 --color '#2f2318'
+      d fill-circle --cx 10 --cy 42 --r 4 --color '#2f2318'
+      d fill-circle --cx 36 --cy 10 --r 3 --color '#241a11'
+      d fill-circle --cx 14 --cy 10 --r 2 --color '#4a3a28'
+      d fill-circle --cx 32 --cy 36 --r 2 --color '#574530'
+      d fill-circle --cx 44 --cy 18 --r 2 --color '#4a3a28'
+      d set-pixel --x 26 --y 30 --color '#574530'
+      d set-pixel --x 18 --y 36 --color '#4a3a28'
+      d set-pixel --x 8  --y 26 --color '#574530'
+      d set-pixel --x 40 --y 44 --color '#4a3a28'
+      d set-pixel --x 30 --y 44 --color '#241a11'
+      d set-pixel --x 44 --y 40 --color '#241a11'
+      d set-pixel --x 6  --y 8  --color '#241a11'
+      d set-pixel --x 18 --y 24 --color '#574530'
+      ;;
+  esac
+}
+band_topsoil "$TILES/topsoil-0.png" 0
+band_topsoil "$TILES/topsoil-1.png" 1
+band_topsoil "$TILES/topsoil-2.png" 2
 
 # -------- Rockbed (band 2) — grey stone, #3a3d44 -----------------------------
-newsprite 48 48 "$TILES/rockbed.png"
-d fill-background --color '#3a3d44'
-# angular cracks (darker)
-d line --x0 8  --y0 6  --x1 20 --y1 18 --color '#2a2d33'
-d line --x0 20 --y0 18 --x1 16 --y1 34 --color '#2a2d33'
-d line --x0 30 --y0 8  --x1 38 --y1 22 --color '#23262c'
-d line --x0 38 --y0 22 --x1 42 --y1 40 --color '#2a2d33'
-d line --x0 22 --y0 30 --x1 34 --y1 42 --color '#23262c'
-d line --x0 6  --y0 40 --x1 18 --y1 38 --color '#2a2d33'
-# lighter facets catching the suit lamp
-d fill-circle --cx 26 --cy 14 --r 4 --color '#464b53'
-d fill-circle --cx 12 --cy 24 --r 3 --color '#464b53'
-d fill-circle --cx 40 --cy 30 --r 3 --color '#545a63'
-d set-pixel --x 30 --y 26 --color '#545a63'
-d set-pixel --x 18 --y 42 --color '#545a63'
-d set-pixel --x 44 --y 12 --color '#464b53'
-d set-pixel --x 24 --y 44 --color '#2a2d33'
+# 3 variants: angular dark cracks + lighter facets catching the lamp, re-routed each.
+band_rockbed() {
+  newsprite 48 48 "$1"
+  d fill-background --color '#3a3d44'
+  case "$2" in
+    0)
+      d line --x0 8  --y0 6  --x1 20 --y1 18 --color '#2a2d33'
+      d line --x0 20 --y0 18 --x1 16 --y1 34 --color '#2a2d33'
+      d line --x0 30 --y0 8  --x1 38 --y1 22 --color '#23262c'
+      d line --x0 38 --y0 22 --x1 42 --y1 40 --color '#2a2d33'
+      d line --x0 22 --y0 30 --x1 34 --y1 42 --color '#23262c'
+      d line --x0 6  --y0 40 --x1 18 --y1 38 --color '#2a2d33'
+      d fill-circle --cx 26 --cy 14 --r 4 --color '#464b53'
+      d fill-circle --cx 12 --cy 24 --r 3 --color '#464b53'
+      d fill-circle --cx 40 --cy 30 --r 3 --color '#545a63'
+      d set-pixel --x 30 --y 26 --color '#545a63'
+      d set-pixel --x 18 --y 42 --color '#545a63'
+      d set-pixel --x 44 --y 12 --color '#464b53'
+      d set-pixel --x 24 --y 44 --color '#2a2d33'
+      ;;
+    1)
+      d line --x0 40 --y0 6  --x1 28 --y1 18 --color '#2a2d33'
+      d line --x0 28 --y0 18 --x1 32 --y1 34 --color '#2a2d33'
+      d line --x0 18 --y0 8  --x1 10 --y1 22 --color '#23262c'
+      d line --x0 10 --y0 22 --x1 6  --y1 40 --color '#2a2d33'
+      d line --x0 26 --y0 30 --x1 14 --y1 42 --color '#23262c'
+      d line --x0 42 --y0 40 --x1 30 --y1 38 --color '#2a2d33'
+      d fill-circle --cx 22 --cy 14 --r 4 --color '#464b53'
+      d fill-circle --cx 36 --cy 24 --r 3 --color '#464b53'
+      d fill-circle --cx 8  --cy 30 --r 3 --color '#545a63'
+      d set-pixel --x 18 --y 26 --color '#545a63'
+      d set-pixel --x 30 --y 42 --color '#545a63'
+      d set-pixel --x 4  --y 12 --color '#464b53'
+      d set-pixel --x 24 --y 44 --color '#2a2d33'
+      ;;
+    2)
+      d line --x0 6  --y0 14 --x1 22 --y1 12 --color '#2a2d33'
+      d line --x0 22 --y0 12 --x1 40 --y1 18 --color '#23262c'
+      d line --x0 14 --y0 24 --x1 26 --y1 30 --color '#2a2d33'
+      d line --x0 26 --y0 30 --x1 20 --y1 44 --color '#23262c'
+      d line --x0 34 --y0 28 --x1 44 --y1 36 --color '#2a2d33'
+      d line --x0 8  --y0 36 --x1 16 --y1 44 --color '#2a2d33'
+      d fill-circle --cx 34 --cy 12 --r 4 --color '#464b53'
+      d fill-circle --cx 16 --cy 34 --r 3 --color '#464b53'
+      d fill-circle --cx 40 --cy 42 --r 3 --color '#545a63'
+      d set-pixel --x 24 --y 20 --color '#545a63'
+      d set-pixel --x 10 --y 42 --color '#545a63'
+      d set-pixel --x 42 --y 24 --color '#464b53'
+      d set-pixel --x 30 --y 40 --color '#2a2d33'
+      ;;
+  esac
+}
+band_rockbed "$TILES/rockbed-0.png" 0
+band_rockbed "$TILES/rockbed-1.png" 1
+band_rockbed "$TILES/rockbed-2.png" 2
 
 # -------- Deepstone (band 3) — near-black rock, #20242c ----------------------
-newsprite 48 48 "$TILES/deepstone.png"
-d fill-background --color '#20242c'
-# tight, dark fractures
-d line --x0 10 --y0 8  --x1 22 --y1 20 --color '#14171d'
-d line --x0 22 --y0 20 --x1 20 --y1 36 --color '#14171d'
-d line --x0 32 --y0 10 --x1 40 --y1 26 --color '#0e1015'
-d line --x0 12 --y0 40 --x1 30 --y1 38 --color '#14171d'
-d line --x0 38 --y0 30 --x1 36 --y1 44 --color '#0e1015'
-# faint cold highlights (sparse — the band is meant to read dark)
-d fill-circle --cx 28 --cy 16 --r 2 --color '#2c313a'
-d set-pixel --x 14 --y 28 --color '#2c313a'
-d set-pixel --x 40 --y 20 --color '#2c313a'
-d set-pixel --x 24 --y 42 --color '#2c313a'
-d set-pixel --x 8  --y 16 --color '#0e1015'
-d set-pixel --x 44 --y 40 --color '#0e1015'
+# 3 variants: tight dark fractures + sparse cold highlights (band reads dark).
+band_deepstone() {
+  newsprite 48 48 "$1"
+  d fill-background --color '#20242c'
+  case "$2" in
+    0)
+      d line --x0 10 --y0 8  --x1 22 --y1 20 --color '#14171d'
+      d line --x0 22 --y0 20 --x1 20 --y1 36 --color '#14171d'
+      d line --x0 32 --y0 10 --x1 40 --y1 26 --color '#0e1015'
+      d line --x0 12 --y0 40 --x1 30 --y1 38 --color '#14171d'
+      d line --x0 38 --y0 30 --x1 36 --y1 44 --color '#0e1015'
+      d fill-circle --cx 28 --cy 16 --r 2 --color '#2c313a'
+      d set-pixel --x 14 --y 28 --color '#2c313a'
+      d set-pixel --x 40 --y 20 --color '#2c313a'
+      d set-pixel --x 24 --y 42 --color '#2c313a'
+      d set-pixel --x 8  --y 16 --color '#0e1015'
+      d set-pixel --x 44 --y 40 --color '#0e1015'
+      ;;
+    1)
+      d line --x0 38 --y0 8  --x1 26 --y1 20 --color '#14171d'
+      d line --x0 26 --y0 20 --x1 28 --y1 36 --color '#14171d'
+      d line --x0 16 --y0 10 --x1 8  --y1 26 --color '#0e1015'
+      d line --x0 36 --y0 40 --x1 18 --y1 38 --color '#14171d'
+      d line --x0 10 --y0 30 --x1 12 --y1 44 --color '#0e1015'
+      d fill-circle --cx 20 --cy 16 --r 2 --color '#2c313a'
+      d set-pixel --x 34 --y 28 --color '#2c313a'
+      d set-pixel --x 8  --y 20 --color '#2c313a'
+      d set-pixel --x 24 --y 42 --color '#2c313a'
+      d set-pixel --x 40 --y 16 --color '#0e1015'
+      d set-pixel --x 6  --y 40 --color '#0e1015'
+      ;;
+    2)
+      d line --x0 8  --y0 12 --x1 24 --y1 16 --color '#14171d'
+      d line --x0 24 --y0 16 --x1 22 --y1 34 --color '#14171d'
+      d line --x0 30 --y0 12 --x1 42 --y1 22 --color '#0e1015'
+      d line --x0 14 --y0 38 --x1 32 --y1 40 --color '#14171d'
+      d line --x0 40 --y0 32 --x1 44 --y1 44 --color '#0e1015'
+      d fill-circle --cx 34 --cy 26 --r 2 --color '#2c313a'
+      d set-pixel --x 18 --y 24 --color '#2c313a'
+      d set-pixel --x 12 --y 40 --color '#2c313a'
+      d set-pixel --x 40 --y 14 --color '#2c313a'
+      d set-pixel --x 26 --y 44 --color '#0e1015'
+      d set-pixel --x 6  --y 30 --color '#0e1015'
+      ;;
+  esac
+}
+band_deepstone "$TILES/deepstone-0.png" 0
+band_deepstone "$TILES/deepstone-1.png" 1
+band_deepstone "$TILES/deepstone-2.png" 2
 
 # -------- Coreshell (band 4) — red-glowing rock, #3a1512 + #ff6a2a glow ------
-newsprite 48 48 "$TILES/coreshell.png"
-d fill-background --color '#3a1512'
-# darkened crust patches
-d fill-circle --cx 14 --cy 14 --r 6 --color '#2a0f0c'
-d fill-circle --cx 36 --cy 34 --r 7 --color '#2a0f0c'
-d fill-circle --cx 30 --cy 12 --r 3 --color '#2a0f0c'
-# hot fissures glowing up through the rock (the rising orange glow read)
-d line --x0 8  --y0 30 --x1 22 --y1 24 --color '#c4451f'
-d line --x0 22 --y0 24 --x1 26 --y1 40 --color '#ff6a2a'
-d line --x0 30 --y0 20 --x1 42 --y1 28 --color '#c4451f'
-d line --x0 12 --y0 40 --x1 20 --y1 44 --color '#ff6a2a'
-d line --x0 38 --y0 8  --x1 44 --y1 18 --color '#c4451f'
-# molten hot-spots
-d fill-circle --cx 24 --cy 30 --r 2 --color '#ff8a3a'
-d set-pixel --x 24 --y 30 --color '#ffb347'
-d fill-circle --cx 40 --cy 24 --r 1 --color '#ff8a3a'
-d set-pixel --x 16 --y 42 --color '#ffb347'
-d set-pixel --x 34 --y 18 --color '#ff8a3a'
+# 3 variants: dark crust patches + hot fissures glowing up + molten hot-spots.
+band_coreshell() {
+  newsprite 48 48 "$1"
+  d fill-background --color '#3a1512'
+  case "$2" in
+    0)
+      d fill-circle --cx 14 --cy 14 --r 6 --color '#2a0f0c'
+      d fill-circle --cx 36 --cy 34 --r 7 --color '#2a0f0c'
+      d fill-circle --cx 30 --cy 12 --r 3 --color '#2a0f0c'
+      d line --x0 8  --y0 30 --x1 22 --y1 24 --color '#c4451f'
+      d line --x0 22 --y0 24 --x1 26 --y1 40 --color '#ff6a2a'
+      d line --x0 30 --y0 20 --x1 42 --y1 28 --color '#c4451f'
+      d line --x0 12 --y0 40 --x1 20 --y1 44 --color '#ff6a2a'
+      d line --x0 38 --y0 8  --x1 44 --y1 18 --color '#c4451f'
+      d fill-circle --cx 24 --cy 30 --r 2 --color '#ff8a3a'
+      d set-pixel --x 24 --y 30 --color '#ffb347'
+      d fill-circle --cx 40 --cy 24 --r 1 --color '#ff8a3a'
+      d set-pixel --x 16 --y 42 --color '#ffb347'
+      d set-pixel --x 34 --y 18 --color '#ff8a3a'
+      ;;
+    1)
+      d fill-circle --cx 34 --cy 14 --r 6 --color '#2a0f0c'
+      d fill-circle --cx 12 --cy 34 --r 7 --color '#2a0f0c'
+      d fill-circle --cx 18 --cy 12 --r 3 --color '#2a0f0c'
+      d line --x0 40 --y0 30 --x1 26 --y1 24 --color '#c4451f'
+      d line --x0 26 --y0 24 --x1 22 --y1 40 --color '#ff6a2a'
+      d line --x0 18 --y0 20 --x1 6  --y1 28 --color '#c4451f'
+      d line --x0 36 --y0 40 --x1 28 --y1 44 --color '#ff6a2a'
+      d line --x0 10 --y0 8  --x1 4  --y1 18 --color '#c4451f'
+      d fill-circle --cx 24 --cy 30 --r 2 --color '#ff8a3a'
+      d set-pixel --x 24 --y 30 --color '#ffb347'
+      d fill-circle --cx 8  --cy 24 --r 1 --color '#ff8a3a'
+      d set-pixel --x 32 --y 42 --color '#ffb347'
+      d set-pixel --x 14 --y 18 --color '#ff8a3a'
+      ;;
+    2)
+      d fill-circle --cx 22 --cy 16 --r 6 --color '#2a0f0c'
+      d fill-circle --cx 40 --cy 40 --r 6 --color '#2a0f0c'
+      d fill-circle --cx 8  --cy 40 --r 3 --color '#2a0f0c'
+      d line --x0 6  --y0 22 --x1 20 --y1 30 --color '#c4451f'
+      d line --x0 20 --y0 30 --x1 34 --y1 26 --color '#ff6a2a'
+      d line --x0 34 --y0 12 --x1 44 --y1 20 --color '#c4451f'
+      d line --x0 14 --y0 42 --x1 26 --y1 44 --color '#ff6a2a'
+      d line --x0 36 --y0 34 --x1 42 --y1 44 --color '#c4451f'
+      d fill-circle --cx 22 --cy 30 --r 2 --color '#ff8a3a'
+      d set-pixel --x 22 --y 30 --color '#ffb347'
+      d fill-circle --cx 38 --cy 18 --r 1 --color '#ff8a3a'
+      d set-pixel --x 12 --y 38 --color '#ffb347'
+      d set-pixel --x 30 --y 40 --color '#ff8a3a'
+      ;;
+  esac
+}
+band_coreshell "$TILES/coreshell-0.png" 0
+band_coreshell "$TILES/coreshell-1.png" 1
+band_coreshell "$TILES/coreshell-2.png" 2
 
 # -------- Bedrock border — unminable, near-black, #0c0f14 --------------------
 # The hard, impassable bound of the playable space (columns 0/23, the floor, the
@@ -221,109 +381,108 @@ d set-pixel --x 41 --y 45 --color '#0c0f14'
 
 # ================================================================================
 # ORE VEINS (48x48, transparent overlays laid over the band rock) — each must read
-# clearly as its ore vs plain rock (specs/mining.md). Each nugget sits in a dark
-# "socket" so it reads as embedded in rock over any band fill.
+# clearly as its ore vs plain rock (specs/mining.md). These are SMEARS, not dots: in
+# Motherload an ore vein is a mineral streak run THROUGH the dirt, so each is a broad
+# diagonal smear that spreads across most of the tile and FEATHERS into the rock at the
+# edges (transparent gaps let the band rock show through, so the ore reads as mixed into
+# the dirt rather than a discrete nugget sitting on top). Because the smear reaches the
+# tile edges, adjacent ore cells read as one continuous vein. Each keeps its ore's own
+# character on top of the shared smear (Ferron flecky, Cuprite nodular, Argenite seamy,
+# Voltite crystalline, Pyronium glowing, Adamite a rare bright gem).
 # ================================================================================
 
-# nugget <cx> <cy> <r> <socket> <ore> <glint> : an ore lump in a dark rock socket.
-nugget() {
-  d fill-circle --cx "$1" --cy "$2" --r $(( $3 + 1 )) --color "$4"
-  d fill-circle --cx "$1" --cy "$2" --r "$3"          --color "$5"
-  d set-pixel   --x  "$1" --y  "$2" --color "$6"
+# smear <base> <hi> <dk> : the shared ore-vein body — a diagonal streak of overlapping
+# soft lobes with a couple of offshoots, darker grain threaded through so it isn't a flat
+# blob, and a spray of feathered specks bleeding the ore out into the surrounding rock.
+smear() {
+  local base="$1" hi="$2" dk="$3"
+  # main diagonal streak (upper-left -> lower-right), overlapping lobes
+  d fill-circle --cx 13 --cy 15 --r 5 --color "$base"
+  d fill-circle --cx 20 --cy 20 --r 6 --color "$base"
+  d fill-circle --cx 28 --cy 27 --r 6 --color "$base"
+  d fill-circle --cx 35 --cy 33 --r 5 --color "$base"
+  # short offshoots so the smear branches like a real vein
+  d fill-circle --cx 33 --cy 16 --r 3 --color "$base"
+  d fill-circle --cx 11 --cy 30 --r 3 --color "$base"
+  # darker rock grain threaded through the mass (breaks up the solid blob)
+  d line --x0 14 --y0 16 --x1 22 --y1 22 --color "$dk"
+  d line --x0 24 --y0 24 --x1 34 --y1 32 --color "$dk"
+  d fill-circle --cx 22 --cy 21 --r 2 --color "$dk"
+  d fill-circle --cx 30 --cy 28 --r 1 --color "$dk"
+  # feathered specks bleeding the ore out toward the tile edges (continuous vein)
+  d set-pixel --x 7  --y 12 --color "$base"
+  d set-pixel --x 40 --y 38 --color "$base"
+  d set-pixel --x 42 --y 22 --color "$base"
+  d set-pixel --x 9  --y 38 --color "$base"
+  d set-pixel --x 38 --y 10 --color "$base"
+  d set-pixel --x 5  --y 24 --color "$base"
+  d set-pixel --x 24 --y 42 --color "$base"
+  d set-pixel --x 44 --y 30 --color "$base"
+  # bright specular glints on the ore
+  d set-pixel --x 16 --y 16 --color "$hi"
+  d set-pixel --x 26 --y 25 --color "$hi"
+  d set-pixel --x 34 --y 32 --color "$hi"
+  d set-pixel --x 12 --y 29 --color "$hi"
 }
 
 # -------- Ferron — dull rust-brown flecks, #b8794a (common) -----------------
 newsprite 48 48 "$ORE/ferron.png"
-nugget 16 18 3 '#1c140d' '#b8794a' '#cf9968'
-nugget 30 14 2 '#1c140d' '#b8794a' '#cf9968'
-nugget 34 30 3 '#1c140d' '#b8794a' '#cf9968'
-nugget 20 34 2 '#1c140d' '#b8794a' '#cf9968'
-nugget 12 30 2 '#1c140d' '#a86a3e' '#cf9968'
-d set-pixel --x 40 --y 20 --color '#b8794a'
-d set-pixel --x 26 --y 26 --color '#a86a3e'
-d set-pixel --x 24 --y 42 --color '#b8794a'
+smear '#b8794a' '#e0b488' '#6e4123'
+# extra rust flecks for the "flecky" read
+d set-pixel --x 18 --y 24 --color '#a86a3e'
+d set-pixel --x 30 --y 20 --color '#a86a3e'
+d set-pixel --x 36 --y 26 --color '#cf9968'
+d set-pixel --x 14 --y 34 --color '#cf9968'
 
 # -------- Cuprite — teal-green nodules, #4fb0a0 -----------------------------
 newsprite 48 48 "$ORE/cuprite.png"
-d fill-circle --cx 18 --cy 20 --r 6 --color '#10201d'
-d fill-circle --cx 18 --cy 20 --r 5 --color '#4fb0a0'
-d fill-circle --cx 16 --cy 18 --r 2 --color '#7fd6c6'
-d fill-circle --cx 32 --cy 30 --r 5 --color '#10201d'
-d fill-circle --cx 32 --cy 30 --r 4 --color '#4fb0a0'
-d fill-circle --cx 30 --cy 28 --r 1 --color '#7fd6c6'
-d fill-circle --cx 33 --cy 15 --r 3 --color '#10201d'
-d fill-circle --cx 33 --cy 15 --r 2 --color '#4fb0a0'
-d set-pixel --x 12 --y 32 --color '#4fb0a0'
-d set-pixel --x 24 --y 38 --color '#7fd6c6'
+smear '#4fb0a0' '#9ce6d8' '#235f56'
+# rounder bright nodules riding the smear
+d fill-circle --cx 20 --cy 20 --r 2 --color '#7fd6c6'
+d fill-circle --cx 30 --cy 28 --r 2 --color '#7fd6c6'
+d set-pixel --x 20 --y 20 --color '#c4f4ec'
+d set-pixel --x 30 --y 28 --color '#c4f4ec'
 
 # -------- Argenite — bright silver seams, #cdd6e0 ---------------------------
 newsprite 48 48 "$ORE/argenite.png"
-# veiny metallic seams threading the rock
-d line --x0 8  --y0 14 --x1 22 --y1 20 --color '#8a94a0'
-d line --x0 8  --y0 13 --x1 22 --y1 19 --color '#cdd6e0'
-d line --x0 22 --y0 19 --x1 34 --y1 16 --color '#cdd6e0'
-d line --x0 34 --y0 16 --x1 42 --y1 24 --color '#cdd6e0'
-d line --x0 14 --y0 34 --x1 28 --y1 30 --color '#8a94a0'
-d line --x0 14 --y0 33 --x1 28 --y1 29 --color '#cdd6e0'
-d line --x0 28 --y0 29 --x1 38 --y1 36 --color '#cdd6e0'
-d line --x0 20 --y0 22 --x1 24 --y1 30 --color '#cdd6e0'
-# bright glints along the seams
-d set-pixel --x 22 --y 19 --color '#eef2f7'
-d set-pixel --x 34 --y 16 --color '#eef2f7'
-d set-pixel --x 28 --y 29 --color '#eef2f7'
-d set-pixel --x 14 --y 16 --color '#eef2f7'
+smear '#cdd6e0' '#f2f6fb' '#7a828e'
+# bright metallic seams threading along the smear (the "seamy" read)
+d line --x0 10 --y0 16 --x1 24 --y1 22 --color '#eef2f7'
+d line --x0 24 --y0 22 --x1 36 --y1 32 --color '#eef2f7'
+d line --x0 14 --y0 30 --x1 30 --y1 24 --color '#eef2f7'
+d set-pixel --x 24 --y 22 --color '#ffffff'
+d set-pixel --x 34 --y 30 --color '#ffffff'
 
 # -------- Voltite — electric-blue crystals, #5a8cff -------------------------
 newsprite 48 48 "$ORE/voltite.png"
-# angular crystal shards with a glowing core (drawn as stacked diamonds)
-d fill-circle --cx 18 --cy 22 --r 6 --color '#10182c'
-d line --x0 18 --y0 12 --x1 24 --y1 22 --color '#5a8cff'
-d line --x0 24 --y0 22 --x1 18 --y1 32 --color '#5a8cff'
-d line --x0 18 --y0 32 --x1 12 --y1 22 --color '#5a8cff'
-d line --x0 12 --y0 22 --x1 18 --y1 12 --color '#5a8cff'
-d fill-circle --cx 18 --cy 22 --r 2 --color '#a8c4ff'
-d set-pixel --x 18 --y 22 --color '#e8f0ff'
-d fill-circle --cx 33 --cy 30 --r 4 --color '#10182c'
-d line --x0 33 --y0 24 --x1 37 --y1 30 --color '#5a8cff'
-d line --x0 37 --y0 30 --x1 33 --y1 36 --color '#5a8cff'
-d line --x0 33 --y0 36 --x1 29 --y1 30 --color '#5a8cff'
-d line --x0 29 --y0 30 --x1 33 --y1 24 --color '#5a8cff'
-d set-pixel --x 33 --y 30 --color '#a8c4ff'
-d set-pixel --x 38 --y 16 --color '#5a8cff'
+smear '#5a8cff' '#b8d0ff' '#2a4488'
+# a small angular crystal glint riding the smear (drawn as a tiny diamond)
+d line --x0 20 --y0 15 --x1 24 --y1 20 --color '#a8c4ff'
+d line --x0 24 --y0 20 --x1 20 --y1 25 --color '#a8c4ff'
+d line --x0 20 --y0 25 --x1 16 --y1 20 --color '#a8c4ff'
+d line --x0 16 --y0 20 --x1 20 --y1 15 --color '#a8c4ff'
+d set-pixel --x 20 --y 20 --color '#e8f0ff'
+d set-pixel --x 30 --y 28 --color '#e8f0ff'
 
 # -------- Pyronium — glowing orange ore, #ff8a3a (deep) ---------------------
 newsprite 48 48 "$ORE/pyronium.png"
-# hot glowing nuggets with a bright core + soft halo
-d fill-circle --cx 20 --cy 20 --r 8 --color '#3a1c0a'
-d fill-circle --cx 20 --cy 20 --r 6 --color '#c4551f'
-d fill-circle --cx 20 --cy 20 --r 4 --color '#ff8a3a'
-d fill-circle --cx 20 --cy 20 --r 2 --color '#ffcf4a'
-d set-pixel   --x 20 --y 20 --color '#fff2d6'
-d fill-circle --cx 33 --cy 32 --r 5 --color '#3a1c0a'
-d fill-circle --cx 33 --cy 32 --r 3 --color '#ff8a3a'
-d fill-circle --cx 33 --cy 32 --r 1 --color '#ffcf4a'
-d set-pixel --x 30 --y 14 --color '#ff8a3a'
-d set-pixel --x 12 --y 34 --color '#ff8a3a'
+smear '#ff8a3a' '#ffd98a' '#a3491a'
+# a glowing hot core welling up through the smear (bright core + halo)
+d fill-circle --cx 24 --cy 23 --r 3 --color '#ffb347'
+d fill-circle --cx 24 --cy 23 --r 1 --color '#ffcf4a'
+d set-pixel --x 24 --y 23 --color '#fff2d6'
+d set-pixel --x 33 --y 31 --color '#ffcf4a'
 
 # -------- Adamite — rare aquamarine gem, #8affda ----------------------------
 newsprite 48 48 "$ORE/adamite.png"
-# ONE brilliant faceted gem (rare read) + a faint glow halo + a lone fleck
-d fill-circle --cx 24 --cy 24 --r 11 --color '#123a30'
-d fill-circle --cx 24 --cy 24 --r 9  --color '#1f5a4a'
-# faceted gem body
-d line --x0 24 --y0 12 --x1 34 --y1 24 --color '#8affda'
-d line --x0 34 --y0 24 --x1 24 --y1 36 --color '#8affda'
-d line --x0 24 --y0 36 --x1 14 --y1 24 --color '#8affda'
-d line --x0 14 --y0 24 --x1 24 --y1 12 --color '#8affda'
-d line --x0 24 --y0 12 --x1 24 --y1 36 --color '#5fd6b0'
-d line --x0 14 --y0 24 --x1 34 --y1 24 --color '#5fd6b0'
-d fill-circle --cx 24 --cy 24 --r 3 --color '#8affda'
-d fill-circle --cx 22 --cy 22 --r 1 --color '#e8fff4'
-# facet edge shadows + a stray fleck
-d line --x0 24 --y0 12 --x1 34 --y1 24 --color '#c4ffe8'
-d set-pixel --x 24 --y 12 --color '#e8fff4'
-d set-pixel --x 38 --y 38 --color '#8affda'
-d set-pixel --x 10 --y 12 --color '#8affda'
+# rarest ore: the smear plus one bright faceted gem glint at its heart
+smear '#8affda' '#e8fff4' '#3f8f76'
+d fill-circle --cx 24 --cy 23 --r 3 --color '#8affda'
+d line --x0 24 --y0 18 --x1 29 --y1 23 --color '#c4ffe8'
+d line --x0 29 --y0 23 --x1 24 --y1 28 --color '#c4ffe8'
+d line --x0 24 --y0 28 --x1 19 --y1 23 --color '#c4ffe8'
+d line --x0 19 --y0 23 --x1 24 --y1 18 --color '#c4ffe8'
+d set-pixel --x 23 --y 22 --color '#ffffff'
 
 # ================================================================================
 # MATERIAL NODES — richer & rarer than an ore vein (specs/mining.md). Resonite and
@@ -470,7 +629,7 @@ for (( f=0; f<LAVA_FRAMES; f++ )); do
 done
 
 echo "produced Deepcore world assets:"
-echo "  tiles/     topsoil rockbed deepstone coreshell bedrock tunnel tunnel-edge"
-echo "  ore/       ferron cuprite argenite voltite pyronium adamite"
+echo "  tiles/     {topsoil,rockbed,deepstone,coreshell}-{0,1,2} bedrock tunnel tunnel-edge"
+echo "  ore/       ferron cuprite argenite voltite pyronium adamite (embedded smears)"
 echo "  materials/ resonite cryenite core core-sample"
 echo "  hazards/   gas + lava/frame00..$(printf '%02d' $(( LAVA_FRAMES - 1 )))"
