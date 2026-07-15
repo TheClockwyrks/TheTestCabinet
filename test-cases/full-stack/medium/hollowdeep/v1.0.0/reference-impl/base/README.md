@@ -108,6 +108,4 @@ path, including a per-run sub-path.
   `@test-cabinet/particle-runtime`.
 - [`scripts/`](scripts/) — `gen-sprites.sh`, `gen-animations.sh`,
   `gen-particles.sh`, and `gen-audio.sh` (produce the committed assets with the
-  on-`PATH` asset tools; not run by the build) and `proof.mjs` (captures the
-  `proof/` artifacts with the project-local Playwright).
-- [`proof/`](proof/) — the proof-of-implementation captures (`specs/proof.md`).
+  on-`PATH` asset tools; not run by the build).
