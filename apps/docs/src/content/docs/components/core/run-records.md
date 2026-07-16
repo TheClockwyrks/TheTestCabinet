@@ -127,11 +127,19 @@ The harness version is not duplicated here; it lives in the subject.
   - **`timed_out`** — the run hit its maximum runtime and was stopped before the
     harness finished (the model never converged). A distinct publishable tier from
     `catastrophic`, likewise unscored.
+  - **`harness_error`** — the agent harness (or the orchestrator runner driving it)
+    exited **non-zero**: the model drove the harness to exit early. A real, reportable
+    model outcome, publishable without a review — but, unlike the other failure tiers,
+    it releases **no** source repo and no playable build; it is recorded only as a
+    per-model harness-error statistic (shown as a ring on the model page). Publishing
+    is never automatic — a subscription auth-token refresh also surfaces here and
+    must **not** be reported — so a human records each one deliberately from the same
+    publish-failures affordance the other tiers use.
   - **`infrastructure`** — the Test Cabinet's own infrastructure failed (the
-    harness errored or exited non-zero, the container would not start or pull, a
-    pod was OOM-killed, or seeding/init failed). Not the model's fault: retained
-    with a diagnostic detail, but **never** publishable and excluded from every
-    model statistic.
+    container would not start or pull, a pod was OOM-killed, or seeding/init failed).
+    Not the model's fault: retained with a diagnostic detail, but **never** publishable
+    and excluded from every model statistic. A harness that merely exited non-zero is
+    a `harness_error`, not this.
 
 ## Co-located Run Files
 

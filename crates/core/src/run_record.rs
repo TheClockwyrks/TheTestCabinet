@@ -291,8 +291,9 @@ pub struct RunLinks {
 /// how a run scores. Classified objectively at the point a run ends: a clean
 /// harness exit splits into [`Completed`](RunState::Completed) vs
 /// [`Catastrophic`](RunState::Catastrophic) on whether the output could be
-/// evaluated; a run stopped before the harness finished is
-/// [`TimedOut`](RunState::TimedOut) (the runtime cap) or
+/// evaluated; a harness that exits **non-zero** is a
+/// [`HarnessError`](RunState::HarnessError); a run stopped before the harness
+/// finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
 /// [`Infrastructure`](RunState::Infrastructure) (everything else).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -313,11 +314,24 @@ pub enum RunState {
     /// task). A distinct, publishable tier from [`Catastrophic`](RunState::Catastrophic);
     /// likewise unscored and reported as its own timeout statistic.
     TimedOut,
-    /// The Test Cabinet's own infrastructure failed: the harness binary errored or
-    /// exited non-zero, the container would not start or pull, a pod was OOM-killed,
-    /// or seeding / the case's init step failed. Not the model's fault — retained
-    /// with a diagnostic [`RunStatus::detail`] for debugging, but **never**
-    /// publishable and excluded from every model statistic.
+    /// The agent harness (or the orchestrator runner driving it) exited **non-zero**
+    /// — the model drove the harness to exit early, a real and reportable signal
+    /// about that model. Publishable **without** a review (recorded only as a
+    /// per-model harness-error statistic on the model page), but — unlike the other
+    /// failure tiers — it releases **no** source repo and no playable build: a
+    /// harness-error run produced no evaluable output worth releasing.
+    ///
+    /// Publishing is never automatic: a subscription auth-token refresh also
+    /// surfaces here as a non-zero exit and must **not** be reported, so a human
+    /// decides per run (through the same publish-failures affordance the other
+    /// tiers use) which harness errors to record.
+    HarnessError,
+    /// The Test Cabinet's own infrastructure failed: the container would not start
+    /// or pull, a pod was OOM-killed, or seeding / the case's init step failed. Not
+    /// the model's fault — retained with a diagnostic [`RunStatus::detail`] for
+    /// debugging, but **never** publishable and excluded from every model statistic.
+    /// A harness that merely exited non-zero is a
+    /// [`HarnessError`](RunState::HarnessError), not this.
     Infrastructure,
 }
 
@@ -331,21 +345,44 @@ impl RunState {
     }
 
     /// Whether this state is one of the publishable *failure* tiers
-    /// ([`Catastrophic`](RunState::Catastrophic) or [`TimedOut`](RunState::TimedOut)):
-    /// publishable without a review and excluded from the reviewer checklist score.
+    /// ([`Catastrophic`](RunState::Catastrophic), [`TimedOut`](RunState::TimedOut),
+    /// or [`HarnessError`](RunState::HarnessError)): publishable without a review and
+    /// excluded from the reviewer checklist score.
     pub fn is_publishable_failure(self) -> bool {
-        matches!(self, RunState::Catastrophic | RunState::TimedOut)
+        matches!(
+            self,
+            RunState::Catastrophic | RunState::TimedOut | RunState::HarnessError
+        )
     }
 
-    /// Classify a run that failed *before* producing an implementation. Only a
-    /// harness session stopped at the run's maximum runtime is a model outcome (the
-    /// model never converged) → [`TimedOut`](RunState::TimedOut); every other error
-    /// — including the harness's own non-zero exit, the harness-install or case-init
-    /// timeouts, and container/cluster faults — is the Test Cabinet's
+    /// Whether publishing a run in this state **releases** its produced artifacts —
+    /// a public source repository and (when it built) a playable build. True for the
+    /// code-carrying states ([`Completed`](RunState::Completed),
+    /// [`Catastrophic`](RunState::Catastrophic), [`TimedOut`](RunState::TimedOut));
+    /// false for a [`HarnessError`](RunState::HarnessError), which is recorded only as
+    /// a per-model statistic and releases nothing, and for the never-published
+    /// [`Infrastructure`](RunState::Infrastructure). Note this is about the *release*
+    /// step, not whether an asset-generation run has code to release — that gate is
+    /// [`TestType::releases_source_repo`](crate::TestType::releases_source_repo).
+    pub fn publishes_artifacts(self) -> bool {
+        matches!(
+            self,
+            RunState::Completed | RunState::Catastrophic | RunState::TimedOut
+        )
+    }
+
+    /// Classify a run that failed *before* producing an implementation. A harness
+    /// session stopped at the run's maximum runtime is a model outcome (the model
+    /// never converged) → [`TimedOut`](RunState::TimedOut); the harness (or its
+    /// orchestrator runner) exiting non-zero is a
+    /// [`HarnessError`](RunState::HarnessError) — the model drove it to exit early;
+    /// every other error — the harness-install or case-init timeouts and
+    /// container/cluster faults — is the Test Cabinet's
     /// [`Infrastructure`](RunState::Infrastructure).
     pub fn classify_failure(err: &crate::Error) -> RunState {
         match err {
             crate::Error::RunTimedOut { .. } => RunState::TimedOut,
+            crate::Error::HarnessInvocation { .. } => RunState::HarnessError,
             _ => RunState::Infrastructure,
         }
     }

@@ -159,6 +159,14 @@ requires depends on the run's [terminal state](/components/core/run-records/#sta
   or never converged). It has no review checklist to complete, so publishing it
   needs **no review**; it is published from a separate "publish failures"
   affordance rather than the review flow.
+- A **`harness_error`** run (the harness exited non-zero — the model drove it to
+  exit early) publishes through the **same** publish-failures affordance and
+  likewise needs **no review**, but it is a *statistic-only* publish: it releases
+  **no** source repository and no playable build (it produced nothing evaluable
+  worth releasing), and is recorded as a per-model harness-error rate shown on the
+  model page. Because a subscription auth-token refresh also surfaces as a harness
+  non-zero exit, publishing is never automatic — an operator records each real
+  harness error deliberately and leaves the auth-refresh ones unpublished.
 - An **`infrastructure`** failure is the Test Cabinet's own fault and is **never
   publishable** (`422`), no matter what reviews it carries.
 
@@ -189,10 +197,12 @@ retries with backoff), so a transient post-create `403` self-heals instead of
 failing the publish.
 
 The public snapshot, and therefore the gallery, contains **only published runs**.
-A published failure shows its generated source but has no playable build (it
-produced none); its catastrophic/timeout outcome is reported as a per-model
+A published catastrophic/timeout failure shows its generated source but has no
+playable build (it produced none); its outcome is reported as a per-model
 statistic, separate from the score that ranks the runs that were at least
-workable.
+workable. A published `harness_error` goes further and shows **no** source or
+build at all — it is purely a per-model harness-error rate (the ring on the model
+page), the share of a model's runs that drove the harness to exit early.
 
 The backend performs publish (and the snapshot regeneration it triggers) as the
 **synchronized** half of the lifecycle: because the backend is the single entity
