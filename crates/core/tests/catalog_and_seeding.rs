@@ -69,11 +69,11 @@ fn every_catalog_case_and_variant_resolves() {
 }
 
 #[test]
-fn resolves_trains_and_tension_game_jam() {
+fn resolves_dead_mans_switch_game_jam() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let resolved = catalog
-        .resolve("trains-and-tension", "v1.0.0")
-        .expect("resolve the trains-and-tension jam");
+        .resolve("dead-mans-switch", "v1.0.0")
+        .expect("resolve the dead-mans-switch jam");
 
     // A game jam: full-stack-style build, no domains, and the generic graded
     // checklist injected because the manifest declares no categories of its own.
