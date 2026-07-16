@@ -1292,7 +1292,10 @@ pub type CellCounts = HashMap<CellKey, u32>;
 fn cell_counts(rows: Vec<(String, String, String, String, String, i64)>) -> CellCounts {
     rows.into_iter()
         .map(|(slug, version, variant, harness, model, count)| {
-            ((slug, version, variant, harness, model), count.max(0) as u32)
+            (
+                (slug, version, variant, harness, model),
+                count.max(0) as u32,
+            )
         })
         .collect()
 }
@@ -1583,9 +1586,7 @@ impl Db {
         const CHUNK: usize = 1000;
         for chunk in jobs.chunks(CHUNK) {
             let models = chunk.iter().cloned().map(new_job_model);
-            job::Entity::insert_many(models)
-                .exec(&self.conn())
-                .await?;
+            job::Entity::insert_many(models).exec(&self.conn()).await?;
         }
         Ok(())
     }
