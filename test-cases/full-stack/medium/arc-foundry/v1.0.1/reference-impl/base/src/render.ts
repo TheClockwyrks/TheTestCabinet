@@ -319,7 +319,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
     return clicks;
   }
   if (game.state === "howto") {
-    drawHowto(ctx, clicks);
+    drawHowto(ctx, game, clicks);
     return clicks;
   }
 
@@ -444,34 +444,47 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   drawMergePulses(ctx, game);
 }
 
-// A pulsing marker on every structure involved in the current combine/recipe (specs/build.md).
-// The selected candidate (primary) pulses in the harvest accent; each partner it will consume
-// pulses too. Committed harvests use the gold combo accent; a not-yet-committed selection uses
-// the neutral charge accent to read as "these COULD merge".
+// A pulsing marker on the pieces that can combine (specs/build.md). AMBIENT layer: every piece
+// that could fold into some combine right now pulses softly AT ALL TIMES — the pulse's job is to
+// announce, unprompted, that combines are available and which pieces can merge, so it must not
+// wait on a selection. FOCUSED layer: once a base piece is selected, the exact set it will fold
+// (its quality match + reachable combo ingredients, or the explicit multi-select) pulses brighter
+// on top — committed sets in the gold combo accent, an uncommitted selection in the charge accent.
 function drawMergePulses(ctx: CanvasRenderingContext2D, game: Game): void {
-  const mh = game.mergeHighlight();
-  if (mh.primaryId == null && mh.partnerIds.size === 0) return;
-  const accent = mh.committed ? COL.combo : COL.charge;
-  const pulse = 0.5 + 0.5 * Math.sin(time * 6); // 0..1
   const byId = new Map<number, Structure>();
   for (const s of game.structures) byId.set(s.id, s);
-  const markOne = (id: number, primary: boolean): void => {
+  const markOne = (id: number, accent: string, primary: boolean, ambient: boolean): void => {
     const s = byId.get(id);
     if (!s) return;
     const ctr = footprintCenter(s.col, s.row);
     const half = FOOTPRINT_PX / 2;
-    const grow = primary ? 4 + 3 * pulse : 3 + 3 * pulse;
+    // The ambient layer breathes slower and softer than the focused one so it reads as a hint,
+    // not a commitment.
+    const pulse = ambient ? 0.5 + 0.5 * Math.sin(time * 3) : 0.5 + 0.5 * Math.sin(time * 6);
+    const grow = (primary ? 4 : 3) + 3 * pulse;
     ctx.save();
     // A soft glow, then a pulsing rounded ring hugging the 2×2 footprint.
-    glow(ctx, ctr.x, ctr.y, half + 12 + 6 * pulse, accent, 0.12 + 0.14 * pulse);
+    glow(ctx, ctr.x, ctr.y, half + 12 + 6 * pulse, accent, (ambient ? 0.05 : 0.12) + (ambient ? 0.07 : 0.14) * pulse);
     roundRect(ctx, ctr.x - half - grow, ctr.y - half - grow, (half + grow) * 2, (half + grow) * 2, 6);
-    ctx.strokeStyle = hexA(accent, 0.5 + 0.45 * pulse);
-    ctx.lineWidth = primary ? 2.5 : 2;
+    ctx.strokeStyle = hexA(accent, (ambient ? 0.22 : 0.5) + (ambient ? 0.22 : 0.45) * pulse);
+    ctx.lineWidth = ambient ? 1.5 : primary ? 2.5 : 2;
+    ctx.setLineDash(ambient ? [5, 4] : []);
     ctx.stroke();
     ctx.restore();
   };
-  if (mh.primaryId != null) markOne(mh.primaryId, true);
-  for (const id of mh.partnerIds) markOne(id, false);
+
+  // Ambient: pulse everything that could combine, skipping the pieces the focused layer will
+  // draw brighter so they don't muddy each other.
+  const mh = game.mergeHighlight();
+  const focused = new Set<number>(mh.partnerIds);
+  if (mh.primaryId != null) focused.add(mh.primaryId);
+  for (const id of game.combinablePieces()) if (!focused.has(id)) markOne(id, COL.charge, false, true);
+
+  // Focused: the selection's exact fold, on top.
+  if (mh.primaryId == null && mh.partnerIds.size === 0) return;
+  const accent = mh.committed ? COL.combo : COL.charge;
+  if (mh.primaryId != null) markOne(mh.primaryId, accent, true, false);
+  for (const id of mh.partnerIds) markOne(id, accent, false, false);
 }
 
 // The waypoint PLATFORMS — each interior waypoint is a 4-tile T of walkable-but-never-
@@ -1518,10 +1531,15 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     stack(`DOWNGRADE ▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, true, 24);
   }
 
-  // Quality COMBINE (immediate, any phase) — fold a matching (type+tier) pair one rung higher.
+  // Quality COMBINE — fold a matching (type+tier) pair one rung higher. A fold that consumes a
+  // fresh roll is a COMBINE SPECIAL that ENDS the build phase (specs/build.md); a fold of only
+  // standing towers is a plain COMBINE that leaves the phase running (and is the wave-time combine).
   if (canComb) {
-    stack(explicit ? "COMBINE SELECTED ▲" : "COMBINE ▲", "combine", TIER_COLOR[nt], true);
-    text(ctx, `→ ${TIER_NAME[nt]} · DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}`, x, ay + 4, 8, TIER_COLOR[nt], "left", "600", 0.2);
+    const special = game.qualityCombineIsSpecial(sid);
+    const label = special ? "COMBINE SPECIAL ▲" : explicit ? "COMBINE SELECTED ▲" : "COMBINE ▲";
+    stack(label, "combine", special ? COL.combo : TIER_COLOR[nt], true);
+    const tail = special ? " · ends build" : "";
+    text(ctx, `→ ${TIER_NAME[nt]} · DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}${tail}`, x, ay + 4, 8, special ? COL.combo : TIER_COLOR[nt], "left", "600", 0.2);
   }
 
   // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
@@ -1545,6 +1563,9 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
       ctx.lineWidth = 1;
       ctx.stroke();
       text(ctx, def.name, x + 8, ry + 10, 10, def.color, "left", "700", 0.3);
+      // A recipe that folds in a fresh roll is a COMBINE SPECIAL — assembling it ENDS the build
+      // phase (specs/build.md); flag it so the player knows the wave will launch.
+      if (game.recipeCombineIsSpecial(sid, rec.combo)) text(ctx, "SPECIAL · ENDS BUILD", x + w - 8, ry + 10, 7, COL.combo, "right", "700", 0.3);
       const tags = abilityTags(def);
       const prev = `${land.dmg} dmg (Lv0) · ${Math.round(land.range)} r${tags ? " · " + tags : ""}`;
       text(ctx, prev, x + 8, ry + 22, 8, COL.text2, "left", "500", 0.2);
@@ -1937,30 +1958,60 @@ function drawDifficultySelect(ctx: CanvasRenderingContext2D, game: Game, clicks:
 
 // ---- how to play --------------------------------------------------------------
 
-function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
+function drawHowto(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
-  text(ctx, "HOW TO PLAY", STAGE_W / 2, 44, 26, COL.text, "center", "700", 4);
-  const lines: [string, string][] = [
-    ["GOAL", "The Load spills from the feeder vent and crawls to the grounding collector. Every unit that grounds out costs Grid Integrity; at 0 the grid overloads and you lose. Clear all the waves with integrity left to win."],
-    ["THE MAZE", "Every component, candidate, AND blocker is a 2×2 WALL. The Load must reach each ordered 4-tile waypoint PLATFORM in sequence, taking the shortest OPEN route around your walls — so building lengthens its route. You cannot build on a platform and can never fully seal a segment (a sealing placement is refused); the floor re-paths live as walls change."],
-    ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to arm a BLANK rock, then drop it on a legal spot — the instant it lands it ROLLS a random component type and quality (weighted low). Placing is FREE: place up to 5 rocks per level, back-to-back, until the allowance runs out."],
-    ["KEEP ONE, COMBINE MANY", "You KEEP (K) exactly ONE rock per level as a firing tower; every rock you don't keep or combine hardens into an inert BLOCKER at SEND. But COMBINING is separate and IMMEDIATE — do it as often as you like, in the build phase AND during a live wave — so folding rolls together is how you keep MORE than one tower off a level. DOWNGRADE (G) a selected tower one tier if the press over-rolled a quality you didn't need. DISMANTLE (X, between waves) — no refund."],
-    ["COMBINING", "COMBINE (C) two same-TYPE + same-QUALITY pieces into one a tier higher, or fold a recipe of pieces into a COMBINATION TOWER — immediately, any time. Ingredients can be fresh rolls OR standing towers, and the result lands at whichever piece you triggered from (so you can REPLACE an existing tower). SHIFT-click extra pieces to pick EXACTLY which copies fold; combine with nothing shift-selected and the game resolves the set for you."],
-    ["UPGRADE QUALITY", "Spend Charge on UPGRADE QUALITY (U) to raise your Refinement level R0→R5, biasing every future roll toward the higher tiers of the ladder Scrap→Tuned→Charged→Primed→Tesla-Prime. Refinement is the odds; combining is the direct climb."],
-    ["COMPONENTS", "Eight base types: Capacitor (single bolt), Coil (chain-lightning), Emitter (rapid spark), Arc-Node (area discharge), Discharge Rig (heavy long-range bolt), Choke (slows what it hits), Rectifier (overcurrent burn / damage-over-time), and Regulator (a NON-firing support node whose aura buffs nearby towers). All firing types hit ground and air. Select one to read its stats and cycle its TARGET (T). The Filament flies and ignores the maze — air only arrives every 4th wave."],
-    ["COMBINATION TOWERS", "The apex play: some multisets of base pieces fold into a unique COMBINATION TOWER (splash + burn + crit + aura in one). The inspector lists every combo a selected piece can assemble right now — click COMBINE → <tower> to build it. A combo LANDS WEAK at level 0 and is UPGRADED (U, select it) with Charge up to level 3 — a softer power spike and a Charge sink. Combos are terminal (gold badge)."],
-    ["ECONOMY & RATING", "Kills pay a thin Charge bounty and clearing a wave pays a small bonus — there is no interest, so Charge is scarce and every stamp, refine, and combo upgrade is a real choice. There is NO score: after the final wave, an unkillable OVERLOAD DYNAMO walks your maze once, and the total damage you deal it is your MAZE RATING. Integrity only decides win/lose."],
-    ["READ THE YARD", "The top bar shows your MAZE LENGTH — hover it to trace the Load's full ground path (air ignores the maze). The scrap-press shows live QUALITY ODDS for your next roll, and combinable pieces PULSE to show what will merge. Toggle the COMBOS recipe book (V) and the live DMG BOARD (L) ranking your towers by damage."],
-    ["CONTROLS", "B stamp · click place · click select · SHIFT-click multi-select · K keep · C combine · G downgrade · X dismantle (between waves) · U upgrade quality / upgrade selected combo · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · V combos book · L damage board · Esc cancel then pause menu · M mute."],
+  text(ctx, "HOW TO PLAY", STAGE_W / 2, 68, 30, COL.text, "center", "700", 5);
+  text(ctx, "Press scrap into towers, maze the Load, and hold the grid.", STAGE_W / 2, 104, 14, COL.text2, "center", "400", 0.5);
+
+  // Only what you must know to play — heading, accent, body. Everything else (per-type stats,
+  // refinement odds, HUD toggles) is discoverable in-game and deliberately left off this screen.
+  const cards: [string, string, string][] = [
+    ["GOAL", COL.integrity, "The Load spills from the vent and crawls to the collector. Every unit that grounds out drains Grid Integrity — at 0 the grid overloads and you lose. Clear every wave with integrity to spare and you win."],
+    ["THE SCRAP-PRESS", COL.charge, "You don't buy towers — you press them. B drops a FREE blank rock; the instant it lands it rolls a random tower type and quality. Place up to 5 rocks a round."],
+    ["BUILD THE MAZE", COL.arc, "Every rock, tower, and blocker is a 2×2 WALL. The Load takes the shortest OPEN path through the numbered waypoints, so your walls send it the long way — past your guns. You can never seal a lane shut."],
+    ["KEEP & COMBINE", COL.regulator, "Each round you take ONE new tower: KEEP a roll, or fold this round's rolls into a stronger one with COMBINE SPECIAL (which ends the round). Anytime — even mid-wave — a plain COMBINE folds your STANDING towers to climb quality and build elite COMBINATION TOWERS."],
+    ["SEND & SCORE", COL.combo, "SPACE sends the wave; survive it and the next build phase opens. After the final wave an unkillable OVERLOAD DYNAMO walks your maze once — the damage your towers deal it is your MAZE RATING."],
   ];
-  let y = 82;
-  for (const [k, v] of lines) {
-    text(ctx, k, 110, y, 12, COL.integrity, "left", "700", 1);
-    y = wrap(ctx, v, 288, y, 860, 12, COL.text2, 15) + 5;
+
+  const colX = [150, 682];
+  const colW = 448;
+  const colY = [162, 162];
+  for (let i = 0; i < cards.length; i++) {
+    const c = i % 2;
+    const [k, accent, body] = cards[i]!;
+    const x = colX[c]!;
+    let y = colY[c]!;
+    ctx.fillStyle = hexA(accent, 0.9);
+    ctx.fillRect(x, y - 9, 3, 18);
+    text(ctx, k, x + 14, y, 15, accent, "left", "700", 1.5);
+    y = wrap(ctx, body, x, y + 26, colW, 14, COL.text2, 20) + 22;
+    colY[c] = y;
   }
+
+  // A single controls strip below the taller column — the keys, nothing more.
+  const fy = Math.max(colY[0]!, colY[1]!) + 6;
+  ctx.strokeStyle = hexA(COL.text3, 0.4);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(150, fy);
+  ctx.lineTo(1130, fy);
+  ctx.stroke();
+  text(ctx, "CONTROLS", 150, fy + 22, 12, COL.text3, "left", "700", 1.5);
+  wrap(
+    ctx,
+    "B press · click place / select · SHIFT-click multi-select · K keep · C combine · U upgrade · T target · SPACE send wave / pause · F speed · Esc menu · M mute",
+    150,
+    fy + 44,
+    980,
+    13,
+    COL.text2,
+    20,
+  );
+
   const bx = STAGE_W / 2 - 90;
-  button(ctx, clicks, bx, STAGE_H - 44, 180, 34, "BACK", "menu:back", COL.text, true);
+  const onBack = highlighted(game, 0, bx, STAGE_H - 52, 180, 38);
+  button(ctx, clicks, bx, STAGE_H - 52, 180, 38, "BACK", "menu:back", onBack ? COL.charge : COL.text, true);
 }
 
 // ---- overlays -----------------------------------------------------------------

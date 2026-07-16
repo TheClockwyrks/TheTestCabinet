@@ -27,11 +27,13 @@ Most building — pulling the press, placing rocks, **keeping**, **downgrading**
 quality**, **upgrading a combo**, and **dismantling** — happens **only during a
 build phase** (`specs/flow.md`). While a wave is running those controls are disabled.
 
-Two things are **not** restricted to the build phase and may be done at any time, including
-during a live wave: **changing a component's targeting**, and **combining** (a quality-climb
-or a combination-tower recipe). Combining is an immediate action decoupled from the build
-loop, so a player can fold towers together mid-wave as the situation demands
-(`specs/build.md`).
+Two things are **not** restricted to the build phase and may be done during a live wave:
+**changing a component's targeting**, and a **plain COMBINE** of **standing** towers (a
+quality-climb or combination-tower recipe folding only pieces already on the yard). Combining
+a **fresh candidate** — a rock placed this phase — is different: it is a **COMBINE SPECIAL**,
+the level's one harvest, and it **ends the build phase** (`specs/build.md`), so it exists only
+in the build phase (candidates do not survive into a wave). Mid-wave, then, a player folds
+their standing towers together as the situation demands, but never spends a fresh roll.
 
 ## Stamping and placing a rock (the scrap-press)
 
@@ -88,29 +90,38 @@ Show the same odds while a blank rock is held.
   action (below).
 - **Multi-select (for combining).** **Shift-click** additional base structures (candidates
   or base components) to add them to an explicit **combine set** alongside the primary; the
-  set's members pulse on the board. Combining then folds **exactly** that set (a matched
-  pair, or a recipe multiset), so a player can choose precisely which duplicate copies to
-  merge. A plain (non-shift) click clears the set back to a single selection.
+  set's members pulse **brighter** than the ambient combinable-piece pulse (below). Combining
+  then folds **exactly** that set (a matched pair, or a recipe multiset), so a player can
+  choose precisely which duplicate copies to merge — and, in particular, pick **standing**
+  towers only for a plain COMBINE that keeps the build phase open. A plain (non-shift) click
+  clears the set back to a single selection.
 - **Keep.** With a **candidate** selected during the build phase, click **KEEP** or
   press **`K`** to mark it as this level's kept roll (`specs/build.md`). Only one
   candidate is ever the kept one; keeping another moves the choice. The keep is
   reversible until you send the wave, when the kept candidate becomes a permanent firing
   component and every other candidate hardens into a blocker.
-- **Combine — two kinds, immediate.** With a **base structure** (a candidate **or** a base
-  component) selected, the inspector may offer combine actions. A combine resolves **the
-  instant you commit it** — it is **not** the level's harvest, does not consume your keep,
-  may be done **any number of times** per level, and is allowed **during a live wave**. Each
-  costs **no Charge** and fires a **combine flash** VFX (`specs/assets.md`). The result lands
-  at the **primary** (initiating) piece's footprint, so a combine can **replace a standing
-  tower**. While a piece is selected, the pieces that would **fold together** are marked on
-  the yard with a **pulsing highlight** so the player sees exactly what merges. With an
-  explicit **shift-multi-select**, the exact chosen copies fold; otherwise the game resolves
-  the ingredients itself (`specs/build.md`).
-  - **Quality-combine.** A **COMBINE** action appears when the selected piece has a matching
-    **candidate or base component** of the same type **and** same quality on the board
-    (`specs/build.md`). Clicking it, or pressing **`C`**, immediately produces one component
-    a tier higher at the initiating piece's footprint and consumes the partner — whose
-    footprint **hardens into a blocker** so the maze is unchanged. A **Tesla-Prime** piece
+- **Combine — immediate; ends the phase only if it spends a fresh roll.** With a **base
+  structure** (a candidate **or** a base component) selected, the inspector may offer combine
+  actions, resolving **the instant you commit it** for **no Charge** with a **combine flash**
+  VFX (`specs/assets.md`). The result lands at the **primary** (initiating) piece's footprint,
+  so a combine can **replace a standing tower**. What it consumes sets its kind
+  (`specs/build.md`): folding in **≥1 fresh candidate** is a **COMBINE SPECIAL** — the level's
+  one harvest — which **ends the build phase and launches the wave**, superseding any marked
+  KEEP; folding **only standing towers** is a plain **COMBINE** that is not a harvest and leaves
+  the phase running (the only combine allowed **during a live wave**). The inspector labels the
+  action **COMBINE SPECIAL** (with an *ends build* note) or **COMBINE** accordingly. With an
+  explicit **shift-multi-select**, the exact chosen copies fold; otherwise the game resolves the
+  ingredients itself, **always preferring to consume a fresh candidate over a standing tower**
+  (`specs/build.md`). Every base structure that could combine right now **pulses on the board at
+  all times** so the player is shown which pieces can merge without selecting anything; the
+  selected fold pulses brighter.
+  - **Quality-combine.** A **COMBINE / COMBINE SPECIAL** action appears when the selected piece
+    has a matching **candidate or base component** of the same type **and** same quality on the
+    board (`specs/build.md`). Clicking it, or pressing **`C`**, immediately produces one
+    component a tier higher at the initiating piece's footprint and consumes the partner — whose
+    footprint **hardens into a blocker** so the maze is unchanged. It reads **COMBINE SPECIAL**
+    and ends the phase when the selected piece or its auto-picked partner is a fresh candidate,
+    or **COMBINE** (phase stays open) when both are standing towers. A **Tesla-Prime** piece
     offers no quality-combine.
   - **Recipe-combine.** When the board (candidates **and/or** existing base components),
     together with the selected initiator, holds the exact multiset of `(type, quality)`
@@ -119,8 +130,11 @@ Show the same odds while a blank rock is held.
     it would build. Clicking that action immediately assembles it: the combination tower
     lands at the initiator's footprint (landing at **upgrade level 0**), and **every consumed
     ingredient footprint hardens into a blocker** — wall-neutral, never opening a hole
-    (`specs/build.md`, `specs/board.md`). A combo is not a base structure, so it never
-    itself offers a COMBINE.
+    (`specs/build.md`, `specs/board.md`). A recipe that folds in a fresh candidate is a
+    **COMBINE SPECIAL** (flagged *ends build*) and ends the phase — including the **one-shot**
+    where every ingredient was placed this phase; a recipe of only standing towers is a plain
+    COMBINE that keeps the phase open. A combo is not a base structure, so it never itself
+    offers a COMBINE.
 - **Downgrade.** With a **base structure** at Tuned (T2) or above selected in the build
   phase, the inspector shows a **DOWNGRADE** control — or press **`G`** — that drops it one
   quality tier in place, for **no Charge** and no refund (`specs/build.md`). It is a
