@@ -56,10 +56,13 @@ exotic materials is found (`specs/mining.md`, `specs/rocket.md`).
 
 The transition between bands is a visible change in the rock fill (and, in the
 coreshell, a rising orange glow), so the player reads their depth from the world, not
-only the meter. Band hardness sets how long a tile takes to drill and which drill
-tiers can break it at all (`specs/character.md`, `specs/upgrades.md`): the topsoil
-yields to the starting drill, but the deepstone and coreshell need upgraded drills to
-dig at a workable speed — one of the ways the economy paces the descent.
+only the meter. Band hardness sets each tile's **health** — topsoil `4`, rockbed `8`,
+deepstone `12`, coreshell `16` — which the drill removes in **damage-per-hit** chunks, so
+a deeper band takes more hits, and thus more **time and fuel**, to break
+(`specs/character.md`, `specs/upgrades.md`): the topsoil yields to the starting drill in a
+few hits, but the deepstone and coreshell take many hits on a weak drill (slow and
+fuel-hungry) and need upgraded drills to dig at a workable speed and cost — one of the ways
+the economy paces the descent.
 
 ## Tile kinds
 
@@ -71,17 +74,21 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
   miner cannot enter it. It bounds the playable space.
 - **Earth / Rock / Deepstone / Coreshell** — the plain **minable dirt/rock** of each
   band. Drilling one (`specs/character.md`) removes it, leaving an **empty tunnel**, and
-  yields nothing. Its drill time is set by the band's hardness and the miner's drill
-  tier. Each band's rock must be drawn from **several interchangeable tile variants**
+  yields nothing. It has **health** set by the band's hardness (topsoil `4` to coreshell
+  `16`) that the miner's drill removes in **damage-per-hit** chunks, so the time and fuel to
+  break it depend on the band's health and the miner's drill tier (`specs/upgrades.md`); the
+  damage **persists** on the tile, so a partly-drilled tile keeps its progress if the cut is
+  abandoned. Each band's rock must be drawn from **several interchangeable tile variants**
   (at least three), chosen per cell so that a wall of the same band does **not visibly
   repeat a single tiled texture** — the rock should read as natural, varied ground, not
   a grid of one identical stamp. The variants share the band's fill and palette (so they
   read as the same depth); only the clump/crack/fleck layout differs. The texture must
   read as **roughly uniform dirt/rock** — a fine, even grain across the whole tile, **not
   a few large clear blotches** that make the ground look patchy and artificial
-  (`specs/assets.md`). While a tile is being drilled, a **damage overlay** (a produced
-  crack sprite that deepens over several frames as the cut progresses) is drawn on it so
-  the dig visibly makes progress (`specs/character.md`, `specs/assets.md`).
+  (`specs/assets.md`). A tile that has taken **drill damage** shows a **damage overlay** (a
+  produced crack sprite whose frame deepens with the tile's damage fraction) so the dig
+  visibly makes progress; because damage **persists**, a partly-drilled tile keeps its
+  cracks even after the miner moves away (`specs/character.md`, `specs/assets.md`).
 - **Unbreakable stone** — a hard, dark **boulder** tile scattered through the rock from
   the rockbed down (below) — the topsoil's first stratum stays clean, easy dirt.
   **Unminable and impassable** like the bedrock border — **no

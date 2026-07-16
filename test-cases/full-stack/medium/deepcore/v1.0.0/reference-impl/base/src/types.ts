@@ -36,6 +36,14 @@ export interface Tile {
   ore?: Ore;
   /** For `material` tiles: which buried material node this is. */
   material?: Material;
+  /**
+   * Remaining tile HEALTH (specs/character.md). Undefined until the tile is first drilled,
+   * at which point it is seeded to the band's `maxHealth`; each drill hit subtracts the
+   * drill's damage-per-hit. Damage PERSISTS on the grid: a tile drilled partway and then
+   * abandoned keeps its reduced health (and shows its cracks), so resuming continues from
+   * where it left off rather than restarting from full. The tile breaks at `health <= 0`.
+   */
+  health?: number;
   /** True once a minable cell has been drilled out (redundant with kind === tunnel). */
   mined?: boolean;
 }
@@ -136,10 +144,13 @@ export interface DrillProgress {
   row: number;
   /** Direction the miner is drilling. */
   dir: "down" | "left" | "right";
-  /** Seconds elapsed on the current tile. */
-  elapsed: number;
-  /** Total drill time for this tile (hardness / power). */
-  total: number;
+  /**
+   * Seconds until the next drill HIT lands (counts down; on reaching 0 a hit is applied —
+   * damage subtracted from the target tile's health, fuel spent — and it is reset by
+   * HIT_INTERVAL). The tile's remaining health lives on the Tile itself (so it persists if
+   * the cut is abandoned), not here — this only tracks the hit cadence for the active cut.
+   */
+  hitTimer: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -13,40 +13,82 @@ The seven tracks are **fuel tank**, **drill**, **cargo bay**, **hull**, **jetpac
 Each track has **five tiers**; you start at **tier 1** on every track and buy the next
 tier in order (you cannot skip). The shop shows, per track, the current tier, what the
 next tier gives, and its price, greying out a track that is maxed or unaffordable. A
-purchase deducts the price immediately and applies at once (a bigger tank raises your
-maximum fuel — you still buy the extra fuel itself at the Fuel Depot, `specs/flow.md`;
-a stronger drill takes effect on the next dig).
+purchase deducts the price immediately and applies at once: a stronger drill takes effect
+on the next dig; a bigger **fuel tank** or **hull** raises the maximum **and grants the
+added capacity as usable fuel/hull right then** — buying a `100 → 175` tank at `30/100`
+fuel makes it `105/175` (the `+75` of new capacity is filled in immediately), but it is
+**not** a free top-up to full — you still buy the rest of the fuel at the Fuel Depot
+(`specs/character.md`, `specs/flow.md`).
+
+## Prices — a tier is a layer
+
+The four purchasable steps on every track are priced so that **each tier roughly
+corresponds to a depth band**, costing about **five units of that band's signature ore**
+(`specs/mining.md`) — so the band you dig to fund a tier is the band that tier gears you
+for. Ore values are fixed (`specs/mining.md`); the anchor is `5 × signature-ore value`:
+
+| Step | Funding band (signature ore) | `5 × value` | Price |
+| --- | --- | --- | --- |
+| tier 1 → 2 | Topsoil (Cuprite `65`) | `~325` | `300` |
+| tier 2 → 3 | Rockbed (Argenite `150`) | `750` | `750` |
+| tier 3 → 4 | Deepstone (Voltite `380`) | `1900` | `1900` |
+| tier 4 → 5 | Coreshell (Pyronium `820`) | `4100` | `4100` |
+
+All **seven tracks share this ladder** — `— / 300 / 750 / 1900 / 4100` (tier 1 is the free
+start) — so at any given tier every track costs about the same "five ores of the layer you
+are in". This keeps every per-track price table below identical; the tables still list the
+price per tier for reference.
 
 ## Fuel tank — how deep a round trip reaches
 
 Sets the **maximum fuel** (`specs/character.md`). More fuel is more depth per trip,
-because the climb back is what fuel is spent on.
+because the climb back is what fuel is spent on. Buying a bigger tank **adds the capacity
+increase to your current fuel immediately** (a `100 → 175` tank at `30/100` becomes
+`105/175`), not a free fill to full — you still buy the rest at the Fuel Depot.
 
 | Tier | Max fuel | Price |
 | --- | --- | --- |
 | 1 | `100` | — (start) |
-| 2 | `175` | `220` |
-| 3 | `275` | `600` |
-| 4 | `400` | `1400` |
-| 5 | `550` | `3000` |
+| 2 | `175` | `300` |
+| 3 | `275` | `750` |
+| 4 | `400` | `1900` |
+| 5 | `550` | `4100` |
 
-## Drill — how fast (and how deep) you can dig
+## Drill — damage per hit (and the fuel it costs)
 
-Sets the drill **power** (`specs/character.md`), which divides into tile hardness to
-give the **drill time** per tile. A tile whose band hardness exceeds the drill's power
-still drills, but **slowly** — so the deep bands are a soft gate until you buy up.
+Every minable tile has **health** set by its band's hardness (`specs/world.md`,
+`specs/character.md`): **topsoil `4` / rockbed `8` / deepstone `12` / coreshell `16`**.
+The drill deals **damage per hit**, and hits land on a fixed cadence
+(`0.125 s` per hit); each hit **spends `0.25` fuel**. The number of hits to break a tile
+is `ceil(tileHealth / damagePerHit)`, so the **time** to drill a tile is
+`hits × 0.125 s` and the **fuel** it costs is `hits × 0.25`. Two consequences fall out of
+this and are the point of the model:
 
-| Tier | Power | Drill time by band hardness (seconds/tile) — H1 / H2 / H3 / H4 | Price |
-| --- | --- | --- | --- |
-| 1 | `1` | `0.5 / 1.4 / 3.2 / 6.0` | — (start) |
-| 2 | `2` | `0.35 / 0.7 / 1.6 / 3.0` | `260` |
-| 3 | `3` | `0.28 / 0.5 / 0.9 / 1.7` | `700` |
-| 4 | `4` | `0.22 / 0.4 / 0.6 / 0.9` | `1600` |
-| 5 | `5` | `0.18 / 0.32 / 0.45 / 0.6` | `3200` |
+- **Harder soil costs more fuel, not just more time.** A deeper band has more health, so
+  more hits, so more fuel — a coreshell tile costs the tier-1 drill four times the fuel of
+  a topsoil tile, so a deep dig that has not bought up the drill **bleeds fuel** as it goes.
+- **A stronger drill cuts both the fuel and the time.** More damage per hit means fewer
+  hits, which lowers **both** the seconds and the fuel for a given band — buying up the
+  drill is what makes the deep bands dig at a workable pace *and* a bearable fuel cost.
 
-(H1 = topsoil, H2 = rockbed, H3 = deepstone, H4 = coreshell, `specs/world.md`. The
-tier-1 drill takes six seconds a tile in the coreshell — passable but punishing — so
-the coreshell is effectively reachable only with a mid-to-high drill.)
+The drill's **damage per hit** by tier, and the resulting **hits / time / fuel per tile**
+in each band (H1 = topsoil `4` hp, H2 = rockbed `8`, H3 = deepstone `12`, H4 = coreshell
+`16`):
+
+| Tier | Damage/hit | H1 hits · s · fuel | H2 hits · s · fuel | H3 hits · s · fuel | H4 hits · s · fuel | Price |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `1` | `4 · 0.50 · 1.00` | `8 · 1.00 · 2.00` | `12 · 1.50 · 3.00` | `16 · 2.00 · 4.00` | — (start) |
+| 2 | `2` | `2 · 0.25 · 0.50` | `4 · 0.50 · 1.00` | `6 · 0.75 · 1.50` | `8 · 1.00 · 2.00` | `300` |
+| 3 | `3` | `2 · 0.25 · 0.50` | `3 · 0.375 · 0.75` | `4 · 0.50 · 1.00` | `6 · 0.75 · 1.50` | `750` |
+| 4 | `4` | `1 · 0.125 · 0.25` | `2 · 0.25 · 0.50` | `3 · 0.375 · 0.75` | `4 · 0.50 · 1.00` | `1900` |
+| 5 | `5` | `1 · 0.125 · 0.25` | `2 · 0.25 · 0.50` | `3 · 0.375 · 0.75` | `4 · 0.50 · 1.00` | `4100` |
+
+A **topsoil tile at the tier-1 drill is exactly `1.0` fuel** — the same flat cost the early
+game had before this model, so the top of the mine is not made harder. The coreshell at
+tier 1 is `4.0` fuel a tile (a soft gate on fuel as much as on time); by tier 5 it is back
+to `1.0`. **Damage persists on the tile:** drill a tile partway and move away and it keeps
+its accrued damage — resuming continues from where it left off, and the fuel already spent
+is not refunded (`specs/character.md`).
 
 ## Cargo bay — how many ore you can haul per trip
 
@@ -58,23 +100,26 @@ whether the **jetpack** can lift it (`specs/character.md`), independent of the s
 | Tier | Capacity (ore slots) | Price |
 | --- | --- | --- |
 | 1 | `15` | — (start) |
-| 2 | `25` | `200` |
-| 3 | `40` | `550` |
-| 4 | `70` | `1300` |
-| 5 | `120` | `2800` |
+| 2 | `25` | `300` |
+| 3 | `40` | `750` |
+| 4 | `70` | `1900` |
+| 5 | `120` | `4100` |
 
 ## Hull — surviving the deep
 
 Sets the **maximum hull** (`specs/character.md`). More hull survives more gas blasts,
-lava brushes, and hard landings — essential for the core run.
+lava brushes, and hard landings — essential for the core run. Like the fuel tank, buying a
+bigger hull **adds the capacity increase to your current hull immediately** (a `100 → 150`
+hull at `40/100` becomes `90/150`), not a free repair to full — you still buy the rest of
+the repair at the Fuel Depot.
 
 | Tier | Max hull | Price |
 | --- | --- | --- |
 | 1 | `100` | — (start) |
-| 2 | `150` | `240` |
-| 3 | `220` | `640` |
-| 4 | `320` | `1500` |
-| 5 | `450` | `3100` |
+| 2 | `150` | `300` |
+| 3 | `220` | `750` |
+| 4 | `320` | `1900` |
+| 5 | `450` | `4100` |
 
 ## Jetpack (engine) — lifting weight and climbing speed
 
@@ -89,10 +134,10 @@ is the tier's empty-load climb-speed cap.
 | Tier | Lift (kg total) | Climb (px/s) | Price |
 | --- | --- | --- | --- |
 | 1 | `~455` | `180` | — (start) |
-| 2 | `~578` | `210` | `240` |
-| 3 | `~733` | `245` | `640` |
-| 4 | `~933` | `285` | `1500` |
-| 5 | `~1156` | `330` | `3200` |
+| 2 | `~578` | `210` | `300` |
+| 3 | `~733` | `245` | `750` |
+| 4 | `~933` | `285` | `1900` |
+| 5 | `~1156` | `330` | `4100` |
 
 (Cargo is capped by **slot count**, not weight, so the jetpack's lift is what actually
 gates a heavy haul: a bay full of light ore lifts on a low tier, but a few pieces of deep,
@@ -110,9 +155,9 @@ survivable. Effectiveness never reaches 100%; the deep is always dangerous.
 | --- | --- | --- |
 | 1 | `0%` | — (start) |
 | 2 | `25%` | `300` |
-| 3 | `45%` | `700` |
-| 4 | `65%` | `1500` |
-| 5 | `80%` | `3000` |
+| 3 | `45%` | `750` |
+| 4 | `65%` | `1900` |
+| 5 | `80%` | `4100` |
 
 ## Scanner — finding the materials
 
@@ -123,17 +168,22 @@ turning a blind search into a confident beeline.
 | Tier | Range (tiles) | Price |
 | --- | --- | --- |
 | 1 | `6` | — (start) |
-| 2 | `12` | `180` |
-| 3 | `20` | `480` |
-| 4 | `32` | `1000` |
-| 5 | `48` (whole band) | `2000` |
+| 2 | `12` | `300` |
+| 3 | `20` | `750` |
+| 4 | `32` | `1900` |
+| 5 | `48` (whole band) | `4100` |
 
 ## How the tracks pace the game
 
-The prices climb so that the early game is a tight loop of small digs funding tier-2
-buys, and each tier opens a little more depth (**drill**), lift and haul (**jetpack +
-cargo**), range (**scanner**), and survival (**hull + radiator**), while **fuel** sets
-how far a round trip reaches. The **cargo** and **jetpack** tracks complement each other —
+The prices climb on the **layer ladder** above (`— / 300 / 750 / 1900 / 4100`, shared by
+all seven tracks): each purchasable tier costs about **five units of the signature ore of
+the band you dig to fund it** (tier 1→2 ≈ five topsoil Cuprite, tier 4→5 ≈ five coreshell
+Pyronium), so **a tier is priced like a layer** and the band you are digging is the band
+that pays for the tier it gears you for. The early game is a tight loop of small topsoil
+digs funding tier-2 buys; each tier opens a little more depth (**drill**), lift and haul
+(**jetpack + cargo**), range (**scanner**), and survival (**hull + radiator**), while
+**fuel** sets how far a round trip reaches — and a bigger **fuel tank** or **hull** hands
+you its new capacity on the spot (`specs/character.md`). The **cargo** and **jetpack** tracks complement each other —
 a bigger bay lets you carry **more pieces**, but the **jetpack** is what lets you lift a
 **heavy** haul out (`specs/character.md`), so a deep, rich dig wants both (plus the option
 to drop ore, `specs/mining.md`, when a haul turns out too heavy to fly). The two

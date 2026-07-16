@@ -33,6 +33,7 @@ import {
   WORLD_ROWS,
 } from "./constants";
 import type { Material, MinerState, Ore, Tile } from "./types";
+import { isMinableKind, tileMaxHealth } from "./world";
 import { SURFACE_BUILDINGS } from "./game";
 import type { Game } from "./game";
 import { MINER_H, MINER_W, SURFACE_FEET_Y, minerCenterX, minerCenterY } from "./physics";
@@ -274,7 +275,7 @@ function drawMine(
   }
 
   drawGrid(ctx, offX, offY, rowTop, rowBot, colLeft, colRight);
-  drawDrillDamage(ctx, game, assets, offX, offY);
+  drawDrillDamage(ctx, game, assets, offX, offY, rowTop, rowBot, colLeft, colRight);
   drawSurface(ctx, game, assets, offX, offY);
   drawMiner(ctx, game, assets, view, offX, offY);
   bursts.draw(ctx, offX, offY);
@@ -573,22 +574,50 @@ function drawStoneFallback(ctx: CanvasRenderingContext2D, x: number, y: number):
   ctx.fill();
 }
 
-/** Draw the deepening drill-damage crack overlay on the tile the miner is cutting. */
+/**
+ * Draw the drill-damage crack overlay on every visible tile that carries accrued damage
+ * (specs/character.md, specs/assets.md). The crack frame is a function of the tile's PERSISTED
+ * damage fraction `1 − health/maxHealth`, not a transient drill timer — so a tile drilled
+ * partway and abandoned still shows its cracks when the miner returns to it, and resuming
+ * deepens them from where they were. Undrilled tiles (health undefined) show nothing.
+ */
 function drawDrillDamage(
   ctx: CanvasRenderingContext2D,
   game: Game,
   assets: Assets,
   offX: number,
   offY: number,
+  rowTop: number,
+  rowBot: number,
+  colLeft: number,
+  colRight: number,
 ): void {
-  const d = game.miner.drilling;
-  if (!d) return;
-  const x = GRID_MARGIN_X + d.col * TILE_SIZE + offX;
-  const y = d.row * TILE_SIZE + offY;
-  const prog = d.total > 0 ? Math.min(1, d.elapsed / d.total) : 0;
   const frames = assets.crack;
+  for (let r = rowTop; r <= rowBot; r++) {
+    const line = game.grid[r];
+    if (!line) continue;
+    for (let c = colLeft; c <= colRight; c++) {
+      const tile = line[c]!;
+      if (!isMinableKind(tile.kind) || tile.health === undefined) continue;
+      const maxH = tileMaxHealth(tile);
+      const frac = maxH > 0 ? Math.min(1, Math.max(0, 1 - tile.health / maxH)) : 0;
+      if (frac <= 0) continue;
+      drawCrackOverlay(ctx, frames, frac, GRID_MARGIN_X + c * TILE_SIZE + offX, r * TILE_SIZE + offY);
+    }
+  }
+}
+
+/** Composite the crack frame (or a code fallback) for a damage fraction over one tile. */
+function drawCrackOverlay(
+  ctx: CanvasRenderingContext2D,
+  frames: HTMLImageElement[],
+  frac: number,
+  x: number,
+  y: number,
+): void {
   if (frames.length) {
-    const idx = Math.min(frames.length - 1, Math.floor(prog * frames.length));
+    // Map (0,1] damage onto frames 0..last so a nearly-broken tile shows the shattered face.
+    const idx = Math.min(frames.length - 1, Math.floor(frac * frames.length));
     const img = frames[idx];
     if (isReady(img)) {
       ctx.drawImage(img, x, y, TILE_SIZE, TILE_SIZE);
@@ -596,16 +625,16 @@ function drawDrillDamage(
     }
   }
   // Fallback code cracks (until the produced sheet is present) so progress still reads.
-  const n = 2 + Math.floor(prog * 5);
-  ctx.strokeStyle = `rgba(20,16,12,${0.35 + 0.5 * prog})`;
+  const n = 2 + Math.floor(frac * 5);
+  ctx.strokeStyle = `rgba(20,16,12,${0.35 + 0.5 * frac})`;
   ctx.lineWidth = 2;
   const cx = x + TILE_SIZE / 2;
   const cy = y + TILE_SIZE / 2;
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + prog;
+    const a = (i / n) * Math.PI * 2 + frac;
     ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(a) * TILE_SIZE * 0.42 * prog, cy + Math.sin(a) * TILE_SIZE * 0.42 * prog);
+    ctx.lineTo(cx + Math.cos(a) * TILE_SIZE * 0.42 * frac, cy + Math.sin(a) * TILE_SIZE * 0.42 * frac);
   }
   ctx.stroke();
 }
