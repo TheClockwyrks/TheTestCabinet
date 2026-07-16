@@ -3,6 +3,7 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
 import {
+  findModelByModelId,
   runSummaryPage,
   toModelSummary,
   toRunSummary,
@@ -83,6 +84,28 @@ export function useStaticGallery(): GalleryDataInput {
   // rating is correct). The published summary index stays internal to this module
   // (queried by `queryRunSummaries` below); it is never exposed whole.
   const producedSummaries = local.map((run) => toRunSummary(run, []));
+
+  // The public gallery lists only models that a run has actually used. The
+  // catalog already surfaces any model with a recorded run automatically, so the
+  // rows this drops are curated-but-never-run entries (added in the console but
+  // not yet exercised) — real on a management console, but noise on the public
+  // site. Resolve every run the site knows about (the published snapshot, plus
+  // any dev-only local runs) to its catalog model with the same harness-aware
+  // matcher the rest of the app uses, and keep only the models something
+  // references.
+  const allModels = catalogModels.map(toModelSummary);
+  const referencedModelSlugs = new Set<string>();
+  for (const summary of [...publishedRunSummaries, ...producedSummaries]) {
+    const model = findModelByModelId(
+      allModels,
+      summary.subject.modelId,
+      summary.subject.harnessSlug,
+    );
+    if (model) referencedModelSlugs.add(model.slug);
+  }
+  const models = allModels.filter((model) =>
+    referencedModelSlugs.has(model.slug),
+  );
 
   const testCases = catalogTestCases;
 
@@ -199,8 +222,9 @@ export function useStaticGallery(): GalleryDataInput {
     testCasesStatus: "ready",
     // The model catalog is baked into the snapshot at build time, so it is always
     // resolved; the site has no backend to mutate it, so the config affordances
-    // hide (no `createModel` on any client here).
-    models: catalogModels.map(toModelSummary),
+    // hide (no `createModel` on any client here). Narrowed above to the models a
+    // run has actually used, so run-less curated entries don't show here.
+    models,
     modelsStatus: "ready",
     canExecute: false,
     fetchRunEvents,
