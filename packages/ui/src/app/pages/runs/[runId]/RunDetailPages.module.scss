@@ -200,44 +200,81 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: t.$space-xs;
+  gap: t.$space-sm;
 }
+
+// Every checklist line — a whole-item verdict row, a sub-itemed item's summary
+// header, and each of its sub-item rows — shares this two-column track: a
+// fixed-width status gutter (the Pass/Fail marker or a passed/total tally) beside
+// the item text. Because the gutter width is identical on every line regardless
+// of nesting depth, the markers line up in one scannable column down the list.
+$verdict-gutter: 3.5rem;
 
 .verdictRow {
-  display: flex;
-  gap: t.$space-md;
+  display: grid;
+  grid-template-columns: $verdict-gutter 1fr;
+  column-gap: t.$space-sm;
   align-items: baseline;
   font-size: t.$font-sm;
-  border-left: 3px solid t.$color-border;
-  padding: t.$space-xs 0 t.$space-xs t.$space-md;
+  padding: t.$space-xs 0;
 }
 
-// A sub-itemed item in the breakdown: its title + total weight as a heading,
-// then its per-sub-item pass/fail rows indented beneath.
+// A sub-itemed item in the breakdown: its title + a passed/total tally as a
+// header, then its per-sub-item pass/fail rows grouped beneath.
 .verdictItemGroup {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
 }
 
+// The header line of a sub-itemed item: shares the row track so its tally sits in
+// the same gutter as the Pass/Fail markers, keeping the whole column aligned.
+.verdictGroupHeader {
+  display: grid;
+  grid-template-columns: $verdict-gutter 1fr;
+  column-gap: t.$space-sm;
+  align-items: baseline;
+  font-size: t.$font-sm;
+}
+
+// The passed/total tally standing in for a single verdict on a sub-itemed item.
+.verdictGroupTally {
+  color: t.$color-text-muted;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+// Bold so a sub-itemed item's header reads as a heading over its sub-rows,
+// distinct from a plain whole-item row.
 .verdictItemGroupTitle {
   color: t.$color-text;
   font-weight: 600;
-  font-size: t.$font-sm;
 }
 
 .checklistSubItems {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 t.$space-md;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
+
+  // A connective spine down the sub-rows' text column ties them to their header
+  // without shifting the status gutter — the markers stay aligned with the
+  // top-level rows above and below.
+  .verdictItem {
+    border-left: 2px solid t.$color-border;
+    padding-left: t.$space-sm;
+  }
+
+  // Sub-item titles stay regular weight so the bold top-level items read as the
+  // headings of their groups.
+  .verdictItemTitle {
+    font-weight: 400;
+  }
 }
 
 .verdictStatus {
-  flex-shrink: 0;
-  min-width: 3rem;
   font-weight: 600;
 }
 
@@ -250,8 +287,18 @@
   gap: t.$space-xs;
 }
 
+// Top-level whole-item titles are bold, matching a sub-itemed item's header, so
+// both read as peer items rather than a whole-item looking like a stray sub-item.
+// (Sub-item titles are dropped back to regular weight under `.checklistSubItems`.)
 .verdictItemTitle {
   color: t.$color-text;
+  font-weight: 600;
+}
+
+// The point weight trailing an item title, dimmed so the title itself leads.
+.verdictWeight {
+  color: t.$color-text-muted;
+  font-weight: 400;
 }
 
 .verdictNote {
@@ -259,14 +306,12 @@
 }
 
 .verdictPass {
-  border-left-color: t.$color-positive;
   .verdictStatus {
     color: t.$color-positive;
   }
 }
 
 .verdictFail {
-  border-left-color: t.$color-negative;
   .verdictStatus {
     color: t.$color-negative;
   }
