@@ -55,14 +55,14 @@ export const PLAYABLE_COL_MIN = 1;
 export const PLAYABLE_COL_MAX = 30;
 
 /**
- * Rows: row 0 is the surface; the mine extends to row 96, the Core chamber.
- * Playable minable rows are 1..95; row 96 is the Core chamber.
+ * Rows: row 0 is the surface; the mine extends to row 500, the Core chamber.
+ * Playable minable rows are 1..499; row 500 is the Core chamber.
  */
 export const SURFACE_ROW = 0;
 export const PLAYABLE_ROW_MIN = 1;
-export const PLAYABLE_ROW_MAX = 95;
-export const CORE_ROW = 96;
-export const WORLD_ROWS = CORE_ROW + 1; // rows 0..96 inclusive
+export const PLAYABLE_ROW_MAX = 499;
+export const CORE_ROW = 500;
+export const WORLD_ROWS = CORE_ROW + 1; // rows 0..500 inclusive
 
 /**
  * The world is 32 x 80 = 2560 px wide — wider than the 1280 viewport — so it is NOT
@@ -74,9 +74,9 @@ export const GRID_MARGIN_X = 0;
 /** Horizontal camera range: [0, world width − viewport width]. */
 export const MAX_CAMERA_X = GRID_PIXEL_WIDTH - VIEWPORT_WIDTH; // 1280
 
-/** Depth reported to the player: each row below the surface is 5 m. Core chamber = 480 m. */
+/** Depth reported to the player: each row below the surface is 5 m. Core chamber = 2500 m. */
 export const METERS_PER_ROW = 5;
-export const CORE_DEPTH_METERS = CORE_ROW * METERS_PER_ROW; // 480
+export const CORE_DEPTH_METERS = CORE_ROW * METERS_PER_ROW; // 2500
 
 // ---------------------------------------------------------------------------
 // The four depth bands + Core chamber (specs/world.md)
@@ -103,7 +103,7 @@ export const BANDS: Record<Band, BandDef> = {
   topsoil: {
     band: "topsoil",
     rowMin: 1,
-    rowMax: 24,
+    rowMax: 125,
     hardness: 1,
     fill: "#3a2c1f",
     gas: false,
@@ -112,8 +112,8 @@ export const BANDS: Record<Band, BandDef> = {
   },
   rockbed: {
     band: "rockbed",
-    rowMin: 25,
-    rowMax: 48,
+    rowMin: 126,
+    rowMax: 250,
     hardness: 2,
     fill: "#3a3d44",
     gas: true,
@@ -122,8 +122,8 @@ export const BANDS: Record<Band, BandDef> = {
   },
   deepstone: {
     band: "deepstone",
-    rowMin: 49,
-    rowMax: 72,
+    rowMin: 251,
+    rowMax: 375,
     hardness: 3,
     fill: "#20242c",
     gas: true,
@@ -132,8 +132,8 @@ export const BANDS: Record<Band, BandDef> = {
   },
   coreshell: {
     band: "coreshell",
-    rowMin: 73,
-    rowMax: 95,
+    rowMin: 376,
+    rowMax: 499,
     hardness: 4,
     fill: "#3a1512",
     gas: true,
@@ -255,11 +255,12 @@ export const LOW_FUEL_FRACTION = 0.2;
  * so the deep bands demand hull *and* radiator tiers. The raw (pre-radiator) damage is
  *   max(GAS_BASE_DAMAGE, GAS_BASE_DAMAGE + GAS_DAMAGE_PER_METER * (depthM - GAS_BASE_DEPTH_M))
  * then reduced by the radiator's effectiveness (RADIATOR_EFFECTIVENESS). Anchored so gas is
- * ~20 where it first appears (rockbed top, 125 m) and ~119 at the Core (480 m).
+ * ~20 where it first appears (rockbed top, 630 m) and ~120 at the Core (2500 m): the slope is
+ * (120 − 20) / (2500 − 630) ≈ 0.0535 hull/m.
  */
 export const GAS_BASE_DAMAGE = 20;
-export const GAS_BASE_DEPTH_M = 125; // rockbed top, where gas first appears
-export const GAS_DAMAGE_PER_METER = 0.28;
+export const GAS_BASE_DEPTH_M = 630; // rockbed top (row 126 × 5 m), where gas first appears
+export const GAS_DAMAGE_PER_METER = 0.0535;
 /** Hull drained per second while in contact with lava, before the radiator reduces it. */
 export const LAVA_DAMAGE_RATE = 32;
 /** Low-hull warning threshold (fraction of max). */
@@ -309,6 +310,14 @@ export const CORE_TIMER_SECONDS = 90;
 // ---------------------------------------------------------------------------
 // Ore (specs/mining.md)
 // ---------------------------------------------------------------------------
+
+/**
+ * Ore veins never spawn in the first three dirt rows (rows 1..3) just below the surface
+ * (specs/world.md): the shallow topsoil right under the cave mouth stays plain rock, so a
+ * fresh expedition digs a little before the first payoff. Materials and hazards are already
+ * absent this shallow; this rule is specifically about ore.
+ */
+export const ORE_FREE_TOP_ROWS = 3;
 
 export interface OreDef {
   readonly ore: Ore;
@@ -388,8 +397,13 @@ export const ORES: Record<Ore, OreDef> = {
 // Exotic materials (specs/mining.md)
 // ---------------------------------------------------------------------------
 
-/** Minimum number of each buried material node guaranteed in its band. */
-export const MIN_MATERIAL_NODES = 3;
+/**
+ * Number of each buried material node placed in its band — exactly ONE Resonite (rockbed)
+ * and ONE Cryenite (deepstone), each at a random position within its band, always present
+ * and always reachable (connectivity repair targets it). With a single node, the SCANNER
+ * (specs/mining.md) becomes genuinely necessary to find it — that is the point.
+ */
+export const MATERIAL_NODES_PER_BAND = 1;
 
 export interface MaterialDef {
   readonly material: Material;

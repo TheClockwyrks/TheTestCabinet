@@ -104,10 +104,12 @@ spare.
 | **Cryenite** | **Deepstone** band material node | drill the node |
 | **Core Sample** | **Core chamber** at the bottom (`specs/hazards.md`) | extract it — **unstable** |
 
-- **Resonite** and **Cryenite** are buried in **material nodes** scattered at random
-  positions **within their band**, but **guaranteed to exist** there (`specs/world.md`):
-  the scanner (below) points you to the nearest one. Drilling the node collects the
-  material and banks it in the satchel.
+- **Resonite** and **Cryenite** are each buried in **exactly one material node** at a
+  random position **within their band**, but **guaranteed to exist and to be reachable**
+  there (`specs/world.md`): the scanner (below) points you to it. **Only one of each is
+  needed to win** (`specs/rocket.md`), so there is no spare — with a single node per band,
+  the scanner is what makes the material findable and the run winnable. Drilling the node
+  collects the material and banks it in the satchel.
 - The **Core Sample** is different: it is **extracted** from the Core chamber and is
   **unstable**, starting a **destabilization timer** the moment you take it — you must
   install it at the launch pad before it **detonates** (`specs/hazards.md`,

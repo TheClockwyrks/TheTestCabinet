@@ -22,10 +22,10 @@ The world is a grid of square **tiles**, each **80 x 80 logical pixels**.
   one side is out of view until you scan toward it and dig across.
 - Rows are numbered from the surface down: `row 0` is the **surface** (open ground /
   sky, where the buildings sit and the miner spawns), and the mine extends down to
-  `row 96`, the **Core chamber**. Playable minable rows are `1..95`; `row 96` is the
+  `row 500`, the **Core chamber**. Playable minable rows are `1..499`; `row 500` is the
   Core chamber (below).
 - **Depth** is reported to the player in **meters**: each row below the surface is
-  **5 m**, so `row r` is at depth `5 x r` m and the Core chamber is at **480 m**.
+  **5 m**, so `row r` is at depth `5 x r` m and the Core chamber is at **2500 m**.
 - The camera follows the miner **in both axes** — horizontally across the wide mine and
   vertically down the shaft — keeping the miner near the centre of the viewport and
   clamped so it never scrolls past the world's edges (the bedrock borders on the sides,
@@ -48,11 +48,11 @@ exotic materials is found (`specs/mining.md`, `specs/rocket.md`).
 | Band | Rows | Rock fill | Tile hardness | Hazards | Exotic material |
 | --- | --- | --- | --- | --- | --- |
 | **Surface** | `0` | camp / sky | — (open) | — | — |
-| **Topsoil** | `1–24` | `#3a2c1f` | `1` (soft) | none | — |
-| **Rockbed** | `25–48` | `#3a3d44` | `2` | gas | **Resonite** (mid) |
-| **Deepstone** | `49–72` | `#20242c` | `3` | gas, lava | **Cryenite** (deep) |
-| **Coreshell** | `73–95` | `#3a1512` | `4` (very hard) | gas, dense lava | — |
-| **Core chamber** | `96` | glowing pit | bedrock walls | the Core Sample | **Core Sample** |
+| **Topsoil** | `1–125` | `#3a2c1f` | `1` (soft) | none | — |
+| **Rockbed** | `126–250` | `#3a3d44` | `2` | gas | **Resonite** (mid) |
+| **Deepstone** | `251–375` | `#20242c` | `3` | gas, lava | **Cryenite** (deep) |
+| **Coreshell** | `376–499` | `#3a1512` | `4` (very hard) | gas, dense lava | — |
+| **Core chamber** | `500` | glowing pit | bedrock walls | the Core Sample | **Core Sample** |
 
 The transition between bands is a visible change in the rock fill (and, in the
 coreshell, a rising orange glow), so the player reads their depth from the world, not
@@ -66,7 +66,7 @@ dig at a workable speed — one of the ways the economy paces the descent.
 Every grid cell is one of these kinds. A cell's kind is fixed at world generation
 except that any **minable** cell becomes an **empty tunnel** once drilled.
 
-- **Bedrock border** — columns `0` and `31`, the mine floor beneath `row 95`, and the
+- **Bedrock border** — columns `0` and `31`, the mine floor beneath `row 499`, and the
   walls of the Core chamber. **Unminable and impassable**: no drill breaks it and the
   miner cannot enter it. It bounds the playable space.
 - **Earth / Rock / Deepstone / Coreshell** — the plain **minable dirt/rock** of each
@@ -83,7 +83,8 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
   crack sprite that deepens over several frames as the cut progresses) is drawn on it so
   the dig visibly makes progress (`specs/character.md`, `specs/assets.md`).
 - **Unbreakable stone** — a hard, dark **boulder** tile scattered through the rock from
-  the topsoil down (below). **Unminable and impassable** like the bedrock border — **no
+  the rockbed down (below) — the topsoil's first stratum stays clean, easy dirt.
+  **Unminable and impassable** like the bedrock border — **no
   drill breaks it** — but, unlike the border, it sits *inside* the playable field as an
   **obstacle the player must route around**: a straight vertical shaft that runs into one
   must jog sideways to get past it. It reads clearly as a **different, harder material**
@@ -131,15 +132,19 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
 The mine is **generated per game** within these rules; there is no single fixed map,
 but every rule below is fixed. Generation must obey them so a run is always winnable:
 
-- **Playable region.** Columns `1..30`, rows `1..95` are minable rock of the row's
+- **Playable region.** Columns `1..30`, rows `1..499` are minable rock of the row's
   band, except the cells made into ore veins, material nodes, hazards, unbreakable
   stone, and the natural tunnels/caverns generation may carve. A **clear vertical
   shaft** need not be provided — the player drills their own way down.
 - **Ore.** Ore veins are scattered through all four bands at that band's ore mix and
   density (`specs/mining.md`). Ore is the routine reward for digging; a player who
-  digs steadily always finds ore to sell.
+  digs steadily always finds ore to sell. **No ore veins spawn in the first three dirt
+  rows** (rows `1`, `2`, `3`): the shallow topsoil right under the cave mouth stays plain
+  rock, so a fresh expedition digs a little before the first payoff. (Materials and
+  hazards are already absent that shallow; this rule is specifically about ore.)
 - **Unbreakable stone.** Boulders of unbreakable stone are scattered through the
-  playable rows from the **topsoil** down, growing **denser with depth** so the deep
+  playable rows from the **rockbed** down — never in the topsoil first stratum —
+  growing **denser with depth** so the deep
   bands are more of a maze. They are never so dense as to wall off a band: generation
   must **never seal the only route** down, to a material node, or to the Core with
   unbreakable stone (as with lava, below) — a determined driller can always find a
@@ -147,15 +152,16 @@ but every rule below is fixed. Generation must obey them so a run is always winn
   rather than running straight down. They force the player to **route around** them (or,
   in a later addition, blast through) rather than always digging a perfectly straight
   hole.
-- **Exotic materials — guaranteed but hidden.** **At least three** Resonite nodes
-  exist somewhere in the **rockbed** band and **at least three** Cryenite nodes exist
-  somewhere in the **deepstone** band, at **random positions within that band** —
-  never at a fixed tile, but **always present** (a run can never lack a material it
-  needs). The player finds them with the **scanner** (`specs/mining.md`), which points
-  to the nearest uncollected material — the Terraria model: randomly placed, reliably
-  locatable. Only **one** of each material is needed to win (`specs/rocket.md`); the
-  surplus is a margin so a missed dig is not fatal.
-- **The Core Sample** is not scattered: it sits in the **Core chamber** at `row 96`,
+- **Exotic materials — guaranteed but hidden.** **Exactly one** Resonite node
+  exists somewhere in the **rockbed** band and **exactly one** Cryenite node exists
+  somewhere in the **deepstone** band, at a **random position within that band** —
+  never at a fixed tile, but **always present and always reachable** (a run can never
+  lack a material it needs, and the connectivity repair below guarantees a diggable path
+  to it). Only **one** of each material is needed to win (`specs/rocket.md`), so there is
+  no surplus: with a single node per band, the **scanner** (`specs/mining.md`) — which
+  points to the nearest uncollected material — is what makes the material findable and
+  the run winnable. The Terraria model: randomly placed, reliably locatable.
+- **The Core Sample** is not scattered: it sits in the **Core chamber** at `row 500`,
   reachable only by drilling down to the bottom (`specs/hazards.md`, `specs/rocket.md`).
 - **Hazards.** Gas pockets appear from the rockbed down and lava from the deepstone
   down, denser with depth (`specs/hazards.md`), scattered so the deep dig is a real
