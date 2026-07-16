@@ -207,21 +207,52 @@ export function CoveragePage() {
       if (group) group.cells.push(cell);
       else byCase.set(key, { cell0: cell, cells: [cell] });
     }
-    return [...byCase.values()].map(({ cell0, cells }) => {
-      const completed = cells.reduce((sum, c) => sum + c.completed, 0);
-      const inFlight = cells.reduce((sum, c) => sum + c.inFlight, 0);
-      const desired = cells.reduce((sum, c) => sum + c.desired, 0);
-      const done = completed + inFlight;
-      // Two stacked segments — completed (green) then in-flight (amber) — clamped
-      // so together they never overrun the bar.
-      const donePct = desired > 0 ? Math.min(100, (completed / desired) * 100) : 0;
-      const flightPct =
-        desired > 0
-          ? Math.min(100 - donePct, (inFlight / desired) * 100)
-          : 0;
-      return { cell0, cells, done, desired, donePct, flightPct };
-    });
-  }, [coverage]);
+    return (
+      [...byCase.values()]
+        .map(({ cell0, cells }) => {
+          // Sort each case's combinations alphabetically by harness then model, so
+          // the cell list reads in a stable order rather than plan-declared order.
+          const sortedCells = [...cells].sort(
+            (a, b) =>
+              a.harness.localeCompare(b.harness) ||
+              a.model.localeCompare(b.model),
+          );
+          const completed = sortedCells.reduce(
+            (sum, c) => sum + c.completed,
+            0,
+          );
+          const inFlight = sortedCells.reduce((sum, c) => sum + c.inFlight, 0);
+          const desired = sortedCells.reduce((sum, c) => sum + c.desired, 0);
+          const done = completed + inFlight;
+          // Two stacked segments — completed (green) then in-flight (amber) — clamped
+          // so together they never overrun the bar.
+          const donePct =
+            desired > 0 ? Math.min(100, (completed / desired) * 100) : 0;
+          const flightPct =
+            desired > 0
+              ? Math.min(100 - donePct, (inFlight / desired) * 100)
+              : 0;
+          return {
+            cell0,
+            cells: sortedCells,
+            done,
+            desired,
+            donePct,
+            flightPct,
+          };
+        })
+        // And the case groups alphabetically by display name (then variant,
+        // version), matching the plan editor's ordering.
+        .sort(
+          (a, b) =>
+            testCaseName(a.cell0.slug).localeCompare(
+              testCaseName(b.cell0.slug),
+            ) ||
+            a.cell0.variant.localeCompare(b.cell0.variant) ||
+            a.cell0.version.localeCompare(b.cell0.version),
+        )
+    );
+  }, [coverage, testCaseName]);
 
   const deficientCells = useMemo(
     () => coverage?.cells.filter((c) => c.remaining > 0) ?? [],
@@ -300,103 +331,105 @@ export function CoveragePage() {
           </div>
 
           <div className={styles.matrix}>
-            {groups.map(({ cell0, cells, done, desired, donePct, flightPct }) => (
-              <section key={caseKey(cell0)} className={styles.group}>
-                <header className={styles.groupHead}>
-                  <span className={styles.groupTitle}>
-                    {testCaseName(cell0.slug)}
-                    <span className={styles.groupVersion}>
-                      {cell0.variant} · {cell0.version}
-                    </span>
-                  </span>
-                  <span className={styles.groupRight}>
-                    {cell0.stale && (
-                      <button
-                        className={styles.staleBadge}
-                        type="button"
-                        disabled={busy}
-                        title={`A newer version (${cell0.latestVersion}) is ingested. Bump the pin.`}
-                        onClick={() => bumpCase(cell0)}
-                      >
-                        {cell0.version} → {cell0.latestVersion} ↑
-                      </button>
-                    )}
-                    <span
-                      className={styles.groupProgress}
-                      title={`${done} of ${desired} runs across all harness/model combinations`}
-                    >
-                      <span className={styles.groupBar} aria-hidden>
-                        <span
-                          className={styles.groupBarDone}
-                          style={{ width: `${donePct}%` }}
-                        />
-                        <span
-                          className={styles.groupBarFlight}
-                          style={{ width: `${flightPct}%` }}
-                        />
-                      </span>
-                      <span className={styles.groupCount}>
-                        {done}/{desired}
+            {groups.map(
+              ({ cell0, cells, done, desired, donePct, flightPct }) => (
+                <section key={caseKey(cell0)} className={styles.group}>
+                  <header className={styles.groupHead}>
+                    <span className={styles.groupTitle}>
+                      {testCaseName(cell0.slug)}
+                      <span className={styles.groupVersion}>
+                        {cell0.variant} · {cell0.version}
                       </span>
                     </span>
-                  </span>
-                </header>
-                <ul className={styles.cellList}>
-                  {cells.map((cell) => {
-                    const done = cell.completed + cell.inFlight;
-                    const satisfied = cell.remaining === 0;
-                    // Two stacked segments — completed (green) then in-flight
-                    // (amber) — clamped so together they never overrun the bar.
-                    const donePct =
-                      cell.desired > 0
-                        ? Math.min(100, (cell.completed / cell.desired) * 100)
-                        : 0;
-                    const flightPct =
-                      cell.desired > 0
-                        ? Math.min(
-                            100 - donePct,
-                            (cell.inFlight / cell.desired) * 100,
-                          )
-                        : 0;
-                    return (
-                      <li
-                        key={cellKey(cell)}
-                        className={`${styles.cell} ${
-                          satisfied ? styles.cellDone : ""
-                        }`}
+                    <span className={styles.groupRight}>
+                      {cell0.stale && (
+                        <button
+                          className={styles.staleBadge}
+                          type="button"
+                          disabled={busy}
+                          title={`A newer version (${cell0.latestVersion}) is ingested. Bump the pin.`}
+                          onClick={() => bumpCase(cell0)}
+                        >
+                          {cell0.version} → {cell0.latestVersion} ↑
+                        </button>
+                      )}
+                      <span
+                        className={styles.groupProgress}
+                        title={`${done} of ${desired} runs across all harness/model combinations`}
                       >
-                        <span className={styles.cellLabel}>
-                          {cell.harness} · {cell.model}
-                        </span>
-                        <span className={styles.cellBar} aria-hidden>
+                        <span className={styles.groupBar} aria-hidden>
                           <span
-                            className={styles.cellBarDone}
+                            className={styles.groupBarDone}
                             style={{ width: `${donePct}%` }}
                           />
                           <span
-                            className={styles.cellBarFlight}
+                            className={styles.groupBarFlight}
                             style={{ width: `${flightPct}%` }}
                           />
                         </span>
-                        <span className={styles.cellCount}>
-                          {done}/{cell.desired}
+                        <span className={styles.groupCount}>
+                          {done}/{desired}
                         </span>
-                        <button
-                          className={`${exec.secondary} ${styles.cellButton}`}
-                          type="button"
-                          disabled={busy || !canTrigger || satisfied}
-                          onClick={() =>
-                            triggerCells([{ ...cell, remaining: 1 }])
-                          }
+                      </span>
+                    </span>
+                  </header>
+                  <ul className={styles.cellList}>
+                    {cells.map((cell) => {
+                      const done = cell.completed + cell.inFlight;
+                      const satisfied = cell.remaining === 0;
+                      // Two stacked segments — completed (green) then in-flight
+                      // (amber) — clamped so together they never overrun the bar.
+                      const donePct =
+                        cell.desired > 0
+                          ? Math.min(100, (cell.completed / cell.desired) * 100)
+                          : 0;
+                      const flightPct =
+                        cell.desired > 0
+                          ? Math.min(
+                              100 - donePct,
+                              (cell.inFlight / cell.desired) * 100,
+                            )
+                          : 0;
+                      return (
+                        <li
+                          key={cellKey(cell)}
+                          className={`${styles.cell} ${
+                            satisfied ? styles.cellDone : ""
+                          }`}
                         >
-                          {satisfied ? "Covered" : "Trigger one"}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ))}
+                          <span className={styles.cellLabel}>
+                            {cell.harness} · {cell.model}
+                          </span>
+                          <span className={styles.cellBar} aria-hidden>
+                            <span
+                              className={styles.cellBarDone}
+                              style={{ width: `${donePct}%` }}
+                            />
+                            <span
+                              className={styles.cellBarFlight}
+                              style={{ width: `${flightPct}%` }}
+                            />
+                          </span>
+                          <span className={styles.cellCount}>
+                            {done}/{cell.desired}
+                          </span>
+                          <button
+                            className={`${exec.secondary} ${styles.cellButton}`}
+                            type="button"
+                            disabled={busy || !canTrigger || satisfied}
+                            onClick={() =>
+                              triggerCells([{ ...cell, remaining: 1 }])
+                            }
+                          >
+                            {satisfied ? "Covered" : "Trigger one"}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ),
+            )}
           </div>
         </>
       )}
