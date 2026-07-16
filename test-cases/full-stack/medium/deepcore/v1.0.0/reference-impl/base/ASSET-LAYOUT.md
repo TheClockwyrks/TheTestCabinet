@@ -42,13 +42,16 @@ do not upscale a smaller sprite.
 There is **no gas tile**: a gas pocket is drawn as ordinary band rock (hidden) and betrayed
 only by the `gas-seep` VFX below. There is no separate tunnel-edge sprite — the lip is code.
 
-## Ore veins — `scripts/gen-world.sh` (`80 x 80`, transparent overlays)
+## Ore veins & gemstones — `scripts/gen-world.sh` (`80 x 80`, transparent overlays)
 
-Laid over the band rock; each an embedded **smear** of its mineral (not a discrete dot).
+Laid over the band rock. Ores are an embedded **smear** of their mineral (not a discrete
+dot); gemstones are a **cut, faceted jewel** — visually distinct from the ore smears
+(`specs/mining.md`). Both are keyed by `Ore` and read via `assets.ore(ore)`.
 
 | Files | Count | Loader accessor |
 | --- | --- | --- |
-| `ore/{ferron,cuprite,argenite,voltite,pyronium,adamite}.png` | 6 | `assets.ore(ore)` |
+| `ore/{ferron,cuprite,argenite,voltite,pyronium,adamite}.png` | 6 | `assets.ore(ore)` — ore smears |
+| `ore/{verdite,roselite,aurite}.png` | 3 | `assets.ore(ore)` — faceted gemstones (rockbed/deepstone/coreshell) |
 
 ## Materials — `scripts/gen-world.sh` (`80 x 80`)
 

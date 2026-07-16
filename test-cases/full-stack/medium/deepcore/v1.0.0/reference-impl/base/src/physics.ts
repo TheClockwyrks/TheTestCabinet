@@ -81,7 +81,9 @@ function approach(cur: number, target: number, maxDelta: number): number {
  * specs/character.md) — so a heavier haul climbs slower, and when `thrustAccel <= GRAVITY`
  * the net motion is still downward: the jetpack only slows the fall and the miner cannot
  * climb until it sheds weight or upgrades the jetpack (the aggressive lift-gating). `climbCap`
- * is the jetpack tier's climb-speed cap (JETPACK_CLIMB[tier]).
+ * is the EFFECTIVE climb-speed cap for the current load (the caller scales the tier's empty-load
+ * cap down with the weight — game.ts `climbCap()`), so a heavy haul is throttled to a low climb
+ * speed while an empty miner reaches its tier's full cap.
  */
 export function stepMovement(
   m: Miner,

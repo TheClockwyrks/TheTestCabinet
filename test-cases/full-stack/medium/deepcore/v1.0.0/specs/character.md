@@ -47,9 +47,10 @@ Movement speeds (logical px/s): **walk / lateral** `250`, **fall terminal** `100
 Gravity `1500 px/s^2`. (These are scaled to the `80 px` tile so the *feel in
 tiles-per-second* — how many tiles a walk or a fall covers per second — matches the
 reference; tune within a natural range.) The **climb** speed is not a single number: it
-is capped per **jetpack tier** (`300` at tier 1 rising to `550` at tier 5,
+is capped per **jetpack tier** when **empty** (`420` at tier 1 rising to `540` at tier 5,
 `specs/upgrades.md`) and,
-more importantly, throttled by the **load** (**Weight and lift**, below). These are the
+more importantly, throttled down by the **load** (**Weight and lift**, below) — a heavy
+haul is held to a much slower climb than an empty miner on the same jetpack. These are the
 reference feel; tune within a natural range but keep falling faster than climbing so
 depth is easy to gain and expensive to undo. Terminal is high enough that a fall keeps
 accelerating over several tiles before it caps, so **landing speed genuinely separates a
@@ -82,9 +83,12 @@ divided by the total mass. So:
   jetpack can lift (`specs/flow.md`).
 
 The **jetpack (engine) tier** therefore matters as much as the fuel tank on a deep, rich
-haul: a better jetpack both lifts more weight and climbs faster (less fuel per trip),
-and the deep bands' heavy, valuable ore cannot be brought up in bulk until it is bought
-up (`specs/upgrades.md`).
+haul: a better jetpack mainly lifts **more weight** — the empty-load climb speed is nearly
+flat across tiers on purpose (`specs/upgrades.md`), so a jetpack tier is about *lifting a
+heavier haul*, not flying ever faster — and the deep bands' heavy, valuable ore cannot be
+brought up in bulk until it is bought up. Fuel efficiency comes from the **climb speed**
+(the fuel bullet below): an **empty** miner cruises fast and sips fuel, while a **heavy**
+haul is throttled to a slow climb and burns the full rate the whole way home.
 
 ## Drilling
 
@@ -158,19 +162,30 @@ never automatically. Running out strands the miner (below).
 
 - **Maximum fuel** is set by the **fuel tank tier** (`specs/upgrades.md`); the
   starting tank holds `100`.
-- **Consumption rates:** jetpack **thrust** `9.0 fuel/s` while held (including
-  thrusting up into the **sky** above the camp); **lateral drift in the air**
-  `2.0 fuel/s`; a passive **life-support drain** `0.4 fuel/s` at all times while
-  underground (below the surface); and **`0.25 fuel` per drill hit**, so drilling a tile
-  costs `hits × 0.25` fuel — a **topsoil** tile at the tier-1 drill (4 hits) is `≈ 1.0`
-  fuel (the old flat per-tile cost), and **harder bands cost more** (a coreshell tile is
-  `4.0` fuel at tier 1) **unless the drill is upgraded**, which cuts the hits and so the
-  fuel (`specs/upgrades.md`). Walking and standing still cost no fuel (on the surface or on
-  any solid floor below).
-- **Weight raises the fuel cost of the climb.** Thrust is billed per second, and a heavy
-  haul climbs slower (**Weight and lift**, above), so the same shaft costs **more fuel**
-  to ascend the heavier you are. A deep, rich, heavy haul is expensive to lift both in
-  jetpack tier and in fuel — factor it into whether the round trip fits the tank.
+- **Consumption rates:** jetpack **thrust** burns **`9.0` fuel/s at the full rate,
+  easing to `4.0` fuel/s once cruising** — the thrust burn is **not flat**: it depends on
+  the miner's **upward climb speed**. Lifting off from a stop, or grinding up under a
+  heavy load that can barely climb, burns the **full `9.0` fuel/s**; once the miner is
+  **cruising at climb speed** — which an **empty or light** miner reaches quickly (its
+  upward speed is above the cruise threshold) and a **near-overloaded** one never does —
+  the burn eases toward **`4.0` fuel/s** (the rate interpolates between the two over the
+  climb-speed range). This is what makes an **empty ascent cheap and fast** without simply
+  raising the top climb speed: the efficiency comes from **cruising**, so a light haul
+  flies home for a fraction of the fuel while a heavy one, throttled to a slow climb,
+  keeps paying the full rate. (All thrust, including up into the **sky** above the camp,
+  bills this way.) **Lateral drift in the air** is `2.0 fuel/s`; a passive **life-support
+  drain** `0.4 fuel/s` at all times while underground (below the surface); and **`0.25
+  fuel` per drill hit**, so drilling a tile costs `hits × 0.25` fuel — a **topsoil** tile
+  at the tier-1 drill (4 hits) is `≈ 1.0` fuel (the old flat per-tile cost), and **harder
+  bands cost more** (a coreshell tile is `4.0` fuel at tier 1) **unless the drill is
+  upgraded**, which cuts the hits and so the fuel (`specs/upgrades.md`). Walking and
+  standing still cost no fuel (on the surface or on any solid floor below).
+- **Weight raises the fuel cost of the climb.** A heavy haul climbs slower (**Weight and
+  lift**, above), and because a slow climb stays **below the cruise threshold** it burns
+  the **full thrust rate** the whole way — so the same shaft costs **far more fuel** to
+  ascend the heavier you are, both from the slower climb and from the lost cruise
+  efficiency. A deep, rich, heavy haul is expensive to lift in jetpack tier **and** in
+  fuel — factor it into whether the round trip fits the tank.
 - **Refuel.** Fuel does **not** refill on its own — not by returning to the surface,
   not by rising into the sky above it. You **buy** it with **Credits** at the **Fuel
   Depot** (`specs/world.md`, `specs/flow.md`), per unit, up to your current maximum.

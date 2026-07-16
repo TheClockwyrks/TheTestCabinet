@@ -169,6 +169,13 @@ Produce at least these, in the palette from `specs/overview.md`:
   sitting on top of the rock. Each ore still keeps its own character on the smear
   (Ferron flecky, Cuprite nodular, Argenite seamy, Voltite crystalline, Pyronium
   glowing, Adamite a rare bright gem — `specs/mining.md`).
+- **Gemstones** — a transparent overlay for each of the three gemstones (**Verdite**,
+  **Roselite**, **Aurite** — one per band below the topsoil, `specs/mining.md`), drawn
+  as a **cut, faceted JEWEL** in its band's jewel color: a brilliant-cut stone (flat top table,
+  angled crown/pavilion facets to a point, shaded so light reads from one side, with a
+  bright glint) sitting in the rock — **deliberately unlike the ore smear** and unlike the
+  raw crystal cluster of a material node, so a gem reads at a glance as the rarer, richer
+  find. Do **not** draw a gem as a smear or a flat dot.
 - **Material nodes** — a distinct tile for **Resonite** (blue crystal) and **Cryenite**
   (violet crystal) embedded in rock (`specs/mining.md`), unmistakably richer and rarer
   than an ore vein, plus the glowing **Core** in its chamber and the **Core Sample**

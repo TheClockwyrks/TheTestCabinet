@@ -186,9 +186,19 @@ export function buyUpgrade(game: Game, track: UpgradeTrack): boolean {
   return true;
 }
 
-/** Fresh, empty cargo (all ores at 0). */
+/** Fresh, empty cargo (all ores and gems at 0). */
 export function emptyCargo(): Cargo {
-  return { ferron: 0, cuprite: 0, argenite: 0, voltite: 0, pyronium: 0, adamite: 0 };
+  return {
+    ferron: 0,
+    cuprite: 0,
+    argenite: 0,
+    voltite: 0,
+    pyronium: 0,
+    adamite: 0,
+    verdite: 0,
+    roselite: 0,
+    aurite: 0,
+  };
 }
 
 /** Starting cargo capacity, for the tier-1 bay. */

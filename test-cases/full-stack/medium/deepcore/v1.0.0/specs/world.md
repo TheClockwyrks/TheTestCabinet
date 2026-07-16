@@ -45,14 +45,17 @@ in **hardness** (slower to drill, `specs/character.md`) and **hazard density**
 (`specs/hazards.md`), and — for two of them — is the **only** place one of the
 exotic materials is found (`specs/mining.md`, `specs/rocket.md`).
 
-| Band | Rows | Rock fill | Tile hardness | Hazards | Exotic material |
-| --- | --- | --- | --- | --- | --- |
-| **Surface** | `0` | camp / sky | — (open) | — | — |
-| **Topsoil** | `1–125` | `#3a2c1f` | `1` (soft) | none | — |
-| **Rockbed** | `126–250` | `#3a3d44` | `2` | gas | **Resonite** (mid) |
-| **Deepstone** | `251–375` | `#20242c` | `3` | gas, lava | **Cryenite** (deep) |
-| **Coreshell** | `376–499` | `#3a1512` | `4` (very hard) | gas, dense lava | — |
-| **Core chamber** | `500` | glowing pit | bedrock walls | the Core Sample | **Core Sample** |
+| Band | Rows | Rock fill | Tile hardness | Hazards | Exotic material | Gemstone |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Surface** | `0` | camp / sky | — (open) | — | — | — |
+| **Topsoil** | `1–125` | `#3a2c1f` | `1` (soft) | none | — | — (none) |
+| **Rockbed** | `126–250` | `#3a3d44` | `2` | gas | **Resonite** (mid) | **Verdite** |
+| **Deepstone** | `251–375` | `#20242c` | `3` | gas, lava | **Cryenite** (deep) | **Roselite** |
+| **Coreshell** | `376–499` | `#3a1512` | `4` (very hard) | gas, dense lava | — | **Aurite** |
+| **Core chamber** | `500` | glowing pit | bedrock walls | the Core Sample | **Core Sample** | — |
+
+Each band below the topsoil holds its own **gemstone** (`specs/mining.md`) — a rarer, richer
+find than ore, worth 3× and weighing 2× that band's signature ore.
 
 The transition between bands is a visible change in the rock fill (and, in the
 coreshell, a rising orange glow), so the player reads their depth from the world, not
@@ -108,6 +111,13 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
   run through the dirt** — embedded in the rock and spreading toward the tile's edges
   (so adjacent ore cells read as one continuous vein), **not** a discrete nugget or dot
   sitting on top of the rock (`specs/mining.md`, `specs/assets.md`).
+- **Gemstone** — a rarer minable tile holding this band's **gemstone**
+  (`specs/mining.md`), from the **rockbed down** (none in the topsoil). It behaves like an
+  ore vein — drilling it banks a unit of the gem into cargo — but it is worth **3×** and
+  weighs **2×** the band's signature ore, and reads as a **cut, faceted jewel** (a
+  brilliant-cut stone with a flat table, angled facets, and a glint) rather than the ore
+  **smear**, so it is unmistakably a richer, rarer find at a glance (`specs/mining.md`,
+  `specs/assets.md`).
 - **Material node** — a minable tile holding one of the two **buried exotic
   materials**, **Resonite** (rockbed) or **Cryenite** (deepstone) (`specs/mining.md`,
   `specs/rocket.md`). Drilling it collects the material. Placement is **guaranteed
@@ -157,6 +167,11 @@ but every rule below is fixed. Generation must obey them so a run is always winn
   rows** (rows `1`, `2`, `3`): the shallow topsoil right under the cave mouth stays plain
   rock, so a fresh expedition digs a little before the first payoff. (Materials and
   hazards are already absent that shallow; this rule is specifically about ore.)
+- **Gemstones.** One **gemstone** per band from the **rockbed down** (`specs/mining.md`) —
+  Verdite in the rockbed, Roselite in the deepstone, Aurite in the coreshell, and **none in
+  the topsoil**. Gems are scattered like ore but at a **much lower density**, so they are
+  a rare, rich, heavy find rather than routine; like ore they never spawn in the first
+  three dirt rows (they are absent that shallow anyway).
 - **Unbreakable stone.** Boulders of unbreakable stone are scattered through the
   playable rows from the **rockbed** down — never in the topsoil first stratum —
   growing **denser with depth** so the deep

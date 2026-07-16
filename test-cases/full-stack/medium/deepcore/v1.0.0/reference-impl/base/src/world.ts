@@ -106,6 +106,21 @@ const ORE_MIX: Record<Band, OreMix> = {
   coreshell: { density: 0.19, ores: ["voltite", "pyronium", "adamite"], weights: [2, 3, 0.4] },
 };
 
+/**
+ * The GEMSTONE native to each band (specs/mining.md): none in the topsoil (the first stratum
+ * holds only plain ore), then one per band below it — worth 3× and 2× the weight of that band's
+ * signature ore. A gem is placed like an ore vein but at a much lower density, so it is a rare,
+ * rich, heavy find rather than routine.
+ */
+const GEM_BY_BAND: Record<Band, Ore | null> = {
+  topsoil: null,
+  rockbed: "verdite",
+  deepstone: "roselite",
+  coreshell: "aurite",
+};
+/** Gem density per band — rarer than ore, denser with depth, none in the topsoil. */
+const GEM_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.025, deepstone: 0.028, coreshell: 0.03 };
+
 /** Gas-pocket density per band (0 where the band has no gas — specs/hazards.md). */
 const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.08, coreshell: 0.12 };
 /** Lava density per band (denser in the coreshell — specs/hazards.md). */
@@ -191,13 +206,18 @@ export function generateWorld(seed: number): World {
       const tile = grid[row]![col]!;
       if (tile.kind !== "rock") continue;
       // Unbreakable stone first (an impassable obstacle), then lava (not minable), then
-      // gas, then ore — mutually exclusive per cell. Connectivity is guaranteed below.
+      // gas, then the (rare) band gemstone, then ordinary ore — mutually exclusive per cell.
+      // Connectivity is guaranteed below.
+      const gem = GEM_BY_BAND[band];
       if (STONE_DENSITY[band] > 0 && rng.chance(STONE_DENSITY[band])) {
         tile.kind = "stone";
       } else if (LAVA_DENSITY[band] > 0 && rng.chance(LAVA_DENSITY[band])) {
         tile.kind = "lava";
       } else if (GAS_DENSITY[band] > 0 && rng.chance(GAS_DENSITY[band])) {
         tile.kind = "gas";
+      } else if (oreAllowed && gem && GEM_DENSITY[band] > 0 && rng.chance(GEM_DENSITY[band])) {
+        tile.kind = "ore";
+        tile.ore = gem;
       } else if (oreAllowed && rng.chance(mix.density)) {
         tile.kind = "ore";
         tile.ore = rng.weighted(mix.ores, mix.weights);

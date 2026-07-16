@@ -186,6 +186,11 @@ export const PALETTE = {
   voltite: "#5a8cff",
   pyronium: "#ff8a3a",
   adamite: "#8affda",
+  // Gemstones — jewel-toned and deliberately distinct from every ore/material color, so a
+  // faceted gem reads at a glance as a rarer, richer find than an ore smear (specs/mining.md).
+  verdite: "#2fe36a",
+  roselite: "#ff4f7a",
+  aurite: "#ffca28",
   resonite: "#4ad0ff",
   cryenite: "#b98cff",
   coreSample: "#ff4a2a",
@@ -247,8 +252,37 @@ export const MINER_BASE_MASS = 200;
 // Fuel (specs/character.md)
 // ---------------------------------------------------------------------------
 
-/** Fuel burned while holding jetpack thrust (fuel/s). */
-export const FUEL_THRUST_RATE = 9.0;
+/**
+ * Fuel burned while holding jetpack thrust — the rate is NOT flat: it DROPS as the miner's
+ * upward climb speed rises (specs/character.md). Lifting off from a stop, or grinding up
+ * under a heavy load that can barely climb, burns the FULL rate; once the miner is cruising
+ * at climb speed — which an empty or light miner reaches quickly and a near-overloaded one
+ * never does — the burn eases to the CRUISE rate. This is what makes an EMPTY ascent cheap
+ * and fast without simply raising the top climb speed (which would make the miner move too
+ * fast): the efficiency comes from cruising, and a heavy haul — which climbs slowly, so its
+ * upward speed stays low (see the load-scaled climb cap in game.ts) — keeps paying the full
+ * rate. Interpolated by `thrustFuelRate` below.
+ */
+export const FUEL_THRUST_RATE = 9.0; // full burn: lifting off / heavy, slow climb
+export const FUEL_THRUST_CRUISE_RATE = 4.0; // eased burn once cruising at climb speed
+/** At/below this upward speed (px/s) the thrust burns the FULL rate (still accelerating / heavy). */
+export const JETPACK_FULL_BURN_SPEED = 200;
+/** At/above this upward speed (px/s) the thrust burns the CRUISE rate (an empty/light climb). */
+export const JETPACK_CRUISE_SPEED = 380;
+
+/**
+ * The jetpack thrust fuel rate for a given UPWARD climb speed (px/s, i.e. `max(0, -vy)`):
+ * the full rate at/below JETPACK_FULL_BURN_SPEED, easing linearly to the cruise rate at/above
+ * JETPACK_CRUISE_SPEED (specs/character.md). Empty tier-1 climbs at ~420 px/s (> cruise
+ * threshold) so it sips fuel; a near-overloaded haul crawls below the full-burn threshold and
+ * pays the full rate the whole way — the fuel cost of a climb tracks the load.
+ */
+export function thrustFuelRate(upSpeed: number): number {
+  if (upSpeed <= JETPACK_FULL_BURN_SPEED) return FUEL_THRUST_RATE;
+  if (upSpeed >= JETPACK_CRUISE_SPEED) return FUEL_THRUST_CRUISE_RATE;
+  const t = (upSpeed - JETPACK_FULL_BURN_SPEED) / (JETPACK_CRUISE_SPEED - JETPACK_FULL_BURN_SPEED);
+  return FUEL_THRUST_RATE + (FUEL_THRUST_CRUISE_RATE - FUEL_THRUST_RATE) * t;
+}
 /** Fuel burned for lateral drift while airborne (fuel/s). */
 export const FUEL_LATERAL_AIR_RATE = 2.0;
 /** Passive life-support drain while underground (fuel/s). */
@@ -430,6 +464,12 @@ export interface OreDef {
   readonly color: string;
   /** True for rare ores (Adamite) that appear only as a rare glint. */
   readonly rare: boolean;
+  /**
+   * True for a GEMSTONE (specs/mining.md) — a rarer, cut-crystal find rather than a mineral
+   * ore. A gem is drawn as a faceted jewel (not the ore SMEAR), and is worth 3× and weighs 2×
+   * the band's signature ore. Sold, slotted, and lifted exactly like ore otherwise.
+   */
+  readonly gem?: boolean;
 }
 
 // Value floor is set so the cheapest ore buys a meaningful amount of fuel (Ferron 28 ≈ 28
@@ -484,6 +524,38 @@ export const ORES: Record<Ore, OreDef> = {
     bands: ["deepstone", "coreshell"],
     color: PALETTE.adamite,
     rare: true,
+  },
+  // Gemstones (specs/mining.md) — one per band below the topsoil (none in the first band). Each
+  // is worth 3× and weighs 2× that band's SIGNATURE ore (rockbed Argenite 150/16, deepstone
+  // Voltite 380/24, coreshell Pyronium 820/34), so a gem is a rich but heavy prize: a lift-and-
+  // haul decision, not just free Credits. Rarer than ore (world.ts GEM_DENSITY) and drawn as a
+  // faceted cut jewel, not an ore smear.
+  verdite: {
+    ore: "verdite",
+    value: 450, // 3 × Argenite (150)
+    weightKg: 32, // 2 × Argenite (16)
+    bands: ["rockbed"],
+    color: PALETTE.verdite,
+    rare: false,
+    gem: true,
+  },
+  roselite: {
+    ore: "roselite",
+    value: 1140, // 3 × Voltite (380)
+    weightKg: 48, // 2 × Voltite (24)
+    bands: ["deepstone"],
+    color: PALETTE.roselite,
+    rare: false,
+    gem: true,
+  },
+  aurite: {
+    ore: "aurite",
+    value: 2460, // 3 × Pyronium (820)
+    weightKg: 68, // 2 × Pyronium (34)
+    bands: ["coreshell"],
+    color: PALETTE.aurite,
+    rare: false,
+    gem: true,
   },
 };
 
@@ -600,27 +672,42 @@ export const SCANNER_RANGE: readonly number[] = [6, 12, 20, 32, 48];
 export const SCANNER_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
 /**
- * Jetpack (the engine track): sets both the lift FORCE and the empty-load climb SPEED CAP
+ * Jetpack (the engine track): sets both the lift FORCE and the EMPTY-load climb SPEED CAP
  * (specs/upgrades.md, specs/character.md). JETPACK_LIFT is the upward acceleration the
  * jetpack achieves at the miner's base mass (MINER_BASE_MASS); loaded, the achieved
  * acceleration is JETPACK_LIFT * MINER_BASE_MASS / totalMass, so a heavier haul climbs
- * slower and, past a point, cannot climb at all. JETPACK_CLIMB caps the climb speed when
- * lightly loaded, so a better jetpack also simply climbs faster (less fuel per trip).
+ * slower and, past a point, cannot climb at all.
  *
  * The heaviest cargo a tier can still lift (thrust accel > gravity) is
  *   JETPACK_LIFT * MINER_BASE_MASS / GRAVITY - MINER_BASE_MASS
- * ≈ 256 / 378 / 533 / 733 / 956 kg for tiers 1..5. Cargo is capped by SLOT COUNT, not
- * weight (CARGO_CAPACITY, above), so this liftable-mass ceiling is what actually gates a
- * heavy haul: fill the bay with light shallow ore and the whole load lifts easily, but a
- * bay part-filled with heavy deep ore can already exceed the jetpack's lift — at which
- * point the miner must drop ore from the inventory (specs/mining.md) or upgrade the jetpack.
+ * ≈ 256 / 378 / 533 / 733 / 956 kg for tiers 1..5 (unchanged). Cargo is capped by SLOT
+ * COUNT, not weight (CARGO_CAPACITY, above), so this liftable-mass ceiling is what actually
+ * gates a heavy haul: fill the bay with light shallow ore and the whole load lifts easily,
+ * but a bay part-filled with heavy deep ore can exceed the jetpack's lift — at which point
+ * the miner must drop ore from the inventory (specs/mining.md) or upgrade the jetpack.
  */
-// Scaled with the 80px tile (×5/3 from the 48px reference: LIFT and CLIMB are px/s²/px/s,
-// but GRAVITY scaled by the same factor, so the heaviest-liftable load stays the same kg
-// and the climb-speed cap stays the same tiles/s — matched cargo/jetpack balance unchanged).
 export const JETPACK_LIFT: readonly number[] = [3417, 4333, 5500, 7000, 8667];
-export const JETPACK_CLIMB: readonly number[] = [300, 350, 408, 475, 550];
+/**
+ * JETPACK_CLIMB is the climb-speed cap when EMPTY. The EFFECTIVE cap falls with the load
+ * (game.ts `climbCap()` scales it by how far the thrust accel still beats gravity): an empty
+ * miner reaches the full cap and cruises (so it burns the eased CRUISE fuel rate, above), a
+ * heavy haul is throttled to a low climb speed and never reaches the cruise-efficiency band,
+ * so it stays slow AND fuel-hungry — the cost of a climb tracks the weight. The caps are kept
+ * FLAT-ish across tiers (was 300→550, now 420→540) on purpose: a better jetpack earns its
+ * fuel efficiency from lifting more weight and letting a light load cruise, NOT from an
+ * ever-rising top speed (which would just make the miner move too fast, specs/upgrades.md).
+ */
+export const JETPACK_CLIMB: readonly number[] = [420, 450, 480, 510, 540];
 export const JETPACK_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
+/**
+ * How steeply the effective climb cap falls with the load (game.ts `climbCap()`): the cap is
+ * `emptyCap * (1 − FALLOFF * loadFraction)`, where loadFraction is the cargo weight over the
+ * tier's heaviest liftable cargo. At 0.5 a full-limit haul (loadFraction 1) is throttled to
+ * HALF the empty cap — gentle enough that a moderate haul still climbs briskly (and only near
+ * the very top of the load does the climb turn slow and fuel-hungry), so weight ramps the cost
+ * of a climb smoothly rather than punishing a half-full bay (specs/character.md).
+ */
+export const JETPACK_LOAD_CAP_FALLOFF = 0.5;
 
 /**
  * Radiator: reduces gas-explosion and lava-contact damage by its effectiveness fraction
