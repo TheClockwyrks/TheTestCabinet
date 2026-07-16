@@ -31,13 +31,14 @@ name = "Dead Man's Switch"
 
 # Free-form classification tags, surfaced on the site for browsing and search. A jam
 # is not tiered, so its tags describe only its theme.
-tags = ["game-jam", "trains", "tension", "2d", "open-genre"]
+tags = ["game-jam", "trains", "2d", "open-genre"]
 
 # Short site-facing abstract, shown on the jam card. NOT seeded.
 summary = """
-A game jam on the theme DEAD MAN'S SWITCH. Build a complete, playable, enjoyable \
-game of any genre — the only brief is the theme; the design is yours to invent — \
-and produce its own art, effects, and sound during the run."""
+A game jam on the theme DEAD MAN'S SWITCH. Conceive and build a complete, playable, \
+enjoyable game about TRAINS — one that runs on tension rather than calm — inventing \
+the genre and design yourself, and producing its own art, effects, and sound during \
+the run."""
 
 # Site-facing prose describing the jam, relative to this version folder. NOT seeded
 # into a run; it introduces the jam on the site.
