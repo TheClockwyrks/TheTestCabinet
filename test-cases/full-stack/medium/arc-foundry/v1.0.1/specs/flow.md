@@ -66,8 +66,11 @@ small, so every upgrade is a real decision.
   player re-shapes the maze at leisure and presses **SEND** (the wave control,
   `specs/controls.md`) to resolve the level's single **KEEP** — one rolled candidate
   becomes a permanent firing component and every other rock hardens into a blocker —
-  and start the next wave. **Combining** is not tied to SEND: it is an immediate action
-  taken at will during the build phase (and even during a live wave), `specs/build.md`.
+  and start the next wave. A build phase yields **exactly one** new tower; a **COMBINE
+  SPECIAL** (a combine folding in a fresh roll) is an alternative to KEEP that **sends the
+  wave itself**, while a plain **COMBINE** of only standing towers is immediate, is not a
+  harvest, and may be taken at will during the build phase **and** during a live wave
+  (`specs/build.md`).
 - **The opening build phase — before Wave 1 — is also untimed** and reads **START**
   instead of SEND. The `130` opening Charge lays the first partial maze, not a
   finished board.
@@ -249,13 +252,15 @@ targets:
   route; a placement that would seal any segment, or land on a waypoint platform, is
   **refused**, and the floor **re-paths live** as walls change (`specs/board.md`).
 - The **scrap-press** places a rock that **rolls a random component type at a random
-  quality on placement** (biased upward by Refinement); you **keep exactly one** roll
-  per level as a firing component and every other un-harvested rock hardens into an
-  inert **blocker**. **Combining** — a quality match (same type + quality → one tier
-  higher) or a **combination-tower recipe** — is a separate, **immediate** action taken
-  at will (build phase **and** during a live wave), so it is how a player keeps more
-  than one tower off a level; you may also **downgrade** a base component and **upgrade**
-  a combination tower (`specs/build.md`, `specs/towers.md`).
+  quality on placement** (biased upward by Refinement); each level yields **exactly one**
+  new firing component and every other un-harvested rock hardens into an inert **blocker**.
+  That one harvest is a **KEEP** (resolved at SEND) or a **COMBINE SPECIAL** — an immediate
+  combine folding in a fresh roll (a quality match, same type + quality → one tier higher, or
+  a **combination-tower recipe**) that **ends the build phase and sends the wave**. A plain
+  **COMBINE** of only **standing** towers is immediate, is not a harvest, and is taken at will
+  in the build phase **and** during a live wave — that is how a player climbs and assembles
+  their board across the waves; you may also **downgrade** a base component and **upgrade** a
+  combination tower (`specs/build.md`, `specs/towers.md`).
 - Components **fire automatically** at valid in-range units with selectable targeting,
   throwing visible traveling arcs that carry the hit — the **Regulator** is the one
   exception, a **non-firing** support type that projects a buff aura instead
