@@ -6,12 +6,14 @@ Each file is the **regenerated** image (the authoritative output rebuilt from th
 recorded action log) of an [asset-generation](https://) run of the matching
 `foray-*` test case. They are RGBA, 16×16, and use the exact palette the renderer
 expects: the neutral grey recolor ramp (so the per-team palette swap can tint
-them) for `nest`, and the shared non-recolored palette for `seed`/`jelly`.
+them) for `nest`, and the shared non-recolored palette for
+`seed`/`large_seed`/`jelly`.
 
 | File(s) | Asset case | Source run |
 | --- | --- | --- |
 | `nest.png` | `foray-nest` v1.0.0 (base) | `9da30365-0847-4114-801c-7beace3e0c93` |
 | `seed.png` | `foray-seed` v1.0.0 (base) | `1302cb40-6240-4455-83a5-772aa4d355d2` |
+| `large_seed.png` | `foray-large-seed` v1.0.0 (base) | `d78536ac-97d5-46d6-b791-ccad82eb7b81` |
 | `jelly_active.png` | `foray-jelly` v1.0.0 (base) frame 0 | `9b4713ef-6479-4510-a64d-2e46c2e92cfe` |
 | `jelly_spent.png` | `foray-jelly` v1.0.0 (base) frame 1 | `9b4713ef-6479-4510-a64d-2e46c2e92cfe` |
 | `soldier_*.png` (16) | `foray-soldier` v1.0.0 (base) | `99d92451-733a-4f6d-aac0-aa416f054bd3` |

@@ -85,9 +85,10 @@ cycles as the agent crosses a tile so motion reads smoothly between ticks.
 | **Soldier** (defender) | `soldier_{s,n,w,e}_{0..3}` (16) | Mandibled, angular silhouette; a 4-step walk cycle per facing → `anims.soldier_walk_{s,n,w,e}`. |
 | **Raider** (forager, empty) | `raider_{s,n,w,e}_{0..3}` (16) | Lighter, leaner silhouette; 4-step walk cycle per facing → `anims.raider_walk_*`. |
 | **Raider, laden** | `raider_laden_{s,n,w,e}_{0..3}` (16) | The same cycles carrying a seed — slower, heavier: the [carry-weight](/testing/adversarial/foray/overview/#carry-weight--the-signature-mechanic) tell → `anims.raider_laden_walk_*`. |
-| **Immune raider** | _(no frame)_ | Not a sheet frame: the renderer draws a breathing additive cyan aura procedurally over any agent with `immune_ticks > 0` (jelly active), pulsed by the tick clock so it haloes the sprite. |
-| **Seed cache** | `seed` | The scorable resource. |
-| **Royal jelly** | `jelly_active`, `jelly_spent` | Active = glowing node; spent = dimmed husk after it is eaten. |
+| **Immune ant** | _(no frame)_ | Not a sheet frame: the renderer draws a breathing additive cyan aura procedurally over **any** agent with `immune_ticks > 0` (jelly active), pulsed by the tick clock so it haloes the sprite. Note an immune **soldier** is reachable — a raider that eats jelly and runs home keeps its window — so the aura is not raider-only. |
+| **Seed cache** | `seed` | The ordinary scorable resource, worth 1. |
+| **Large seed** | `large_seed` | Worth *and weighing* three ordinary seeds. The only fixture that **moves** — it drifts a tile at a time toward the border — so it is drawn per frame from the snapshot's `large_seeds`, not as a static fixture. Deliberately **not** interpolated: a drift step is a discrete hop every few hundred ticks, not a walk, and sliding it would read as a rendering fault. |
+| **Royal jelly** | `jelly_active`, `jelly_spent` | Active = glowing node; spent = dimmed husk after it is eaten. The husk is **temporary**: a node regrows at the same tile after its respawn window, so the renderer flips it back automatically (it derives "spent" as any `jelly_nodes` tile absent from the frame's active `jelly` list, and holds no rules of its own). |
 | **Maze walls** | `wall_{0..15}` | A 4-neighbor **autotile** set; the frame index is the N=1/E=2/S=4/W=8 connection bitmask, mapped in `wall_tiles`. The renderer picks each board cell's tile from its wall neighbors, so walls render as a connected pac-man-style maze. |
 | **Boundary seam** | `border_{cap_top,mid,cap_bottom}` | The no-man's-land divider down the middle, in `border_tiles`; capped top/bottom, tileable middle. |
 | **Floor** | `floor` | Dug-tunnel ground the maze sits on. |

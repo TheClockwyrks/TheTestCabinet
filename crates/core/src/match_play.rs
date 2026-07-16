@@ -410,7 +410,7 @@ pub fn run_tournament(
             let red = &participants[i];
             let blue = &participants[j];
             let outcome = run_quick_match(test_case, red, blue)?;
-            let summary = outcome.summary;
+            let mut summary = outcome.summary;
 
             // `summary.winner` already carries the efficiency tie-break, so the
             // win/loss/draw tally counts a level-score match for the leaner side.
@@ -429,7 +429,12 @@ pub fn run_tournament(
                 }
             }
 
+            // A quick match hands its replay straight back, so `run_quick_match`
+            // leaves the key unset; a tournament persists each replay under the
+            // match id, so record that segment here. A load forfeit produces no
+            // replay and keeps the key `None`.
             if let Some(replay) = outcome.replay {
+                summary.replay_key = Some(summary.match_id.clone());
                 replays.push((summary.match_id.clone(), replay));
             }
             played += 1;

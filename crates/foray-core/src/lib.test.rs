@@ -215,12 +215,42 @@ fn generated_maze_is_mirror_symmetric_and_deterministic() {
             );
         }
     }
-    // Fixtures mirror too: every Red cache/jelly has its Blue twin.
+    // Fixtures mirror too: every Red cache/jelly/large seed has its Blue twin.
     for seed in a.initial_seeds(Team::Red) {
         assert!(a.initial_seeds(Team::Blue).contains(&a.mirror(*seed)));
     }
-    assert_eq!(a.initial_seeds(Team::Red).len(), 20);
+    for seed in a.initial_large_seeds(Team::Red) {
+        assert!(a.initial_large_seeds(Team::Blue).contains(&a.mirror(*seed)));
+    }
+    assert_eq!(a.initial_seeds(Team::Red).len(), 14);
+    assert_eq!(a.initial_large_seeds(Team::Red).len(), 2);
     assert_eq!(a.initial_jelly(Team::Red).len(), 2);
+
+    // The invariant that actually matters: large seeds were CARVED OUT of the half's
+    // value, not added on top. A half is still worth 20, so the sweep bar — and every
+    // balance assumption resting on it — is exactly where it was.
+    let rules = rules();
+    let half_value = a.initial_seeds(Team::Red).len() as u32
+        + a.initial_large_seeds(Team::Red).len() as u32 * rules.large_seed_value;
+    assert_eq!(
+        half_value, 20,
+        "14 ordinary + 2 large x 3 = 20, the same value a half held before"
+    );
+
+    // Large seeds sit DEEP — further from the border than the median cache — so
+    // drifting one out is a journey and taking one is a commitment.
+    let deepest_cache = a
+        .initial_seeds(Team::Red)
+        .iter()
+        .map(|p| p.x)
+        .min()
+        .expect("caches exist");
+    for large in a.initial_large_seeds(Team::Red) {
+        assert!(
+            large.x <= deepest_cache,
+            "a large seed is at least as deep as the deepest ordinary cache",
+        );
+    }
 }
 
 #[test]
@@ -269,7 +299,7 @@ fn committed_schemas_match_the_types() {
 #[test]
 fn role_is_derived_from_the_half_the_agent_stands_on() {
     let board = open_board();
-    let state = MatchState::new(&board);
+    let state = MatchState::new(&board, &rules());
     let red = state.agents.iter().find(|a| a.team == Team::Red).unwrap();
     assert_eq!(
         red.role(&board),
@@ -419,11 +449,13 @@ fn can_move_this_tick_matches_the_speed_model_in_the_observation() {
 }
 
 #[test]
-fn agents_cannot_swap_tiles() {
+fn a_soldier_catches_a_raider_that_tries_to_swap_past_it() {
     // A Blue raider on Red's half and a Red soldier sit adjacent and try to trade
     // tiles in one tick. Swapping would let the raider pass *through* the soldier
-    // untagged, so the swap is cancelled and both hold; the tag lands a tick later
-    // when the soldier steps onto the (now stationary) raider.
+    // untagged, so the swap is cancelled — and the soldier catches the raider where
+    // it stood. Cancelling *without* the tag is what deadlocked real matches: the
+    // pair never share a tile, so tagging never saw them, and two controllers that
+    // both kept issuing the swap simply held forever.
     let board = open_board();
     let mut game = Match::new(board, rules(), sim());
     let res = rules().move_resolution;
@@ -470,17 +502,58 @@ fn agents_cannot_swap_tiles() {
     );
     assert_eq!(
         blue0.pos,
-        Pos::new(2, 1),
-        "the raider holds — no pass-through"
+        game.board.nest(Team::Blue),
+        "the raider does not pass through — it is caught trying, and respawns"
     );
+    assert_eq!(blue0.carrying, 0, "and drops what it was carrying");
     assert_eq!(
-        blue0.carrying, 1,
-        "the raider was not tagged through the swap"
+        game.state.kills,
+        Kills { red: 1, blue: 0 },
+        "the catch is a kill for the defending colony"
     );
+    assert!(
+        game.state.red_caches.contains(&Pos::new(2, 1)),
+        "the dropped load scatters back onto the defender's half, as any tag does"
+    );
+}
 
-    // Next tick the soldier steps onto the raider (a move-onto, not a swap) and
-    // tags it — proving only the exchange was blocked, not contact.
-    game.step(&move_one(0, Dir::E), &stop());
+#[test]
+fn an_immune_raider_kills_a_soldier_it_swaps_past() {
+    // The swap is settled by the same three-line rule as a shared tile, so jelly
+    // flips it: the immune raider is not caught — it kills the defender instead.
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    let res = rules().move_resolution;
+    {
+        let blue0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Blue && a.id == 0)
+            .unwrap();
+        blue0.pos = Pos::new(2, 1); // Red's half -> a raider
+        blue0.immune_ticks = 5;
+        blue0.move_accum = res;
+    }
+    {
+        let red0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Red && a.id == 0)
+            .unwrap();
+        red0.pos = Pos::new(1, 1); // own half -> a soldier
+        red0.move_accum = res;
+    }
+
+    game.step(&move_one(0, Dir::E), &move_one(0, Dir::W));
+
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
     let blue0 = game
         .state
         .agents
@@ -488,9 +561,65 @@ fn agents_cannot_swap_tiles() {
         .find(|a| a.team == Team::Blue && a.id == 0)
         .unwrap();
     assert_eq!(
+        red0.pos,
+        game.board.nest(Team::Red),
+        "the immune raider kills the soldier that tried to block it"
+    );
+    assert_eq!(
         blue0.pos,
-        game.board.nest(Team::Blue),
-        "stepping onto the raider tags it"
+        Pos::new(2, 1),
+        "the immune raider still holds — the swap is cancelled either way"
+    );
+    assert_eq!(game.state.kills, Kills { red: 0, blue: 1 });
+}
+
+#[test]
+fn a_repeated_swap_cannot_deadlock_the_board() {
+    // The regression that matters. Two controllers that each keep issuing the same
+    // swap used to hold forever — agents frozen, score frozen, match run out to the
+    // tick cap. Drive the exact standoff for many ticks and assert the board moves.
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    {
+        let blue0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Blue && a.id == 0)
+            .unwrap();
+        blue0.pos = Pos::new(2, 1);
+        blue0.move_accum = rules().move_resolution;
+    }
+    {
+        let red0 = game
+            .state
+            .agents
+            .iter_mut()
+            .find(|a| a.team == Team::Red && a.id == 0)
+            .unwrap();
+        red0.pos = Pos::new(1, 1);
+        red0.move_accum = rules().move_resolution;
+    }
+
+    // Both sides stubbornly try the same exchange, tick after tick.
+    for _ in 0..50 {
+        game.step(&move_one(0, Dir::E), &move_one(0, Dir::W));
+    }
+
+    assert!(
+        game.state.kills.red > 0,
+        "the standoff resolves — the defender catches the raider instead of freezing",
+    );
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    assert_ne!(
+        red0.pos,
+        Pos::new(1, 1),
+        "and the soldier is free to move again, not pinned on its tile forever",
     );
 }
 
@@ -668,9 +797,10 @@ fn soldier_tags_enemy_raider_scattering_load_and_respawning_it() {
 }
 
 #[test]
-fn immune_raider_cannot_be_tagged() {
+fn an_immune_raider_survives_a_soldier_and_kills_it() {
     let board = open_board();
     let mut game = Match::new(board, rules(), sim());
+    // Blue 0 raids Red's half carrying a load, with jelly active.
     let blue0 = game
         .state
         .agents
@@ -680,6 +810,7 @@ fn immune_raider_cannot_be_tagged() {
     blue0.pos = Pos::new(2, 1);
     blue0.carrying = 2;
     blue0.immune_ticks = 5; // jelly immunity
+    // A Red soldier stands on the very same tile — in v1 this was a clean tag.
     let red0 = game
         .state
         .agents
@@ -703,10 +834,119 @@ fn immune_raider_cannot_be_tagged() {
     );
     assert_eq!(blue0.carrying, 2, "an immune raider keeps its load");
     assert_eq!(blue0.immune_ticks, 4, "immunity decrements by one per tick");
+
+    // …and the soldier is the one that dies: jelly kills, it does not merely shield.
+    // This is what breaks a defender parked on a cache.
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    assert_eq!(
+        red0.pos,
+        game.board.nest(Team::Red),
+        "the soldier is tagged by the immune raider and respawns at its nest"
+    );
+    assert_eq!(
+        game.state.kills,
+        Kills { red: 0, blue: 1 },
+        "the kill is credited to the immune raider's colony"
+    );
+}
+
+#[test]
+fn two_immune_ants_cannot_kill_each_other() {
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    // An immune Blue raider meets an immune Red soldier (a Red raider that ate
+    // jelly and ran home is still immune, so this pairing is reachable in play).
+    let blue0 = game
+        .state
+        .agents
+        .iter_mut()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    blue0.pos = Pos::new(2, 1);
+    blue0.immune_ticks = 5;
+    let red0 = game
+        .state
+        .agents
+        .iter_mut()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    red0.pos = Pos::new(2, 1);
+    red0.immune_ticks = 5;
+
+    game.step(&stop(), &stop());
+
+    let blue0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    let red0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Red && a.id == 0)
+        .unwrap();
+    assert_eq!(blue0.pos, Pos::new(2, 1), "neither immune ant is respawned");
+    assert_eq!(red0.pos, Pos::new(2, 1), "neither immune ant is respawned");
     assert_eq!(
         game.state.kills,
         Kills::default(),
-        "an immune raider that cannot be tagged is not a kill"
+        "jelly cancels out — an immune ant cannot kill another immune ant"
+    );
+}
+
+#[test]
+fn a_soldier_and_an_immune_raider_kill_each_other_in_the_same_tick() {
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    // One Red soldier on a tile with TWO Blue raiders: one immune, one not. The
+    // soldier tags the plain raider while the immune one tags the soldier — both
+    // die this tick. This is the case that would go order-dependent if tags were
+    // applied as they were found rather than from one snapshot.
+    let tile = Pos::new(2, 1);
+    for agent in game.state.agents.iter_mut() {
+        match (agent.team, agent.id) {
+            (Team::Red, 0) => agent.pos = tile,
+            (Team::Blue, 0) => {
+                agent.pos = tile;
+                agent.immune_ticks = 5;
+            }
+            (Team::Blue, 1) => agent.pos = tile,
+            _ => {}
+        }
+    }
+
+    game.step(&stop(), &stop());
+
+    let at = |team: Team, id: u32| -> Pos {
+        game.state
+            .agents
+            .iter()
+            .find(|a| a.team == team && a.id == id)
+            .unwrap()
+            .pos
+    };
+    assert_eq!(
+        at(Team::Red, 0),
+        game.board.nest(Team::Red),
+        "the soldier dies to the immune raider"
+    );
+    assert_eq!(
+        at(Team::Blue, 1),
+        game.board.nest(Team::Blue),
+        "the plain raider dies to the soldier, in the same tick"
+    );
+    assert_eq!(at(Team::Blue, 0), tile, "the immune raider is untouched");
+    assert_eq!(
+        game.state.kills,
+        Kills { red: 1, blue: 1 },
+        "both colonies are credited one kill"
     );
 }
 
@@ -764,6 +1004,100 @@ fn jelly_grants_immunity_and_blocks_a_following_tag() {
         .find(|a| a.team == Team::Blue && a.id == 0)
         .unwrap();
     assert_eq!(blue0.pos, Pos::new(2, 1), "jelly immunity blocks the tag");
+}
+
+#[test]
+fn a_consumed_jelly_node_regrows_at_its_own_tile() {
+    let board = open_board();
+    let mut rules = rules();
+    rules.jelly_respawn_ticks = 5;
+    let mut game = Match::new(board, rules, sim());
+    let node = Pos::new(2, 1);
+    let blue0 = game
+        .state
+        .agents
+        .iter_mut()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    blue0.pos = Pos::new(3, 1);
+    game.state.red_jelly.insert(node);
+
+    game.step(&stop(), &move_one(0, Dir::W)); // eat it
+    assert!(
+        !game.state.red_jelly.contains(&node),
+        "the node is spent the tick it is eaten"
+    );
+
+    // It is spent, not gone: it comes back at the SAME tile, so the jelly layout is
+    // fixed for the whole match and a controller can plan around the cycle.
+    for _ in 0..(rules.jelly_respawn_ticks - 1) {
+        assert!(
+            !game.state.red_jelly.contains(&node),
+            "the node stays spent while it regrows"
+        );
+        game.step(&stop(), &stop());
+    }
+    assert!(
+        game.state.red_jelly.contains(&node),
+        "the node regrows at its own tile after jelly_respawn_ticks"
+    );
+    assert!(
+        game.state.red_jelly_regrowing.is_empty(),
+        "a regrown node is no longer pending — it is in exactly one of the two"
+    );
+}
+
+#[test]
+fn a_returning_carrier_banks_before_an_immune_enemy_can_kill_it() {
+    // Banking runs before tagging, which only matters now that soldiers are
+    // killable. Blue 0 carries 2 seeds home across the border onto Blue's half,
+    // where an immune Red raider is waiting on the landing tile. Blue must still
+    // score: were it tagged first, its load — taken from RED's half — would scatter
+    // onto BLUE's half, silently converting Red's seeds into Blue's and breaking
+    // both seed conservation and the sweep condition.
+    let board = open_board();
+    let mut game = Match::new(board, rules(), sim());
+    for agent in game.state.agents.iter_mut() {
+        match (agent.team, agent.id) {
+            // On Red's half at (3,1), carrying, one step from home at (4,1).
+            (Team::Blue, 0) => {
+                agent.pos = Pos::new(3, 1);
+                agent.carrying = 2;
+            }
+            // An immune Red raider squatting on Blue's landing tile.
+            (Team::Red, 0) => {
+                agent.pos = Pos::new(4, 1);
+                agent.immune_ticks = 5;
+            }
+            _ => {}
+        }
+    }
+    let red_caches_before = game.state.red_caches.len();
+
+    game.step(&stop(), &move_one(0, Dir::E)); // Blue 0: (3,1) -> (4,1), crossing home
+
+    assert_eq!(game.state.score.blue, 2, "the carrier banks its load");
+    let blue0 = game
+        .state
+        .agents
+        .iter()
+        .find(|a| a.team == Team::Blue && a.id == 0)
+        .unwrap();
+    assert_eq!(
+        blue0.pos,
+        game.board.nest(Team::Blue),
+        "and is then killed by the immune raider, having already scored"
+    );
+    assert_eq!(blue0.carrying, 0, "the banked load is gone, not dropped");
+    assert_eq!(
+        game.state.red_caches.len(),
+        red_caches_before,
+        "no seed is conjured onto Red's half by the kill"
+    );
+    assert!(
+        game.state.blue_caches.is_empty(),
+        "and none is scattered onto Blue's half — the seeds were banked, not dropped"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -844,7 +1178,7 @@ fn forfeit_result_is_representable() {
 #[test]
 fn action_validation_rejects_unowned_duplicate_and_missing_agents() {
     let board = open_board();
-    let state = MatchState::new(&board);
+    let state = MatchState::new(&board, &rules());
     // Valid: exactly Red's three ids.
     let ok = Action {
         moves: vec![
@@ -1030,6 +1364,70 @@ fn reconstruction_detects_drift_against_a_tampered_result() {
     );
 }
 
+/// A forfeit replay built from the scripted match: the host stops part-way through
+/// and declares a winner, so the log holds only the ticks that were played and the
+/// committed score is the score those ticks produce. `mutate` tampers with the
+/// committed result so a test can assert reconstruction catches the disagreement.
+fn forfeit_replay(mutate: impl FnOnce(&mut MatchResult)) -> Replay {
+    let (board, ticks, _) = scripted_match();
+    let played = ticks.len() / 2;
+    let ticks: Vec<TickInput> = ticks.into_iter().take(played).collect();
+
+    // Replay the truncated log to find the state the match forfeited in.
+    let mut game = Match::new(board, rules(), header("r", "b").sim);
+    for input in &ticks {
+        game.step(&input.red, &input.blue);
+    }
+    let mut result = MatchResult {
+        winner: Some(Team::Blue),
+        score: game.state.score,
+        kills: game.state.kills,
+        ended: Ended::Forfeit,
+        ticks: game.state.tick,
+    };
+    mutate(&mut result);
+    Replay::record(header("r", "b"), ticks, result)
+}
+
+#[test]
+fn a_forfeit_replay_reconstructs_when_its_log_produces_the_committed_state() {
+    let replay = forfeit_replay(|_| {});
+    replay
+        .reconstruct()
+        .expect("an honest forfeit replay reconstructs");
+}
+
+#[test]
+fn reconstruction_detects_drift_in_a_forfeit_replays_score() {
+    // Only `winner`/`ended` are the host's to declare on a forfeit; the score, kills
+    // and tick count are the rules' output and must stay re-derivable from the log.
+    // These were once trusted wholesale, so a forfeit replay bypassed the drift check
+    // entirely — a playback engine could diverge on one and nothing would notice.
+    let replay = forfeit_replay(|result| result.score.blue += 7);
+    let err = replay
+        .reconstruct()
+        .expect_err("a forfeit replay with an impossible score drifts");
+    assert!(
+        matches!(err, ReplayError::Drift(_)),
+        "the mismatch is reported as drift"
+    );
+}
+
+#[test]
+fn reconstruction_detects_a_forfeit_replay_whose_tick_count_disagrees_with_its_log() {
+    // The precise shape of the recorder bug this guards: a result claiming a different
+    // number of ticks than the log actually holds (it used to hold one *more* than the
+    // match played, the tick the forfeiting controller died on).
+    let replay = forfeit_replay(|result| result.ticks += 1);
+    let err = replay
+        .reconstruct()
+        .expect_err("a forfeit replay whose tick count disagrees with its log drifts");
+    assert!(
+        matches!(err, ReplayError::Drift(_)),
+        "the mismatch is reported as drift"
+    );
+}
+
 #[test]
 fn reconstruction_is_deterministic_across_runs() {
     let (_, ticks, result) = scripted_match();
@@ -1041,4 +1439,89 @@ fn reconstruction_is_deterministic_across_runs() {
     assert_eq!(a.state.agents, b.state.agents);
     assert_eq!(a.state.red_caches, b.state.red_caches);
     assert_eq!(a.state.blue_caches, b.state.blue_caches);
+}
+
+// ---------------------------------------------------------------------------
+// Large seeds: drift, containment, and separation.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_large_seed_drifts_to_the_border_and_no_further() {
+    // Drift the real shipped board to rest with nobody playing.
+    //
+    // Nothing but the border stops a large seed: it walks until it physically cannot
+    // go on without crossing, and stops on the last column of its own half. An
+    // ignored seed therefore ends up on the seam — one step from an enemy raider who
+    // can take it and bank it by stepping straight home. What it must never do is
+    // cross: a seed is stolen by a raid, never conceded by the clock.
+    let board = Board::generate(MAP_ID, BoardParams::default(), MAP_SEED);
+    let rules = rules();
+    let mut game = Match::new(board, rules, sim());
+
+    // Long enough for every seed to walk its whole path and come to rest.
+    for _ in 0..(rules.large_seed_drift_ticks * 60) {
+        game.step(&stop(), &stop());
+        let mut seen: Vec<Pos> = Vec::new();
+        for seed in &game.state.large_seeds {
+            // Containment: it may reach the seam, but it may never step over it.
+            match seed.half {
+                Team::Red => assert!(
+                    seed.pos.x < game.board.border_x,
+                    "a Red large seed crossed the border to {:?}",
+                    seed.pos,
+                ),
+                Team::Blue => assert!(
+                    seed.pos.x >= game.board.border_x,
+                    "a Blue large seed crossed the border to {:?}",
+                    seed.pos,
+                ),
+            }
+            // Separation: two large seeds are two objects. Stacked, they become a
+            // single 6-point prize one raider scoops in one step.
+            assert!(
+                !seen.contains(&seed.pos),
+                "two large seeds stacked on {:?}",
+                seed.pos,
+            );
+            seen.push(seed.pos);
+        }
+    }
+
+    // Each seed comes to rest in its OWN lane on the border column, not merely
+    // somewhere in it. Halting at the column was the original bug: both seeds of a
+    // half took the shortest tunnel, were spat out on the same tile, and collapsed
+    // into one objective a single defender could cover.
+    for seed in &game.state.large_seeds {
+        assert_eq!(
+            Some(seed.pos),
+            seed.target,
+            "an unmolested large seed comes to rest in its own lane",
+        );
+        assert_ne!(
+            seed.pos, seed.home,
+            "…having actually drifted there — otherwise the checks above are vacuous",
+        );
+        // It really did walk all the way out, not stop somewhere comfortable.
+        assert_eq!(
+            seed.pos.x,
+            game.board.stop_column(seed.half),
+            "an ignored large seed ends up hard against the border",
+        );
+    }
+
+    // And the two on a half rest genuinely apart, not merely on different tiles.
+    for half in [Team::Red, Team::Blue] {
+        let rows: Vec<i32> = game
+            .state
+            .large_seeds
+            .iter()
+            .filter(|seed| seed.half == half)
+            .map(|seed| seed.pos.y)
+            .collect();
+        assert_eq!(rows.len(), 2, "two large seeds per half");
+        assert!(
+            (rows[0] - rows[1]).abs() >= 2,
+            "{half:?}'s two large seeds rest in distinct lanes, not side by side: {rows:?}",
+        );
+    }
 }

@@ -8,9 +8,13 @@ opponent to run and play against while you develop — a yardstick, **not** a
 template. (`$FORAY_HOME` is `/opt/foray`; the `foray` CLI is on your `PATH`.)
 
 Every baseline is **deliberately mediocre**. Each has an obvious, exploitable
-weakness, and none of them accounts properly for Foray's twist (carry weight and
-royal jelly). The point here is to write a controller that beats these
-comfortably and then beats the field. A controller that merely matches a
+weakness, and **not one of them accounts for any of Foray's three twists** — carry
+weight, royal jelly, or the large seeds. In particular **no baseline ever eats
+jelly**, and none of them treats a large seed as anything more than a seed that
+happens to be where it is standing: they will walk onto one by accident and haul it
+home without ever knowing what they picked up, and they will let their own drift
+onto the seam and be taken for free. The point here is to write a controller that
+beats these comfortably and then beats the field. A controller that merely matches a
 baseline has not done the work. You may read their source freely; you are expected
 **not** to copy it.
 
@@ -42,9 +46,10 @@ A naive "balanced" strategy: it **statically** assigns one agent to patrol the
 border and chase the nearest visible intruder, and sends the other two in as
 `greedy-raider`-style foragers. It is the **strongest** baseline, but its role
 split **never adapts** — it does not reinforce a collapsing defense, recall a
-raider to bank before it is caught, reason about jelly, or weigh load against the
-distance home. It rewards a controller that reads the match state and reallocates
-its three agents dynamically.
+raider to bank before it is caught, ever eat jelly (to survive a run home *or* to
+kill a defender), contest or recall a large seed, or weigh load against the distance
+home. It rewards a controller that reads the match state and reallocates its three
+agents dynamically.
 
 **`border-soldier` is the canonical benchmark opponent.** The benchmark runs
 **one** match: your controller as Red against
@@ -58,8 +63,9 @@ The three span the obvious failure space on purpose — pure noise (`random`), p
 greed (`greedy-raider`), and rigid role-splitting (`border-soldier`) — so you can
 see what losing looks like from three directions without being handed a winning
 shape. The real strategy space — balancing offense against defense tick by tick,
-timing a bank against carry weight, and spending jelly to run a heavy load home
-— is left entirely for you to discover.
+timing a bank against carry weight, spending jelly both to survive and to kill, and
+contesting the large seeds before they drift into the enemy's reach — is left
+entirely for you to discover.
 
 ## Iterating locally
 
