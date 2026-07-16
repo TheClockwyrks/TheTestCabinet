@@ -29,11 +29,12 @@ build phase** (`specs/flow.md`). While a wave is running those controls are disa
 
 Two things are **not** restricted to the build phase and may be done during a live wave:
 **changing a component's targeting**, and a **plain COMBINE** of **standing** towers (a
-quality-climb or combination-tower recipe folding only pieces already on the yard). Combining
-a **fresh candidate** — a rock placed this phase — is different: it is a **COMBINE SPECIAL**,
-the level's one harvest, and it **ends the build phase** (`specs/build.md`), so it exists only
-in the build phase (candidates do not survive into a wave). Mid-wave, then, a player folds
-their standing towers together as the situation demands, but never spends a fresh roll.
+quality-climb or combination-tower recipe folding only pieces already on the yard).
+Combining a **fresh candidate** — a rock placed this phase — is different: it is a
+**COMBINE SPECIAL**, the level's one harvest, and it **ends the build phase**
+(`specs/build.md`), so it exists only in the build phase (candidates do not survive into a
+wave). Mid-wave, then, a player folds their standing towers together as the situation
+demands, but never spends a fresh roll.
 
 ## Stamping and placing a rock (the scrap-press)
 
@@ -101,28 +102,29 @@ Show the same odds while a blank rock is held.
   reversible until you send the wave, when the kept candidate becomes a permanent firing
   component and every other candidate hardens into a blocker.
 - **Combine — immediate; ends the phase only if it spends a fresh roll.** With a **base
-  structure** (a candidate **or** a base component) selected, the inspector may offer combine
-  actions, resolving **the instant you commit it** for **no Charge** with a **combine flash**
-  VFX (`specs/assets.md`). The result lands at the **primary** (initiating) piece's footprint,
-  so a combine can **replace a standing tower**. What it consumes sets its kind
-  (`specs/build.md`): folding in **≥1 fresh candidate** is a **COMBINE SPECIAL** — the level's
-  one harvest — which **ends the build phase and launches the wave**, superseding any marked
-  KEEP; folding **only standing towers** is a plain **COMBINE** that is not a harvest and leaves
-  the phase running (the only combine allowed **during a live wave**). The inspector labels the
-  action **COMBINE SPECIAL** (with an *ends build* note) or **COMBINE** accordingly. With an
-  explicit **shift-multi-select**, the exact chosen copies fold; otherwise the game resolves the
-  ingredients itself, **always preferring to consume a fresh candidate over a standing tower**
-  (`specs/build.md`). Every base structure that could combine right now **pulses on the board at
-  all times** so the player is shown which pieces can merge without selecting anything; the
-  selected fold pulses brighter.
-  - **Quality-combine.** A **COMBINE / COMBINE SPECIAL** action appears when the selected piece
-    has a matching **candidate or base component** of the same type **and** same quality on the
-    board (`specs/build.md`). Clicking it, or pressing **`C`**, immediately produces one
-    component a tier higher at the initiating piece's footprint and consumes the partner — whose
-    footprint **hardens into a blocker** so the maze is unchanged. It reads **COMBINE SPECIAL**
-    and ends the phase when the selected piece or its auto-picked partner is a fresh candidate,
-    or **COMBINE** (phase stays open) when both are standing towers. A **Tesla-Prime** piece
-    offers no quality-combine.
+  structure** (a candidate **or** a base component) selected, the inspector may offer
+  combine actions, resolving **the instant you commit it** for **no Charge** with a
+  **combine flash** VFX (`specs/assets.md`). The result lands at the **primary**
+  (initiating) piece's footprint, so a combine can **replace a standing tower**. What it
+  consumes sets its kind (`specs/build.md`): folding in **≥1 fresh candidate** is a
+  **COMBINE SPECIAL** — the level's one harvest — which **ends the build phase and
+  launches the wave**, superseding any marked KEEP; folding **only standing towers** is a
+  plain **COMBINE** that is not a harvest and leaves the phase running (the only combine
+  allowed **during a live wave**). The inspector labels the action **COMBINE SPECIAL**
+  (with an *ends build* note) or **COMBINE** accordingly. With an explicit
+  **shift-multi-select**, the exact chosen copies fold; otherwise the game resolves the
+  ingredients itself, **always preferring to consume a fresh candidate over a standing
+  tower** (`specs/build.md`). Every base structure that could combine right now **pulses
+  on the board at all times** so the player is shown which pieces can merge without
+  selecting anything; the selected fold pulses brighter.
+  - **Quality-combine.** A **COMBINE / COMBINE SPECIAL** action appears when the selected
+    piece has a matching **candidate or base component** of the same type **and** same
+    quality on the board (`specs/build.md`). Clicking it, or pressing **`C`**, immediately
+    produces one component a tier higher at the initiating piece's footprint and consumes
+    the partner — whose footprint **hardens into a blocker** so the maze is unchanged. It
+    reads **COMBINE SPECIAL** and ends the phase when the selected piece or its
+    auto-picked partner is a fresh candidate, or **COMBINE** (phase stays open) when both
+    are standing towers. A **Tesla-Prime** piece offers no quality-combine.
   - **Recipe-combine.** When the board (candidates **and/or** existing base components),
     together with the selected initiator, holds the exact multiset of `(type, quality)`
     ingredients a **combination recipe** needs (`specs/towers.md`), the inspector shows each

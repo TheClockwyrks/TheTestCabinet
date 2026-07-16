@@ -342,11 +342,11 @@ it resolves **at once**:
 - **Every consumed ingredient footprint hardens into a blocker** — wall-neutral, exactly
   like a quality-combine, so a recipe combine **never opens a hole** in the maze
   (`specs/board.md`, `specs/build.md`).
-- **Its ingredients decide the phase** (`specs/build.md`): a recipe that folds in **≥1 fresh
-  candidate** is a **COMBINE SPECIAL** — the level's one harvest — and **ends the build phase**
-  (including the **one-shot** where every ingredient was placed this phase); a recipe of only
-  **standing** towers is a plain **COMBINE**, taken at will in the build phase **and during a
-  live wave**, that does not end the phase.
+- **Its ingredients decide the phase** (`specs/build.md`): a recipe that folds in **≥1
+  fresh candidate** is a **COMBINE SPECIAL** — the level's one harvest — and **ends the
+  build phase** (including the **one-shot** where every ingredient was placed this phase);
+  a recipe of only **standing** towers is a plain **COMBINE**, taken at will in the build
+  phase **and during a live wave**, that does not end the phase.
 
 ### Combination towers land weak and are UPGRADED (levels 0–3)
 
@@ -461,15 +461,15 @@ and **upgrading combination towers** (`specs/build.md`) — not on the component
 - You **may downgrade** a base structure one quality tier in the build phase — free, no
   refund, wall unchanged — purely to get the low-tier `(type, quality)` a recipe needs when
   the press has rolled too high (`specs/build.md`). It is a correction, not a sale.
-- The steep damage curve is why **combining always pays**: two matching components fold into
-  one that out-damages them both at no Charge, while the maze is unchanged (the partner's
-  footprint stays a wall). A **recipe combine** goes further — it trades a whole multiset
-  of parts for a unique turret the ladder cannot produce (which then lands weak and is
-  **upgraded** with Charge). Combining is immediate; the questions are whether you rolled (or
-  climbed to) the ingredients, and *which* pieces you fold — spending a **fresh** roll makes it
-  a COMBINE SPECIAL that is the level's one harvest and ends the build phase, while folding only
-  **standing** towers keeps the phase open and is the combine you also use mid-wave
-  (`specs/build.md`, `specs/board.md`).
+- The steep damage curve is why **combining always pays**: two matching components fold
+  into one that out-damages them both at no Charge, while the maze is unchanged (the
+  partner's footprint stays a wall). A **recipe combine** goes further — it trades a whole
+  multiset of parts for a unique turret the ladder cannot produce (which then lands weak
+  and is **upgraded** with Charge). Combining is immediate; the questions are whether you
+  rolled (or climbed to) the ingredients, and *which* pieces you fold — spending a
+  **fresh** roll makes it a COMBINE SPECIAL that is the level's one harvest and ends the
+  build phase, while folding only **standing** towers keeps the phase open and is the
+  combine you also use mid-wave (`specs/build.md`, `specs/board.md`).
 
 Keeping, combining, downgrading, upgrading combos, upgrading quality, and setting targeting
 all happen through the selected-candidate / component inspector and the scrap-press in the

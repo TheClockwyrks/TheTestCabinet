@@ -19,15 +19,15 @@ component you choose — you place a **rock** that **rolls a random component ty
 random quality tier the instant it lands**, weighted low. Each level you place **five**
 such rocks and take **exactly one** new firing tower off the level; every rock you do not
 harvest hardens into an inert **blocker** that walls the yard but never fires. That one
-harvest is a **KEEP** (resolved at SEND) or a **COMBINE SPECIAL** — folding this phase's rolls
-up the quality ladder, or a whole recipe into a **combination tower**, which **ends the build
-phase and sends the wave**. Once the wave is live you keep folding your **standing** towers
-together with the plain **COMBINE** (immediate, no fresh roll spent) to climb quality and
-assemble combos across the run. You also spend scarce kill income on **UPGRADE QUALITY** to
-bias the press toward stronger gems and on **upgrading** your combos. Every rock is a wall no
-matter what, so the **which-roll-to-harvest decision, the combines you fold across the waves,
-the maze you wall, and the climb — is the heart of the game** (`specs/build.md`). This is a
-faithful reskin of Gem Tower Defense.
+harvest is a **KEEP** (resolved at SEND) or a **COMBINE SPECIAL** — folding this phase's
+rolls up the quality ladder, or a whole recipe into a **combination tower**, which **ends
+the build phase and sends the wave**. Once the wave is live you keep folding your
+**standing** towers together with the plain **COMBINE** (immediate, no fresh roll spent)
+to climb quality and assemble combos across the run. You also spend scarce kill income on
+**UPGRADE QUALITY** to bias the press toward stronger gems and on **upgrading** your
+combos. Every rock is a wall no matter what, so the **which-roll-to-harvest decision, the
+combines you fold across the waves, the maze you wall, and the climb — is the heart of the
+game** (`specs/build.md`). This is a faithful reskin of Gem Tower Defense.
 
 Components come in **eight** base **types**, each an electrical part with a distinct
 firing identity and signature VFX: the **Capacitor** (a crisp single-target bolt), the

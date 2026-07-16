@@ -303,24 +303,24 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
 - The **Core Sample countdown** — the prominent timer readout while carrying the Core
   Sample (`specs/hazards.md`).
 - All **surface building panels** — Fuel Depot, Ore Market (cargo breakdown + SELL),
-  Upgrade Shop (the seven tracks + prices), Supply Depot (the six single-use field supplies
-  + BUY), and Launch Pad (the rocket checklist + FABRICATE / LAUNCH) (`specs/flow.md`,
-  `specs/upgrades.md`, `specs/items.md`, `specs/rocket.md`), plus the **inventory** overlay
-  (held ore, weights, and per-ore DROP, `specs/mining.md`). The **Save Pad** has no panel —
-  activating it saves directly (`specs/flow.md`).
+  Upgrade Shop (the seven tracks + prices), Supply Depot (the six single-use field
+  supplies + BUY), and Launch Pad (the rocket checklist + FABRICATE / LAUNCH)
+  (`specs/flow.md`, `specs/upgrades.md`, `specs/items.md`, `specs/rocket.md`), plus the
+  **inventory** overlay (held ore, weights, and per-ore DROP, `specs/mining.md`). The
+  **Save Pad** has no panel — activating it saves directly (`specs/flow.md`).
 - All **menus, overlays, and state screens** — title, mode select, how-to-play, pause,
   victory, and game over (`specs/flow.md`, `specs/modes.md`).
-- **The carved-tunnel and lava shaping** — the **inset dirt lip and rounded corners** of
-  a carved tunnel, and the matching **dirt fringe** around a lava tile (`specs/world.md`),
+- **The carved-tunnel and lava shaping** — the **inset dirt lip and rounded corners** of a
+  carved tunnel, and the matching **dirt fringe** around a lava tile (`specs/world.md`),
   are computed **in code** from each open/lava cell's neighbors (which sides are open,
   which corners are exterior) and painted over the produced band-dirt tile with the
   produced tunnel-fill / lava-shimmer sprites inside the shaped region. An **exterior**
-  corner (the tunnel wall turning) rounds **convex**; an **interior** corner at an L-bend or
-  T-junction — where a solid diagonal rock pokes into the bend — keeps a **convex dirt nub**
-  bulging into the tunnel (the tunnel edge curves concavely around it), never a concave
-  scooped-out notch. The produced sprites supply the *texture*; the code supplies the
-  *shape* that makes tunnels join orthogonally, stay separate diagonally, and never meet
-  rock at a hard square seam.
+  corner (the tunnel wall turning) rounds **convex**; an **interior** corner at an L-bend
+  or T-junction — where a solid diagonal rock pokes into the bend — keeps a **convex dirt
+  nub** bulging into the tunnel (the tunnel edge curves concavely around it), never a
+  concave scooped-out notch. The produced sprites supply the *texture*; the code supplies
+  the *shape* that makes tunnels join orthogonally, stay separate diagonally, and never
+  meet rock at a hard square seam.
 - **The drill-damage overlay** — selecting the crack frame from each damaged tile's
   persisted **damage fraction** (`1 − health/maxHealth`) and compositing it over every
   visible tile that carries damage, not only the one currently being cut (`specs/character.md`).

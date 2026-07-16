@@ -33,16 +33,16 @@ small, so every upgrade is a real decision.
   the only income is kill bounties and the wave-clear bonus.
 - **Spending.** Charge is spent on two things: **UPGRADE QUALITY** and **upgrading
   combination towers**. **Placing rocks is free** — a rock rolls one component where it
-  lands, up to the `5`-per-level allowance, and costs no Charge (`specs/build.md`), so
-  the press is disabled only when the allowance is spent. **UPGRADE QUALITY** buys the
-  next Refinement level for its fixed cost (`20 / 50 / 80 / 110 / 140 / 170 / 200 / 230` up
-  the R1–R8 track, `specs/build.md`). **Upgrading a combination tower** raises its level for a
+  lands, up to the `5`-per-level allowance, and costs no Charge (`specs/build.md`), so the
+  press is disabled only when the allowance is spent. **UPGRADE QUALITY** buys the next
+  Refinement level for its fixed cost (`20 / 50 / 80 / 110 / 140 / 170 / 200 / 230` up the
+  R1–R8 track, `specs/build.md`). **Upgrading a combination tower** raises its level for a
   Charge cost that scales with the combo's strength (`specs/towers.md`). **Placing,
   combining, and downgrading cost nothing.** There is **no selling** — nothing you place
-  is ever refunded for Charge, so the only Charge sinks are refinement and combo
-  upgrades. You may **dismantle** a misplaced structure between waves as a correction,
-  but it **returns nothing** — no stamp, ever (a refund would let you re-roll the press
-  for free, `specs/towers.md`).
+  is ever refunded for Charge, so the only Charge sinks are refinement and combo upgrades.
+  You may **dismantle** a misplaced structure between waves as a correction, but it
+  **returns nothing** — no stamp, ever (a refund would let you re-roll the press for free,
+  `specs/towers.md`).
 
 ## Grid Integrity and leaks
 
@@ -213,18 +213,18 @@ fully visible:
   post-final finale the bar reads **OVERLOAD** and shows the **Maze Rating** accruing
   live on the invincible boss.
 - **Build panel** (`x` in `[1000, 1280]`): the **scrap-press** control (STAMP, showing
-  that placement is **free** and the remaining stamps of the `5`-per-level allowance); the **UPGRADE
-  QUALITY** control (the current Refinement level `R` and the next level's cost,
+  that placement is **free** and the remaining stamps of the `5`-per-level allowance); the
+  **UPGRADE QUALITY** control (the current Refinement level `R` and the next level's cost,
   `specs/build.md`); the **selected candidate/component inspector** (its type, quality
-  tier, live stats — damage, range, fire rate, targeting; a **combination tower**
-  instead reads its **upgrade level** and abilities, and a **Regulator** reads an
-  **aura** radius/bonus readout since it does not fire, `specs/towers.md`) and its
-  action controls: **KEEP** (a candidate, build phase), **COMBINE** (a quality match
-  **or** a reachable combination-tower recipe — immediate, any time), **DOWNGRADE** (a
-  base component/candidate one tier, build phase), **UPGRADE** (a selected combination
-  tower's level, build phase), and **targeting** (`specs/build.md`, `specs/controls.md`);
-  the **next-wave preview** (the coming wave's types, shown when nothing is selected);
-  and the **wave control** (START / SEND) with the speed toggle.
+  tier, live stats — damage, range, fire rate, targeting; a **combination tower** instead
+  reads its **upgrade level** and abilities, and a **Regulator** reads an **aura**
+  radius/bonus readout since it does not fire, `specs/towers.md`) and its action controls:
+  **KEEP** (a candidate, build phase), **COMBINE** (a quality match **or** a reachable
+  combination-tower recipe — immediate, any time), **DOWNGRADE** (a base
+  component/candidate one tier, build phase), **UPGRADE** (a selected combination tower's
+  level, build phase), and **targeting** (`specs/build.md`, `specs/controls.md`); the
+  **next-wave preview** (the coming wave's types, shown when nothing is selected); and the
+  **wave control** (START / SEND) with the speed toggle.
 
 On the board, each unit carries a **health bar** (`specs/enemies.md`), each component
 and candidate reads as its **type** and **quality tier** (its finish and VFX escalate
@@ -253,14 +253,15 @@ targets:
   **refused**, and the floor **re-paths live** as walls change (`specs/board.md`).
 - The **scrap-press** places a rock that **rolls a random component type at a random
   quality on placement** (biased upward by Refinement); each level yields **exactly one**
-  new firing component and every other un-harvested rock hardens into an inert **blocker**.
-  That one harvest is a **KEEP** (resolved at SEND) or a **COMBINE SPECIAL** — an immediate
-  combine folding in a fresh roll (a quality match, same type + quality → one tier higher, or
-  a **combination-tower recipe**) that **ends the build phase and sends the wave**. A plain
-  **COMBINE** of only **standing** towers is immediate, is not a harvest, and is taken at will
-  in the build phase **and** during a live wave — that is how a player climbs and assembles
-  their board across the waves; you may also **downgrade** a base component and **upgrade** a
-  combination tower (`specs/build.md`, `specs/towers.md`).
+  new firing component and every other un-harvested rock hardens into an inert
+  **blocker**. That one harvest is a **KEEP** (resolved at SEND) or a **COMBINE SPECIAL**
+  — an immediate combine folding in a fresh roll (a quality match, same type + quality →
+  one tier higher, or a **combination-tower recipe**) that **ends the build phase and
+  sends the wave**. A plain **COMBINE** of only **standing** towers is immediate, is not a
+  harvest, and is taken at will in the build phase **and** during a live wave — that is
+  how a player climbs and assembles their board across the waves; you may also
+  **downgrade** a base component and **upgrade** a combination tower (`specs/build.md`,
+  `specs/towers.md`).
 - Components **fire automatically** at valid in-range units with selectable targeting,
   throwing visible traveling arcs that carry the hit — the **Regulator** is the one
   exception, a **non-firing** support type that projects a buff aura instead

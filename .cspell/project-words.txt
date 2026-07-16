@@ -364,6 +364,7 @@ lerp
 # Arc Foundry electro-industrial GemTD test case.
 gemtd
 reskin
+reskinned
 serpentines
 criss
 tanky
