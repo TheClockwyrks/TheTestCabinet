@@ -1,0 +1,9 @@
+{
+  "name": "meltdown",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Meltdown — an open-field tower-defense game where emitters fire harder the hotter they run, but trip offline at the redline. Runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}
