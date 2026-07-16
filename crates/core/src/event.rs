@@ -1774,12 +1774,45 @@ fn dig<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a Value> {
 }
 
 /// A harness error's message, from the common error-bearing locations.
+///
+/// Harnesses carry the human-readable text in different shapes: a bare string,
+/// a top-level `message`, or — as OpenCode does with its `NamedError` values —
+/// nested under `error.data.message` alongside a machine `name`. When none of
+/// those yield a string, the error is still surfaced by serializing the
+/// structured `error` object rather than collapsing it to the generic default,
+/// so the actually-useful detail is never swallowed.
 fn harness_error_message(value: &Value, default: &str) -> String {
-    dig(value, &[&["error", "message"], &["message"], &["error"]])
-        .and_then(Value::as_str)
-        .filter(|message| !message.is_empty())
-        .unwrap_or(default)
-        .to_string()
+    if let Some(message) = dig(
+        value,
+        &[
+            &["error", "message"],
+            &["error", "data", "message"],
+            &["message"],
+            &["data", "message"],
+            &["error"],
+        ],
+    )
+    .and_then(Value::as_str)
+    .filter(|message| !message.is_empty())
+    {
+        return message.to_string();
+    }
+
+    // A structured error (e.g. OpenCode's `{ name, data }`) has no string at the
+    // paths above; surface its name and serialized contents so the concrete
+    // failure reaches the operator instead of the generic default.
+    if let Some(error @ Value::Object(_)) = value.get("error") {
+        let name = error.get("name").and_then(Value::as_str);
+        let body = serde_json::to_string(error).unwrap_or_default();
+        return match name {
+            Some(name) if !body.is_empty() => format!("{name}: {body}"),
+            Some(name) => name.to_string(),
+            None if !body.is_empty() => body,
+            None => default.to_string(),
+        };
+    }
+
+    default.to_string()
 }
 
 /// Wrap a possibly-empty event list, mapping empty to `None` so the caller emits
