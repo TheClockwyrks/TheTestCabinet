@@ -40,10 +40,11 @@ Its defining idea is the GemTD **scrap-press** loop — you do **not** buy speci
     with Charge up to level 3.
 - **Downgrade** a base component one quality tier (build phase, free) when the press
   over-rolled a quality you didn't need for a recipe.
-- **Upgrade Quality** — spend Charge to raise your run's **Refinement** level (R0 → R5),
-  biasing every future roll toward the higher tiers. At R0 the press rolls only Scrap;
-  Primed/Tesla-Prime come only from combining. Refinement is the odds; combining is the
-  climb.
+- **Upgrade Quality** — spend Charge to raise your run's **Refinement** level (R0 → R8),
+  biasing every future roll toward the higher tiers (GemTD's "upgrade chances" tree: each
+  rung shifts ~10% of the odds up a quality, and the full R0→R8 climb costs 1000 Charge). At
+  R0 the press rolls only Scrap; at high Refinement it can roll up to Tesla-Prime, though the
+  top tiers stay rare — combining is still the reliable climb.
 
 There are **eight base component types** — Capacitor, Coil, Emitter, Arc-Node, Discharge
 Rig, the slowing **Choke**, the burning **Rectifier**, and the non-firing support

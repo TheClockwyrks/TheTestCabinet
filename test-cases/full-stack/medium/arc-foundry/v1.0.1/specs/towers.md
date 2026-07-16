@@ -108,9 +108,10 @@ Scrap looks like a junkyard and a Tesla-Prime looks like a lightning god.
 The quality-tier names are deliberately distinct from the component-**type** names so the
 two axes never collide: a base component is always a *type* (what it does) at a *quality*
 (how hard). You climb the ladder by **combining** two matching components (same type
-**and** same quality) into one component a tier higher; the recipe, odds, and the
-free-of-Charge climb live in `specs/build.md`. (**Combination towers**, below, are the
-exception: they have **no** quality tier.)
+**and** same quality) into one component a tier higher, and by **refining the press**
+(UPGRADE QUALITY) so it rolls higher tiers to begin with; the recipes, odds, and the
+free-of-Charge combine climb live in `specs/build.md`. (**Combination towers**, below, are
+the exception: they have **no** quality tier.)
 
 ## How quality scales a component (LOCKED)
 
@@ -119,10 +120,10 @@ by these fixed rules:
 
 - **Damage** = base damage **× quality multiplier**: T1 `×1`, T2 `×3`, T3 `×9`,
   T4 `×40`, T5 `×110`. The curve is deliberately **steep** so combining two components
-  always out-damages the two it consumed (`specs/build.md`) — and because **Primed (T4) and
-  Tesla-Prime (T5) can only be reached by combining** (`specs/build.md`: the press never
-  rolls above Charged), the board's power comes from *climbing*, not from flooding the yard
-  with Scrap.
+  always out-damages the two it consumed (`specs/build.md`) — and because the press rolls
+  **Primed (T4) and Tesla-Prime (T5)** only at **high Refinement and only rarely**
+  (`specs/build.md`: UPGRADE QUALITY), the board's power comes mostly from *climbing*, not
+  from flooding the yard with Scrap.
 - **Range** = base range **+ 8 px per tier above T1** (so T3 is `+16`, T5 is `+32`).
 - **Fire rate** is **flat across quality** — a component's firing cadence is part of its
   identity and never changes with tier. Quality is the power axis, cadence is the identity
@@ -425,10 +426,11 @@ Inspector one-liners — describe what the combo does, not how to use it:
 The recipe tier spread runs from **all-Scrap** early combos (Fuse Cluster, Static Web —
 reachable around the early waves off cheap rolls) through mid combos needing **Charged /
 Primed** ingredients, to a **Tesla-Prime-gated apex** (Aurora Lance, Blight Coil, Reactor
-Pile, Singularity). Because **Primed (T4) and Tesla-Prime (T5) are combine-only** — the
-press never rolls above Charged (`specs/build.md`) — the apex combos demand that you have
-**already climbed** several base components up the quality ladder just to hold their
-ingredients. That makes combining a **gate throughout the run** (there is a combo to reach
+Pile, Singularity). Because the press rolls **Primed (T4) and Tesla-Prime (T5)** only at
+**high Refinement and only rarely** (`specs/build.md`), the apex combos demand that you have
+**climbed** several base components up the quality ladder (or refined the press hard and
+gotten lucky) just to hold their ingredients. That makes combining a **gate throughout the
+run** (there is a combo to reach
 at almost every stage), and the apex combos a **deep chase** that only a run that has
 climbed hard can assemble. A run that keeps and refines but **never assembles a combination
 tower** falls short of what the late waves demand.

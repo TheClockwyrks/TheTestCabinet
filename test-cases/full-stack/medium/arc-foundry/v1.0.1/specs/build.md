@@ -92,20 +92,21 @@ combine, below).
   (`specs/towers.md`). The type roll is independent of your Refinement level.
 
 - **Quality** — weighted **low**, and biased upward by your **Refinement level**
-  (`UPGRADE QUALITY`, below). A single stamp **never rolls above Charged (T3)** —
-  **Primed (T4) and Tesla-Prime (T5) are reached only by combining** (below), so the
-  apex is always earned by climbing, never handed out by a lucky roll. At Refinement
-  **R0** the press rolls **only Scrap** — every base component starts a run as crude
-  salvage, exactly like a fresh GemTD level-1 gem, and the whole quality ladder is
-  climbed from there:
+  (`UPGRADE QUALITY`, below). At Refinement **R0** the press rolls **only Scrap** — every
+  base component starts a run as crude salvage, exactly like a fresh GemTD level-1 gem, and
+  the whole quality ladder is climbed from there. Refining the press lifts the odds toward
+  higher tiers, and at high Refinement a stamp **can** roll all the way up to **Primed (T4)**
+  and, at the very top, **Tesla-Prime (T5)** — but only rarely (the full odds tree is under
+  *UPGRADE QUALITY*, below), so the apex is reached mostly by **combining**, occasionally by
+  a lucky roll:
 
   | Quality | R0 odds |
   | --- | --- |
   | **Scrap** (T1) | 100% |
   | **Tuned** (T2) | 0% |
   | **Charged** (T3) | 0% |
-  | **Primed** (T4) | 0% (combine only) |
-  | **Tesla-Prime** (T5) | 0% (combine only) |
+  | **Primed** (T4) | 0% |
+  | **Tesla-Prime** (T5) | 0% |
 
 Type and quality roll **independently**. A stamp is **free** whatever it rolls; the
 press is disabled only when the level's allowance is spent (`specs/flow.md`).
@@ -249,9 +250,11 @@ The recipe by rung (same type throughout):
 | two **Primed** (T4) | one **Tesla-Prime** (T5) |
 
 **Tesla-Prime (T5) is the apex and cannot combine further.** Because the damage curve
-is steep (`specs/towers.md`: `×3 / ×9 / ×40 / ×110` over Scrap) and Primed/Tesla-Prime
-are **combine-only**, a combined component **always out-DPSes the two it consumed** — and
-combining is the *only* way to reach the top two tiers. Combining a **fresh candidate** into
+is steep (`specs/towers.md`: `×3 / ×9 / ×40 / ×110` over Scrap), a combined component
+**always out-DPSes the two it consumed** — and while a refined press *can* roll the top
+tiers, it does so only rarely (`specs/build.md`: UPGRADE QUALITY), so combining is the
+reliable way to stack the Primed and Tesla-Prime carries a recipe demands. Combining a
+**fresh candidate** into
 an existing component is how you climb a standing position: in the build phase it is a
 **COMBINE SPECIAL** (it spends this level's harvest and sends the wave), while once the wave
 is live you climb your **standing** towers against each other with the plain COMBINE.
@@ -302,11 +305,12 @@ and every one is a multi-level project to assemble.
   ingredient), and it still benefits from external buffs such as a Regulator's aura
   (`specs/towers.md`).
 - **Assembling a combo is a multi-level project.** Because most recipes demand specific
-  qualities — many call for **Primed (T4) or Tesla-Prime (T5)** ingredients, which are
-  **combine-only** — you must first climb those ingredients up the quality ladder over
-  several levels (refining the press, quality-combining matches), stage them on the
-  board, and only then fire the recipe. The apex combos are late-game payoffs planned
-  many waves ahead; this is the strategic ceiling of the game.
+  qualities — many call for **Primed (T4) or Tesla-Prime (T5)** ingredients, which the
+  press rolls only at **high Refinement and only rarely** (`specs/build.md`) — you must
+  climb those ingredients up the quality ladder over several levels (refining the press
+  toward the top tiers, quality-combining matches), stage them on the board, and only then
+  fire the recipe. The apex combos are late-game payoffs planned many waves ahead; this is
+  the strategic ceiling of the game.
 
 ## DOWNGRADE — drop a base component a tier
 
@@ -337,41 +341,55 @@ A combination tower lands **weak**, at **upgrade level 0**, and is climbed with 
   reduced and is paid up over several build phases — softening the curve and giving scarce
   kill income a meaningful place to go.
 
-## UPGRADE QUALITY — the Refinement track
+## UPGRADE QUALITY — the upgrade-chances track
 
 The other place kill income goes is **refining the press** so it rolls stronger gems —
-another progression axis beside combining.
+another progression axis beside combining. This is GemTD's **"Upgrade chances"** button,
+reskinned: it raises the odds that a placed rock rolls a higher-quality component.
 
-- A run carries a **Refinement level `R`** on a six-rung track **R0 … R5** (starts at
+- A run carries a **Refinement level `R`** on a nine-rung track **R0 … R8** (starts at
   **R0**). Higher `R` biases the stamp's **quality** roll toward higher tiers; it does
   **not** change the uniform 12.5%-per-type roll, the stats, the combine recipes, or
-  anything else.
+  anything else. **Each rung shifts about 10% of the probability up one quality level** — a
+  slice of the odds moves up the ladder — exactly as GemTD's upgrade-chances tree does.
 - The build panel's **UPGRADE QUALITY** control (`specs/controls.md`, hotkey `U`) buys
-  the next Refinement level for **Charge**. It is disabled at **R5** or when you cannot
-  afford the next cost. Refinement is permanent for the run.
+  the next Refinement level for **Charge**. **Hovering** it shows the current odds; pressing
+  it upgrades them. It is disabled at **R8** or when you cannot afford the next cost.
+  Refinement is permanent for the run.
+- **The top two tiers are rolled, not gifted.** At high Refinement the press *can* roll
+  **Primed (T4)** and — only at the very top rung — **Tesla-Prime (T5)**, but sparingly:
+  Primed first appears at **R4** (10%) and Tesla-Prime only at **R8** (10%). So a lucky apex
+  roll is possible but rare, and **combining stays the reliable way** to stack the top-tier
+  carries and recipe ingredients (`specs/towers.md`).
 
-Quality odds by Refinement level (each row is a T1–T3 distribution that sums to 1.0;
-**T4 and T5 are always 0 — Primed and Tesla-Prime come only from combining** —
-**fixed**):
+Quality odds by Refinement level (each row is a five-tier distribution over
+Scrap…Tesla-Prime that sums to 1.0 — **fixed**), mirroring GemTD's upgrade-chances tree
+(Chipped→Scrap, Flawed→Tuned, Normal→Charged, Flawless→Primed, Perfect→Tesla-Prime):
 
 | R | Scrap T1 | Tuned T2 | Charged T3 | Primed T4 | Tesla T5 |
 | --- | --- | --- | --- | --- | --- |
-| **R0** | 1.00 | 0.00 | 0.00 | 0 | 0 |
-| **R1** | 0.80 | 0.20 | 0.00 | 0 | 0 |
-| **R2** | 0.62 | 0.32 | 0.06 | 0 | 0 |
-| **R3** | 0.46 | 0.40 | 0.14 | 0 | 0 |
-| **R4** | 0.32 | 0.44 | 0.24 | 0 | 0 |
-| **R5** | 0.20 | 0.45 | 0.35 | 0 | 0 |
+| **R0** | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| **R1** | 0.70 | 0.30 | 0.00 | 0.00 | 0.00 |
+| **R2** | 0.60 | 0.30 | 0.10 | 0.00 | 0.00 |
+| **R3** | 0.50 | 0.30 | 0.20 | 0.00 | 0.00 |
+| **R4** | 0.40 | 0.30 | 0.20 | 0.10 | 0.00 |
+| **R5** | 0.30 | 0.30 | 0.30 | 0.10 | 0.00 |
+| **R6** | 0.20 | 0.30 | 0.30 | 0.20 | 0.00 |
+| **R7** | 0.10 | 0.30 | 0.30 | 0.30 | 0.00 |
+| **R8** | 0.00 | 0.30 | 0.30 | 0.30 | 0.10 |
 
-Refinement cost to reach each level (Charge, from the previous level) — **fixed**:
+Refinement cost to reach each level (Charge, from the previous level) — **fixed**. Each
+step costs **30 Charge more than the last**, and the whole climb from R0 to R8 totals
+**1000 Charge** — GemTD's exact upgrade-chances tree cost:
 
-| Reach | R1 | R2 | R3 | R4 | R5 |
-| --- | --- | --- | --- | --- | --- |
-| **Cost** | 60 | 130 | 240 | 400 | 620 |
+| Reach | R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Cost** | 20 | 50 | 80 | 110 | 140 | 170 | 200 | 230 |
 
 Refining and combining are complementary: refine so the press hands out more **Charged**
-base rolls, then combine matched Charged into the **Primed** and **Tesla-Prime** carries
-the press will never roll on its own.
+(and, at the top rungs, the occasional **Primed / Tesla-Prime**) base rolls, then combine
+matched high-tier rolls into the specific carries and recipe ingredients a lucky roll won't
+reliably hand you.
 
 ## How the loop drives the maze
 

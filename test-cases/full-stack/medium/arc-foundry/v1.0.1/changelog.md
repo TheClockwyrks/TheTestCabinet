@@ -1,36 +1,30 @@
-Reviewer-checklist co-location: the Foundry Systems review items are reordered so
-the checks a reviewer works while testing one mechanic sit together.
+UPGRADE QUALITY now matches GemTD's "Upgrade chances" tree exactly: a nine-rung
+odds track that can roll all the way up to Tesla-Prime.
 
-## Review items regrouped for co-location
+## Upgrade-chances track reworked to GemTD's
 
-The `[[review_item]]` blocks are the reporter-side checklist a reviewer works
-top-to-bottom while playing the build. Two mechanics had their checks scattered
-down the Foundry Systems list, forcing a reviewer to jump around while testing a
-single thing:
+The **UPGRADE QUALITY** (Refinement) mechanic was a six-rung track (R0…R5) that
+deliberately deviated from GemTD — the press never rolled above Charged (T3), so
+Primed (T4) and Tesla-Prime (T5) were reachable **only** by combining. That is now
+replaced with GemTD's actual **upgrade-chances tree**, reskinned onto Arc Foundry's
+quality ladder (Chipped→Scrap, Flawed→Tuned, Normal→Charged, Flawless→Primed,
+Perfect→Tesla-Prime):
 
-- **The quality axis.** `quality-ladder` (the five-rung tier power axis) and
-  `upgrade-quality` (the press-refinement track that biases the roll up that same
-  ladder) sat four items apart, separated by the component, enemy, and economy
-  items. They are now adjacent, so the reviewer confirms the ladder and the
-  refinement that climbs it in one pass.
-- **The towers cluster.** `component-types` (the eight base types), then later
-  `combination-towers` (the recipe-combined turrets) and
-  `status-effects-abilities` (the slow / burn / crit / multishot / aura
-  vocabulary the combos carry) were spread across the list with the enemy,
-  economy, difficulty, and pause items wedged between them. The three
-  tower-behavior checks are now consecutive, matching how a reviewer inspects
-  towers on the board.
+- **Nine rungs, R0…R8.** Each rung shifts ~10% of the odds up one quality level.
+  R0 is 100% Scrap; **Primed (T4) first appears at R4 (10%)** and **Tesla-Prime (T5)
+  only at the top rung R8 (10%)**. So the apex two tiers *can* now be rolled straight
+  off a refined press — but only at high Refinement and only rarely.
+- **Costs match GemTD's tree:** 20 / 50 / 80 / 110 / 140 / 170 / 200 / 230 Charge to
+  reach R1…R8 — each step 30 more than the last, **1000 Charge** for the whole climb
+  (was 60 / 130 / 240 / 400 / 620 over five rungs).
+- **Combining is still the reliable climb.** Because top-tier rolls stay rare, the
+  quality-combine and the recipe-combine remain the dependable way to stack the Primed
+  and Tesla-Prime carries and ingredients a lucky roll won't hand you.
 
-The new Foundry Systems order is: board (`maps-and-waypoints`,
-`waypoint-mazing`), the build loop (`scrap-press-roll`, `keep-one-per-level`),
-the quality axis (`quality-ladder`, `upgrade-quality`), the towers
-(`component-types`, `combination-towers`, `status-effects-abilities`), the
-enemies (`load-and-flyer`), and the run-level items (`economy-integrity-campaign`,
-`difficulty-in-game`, `pause-in-place`). The Presentation & Electrical VFX and
-General sections are unchanged.
-
-No requirement was added, removed, merged, or reworded — only the order of the
-simulation-domain items changed, and item `id`s, `text`, `weight`, `domain`,
-`reference`, and `proof` are all untouched. Scoring is weight-based and
-order-independent, so the run's score is unaffected; the change only shortens the
-reviewer's path through the checklist.
+The "top two tiers are combine-only / the press never rolls above Charged" language
+that this pillar was stated in — across `overview.md`, `towers.md`, `build.md`,
+`controls.md`, `board.md`, and `flow.md` — is reconciled to the new tree. The
+reference implementation (`QUALITY_ODDS_BY_R`, `MAX_REFINEMENT`, `REFINE_COST`, the
+`Refinement` type, and the sim strategy model) is updated to match. The live
+quality-odds bar and the UPGRADE QUALITY control already render all five tiers and a
+generic `R → R+1` progression, so they surface Primed/Tesla-Prime rolls automatically.
