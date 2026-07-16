@@ -59,7 +59,7 @@ start; they cross-reference each other by name and form one specification.
   chamber, every **tile kind** (earth, rock, deepstone, coreshell, bedrock border,
   **unbreakable stone**, ore vein, material node, gas pocket, lava, empty tunnel), how
   ore / materials / hazards / stone are **placed** (guaranteed in their band, random
-  position), and the **surface** with its five buildings.
+  position), and the **surface** with its six buildings.
 - `specs/character.md` — the **prospector**: fall / jetpack / lateral movement, the
   fixed rule that you drill **down, left, and right but never up**, dig speed vs tile
   hardness, single-tile collision, the **fuel** consumption model, **hull** and damage,
@@ -89,9 +89,9 @@ start; they cross-reference each other by name and form one specification.
   controls: moving and drilling, jetpack thrust, opening the surface buildings,
   the **field-supply hotkeys** and the Core Sample **jettison**, pause, and mute.
 - `specs/items.md` — the six single-use **field supplies** (explosives, teleporters,
-  nanobots, emergency fuel) bought at the Upgrade Shop and used in the mine, and the
-  Core Sample **jettison** with its **ground item**, re-pickup, and location-aware
-  detonation.
+  nanobots, emergency fuel) bought at the **Supply Depot** and used in the mine, and the
+  Core Sample **jettison** with its **ground item** (a one-way discard, not re-collectable)
+  and location-aware detonation.
 - `specs/assets.md` — the **asset-production contract**: every sprite, animated
   sheet, particle system, sound, and music track you must produce with the on-`PATH`
   tools, where each lands, and how each is wired in. The **animated miner** section

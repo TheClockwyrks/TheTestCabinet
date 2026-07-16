@@ -4,7 +4,7 @@ This file defines the six single-use **field supply** items the player buys and 
 the **jettison** of the unstable Core Sample, and the **ground item** it becomes. It
 refers to the economy and buildings (`specs/flow.md`, `specs/world.md`), the miner's
 fuel/hull and fall impact (`specs/character.md`, `specs/hazards.md`), the mine's tiles and
-unbreakable stone (`specs/world.md`), the upgrade shop (`specs/upgrades.md`), the Core
+unbreakable stone (`specs/world.md`), the Supply Depot building (`specs/world.md`), the Core
 Sample timer (`specs/hazards.md`), and saving (`specs/flow.md`). The numeric values here
 are **fixed**; implement them exactly.
 
@@ -65,14 +65,15 @@ Both return the miner to the surface, but with very different risk:
 Using either at full hull / full fuel is a harmless **no-op** (a note, and it is **not**
 consumed).
 
-## Buying field supplies — the Upgrade Shop
+## Buying field supplies — the Supply Depot
 
-Field supplies are sold at the **Upgrade Shop** (`specs/upgrades.md`) in a **"Field
-Supplies"** section below the seven upgrade tracks — **not** a sixth surface building; the
-five buildings are unchanged (`specs/world.md`). Each item shows its **price** and the
-**count** the player currently holds, with its buy control **greyed out when unaffordable**
-(Credits never go negative — `specs/flow.md`). Buying one deducts its price and increments
-its count. This makes field supplies the **fourth Credits sink** (`specs/flow.md`).
+Field supplies are sold at their **own surface building**, the **Supply Depot**
+(`specs/world.md`) — a **sixth building** dedicated to single-use supplies, separate from the
+Upgrade Shop (which sells only the upgrade tracks, `specs/upgrades.md`). Its overlay panel
+lists the six items, each with its **icon**, **price**, and the **count** the player
+currently holds, with its **BUY** control **greyed out when unaffordable** (Credits never go
+negative — `specs/flow.md`). Buying one deducts its price and increments its count. This
+makes field supplies the **fourth Credits sink** (`specs/flow.md`).
 
 ## Using field supplies
 
@@ -108,10 +109,12 @@ it detonates rather than dying to its expiry.
   sprite or its code fallback) with the **visible countdown still shown**. A general
   **ground-items** representation backs this, even though the Core Sample is its only user
   today.
-- **Re-pickup.** The player can **walk back over** a jettisoned Sample to **pick it up
-  again** (re-attach to the satchel; the timer **continues from where it is**). Standing on
-  the drop tile at the instant of the jettison does **not** instantly re-collect it — the
-  Sample must be stepped off first. So jettison is a **maneuver**, not just a discard.
+- **No re-pickup — it's a one-way discard.** A jettisoned Sample **cannot be picked back
+  up**; walking back over it does nothing. Jettison is a **commitment**: you trade this
+  Sample away to escape its blast, and if you still need one you must **drill another from
+  the Core**. The **Core is inexhaustible** (`specs/mining.md`) — it is never consumed, so
+  the player can **obtain more than one Core Sample over a run**, one at a time (a new one is
+  only taken when none is currently live — none carried and none ticking on the ground).
 - **Location-aware detonation.** When the timer expires:
   - while **carried**, it kills the miner **outright** (as `specs/hazards.md` today);
   - while **jettisoned**, it detonates **at its ground location** — a big produced

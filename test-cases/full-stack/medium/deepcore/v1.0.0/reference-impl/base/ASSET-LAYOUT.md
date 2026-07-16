@@ -83,7 +83,7 @@ face west.
 
 | Files | Count | Native size | Loader accessor | Notes |
 | --- | --- | --- | --- | --- |
-| `surface/{fuel-depot,ore-market,save-pad,upgrade-shop,launch-pad}.png` | 5 | `112 x 132` | `assets.surface(panel)` | The five camp buildings (Save Pad added). |
+| `surface/{fuel-depot,ore-market,save-pad,upgrade-shop,supply-depot,launch-pad}.png` | 6 | `112 x 132` | `assets.surface(id)` | The six camp buildings (Supply Depot sells the single-use field supplies). |
 | `surface/cave-mouth.png` | 1 | `120 x 48` | `assets.surface("cave-mouth")` | The way down at the spawn column. |
 | `rocket/stage{0..5}.png` | 6 | `96 x 160` | `assets.rocket[stage]` | The escape rocket; frame chosen by installed-component count, so it visibly gains each part. |
 | `icons/{fuel,hull,cargo,credits,depth,resonite,cryenite}.png` | 7 | `20 x 20` | `assets.icon(name)` | Small HUD glyphs. |

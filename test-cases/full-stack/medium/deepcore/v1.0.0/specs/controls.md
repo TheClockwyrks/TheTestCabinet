@@ -54,16 +54,19 @@ falls whenever unsupported.
 ## Surface buildings
 
 At the surface, the miner activates a building by **standing at it** and pressing the
-**activate** key (`E` or `Enter`), or by **clicking** the building — either opens that
-building's **overlay panel** (`specs/flow.md`):
+**activate** key (`E` or `Enter`), or by **clicking** the building. Most buildings open an
+**overlay panel** (`specs/flow.md`); the Save Pad has no menu — activating it saves directly:
 
 - **Fuel Depot** — buy fuel and hull repair for Credits (`specs/flow.md`,
   `specs/character.md`); close to return.
 - **Ore Market** — the cargo breakdown and **SELL** (`specs/mining.md`).
-- **Save Pad** — **SAVE** the expedition to the single save slot (`specs/flow.md`); the
-  only place saving is possible.
+- **Save Pad** — **no panel**: activating it **saves** the expedition to the single save
+  slot on the spot, with a confirming note (or one explaining why it's blocked); the only
+  place saving is possible (`specs/flow.md`).
 - **Upgrade Shop** — the seven upgrade tracks; click a track's **BUY** to purchase its
   next tier (`specs/upgrades.md`).
+- **Supply Depot** — the six single-use **field supplies**; click an item's **BUY** to
+  purchase one (`specs/items.md`).
 - **Launch Pad** — the rocket checklist; **FABRICATE** the next component, or **LAUNCH**
   when all five are installed (`specs/rocket.md`).
 

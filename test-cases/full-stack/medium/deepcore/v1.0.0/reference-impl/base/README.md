@@ -35,18 +35,21 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
   dry *and* affording the trip back down. The cargo bay caps ore by **slot count**; ore
   also has **weight** the jetpack must lift — open the **inventory** (`I`) to **drop** ore
   when overloaded.
-- **Field supplies** — six single-use items bought in the Upgrade Shop's **Field Supplies**
-  section and used with `1`–`6` or the inventory: **Dynamite** / **Plastic Explosives**
-  (blast a 3×3 / 5×5 clear — through unbreakable stone, setting off any gas), the
-  **Quantum Teleporter** (risky drop to the surface) and **Matter Transmitter** (safe
+- **Field supplies** — six single-use items bought at the **Supply Depot** (their own
+  surface building) and used with `1`–`6` or the inventory: **Dynamite** / **Plastic
+  Explosives** (blast a 3×3 / 5×5 clear — through unbreakable stone, setting off any gas),
+  the **Quantum Teleporter** (risky drop to the surface) and **Matter Transmitter** (safe
   surfacing), **Regen Nanobots** (+hull), and **Emergency Fuel** (+fuel). The unstable
-  **Core Sample** can also be **jettisoned** (`J`) as a ground item and re-collected.
+  **Core Sample** can also be **jettisoned** (`J`) as a ground item to flee its blast — a
+  one-way discard that **can't be picked back up** (the **Core is inexhaustible**, so drill
+  another).
 - **The climax** — extract the **Core Sample** (a 90-second destabilization timer starts),
   race back up past the lava, **fabricate the Ignition Core**, and **launch**.
 - **Modes** — the mine and balance are identical; only death differs. **Standard** lets you
   **restore from your last save**; **Hardcore** deletes the save and ends the run.
-- **Saving** — the surface **Save Pad** is the only way to save (one slot); **CONTINUE** on
-  the main menu resumes it.
+- **Saving** — the surface **Save Pad** is the only way to save (one slot); it has **no
+  menu** — activating it (`E` / click) banks progress on the spot. **CONTINUE** on the main
+  menu resumes it.
 
 ## Install
 
@@ -83,10 +86,10 @@ correctly at a host root **or** under a per-run sub-path like `/runs/<id>/build/
 | `A` / `D` or `←` / `→` | Move & drill sideways |
 | `S` or `↓` | Drill down |
 | `W` / `↑` / `Space` | Fire the jetpack (climb; burns fuel) |
-| `E` / `Enter` or click a building | Open a surface building panel (Fuel Depot, Ore Market, Save Pad, Upgrade Shop, Launch Pad) |
+| `E` / `Enter` or click a building | Activate a surface building — opens its panel (Fuel Depot, Ore Market, Upgrade Shop, Supply Depot, Launch Pad), or **saves** directly at the Save Pad |
 | `I` or the **BAG** button | Open the inventory (cargo hold) to review and **drop** ore, and **USE** field supplies |
-| `1`–`6` | Use a field-supply item (dynamite, plastic explosives, quantum teleporter, matter transmitter, nanobots, emergency fuel) — bought in the Upgrade Shop's **Field Supplies** section |
-| `J` | Jettison the carried Core Sample onto the ground (timer keeps running; walk back to re-collect) |
+| `1`–`6` | Use a field-supply item (dynamite, plastic explosives, quantum teleporter, matter transmitter, nanobots, emergency fuel) — bought at the **Supply Depot** |
+| `J` | Jettison the carried Core Sample onto the ground (timer keeps running; one-way — can't be picked back up) |
 | `Esc` | Pause (also closes an open panel) |
 | `M` | Mute / unmute |
 | Mouse | Menus, panels, and the SELL / BUY / FABRICATE / LAUNCH buttons |

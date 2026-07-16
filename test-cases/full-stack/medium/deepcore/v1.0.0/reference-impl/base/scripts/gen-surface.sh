@@ -12,6 +12,7 @@
 #       ore-market.png   SELL ore — a trading stall with ore crates + a balance scale
 #       save-pad.png     a lit checkpoint dais the miner stands on to save the expedition
 #       upgrade-shop.png BUY upgrades — a fabricator hut with a gear + crossed wrench
+#       supply-depot.png BUY field supplies — a supply container w/ explosives + med/fuel crate
 #       launch-pad.png   the derelict launch platform (base only; the rocket is separate)
 #
 #   • assets/rocket/stage0..stage5.png — the escape rocket as a 6-frame `draw-sheet`
@@ -21,7 +22,7 @@
 #     many of the five components are installed. Every stage is the SAME 96×160 canvas so
 #     the renderer stacks it over launch-pad.png at a fixed offset.
 #
-# NATIVE SIZES (tile size is 80px): the four buildings are 112×132, the cave mouth is a
+# NATIVE SIZES (tile size is 80px): the six buildings are 112×132, the cave mouth is a
 # wide, short 120×48 opening in the camp floor, and each rocket-assembly stage is 96×160.
 # These are authored crisp at native size (no upscaling). The HUD icons stay 20×20 and the
 # unused sky/ground strips are left as-is.
@@ -412,6 +413,40 @@ d fill-circle --cx 56 --cy 27 --r 3 --color '#bff0ff'
 d line --x0 40 --y0 96 --x1 34 --y1 82 --color "$RESONITE"
 d line --x0 72 --y0 96 --x1 78 --y1 82 --color "$RESONITE"
 
+# ============================ SUPPLY DEPOT (single-use field supplies) =========
+# The surface SUPPLY DEPOT (specs/world.md, specs/items.md): where the miner buys the six
+# single-use field supplies (explosives, teleporters, nanobots, emergency fuel). A reinforced
+# supply container with a hazard banner, a warning-marked explosives crate, and a med/fuel
+# canister — reads clearly as "expendable supplies for sale". 112×132.
+newsprite 112 132 "$SURF/supply-depot.png"
+d fill-rect --x 8 --y 123 --width 95 --height 9 --color "$MET_XD"    # footing
+# container body
+d fill-rect --x 12 --y 44 --width 88 --height 79 --color "$MET_D"
+d fill-rect --x 12 --y 44 --width 6  --height 79 --color "$MET_M"    # left sheen
+d fill-rect --x 94 --y 44 --width 6  --height 79 --color "$MET_XD"   # right shade
+# corrugated roof lid + vertical ribs
+d fill-rect --x 9 --y 38 --width 94 --height 9 --color "$MET_M"
+d fill-rect --x 9 --y 38 --width 94 --height 2 --color "$MET_HL"
+d fill-circle --cx 56 --cy 34 --r 3 --color "$FLAME"                 # depot sign lamp
+for x in 18 30 42 54 66 78 90; do d fill-rect --x "$x" --y 47 --width 2 --height 76 --color "$MET_XD"; done
+# hazard banner across the top
+d fill-rect --x 16 --y 52 --width 80 --height 12 --color "$MET_XD"
+for x in 18 28 38 48 58 68 78 88; do d fill-rect --x "$x" --y 52 --width 5 --height 12 --color "$FLAME"; done
+# explosives crate (left) with a warning triangle
+d fill-rect --x 20 --y 88 --width 32 --height 30 --color "$RUST_L"
+d fill-rect --x 20 --y 88 --width 32 --height 4  --color "$RUST_D"
+d line --x0 36 --y0 93 --x1 25 --y1 113 --color "$ALERT"
+d line --x0 36 --y0 93 --x1 47 --y1 113 --color "$ALERT"
+d line --x0 25 --y0 113 --x1 47 --y1 113 --color "$ALERT"
+d fill-rect --x 35 --y 100 --width 2 --height 6 --color "$ALERT"
+d fill-rect --x 35 --y 108 --width 2 --height 2 --color "$ALERT"
+# supply canister (right) with a med/fuel cross
+d fill-rect --x 62 --y 90 --width 28 --height 28 --color "$MET_M"
+d fill-rect --x 62 --y 90 --width 6  --height 28 --color "$MET_L"    # neck sheen
+d fill-rect --x 62 --y 90 --width 28 --height 4  --color "$MET_L"
+d fill-rect --x 74 --y 96  --width 4  --height 16 --color "$WHITE"   # cross vertical
+d fill-rect --x 68 --y 102 --width 16 --height 4  --color "$WHITE"   # cross horizontal
+
 # =========================================================================================
 #  ESCAPE ROCKET — assembly stages 0..5 (draw-sheet; specs/rocket.md, ASSET-LAYOUT.md)
 # =========================================================================================
@@ -601,6 +636,6 @@ d line --x0 4 --y0 9 --x1 16 --y1 9 --color '#8a5cd0'
 d set-pixel --x 8 --y 6 --color "$WHITE"
 
 echo "produced Deepcore surface + rocket + HUD-icon assets:"
-echo "  $SURF/{sky,ground,cave-mouth,fuel-depot,ore-market,save-pad,upgrade-shop,launch-pad}.png"
+echo "  $SURF/{sky,ground,cave-mouth,fuel-depot,ore-market,save-pad,upgrade-shop,supply-depot,launch-pad}.png"
 echo "  $ROCK/stage0..stage5.png"
 echo "  $ICON/{fuel,hull,cargo,credits,depth,resonite,cryenite}.png"

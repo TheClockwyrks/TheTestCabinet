@@ -164,9 +164,9 @@ source = "specs/modes.md"
 source = "specs/controls.md"
 
 # The six single-use FIELD SUPPLY items (explosives, teleporters, nanobots, emergency fuel)
-# bought at the Upgrade Shop and used in the mine, plus the Core Sample JETTISON with its
-# GROUND ITEM, re-pickup, and location-aware detonation. Seeded for every variant so the
-# item behaviors, prices, and radii stay in lockstep with the build.
+# bought at the SUPPLY DEPOT building and used in the mine, plus the Core Sample JETTISON
+# with its GROUND ITEM (a one-way discard, not re-collectable) and location-aware detonation.
+# Seeded for every variant so the item behaviors, prices, and radii stay in lockstep with the build.
 [[spec]]
 source = "specs/items.md"
 
@@ -255,7 +255,7 @@ description = "The interacting Motherload-style systems: the character drilling 
 [[domain]]
 id = "presentation"
 name = "Presentation & Character Animation"
-description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED MINER — the suited prospector with drill and jetpack animating distinctly for idle, walk, drill-down, drill-side, jetpack-ascend, fall, hurt, and out-of-fuel, mirrored to face its direction — plus the four band rock tiles and the carved tunnels, the six ore veins and the two material nodes and the glowing core, the gas and lava hazards (lava shimmering), the five surface buildings (including the Save Pad) and the escape rocket that visibly assembles component by component, the produced particle VFX (drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, core extraction and detonation, launch exhaust, death), and the produced audio (drill/thrust loops, pickups, explosions, alarms, launch roar, and a lonely descent music bed), all wired in, with the in-code HUD, scanner indicator, core countdown, and building panels reading the state at a glance."
+description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED MINER — the suited prospector with drill and jetpack animating distinctly for idle, walk, drill-down, drill-side, jetpack-ascend, fall, hurt, and out-of-fuel, mirrored to face its direction — plus the four band rock tiles and the carved tunnels, the six ore veins and the two material nodes and the glowing core, the gas and lava hazards (lava shimmering), the six surface buildings (including the Save Pad and Supply Depot) and the escape rocket that visibly assembles component by component, the produced particle VFX (drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, core extraction and detonation, launch exhaust, death), and the produced audio (drill/thrust loops, pickups, explosions, alarms, launch roar, and a lonely descent music bed), all wired in, with the in-code HUD, scanner indicator, core countdown, and building panels reading the state at a glance."
 
 # Reviewer checklist items, common to every variant. The major, observable
 # requirements a reviewer must explicitly check by playing the build — the things
@@ -366,7 +366,7 @@ proof = "mine"
 [[review_item]]
 id = "produced-buildings-rocket"
 title = "Produced surface buildings and the assembling rocket"
-text = "The five surface buildings (Fuel Depot, Ore Market, Save Pad, Upgrade Shop, Launch Pad) are produced sprites that read clearly as what they are on the scrapped surface under the dusk sky, and the escape ROCKET on the pad visibly GAINS each installed component as it is fabricated (assembly-stage frames or stacked per-component sprites) from bare pad to launch-ready — the player's win-progress read and a bespoke centerpiece asset."
+text = "The six surface buildings (Fuel Depot, Ore Market, Save Pad, Upgrade Shop, Supply Depot, Launch Pad) are produced sprites that read clearly as what they are on the scrapped surface under the dusk sky, and the escape ROCKET on the pad visibly GAINS each installed component as it is fabricated (assembly-stage frames or stacked per-component sprites) from bare pad to launch-ready — the player's win-progress read and a bespoke centerpiece asset."
 weight = 1
 domain = "presentation"
 proof = "surface"
@@ -390,7 +390,7 @@ proof = "core-run"
 [[review_item]]
 id = "readable-hud"
 title = "Readable HUD, scanner, and panels"
-text = "A player can tell at a glance — Fuel and Hull (turning to the alert color as they run low), the cargo as SLOTS used/capacity with the load in kg alongside (turning to alert when the bay is full and reading OVERLOAD when the haul is too heavy for the jetpack to lift), Credits, Depth in meters, and which materials are in the satchel — and read the SCANNER indicator (direction + distance to the nearest needed material), the prominent CORE-SAMPLE COUNTDOWN while carrying it, the INVENTORY overlay (held ore + weights + per-ore DROP), and the surface panels (the Ore Market cargo breakdown, the Save Pad SAVE, the Upgrade Shop's seven tracks and prices, the Launch Pad rocket checklist). The HUD, scanner, countdown, panels, and tile grid are drawn in code in the palette; only their small icons may be produced sprites."
+text = "A player can tell at a glance — Fuel and Hull (turning to the alert color as they run low), the cargo as SLOTS used/capacity with the load in kg alongside (turning to alert when the bay is full and reading OVERLOAD when the haul is too heavy for the jetpack to lift), Credits, Depth in meters, and which materials are in the satchel — and read the SCANNER indicator (direction + distance to the nearest needed material), the prominent CORE-SAMPLE COUNTDOWN while carrying it, the INVENTORY overlay (held ore + weights + per-ore DROP), and the surface panels (the Ore Market cargo breakdown, the Upgrade Shop's seven tracks and prices, the Supply Depot's field supplies, the Launch Pad rocket checklist — while the Save Pad saves directly with no menu). The HUD, scanner, countdown, panels, and tile grid are drawn in code in the palette; only their small icons may be produced sprites."
 weight = 1
 domain = "presentation"
 proof = "surface"
@@ -399,7 +399,7 @@ proof = "surface"
 [[review_item]]
 id = "states-complete"
 title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu (NEW EXPEDITION, HOW TO PLAY, plus CONTINUE when a save exists), mode select (Standard/Hardcore, or back to the menu), how-to-play, the live in-mine state with its HUD, the five surface building panels (including the Save Pad), and the inventory overlay, the Esc pause menu (resume/restart/quit to menu), Victory after a launch (run summary, PLAY AGAIN in the same mode, MENU), and Game Over on death (in Standard with a save: CONTINUE FROM SAVE + MENU; otherwise PLAY AGAIN + MENU). Each end screen shows the run summary."
+text = "Every game state is reachable and behaves correctly: title menu (NEW EXPEDITION, HOW TO PLAY, plus CONTINUE when a save exists), mode select (Standard/Hardcore, or back to the menu), how-to-play, the live in-mine state with its HUD, the surface building panels (Fuel Depot, Ore Market, Upgrade Shop, Supply Depot, Launch Pad — while the Save Pad saves directly with no menu), and the inventory overlay, the Esc pause menu (resume/restart/quit to menu), Victory after a launch (run summary, PLAY AGAIN in the same mode, MENU), and Game Over on death (in Standard with a save: CONTINUE FROM SAVE + MENU; otherwise PLAY AGAIN + MENU). Each end screen shows the run summary."
 weight = 1
 proof = "title"
 

@@ -222,14 +222,22 @@ function completeDrill(game: Game, d: DrillProgress): void {
       break;
     }
     case "core": {
-      if (!game.satchel.coreSample) {
+      // The Core is an INEXHAUSTIBLE source: it is never cleared to a tunnel, so after the
+      // miner jettisons a Sample (a one-way discard, specs/items.md) it can return and drill
+      // the Core again for another. A fresh Sample is taken only when none is currently live
+      // — none carried AND none ticking on the ground (the single global coreTimer).
+      if (game.coreTimer === null && !game.satchel.coreSample) {
         game.satchel.coreSample = true;
         game.coreTimer = CORE_TIMER_SECONDS;
         game.fxQueue.push({ kind: "core-extract", x: cx, y: cy });
         game.sndQueue.push("material-chime");
         game.note("CORE SAMPLE UNSTABLE — GET TO THE PAD");
+      } else {
+        game.note("A CORE SAMPLE IS ALREADY UNSTABLE");
       }
-      clearToTunnel();
+      // Re-seed the Core's health so the next extraction requires a fresh full drill; leave
+      // the tile as `core` (never a tunnel) so the miner stays on top of the chamber.
+      tile.health = undefined;
       break;
     }
     default: {

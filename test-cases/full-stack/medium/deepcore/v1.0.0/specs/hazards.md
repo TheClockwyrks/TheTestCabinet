@@ -118,8 +118,9 @@ gauntlet; the chamber itself is a small bedrock-walled pocket around the glowing
   is then **location-aware**: while **carried** it kills the miner **outright** (above);
   while **jettisoned** it detonates **at its ground tile** and its lethal blast reaches only
   a miner **within `3` tiles** — one who fled far enough **survives**, and the Sample is
-  **destroyed** (return to the Core for another). A jettisoned Sample can be **walked back
-  over and re-collected** (`specs/items.md`), its timer continuing from where it is.
+  **destroyed**. A jettisoned Sample is a **one-way discard — it cannot be picked back up**
+  (`specs/items.md`); because the **Core is inexhaustible** (`specs/mining.md`), the answer
+  to a lost Sample is always **another trip down for a fresh one**.
 
 The core run therefore demands **preparation**: enough fuel-tank and hull tiers to
 survive the depth and make the ascent inside 90 seconds. There is no time to refuel or

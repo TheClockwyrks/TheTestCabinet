@@ -180,11 +180,12 @@ Produce at least these, in the palette from `specs/overview.md`:
   **no distinct gas-pocket tile**: a gas pocket is drawn with the **same band rock** as
   ordinary ground (`specs/world.md`) and betrayed only by the subtle **gas seep** particle
   effect below — so gas is hidden, unlike the plainly-visible lava.
-- **Surface buildings** — the five camp structures (`specs/world.md`): the **Fuel
+- **Surface buildings** — the six camp structures (`specs/world.md`): the **Fuel
   Depot**, the **Ore Market**, the **Save Pad** (a lit checkpoint dais/beacon that reads
-  as "save here"), the **Upgrade Shop**, and the **Launch Pad**, each reading clearly as
-  what it is, sitting on the scrapped surface ground under the dusk sky, plus the **cave
-  mouth** down into the mine.
+  as "save here"), the **Upgrade Shop**, the **Supply Depot** (a reinforced supply
+  container reading as "field supplies for sale"), and the **Launch Pad**, each reading
+  clearly as what it is, sitting on the scrapped surface ground under the dusk sky, plus the
+  **cave mouth** down into the mine.
 - **The escape rocket** — the rocket on the pad (`specs/rocket.md`). Draw it so it
   **visibly gains each installed component** — either as **assembly-stage frames** (a
   `draw-sheet` set: bare pad → frame → +fuel cells → +guidance → +thruster → +ignition,
@@ -294,26 +295,32 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   material, drawn in code over the world (`specs/mining.md`).
 - The **Core Sample countdown** — the prominent timer readout while carrying the Core
   Sample (`specs/hazards.md`).
-- All **surface building panels** — Fuel Depot, Ore Market (cargo breakdown + SELL), Save
-  Pad (SAVE), Upgrade Shop (the seven tracks + prices), and Launch Pad (the rocket
-  checklist + FABRICATE / LAUNCH) (`specs/flow.md`, `specs/upgrades.md`, `specs/rocket.md`),
-  plus the **inventory** overlay (held ore, weights, and per-ore DROP, `specs/mining.md`).
+- All **surface building panels** — Fuel Depot, Ore Market (cargo breakdown + SELL),
+  Upgrade Shop (the seven tracks + prices), Supply Depot (the six single-use field supplies
+  + BUY), and Launch Pad (the rocket checklist + FABRICATE / LAUNCH) (`specs/flow.md`,
+  `specs/upgrades.md`, `specs/items.md`, `specs/rocket.md`), plus the **inventory** overlay
+  (held ore, weights, and per-ore DROP, `specs/mining.md`). The **Save Pad** has no panel —
+  activating it saves directly (`specs/flow.md`).
 - All **menus, overlays, and state screens** — title, mode select, how-to-play, pause,
   victory, and game over (`specs/flow.md`, `specs/modes.md`).
 - **The carved-tunnel and lava shaping** — the **inset dirt lip and rounded corners** of
   a carved tunnel, and the matching **dirt fringe** around a lava tile (`specs/world.md`),
   are computed **in code** from each open/lava cell's neighbors (which sides are open,
   which corners are exterior) and painted over the produced band-dirt tile with the
-  produced tunnel-fill / lava-shimmer sprites inside the shaped region. The produced
-  sprites supply the *texture*; the code supplies the *shape* that makes tunnels join
-  orthogonally, stay separate diagonally, and never meet rock at a hard square seam.
+  produced tunnel-fill / lava-shimmer sprites inside the shaped region. An **exterior**
+  corner (the tunnel wall turning) rounds **convex**; an **interior** corner at an L-bend or
+  T-junction — where a solid diagonal rock pokes into the bend — keeps a **convex dirt nub**
+  bulging into the tunnel (the tunnel edge curves concavely around it), never a concave
+  scooped-out notch. The produced sprites supply the *texture*; the code supplies the
+  *shape* that makes tunnels join orthogonally, stay separate diagonally, and never meet
+  rock at a hard square seam.
 - **The drill-damage overlay** — selecting the crack frame from each damaged tile's
   persisted **damage fraction** (`1 − health/maxHealth`) and compositing it over every
   visible tile that carries damage, not only the one currently being cut (`specs/character.md`).
 - **The gas seep placement** — firing the subtle gas-seep particle effect over gas
   pockets that are on screen, sparsely, so hidden gas has its faint tell (`specs/hazards.md`).
 - **Field-supply item icons** — the small icons for the six single-use field supplies
-  (`specs/items.md`) in the Upgrade Shop's Field Supplies section and the inventory's USE
+  (`specs/items.md`) in the Supply Depot panel and the inventory's USE
   list are **drawn in code**, consistent with the in-code HUD chrome — **no produced
   sprite** for them.
 - **World feedback** — the faint tile grid over the produced rock tiles, the depth-band

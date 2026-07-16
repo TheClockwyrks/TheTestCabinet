@@ -3,9 +3,9 @@
 // Draws the whole game with Canvas 2D in the pinned palette + monospace type: the vertical
 // camera over the banded mine (produced band tiles + faint grid, carved tunnels, ore veins,
 // material nodes, hazards), the animated miner (produced sprite-sheet cycles, mirrored by
-// facing), the surface camp with its four buildings and the assembling rocket, the produced
+// facing), the surface camp with its six buildings and the assembling rocket, the produced
 // particle VFX composited over the world, and — in code — the full status-bar HUD, the
-// scanner indicator, the Core Sample countdown, the four building panels, and every menu
+// scanner indicator, the Core Sample countdown, the building overlay panels, and every menu
 // and state screen. Produced sprites are used when present (nearest-neighbor); a missing
 // asset falls back to a neutral code drawing so the build never crashes (specs/assets.md).
 
@@ -292,18 +292,20 @@ function drawMine(
     for (const b of SURFACE_BUILDINGS) {
       const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
       const by = groundY - BUILDING_H - 6;
+      // The Save Pad has no menu — clicking it banks the expedition (specs/flow.md); every
+      // other building opens its overlay panel.
       cl.push({
         x: bx - BUILDING_W / 2,
         y: Math.max(VIEWPORT_Y, by),
         w: BUILDING_W,
         h: BUILDING_H + 6,
-        action: `open:${b.panel}`,
+        action: b.id === "save-pad" ? "save" : `open:${b.id}`,
       });
     }
     const b = game.nearbyBuilding();
     if (b) {
       const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
-      text(ctx, `[E] ${b.label}`, bx, groundY - BUILDING_H - 16, {
+      text(ctx, b.id === "save-pad" ? "[E] SAVE" : `[E] ${b.label}`, bx, groundY - BUILDING_H - 16, {
         size: 14,
         color: P.credits,
         align: "center",
@@ -451,30 +453,6 @@ function cellLava(grid: Tile[][], c: number, r: number): boolean {
  * Build a rounded-rect path with per-corner radii (a radius of 0 gives a sharp corner via
  * the degenerate arcTo). Used to shape a carved tunnel / lava pool inside a tile.
  */
-function roundedPath(
-  ctx: CanvasRenderingContext2D,
-  l: number,
-  t: number,
-  r: number,
-  b: number,
-  rTL: number,
-  rTR: number,
-  rBR: number,
-  rBL: number,
-): void {
-  ctx.beginPath();
-  ctx.moveTo(l + rTL, t);
-  ctx.lineTo(r - rTR, t);
-  ctx.arcTo(r, t, r, b, rTR);
-  ctx.lineTo(r, b - rBR);
-  ctx.arcTo(r, b, l, b, rBR);
-  ctx.lineTo(l + rBL, b);
-  ctx.arcTo(l, b, l, t, rBL);
-  ctx.lineTo(l, t + rTL);
-  ctx.arcTo(l, t, r, t, rTL);
-  ctx.closePath();
-}
-
 /**
  * The carved shape for a tile: inset by CARVE_INSET on any side whose neighbor is solid,
  * extended to the tile edge on any side where `open(neighbor)` holds (so it joins that
@@ -482,13 +460,14 @@ function roundedPath(
  * (specs/world.md, specs/assets.md — "which corners are exterior"):
  *
  *  - EXTERIOR corner (both its sides inset, i.e. both orthogonal neighbors solid): the
- *    tunnel wall turns here, rounded by CARVE_RADIUS — so orthogonally adjacent open cells
- *    merge while diagonally-touching ones stay two distinct holes.
- *  - INTERIOR corner (both its sides open BUT the diagonal neighbor is solid): a solid
- *    rock tile pokes into the bend, so a small rounded dirt nub must remain. The carve
- *    rounds the tile corner by CARVE_INSET (the lip width) rather than filling to it, so
- *    the already-drawn band rock shows through as a nub whose tunnel-facing edge lands
- *    flush with the neighbours' lips.
+ *    tunnel wall turns here, rounded CONVEX by CARVE_RADIUS — so orthogonally adjacent open
+ *    cells merge while diagonally-touching ones stay two distinct holes.
+ *  - INTERIOR corner (both its sides open BUT the diagonal neighbor is solid): a solid rock
+ *    tile pokes into the bend, so a rounded CONVEX DIRT NUB must bulge into the tunnel. The
+ *    tunnel edge curves CONCAVELY around the tile corner (radius CARVE_INSET), leaving the
+ *    already-drawn band rock showing through as a rounded bump — an L-bend keeps one nub, a
+ *    T-junction two. (The old build rounded this corner CONVEX, which carved a concave scoop
+ *    of dirt instead of a nub — the wrong curvature.)
  *  - Otherwise (exactly one side open, or a fully-open 2×2 where the diagonal is also
  *    open): a sharp corner at the tile edge, so the fill runs out seamlessly.
  */
@@ -508,25 +487,41 @@ function buildCarvePath(
   const s = TILE_SIZE;
   const m = CARVE_INSET;
   const rad = CARVE_RADIUS;
+  const HALF = Math.PI / 2;
   const l = x + (openL ? 0 : m);
   const r = x + s - (openR ? 0 : m);
   const t = y + (openU ? 0 : m);
   const b = y + s - (openD ? 0 : m);
-  // Per corner: exterior (both sides solid) → CARVE_RADIUS; interior nub (both sides open
-  // but diagonal solid) → CARVE_INSET at the tile corner; else sharp.
-  const corner = (a: boolean, bb: boolean, diag: boolean): number =>
-    !a && !bb ? rad : a && bb && !diag ? m : 0;
-  roundedPath(
-    ctx,
-    l,
-    t,
-    r,
-    b,
-    corner(openU, openL, openUL),
-    corner(openU, openR, openUR),
-    corner(openD, openR, openDR),
-    corner(openD, openL, openDL),
-  );
+  // Per corner: "convex" (exterior — both orthogonal sides solid → round the turning wall),
+  // "concave" (interior — both sides open but the diagonal solid → a dirt nub bulges in), or
+  // "sharp" (the fill runs out to the tile edge).
+  type Corner = "convex" | "concave" | "sharp";
+  const kind = (a: boolean, bb: boolean, diag: boolean): Corner =>
+    !a && !bb ? "convex" : a && bb && !diag ? "concave" : "sharp";
+  const off = (k: Corner): number => (k === "convex" ? rad : k === "concave" ? m : 0);
+  const kTL = kind(openU, openL, openUL);
+  const kTR = kind(openU, openR, openUR);
+  const kBR = kind(openD, openR, openDR);
+  const kBL = kind(openD, openL, openDL);
+
+  // Trace the tunnel boundary clockwise. A convex corner rounds the wall OFF (arcTo, centred
+  // inside the tile); a concave corner sweeps an arc AROUND the tile corner (centred on it),
+  // biting a convex quarter-disk of dirt out of the tunnel so the band rock reads as a nub.
+  ctx.beginPath();
+  ctx.moveTo(l + off(kTL), t);
+  ctx.lineTo(r - off(kTR), t);
+  if (kTR === "convex") ctx.arcTo(r, t, r, b, rad);
+  else if (kTR === "concave") ctx.arc(r, t, m, Math.PI, HALF, true);
+  ctx.lineTo(r, b - off(kBR));
+  if (kBR === "convex") ctx.arcTo(r, b, l, b, rad);
+  else if (kBR === "concave") ctx.arc(r, b, m, 3 * HALF, Math.PI, true);
+  ctx.lineTo(l + off(kBL), b);
+  if (kBL === "convex") ctx.arcTo(l, b, l, t, rad);
+  else if (kBL === "concave") ctx.arc(l, b, m, 0, 3 * HALF, true);
+  ctx.lineTo(l, t + off(kTL));
+  if (kTL === "convex") ctx.arcTo(l, t, r, t, rad);
+  else if (kTL === "concave") ctx.arc(l, t, m, HALF, 0, true);
+  ctx.closePath();
 }
 
 /** Paint a carved (inset, rounded, neighbor-joined) region — shared by tunnels and lava. */
@@ -764,15 +759,15 @@ function drawSurface(
   ctx.fillStyle = P.surfaceGround;
   ctx.fillRect(GRID_MARGIN_X + offX, groundY - 10, WORLD_COLS * TILE_SIZE, 10);
 
-  // The four buildings, centered on their tiles, resting on the ground line.
+  // The six buildings, centered on their tiles, resting on the ground line.
   for (const b of SURFACE_BUILDINGS) {
     const cxb = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
     const bx = cxb - BUILDING_W / 2;
-    const img = assets.surface(b.panel);
+    const img = assets.surface(b.id);
     if (isReady(img)) {
       ctx.drawImage(img, bx, groundY - BUILDING_H, BUILDING_W, BUILDING_H);
     } else {
-      drawBuildingFallback(ctx, b.panel, bx, groundY - BUILDING_H, BUILDING_W, BUILDING_H);
+      drawBuildingFallback(ctx, b.id, bx, groundY - BUILDING_H, BUILDING_W, BUILDING_H);
     }
     text(ctx, b.label.toUpperCase(), cxb, groundY - BUILDING_H - 8, {
       size: 11,
@@ -803,6 +798,7 @@ function drawBuildingFallback(
     "ore-market": P.cargo,
     "save-pad": P.resonite,
     "upgrade-shop": P.hull,
+    "supply-depot": P.pyronium,
     "launch-pad": P.credits,
   };
   ctx.fillStyle = "#20262e";
@@ -823,7 +819,7 @@ function drawRocket(
   offX: number,
   offY: number,
 ): void {
-  const b = SURFACE_BUILDINGS.find((x) => x.panel === "launch-pad")!;
+  const b = SURFACE_BUILDINGS.find((x) => x.id === "launch-pad")!;
   const cx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
   const groundY = SURFACE_FEET_Y + offY;
   const stage = game.installed.size; // 0..5 components installed
@@ -1247,11 +1243,11 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
     case "upgrade-shop":
       drawUpgradeShop(ctx, game, view, cl);
       break;
+    case "supply-depot":
+      drawSupplyDepot(ctx, game, view, cl);
+      break;
     case "launch-pad":
       drawLaunchPad(ctx, game, view, cl);
-      break;
-    case "save-pad":
-      drawSavePad(ctx, game, view, cl);
       break;
     case "inventory":
       drawInventory(ctx, game, view, cl);
@@ -1365,9 +1361,9 @@ function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 }
 
 function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  // Widened, two-column: the seven upgrade tracks on the left, the single-use FIELD
-  // SUPPLIES (specs/items.md) on the right — the fourth Credits sink (specs/flow.md).
-  const f = panelFrame(ctx, "UPGRADE SHOP", 980, 540);
+  // The seven upgrade tracks, one per row (single-use field supplies now live in their own
+  // SUPPLY DEPOT building — specs/items.md, specs/world.md).
+  const f = panelFrame(ctx, "UPGRADE SHOP", 760, 560);
   text(ctx, `Credits: ${game.credits}`, f.x + f.w - 28, f.y + 40, {
     size: 18,
     color: P.credits,
@@ -1377,7 +1373,7 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
 
   const tracks = Object.keys(UPGRADE_TRACKS) as (keyof typeof UPGRADE_TRACKS)[];
   const colL = f.x + 28;
-  let y = f.y + 74;
+  let y = f.y + 84;
   for (const t of tracks) {
     const def = UPGRADE_TRACKS[t];
     const tier = game.tiers[t];
@@ -1387,71 +1383,72 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
     const fmt = (v: number): string => (t === "radiator" ? `${Math.round(v * 100)}%` : `${v}`);
     const curVal = def.values[tier - 1]!;
     const nextVal = maxed ? null : def.values[tier]!;
-    text(ctx, def.label.toUpperCase(), colL, y + 6, { size: 15, color: P.textPrimary, bold: true });
-    text(ctx, `Tier ${tier}/${MAX_TIER} — ${fmt(curVal)} ${def.unit}`, colL, y + 24, {
+    text(ctx, def.label.toUpperCase(), colL, y + 4, { size: 15, color: P.textPrimary, bold: true });
+    text(ctx, `Tier ${tier}/${MAX_TIER} — ${fmt(curVal)} ${def.unit}`, colL, y + 22, {
       size: 12,
       color: P.textSecondary,
     });
     if (!maxed) {
-      text(ctx, `Next: ${fmt(nextVal!)} ${def.unit}`, colL + 240, y + 10, { size: 13, color: P.hull });
-      text(ctx, `${price} Cr`, colL + 240, y + 27, {
+      text(ctx, `Next: ${fmt(nextVal!)} ${def.unit}`, colL + 380, y + 4, { size: 13, color: P.hull });
+      text(ctx, `${price} Cr`, colL + 380, y + 22, {
         size: 13,
         color: game.credits >= price! ? P.credits : P.alert,
       });
     }
     const label = maxed ? "MAX" : "BUY";
-    button(ctx, cl, view, colL + 336, y - 4, 96, 36, label, `buy:${t}`, {
+    button(ctx, cl, view, f.x + f.w - 124, y - 4, 96, 38, label, `buy:${t}`, {
       disabled: maxed || game.credits < (price ?? Infinity),
     });
-    y += 50;
+    y += 58;
   }
-
-  drawFieldSupplies(ctx, game, view, cl, f.x + 500, f.y + 62, 452);
   closeButton(ctx, f, view, cl);
 }
 
 /**
- * The Upgrade Shop "Field Supplies" section (specs/items.md): the six single-use items,
- * each with a code-drawn icon, its price, the count held, and a BUY button greyed out when
- * unaffordable. `x`/`y` is the section's top-left; `w` its width.
+ * The SUPPLY DEPOT (specs/items.md, specs/world.md): the six single-use field supplies, each
+ * with a code-drawn icon, its blurb, the count held, and a price/BUY greyed out when
+ * unaffordable — its own surface building and the fourth Credits sink (specs/flow.md).
  */
-function drawFieldSupplies(
-  ctx: CanvasRenderingContext2D,
-  game: Game,
-  view: View,
-  cl: Clickable[],
-  x: number,
-  y: number,
-  w: number,
-): void {
-  text(ctx, "FIELD SUPPLIES", x, y + 6, { size: 15, color: P.credits, bold: true });
-  text(ctx, "Single-use — bought here, used with 1–6 or the bag.", x, y + 24, {
-    size: 11,
-    color: P.textTertiary,
+function drawSupplyDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+  const f = panelFrame(ctx, "SUPPLY DEPOT", 760, 520);
+  text(ctx, "Single-use field supplies — used in the mine with 1–6 or the bag.", f.x + 28, f.y + 74, {
+    size: 14,
+    color: P.textSecondary,
   });
-  let ry = y + 44;
+  text(ctx, `Credits: ${game.credits}`, f.x + f.w - 28, f.y + 40, {
+    size: 18,
+    color: P.credits,
+    align: "right",
+    bold: true,
+  });
+  let ry = f.y + 112;
   for (const def of ITEMS) {
     const held = game.items[def.id] ?? 0;
     const afford = game.credits >= def.price;
-    drawItemIcon(ctx, def.id, x + 2, ry + 2, 26);
-    text(ctx, `${def.hotkey}. ${def.label}`, x + 38, ry + 12, {
-      size: 13,
+    drawItemIcon(ctx, def.id, f.x + 28, ry - 4, 30);
+    text(ctx, `${def.hotkey}. ${def.label}`, f.x + 72, ry + 6, {
+      size: 15,
       color: P.textPrimary,
       bold: true,
     });
-    text(ctx, def.blurb, x + 38, ry + 28, { size: 10, color: P.textTertiary });
-    text(ctx, `×${held}`, x + w - 118, ry + 12, { size: 12, color: P.textSecondary, align: "right" });
-    text(ctx, `${def.price} Cr`, x + w - 118, ry + 28, {
-      size: 11,
+    text(ctx, def.blurb, f.x + 72, ry + 26, { size: 12, color: P.textTertiary });
+    text(ctx, `${def.price} Cr`, f.x + f.w - 132, ry + 4, {
+      size: 13,
       color: afford ? P.credits : P.alert,
       align: "right",
     });
-    button(ctx, cl, view, x + w - 100, ry - 2, 100, 34, "BUY", `buyitem:${def.id}`, {
+    text(ctx, `Held ×${held}`, f.x + f.w - 132, ry + 24, {
+      size: 12,
+      color: held > 0 ? P.textSecondary : P.textTertiary,
+      align: "right",
+    });
+    button(ctx, cl, view, f.x + f.w - 118, ry - 4, 90, 38, "BUY", `buyitem:${def.id}`, {
       disabled: !afford,
       accent: P.credits,
     });
-    ry += 46;
+    ry += 58;
   }
+  closeButton(ctx, f, view, cl);
 }
 
 /**
@@ -1580,42 +1577,6 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   closeButton(ctx, f, view, cl);
 }
 
-function drawSavePad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  const f = panelFrame(ctx, "SAVE PAD");
-  text(ctx, "Bank your expedition. This pad is the ONLY way to save.", f.x + 28, f.y + 74, {
-    size: 15,
-    color: P.textSecondary,
-  });
-  const exists = hasSave();
-  text(ctx, exists ? "A saved expedition exists — saving overwrites it." : "No expedition saved yet.", f.x + 28, f.y + 118, {
-    size: 14,
-    color: exists ? P.credits : P.textTertiary,
-  });
-  const lines = [
-    "• You have ONE save slot; saving here overwrites it.",
-    "• On the main menu, CONTINUE resumes your saved expedition.",
-    "• In Standard, a death lets you restore from your last save.",
-    "• In Hardcore, a death deletes the save — the run ends for good.",
-  ];
-  let y = f.y + 156;
-  for (const l of lines) {
-    text(ctx, l, f.x + 28, y, { size: 13, color: P.textSecondary });
-    y += 26;
-  }
-  const canSave = game.canSave();
-  if (!canSave) {
-    text(ctx, "Can't save while the unstable Core Sample is in hand — install it first.", f.x + 28, y + 10, {
-      size: 13,
-      color: P.alert,
-    });
-  }
-  button(ctx, cl, view, f.x + 28, f.y + f.h - 108, 260, 48, "SAVE EXPEDITION", "save", {
-    disabled: !canSave,
-    accent: P.credits,
-  });
-  closeButton(ctx, f, view, cl);
-}
-
 function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
   // Two-column: cargo (ore) + satchel on the left, FIELD SUPPLIES (USE) on the right
   // (specs/items.md, specs/mining.md).
@@ -1702,7 +1663,7 @@ function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
   text(ctx, "CORE SAMPLE", colR, ry + 6, { size: 13, color: P.coreSample, bold: true });
   text(
     ctx,
-    carryingCore ? "Drop it and flee before it detonates, then walk back to re-collect." : "Not carrying the Core Sample.",
+    carryingCore ? "Drop it and flee before it detonates — you can't pick it back up." : "Not carrying the Core Sample.",
     colR,
     ry + 24,
     { size: 11, color: carryingCore ? P.textSecondary : P.textTertiary },
@@ -1795,38 +1756,33 @@ function drawModeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, c
 }
 
 function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  const x = STAGE_WIDTH / 2 - 380;
-  text(ctx, "HOW TO PLAY", STAGE_WIDTH / 2, 100, { size: 40, color: P.textPrimary, align: "center", bold: true });
-  const lines = [
-    "GOAL — Build the five-component escape rocket at the Launch Pad and LAUNCH to win.",
-    "",
-    "DIG — A/D or ←/→ walk, and drill sideways once you reach a wall; S or ↓ drills down. You drill",
-    "      DOWN, LEFT, RIGHT — never UP, and only while standing on solid ground (not while falling).",
-    "      W/↑/Space fires the jetpack to climb (it burns FUEL; falling is free). There is no ceiling.",
-    "",
-    "LOOP — Fill cargo with ore, jetpack up, SELL ore, then BUY fuel & repairs at the Fuel Depot and",
-    "       UPGRADES at the shop. Nothing refills free — budget Credits for the climb home, not just the dig.",
-    "",
-    "CARGO — The bay holds a fixed number of ORE SLOTS; ore also has WEIGHT the jetpack must lift. A",
-    "        heavy haul climbs slowly and, past a point, can't lift at all — open the BAG (I) to DROP ore.",
-    "",
-    "MATERIALS — Resonite (rockbed) and Cryenite (deepstone) are guaranteed but hidden; the SCANNER",
-    "            points to the nearest one you still need. The rocket's deep parts need them.",
-    "",
-    "HAZARDS — Gas pockets detonate when drilled, lava drains hull on contact, a hard landing hurts.",
-    "          The Core Sample from the bottom is UNSTABLE: a 90s timer runs until you install it.",
-    "",
-    "SAVE — The surface SAVE PAD is the only way to save (one slot). Standard lets you restore from",
-    "       your save on a death; Hardcore deletes it — a death ends the run.",
-    "",
-    "SYSTEM — Esc pauses (and closes panels), I opens the bag, M mutes, E/Enter or click activates a building.",
+  const cx = STAGE_WIDTH / 2;
+  text(ctx, "HOW TO PLAY", cx, 110, { size: 40, color: P.textPrimary, align: "center", bold: true });
+  // Short and scannable — a label + one line each (a wall of text goes unread).
+  const rows: [string, string][] = [
+    ["GOAL", "Build the 5-part escape rocket at the Launch Pad, then LAUNCH."],
+    ["DIG", "A/D move · S/↓ drills down · drill sideways at a wall. Never up."],
+    ["CLIMB", "W/↑/Space jetpacks up (burns fuel); falling is free. No ceiling."],
+    ["TRADE", "Haul ore up, SELL it, then buy fuel, upgrades & supplies. Nothing's free."],
+    ["CARGO", "Limited slots, and ore has weight — a heavy load won't lift. Bag (I) drops it."],
+    ["FIND", "The SCANNER points to the buried materials the rocket needs."],
+    ["DANGER", "Gas, lava, and hard falls hurt. The Core Sample's 90s timer detonates."],
+    ["SAVE", "Stand on the Save Pad and press E. Hardcore deaths are permanent."],
   ];
-  let y = 152;
-  for (const l of lines) {
-    text(ctx, l, x, y, { size: 14, color: l.includes("—") ? P.textPrimary : P.textSecondary });
-    y += 21;
+  const labelX = cx - 430;
+  const bodyX = cx - 300;
+  let y = 196;
+  for (const [k, v] of rows) {
+    text(ctx, k, labelX, y, { size: 15, color: P.credits, bold: true });
+    text(ctx, v, bodyX, y, { size: 15, color: P.textSecondary });
+    y += 40;
   }
-  menuColumn(ctx, game, view, cl, 650);
+  text(ctx, "Esc pauses · M mutes · E/Enter or click uses a building.", cx, y + 6, {
+    size: 13,
+    color: P.textTertiary,
+    align: "center",
+  });
+  menuColumn(ctx, game, view, cl, 588);
 }
 
 function causeLabel(cause?: string): string {

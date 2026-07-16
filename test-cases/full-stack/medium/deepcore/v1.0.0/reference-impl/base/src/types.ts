@@ -68,7 +68,7 @@ export type Material = "resonite" | "cryenite" | "core-sample";
 // ---------------------------------------------------------------------------
 
 /**
- * The six single-use "field supply" items, bought with Credits at the Upgrade Shop
+ * The six single-use "field supply" items, bought with Credits at the Supply Depot
  * and carried as a COUNT per type (each use consumes one). Their prices, blast radii,
  * and effect magnitudes are pinned in constants.ts (specs/items.md).
  */
@@ -90,16 +90,14 @@ export type ItemCounts = Record<ItemId, number>;
 /**
  * An item dropped on the world grid, sitting on a tile. Today the ONLY ground item is a
  * jettisoned Core Sample (specs/items.md): its destabilization timer keeps running on the
- * ground (the global coreTimer), it detonates AT its ground location (killing only a miner
- * within the blast), and the miner can walk back over it to re-collect it. `armed` starts
- * false right after a jettison — while the miner still stands on the drop tile — and turns
- * true once it steps off, so a jettison does not instantly re-collect itself.
+ * ground (the global coreTimer) and it detonates AT its ground location (killing only a
+ * miner within the blast). A jettisoned Sample is a one-way discard — it CANNOT be picked
+ * back up; another must be drilled from the Core (which is inexhaustible, specs/mining.md).
  */
 export interface GroundItem {
   kind: "core-sample";
   col: number;
   row: number;
-  armed: boolean;
 }
 
 /** Ore held in the cargo bay, counted per type. */
@@ -214,19 +212,32 @@ export type GamePhase =
   | "game-over";
 
 /**
- * Which overlay panel is open, if any. The first four are the surface buildings (opened
- * only at the camp); `save-pad` is the fifth surface building; `inventory` is the cargo
- * hold, openable ANYWHERE (surface or mid-dig) to review and drop ore (specs/mining.md,
- * specs/flow.md).
+ * Which overlay panel is open, if any. These are the surface buildings that HAVE a menu
+ * (opened only at the camp) plus `inventory`, the cargo hold, openable ANYWHERE (surface
+ * or mid-dig) to review and drop ore (specs/mining.md, specs/flow.md). The Save Pad has NO
+ * menu — activating it banks the expedition directly (specs/flow.md), so it is not a panel.
  */
 export type OpenPanel =
   | null
   | "fuel-depot"
   | "ore-market"
   | "upgrade-shop"
+  | "supply-depot"
   | "launch-pad"
-  | "save-pad"
   | "inventory";
+
+/**
+ * Identity of a surface building (specs/world.md). Every building except the Save Pad opens
+ * an overlay panel of the same name; the Save Pad has no menu (it saves on activation), so
+ * its id is not an `OpenPanel`.
+ */
+export type BuildingId =
+  | "fuel-depot"
+  | "ore-market"
+  | "save-pad"
+  | "upgrade-shop"
+  | "supply-depot"
+  | "launch-pad";
 
 /** End-screen run summary (specs/flow.md — not persisted). */
 export interface RunSummary {
