@@ -97,7 +97,10 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
   must jog sideways to get past it. It reads clearly as a **different, harder material**
   than the surrounding dirt (a smooth, cold stone against the grainy band rock), so the
   player can tell at a glance that it will not yield to the drill. Generation never uses
-  unbreakable stone to seal the only route down or to a material (below).
+  unbreakable stone to seal the only route down or to a material (below). No **drill**
+  breaks it, but the **explosives** field supplies (Dynamite, Plastic Explosives) **can
+  blast through it** — this is the "later addition" foreshadowed below realized
+  (`specs/items.md`).
 - **Ore vein** — a minable tile of the band's rock with an **ore deposit** in it
   (`specs/mining.md`). Drilling it removes the tile *and* adds that ore to cargo (if
   cargo has room). Ore veins are scattered through every band; the ore type and its
@@ -134,6 +137,11 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
   **two distinct holes**, separated by the rounded dirt between them, exactly as in
   Motherload (`specs/assets.md`).
 
+A tile may also hold a **ground item** sitting on top of it — today only a **jettisoned
+Core Sample** (`specs/items.md`), rendered on its tile with its countdown, which the miner
+can walk back over to re-collect. Ground items are not a tile kind; they ride on top of the
+open tunnel.
+
 ## Placing ore, materials, and hazards
 
 The mine is **generated per game** within these rules; there is no single fixed map,
@@ -156,9 +164,9 @@ but every rule below is fixed. Generation must obey them so a run is always winn
   must **never seal the only route** down, to a material node, or to the Core with
   unbreakable stone (as with lava, below) — a determined driller can always find a
   diggable path through the surrounding rock, even if it means a shaft that jogs sideways
-  rather than running straight down. They force the player to **route around** them (or,
-  in a later addition, blast through) rather than always digging a perfectly straight
-  hole.
+  rather than running straight down. They force the player to **route around** them — or
+  **blast through** them with the explosives field supplies (`specs/items.md`) — rather
+  than always digging a perfectly straight hole.
 - **Exotic materials — guaranteed but hidden.** **Exactly one** Resonite node
   exists somewhere in the **rockbed** band and **exactly one** Cryenite node exists
   somewhere in the **deepstone** band, at a **random position within that band** —

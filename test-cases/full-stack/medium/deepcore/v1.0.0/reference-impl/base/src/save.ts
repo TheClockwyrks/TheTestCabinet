@@ -8,7 +8,7 @@
 // unstable timer is never persisted. localStorage may be unavailable (a locked-down
 // context); every access is guarded so the game still runs, only without saving.
 
-import type { Cargo, Mode, RocketComponentId, Tile, UpgradeTiers } from "./types";
+import type { Cargo, ItemCounts, Mode, RocketComponentId, Tile, UpgradeTiers } from "./types";
 import type { MaterialNode } from "./world";
 
 const SAVE_KEY = "deepcore.save.v1";
@@ -21,6 +21,8 @@ export interface SaveData {
   creditsEarned: number;
   tiers: UpgradeTiers;
   installed: RocketComponentId[];
+  /** Held single-use field-supply item counts (specs/items.md). Optional for old saves. */
+  items?: ItemCounts;
   cargo: Cargo;
   satchel: { resonite: number; cryenite: number };
   grid: Tile[][];

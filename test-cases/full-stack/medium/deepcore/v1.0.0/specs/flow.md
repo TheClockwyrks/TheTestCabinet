@@ -9,7 +9,7 @@ hazards (`specs/hazards.md`), the modes (`specs/modes.md`), and the controls
 
 ## Credits and the economy
 
-**Credits** are the currency. There is exactly **one source** and **three sinks**:
+**Credits** are the currency. There is exactly **one source** and **four sinks**:
 
 - **Source — selling ore.** Selling your cargo at the **Ore Market**
   (`specs/mining.md`) pays each ore's listed value and empties the bay. This is the
@@ -20,6 +20,9 @@ hazards (`specs/hazards.md`), the modes (`specs/modes.md`), and the controls
   of every trip.
 - **Sink — upgrades.** Buying tiers on the seven upgrade tracks (fuel tank, drill, cargo
   bay, hull, jetpack, radiator, scanner) at the **Upgrade Shop** (`specs/upgrades.md`).
+- **Sink — field supplies.** Buying the six single-use **field supply** items (explosives,
+  teleporters, nanobots, emergency fuel) in the **Field Supplies** section of the **Upgrade
+  Shop** (`specs/items.md`). Each is bought with Credits and carried as a count.
 - **Sink — the rocket.** Fabricating the five rocket components at the **Launch Pad**
   (`specs/rocket.md`).
 
@@ -57,10 +60,11 @@ and **restricted**:
 - **CONTINUE.** When a save exists, the main menu shows a **CONTINUE** entry that resumes
   it exactly where it was saved (`specs/flow.md`, Game states).
 - **What a save holds.** Enough to resume the surface state: the generated mine, banked
-  **Credits**, all **upgrade tiers**, **installed rocket components**, the **cargo** and
-  **materials**, and the miner's **fuel** and **hull**. Saving is **refused while carrying
-  the unstable Core Sample** (`specs/hazards.md`), so its timer is never frozen out by
-  saving and quitting.
+  **Credits**, all **upgrade tiers**, **installed rocket components**, held **field-supply
+  item counts** (`specs/items.md`), the **cargo** and **materials**, and the miner's
+  **fuel** and **hull**. Saving is **refused while the unstable Core Sample's timer is
+  running** — whether it is carried or jettisoned as a ground item (`specs/hazards.md`,
+  `specs/items.md`) — so its timer is never frozen out by saving and quitting.
 - **When the save ends.** A **Hardcore** death **deletes** the save (permadeath); a
   **victory** consumes it. A **Standard** death **keeps** it, so the run can be restored
   from the Game Over screen (`specs/modes.md`).
@@ -133,12 +137,15 @@ and type of `specs/overview.md`. The expedition start's menu entry is in
   repair for Credits — a fixed increment or fill/repair-to-full, paying only for the
   missing amount, `specs/character.md`), **Ore Market** (the cargo breakdown and
   **SELL**), **Save Pad** (**SAVE** the expedition, `specs/modes.md`), **Upgrade Shop**
-  (the seven tracks with current tier, next-tier effect, and price, `specs/upgrades.md`),
+  (the seven tracks with current tier, next-tier effect, and price, plus a **Field
+  Supplies** section selling the six single-use items, `specs/upgrades.md`, `specs/items.md`),
   and **Launch Pad** (the five-component rocket checklist and **FABRICATE** / **LAUNCH**,
   `specs/rocket.md`). Each opens when the miner activates the building and closes back to
   the mine.
 - **Inventory overlay** — the cargo hold (`specs/mining.md`): the held ore with counts and
-  weights, the slots/load readout, and a **drop** control per ore. Openable anywhere.
+  weights, the slots/load readout, a **drop** control per ore, and a **Field Supplies**
+  section with each held item's count and a **USE** control (plus the Core Sample
+  **jettison** control while carrying it, `specs/items.md`). Openable anywhere.
 - **Pause menu** — **Resume**, **Restart**, and **Quit to menu**, over the frozen mine.
 - **Victory screen** — the run summary with **PLAY AGAIN** and **MENU**.
 - **Game Over screen** — the run summary with, in **Standard** (save present), **CONTINUE
@@ -169,7 +176,9 @@ visible:
 Over the world, the HUD also draws the **scanner indicator** (the directional arrow +
 distance to the nearest needed material, `specs/mining.md`, drawn in code), and, while
 the Core Sample is being carried, the prominent **destabilization countdown** with its
-escalating alarm (`specs/hazards.md`). A player must be able to read, without hunting,
+escalating alarm and a **jettison** hint (`specs/hazards.md`, `specs/items.md`). A
+jettisoned Core Sample shows its countdown over its **ground tile** (`specs/items.md`).
+A player must be able to read, without hunting,
 how much fuel and hull they have left, how full the cargo is, how deep they are, and —
 on the core run — how many seconds remain.
 
@@ -190,5 +199,7 @@ persisted**; the only persisted state is the **save** (above).
 - **Selling** fuel or hull back for Credits — the Fuel Depot only **sells** fuel and
   repair to the miner (`specs/character.md`, `specs/world.md`); there is no buy-back and
   no fuel/hull market beyond the depot.
-- Any ore, material, hazard, building, upgrade track, or mechanic beyond those
-  specified here — keep the scope to the systems above, done well.
+- Any ore, material, hazard, building, or upgrade track beyond those specified here — keep
+  the scope to the systems specified across these files, done well. (The six single-use
+  **field supplies** and the Core Sample **jettison / ground item** of `specs/items.md`
+  **are** in scope — they are specified mechanics, not additions beyond the spec.)

@@ -32,6 +32,11 @@ The "reads as" column is each ore's visual identity; each is drawn as a **smear 
 mineral run through the dirt** — embedded in the rock and spreading to the tile edges, not
 a discrete dot on top of it (the Motherload look — `specs/world.md`, `specs/assets.md`).
 
+Ore is collected only by **drilling** it. **Explosives destroy ore without collecting it**:
+an ore tile caught in a Dynamite / Plastic Explosives blast (`specs/items.md`) is cleared
+to tunnel like any other tile and its ore is **lost, not added to cargo** — the explosives
+clear the way, they do not mine.
+
 Value climbs **steeply** with depth while weight rises only gently, so **value-per-kg
 climbs with depth**: a full bay of topsoil Ferron is pocket change — and barely worth
 its weight on the climb — next to a single deep Adamite. This is the engine of the
@@ -115,7 +120,10 @@ spare.
   install it at the launch pad before it **detonates** (`specs/hazards.md`,
   `specs/rocket.md`). It, too, rides in the satchel (not cargo), but if you **die**
   while carrying it, it is **destroyed** — a failed core run always means going back
-  down for a fresh one (`specs/modes.md`).
+  down for a fresh one (`specs/modes.md`). It can also be **jettisoned** onto the ground
+  as a ground item and **re-collected** by walking back over it (`specs/items.md`), the
+  timer running throughout. Saving stays **blocked** while its timer runs, carried or
+  jettisoned (`specs/flow.md`, `specs/items.md`).
 
 ## The scanner
 

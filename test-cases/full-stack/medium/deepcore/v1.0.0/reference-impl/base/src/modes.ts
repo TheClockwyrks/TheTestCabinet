@@ -31,8 +31,10 @@ export function triggerDeath(game: Game, cause: DeathCause): void {
   game.fxQueue.push({ kind: "death-burst", x: cx, y: cy });
   game.sndQueue.push("death");
 
-  // The Core Sample never survives a death (both modes) — destroy it.
+  // The Core Sample never survives a death (both modes) — destroy it, whether carried or
+  // jettisoned as a ground item (specs/items.md).
   game.satchel.coreSample = false;
+  game.groundItems = game.groundItems.filter((g) => g.kind !== "core-sample");
   game.coreTimer = null;
 
   m.drilling = null;

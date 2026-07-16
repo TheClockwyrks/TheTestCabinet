@@ -37,6 +37,15 @@ discrete tile steps:
   inventory overlay (`specs/mining.md`) — usable **anywhere**, surface or mid-dig — where
   the player reviews the haul and **drops specific ore** to lighten an overloaded load so
   the jetpack can lift off again (`specs/character.md`). Dropped ore is lost, not sold.
+  The inventory also has a **Field Supplies** section with a **USE** control per held item
+  and, while carrying the Core Sample, a **JETTISON** control (`specs/items.md`).
+- **Field supplies** — number keys **`1`–`6`** use the six single-use field-supply items
+  1–6 during live play (`specs/items.md`); the inventory **USE** buttons are the mouse
+  equivalent. Both paths run the same use logic, and using an item you hold none of is a
+  harmless no-op.
+- **Jettison the Core Sample** — `J` during live play (or the inventory **JETTISON**
+  control) drops the carried Core Sample onto the miner's tile as a ground item, its timer
+  still running, so the player can flee the blast (`specs/items.md`, `specs/hazards.md`).
 
 Facing follows the last lateral input, and the miner's sprite mirrors to match
 (`specs/character.md`, `specs/assets.md`). Movement is smooth and continuous; the miner

@@ -312,9 +312,19 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   visible tile that carries damage, not only the one currently being cut (`specs/character.md`).
 - **The gas seep placement** — firing the subtle gas-seep particle effect over gas
   pockets that are on screen, sparsely, so hidden gas has its faint tell (`specs/hazards.md`).
+- **Field-supply item icons** — the small icons for the six single-use field supplies
+  (`specs/items.md`) in the Upgrade Shop's Field Supplies section and the inventory's USE
+  list are **drawn in code**, consistent with the in-code HUD chrome — **no produced
+  sprite** for them.
 - **World feedback** — the faint tile grid over the produced rock tiles, the depth-band
   transitions, the cargo-full note (`specs/mining.md`), and any placement/selection cues.
   The code reads the simulation and draws these over the produced sprites.
+
+**Field-supply VFX and audio reuse existing produced effects.** The explosives and the
+jettisoned Core Sample's ground detonation (`specs/items.md`) reuse the produced
+**gas-explosion / core-detonation** particle systems and an existing explosion/impact
+sound; the teleporters and repair supplies reuse existing extraction/shimmer/confirm cues.
+The field supplies add **no new required produced asset** — only the code-drawn icons above.
 
 ## Genuinely produce the assets — this is the point here
 

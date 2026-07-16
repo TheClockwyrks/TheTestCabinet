@@ -63,6 +63,45 @@ export type Ore =
 /** The three exotic materials the rocket needs (Core Sample is unstable). */
 export type Material = "resonite" | "cryenite" | "core-sample";
 
+// ---------------------------------------------------------------------------
+// Field supplies — single-use items (specs/items.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * The six single-use "field supply" items, bought with Credits at the Upgrade Shop
+ * and carried as a COUNT per type (each use consumes one). Their prices, blast radii,
+ * and effect magnitudes are pinned in constants.ts (specs/items.md).
+ */
+export type ItemId =
+  | "dynamite"
+  | "plastic-explosives"
+  | "quantum-teleporter"
+  | "matter-transmitter"
+  | "nanobots"
+  | "emergency-fuel";
+
+/** Held-item counts, one entry per item type. */
+export type ItemCounts = Record<ItemId, number>;
+
+// ---------------------------------------------------------------------------
+// Ground items (specs/items.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * An item dropped on the world grid, sitting on a tile. Today the ONLY ground item is a
+ * jettisoned Core Sample (specs/items.md): its destabilization timer keeps running on the
+ * ground (the global coreTimer), it detonates AT its ground location (killing only a miner
+ * within the blast), and the miner can walk back over it to re-collect it. `armed` starts
+ * false right after a jettison — while the miner still stands on the drop tile — and turns
+ * true once it steps off, so a jettison does not instantly re-collect itself.
+ */
+export interface GroundItem {
+  kind: "core-sample";
+  col: number;
+  row: number;
+  armed: boolean;
+}
+
 /** Ore held in the cargo bay, counted per type. */
 export type Cargo = Record<Ore, number>;
 
@@ -210,6 +249,10 @@ export interface GameState {
   satchel: Satchel;
   tiers: UpgradeTiers;
   installed: Set<RocketComponentId>;
+  /** Held single-use field-supply items, counted per type (specs/items.md). */
+  items: ItemCounts;
+  /** Items dropped on the world grid (today only a jettisoned Core Sample, specs/items.md). */
+  groundItems: GroundItem[];
   miner: Miner;
   /** Grid[row][col] tiles. */
   grid: Tile[][];

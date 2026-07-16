@@ -27,6 +27,10 @@ gas, appearing from the **rockbed** band down and denser with depth.
   a starting hull, but a coreshell pocket near the Core is **near-lethal without hull
   and radiator investment** — the deep gas is what forces those tiers before the core
   run, exactly as in Motherload.
+- **Explosives set off gas.** A gas pocket caught in a Dynamite / Plastic Explosives blast
+  (`specs/items.md`) **detonates** just as if drilled — so blasting blind near a hidden
+  pocket can hurt or kill the miner at the blast's center (gas detonations can chain within
+  the block). This is the risk of the explosives' convenience.
 - Gas pockets are **hidden in plain sight** (`specs/world.md`): a pocket is drawn with
   the **same dirt texture as the surrounding band rock**, so it does not stand out as a
   distinct coloured tile. Its **only** tell is a **very subtle produced particle wisp** —
@@ -109,6 +113,13 @@ gauntlet; the chamber itself is a small bedrock-walled pocket around the glowing
   `specs/modes.md`): the Core Sample never survives a death, so a failed core run
   always means going back down for another. Everything already **installed** on the
   rocket stays installed — the checklist is the durable progress.
+- **It can be jettisoned.** The player can **drop the Core Sample as a ground item**
+  (`specs/items.md`) with the timer still running, to flee before it goes off. Detonation
+  is then **location-aware**: while **carried** it kills the miner **outright** (above);
+  while **jettisoned** it detonates **at its ground tile** and its lethal blast reaches only
+  a miner **within `3` tiles** — one who fled far enough **survives**, and the Sample is
+  **destroyed** (return to the Core for another). A jettisoned Sample can be **walked back
+  over and re-collected** (`specs/items.md`), its timer continuing from where it is.
 
 The core run therefore demands **preparation**: enough fuel-tank and hull tiers to
 survive the depth and make the ascent inside 90 seconds. There is no time to refuel or
