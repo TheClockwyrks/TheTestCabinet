@@ -167,6 +167,12 @@ a.row {
   .row[data-failed] & {
     color: t.$color-negative;
   }
+
+  // A harness error is a distinct kind of failure (the harness exited early), so
+  // tint it with the caution color to set it apart from the model-output tiers.
+  &[data-state="harness_error"] {
+    color: t.$color-warning;
+  }
 }
 
 .test {

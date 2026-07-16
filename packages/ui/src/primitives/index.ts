@@ -11,6 +11,7 @@ export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";
 export { MetricChartWidget } from "./MetricChartWidget";
 export { RatingsChartWidget, type RatingCounts } from "./RatingsChartWidget";
+export { HarnessErrorRingWidget } from "./HarnessErrorRingWidget";
 export {
   barChart,
   stackedBarChart,

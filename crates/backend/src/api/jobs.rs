@@ -501,14 +501,21 @@ fn retry_count_of(request_json: &str) -> u32 {
         .min(MAX_RETRY_COUNT)
 }
 
-/// Whether a terminal run in `state` should be automatically retried. Only a
-/// failure the Test Cabinet (or a catastrophic build) is responsible for is
-/// retried — [`RunState::Infrastructure`] (our infra broke) or
-/// [`RunState::Catastrophic`] (the harness ran clean but the build won't load). A
-/// [`RunState::TimedOut`] or [`RunState::Completed`] outcome is the model's, not a
-/// fault to retry (and a user cancel never reaches the terminal transition here).
+/// Whether a terminal run in `state` should be automatically retried.
+/// [`RunState::Infrastructure`] (our infra broke) and [`RunState::Catastrophic`]
+/// (the harness ran clean but the build won't load) retry, as does
+/// [`RunState::HarnessError`] (the harness exited non-zero) — a subscription
+/// auth-token refresh surfaces there and can self-heal on a bounded retry; a model
+/// that genuinely crashes the harness burns its retries and then settles as a
+/// recordable harness error. A [`RunState::TimedOut`] or [`RunState::Completed`]
+/// outcome is the model's, not a fault to retry (and a user cancel never reaches
+/// the terminal transition here). The chain is bounded by the request's
+/// `retryCount`, so a persistently failing run always terminates.
 fn is_retryable(state: RunState) -> bool {
-    matches!(state, RunState::Infrastructure | RunState::Catastrophic)
+    matches!(
+        state,
+        RunState::Infrastructure | RunState::Catastrophic | RunState::HarnessError
+    )
 }
 
 /// Auto-retry a run that just reached a terminal failure: if the outcome is

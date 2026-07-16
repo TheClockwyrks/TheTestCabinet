@@ -975,6 +975,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
         ("done", RunState::Completed),
         ("cat", RunState::Catastrophic),
         ("slow", RunState::TimedOut),
+        ("harness", RunState::HarnessError),
         ("infra", RunState::Infrastructure),
     ] {
         let mut rec = record(id);
@@ -995,8 +996,8 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     failure_ids.sort_unstable();
     assert_eq!(
         failure_ids,
-        vec!["cat", "slow"],
-        "publishable failures exclude infrastructure failures"
+        vec!["cat", "harness", "slow"],
+        "publishable failures cover catastrophic/timed-out/harness-error but exclude infrastructure"
     );
 
     // The console's produced worklist carries every unpublished run whatever its
@@ -1007,7 +1008,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     unpublished_ids.sort_unstable();
     assert_eq!(
         unpublished_ids,
-        vec!["cat", "done", "infra", "slow"],
+        vec!["cat", "done", "harness", "infra", "slow"],
         "every unpublished run, all tiers, is in the produced worklist"
     );
 
@@ -1019,7 +1020,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     after_ids.sort_unstable();
     assert_eq!(
         after_ids,
-        vec!["done", "infra", "slow"],
+        vec!["done", "harness", "infra", "slow"],
         "a published run leaves the unpublished worklist"
     );
 }
@@ -1118,6 +1119,12 @@ async fn ensure_publishable_mirrors_the_publish_gate() {
     cat.status.state = RunState::Catastrophic;
     db.push(&cat, &RunLinks::default(), None).await.unwrap();
     db.ensure_publishable("cat").await.unwrap();
+
+    // A harness error is likewise a publishable failure — no review required.
+    let mut harness = record("harness");
+    harness.status.state = RunState::HarnessError;
+    db.push(&harness, &RunLinks::default(), None).await.unwrap();
+    db.ensure_publishable("harness").await.unwrap();
 
     // An unknown run is not found.
     let err = db.ensure_publishable("nope").await.unwrap_err();
@@ -1838,6 +1845,33 @@ async fn list_summaries_filters_by_test_case_model_and_harness() {
         summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
         ["a"]
     );
+}
+
+#[tokio::test]
+async fn list_summaries_failures_slice_covers_the_publishable_failure_tiers() {
+    // The `fields=summary&state=failures` path must surface exactly the publishable
+    // failure tiers — catastrophic, timed-out, and harness-error — and never a
+    // completed run or an infrastructure failure.
+    let db = Db::connect_in_memory().await.unwrap();
+    for (id, state) in [
+        ("done", RunState::Completed),
+        ("cat", RunState::Catastrophic),
+        ("slow", RunState::TimedOut),
+        ("harness", RunState::HarnessError),
+        ("infra", RunState::Infrastructure),
+    ] {
+        let mut r = record(id);
+        r.status.state = state;
+        db.push(&r, &links(), None).await.unwrap();
+    }
+
+    let filter = SummaryFilter {
+        state: SummaryState::Failures,
+        ..SummaryFilter::default()
+    };
+    let mut ids = summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await;
+    ids.sort();
+    assert_eq!(ids, ["cat", "harness", "slow"]);
 }
 
 #[tokio::test]

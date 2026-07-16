@@ -597,19 +597,24 @@ impl Db {
         self.list_by_states(&["completed"], limit, before).await
     }
 
-    /// List the **publishable failure** runs — catastrophic and timed-out (pending
-    /// and published) — newest-first by `finished_at`, paginated by a `finished_at`
-    /// cursor. These have no review checklist, so they are kept out of the reviewer
-    /// worklist and surfaced in their own "publish failures" affordance, where each
-    /// can be published with a single click. Infrastructure failures are excluded:
-    /// they are retained for inspection but never publishable.
+    /// List the **publishable failure** runs — catastrophic, timed-out, and
+    /// harness-error (pending and published) — newest-first by `finished_at`,
+    /// paginated by a `finished_at` cursor. These have no review checklist, so they
+    /// are kept out of the reviewer worklist and surfaced in their own "publish
+    /// failures" affordance, where each can be published with a single click (a
+    /// harness error records only a per-model statistic). Infrastructure failures are
+    /// excluded: they are retained for inspection but never publishable.
     pub async fn list_publishable_failures(
         &self,
         limit: usize,
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
-        self.list_by_states(&["catastrophic", "timed_out"], limit, before)
-            .await
+        self.list_by_states(
+            &["catastrophic", "timed_out", "harness_error"],
+            limit,
+            before,
+        )
+        .await
     }
 
     /// List every **unpublished** run — pushed but not yet published, *whatever* its
@@ -1058,9 +1063,10 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
 /// Publishability is decided by the run's terminal state. Infrastructure failures
 /// are the Test Cabinet's fault, not a model result, and are never publishable.
 /// Completed runs publish through the review gate (≥1 review). The publishable
-/// failure tiers — catastrophic and timed-out — are real model signal: publishable,
-/// but with no review checklist to complete, so the review-count requirement is
-/// waived for them (they publish through the separate publish-failures path).
+/// failure tiers — catastrophic, timed-out, and harness-error — are real model
+/// signal: publishable, but with no review checklist to complete, so the
+/// review-count requirement is waived for them (they publish through the separate
+/// publish-failures path).
 async fn gate_publishable<C: ConnectionTrait>(
     conn: &C,
     run_id: &str,
@@ -1071,7 +1077,8 @@ async fn gate_publishable<C: ConnectionTrait>(
             "run `{run_id}` is an infrastructure failure and can never be published"
         )));
     }
-    let is_publishable_failure = matches!(run_state, "catastrophic" | "timed_out");
+    let is_publishable_failure =
+        matches!(run_state, "catastrophic" | "timed_out" | "harness_error");
     if !is_publishable_failure {
         let review_count = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
@@ -1379,9 +1386,11 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
     query = match filter.state {
         SummaryState::Published => query.filter(run::Column::Published.eq(true)),
         SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
-        SummaryState::Failures => {
-            query.filter(run::Column::RunState.is_in(["catastrophic", "timed_out"]))
-        }
+        SummaryState::Failures => query.filter(run::Column::RunState.is_in([
+            "catastrophic",
+            "timed_out",
+            "harness_error",
+        ])),
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
@@ -1468,6 +1477,7 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
         RunState::Completed => "completed",
         RunState::Catastrophic => "catastrophic",
         RunState::TimedOut => "timed_out",
+        RunState::HarnessError => "harness_error",
         RunState::Infrastructure => "infrastructure",
     }
 }
