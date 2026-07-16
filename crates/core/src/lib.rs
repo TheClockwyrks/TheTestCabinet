@@ -631,6 +631,7 @@ where
             &base_prompt,
             WORKSPACE_DIR,
             deadline_epoch,
+            max_runtime,
             events,
         );
         match with_runtime_cap(drive, max_runtime, slug).await {

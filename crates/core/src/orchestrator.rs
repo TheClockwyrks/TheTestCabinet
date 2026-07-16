@@ -493,6 +493,7 @@ pub(crate) async fn drive_orchestrator(
     base_prompt: &str,
     workspace_dir: &str,
     deadline_epoch: u64,
+    max_runtime_seconds: u64,
     events: &mut dyn EventSink,
 ) -> Result<HarnessOutcome> {
     // Resolve the run user's home so the wrapper lands on the PATH the base image
@@ -547,6 +548,21 @@ pub(crate) async fn drive_orchestrator(
     .await?;
 
     if streamed.output.exit_code != 0 {
+        // A runner that exits non-zero at or past the run's deadline was killed
+        // because the maximum runtime elapsed — the container tears the harness
+        // down when time runs out, so the runner reports a signal/non-zero exit
+        // rather than the in-process runtime cap firing. Attribute it as the
+        // timeout it is (mirroring the cap's own `RunTimedOut`), so the run is
+        // classified and published as `TimedOut` — the model's work up to the cap
+        // is kept — instead of being misreported as a harness error. No harness
+        // -error event is emitted, matching the in-process cap, which surfaces the
+        // timeout through the run's terminal state alone.
+        if now_epoch() >= deadline_epoch {
+            return Err(Error::RunTimedOut {
+                slug: slug.as_str().to_string(),
+                seconds: max_runtime_seconds,
+            });
+        }
         let detail = format!(
             "orchestrator `{}` runner exited with code {}",
             orchestrator.slug(),
@@ -616,6 +632,13 @@ fn now_timestamp() -> String {
     time::OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_default()
+}
+
+/// Whole epoch seconds now, compared against a run's `deadline_epoch` to tell a
+/// deadline-driven kill (the run exhausted its maximum runtime) from a genuine
+/// harness failure.
+fn now_epoch() -> u64 {
+    time::OffsetDateTime::now_utc().unix_timestamp().max(0) as u64
 }
 
 #[cfg(test)]
