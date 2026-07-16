@@ -149,7 +149,7 @@ is weaker than the combo lever. The combo gate is sharpest on `substation`; on t
 
 Constants are `const` (no runtime override): **edit `src/constants.ts` → re-run**. The
 balance knobs are the difficulty table (`waves` / `baseMult` / `k`), the economy
-(`START_CHARGE`, `STAMP_COST`, `REFINE_COST`, `INTEREST_*`, `waveClearBonus`), the roll
+(`START_CHARGE`, `REFINE_COST`, `waveClearBonus` — placing rocks is free), the roll
 odds (`QUALITY_ODDS_BY_R`), the base stat curve (`QUALITY_MULT`, `RANGE_PER_TIER`, the
 `COMPONENTS` table, `LOAD`), and — the new headline surface — the **`COMBOS`** stat blocks
 and recipes. The harness levers are `MERGE_FLOOR` (competent's coverage floor before it

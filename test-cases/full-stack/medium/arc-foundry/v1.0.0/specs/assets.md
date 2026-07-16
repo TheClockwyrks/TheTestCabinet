@@ -292,8 +292,8 @@ menu chrome is drawn in code** (canvas/DOM), in the palette from
 `specs/overview.md`:
 
 - The entire **status bar** and **build panel** — Charge, Grid Integrity, the wave
-  indicator and the untimed-build read, the **scrap-press** control (STAMP, its 10
-  cost, and the remaining stamps of the 5-per-level allowance), the **UPGRADE QUALITY**
+  indicator and the untimed-build read, the **scrap-press** control (STAMP, its **free**
+  placement, and the remaining stamps of the 5-per-level allowance), the **UPGRADE QUALITY**
   control (the Refinement level and next cost), the **selected candidate/component
   inspector** (type, quality tier, live stats, and the KEEP / COMBINE / targeting
   controls), the **next-wave preview**, and the wave/speed/mute controls

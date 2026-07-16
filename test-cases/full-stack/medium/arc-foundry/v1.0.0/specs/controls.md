@@ -41,9 +41,9 @@ pull** (`specs/build.md`):
 
 1. **Pull the press.** Click the **STAMP** control in the build panel
    (`specs/board.md`), or press its hotkey **`B`**, to arm a **blank rock** on the
-   cursor. STAMP is refused (clearly) when the **5-stamp allowance** is spent or you
-   cannot afford **10 Charge** — the allowance is a hard cap of five per level and is
-   **not** a function of Charge (`specs/build.md`).
+   cursor. Placing rocks is **free**; STAMP is refused (clearly) only when the
+   **5-stamp allowance** is spent — the allowance is a hard cap of five per level and
+   is **not** a function of Charge (`specs/build.md`).
 2. **Position.** The blank rock is **held on the cursor** as its uniform **`2×2` tile
    footprint** (`specs/board.md`), snapping to the grid under the pointer. The preview
    shows a **legal/illegal** footprint cue (`#46d07a` legal, `#ff4d4d` illegal). A
@@ -55,15 +55,15 @@ pull** (`specs/build.md`):
    (`specs/build.md`), becomes an **ACTIVE candidate** (walling + inspectable, not yet
    yours), and the floor **re-paths live** (`specs/board.md`). A **build spark** VFX
    fires at the new footprint (`specs/assets.md`).
-4. **Continuous placement.** After a drop, if a stamp and Charge remain, the press
+4. **Continuous placement.** After a drop, if a stamp remains, the press
    **immediately arms another rock** on the cursor so you place five back-to-back
-   without re-clicking STAMP (`specs/build.md`). Placement ends when the allowance or
-   Charge is exhausted, or you cancel.
+   without re-clicking STAMP (`specs/build.md`). Placement ends when the allowance is
+   exhausted, or you cancel.
 5. **Cancel (free).** Press **`Esc`** or right-click while holding a rock to put it away
-   with **no Charge spent and no stamp consumed** (`specs/build.md`).
+   with **no stamp consumed** (`specs/build.md`).
 
 Dropping a rock **onto an existing blocker** rerolls that blocker into a fresh candidate
-(spending a stamp + Charge), the way you turn an old wall into a tower (`specs/build.md`).
+(spending a stamp, still free), the way you turn an old wall into a tower (`specs/build.md`).
 
 The scrap-press area of the build panel must **always show the current quality-roll
 odds** — the probability of each quality tier for the next rock at the live **Refinement**
@@ -144,7 +144,7 @@ Show the same odds while a blank rock is held.
 - **Dismantle.** With a structure selected **during the build phase**, the inspector shows
   a **DISMANTLE** control — or press **`X`** (also `Delete` / `Backspace`) — that removes
   it, clears its footprint, and **re-paths the floor live** (`specs/board.md`). It is a
-  misplacement correction, **not a sale**: it returns **nothing** — no Charge and no stamp,
+  misplacement correction, **not a sale**: it returns **nothing** — no stamp,
   ever, including for a candidate placed that same phase (a refund would let you re-roll the
   press for free, defeating the RNG, `specs/towers.md`). Dismantling is disabled during a
   live wave.

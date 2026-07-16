@@ -1271,8 +1271,8 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   const w = pw - 28;
 
   // --- Scrap-press (STAMP) control (specs/build.md) ---
-  // Arms a BLANK rock; the roll happens on placement. 10 Charge and one of the level's 5
-  // stamps per placed rock — the cap is 5 regardless of Charge.
+  // Arms a BLANK rock; the roll happens on placement. Placing is FREE — it spends one of the
+  // level's 5 stamps per placed rock, and the cap is 5 per level.
   text(ctx, "SCRAP-PRESS", px, 74, 11, COL.text3, "left", "700", 1);
   const stampY = 84;
   const stampH = 46;
@@ -1285,8 +1285,7 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.stroke();
   text(ctx, "STAMP", px + 12, stampY + 17, 15, canStamp ? COL.text : COL.text3, "left", "800", 1);
   text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, px + 12, stampY + 34, 9, COL.text3, "left", "500", 0.5);
-  text(ctx, `${game.stampCost()}`, px + w - 12, stampY + 19, 15, canStamp ? COL.charge : COL.text3, "right", "700");
-  if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), px + w - 40, stampY + 33, 12, 12);
+  text(ctx, "FREE", px + w - 12, stampY + 19, 13, canStamp ? COL.legal : COL.text3, "right", "800", 0.5);
   clicks.push({ x: px, y: stampY, w, h: stampH, action: "stamp", disabled: !canStamp });
 
   // --- Live QUALITY ODDS for the next roll (specs/build.md) ---
@@ -1945,7 +1944,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   const lines: [string, string][] = [
     ["GOAL", "The Load spills from the feeder vent and crawls to the grounding collector. Every unit that grounds out costs Grid Integrity; at 0 the grid overloads and you lose. Clear all the waves with integrity left to win."],
     ["THE MAZE", "Every component, candidate, AND blocker is a 2×2 WALL. The Load must reach each ordered 4-tile waypoint PLATFORM in sequence, taking the shortest OPEN route around your walls — so building lengthens its route. You cannot build on a platform and can never fully seal a segment (a sealing placement is refused); the floor re-paths live as walls change."],
-    ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to arm a BLANK rock, then drop it on a legal spot — the instant it lands it ROLLS a random component type and quality (weighted low). Place up to 5 rocks per level, 10 Charge each; keep placing back-to-back until the allowance or Charge runs out."],
+    ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to arm a BLANK rock, then drop it on a legal spot — the instant it lands it ROLLS a random component type and quality (weighted low). Placing is FREE: place up to 5 rocks per level, back-to-back, until the allowance runs out."],
     ["KEEP ONE, COMBINE MANY", "You KEEP (K) exactly ONE rock per level as a firing tower; every rock you don't keep or combine hardens into an inert BLOCKER at SEND. But COMBINING is separate and IMMEDIATE — do it as often as you like, in the build phase AND during a live wave — so folding rolls together is how you keep MORE than one tower off a level. DOWNGRADE (G) a selected tower one tier if the press over-rolled a quality you didn't need. DISMANTLE (X, between waves) — no refund."],
     ["COMBINING", "COMBINE (C) two same-TYPE + same-QUALITY pieces into one a tier higher, or fold a recipe of pieces into a COMBINATION TOWER — immediately, any time. Ingredients can be fresh rolls OR standing towers, and the result lands at whichever piece you triggered from (so you can REPLACE an existing tower). SHIFT-click extra pieces to pick EXACTLY which copies fold; combine with nothing shift-selected and the game resolves the set for you."],
     ["UPGRADE QUALITY", "Spend Charge on UPGRADE QUALITY (U) to raise your Refinement level R0→R5, biasing every future roll toward the higher tiers of the ladder Scrap→Tuned→Charged→Primed→Tesla-Prime. Refinement is the odds; combining is the direct climb."],

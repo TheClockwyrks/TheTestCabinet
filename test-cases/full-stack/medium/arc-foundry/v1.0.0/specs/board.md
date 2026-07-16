@@ -322,8 +322,8 @@ The **right build panel** (`x` in `[1000, 1280]` (`280` px wide), `y` in `[56, 7
 small icons may be produced sprites). It is always fully visible and holds, top to
 bottom:
 
-- **The scrap-press** — the **STAMP** control (`specs/build.md`), showing its `10`
-  Charge cost and the remaining stamps of the `5`-per-level allowance. Stamping arms a
+- **The scrap-press** — the **STAMP** control (`specs/build.md`), showing that placement
+  is **free** and the remaining stamps of the `5`-per-level allowance. Stamping arms a
   rock that rolls a random component type at a random quality **on placement**
   (`specs/build.md`). This area also shows the **current quality-roll odds** at the live
   Refinement level, so the player can read the probability of each quality tier before

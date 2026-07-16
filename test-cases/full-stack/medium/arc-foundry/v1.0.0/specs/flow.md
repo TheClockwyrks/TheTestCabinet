@@ -15,14 +15,14 @@ wave count and enemy toughness change.
 
 ## Charge and the economy
 
-**Charge** is the currency — scavenged power spent to place rocks at the scrap-press,
-to UPGRADE QUALITY, and to upgrade combination towers, and recovered from kill
-bounties and the wave-clear bonus. Charge is deliberately **scarce** (GemTD-style):
-bounties are thin, there is **no interest**, and the wave-clear bonus is small, so
-every stamp and upgrade is a real decision and the board can never be flooded.
+**Charge** is the currency — scavenged power spent to UPGRADE QUALITY and to upgrade
+combination towers, and recovered from kill bounties and the wave-clear bonus. Placing
+rocks at the scrap-press is **free** (GemTD-faithful); Charge is deliberately **scarce**
+(GemTD-style): bounties are thin, there is **no interest**, and the wave-clear bonus is
+small, so every upgrade is a real decision.
 
-- **Starting Charge** is `130` — enough to open with a few stamps and a starter
-  maze, not a full board.
+- **Starting Charge** is `130` — a small opening reserve for early Refinement, not a
+  war chest.
 - **Kill bounty.** Killing a Load unit pays its **bounty** (`specs/enemies.md`)
   the moment it is removed. Bounties are on the GemTD scale — a basic unit pays `1`
   Charge — so kill income is thin.
@@ -31,18 +31,18 @@ every stamp and upgrade is a real decision and the board can never be flooded.
   the wave number (the reference build pays `8 + 2 × waveNumber`).
 - **No interest.** Charge does **not** accrue interest — banking is not rewarded, so
   the only income is kill bounties and the wave-clear bonus.
-- **Spending.** Charge is spent on three things: **placing rocks**, **UPGRADE
-  QUALITY**, and **upgrading combination towers**. Placing a rock costs `10` Charge
-  and rolls one component where it lands, up to the `5`-per-level allowance
-  (`specs/build.md`); Charge never goes below `0`, so the press is disabled when you
-  cannot afford `10`. **UPGRADE QUALITY** buys the next Refinement level for its fixed
-  cost (`60 / 130 / 240 / 400 / 620` up the R1–R5 track, `specs/build.md`). **Upgrading
-  a combination tower** raises its level for a Charge cost that scales with the combo's
-  strength (`specs/towers.md`). **Combining and downgrading cost nothing.** There is
-  **no selling** — nothing you place is ever refunded for Charge, so the only Charge
-  sinks are stamps, refinement, and combo upgrades. You may **dismantle** a misplaced
-  structure between waves as a correction, but it **returns nothing** — no Charge and no
-  stamp, ever (a refund would let you re-roll the press for free, `specs/towers.md`).
+- **Spending.** Charge is spent on two things: **UPGRADE QUALITY** and **upgrading
+  combination towers**. **Placing rocks is free** — a rock rolls one component where it
+  lands, up to the `5`-per-level allowance, and costs no Charge (`specs/build.md`), so
+  the press is disabled only when the allowance is spent. **UPGRADE QUALITY** buys the
+  next Refinement level for its fixed cost (`60 / 130 / 240 / 400 / 620` up the R1–R5
+  track, `specs/build.md`). **Upgrading a combination tower** raises its level for a
+  Charge cost that scales with the combo's strength (`specs/towers.md`). **Placing,
+  combining, and downgrading cost nothing.** There is **no selling** — nothing you place
+  is ever refunded for Charge, so the only Charge sinks are refinement and combo
+  upgrades. You may **dismantle** a misplaced structure between waves as a correction,
+  but it **returns nothing** — no stamp, ever (a refund would let you re-roll the press
+  for free, `specs/towers.md`).
 
 ## Grid Integrity and leaks
 
@@ -210,7 +210,7 @@ fully visible:
   post-final finale the bar reads **OVERLOAD** and shows the **Maze Rating** accruing
   live on the invincible boss.
 - **Build panel** (`x` in `[1000, 1280]`): the **scrap-press** control (STAMP, showing
-  its `10` cost and the remaining stamps of the `5`-per-level allowance); the **UPGRADE
+  that placement is **free** and the remaining stamps of the `5`-per-level allowance); the **UPGRADE
   QUALITY** control (the current Refinement level `R` and the next level's cost,
   `specs/build.md`); the **selected candidate/component inspector** (its type, quality
   tier, live stats — damage, range, fire rate, targeting; a **combination tower**
@@ -240,7 +240,7 @@ targets:
   then a **DIFFICULTY SELECT** where they pick Easy / Medium / Hard, and plays the
   run on that map at that difficulty (`specs/board.md`, `specs/modes.md`).
 - **Difficulty changes only wave count and enemy toughness.** Starting Charge
-  (`130`), Grid Integrity (`20`), builds-per-level (`5`), stamp cost (`10`), the
+  (`130`), Grid Integrity (`20`), builds-per-level (`5`, placement free), the
   Refinement track, the roster, and every economy value are identical on Easy /
   Medium / Hard (`specs/modes.md`).
 - Every rock and component is also a **wall** and you **build the maze**: the Load

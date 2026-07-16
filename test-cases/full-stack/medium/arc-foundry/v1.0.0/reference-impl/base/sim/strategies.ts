@@ -41,7 +41,6 @@ import {
   assembleCombo,
   buyRefinement,
   components,
-  debitStamps,
   duplicatePair,
   keepComponent,
   layBlocker,
@@ -210,15 +209,15 @@ interface Cursors {
 }
 
 // One build phase of a config-driven strategy. Buys UPGRADE QUALITY (if enabled), rolls this
-// level's affordable stamps off the real odds, resolves the single harvest (keep / combine),
-// hardens the rest into blockers along its maze, debits the stamp spend, and retargets. The
+// level's free stamps off the real odds, resolves the single harvest (keep / combine),
+// hardens the rest into blockers along its maze, and retargets. The
 // kept tower lands on the FIRING anchors (spread mid-maze for coverage) and the un-kept rocks
 // on the BLOCKER anchors (tooth-by-tooth walls) — two independent streams, so the firing line
 // spreads while the maze walls rise where they choke the route.
 function playBuild(cfg: Play, cur: Cursors, g: Game, ctx: BuildCtx): void {
-  // Refinement first (competent only): climb R toward a wave-scaled target, keeping enough
-  // Charge back to still stamp a full allowance this level.
-  if (cfg.refine) buyRefinement(g, refineTarget(ctx.wave), BUILDS_PER_LEVEL * 10);
+  // Refinement first (competent only): climb R toward a wave-scaled target. Placing rocks is
+  // free, so nothing needs to be held back for stamps.
+  if (cfg.refine) buyRefinement(g, refineTarget(ctx.wave), 0);
 
   const n = affordableStamps(g);
   if (n <= 0) {
@@ -279,10 +278,9 @@ function playBuild(cfg: Play, cur: Cursors, g: Game, ctx: BuildCtx): void {
 
   // Pump spare Charge into UPGRADING the standing combination towers (specs/towers.md) — combos
   // land weak at level 0, so a competent player climbs them with kill income (the gold sink).
-  // Keep this level's stamp spend in reserve so upgrading never starves the maze.
-  if (cfg.combo) upgradeCombos(g, n * 10);
+  // Placing rocks is free, so all Charge is available for upgrades.
+  if (cfg.combo) upgradeCombos(g, 0);
 
-  debitStamps(g, n);
   retarget(g);
 }
 

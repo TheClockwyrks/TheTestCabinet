@@ -26,7 +26,6 @@ import {
   MAX_TIER,
   PROJECTILE_SPEED,
   QUALITY_ODDS_BY_R,
-  STAMP_COST,
   STAMP_TYPE_WEIGHT,
   TARGETING_ORDER,
   TILE,
@@ -950,26 +949,22 @@ export class Game {
 
   // ---- The scrap-press build loop (specs/build.md) ----------------------------
 
-  stampCost(): number {
-    return STAMP_COST;
-  }
   stampsLeft(): number {
     return Math.max(0, BUILDS_PER_LEVEL - this.stampsUsed);
   }
   // The press may be pulled only in the BUILD phase, with a stamp of the level's 5-allowance
-  // left and enough Charge — the cap is five regardless of how much Charge you hold.
+  // left — placing rocks is FREE (GemTD-faithful), so the only limit is the five-per-level cap.
   canStamp(): boolean {
     return (
       this.state === "playing" &&
       this.phase === "build" &&
       !this.holding &&
-      this.stampsLeft() > 0 &&
-      this.charge >= STAMP_COST
+      this.stampsLeft() > 0
     );
   }
 
-  // Pull the press: arm a BLANK rock on the cursor (specs/build.md). No roll and no Charge
-  // yet — the roll and cost happen when the rock lands (placeStamp). Returns true if armed.
+  // Pull the press: arm a BLANK rock on the cursor (specs/build.md). No roll yet — the roll
+  // happens when the rock lands (placeStamp). Placement is free. Returns true if armed.
   pullPress(): boolean {
     if (!this.canStamp()) return false;
     this.holding = true;
@@ -1015,16 +1010,16 @@ export class Game {
   }
 
   // Drop a rock at the 2×2 anchor (col, row): the roll happens HERE (a random type + quality
-  // on the current Refinement odds), spending 10 Charge + one stamp and landing a CANDIDATE
-  // that walls and re-paths the floor (specs/build.md, specs/board.md). Dropping onto a
-  // blocker rerolls it in place. Returns the placed candidate, or null if refused (no cost).
-  // Re-arms another rock afterward if the allowance + Charge still permit (continuous
+  // on the current Refinement odds), spending one stamp of the level's allowance and landing a
+  // CANDIDATE that walls and re-paths the floor (specs/build.md, specs/board.md). Placement is
+  // FREE — no Charge. Dropping onto a blocker rerolls it in place. Returns the placed candidate,
+  // or null if refused. Re-arms another rock afterward if the allowance still permits (continuous
   // placement). If no rock is held (the headless one-shot path), it arms one implicitly.
   placeStamp(col: number, row: number): Candidate | null {
     if (this.state !== "playing" || this.phase !== "build") return null;
     if (!this.holding && !this.canStamp()) return null;
-    // Not enough Charge / no allowance and not currently holding: refuse.
-    if (this.stampsLeft() <= 0 || this.charge < STAMP_COST) return null;
+    // No allowance left and not currently holding: refuse.
+    if (this.stampsLeft() <= 0) return null;
     const onBlocker = this.blockerAtAnchor(col, row);
     if (!onBlocker && !this.board.canPlace(col, row, this.structures, this.units)) {
       return null; // illegal spot: keep holding, nothing spent
@@ -1033,7 +1028,6 @@ export class Game {
       // Reroll a blocker in place: remove it, drop a candidate on the same footprint.
       this.structures = this.structures.filter((s) => s.id !== onBlocker.id);
     }
-    this.charge -= STAMP_COST;
     this.stampsUsed += 1;
     const cand: Candidate = {
       id: this.nextId++,
@@ -1046,8 +1040,8 @@ export class Game {
     this.structures.push(cand);
     this.selectedId = cand.id;
     // Continuous placement (specs/build.md): release the placed rock, then immediately re-arm
-    // another if the allowance + Charge still permit. canStamp() requires !holding, so holding
-    // MUST be cleared first — otherwise it always reads false and the hand empties after one drop.
+    // another if the allowance still permits. canStamp() requires !holding, so holding MUST be
+    // cleared first — otherwise it always reads false and the hand empties after one drop.
     this.holding = false;
     this.holding = this.canStamp();
     this.rePath();
@@ -1063,9 +1057,9 @@ export class Game {
 
   // ---- Dismantle — remove a misplaced structure between waves (specs/build.md) --
   // A correction tool, BUILD-PHASE only: clears a component, candidate, or blocker's 2×2
-  // footprint and re-paths live. It NEVER refunds the stamp or Charge — a refund would let a
-  // player place a rock, reject its roll, dismantle it, and re-roll indefinitely, defeating the
-  // scrap-press RNG. A dismantle only ever OPENS routes, so it can never seal a segment.
+  // footprint and re-paths live. It NEVER refunds the stamp — a refund would let a player place a
+  // rock, reject its roll, dismantle it, and re-roll indefinitely, defeating the scrap-press RNG.
+  // A dismantle only ever OPENS routes, so it can never seal a segment.
   canRemove(id: number): boolean {
     if (this.state !== "playing" || this.phase !== "build") return false;
     return this.structures.some((s) => s.id === id);
@@ -1074,7 +1068,7 @@ export class Game {
     if (this.state !== "playing" || this.phase !== "build") return false;
     const i = this.structures.findIndex((s) => s.id === id);
     if (i < 0) return false;
-    // No stamp/Charge refund — the roll is spent for good. Drop the level's KEEP if this was the
+    // No stamp refund — the roll is spent for good. Drop the level's KEEP if this was the
     // kept candidate (combining is immediate now, so there is no deferred combine to unwind).
     if (this.harvest.mode === "keep" && this.harvest.id === id) this.harvest = { mode: "none" };
     this.structures.splice(i, 1);
