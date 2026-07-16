@@ -1,20 +1,26 @@
 import { useMemo, useState } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
+  canonicalModelId,
   MetricChartWidget,
   Panel,
+  RatingsChartWidget,
   SegmentedControl,
+  type RatingCounts,
   type SegmentedOption,
 } from "@test-cabinet/ui";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindModel } from "../../../data/useModels";
+import { useFindReview } from "../../../data/writeups";
+import type { Rating } from "../../../data/ratings";
 import {
   providerColor,
   UNKNOWN_PROVIDER_COLOR,
 } from "../../../data/providerColor";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
-import { totalTokens } from "../../../format";
+import { formatCompact, formatUsd, totalTokens } from "../../../format";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
+import { resolveRunScore } from "./TestCaseLeaderboardPage";
 import styles from "./TestCaseMetricsPage.module.scss";
 
 // A box plot needs more than one observation to show a spread.
@@ -114,8 +120,9 @@ function MetricsContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { summaries } = useCaseRunSummaries(testCase.slug);
+  const { summaries, localWriteups } = useCaseRunSummaries(testCase.slug);
   const findModel = useFindModel();
+  const findReview = useFindReview();
 
   // The version scope the visitor has chosen, and — for the `specific` scope —
   // which exact version, defaulting to the latest. A single-version case has
@@ -180,6 +187,33 @@ function MetricsContent({
     [variantRuns, scope, testCase.latestVersion, specificVersion],
   );
 
+  // Each model's scoped runs tallied by overall rating, for the stacked ratings
+  // chart. The overall rating per run is resolved the same way the leaderboard
+  // does it (enriched summary card, else local writeup), so the two tabs agree;
+  // runs with no resolvable rating are simply left out of the tally. Models are
+  // keyed and labeled the same way as the token/cost charts so all three read as
+  // the same roster.
+  const ratingModels = useMemo<RatingCounts[]>(() => {
+    const byModel = new Map<string, Record<Rating, number>>();
+    const order: string[] = [];
+    for (const run of scopedRuns) {
+      const scored = resolveRunScore(run, variant, findReview, localWriteups);
+      if (!scored || !scored.rating) continue;
+      const modelId = canonicalModelId(run.subject.modelId);
+      let counts = byModel.get(modelId);
+      if (!counts) {
+        counts = { flawless: 0, great: 0, scuffed: 0, broken: 0 };
+        byModel.set(modelId, counts);
+        order.push(modelId);
+      }
+      counts[scored.rating] += 1;
+    }
+    return order.map((modelId) => ({
+      label: labelForModel(modelId),
+      counts: byModel.get(modelId)!,
+    }));
+  }, [scopedRuns, variant, findReview, localWriteups, labelForModel]);
+
   return (
     <section className={styles.section}>
       {showScope && (
@@ -217,6 +251,11 @@ function MetricsContent({
       ) : (
         // One full-width widget per metric, each grouping the scoped runs by model.
         <div className={styles.widgets}>
+          <RatingsChartWidget
+            title="Ratings"
+            models={ratingModels}
+            variantName={variant.name}
+          />
           <MetricChartWidget
             title="Average tokens"
             runs={scopedRuns}
@@ -226,6 +265,7 @@ function MetricsContent({
             barMode="meanByModel"
             colorForModel={colorForModel}
             labelForModel={labelForModel}
+            formatValue={formatCompact}
           />
           <MetricChartWidget
             title="Average cost"
@@ -235,6 +275,7 @@ function MetricsContent({
             barMode="meanByModel"
             colorForModel={colorForModel}
             labelForModel={labelForModel}
+            formatValue={formatUsd}
           />
         </div>
       )}

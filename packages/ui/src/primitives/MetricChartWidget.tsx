@@ -49,6 +49,12 @@ interface MetricChartWidgetProps {
    * falls back to the canonical id. Omit entirely to label every bar by its id.
    */
   labelForModel?: (modelId: string) => string | null | undefined;
+  /**
+   * Formats a raw metric value for the hover tooltip (e.g. a compact token count
+   * or a USD figure). Drives the max/min (and mean) lines shown when a bar is
+   * hovered. Defaults to a plain localized integer.
+   */
+  formatValue?: (value: number) => string;
 }
 
 // A self-contained metric chart: a titled, full-width panel that charts one
@@ -64,13 +70,14 @@ export function MetricChartWidget({
   barMode = "perRun",
   colorForModel,
   labelForModel,
+  formatValue = defaultFormatValue,
 }: MetricChartWidgetProps) {
   const barPoints = useMemo<BarPoint[]>(
     () =>
       barMode === "meanByModel"
-        ? meanBars(runs, value, colorForModel, labelForModel)
-        : runBars(runs, value, colorForModel, labelForModel),
-    [runs, value, barMode, colorForModel, labelForModel],
+        ? meanBars(runs, value, formatValue, colorForModel, labelForModel)
+        : runBars(runs, value, formatValue, colorForModel, labelForModel),
+    [runs, value, barMode, formatValue, colorForModel, labelForModel],
   );
 
   // Memoized so <Chart> only re-plots when the data or unit change.
@@ -98,6 +105,7 @@ export function MetricChartWidget({
 function runBars(
   runs: RunSummary[],
   value: (run: RunSummary) => number | null,
+  formatValue: (value: number) => string,
   colorForModel?: (modelId: string) => string | null | undefined,
   labelForModel?: (modelId: string) => string | null | undefined,
 ): BarPoint[] {
@@ -111,14 +119,16 @@ function runBars(
     if (v === null) return [];
     const modelId = canonicalModelId(run.subject.modelId);
     const name = labelForModel?.(modelId) ?? modelId;
+    const label =
+      (counts.get(modelId) ?? 0) > 1
+        ? `${name} · ${run.subject.harnessSlug}`
+        : name;
     return [
       {
-        label:
-          (counts.get(modelId) ?? 0) > 1
-            ? `${name} · ${run.subject.harnessSlug}`
-            : name,
+        label,
         value: v,
         color: colorForModel?.(modelId) ?? undefined,
+        title: `${label}\n${formatValue(v)}`,
       },
     ];
   });
@@ -134,10 +144,14 @@ function runBars(
 function meanBars(
   runs: RunSummary[],
   value: (run: RunSummary) => number | null,
+  formatValue: (value: number) => string,
   colorForModel?: (modelId: string) => string | null | undefined,
   labelForModel?: (modelId: string) => string | null | undefined,
 ): BarPoint[] {
-  const totals = new Map<string, { sum: number; count: number }>();
+  const totals = new Map<
+    string,
+    { sum: number; count: number; min: number; max: number }
+  >();
   const order: string[] = [];
   for (const run of runs) {
     const v = value(run);
@@ -147,17 +161,34 @@ function meanBars(
     if (entry) {
       entry.sum += v;
       entry.count += 1;
+      entry.min = Math.min(entry.min, v);
+      entry.max = Math.max(entry.max, v);
     } else {
-      totals.set(model, { sum: v, count: 1 });
+      totals.set(model, { sum: v, count: 1, min: v, max: v });
       order.push(model);
     }
   }
   return order.map((model) => {
-    const { sum, count } = totals.get(model)!;
+    const { sum, count, min, max } = totals.get(model)!;
+    const label = labelForModel?.(model) ?? model;
+    // The bar height is the mean; the tooltip surfaces the spread it hides — the
+    // max and min behind it — over however many runs it averages.
+    const runsLine = `${count} ${count === 1 ? "run" : "runs"}`;
     return {
-      label: labelForModel?.(model) ?? model,
+      label,
       value: sum / count,
       color: colorForModel?.(model) ?? undefined,
+      title:
+        `${label} · ${runsLine}\n` +
+        `Mean: ${formatValue(sum / count)}\n` +
+        `Max: ${formatValue(max)}\n` +
+        `Min: ${formatValue(min)}`,
     };
   });
+}
+
+// Fallback tooltip formatter: a plain localized integer. Callers pass a
+// unit-aware formatter (compact tokens, USD) via `formatValue`.
+function defaultFormatValue(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
 }

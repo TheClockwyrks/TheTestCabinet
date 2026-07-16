@@ -5,18 +5,19 @@ export { RatingBadge } from "./RatingBadge";
 export { Panel } from "./Panel";
 export { Pagination } from "./Pagination";
 export { ProgressBar } from "./ProgressBar";
-export {
-  SegmentedControl,
-  type SegmentedOption,
-} from "./SegmentedControl";
+export { SegmentedControl, type SegmentedOption } from "./SegmentedControl";
 export { MetricTile } from "./MetricTile";
 export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";
 export { MetricChartWidget } from "./MetricChartWidget";
+export { RatingsChartWidget, type RatingCounts } from "./RatingsChartWidget";
 export {
   barChart,
+  stackedBarChart,
   priceHistoryChart,
   type BarPoint,
+  type StackedBarSegment,
+  type StackedSeries,
   type PricePoint,
 } from "./plot/charts";
 export {
