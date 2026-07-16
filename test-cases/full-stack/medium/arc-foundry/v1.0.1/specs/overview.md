@@ -42,11 +42,12 @@ towers** — upgradeable turrets with their own stat blocks and abilities (slow,
 multishot, aura) that are the payoff of climbing the board; each lands weak and is upgraded
 with Charge (`specs/towers.md`, `specs/build.md`). Cutting across the base types is a five-rung
 **quality ladder** — **Scrap → Tuned → Charged → Primed → Tesla-Prime** — that is the game's
-power axis: a component's damage and range climb steeply with its tier, and the only
-way up the ladder is to **combine** two matching components (same type and same
-quality) into one a tier higher. A board full of Scrap looks like a junkyard and
-burns weakly; a Tesla-Prime looks like a lightning god. The full type roster and the
-quality scaling live in `specs/towers.md`.
+power axis: a component's damage and range climb steeply with its tier. You climb the
+ladder by **combining** two matching components (same type and same quality) into one a
+tier higher, and by **refining the press** (UPGRADE QUALITY) so it rolls higher tiers to
+begin with. A board full of Scrap looks like a junkyard and burns weakly; a Tesla-Prime
+looks like a lightning god. The full type roster and the quality scaling live in
+`specs/towers.md`.
 
 The yard has **no fixed track**. The Load pathfinds across the open floor, and every
 component and every blocker is a **wall**, so building lengthens the Load's route — but

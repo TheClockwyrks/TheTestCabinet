@@ -82,7 +82,7 @@ async function main(): Promise<void> {
     upgradeCombo: (id: number) => game.upgradeCombo(id),
     remove: (id: number) => game.removeStructure(id),
     upgradeQuality: () => game.upgradeQuality(),
-    setRefinement: (r: 0 | 1 | 2 | 3 | 4 | 5) => game.devSetRefinement(r),
+    setRefinement: (r: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => game.devSetRefinement(r),
     startWave: () => game.startWave(),
     pull: () => game.pullPress(),
     setState: (s: Game["state"]) => (game.state = s),

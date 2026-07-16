@@ -143,7 +143,7 @@ Show the same odds while a blank rock is held.
   contextual: with a **combination tower** selected, **UPGRADE** raises that combo's level
   for Charge (build phase, up to level 3, `specs/towers.md`); otherwise **UPGRADE QUALITY**
   buys the next **Refinement** level, biasing future rolls toward higher qualities
-  (`specs/build.md`). Refinement is disabled at **R5** or when you cannot afford the next
+  (`specs/build.md`). Refinement is disabled at **R8** or when you cannot afford the next
   cost; a combo upgrade is disabled at level 3 or when you cannot afford it.
 - **Targeting.** With a **firing component** selected, the inspector shows a
   **targeting** control that **cycles** its priority — `first` → `last` → `nearest` →

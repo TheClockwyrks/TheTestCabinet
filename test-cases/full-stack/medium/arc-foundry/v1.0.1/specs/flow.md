@@ -35,8 +35,8 @@ small, so every upgrade is a real decision.
   combination towers**. **Placing rocks is free** — a rock rolls one component where it
   lands, up to the `5`-per-level allowance, and costs no Charge (`specs/build.md`), so
   the press is disabled only when the allowance is spent. **UPGRADE QUALITY** buys the
-  next Refinement level for its fixed cost (`60 / 130 / 240 / 400 / 620` up the R1–R5
-  track, `specs/build.md`). **Upgrading a combination tower** raises its level for a
+  next Refinement level for its fixed cost (`20 / 50 / 80 / 110 / 140 / 170 / 200 / 230` up
+  the R1–R8 track, `specs/build.md`). **Upgrading a combination tower** raises its level for a
   Charge cost that scales with the combo's strength (`specs/towers.md`). **Placing,
   combining, and downgrading cost nothing.** There is **no selling** — nothing you place
   is ever refunded for Charge, so the only Charge sinks are refinement and combo

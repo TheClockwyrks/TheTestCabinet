@@ -5,7 +5,7 @@
 // faithful GemTD reskin (specs/build.md): each build phase you place up to BUILDS_PER_LEVEL
 // rocks that each roll a random type+quality ON PLACEMENT, you KEEP EXACTLY ONE per level as
 // a firing component (or COMBINE a match to climb the quality ladder), and every rock you do
-// not keep hardens into an inert BLOCKER — the maze. UPGRADE QUALITY (Refinement R0..5) buys
+// not keep hardens into an inert BLOCKER — the maze. UPGRADE QUALITY (Refinement R0..8) buys
 // better roll odds. Difficulty is wave count + enemy-HP scaling only.
 //
 // Modeling the roll deterministically. The interactive build path (pullPress/placeStamp)
