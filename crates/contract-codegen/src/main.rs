@@ -203,8 +203,9 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 bapi::DriverState, bapi::LaunchBody, bapi::ClaimedJob, bapi::StatusUpdate,
                 bapi::JobState, relay::JobSummary, bapi::ActiveJobOut, bapi::JobStatusOut,
-                bapi::LaunchAck, relay::NotificationOutcome, relay::NotificationKind,
-                relay::Notification, bapi::ClientConfig,
+                bapi::LaunchAck, bapi::LaunchBatchBody, bapi::LaunchBatchItem, bapi::LaunchBatchAck,
+                relay::NotificationOutcome, relay::NotificationKind, relay::Notification,
+                bapi::ClientConfig,
             ],
         },
         // The reviewer coverage-plan surface (console-only): a per-account
@@ -250,6 +251,14 @@ fn main() -> Result<()> {
         anon(
             "jobs-api/launch-run-ack.schema.json",
             root_schema::<bapi::LaunchAck>(),
+        ),
+        anon(
+            "jobs-api/launch-batch-request.schema.json",
+            root_schema::<bapi::LaunchBatchBody>(),
+        ),
+        anon(
+            "jobs-api/launch-batch-ack.schema.json",
+            root_schema::<bapi::LaunchBatchAck>(),
         ),
         anon(
             "jobs-api/claimed-job.schema.json",

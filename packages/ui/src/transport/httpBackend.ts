@@ -9,6 +9,7 @@
 // worker the console registers or talks to anymore.
 import type {
   BackendClient,
+  BatchLaunchResult,
   WorkerClient,
   RunSubscription,
   NotificationSubscription,
@@ -576,6 +577,31 @@ interface LaunchAckResponse {
   liveUrl?: string;
 }
 
+// The backend's `POST /jobs/batch` ack (`LaunchBatchAck`): one result per
+// submitted run, aligned by index — the enqueued job id, or the reason it was
+// rejected.
+interface LaunchBatchAckResponse {
+  jobs: { jobId?: string; error?: string }[];
+}
+
+// The backend's `LaunchBody` (camelCase) for one run. Shared by the single
+// (`POST /jobs`) and batch (`POST /jobs/batch`) enqueue paths so the two never
+// drift on how a `LaunchConfig` is put on the wire.
+function launchBodyOf(config: LaunchConfig) {
+  return {
+    testCase: config.testCase,
+    version: config.version,
+    variant: config.variant,
+    harness: config.harness,
+    model: config.modelId,
+    orchestrator: config.orchestrator,
+    ...(config.maxRuntimeOverride != null
+      ? { maxRuntimeSeconds: config.maxRuntimeOverride }
+      : {}),
+    ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
+  };
+}
+
 // The backend's `GET /jobs/{id}` status (`JobStatusOut`): the job's lifecycle
 // state, the produced run record's id once it succeeded, and the reason on
 // failure. Unlike the old worker status, this carries the record *id* (the
@@ -725,25 +751,35 @@ export function createBackendExec(
       // backend gates `POST /jobs` on the launching account, so the signed-in
       // account's token rides along as `Authorization: Bearer` — without it the
       // enqueue is rejected `401`.
-      const body = {
-        testCase: config.testCase,
-        version: config.version,
-        variant: config.variant,
-        harness: config.harness,
-        model: config.modelId,
-        orchestrator: config.orchestrator,
-        ...(config.maxRuntimeOverride != null
-          ? { maxRuntimeSeconds: config.maxRuntimeOverride }
-          : {}),
-        ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
-      };
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
         "/jobs",
-        body,
+        launchBodyOf(config),
         token,
       );
       return ack.jobId;
+    },
+
+    async launchRunBatch(
+      configs: LaunchConfig[],
+      token?: string | null,
+    ): Promise<BatchLaunchResult[]> {
+      // Enqueue the whole set in one `POST /jobs/batch` (same account gate as
+      // `POST /jobs`) instead of a request per run — the fan-out a coverage
+      // "trigger all missing" or a multi-combination new-run submit produces. An
+      // empty set needs no round-trip. The ack returns one entry per run, aligned
+      // by index, each an enqueued job id or a per-run rejection reason.
+      if (configs.length === 0) return [];
+      const ack = await postJson<LaunchBatchAckResponse>(
+        backendUrl,
+        "/jobs/batch",
+        { runs: configs.map(launchBodyOf) },
+        token,
+      );
+      return ack.jobs.map((entry) => ({
+        runId: entry.jobId,
+        error: entry.error,
+      }));
     },
 
     async getRun(runId: string): Promise<RunJob> {

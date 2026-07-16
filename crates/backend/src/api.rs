@@ -34,8 +34,8 @@ mod tournaments;
 // Re-export the HTTP response contract types so the `contract-codegen` generator
 // can name them (the handler modules themselves stay private).
 pub use jobs::{
-    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
-    StatusUpdate,
+    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
+    LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
 };
 pub use models::{
     AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
@@ -195,14 +195,16 @@ pub fn router(state: AppState) -> Router {
                 .post(tournaments::put_match_replay)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
-        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated); the
-        // dispatcher claims the oldest (`POST /jobs/next`, service-token); a
-        // per-run driver streams progress and the terminal record back
+        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated) — or a
+        // whole batch in one request (`POST /jobs/batch`, same gate); the dispatcher
+        // claims the oldest (`POST /jobs/next`, service-token); a per-run driver
+        // streams progress and the terminal record back
         // (`POST /jobs/{id}/events|preview|status`, per-job token). The console
         // observes it via the live stream, the status, and the active-run list.
-        // `/jobs/active` and `/jobs/next` are static, so they outrank the
-        // `/jobs/{id}` dynamic route regardless of registration order.
+        // `/jobs/batch`, `/jobs/active`, and `/jobs/next` are static, so they
+        // outrank the `/jobs/{id}` dynamic route regardless of registration order.
         .route("/jobs", post(jobs::launch))
+        .route("/jobs/batch", post(jobs::launch_batch))
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
         .route("/jobs/{id}", get(jobs::status))

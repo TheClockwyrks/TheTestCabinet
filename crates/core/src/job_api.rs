@@ -148,6 +148,48 @@ pub struct LaunchAck {
     pub live_url: String,
 }
 
+/// The body of `POST /jobs/batch`: many launch requests to enqueue in one call.
+/// Each entry is the same shape as a single `POST /jobs` body, so the two enqueue
+/// paths never drift on what a run request carries. The batch analogue of a single
+/// [`LaunchBody`] — used when a console fans a whole set of runs out at once (the
+/// coverage matrix's still-missing runs, the new-run form's combinations × runs).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LaunchBatchBody {
+    /// The runs to enqueue, in the order the caller wants them reported back.
+    pub runs: Vec<LaunchBody>,
+}
+
+/// One entry in a batch launch's response, aligned by index to the request's
+/// `runs`. Carries the enqueued job id on success, or a human-readable reason for a
+/// run that could not be enqueued — a single rejected run (e.g. a malformed request)
+/// never aborts the rest of the batch, mirroring the per-item isolation the console
+/// had when it launched runs one request at a time.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LaunchBatchItem {
+    /// The enqueued job's id, present when this run was accepted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub job_id: Option<String>,
+    /// Why this run was rejected, present when it was not enqueued.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub error: Option<String>,
+}
+
+/// The response to `POST /jobs/batch`: one [`LaunchBatchItem`] per requested run,
+/// in request order.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct LaunchBatchAck {
+    /// One result per requested run, aligned by index to the request's `runs`.
+    pub jobs: Vec<LaunchBatchItem>,
+}
+
 /// A job's lifecycle state on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
