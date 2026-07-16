@@ -188,6 +188,7 @@ describe("RunLog", () => {
     const menu = screen.getByRole("menu", { name: "Run actions" });
     expect(menu).toBeInTheDocument();
     for (const label of [
+      "Open",
       "Open in new tab",
       "Open test case",
       "Open model",

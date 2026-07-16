@@ -44,10 +44,39 @@ function runDetailUrl(runId: string): string {
   return `${window.location.origin}${routes.runDetail(runId)}`;
 }
 
+// Open a URL in a new foreground tab and switch to it. `window.open` opens a
+// new tab; focusing the returned window brings it to the front where the
+// browser leaves that to us.
+function openForegroundTab(url: string): void {
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  win?.focus();
+}
+
+// Open a URL in a new *background* tab without stealing focus from the current
+// one. There's no `window.open` flag for this, so we synthesize a modifier-click
+// on a throwaway anchor — the same gesture a user makes to background a link.
+// Setting both ctrl (Windows/Linux) and meta (macOS) covers either platform;
+// each honors only its own modifier.
+function openBackgroundTab(url: string): void {
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener,noreferrer";
+  a.dispatchEvent(
+    new MouseEvent("click", {
+      ctrlKey: true,
+      metaKey: true,
+      bubbles: false,
+      cancelable: true,
+    }),
+  );
+}
+
 /**
  * The right-click menu for a run row in the run log. It offers the row's most
- * common cross-links and actions: open the run in a new tab, jump to the test
- * case or model behind it, copy the run's shareable link, and — where deletion is
+ * common cross-links and actions: open the run in a new foreground tab (Open) or
+ * a background one (Open in new tab), jump to the test case or model behind it,
+ * copy the run's shareable link, and — where deletion is
  * allowed (the console / Tauri, an unpublished local run; see {@link
  * useRunDeletion}) — delete the run.
  *
@@ -117,8 +146,13 @@ export function RunContextMenu({ ref }: RunContextMenuProps) {
   const { subject } = run;
   const model = findModel(subject.modelId, subject.harnessSlug);
 
+  const open = () => {
+    openForegroundTab(runDetailUrl(run.id));
+    close();
+  };
+
   const openInNewTab = () => {
-    window.open(runDetailUrl(run.id), "_blank", "noopener,noreferrer");
+    openBackgroundTab(runDetailUrl(run.id));
     close();
   };
 
@@ -165,6 +199,14 @@ export function RunContextMenu({ ref }: RunContextMenuProps) {
       // viewport once measured. Set inline so it never flashes at the corner.
       style={{ left: menu.x, top: menu.y }}
     >
+      <button
+        type="button"
+        role="menuitem"
+        className={styles.item}
+        onClick={open}
+      >
+        Open
+      </button>
       <button
         type="button"
         role="menuitem"
