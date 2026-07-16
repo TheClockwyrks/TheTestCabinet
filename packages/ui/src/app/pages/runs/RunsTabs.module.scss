@@ -10,7 +10,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: t.$space-sm;
-  margin-bottom: t.$space-lg;
+  margin-bottom: t.$space-md;
   border-bottom: t.$border-hairline solid t.$color-border;
 
   // On narrow screens the tabs read as a single swipeable strip rather than
