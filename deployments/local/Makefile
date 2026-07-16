@@ -46,7 +46,7 @@
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import the SERVICE images, re-apply the overlay, restart the services (after a service code OR manifest change)
 #   run-images      rebuild+import ALL the RUN-CONTAINER images (after changing baked-in tooling: voxel-anim/draw/core modeling) — the heavy path
-#   run-images-e2e / -full-stack / -asset / -adversarial / -performance
+#   run-images-e2e / -full-stack / -game-jam / -asset / -adversarial / -performance
 #                   rebuild+import ONLY one test type's run image(s) — the fast path when you touched just that type's tooling
 #   run-image-<name>  rebuild+import a SINGLE run image by short name (e.g. run-image-voxel-animation) — the finest grain, for one asset kind
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
@@ -143,6 +143,10 @@ RUN_IMAGE_TAG    := local
 #   - full-stack runs execute in the `full-stack-2d` image (base-wasm plus the six 2D
 #     asset-generation binaries and the two audio packs they need — so building it
 #     needs the R2 PRESIGN credentials in .env, like the sfx-sample/music images);
+#   - game-jam runs execute in the `game-jam` image, built `FROM` the full-stack-2d
+#     image (it inherits those six binaries + baked audio packs + the Rust/wasm
+#     toolchain and adds nothing but its own identity, so it needs no R2 credentials
+#     of its own — but its full-stack-2d parent must already be built, which does);
 #   - asset-generation runs each execute in their own per-kind image;
 #   - adversarial and performance runs each execute in their own image.
 #
@@ -155,6 +159,7 @@ RUN_IMAGE_TAG    := local
 # `tcab-blend` runner rather than paying for the whole `run-images-asset` group.
 E2E_IMAGE_NAMES         := base-wasm
 FULL_STACK_IMAGE_NAMES  := full-stack-2d
+GAME_JAM_IMAGE_NAMES    := game-jam
 ASSET_IMAGE_NAMES       := sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned blender particle-2d particle-3d sfx-synth sfx-sample music
 ADVERSARIAL_IMAGE_NAMES := adversarial
 PERFORMANCE_IMAGE_NAMES := performance
@@ -162,8 +167,9 @@ PERFORMANCE_IMAGE_NAMES := performance
 # Every run image this Makefile builds + imports locally: the union of the per-type
 # groups above (so it stays in lockstep with them). Order matches build.sh's
 # dependency order (base, then base-wasm which is FROM it, then full-stack-2d /
-# adversarial / performance which are FROM base-wasm).
-RUN_IMAGE_NAMES  := $(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES)
+# adversarial / performance which are FROM base-wasm — and game-jam, which is FROM
+# full-stack-2d, so it must follow it here).
+RUN_IMAGE_NAMES  := $(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES)
 
 # Map a space-separated list of image NAMES to their fully-qualified `:local` refs
 # (what `$(CONTAINER_TOOL) save` / `k3d image import` and the manifests resolve).
@@ -202,7 +208,7 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-asset run-images-adversarial run-images-performance apply
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance apply
 
 local-up: cluster images run-images apply local-ingest
 	@echo ""
@@ -324,6 +330,8 @@ images:
 # target that covers what you changed:
 #   - `run-images`               everything (what local-up runs; the heavy path)
 #   - `run-images-e2e`           the base-wasm image (an end-to-end / base-layer change)
+#   - `run-images-full-stack`    the full-stack-2d image (needs the R2 pack credentials)
+#   - `run-images-game-jam`      the game-jam image (FROM full-stack-2d, which must be built first)
 #   - `run-images-asset`         every asset-generation kind
 #   - `run-image-<kind>`         one asset kind, e.g. `run-image-voxel-animation`
 #                                (you changed only `voxel-anim` → rebuild only that image)
@@ -385,6 +393,15 @@ run-images-e2e:
 run-images-full-stack: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-full-stack:
 	$(call build_import_run_images,$(FULL_STACK_IMAGE_NAMES),$(call run_image_refs,$(FULL_STACK_IMAGE_NAMES)))
+
+# `-game-jam` rebuilds the game-jam image, which is built `FROM` the full-stack-2d image.
+# build.sh (re)builds full-stack-2d first when it is missing — and that parent build
+# presigns the two audio packs from R2, so it needs the PRESIGN credentials in .env the
+# first time (a rebuild against an already-present full-stack-2d does not). Only the
+# game-jam ref is imported; its full-stack-2d parent's layers are baked into it.
+run-images-game-jam: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images-game-jam:
+	$(call build_import_run_images,$(GAME_JAM_IMAGE_NAMES),$(call run_image_refs,$(GAME_JAM_IMAGE_NAMES)))
 
 run-images-asset: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-asset:
