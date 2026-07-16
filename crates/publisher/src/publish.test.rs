@@ -152,6 +152,13 @@ fn fixture_run_dir(record: &RunRecord) -> (tempfile::TempDir, PathBuf) {
 
 #[tokio::test]
 async fn releases_source_then_build_and_returns_both_links() {
+    // `PublishConfig::from_env` requires the publish targets (there is no compiled-in
+    // fallback); the dispatcher sets these on every publish Job. Spell out the
+    // production values the assertions below expect.
+    unsafe {
+        std::env::set_var("TCAB_GITHUB_ORG", "TheClockwyrks");
+        std::env::set_var("TCAB_PAGES_PROJECT", "test-cabinet-runs");
+    }
     let record = sample_record();
     let (_temp, run_dir) = fixture_run_dir(&record);
     let runner = StubRunner::default();

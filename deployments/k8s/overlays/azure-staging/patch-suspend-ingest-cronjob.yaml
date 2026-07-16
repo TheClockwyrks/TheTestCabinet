@@ -1,0 +1,14 @@
+# Suspend the base tcab-ingest CronJob for azure-staging (identical to azure-prod).
+#
+# It is superseded by the in-pod ingest sidecar (patch-backend-ingest.yaml). The
+# standalone CronJob cannot work here (the default-deny NetworkPolicy blocks it from
+# reaching tcab-backend:8787, and it clones into an unshared emptyDir), so without this
+# it just fails every 30 minutes. Suspending (rather than deleting) keeps the base
+# resource intact for overlays that wire ingest differently.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tcab-ingest
+  namespace: tcab-prod
+spec:
+  suspend: true

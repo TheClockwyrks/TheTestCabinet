@@ -9,6 +9,7 @@
 // worker the console registers or talks to anymore.
 import type {
   BackendClient,
+  BatchLaunchResult,
   WorkerClient,
   RunSubscription,
   NotificationSubscription,
@@ -54,9 +55,13 @@ import type {
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  CoverageGroup,
+  CoverageGroupInput,
   CoverageMatrix,
-  ReviewPlan,
-} from "@test-cabinet/run-record/review-plan";
+  CoveragePlan,
+  CoveragePlanInput,
+  CoveragePlanSummary,
+} from "@test-cabinet/run-record/coverage";
 import {
   delJson,
   delVoid,
@@ -66,7 +71,6 @@ import {
   joinUrl,
   postJson,
   putJson,
-  putVoid,
 } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
@@ -429,19 +433,85 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async getReviewPlan(token: string): Promise<ReviewPlan> {
-      // The backend returns an empty plan (runsPerCell 0, no cases/combinations)
-      // when the account has saved none, so the caller never has to special-case
-      // absence. Bearer-scoped to the signed-in reviewer.
-      return getJson<ReviewPlan>(baseUrl, "/review-plan", token);
+    async listCoverageGroups(token: string): Promise<CoverageGroup[]> {
+      return getJson<CoverageGroup[]>(baseUrl, "/coverage-groups", token);
     },
 
-    async putReviewPlan(plan: ReviewPlan, token: string): Promise<void> {
-      await putVoid(baseUrl, "/review-plan", plan, token);
+    async createCoverageGroup(
+      input: CoverageGroupInput,
+      token: string,
+    ): Promise<CoverageGroup> {
+      return postJson<CoverageGroup>(baseUrl, "/coverage-groups", input, token);
     },
 
-    async getCoverage(token: string): Promise<CoverageMatrix> {
-      return getJson<CoverageMatrix>(baseUrl, "/review-plan/coverage", token);
+    async updateCoverageGroup(
+      id: string,
+      input: CoverageGroupInput,
+      token: string,
+    ): Promise<CoverageGroup> {
+      return putJson<CoverageGroup>(
+        baseUrl,
+        `/coverage-groups/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteCoverageGroup(id: string, token: string): Promise<void> {
+      await delVoid(
+        baseUrl,
+        `/coverage-groups/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async listCoveragePlans(token: string): Promise<CoveragePlan[]> {
+      return getJson<CoveragePlan[]>(baseUrl, "/coverage-plans", token);
+    },
+
+    async createCoveragePlan(
+      input: CoveragePlanInput,
+      token: string,
+    ): Promise<CoveragePlan> {
+      return postJson<CoveragePlan>(baseUrl, "/coverage-plans", input, token);
+    },
+
+    async updateCoveragePlan(
+      id: string,
+      input: CoveragePlanInput,
+      token: string,
+    ): Promise<CoveragePlan> {
+      return putJson<CoveragePlan>(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteCoveragePlan(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/coverage-plans/${encodeURIComponent(id)}`, token);
+    },
+
+    async getCoveragePlansSummary(
+      token: string,
+    ): Promise<CoveragePlanSummary[]> {
+      return getJson<CoveragePlanSummary[]>(
+        baseUrl,
+        "/coverage-plans/summary",
+        token,
+      );
+    },
+
+    async getCoveragePlanCoverage(
+      id: string,
+      token: string,
+    ): Promise<CoverageMatrix> {
+      return getJson<CoverageMatrix>(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}/coverage`,
+        token,
+      );
     },
 
     async listRuns(opts): Promise<RunPage> {
@@ -574,6 +644,31 @@ interface LaunchAckResponse {
   jobId: string;
   statusUrl?: string;
   liveUrl?: string;
+}
+
+// The backend's `POST /jobs/batch` ack (`LaunchBatchAck`): one result per
+// submitted run, aligned by index — the enqueued job id, or the reason it was
+// rejected.
+interface LaunchBatchAckResponse {
+  jobs: { jobId?: string; error?: string }[];
+}
+
+// The backend's `LaunchBody` (camelCase) for one run. Shared by the single
+// (`POST /jobs`) and batch (`POST /jobs/batch`) enqueue paths so the two never
+// drift on how a `LaunchConfig` is put on the wire.
+function launchBodyOf(config: LaunchConfig) {
+  return {
+    testCase: config.testCase,
+    version: config.version,
+    variant: config.variant,
+    harness: config.harness,
+    model: config.modelId,
+    orchestrator: config.orchestrator,
+    ...(config.maxRuntimeOverride != null
+      ? { maxRuntimeSeconds: config.maxRuntimeOverride }
+      : {}),
+    ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
+  };
 }
 
 // The backend's `GET /jobs/{id}` status (`JobStatusOut`): the job's lifecycle
@@ -725,25 +820,35 @@ export function createBackendExec(
       // backend gates `POST /jobs` on the launching account, so the signed-in
       // account's token rides along as `Authorization: Bearer` — without it the
       // enqueue is rejected `401`.
-      const body = {
-        testCase: config.testCase,
-        version: config.version,
-        variant: config.variant,
-        harness: config.harness,
-        model: config.modelId,
-        orchestrator: config.orchestrator,
-        ...(config.maxRuntimeOverride != null
-          ? { maxRuntimeSeconds: config.maxRuntimeOverride }
-          : {}),
-        ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
-      };
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
         "/jobs",
-        body,
+        launchBodyOf(config),
         token,
       );
       return ack.jobId;
+    },
+
+    async launchRunBatch(
+      configs: LaunchConfig[],
+      token?: string | null,
+    ): Promise<BatchLaunchResult[]> {
+      // Enqueue the whole set in one `POST /jobs/batch` (same account gate as
+      // `POST /jobs`) instead of a request per run — the fan-out a coverage
+      // "trigger all missing" or a multi-combination new-run submit produces. An
+      // empty set needs no round-trip. The ack returns one entry per run, aligned
+      // by index, each an enqueued job id or a per-run rejection reason.
+      if (configs.length === 0) return [];
+      const ack = await postJson<LaunchBatchAckResponse>(
+        backendUrl,
+        "/jobs/batch",
+        { runs: configs.map(launchBodyOf) },
+        token,
+      );
+      return ack.jobs.map((entry) => ({
+        runId: entry.jobId,
+        error: entry.error,
+      }));
     },
 
     async getRun(runId: string): Promise<RunJob> {

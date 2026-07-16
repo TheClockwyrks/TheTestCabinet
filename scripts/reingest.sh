@@ -14,7 +14,8 @@
 # default this only re-ingests the individual test-case VERSIONS whose files changed
 # since the last successful run. We keep a marker file (its mtime is the last-ingest
 # baseline) and, for each candidate case, ask `find` whether any file under a given
-# version folder test-cases/<type>/<difficulty>/<slug>/<version>/ is newer than that
+# version folder test-cases/<type>/<difficulty>/<slug>/<version>/ (or, for a game
+# jam, game-jams/<slug>/<version>/) is newer than that
 # baseline. Only the
 # changed versions are re-ingested — sent as `<slug>@<version>` targets — so editing
 # one version no longer re-renders every version the case declares; a case with no
@@ -49,6 +50,10 @@
 #
 # Override the target with BACKEND_URL (default http://127.0.0.1:8787):
 #   BACKEND_URL=http://127.0.0.1:8787 scripts/reingest.sh carom
+#
+# This targets a directly-reachable backend URL (local dev, or a port-forward). To
+# re-ingest a DEPLOYED environment's private backend on AKS, use
+# `scripts/reingest-cluster.sh --env <prod|staging>` instead.
 set -euo pipefail
 
 backend="${BACKEND_URL:-http://127.0.0.1:8787}"
@@ -58,6 +63,12 @@ backend="${BACKEND_URL:-http://127.0.0.1:8787}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 cases_dir="${repo_root}/test-cases"
+# Game jams are authored in a sibling top-level tree, `game-jams/<slug>/<version>/`
+# (no type/difficulty grouping). The backend catalog already folds them in beside
+# `test-cases/`, so change detection must watch this tree too — otherwise a jam edit
+# is silently skipped on an incremental run (the jam is never a candidate, so it
+# never appears in the ingest output).
+jams_dir="${repo_root}/game-jams"
 
 # The change-detection baseline. Gitignored (see .gitignore) — it is per-checkout
 # local state, not source. `rm` it to force a full re-ingest without --force.
@@ -88,7 +99,14 @@ if [[ ${#slugs[@]} -gt 0 ]]; then
 else
   while IFS= read -r d; do
     candidates+=("$(basename "$d")")
-  done < <(find "$cases_dir" -mindepth 3 -maxdepth 3 -type d | sort)
+  done < <({
+    # Test cases sit at test-cases/<type>/<difficulty>/<slug> (depth 3); game jams at
+    # game-jams/<slug> (depth 1). Enumerate both trees' slug folders.
+    find "$cases_dir" -mindepth 3 -maxdepth 3 -type d
+    if [[ -d "$jams_dir" ]]; then
+      find "$jams_dir" -mindepth 1 -maxdepth 1 -type d
+    fi
+  } | sort)
 fi
 
 # Decide what actually gets ingested.
@@ -113,11 +131,15 @@ if [[ ${#slugs[@]} -eq 0 && ( "$force" == true || ! -e "$timestamp" ) ]]; then
 else
   to_ingest=()
   for slug in "${candidates[@]}"; do
-    # Cases live at test-cases/<type>/<difficulty>/<slug>/, so resolve the folder by
-    # its final component — the bare slug/folder-name a candidate carries. When it
-    # resolves nowhere (an unknown arg, or a slug that differs from its folder name)
-    # `dir` is empty and the guard below targets the whole case by slug.
+    # Cases live at test-cases/<type>/<difficulty>/<slug>/ and jams at
+    # game-jams/<slug>/, so resolve the folder by its final component — the bare
+    # slug/folder-name a candidate carries. Search the test-cases tree first, then the
+    # jams tree. When it resolves nowhere (an unknown arg, or a slug that differs from
+    # its folder name) `dir` is empty and the guard below targets the whole case by slug.
     dir="$(find "$cases_dir" -mindepth 3 -maxdepth 3 -type d -name "$slug" -print -quit 2>/dev/null)"
+    if [[ -z "$dir" && -d "$jams_dir" ]]; then
+      dir="$(find "$jams_dir" -mindepth 1 -maxdepth 1 -type d -name "$slug" -print -quit 2>/dev/null)"
+    fi
     if [[ "$force" == true || ! -e "$timestamp" || -z "$dir" || ! -d "$dir" ]]; then
       # --force / no baseline / a slug with no folder on disk: target the whole case
       # (a bare entry the backend expands to every version) and let it judge.

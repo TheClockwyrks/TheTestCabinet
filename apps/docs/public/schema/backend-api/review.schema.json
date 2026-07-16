@@ -60,16 +60,41 @@
       "type": "object"
     },
     "VerdictStatus": {
-      "description": "A reviewer's verdict on one declared checklist item.\n\nA test case declares the checklist (see [`crate::test_case::ReviewItem`]); the\nreviewer records one of these per item while judging the build. Ordered by\nneither severity nor preference — it simply states what the reviewer found.",
+      "description": "A reviewer's verdict on one declared checklist item.\n\nA test case declares the checklist (see [`crate::test_case::ReviewItem`]); the\nreviewer records one of these per item while judging the build.\n\nMost case types grade an item **binary** — [`Pass`](VerdictStatus::Pass) or\n[`Fail`](VerdictStatus::Fail) — and the item earns all its weight or none. A\n[game jam](crate::test_case::TestType::GameJam) instead grades each of its\nreview categories on a five-level **graded** scale worth a fixed number of\npoints ([`Broken`](VerdictStatus::Broken) 0 → [`Incredible`](VerdictStatus::Incredible)\n10); the same graded scale carries the reviewer's whole-game\n[`OVERALL_VERDICT_ID`] mark. Which scale an item uses is declared on the item\n([`crate::test_case::ReviewItem::graded`]); the two never mix within a case.\nKeep the tiers and their point values in lockstep with the TypeScript\n`VERDICT_META` in `packages/ui/src/ratings.ts`.",
       "oneOf": [
         {
           "const": "pass",
-          "description": "The item was checked and the build satisfies it. The item earns its\nweight toward the run's score.",
+          "description": "Binary: the item was checked and the build satisfies it. The item earns\nits weight toward the run's score.",
           "type": "string"
         },
         {
           "const": "fail",
-          "description": "The item was checked and the build does not satisfy it. The item earns\nnone of its weight.",
+          "description": "Binary: the item was checked and the build does not satisfy it. The item\nearns none of its weight.",
+          "type": "string"
+        },
+        {
+          "const": "broken",
+          "description": "Graded 💩: broken. Worth 0 points.",
+          "type": "string"
+        },
+        {
+          "const": "poor",
+          "description": "Graded 🙁: not great. Worth 1 point.",
+          "type": "string"
+        },
+        {
+          "const": "neutral",
+          "description": "Graded 😐: neutral. Worth 3 points.",
+          "type": "string"
+        },
+        {
+          "const": "great",
+          "description": "Graded 😀: great. Worth 5 points.",
+          "type": "string"
+        },
+        {
+          "const": "incredible",
+          "description": "Graded 💎: incredible. Worth 10 points.",
           "type": "string"
         }
       ]

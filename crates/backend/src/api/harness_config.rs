@@ -54,10 +54,12 @@ pub struct HarnessConfigInput {
 /// `GET /harness-config` — every harness the Test Cabinet knows, each with its
 /// current configuration. Enumerates the static harness catalog so a harness with no
 /// stored overrides still appears (at its defaults); open read.
-pub async fn list(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<HarnessConfigOut>>, ApiError> {
-    let stored = state.db.list_harness_configs().await.map_err(ApiError::from)?;
+pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<HarnessConfigOut>>, ApiError> {
+    let stored = state
+        .db
+        .list_harness_configs()
+        .await
+        .map_err(ApiError::from)?;
     let registry = DefaultHarnessRegistry::new();
     let out = HarnessSlug::ALL
         .into_iter()

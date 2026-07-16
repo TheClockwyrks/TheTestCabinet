@@ -94,6 +94,5 @@ correctly when served from any base path, including a per-run sub-path.
   and audio.
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
   `@test-cabinet/particle-runtime`.
-- [`scripts/proof.mjs`](scripts/proof.mjs) — captures the `proof/` artifacts with the
-  project-local Playwright.
-- [`proof/`](proof/) — the proof-of-implementation captures (`specs/proof.md`).
+- [`scripts/`](scripts/) — `gen-assets.sh`, which reproduces the committed `assets/` with
+  the on-`PATH` asset tools.

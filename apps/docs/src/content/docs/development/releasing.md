@@ -88,6 +88,7 @@ are built.
 | [Gallery](/components/site/overview/) (`apps/site`) | `test-cabinet-site` | `testcabinet.ai` (apex) | Cloudflare (git-connected) |
 | [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
 | Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | `tcab publish` → `wrangler` |
+| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler` |
 
 The docs and per-run builds are **Direct Upload** projects — built elsewhere and
 pushed with `wrangler` — while the gallery is **git-connected**: Cloudflare clones
@@ -178,3 +179,42 @@ Cloudflare credentials it uses (see
 [CLI Authentication](/components/cli/overview/#authentication)); there is no
 shared infrastructure to configure beyond those credentials, and because builds
 are served from `pages.dev` they need no custom DNS.
+
+## Reference implementations (Cloudflare Pages, one-time)
+
+A [reference implementation](/components/core/results/#reference-implementations) —
+a test-case variant's authored, correct static build — is deployed out-of-band by
+`tcab publish-reference` to its own Cloudflare Pages project, the case-variant
+analogue of a per-run build. Unlike a per-run build, its served URL is **not** pushed
+to the backend: the backends are private (VPN-only), so `publish-reference` writes
+the URL into a committed lockfile (`test-cases/reference-builds.lock.json`) and the
+backend **ingests** it from its own checkout on the next
+[`scripts/reingest-cluster.sh`](/deployment/overview/) — the same pull path that
+refreshes catalog edits. The full operator workflow, prerequisites, and the non-experimental
+**release gate** (every reference-capable case must ship a reference by the release
+that makes it non-experimental) live in
+[Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/).
+
+- In the Cloudflare dashboard, create two **Direct Upload** Pages projects:
+  `test-cabinet-references` (prod) and `test-cabinet-references-staging` (staging).
+  `tcab publish-reference` picks between them with its **required** `--env`
+  flag — `--env prod` deploys to the former, `--env staging` to the latter — so a
+  publish can never silently land in front of the public gallery. Neither needs a
+  custom domain: each variant is served from the `*.pages.dev` URL `wrangler`
+  reports, under a per-variant branch alias
+  (`<slug>-<version-with-dots-as-dashes>-<variant>`), and the served URL is read
+  back from `wrangler` rather than constructed.
+- Both reuse the same `CLOUDFLARE_API_TOKEN` (*Cloudflare Pages: Edit*) and
+  `CLOUDFLARE_ACCOUNT_ID` as the docs deploy — the **only** secrets involved, since
+  there is no backend push. The
+  [`publish-reference.yml`](/guides/devops/publishing-a-reference-implementation/#from-ci)
+  `workflow_dispatch` job derives its environment from the branch (`master` → prod,
+  `staging` → staging), deploys, and commits the updated lockfile back to the branch
+  (so it needs `contents: write`). It does not re-ingest — an operator runs
+  `scripts/reingest-cluster.sh --env <env>` from a VPN/az machine afterward.
+
+> **One lockfile, both environments.** Prod and staging deploy to different Pages
+> projects, so the committed lockfile holds a URL per environment, keyed by env
+> first. Each backend reads only its own environment's entries, selected by its
+> `TCAB_ENV` (`prod`/`staging`), so the one file serves both without a per-branch
+> divergence.

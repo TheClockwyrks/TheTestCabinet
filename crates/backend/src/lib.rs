@@ -84,11 +84,15 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     }
 
     let store = DefinitionStore::open(&config.store)?;
-    let db = Db::connect(&config.database_url).await?;
+    let db = if config.db_azure_ad {
+        Db::connect_azure_ad(&config.database_url).await?
+    } else {
+        Db::connect(&config.database_url).await?
+    };
     // Apply the schema before serving. The migration is idempotent, so an
     // already-migrated store (a restart, or a shared deployment database) is a
     // no-op beyond the version check.
-    test_cabinet_migration::Migrator::up(db.connection(), None).await?;
+    test_cabinet_migration::Migrator::up(&db.connection(), None).await?;
 
     // Backfill the run row's sort/filter columns for any rows that predate them
     // (the migration stamps them with defaults; this fills the real record- and
@@ -142,6 +146,16 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // idempotent, so a restart or a shared deployment database is a safe no-op.
     let prices = test_cabinet_core::OpenRouterPrices::new();
     crate::bootstrap::seed_models_if_empty(&db).await?;
+    if let Err(err) = crate::bootstrap::backfill_alias_families(&db).await {
+        // Best-effort: a stale harness family only mis-filters a run form's model
+        // dropdown, never blocks startup.
+        tracing::warn!(error = %err, "skipping model-alias harness-family backfill");
+    }
+    if let Err(err) = crate::bootstrap::backfill_coverage_plans(&db).await {
+        // Best-effort: a reviewer whose legacy plan did not migrate this boot keeps
+        // their `migrated = false` row and it is retried next startup; never blocks.
+        tracing::warn!(error = %err, "skipping legacy coverage-plan backfill");
+    }
     if let Err(err) = crate::bootstrap::normalize_free_runs(&db, &prices).await {
         // Never block startup on this best-effort normalization.
         tracing::warn!(error = %err, "skipping :free run normalization");

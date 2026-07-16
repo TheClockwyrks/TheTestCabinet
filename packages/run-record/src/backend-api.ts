@@ -7,6 +7,8 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { HarnessFamily } from "./index";
+
 /**
  * The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
  * a human-readable message.
@@ -28,6 +30,23 @@ export type VersionsResponse = { slug: string; versions: Array<string> };
  * `GET /models` — the merged model catalog.
  */
 export type ModelCatalogResponse = { models: Array<ModelOut> };
+
+/**
+ * One canonical model id a catalog entry claims, with the harness family it is
+ * usable with. The run form filters the models it offers a harness by matching
+ * the harness's family against these.
+ */
+export type AliasOut = {
+  /**
+   * The canonical model id (an OpenRouter id like `anthropic/claude-opus-4.8`,
+   * or a provider-native id like `claude-opus-4-8`).
+   */
+  slug: string;
+  /**
+   * The harness family this slug is usable with.
+   */
+  harnessFamily: HarnessFamily;
+};
 
 /**
  * One catalog entry: a curated model merged with its runs and price history, or
@@ -69,9 +88,11 @@ export type ModelOut = {
    */
   coveredModelIds: Array<string>;
   /**
-   * The canonical model ids this entry claims.
+   * The canonical model ids this entry claims, each tagged with the harness
+   * family it is usable with (so a run form can offer only the slugs the
+   * selected harness can launch).
    */
-  aliases: Array<string>;
+  aliases: Array<AliasOut>;
   /**
    * The latest observed comparable price, or null when none is recorded.
    */
@@ -108,6 +129,23 @@ export type PriceObservationOut = {
 };
 
 /**
+ * One slug ↔ harness-family pairing in a config write. The operator supplies a
+ * slug and picks the harness family it belongs to; a model with slugs across
+ * several families carries one entry per (slug, family).
+ */
+export type AliasInput = {
+  /**
+   * The canonical model id (the `openrouter/` routing prefix is stripped on
+   * write so it matches a run's canonical id).
+   */
+  slug: string;
+  /**
+   * The harness family this slug is usable with.
+   */
+  harnessFamily: HarnessFamily;
+};
+
+/**
  * The `POST /models` / `PUT /models/{slug}` request body.
  */
 export type ModelConfigInput = {
@@ -118,9 +156,10 @@ export type ModelConfigInput = {
   name: string;
   provider: string;
   /**
-   * The canonical model ids this model covers (at least one).
+   * The canonical model ids this model covers, each paired with the harness
+   * family it is usable with (at least one).
    */
-  aliases: Array<string>;
+  aliases: Array<AliasInput>;
   openrouterSlug: string | null;
   description: string | null;
   /**
@@ -150,9 +189,10 @@ export type ModelSeedOut = {
    */
   provider: string;
   /**
-   * Suggested aliases (the canonical and raw forms), deduped.
+   * Suggested aliases (the canonical and raw forms), deduped, each tagged with
+   * the family of the harness the seed run used.
    */
-  aliases: Array<string>;
+  aliases: Array<AliasOut>;
   /**
    * The canonical id as an OpenRouter slug, when it looks like one.
    */

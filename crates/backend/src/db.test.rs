@@ -2,7 +2,7 @@ use super::*;
 use test_cabinet_core::metrics::RunMetrics;
 use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
-    HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
+    HarnessFamily, HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
 };
 use test_cabinet_core::validation::ValidationSummary;
 
@@ -130,7 +130,7 @@ async fn a_record_that_no_longer_deserializes_is_skipped_not_fatal() {
             Expr::value(r#"{"id":"legacy","schema":"from-before-a-contract-change"}"#),
         )
         .filter(run::Column::Id.eq("legacy"))
-        .exec(&db.conn)
+        .exec(&db.conn())
         .await
         .unwrap();
 
@@ -515,6 +515,42 @@ async fn enqueue_then_claim_flips_queued_to_dispatched_then_drains() {
             .is_none(),
         "the queue is drained"
     );
+}
+
+#[tokio::test]
+async fn enqueue_jobs_batch_inserts_all_as_queued_and_claimable() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // A batch spanning more than one insert chunk boundary is enqueued whole.
+    let batch: Vec<NewJob> = (0..2500)
+        .map(|i| new_job(&format!("j{i}"), "2026-06-23T00:00:00Z"))
+        .collect();
+    db.enqueue_jobs(batch).await.unwrap();
+
+    // Every enqueued job is in flight (queued) — the batch analogue of a single
+    // enqueue leaves each job claimable.
+    let key = (
+        "pong".to_string(),
+        "v1.0.0".to_string(),
+        "base".to_string(),
+        "claude".to_string(),
+        "claude-sonnet-4-5".to_string(),
+    );
+    assert_eq!(
+        db.count_in_flight_jobs_by_cell(&["pong".to_string()])
+            .await
+            .unwrap()
+            .get(&key)
+            .copied(),
+        Some(2500),
+        "all batch-enqueued jobs are queued and counted in flight",
+    );
+
+    // And each is really claimable, not merely inserted.
+    let claimed = db.claim_next_job("2026-06-23T00:00:05Z").await.unwrap();
+    assert!(claimed.is_some(), "a batch-enqueued job is claimable");
+
+    // An empty batch is a harmless no-op.
+    db.enqueue_jobs(Vec::new()).await.unwrap();
 }
 
 #[tokio::test]
@@ -939,6 +975,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
         ("done", RunState::Completed),
         ("cat", RunState::Catastrophic),
         ("slow", RunState::TimedOut),
+        ("harness", RunState::HarnessError),
         ("infra", RunState::Infrastructure),
     ] {
         let mut rec = record(id);
@@ -959,8 +996,8 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     failure_ids.sort_unstable();
     assert_eq!(
         failure_ids,
-        vec!["cat", "slow"],
-        "publishable failures exclude infrastructure failures"
+        vec!["cat", "harness", "slow"],
+        "publishable failures cover catastrophic/timed-out/harness-error but exclude infrastructure"
     );
 
     // The console's produced worklist carries every unpublished run whatever its
@@ -971,7 +1008,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     unpublished_ids.sort_unstable();
     assert_eq!(
         unpublished_ids,
-        vec!["cat", "done", "infra", "slow"],
+        vec!["cat", "done", "harness", "infra", "slow"],
         "every unpublished run, all tiers, is in the produced worklist"
     );
 
@@ -983,7 +1020,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     after_ids.sort_unstable();
     assert_eq!(
         after_ids,
-        vec!["done", "infra", "slow"],
+        vec!["done", "harness", "infra", "slow"],
         "a published run leaves the unpublished worklist"
     );
 }
@@ -1082,6 +1119,12 @@ async fn ensure_publishable_mirrors_the_publish_gate() {
     cat.status.state = RunState::Catastrophic;
     db.push(&cat, &RunLinks::default(), None).await.unwrap();
     db.ensure_publishable("cat").await.unwrap();
+
+    // A harness error is likewise a publishable failure — no review required.
+    let mut harness = record("harness");
+    harness.status.state = RunState::HarnessError;
+    db.push(&harness, &RunLinks::default(), None).await.unwrap();
+    db.ensure_publishable("harness").await.unwrap();
 
     // An unknown run is not found.
     let err = db.ensure_publishable("nope").await.unwrap_err();
@@ -1235,6 +1278,19 @@ async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
 use std::collections::HashMap;
 use test_cabinet_core::metrics::{Cost, TokenCounts, TokenPrices};
 
+/// Tag a test alias with a plausible family (OpenRouter for a `provider/model`
+/// id, Claude for a bare native id — enough for the CRUD tests here).
+fn test_alias(alias: &str) -> AliasEntry {
+    AliasEntry {
+        alias: alias.to_string(),
+        family: if alias.contains('/') {
+            HarnessFamily::Openrouter
+        } else {
+            HarnessFamily::Claude
+        },
+    }
+}
+
 /// A model-config write with the common fields defaulted.
 fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
     ModelConfigWrite {
@@ -1245,7 +1301,7 @@ fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
         provider_logo_svg: None,
         description_md: None,
         openrouter_slug: aliases.first().map(|a| a.to_string()),
-        aliases: aliases.iter().map(|a| a.to_string()).collect(),
+        aliases: aliases.iter().map(|a| test_alias(a)).collect(),
         now: "2026-07-09T00:00:00Z".to_string(),
     }
 }
@@ -1278,9 +1334,25 @@ async fn model_config_crud_and_alias_conflict() {
 
     let got = db.get_model_config("opus").await.unwrap().unwrap();
     assert_eq!(got.config.display_name, "Claude Opus 4.8");
+    let alias_slugs: Vec<&str> = got.aliases.iter().map(|a| a.alias.as_str()).collect();
     assert_eq!(
-        got.aliases,
+        alias_slugs,
         vec!["anthropic/claude-opus-4.8", "claude-opus-4-8"]
+    );
+    // The family round-trips through the store.
+    assert_eq!(
+        got.aliases
+            .iter()
+            .find(|a| a.alias == "claude-opus-4-8")
+            .map(|a| a.family),
+        Some(HarnessFamily::Claude)
+    );
+    assert_eq!(
+        got.aliases
+            .iter()
+            .find(|a| a.alias == "anthropic/claude-opus-4.8")
+            .map(|a| a.family),
+        Some(HarnessFamily::Openrouter)
     );
 
     // A second model claiming an alias the first owns is a conflict.
@@ -1300,7 +1372,7 @@ async fn model_config_crud_and_alias_conflict() {
     // Updating the same model replaces its alias set and keeps created_at.
     db.upsert_model_config(ModelConfigWrite {
         display_name: "Opus (renamed)".to_string(),
-        aliases: vec!["claude-opus-4-8".to_string()],
+        aliases: vec![test_alias("claude-opus-4-8")],
         now: "2026-08-01T00:00:00Z".to_string(),
         ..model_write("opus", "ignored", &[])
     })
@@ -1309,11 +1381,90 @@ async fn model_config_crud_and_alias_conflict() {
     let updated = db.get_model_config("opus").await.unwrap().unwrap();
     assert_eq!(updated.config.display_name, "Opus (renamed)");
     assert_eq!(updated.config.created_at, "2026-07-09T00:00:00Z");
-    assert_eq!(updated.aliases, vec!["claude-opus-4-8"]);
+    assert_eq!(
+        updated.aliases,
+        vec![AliasEntry {
+            alias: "claude-opus-4-8".to_string(),
+            family: HarnessFamily::Claude,
+        }]
+    );
 
     assert!(db.delete_model_config("opus").await.unwrap());
     assert!(db.get_model_config("opus").await.unwrap().is_none());
     assert!(!db.delete_model_config("opus").await.unwrap());
+}
+
+#[tokio::test]
+async fn backfill_alias_families_corrects_legacy_rows() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // Simulate legacy rows created before the harness_family column: every alias
+    // carries the migration's `openrouter` default, even the native ones.
+    let legacy = |slug: &str, aliases: &[&str]| ModelConfigWrite {
+        aliases: aliases
+            .iter()
+            .map(|a| AliasEntry {
+                alias: a.to_string(),
+                family: HarnessFamily::Openrouter,
+            })
+            .collect(),
+        ..model_write(slug, slug, &[])
+    };
+    db.upsert_model_config(legacy(
+        "opus",
+        &["claude-opus-4-8", "anthropic/claude-opus-4.8"],
+    ))
+    .await
+    .unwrap();
+    db.upsert_model_config(legacy("gpt", &["gpt-5.5"]))
+        .await
+        .unwrap();
+
+    // A Claude Code run of the native id is the run evidence for its family.
+    db.push(
+        &run_with_model(
+            "r1",
+            "claude-opus-4-8",
+            HarnessSlug::Claude,
+            TokenCounts::default(),
+        ),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let fixed = crate::bootstrap::backfill_alias_families(&db)
+        .await
+        .unwrap();
+    assert_eq!(fixed, 2, "the two native slugs were corrected");
+
+    let family_of = |stored: &StoredModel, slug: &str| {
+        stored
+            .aliases
+            .iter()
+            .find(|a| a.alias == slug)
+            .map(|a| a.family)
+    };
+    let opus = db.get_model_config("opus").await.unwrap().unwrap();
+    // Native id corrected from run evidence; OpenRouter id left as-is.
+    assert_eq!(
+        family_of(&opus, "claude-opus-4-8"),
+        Some(HarnessFamily::Claude)
+    );
+    assert_eq!(
+        family_of(&opus, "anthropic/claude-opus-4.8"),
+        Some(HarnessFamily::Openrouter)
+    );
+    // No run for gpt-5.5, so the structural rule (`gpt` prefix) classifies it.
+    let gpt = db.get_model_config("gpt").await.unwrap().unwrap();
+    assert_eq!(family_of(&gpt, "gpt-5.5"), Some(HarnessFamily::Codex));
+
+    // Idempotent: a second pass corrects nothing.
+    let again = crate::bootstrap::backfill_alias_families(&db)
+        .await
+        .unwrap();
+    assert_eq!(again, 0);
 }
 
 #[tokio::test]
@@ -1454,7 +1605,7 @@ fn record_with_metrics(id: &str) -> RunRecord {
 /// Read the lifted sort/filter columns off the raw `run` row.
 async fn lifted(db: &Db, id: &str) -> run::Model {
     run::Entity::find_by_id(id.to_string())
-        .one(db.connection())
+        .one(&db.connection())
         .await
         .unwrap()
         .expect("the run row exists")
@@ -1538,7 +1689,7 @@ async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
         active.cost_comparable = Set(None);
         active.rating = Set(None);
         active.review_count = Set(0);
-        active.update(db.connection()).await.unwrap();
+        active.update(&db.connection()).await.unwrap();
     }
 
     let filled = db.backfill_sort_columns().await.unwrap();
@@ -1694,6 +1845,33 @@ async fn list_summaries_filters_by_test_case_model_and_harness() {
         summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
         ["a"]
     );
+}
+
+#[tokio::test]
+async fn list_summaries_failures_slice_covers_the_publishable_failure_tiers() {
+    // The `fields=summary&state=failures` path must surface exactly the publishable
+    // failure tiers — catastrophic, timed-out, and harness-error — and never a
+    // completed run or an infrastructure failure.
+    let db = Db::connect_in_memory().await.unwrap();
+    for (id, state) in [
+        ("done", RunState::Completed),
+        ("cat", RunState::Catastrophic),
+        ("slow", RunState::TimedOut),
+        ("harness", RunState::HarnessError),
+        ("infra", RunState::Infrastructure),
+    ] {
+        let mut r = record(id);
+        r.status.state = state;
+        db.push(&r, &links(), None).await.unwrap();
+    }
+
+    let filter = SummaryFilter {
+        state: SummaryState::Failures,
+        ..SummaryFilter::default()
+    };
+    let mut ids = summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await;
+    ids.sort();
+    assert_eq!(ids, ["cat", "harness", "slow"]);
 }
 
 #[tokio::test]
@@ -1872,77 +2050,87 @@ async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
 }
 
 #[tokio::test]
-async fn reference_build_upserts_in_place_and_reads_back_per_variant() {
+async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
     let db = Db::connect_in_memory().await.unwrap();
 
-    // A triple with no deployed build reads back as absent, both singly and in the
-    // per-version map.
-    assert_eq!(
-        db.reference_build("carom", "v1.0.1", "base").await.unwrap(),
-        None
+    let entry = |slug: &str, version: &str, variant: &str, url: &str| ReferenceBuildEntry {
+        slug: slug.to_string(),
+        version: version.to_string(),
+        variant: variant.to_string(),
+        url: url.to_string(),
+    };
+
+    // Reconciling an empty desired set against an empty table changes nothing.
+    assert!(
+        !db.sync_reference_builds(&[], "2026-07-13T00:00:00Z")
+            .await
+            .unwrap()
     );
     assert!(
-        db.reference_builds_for_version("carom", "v1.0.1")
+        db.reference_builds_for_version("carom", "v1.1.0")
             .await
             .unwrap()
             .is_empty()
     );
 
-    // First deploy records the URL for the variant.
-    db.upsert_reference_build(
-        "carom",
-        "v1.0.1",
-        "base",
-        "https://carom-base.example.pages.dev",
-        "2026-07-09T00:00:00Z",
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        db.reference_build("carom", "v1.0.1", "base").await.unwrap(),
-        Some("https://carom-base.example.pages.dev".to_string())
+    // First reconcile records two variants and reports a change.
+    let desired = vec![
+        entry("carom", "v1.1.0", "base", "https://base.example.pages.dev"),
+        entry("carom", "v1.1.0", "gyre", "https://gyre.example.pages.dev"),
+    ];
+    assert!(
+        db.sync_reference_builds(&desired, "2026-07-13T00:00:00Z")
+            .await
+            .unwrap()
     );
-
-    // A re-deploy of the SAME triple upserts the URL in place (composite PK), it
-    // does not accumulate a second row.
-    db.upsert_reference_build(
-        "carom",
-        "v1.0.1",
-        "base",
-        "https://carom-base-2.example.pages.dev",
-        "2026-07-09T01:00:00Z",
-    )
-    .await
-    .unwrap();
-
-    // A different variant of the same version is an independent row.
-    db.upsert_reference_build(
-        "carom",
-        "v1.0.1",
-        "tight",
-        "https://carom-tight.example.pages.dev",
-        "2026-07-09T02:00:00Z",
-    )
-    .await
-    .unwrap();
-
     let map = db
-        .reference_builds_for_version("carom", "v1.0.1")
+        .reference_builds_for_version("carom", "v1.1.0")
         .await
         .unwrap();
     assert_eq!(map.len(), 2);
     assert_eq!(
         map.get("base").map(String::as_str),
-        Some("https://carom-base-2.example.pages.dev")
-    );
-    assert_eq!(
-        map.get("tight").map(String::as_str),
-        Some("https://carom-tight.example.pages.dev")
+        Some("https://base.example.pages.dev")
     );
 
-    // A different version does not see this version's rows.
+    // Re-running with the identical set is a no-op — no change, so no snapshot refresh.
     assert!(
-        db.reference_builds_for_version("carom", "v1.0.0")
+        !db.sync_reference_builds(&desired, "2026-07-13T01:00:00Z")
+            .await
+            .unwrap()
+    );
+
+    // A moved URL plus a dropped variant reconciles in place: base's URL updates and
+    // gyre is pruned (absent from the new desired set — the lockfile is authoritative).
+    let desired = vec![entry(
+        "carom",
+        "v1.1.0",
+        "base",
+        "https://base-2.example.pages.dev",
+    )];
+    assert!(
+        db.sync_reference_builds(&desired, "2026-07-13T02:00:00Z")
+            .await
+            .unwrap()
+    );
+    let map = db
+        .reference_builds_for_version("carom", "v1.1.0")
+        .await
+        .unwrap();
+    assert_eq!(map.len(), 1, "gyre pruned");
+    assert_eq!(
+        map.get("base").map(String::as_str),
+        Some("https://base-2.example.pages.dev")
+    );
+
+    // Reconciling to an empty set prunes everything that remains.
+    assert!(
+        db.sync_reference_builds(&[], "2026-07-13T03:00:00Z")
+            .await
+            .unwrap()
+    );
+    assert!(
+        db.reference_builds_for_version("carom", "v1.1.0")
             .await
             .unwrap()
             .is_empty()
@@ -1951,50 +2139,178 @@ async fn reference_build_upserts_in_place_and_reads_back_per_variant() {
 
 // ---- Reviewer coverage plans + counts -------------------------------------
 
-/// A one-case, one-combination plan matching the default `record`/`new_job` cell
-/// (pong v1.0.0 base × claude/claude-sonnet-4-5), with the given per-cell target.
-fn sample_plan(runs_per_cell: u32) -> crate::api::ReviewPlan {
-    crate::api::ReviewPlan {
-        runs_per_cell,
-        cases: vec![crate::api::ReviewPlanCase {
-            slug: "pong".to_string(),
-            version: "v1.0.0".to_string(),
-            variant: "base".to_string(),
-        }],
-        combinations: vec![crate::api::ReviewPlanCombo {
-            harness: HarnessSlug::Claude,
-            model: "claude-sonnet-4-5".to_string(),
-            provider: None,
-        }],
+/// The default `record`/`new_job` combination (claude/claude-sonnet-4-5).
+fn sample_combo() -> crate::api::ReviewPlanCombo {
+    crate::api::ReviewPlanCombo {
+        harness: HarnessSlug::Claude,
+        model: "claude-sonnet-4-5".to_string(),
+        provider: None,
+    }
+}
+
+/// The default `record`/`new_job` case (pong v1.0.0 base).
+fn sample_case() -> crate::api::ReviewPlanCase {
+    crate::api::ReviewPlanCase {
+        slug: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+    }
+}
+
+/// A combo group with the given id/name holding [`sample_combo`].
+fn combo_group(id: &str, name: &str) -> crate::api::CoverageGroup {
+    crate::api::CoverageGroup {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind: crate::api::CoverageGroupKind::Combo,
+        combos: vec![sample_combo()],
+        cases: vec![],
+        updated_at: "2026-07-15T00:00:00Z".to_string(),
     }
 }
 
 #[tokio::test]
-async fn review_plan_round_trips_and_upserts() {
+async fn coverage_groups_round_trip_and_scope_to_account() {
     let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.list_coverage_groups("u1").await.unwrap().is_empty());
+
+    db.insert_coverage_group("u1", &combo_group("g1", "Anthropic"))
+        .await
+        .unwrap();
+    let listed = db.list_coverage_groups("u1").await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].name, "Anthropic");
+    assert_eq!(listed[0].combos.len(), 1);
+    // Only the kind's members are stored: a combo group carries no cases.
+    assert!(listed[0].cases.is_empty());
+
+    // Scoped by account: another user cannot read it.
+    assert!(db.get_coverage_group("u2", "g1").await.unwrap().is_none());
+    assert!(db.list_coverage_groups("u2").await.unwrap().is_empty());
+
+    // Update in place (owner only).
+    let mut renamed = combo_group("g1", "Anthropic (all)");
+    renamed.updated_at = "2026-07-15T01:00:00Z".to_string();
+    assert!(db.update_coverage_group("u1", &renamed).await.unwrap());
     assert!(
-        db.get_review_plan("u1").await.unwrap().is_none(),
-        "no plan saved yet"
+        !db.update_coverage_group("u2", &renamed).await.unwrap(),
+        "a non-owner update matches no row"
+    );
+    assert_eq!(
+        db.get_coverage_group("u1", "g1")
+            .await
+            .unwrap()
+            .unwrap()
+            .name,
+        "Anthropic (all)"
     );
 
-    db.put_review_plan("u1", &sample_plan(3), "2026-07-11T00:00:00Z")
-        .await
-        .unwrap();
-    let got = db.get_review_plan("u1").await.unwrap().expect("plan saved");
-    assert_eq!(got.runs_per_cell, 3);
+    // Delete (owner only).
+    assert!(!db.delete_coverage_group("u2", "g1").await.unwrap());
+    assert!(db.delete_coverage_group("u1", "g1").await.unwrap());
+    assert!(db.list_coverage_groups("u1").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn coverage_plans_round_trip_and_scope_to_account() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.list_coverage_plans("u1").await.unwrap().is_empty());
+
+    let plan = crate::api::CoveragePlan {
+        id: "p1".to_string(),
+        name: "Anthropic/E2E".to_string(),
+        runs_per_cell: 3,
+        combo_group_ids: vec!["g1".to_string()],
+        case_group_ids: vec![],
+        combos: vec![],
+        cases: vec![sample_case()],
+        updated_at: "2026-07-15T00:00:00Z".to_string(),
+    };
+    db.insert_coverage_plan("u1", &plan).await.unwrap();
+
+    let got = db.get_coverage_plan("u1", "p1").await.unwrap().unwrap();
+    assert_eq!(got.name, "Anthropic/E2E");
+    assert_eq!(got.combo_group_ids, vec!["g1".to_string()]);
     assert_eq!(got.cases.len(), 1);
-    assert_eq!(got.cases[0].slug, "pong");
-    assert_eq!(got.combinations[0].model, "claude-sonnet-4-5");
+    // Scoped by account.
+    assert!(db.get_coverage_plan("u2", "p1").await.unwrap().is_none());
 
-    // A second save for the same account upserts in place (one row per account).
-    db.put_review_plan("u1", &sample_plan(5), "2026-07-11T01:00:00Z")
-        .await
-        .unwrap();
-    let updated = db.get_review_plan("u1").await.unwrap().unwrap();
-    assert_eq!(updated.runs_per_cell, 5);
+    // Update in place (owner only).
+    let mut bumped = plan.clone();
+    bumped.runs_per_cell = 5;
+    assert!(db.update_coverage_plan("u1", &bumped).await.unwrap());
+    assert!(!db.update_coverage_plan("u2", &bumped).await.unwrap());
+    assert_eq!(
+        db.get_coverage_plan("u1", "p1")
+            .await
+            .unwrap()
+            .unwrap()
+            .runs_per_cell,
+        5
+    );
 
-    // A different account has its own (absent) plan.
-    assert!(db.get_review_plan("u2").await.unwrap().is_none());
+    // Delete (owner only).
+    assert!(!db.delete_coverage_plan("u2", "p1").await.unwrap());
+    assert!(db.delete_coverage_plan("u1", "p1").await.unwrap());
+    assert!(db.list_coverage_plans("u1").await.unwrap().is_empty());
+}
+
+/// Seed a legacy single-per-account `review_plan` row (the shape the backfill
+/// migrates), carrying one case and one combination.
+async fn seed_legacy_review_plan(db: &Db, user_id: &str) {
+    review_plan::Entity::insert(review_plan::ActiveModel {
+        user_id: Set(user_id.to_string()),
+        runs_per_cell: Set(4),
+        cases_json: Set(serde_json::to_string(&vec![sample_case()]).unwrap()),
+        combinations_json: Set(serde_json::to_string(&vec![sample_combo()]).unwrap()),
+        updated_at: Set("2026-07-11T00:00:00Z".to_string()),
+        migrated: Set(false),
+    })
+    .exec(&db.connection())
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn backfill_migrates_each_legacy_plan_exactly_once() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_legacy_review_plan(&db, "u1").await;
+
+    // First run migrates the legacy plan into one coverage plan with its members
+    // inlined as one-offs (referencing no groups).
+    assert_eq!(
+        crate::bootstrap::backfill_coverage_plans(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    let plans = db.list_coverage_plans("u1").await.unwrap();
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].name, "My coverage plan");
+    assert_eq!(plans[0].runs_per_cell, 4);
+    assert_eq!(plans[0].combos.len(), 1);
+    assert_eq!(plans[0].cases.len(), 1);
+    assert!(plans[0].combo_group_ids.is_empty());
+
+    // Re-running is a no-op: the migrated flag guards against a duplicate.
+    assert_eq!(
+        crate::bootstrap::backfill_coverage_plans(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(db.list_coverage_plans("u1").await.unwrap().len(), 1);
+
+    // A migrated plan the reviewer deletes is not recreated on the next startup.
+    let id = plans[0].id.clone();
+    assert!(db.delete_coverage_plan("u1", &id).await.unwrap());
+    assert_eq!(
+        crate::bootstrap::backfill_coverage_plans(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(db.list_coverage_plans("u1").await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -2006,32 +2322,35 @@ async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
         .await
         .unwrap();
 
-    let completed = db
-        .count_completed_runs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
-        .await
-        .unwrap();
-    assert_eq!(completed, 1, "the one completed run counts");
+    let slugs = vec!["pong".to_string()];
+    let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
+    let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
+    // A cell key `(slug, version, variant, harness, model)`.
+    let cell = |version: &str, model: &str| {
+        (
+            "pong".to_string(),
+            version.to_string(),
+            "base".to_string(),
+            "claude".to_string(),
+            model.to_string(),
+        )
+    };
 
-    let in_flight = db
-        .count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
-        .await
-        .unwrap();
-    assert_eq!(in_flight, 1, "the queued job counts as in-flight");
+    assert_eq!(
+        completed.get(&cell("v1.0.0", "claude-sonnet-4-5")).copied(),
+        Some(1),
+        "the one completed run counts"
+    );
+    assert_eq!(
+        in_flight.get(&cell("v1.0.0", "claude-sonnet-4-5")).copied(),
+        Some(1),
+        "the queued job counts as in-flight"
+    );
 
     // A different model shares nothing: neither count sees it.
-    assert_eq!(
-        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "claude", "other-model")
-            .await
-            .unwrap(),
-        0
-    );
+    assert_eq!(completed.get(&cell("v1.0.0", "other-model")), None);
     // A different pinned version is a different cell.
-    assert_eq!(
-        db.count_completed_runs_for_cell("pong", "v2.0.0", "base", "claude", "claude-sonnet-4-5")
-            .await
-            .unwrap(),
-        0
-    );
+    assert_eq!(completed.get(&cell("v2.0.0", "claude-sonnet-4-5")), None);
 }
 
 #[tokio::test]
@@ -2040,21 +2359,110 @@ async fn a_claimed_job_no_longer_counts_toward_a_cell() {
     db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
         .await
         .unwrap();
+    let slugs = vec!["pong".to_string()];
+    let key = (
+        "pong".to_string(),
+        "v1.0.0".to_string(),
+        "base".to_string(),
+        "claude".to_string(),
+        "claude-sonnet-4-5".to_string(),
+    );
     assert_eq!(
-        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+        db.count_in_flight_jobs_by_cell(&slugs)
             .await
-            .unwrap(),
-        1,
+            .unwrap()
+            .get(&key)
+            .copied(),
+        Some(1),
         "queued counts"
     );
     // Claiming moves it to `dispatched` — still in-flight.
     db.claim_next_job("2026-06-23T00:00:05Z").await.unwrap();
     assert_eq!(
-        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+        db.count_in_flight_jobs_by_cell(&slugs)
             .await
-            .unwrap(),
-        1,
+            .unwrap()
+            .get(&key)
+            .copied(),
+        Some(1),
         "dispatched still counts"
+    );
+}
+
+/// A provider-routed harness (OpenCode / Kilo Code) launches — and so stores on
+/// both the job and the produced run — its model id with the `openrouter/` prefix
+/// the plan's canonical `combo.model` omits. Coverage must count those against the
+/// *launched* id, or a provider-routed cell reads zero forever (the in-flight badge
+/// never shows and "Trigger" re-launches indefinitely). This pins the invariant the
+/// `coverage` handler relies on by using [`launch_model_id`] the same way it does.
+#[tokio::test]
+async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
+    use test_cabinet_core::model_id::launch_model_id;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    // The canonical model the reviewer pins in their plan, and the prefixed id an
+    // OpenCode job/run is actually launched with and stored under.
+    let canonical = "anthropic/claude-opus-4.8";
+    let launched = launch_model_id(canonical, HarnessSlug::Opencode, None);
+    assert_eq!(launched, "openrouter/anthropic/claude-opus-4.8");
+
+    // A completed OpenCode run and a queued OpenCode job, both stored prefixed.
+    db.push(
+        &run_with_model(
+            "r1",
+            &launched,
+            HarnessSlug::Opencode,
+            TokenCounts::default(),
+        ),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.enqueue_job(NewJob {
+        harness_slug: "opencode".to_string(),
+        model_id: launched.clone(),
+        ..new_job("j1", "2026-06-23T00:00:00Z")
+    })
+    .await
+    .unwrap();
+
+    let slugs = vec!["pong".to_string()];
+    let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
+    let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
+    let cell = |model: &str| {
+        (
+            "pong".to_string(),
+            "v1.0.0".to_string(),
+            "base".to_string(),
+            "opencode".to_string(),
+            model.to_string(),
+        )
+    };
+
+    // The plan's bare canonical id — the pre-fix behavior — matches neither the
+    // completed run nor the queued job, because the stored ids carry the prefix.
+    assert_eq!(
+        completed.get(&cell(canonical)),
+        None,
+        "the bare canonical id does not match the prefixed stored run",
+    );
+    assert_eq!(
+        in_flight.get(&cell(canonical)),
+        None,
+        "the bare canonical id does not match the prefixed queued job",
+    );
+
+    // Matching against the launched id — what `coverage` now does — counts both.
+    assert_eq!(
+        completed.get(&cell(&launched)).copied(),
+        Some(1),
+        "the launched id counts the completed run",
+    );
+    assert_eq!(
+        in_flight.get(&cell(&launched)).copied(),
+        Some(1),
+        "the launched id counts the in-flight job",
     );
 }
 

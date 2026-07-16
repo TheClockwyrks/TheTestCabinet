@@ -74,10 +74,12 @@ export function useCatalog(preselect?: CatalogPreselect): CatalogSelection {
         if (chosen) {
           setSlugState(chosen.slug);
           const wantVersion = wanted.current.version;
+          // `versions` is oldest-first, so lead with the latest (last element)
+          // unless a specific version was requested and is available.
           const nextVersion =
             (wantVersion && chosen.versions.includes(wantVersion)
               ? wantVersion
-              : chosen.versions[0]) ?? "";
+              : chosen.versions.at(-1)) ?? "";
           setVersionState(nextVersion);
         }
       })
@@ -122,7 +124,11 @@ export function useCatalog(preselect?: CatalogPreselect): CatalogSelection {
   const setSlug = (next: string) => {
     setSlugState(next);
     const found = cases.find((c) => c.slug === next);
-    setVersionState(found?.versions[0] ?? "");
+    // `versions` is oldest-first, so the latest is the last element. Default a
+    // case switch to that case's latest version rather than its oldest, which
+    // would otherwise leave the field unchanged whenever the new case's oldest
+    // matches the version already selected.
+    setVersionState(found?.versions.at(-1) ?? "");
   };
 
   return {

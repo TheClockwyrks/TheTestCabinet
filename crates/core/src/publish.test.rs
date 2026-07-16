@@ -94,9 +94,22 @@ fn sanitize_label_collapses_and_trims_non_alphanumerics() {
     );
 }
 
+/// A publish configuration matching the production publish targets, for the tests
+/// that assert repository addresses and drive the release orchestration.
+/// [`PublishConfig`] has no `Default` and no compiled-in fallback: every
+/// environment sets its org and Pages project explicitly (see
+/// [`PublishConfig::from_env`]), so the tests spell the targets out here.
+fn sample_config() -> PublishConfig {
+    PublishConfig {
+        github_org: "TheClockwyrks".to_string(),
+        repo_prefix: "tcab-".to_string(),
+        pages_project: "test-cabinet-runs".to_string(),
+    }
+}
+
 #[test]
 fn config_derives_repo_addresses() {
-    let config = PublishConfig::default();
+    let config = sample_config();
     let record = sample_record();
 
     assert_eq!(
@@ -118,36 +131,37 @@ fn config_derives_repo_addresses() {
 static ENV_GUARD: Mutex<()> = Mutex::new(());
 
 #[test]
-fn from_env_honors_overrides_and_falls_back_to_defaults() {
+fn from_env_requires_org_and_pages_project() {
     let _guard = ENV_GUARD
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
 
-    // Unset (or empty) variables fall back to the compiled-in defaults.
+    // With neither variable set there is no compiled-in fallback: resolution fails
+    // loudly rather than publishing into a default org and project.
     unsafe {
         std::env::remove_var("TCAB_GITHUB_ORG");
         std::env::remove_var("TCAB_PAGES_PROJECT");
     }
-    let defaulted = PublishConfig::from_env();
-    assert_eq!(defaulted, PublishConfig::default());
+    assert!(matches!(PublishConfig::from_env(), Err(Error::Publish(_))));
 
-    // Set variables override the org and Pages project; the prefix is fixed.
+    // Both set: the org and Pages project come from the environment; the prefix is
+    // the fixed compiled-in constant.
     unsafe {
         std::env::set_var("TCAB_GITHUB_ORG", "Acme");
         std::env::set_var("TCAB_PAGES_PROJECT", "acme-runs");
     }
-    let overridden = PublishConfig::from_env();
-    assert_eq!(overridden.github_org, "Acme");
-    assert_eq!(overridden.pages_project, "acme-runs");
-    assert_eq!(overridden.repo_prefix, PublishConfig::default().repo_prefix);
+    let resolved = PublishConfig::from_env().expect("both variables set");
+    assert_eq!(resolved.github_org, "Acme");
+    assert_eq!(resolved.pages_project, "acme-runs");
+    assert_eq!(resolved.repo_prefix, "tcab-");
 
-    // An empty value is treated as unset and falls back to the default.
+    // A blank value is treated as unset, so a half-configured environment still
+    // fails rather than publishing to a surprising target.
     unsafe {
         std::env::set_var("TCAB_GITHUB_ORG", "");
         std::env::remove_var("TCAB_PAGES_PROJECT");
     }
-    let blank = PublishConfig::from_env();
-    assert_eq!(blank, PublishConfig::default());
+    assert!(matches!(PublishConfig::from_env(), Err(Error::Publish(_))));
 
     // Restore a clean environment for any test ordering.
     unsafe {
@@ -337,8 +351,8 @@ fn publisher_for(
     std::fs::create_dir_all(&build_dir).expect("build dir");
     // Zero out the propagation-lag delays so the release tests never actually
     // sleep; the retry *count* is preserved so the retry path stays exercised.
-    let publisher = BackendPublisher::new(PublishConfig::default(), runner, MockBackend)
-        .with_push_retry(PushRetry {
+    let publisher =
+        BackendPublisher::new(sample_config(), runner, MockBackend).with_push_retry(PushRetry {
             attempts: 5,
             initial_delay: Duration::ZERO,
             backoff: Duration::ZERO,
@@ -507,6 +521,70 @@ async fn release_code_of_an_asset_generation_run_creates_no_repo() {
             .iter()
             .any(|c| c.starts_with("gh ") || c.starts_with("git ")),
         "asset-generation release must not touch git/gh: {calls:?}"
+    );
+}
+
+#[tokio::test]
+async fn release_code_of_a_harness_error_run_creates_no_repo() {
+    // A harness-error run is recorded only as a per-model statistic — it produced no
+    // evaluable output worth releasing — so releasing one must NOT create a GitHub
+    // repo (or touch git at all), even though its (code-writing) test type otherwise
+    // would. The run carries no source link.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let mut record = sample_record();
+    record.status.state = RunState::HarnessError;
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: None,
+    };
+
+    let source_repo = publisher
+        .release_code(&request)
+        .await
+        .expect("release code");
+
+    assert_eq!(source_repo, None);
+    let calls = publisher.runner().calls();
+    assert!(
+        !calls
+            .iter()
+            .any(|c| c.starts_with("gh ") || c.starts_with("git ")),
+        "harness-error release must not touch git/gh: {calls:?}"
+    );
+}
+
+#[tokio::test]
+async fn release_playable_build_of_a_harness_error_run_deploys_nothing() {
+    // Even if a partial tree happened to build, a harness-error run deploys no
+    // playable build — it is a per-model statistic only.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    let artifacts = ArtifactCollection {
+        repo_path: impl_dir,
+    };
+    let mut record = sample_record();
+    record.status.state = RunState::HarnessError;
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: Some(&build_dir),
+    };
+
+    let playable_build = publisher
+        .release_playable_build(&request)
+        .await
+        .expect("release build");
+
+    assert_eq!(playable_build, None);
+    let calls = publisher.runner().calls();
+    assert!(
+        !calls.iter().any(|c| c.contains("wrangler")),
+        "harness-error release must not deploy a build: {calls:?}"
     );
 }
 

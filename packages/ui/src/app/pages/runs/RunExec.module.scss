@@ -245,7 +245,8 @@
 }
 
 .primary,
-.secondary {
+.secondary,
+.danger {
   font-family: var(--ttc-font);
   font-size: t.$font-md;
   padding: t.$space-sm t.$space-lg;
@@ -272,6 +273,17 @@
 
   &:hover:not(:disabled) {
     border-color: t.$color-accent;
+  }
+}
+
+// A destructive action (e.g. resetting the review plan): reads like the
+// secondary button until hover, where it takes on the negative cue.
+.danger {
+  background: s.$panel-bg;
+  color: t.$color-negative;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-negative;
   }
 }
 
@@ -308,6 +320,22 @@
   letter-spacing: 0.08em;
   color: t.$color-text-muted;
   margin: t.$space-lg 0 t.$space-sm;
+}
+
+// A section label leading a panel is spaced by the panel's own padding, so drop
+// its top margin there — otherwise the gap above the first heading reads as double
+// the panel's other edges. (The checklist / item-rail zero this explicitly for
+// their own labels; this covers the bare-panel case, e.g. Settings → Connections.)
+.sectionLabel:first-child {
+  margin-top: 0;
+}
+
+// Likewise a notice or muted line that ends a panel: the panel padding provides
+// the bottom gutter, so drop the element's own trailing margin so the panel's top
+// and bottom insets stay balanced.
+.notice:last-child,
+.muted:last-child {
+  margin-bottom: 0;
 }
 
 // The live event feed itself now lives in the shared `EventFeed` component
@@ -543,6 +571,30 @@
   }
 }
 
+// A graded (game-jam) option: an emoji tier button. Unselected tiers read back
+// (dimmed + desaturated) so the chosen grade stands out; the selected one lights
+// up with an accent ring and tint rather than the positive/negative fill the
+// Pass/Fail options use (a grade is a tier, not a yes/no).
+.gradeOption {
+  font-size: t.$font-lg;
+  line-height: 1;
+  padding: t.$space-xs t.$space-sm;
+  opacity: 0.65;
+  filter: grayscale(0.5);
+
+  &:hover {
+    opacity: 1;
+    filter: none;
+  }
+
+  &.verdictOptionActive {
+    opacity: 1;
+    filter: none;
+    border-color: t.$color-accent;
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+  }
+}
+
 .connList {
   list-style: none;
   margin: 0 0 t.$space-md;
@@ -588,11 +640,20 @@
   color: t.$color-text-muted;
 }
 
-.addForm {
+// The single-backend connect form: the URL field flexes to fill the row with the
+// Connect button pinned to its end, aligned to the input's bottom edge, wrapping
+// the button beneath the field only when the row is truly cramped.
+.connectForm {
   display: flex;
-  flex-direction: column;
-  gap: t.$space-sm;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
   margin-bottom: t.$space-lg;
+
+  .field {
+    flex: 1 1 16rem;
+    min-width: 0;
+  }
 }
 
 // The topbar gear: a link to the Settings section (consoles only).

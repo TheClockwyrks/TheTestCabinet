@@ -69,16 +69,23 @@ Two properties keep it honest:
   the variant's `reference_implementation` directory with the case `[build]`
   commands, runs the **same secret-redaction scrubber** the run
   [publisher](#secret-redaction) uses over the output, and deploys it to
-  Cloudflare Pages — its own `test-cabinet-references` project, on a branch named
-  `<slug>-<version-with-dots-as-dashes>-<variant>` — exactly the way a published
-  run's build is deployed to Pages. Cloudflare truncates long subdomains, so the
-  served URL is **read back** from `wrangler`'s output rather than constructed,
-  then recorded on the backend.
+  Cloudflare Pages — its own references project (a required `--env` selects prod's
+  `test-cabinet-references` or staging's `test-cabinet-references-staging`), on a
+  branch named `<slug>-<version-with-dots-as-dashes>-<variant>` — exactly the way a
+  published run's build is deployed to Pages. Cloudflare truncates long subdomains,
+  so the served URL is **read back** from `wrangler`'s output rather than
+  constructed, then written into a committed lockfile.
 
-The backend keeps these URLs in a dedicated `case_reference_build` table keyed by
-`(slug, version, variant)`, written through an authenticated endpoint
-(`PUT /test-cases/{slug}/versions/{version}/reference-builds/{variant}`, guarded by
-the same bearer auth as the ingest/publish write paths). A version's
+Recording the URL follows a **pull** model, not a push: the remote backends are
+private (VPN-only), so nothing off-cluster can `PUT` to them. Instead
+`publish-reference` writes each URL into a committed lockfile,
+`test-cases/reference-builds.lock.json`, keyed **by environment first** (`prod` and
+`staging` deploy to different Pages projects, so a variant has a URL per
+environment). The backend **ingests** that lockfile from its own git checkout on the
+next re-ingest (`scripts/reingest-cluster.sh`, the same path that refreshes catalog
+edits), reads the entries for its own `TCAB_ENV`, and **reconciles** the dedicated
+`case_reference_build` table (keyed by `(slug, version, variant)`) to match —
+upserting each URL and pruning any the lockfile no longer lists. A version's
 `GET /test-cases/{slug}/versions/{version}` response carries each variant's
 `referenceBuild` URL, and the public snapshot serializes it as each variant's
 `referenceBuild` field, so the console can surface it. On the case page it appears
@@ -152,6 +159,14 @@ requires depends on the run's [terminal state](/components/core/run-records/#sta
   or never converged). It has no review checklist to complete, so publishing it
   needs **no review**; it is published from a separate "publish failures"
   affordance rather than the review flow.
+- A **`harness_error`** run (the harness exited non-zero — the model drove it to
+  exit early) publishes through the **same** publish-failures affordance and
+  likewise needs **no review**, but it is a *statistic-only* publish: it releases
+  **no** source repository and no playable build (it produced nothing evaluable
+  worth releasing), and is recorded as a per-model harness-error rate shown on the
+  model page. Because a subscription auth-token refresh also surfaces as a harness
+  non-zero exit, publishing is never automatic — an operator records each real
+  harness error deliberately and leaves the auth-refresh ones unpublished.
 - An **`infrastructure`** failure is the Test Cabinet's own fault and is **never
   publishable** (`422`), no matter what reviews it carries.
 
@@ -182,10 +197,16 @@ retries with backoff), so a transient post-create `403` self-heals instead of
 failing the publish.
 
 The public snapshot, and therefore the gallery, contains **only published runs**.
-A published failure shows its generated source but has no playable build (it
-produced none); its catastrophic/timeout outcome is reported as a per-model
+A published catastrophic/timeout failure shows its generated source but has no
+playable build (it produced none); its outcome is reported as a per-model
 statistic, separate from the score that ranks the runs that were at least
-workable.
+workable. A published `harness_error` goes further and shows **no** source or
+build at all — it is purely a per-model statistic. The model page's **reliability
+ring** turns these into a breakdown of the model's published runs — completed vs
+the two publishable failure tiers, harness errors and timeouts — so how often a
+model finishes, drives the harness to a non-zero exit, or runs out of time all
+read at a glance. (A timeout keeps its source and build, since the model did
+useful work before the cap; a harness error contributes only its count.)
 
 The backend performs publish (and the snapshot regeneration it triggers) as the
 **synchronized** half of the lifecycle: because the backend is the single entity

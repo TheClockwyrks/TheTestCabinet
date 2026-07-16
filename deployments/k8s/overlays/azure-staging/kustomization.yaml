@@ -1,18 +1,23 @@
-# Staging on managed PostgreSQL.
+# Staging on managed PostgreSQL — a faithful mirror of overlays/azure-prod.
 #
-# overlays/staging with the components/postgres conversion layered on: identical to
-# overlays/azure-prod except the namespace is tcab-staging, TCAB_ENV is retagged to
-# `staging`, and the dispatcher's sandbox namespace is retargeted — so staging
-# rehearses prod on the SAME Postgres shape. Apply INSTEAD of overlays/staging.
+# Same components and patches as azure-prod, so staging rehearses prod exactly;
+# only the namespace, TCAB_ENV, the resources it points at (staging Key Vault,
+# staging Postgres, *.staging.tcab.testcabinet.ai hostnames, the staging GitHub
+# org + Cloudflare Pages project), and the image tags differ. Apply INSTEAD of
+# overlays/staging.
 #
-# Kustomize applies `components` before this overlay's own `patches`, so patch-env
-# below (which targets backend/auth as `kind: Deployment`) reaches the Deployments
-# the component swapped in.
+# Kustomize applies `components` before this overlay's own `patches`, and the
+# `namespace:` directive retargets every resource (and every patch target, which
+# is matched BEFORE the namespace transformer runs) to tcab-staging.
 #
 # Apply with:  kubectl apply -k deployments/k8s/overlays/azure-staging
-# (after creating the real Secrets in the tcab-staging namespace — see
-# components/postgres/secrets.postgres.example.yaml, against a SEPARATE database from
-# prod.)
+# Prerequisites (out of band, mirroring azure-prod / the runbook):
+#   - the staging Key Vault holds every secret the keyvault-csi SecretProviderClass
+#     lists (see .env.staging + the upload commands), and the tcab-keyvault-sync
+#     managed identity (clientID in patch-keyvault.yaml) is federated + granted get;
+#   - ingress-nginx (internal Azure LB) + cert-manager are Helm-installed on the
+#     staging cluster, and the *.staging.tcab.testcabinet.ai names resolve to the
+#     internal LB over the VPN via Azure Private DNS.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -23,44 +28,139 @@ resources:
 
 components:
   - ../../components/postgres
-  # The in-cluster Grafana LGTM stack. Listed AFTER postgres so it layers onto the
-  # backend/auth Deployments postgres swaps in; patch-env.yaml below sets each
-  # workload's OTEL_EXPORTER_OTLP_ENDPOINT to the `tcab-lgtm` Service it adds.
+  # In-cluster Grafana LGTM stack. Listed AFTER postgres so it layers onto the
+  # backend/auth Deployments postgres swaps in; patch-env sets each workload's
+  # OTEL_EXPORTER_OTLP_ENDPOINT to the tcab-lgtm Service it adds.
   - ../../components/observability
+  # Populate the Kubernetes Secrets from the STAGING Key Vault via the Secrets Store
+  # CSI driver + Workload Identity. patch-keyvault.yaml repoints the vault name +
+  # managed-identity clientID from prod's to staging's.
+  - ../../components/keyvault-csi
+  # Serve the console + expose the four services over the INTERNAL (VPN-only) ingress
+  # at *.staging.tcab.testcabinet.ai. The component defaults to the prod hostnames;
+  # the JSON6902 patches below retarget each Ingress host, and patch-web-config.yaml /
+  # patch-backend-public-urls.yaml repoint the runtime URLs.
+  - ../../components/internal-ingress
+  # Passwordless (Microsoft Entra managed-identity) Postgres auth for backend + auth.
+  # COMMENTED until the staging CUTOVER — turning it on requires an image that carries
+  # the db-auth code (the pin above must be rebuilt past it), the in-DB Entra roles,
+  # and the passwordless DB-URL Secret. See components/postgres-azure-ad and the
+  # deployment runbook. To convert staging, uncomment this AND patch-db-workload-identity
+  # below, then follow the cutover order.
+  # - ../../components/postgres-azure-ad
 
-# Retag TCAB_ENV to staging (and the dispatcher's sandbox namespace) and point the
-# driver-image env at the staging tag — the same retargeting overlays/staging does,
-# but patch-env targets backend/auth as Deployment (the component's shape) rather
-# than StatefulSet.
 patches:
+  # Retag TCAB_ENV to staging + point every workload at the in-cluster collector, and
+  # retarget the dispatcher's sandbox/Job namespace to tcab-staging.
   - path: patch-env.yaml
+  # Env VALUES the images: transformer can't reach — pin to the staging image tags.
   - path: patch-dispatcher-driver-image.yaml
-  # Enable in-cluster publishing: point the dispatcher at the tcab-publisher image
-  # (an env VALUE the images: transformer can't reach) and its credential Secret.
+  # In-cluster publishing: publisher image + credential Secret, plus the STAGING
+  # GitHub org + Cloudflare Pages project the dispatcher forwards into publish Jobs.
   - path: patch-dispatcher-publisher.yaml
+  # Subscription auth (Codex + Claude Code), identical to prod.
+  - path: patch-dispatcher-subscription.yaml
+  # Repoint the backend's advertised data-plane URLs to the staging https hostnames.
+  - path: patch-backend-public-urls.yaml
+  # Set the in-cluster console's runtime backend/auth URLs to the staging https names.
+  - path: patch-web-config.yaml
+  # Lock down Grafana (identical to prod) before the ingress exposes it.
+  - path: patch-grafana-auth.yaml
+  # Catalog ingest sidecar in the backend pod (tracks the `staging` branch tip so pushed
+  # catalog/reference changes refresh on demand) + suspend the superseded base CronJob.
+  - path: patch-backend-ingest.yaml
+  - path: patch-suspend-ingest-cronjob.yaml
+  # Repoint the keyvault-csi SecretProviderClass + sync SA at the staging vault +
+  # staging managed identity (prod's are baked into the shared component).
+  - path: patch-keyvault.yaml
+  # Repoint the postgres-azure-ad workload-identity SAs at the staging DB identities.
+  # COMMENTED — uncomment together with the ../../components/postgres-azure-ad line
+  # above at the staging cutover (a patch for an absent SA would otherwise error).
+  # - path: patch-db-workload-identity.yaml
+  # Retarget each internal-ingress host from *.tcab to *.staging.tcab.testcabinet.ai.
+  # JSON6902 (not strategic merge) so the single-element rules/tls lists are replaced
+  # surgically rather than merged.
+  - target: { kind: Ingress, name: tcab-console }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: console.staging.tcab.testcabinet.ai
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: console.staging.tcab.testcabinet.ai
+  - target: { kind: Ingress, name: tcab-api }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.staging.tcab.testcabinet.ai
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: api.staging.tcab.testcabinet.ai
+  - target: { kind: Ingress, name: tcab-auth }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: auth.staging.tcab.testcabinet.ai
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: auth.staging.tcab.testcabinet.ai
+  - target: { kind: Ingress, name: tcab-artifacts }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: artifacts.staging.tcab.testcabinet.ai
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: artifacts.staging.tcab.testcabinet.ai
+  - target: { kind: Ingress, name: tcab-arena }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: arena.staging.tcab.testcabinet.ai
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: arena.staging.tcab.testcabinet.ai
+  - target: { kind: Ingress, name: tcab-grafana }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: grafana.staging.tcab.testcabinet.ai
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: grafana.staging.tcab.testcabinet.ai
 
+# Pin ALL service images (the CODE) to ONE git-sha so they version together. Currently
+# f5231dd0ab677869dc1575d033c70a48e2980953 (the v0.5.1 build — the `staging` branch tip
+# at which `build-service-images` published; the prod pin is master's v0.5.1 build
+# c68566c5). Bumped from the v0.5.0 pin a74d1414. This pins CODE only — the catalog is
+# ingested from the `staging` branch tip separately (patch-backend-ingest.yaml). The
+# run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
+# patch-dispatcher-driver-image.yaml (a different cadence — v0.5.1 did NOT rebuild them,
+# so it stays at a74d1414; do NOT bump it here).
 images:
   - name: REPLACE_REGISTRY/tcab-backend
-    newName: ghcr.io/REPLACE_OWNER/tcab-backend
-    newTag: latest
+    newName: ghcr.io/theclockwyrks/tcab-backend
+    newTag: f5231dd0ab677869dc1575d033c70a48e2980953
   - name: REPLACE_REGISTRY/tcab-auth-service
-    newName: ghcr.io/REPLACE_OWNER/tcab-auth-service
-    newTag: latest
+    newName: ghcr.io/theclockwyrks/tcab-auth-service
+    newTag: f5231dd0ab677869dc1575d033c70a48e2980953
   - name: REPLACE_REGISTRY/tcab-dispatcher
-    newName: ghcr.io/REPLACE_OWNER/tcab-dispatcher
-    newTag: latest
+    newName: ghcr.io/theclockwyrks/tcab-dispatcher
+    newTag: f5231dd0ab677869dc1575d033c70a48e2980953
   - name: REPLACE_REGISTRY/tcab-driver
-    newName: ghcr.io/REPLACE_OWNER/tcab-driver
-    newTag: latest
+    newName: ghcr.io/theclockwyrks/tcab-driver
+    newTag: f5231dd0ab677869dc1575d033c70a48e2980953
   - name: REPLACE_REGISTRY/tcab-artifacts
-    newName: ghcr.io/REPLACE_OWNER/tcab-artifacts
-    newTag: latest
+    newName: ghcr.io/theclockwyrks/tcab-artifacts
+    newTag: f5231dd0ab677869dc1575d033c70a48e2980953
   - name: REPLACE_REGISTRY/tcab-arena
-    newName: ghcr.io/REPLACE_OWNER/tcab-arena
-    newTag: latest
-  # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
-  # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
-  # rewrites nothing today — it is kept so the registry/tag set stays complete.
+    newName: ghcr.io/theclockwyrks/tcab-arena
+    newTag: f5231dd0ab677869dc1575d033c70a48e2980953
+  - name: REPLACE_REGISTRY/tcab-web
+    newName: ghcr.io/theclockwyrks/tcab-web
+    newTag: f5231dd0ab677869dc1575d033c70a48e2980953
+  # Referenced as an env VALUE (TCAB_PUBLISHER_IMAGE), not a container image: field,
+  # so this rewrites nothing today; kept so the registry/tag set stays complete.
   - name: REPLACE_REGISTRY/tcab-publisher
-    newName: ghcr.io/REPLACE_OWNER/tcab-publisher
-    newTag: latest
+    newName: ghcr.io/theclockwyrks/tcab-publisher
+    newTag: f5231dd0ab677869dc1575d033c70a48e2980953

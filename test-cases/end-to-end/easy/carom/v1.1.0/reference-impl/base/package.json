@@ -7,8 +7,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --port 4173",
-    "capture-proof": "node scripts/capture-proof.mjs"
+    "preview": "vite preview --port 4173"
   },
   "devDependencies": {
     "playwright": "1.61.0",

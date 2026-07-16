@@ -184,6 +184,7 @@ export default defineConfig({
               items: [
                 "quickstarts/devops/add-or-update-a-model",
                 "quickstarts/devops/publish-a-run",
+                "quickstarts/devops/publish-a-reference",
                 "quickstarts/devops/roll-prod-service-images",
               ],
             },
@@ -240,6 +241,7 @@ export default defineConfig({
               items: [
                 "guides/devops/adding-or-updating-a-model",
                 "guides/devops/publishing-a-test-run-result",
+                "guides/devops/publishing-a-reference-implementation",
                 "guides/devops/rolling-prod-service-images",
               ],
             },
@@ -249,6 +251,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.5.1",
             "changelogs/v0.5.0",
             "changelogs/v0.4.1",
             "changelogs/v0.4.0",
@@ -514,6 +517,15 @@ export default defineConfig({
                 "testing/full-stack/overview",
                 "testing/full-stack/manifests",
                 "testing/full-stack/evaluation",
+              ],
+            },
+            {
+              label: "Game Jam",
+              collapsed: true,
+              items: [
+                "testing/game-jam/overview",
+                "testing/game-jam/manifests",
+                "testing/game-jam/evaluation",
               ],
             },
             {

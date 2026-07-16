@@ -1,0 +1,69 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
+@use "../../styles/surfaces" as s;
+@use "../../styles/breakpoints" as bp;
+
+// The runs section's tab bar, mirroring the Settings / About / detail-page tab
+// strips: a row of underlined pills riding a hairline baseline, the active one
+// glowing in the accent. Sits between the section header and the page body.
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+  border-bottom: t.$border-hairline solid t.$color-border;
+
+  // On narrow screens the tabs read as a single swipeable strip rather than
+  // wrapping, matching the other tab strips. The row (and its baseline border)
+  // scrolls horizontally; the negative inline margins bleed it to the content
+  // edges so the first and last tabs aren't clipped by the page gutter, and the
+  // padding restores the gutter inside the scroller.
+  @include bp.below(t.$bp-md) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * t.$space-md);
+    padding-inline: t.$space-md;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    // Fade the trailing edge so the swipeable strip reads as scrollable.
+    @include s.swipe-fade;
+  }
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+
+  // Keep each label on one line in the scrollable strip, tightening the
+  // padding/type to match the other tab strips.
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    white-space: nowrap;
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  border-bottom-color: t.$color-accent;
+}

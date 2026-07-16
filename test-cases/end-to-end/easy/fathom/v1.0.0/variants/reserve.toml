@@ -1,6 +1,6 @@
 # Trench plus Reserve, where ink is limited charges refilled by ink-glands. Its
 # review item rolls up to the common `predators` domain (ink is the forager's
-# defence against the hunters), rather than adding a new axis of judgement.
+# defense against the hunters), rather than adding a new axis of judgement.
 slug = "reserve"
 name = "Reserve"
 description = "Trench plus Reserve, where ink is limited charges refilled by ink-glands."

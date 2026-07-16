@@ -1,9 +1,16 @@
 import { useMemo, type ReactNode } from "react";
 import type { TestType } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
-import { type Rating, RATINGS, worstRating } from "../data/ratings";
+import {
+  type GradeStatus,
+  isGrade,
+  overallGradeOf,
+  type Rating,
+  RATINGS,
+  worstRating,
+} from "../data/ratings";
 import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
 import { useTestCaseName } from "../data/useTestCaseName";
@@ -31,6 +38,13 @@ import styles from "./RunLog.module.scss";
  */
 export type RunScope = "global" | "variant" | "model";
 
+// Narrow a summary card's overall-grade field (a `VerdictStatus`, which also
+// covers the binary pass/fail) to one of the five graded tiers, or null. A non-jam
+// run carries none.
+function asGrade(status: string | null | undefined): GradeStatus | null {
+  return status && isGrade(status) ? status : null;
+}
+
 /**
  * A finished run resolved for the table: the summary card plus the two values a
  * cell (and a sort) needs that don't live on the card — the case's display name
@@ -43,6 +57,9 @@ export interface EnrichedRun {
   local: boolean;
   displayName: string;
   rating: Rating | null;
+  /** A game-jam run's whole-game overall grade, shown as its badge in place of a
+   * domain rating (a jam has none). Null for every non-jam run. */
+  grade: GradeStatus | null;
 }
 
 /** Cross-cell context a column's renderer needs beyond its own row. */
@@ -370,7 +387,11 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       }
       return (
         <span className={styles.rating} data-label="Rating">
-          {row.rating ? (
+          {/* A game jam carries a whole-game overall grade in place of a domain
+              rating, so its badge is the grade; every other run shows its rating. */}
+          {row.grade ? (
+            <GradeBadge status={row.grade} />
+          ) : row.rating ? (
             <RatingBadge rating={row.rating} />
           ) : (
             <span className={styles.noRating}>&mdash;</span>
@@ -440,17 +461,23 @@ export function useEnrichedRuns(
   const findReview = useFindReview();
   return useMemo(
     () =>
-      runs.map((summary) => ({
-        summary,
-        local: localIds.has(summary.id),
-        displayName: testCaseName(summary.subject.testCaseSlug),
-        rating:
-          worstRating(
-            findReview(summary.id, localWriteups)?.ratings.map(
-              (r) => r.rating,
-            ) ?? [],
-          ) ?? summary.rating,
-      })),
+      runs.map((summary) => {
+        const review = findReview(summary.id, localWriteups);
+        return {
+          summary,
+          local: localIds.has(summary.id),
+          displayName: testCaseName(summary.subject.testCaseSlug),
+          rating:
+            worstRating(review?.ratings.map((r) => r.rating) ?? []) ??
+            summary.rating,
+          // A jam's overall grade: a local, in-progress review wins (it must show
+          // before it is published, mirroring the rating); absent one, the
+          // summary card's aggregate `score.overallGrade` stands in.
+          grade:
+            (review && overallGradeOf(review.checklist)) ??
+            asGrade(summary.score?.overallGrade),
+        };
+      }),
     [runs, localIds, localWriteups, testCaseName, findReview],
   );
 }

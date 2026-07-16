@@ -17,8 +17,15 @@
 # It deliberately does NOT re-ingest on a schedule: a periodic force re-ingest
 # rewrites every version and briefly leaves each one manifest-less, 404-ing any run
 # that resolves its version mid-cycle. Catalog changes are published on demand with
-# `scripts/reingest-prod.sh` (a force re-ingest, kept safe by the backend's atomic
+# `scripts/reingest-cluster.sh --env prod` (a force re-ingest, kept safe by the backend's atomic
 # version swap). The base CronJob is suspended in patch-suspend-ingest-cronjob.yaml.
+#
+# BRANCH: ingest the `master` branch TIP, so a fresh pod and `scripts/reingest-cluster.sh`
+# pick up pushed test-case edits and reference-build lockfile updates on demand — that
+# on-demand catalog refresh (no roll) is the whole point of the ingest. The service CODE
+# version is pinned separately by this overlay's image `newTag`; reingest right after a
+# roll keeps the catalog and code aligned (master only advances on merges). Keep BRANCH
+# == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
 #
 # Targets kind: Deployment because the postgres component converts the backend
 # StatefulSet to a Deployment; the strategic-merge patch appends the `ingest`
@@ -40,23 +47,25 @@ spec:
           args:
             - |
               set -u
+              # Keep == TCAB_INGEST_BRANCH in scripts/lib/env.sh (the branch reingest fetches).
+              BRANCH=master
               until apk add --no-cache git curl; do
                 echo "ingest: apk add failed, retrying in 5s"; sleep 5
               done
               REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
               CHECKOUT=/state/checkout
-              # One-shot: clone the catalog the backend ingests from, then trigger a
-              # single ingest. No periodic loop — see the header. `git fetch` the live
-              # checkout if one already survives a lone sidecar restart, else clone.
+              # One-shot: check out the catalog branch tip, then trigger a single ingest.
+              # No periodic loop — see the header. Refresh the live checkout if one
+              # survives a lone sidecar restart, else clone the branch fresh.
               if [ -d "$CHECKOUT/.git" ]; then
-                echo "ingest: refreshing checkout"
-                git -C "$CHECKOUT" fetch --depth 1 origin HEAD \
+                echo "ingest: refreshing checkout ($BRANCH)"
+                git -C "$CHECKOUT" fetch --depth 1 origin "$BRANCH" \
                   && git -C "$CHECKOUT" reset --hard FETCH_HEAD \
                   || echo "ingest: fetch failed"
               else
-                echo "ingest: cloning catalog into $CHECKOUT"
+                echo "ingest: cloning catalog branch $BRANCH into $CHECKOUT"
                 rm -rf "$CHECKOUT" \
-                  && git clone --depth 1 "$REPO" "$CHECKOUT" \
+                  && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
                   || echo "ingest: clone failed"
               fi
               echo "ingest: waiting for backend healthz"
@@ -70,7 +79,7 @@ spec:
                      -H 'content-type: application/json' -d '{}' >/dev/null; do
                 n=$((n + 1))
                 if [ "$n" -ge 10 ]; then
-                  echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-prod.sh)"
+                  echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-cluster.sh --env prod)"
                   break
                 fi
                 echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10

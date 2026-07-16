@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -21,27 +21,30 @@ use crate::publisher::Publisher;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
+mod coverage;
 mod harness_config;
 mod ingest_api;
 mod jobs;
 mod models;
 mod publish_jobs;
-mod review_plan;
 mod runs;
 mod test_cases;
 mod tournaments;
 
 // Re-export the HTTP response contract types so the `contract-codegen` generator
 // can name them (the handler modules themselves stay private).
+pub use coverage::{
+    CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind, CoverageMatrix,
+    CoveragePlan, CoveragePlanInput, CoveragePlanSummary, ReviewPlanCase, ReviewPlanCombo,
+};
 pub use jobs::{
-    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
-    StatusUpdate,
+    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
+    LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
 };
 pub use models::{
-    LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput, ModelOut, ModelPricesOut,
-    ModelSeedOut, PriceObservationOut, compose_catalog,
+    AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
+    ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
-pub use review_plan::{CoverageCell, CoverageMatrix, ReviewPlan, ReviewPlanCase, ReviewPlanCombo};
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
 /// Shared application state handed to every handler.
@@ -122,15 +125,11 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}",
             get(test_cases::resolve_version),
         )
-        // Record a variant's authored reference-implementation URL (auth-gated,
-        // same bearer guard as the other write paths). The `tcab publish-reference`
-        // CLI builds and deploys the variant's static site out-of-band, then PUTs
-        // the served URL here; the version response and public snapshot fold it onto
-        // the variant. Reads stay open via the resolve/snapshot paths.
-        .route(
-            "/test-cases/{slug}/versions/{version}/reference-builds/{variant}",
-            axum::routing::put(test_cases::put_reference_build),
-        )
+        // A variant's authored reference-implementation URL is recorded through the
+        // ingest pull path (the committed reference-builds lockfile the backend reads
+        // from its checkout — see `ingest`), not a write endpoint; there is no
+        // reference-build route. The version response and public snapshot fold the
+        // ingested URL onto the variant via the open resolve/snapshot reads.
         .route(
             "/test-cases/{slug}/versions/{version}/artifacts/{*path}",
             get(test_cases::artifact),
@@ -199,14 +198,16 @@ pub fn router(state: AppState) -> Router {
                 .post(tournaments::put_match_replay)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
-        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated); the
-        // dispatcher claims the oldest (`POST /jobs/next`, service-token); a
-        // per-run driver streams progress and the terminal record back
+        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated) — or a
+        // whole batch in one request (`POST /jobs/batch`, same gate); the dispatcher
+        // claims the oldest (`POST /jobs/next`, service-token); a per-run driver
+        // streams progress and the terminal record back
         // (`POST /jobs/{id}/events|preview|status`, per-job token). The console
         // observes it via the live stream, the status, and the active-run list.
-        // `/jobs/active` and `/jobs/next` are static, so they outrank the
-        // `/jobs/{id}` dynamic route regardless of registration order.
+        // `/jobs/batch`, `/jobs/active`, and `/jobs/next` are static, so they
+        // outrank the `/jobs/{id}` dynamic route regardless of registration order.
         .route("/jobs", post(jobs::launch))
+        .route("/jobs/batch", post(jobs::launch_batch))
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
         .route("/jobs/{id}", get(jobs::status))
@@ -246,14 +247,31 @@ pub fn router(state: AppState) -> Router {
         // The worker-wide run-completion feed (SSE), so the console can alert on
         // any run finishing without holding a per-run subscription open.
         .route("/notifications", get(jobs::notifications))
-        // A reviewer's per-account declarative coverage plan (auth-gated; keyed to
-        // the token's account) and the coverage matrix computed from it. Console-only
-        // reviewer tooling — the public site carries no token and never calls these.
+        // Reviewer coverage tooling (auth-gated; keyed to the token's account):
+        // reusable groups, multiple declarative plans, and the coverage matrix a plan
+        // expands into. Console-only — the public site carries no token and never
+        // calls these.
         .route(
-            "/review-plan",
-            get(review_plan::get_plan).put(review_plan::put_plan),
+            "/coverage-groups",
+            get(coverage::list_groups).post(coverage::create_group),
         )
-        .route("/review-plan/coverage", get(review_plan::coverage))
+        .route(
+            "/coverage-groups/{id}",
+            put(coverage::update_group).delete(coverage::delete_group),
+        )
+        .route(
+            "/coverage-plans",
+            get(coverage::list_plans).post(coverage::create_plan),
+        )
+        .route("/coverage-plans/summary", get(coverage::plans_summary))
+        .route(
+            "/coverage-plans/{id}",
+            put(coverage::update_plan).delete(coverage::delete_plan),
+        )
+        .route(
+            "/coverage-plans/{id}/coverage",
+            get(coverage::plan_coverage),
+        )
         .route("/snapshot/refresh", post(runs::refresh))
         // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
         // is outermost: it creates one server span per request and enters it for

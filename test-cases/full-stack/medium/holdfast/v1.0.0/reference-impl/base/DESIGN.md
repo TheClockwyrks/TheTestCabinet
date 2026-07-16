@@ -55,11 +55,13 @@ front; `sim.ts`, `jobs.ts`, `combat.ts`, `world.ts`, `pathfind.ts`, `render.ts`,
 
 ```ts
 // constants.ts — enums shared everywhere
-export type TerrainKind = "soil" | "grass" | "rock";           // rock is impassable scenery + border
+// rock is impassable scenery + border
+export type TerrainKind = "soil" | "grass" | "rock";
 export type NodeKind = "tree" | "ore";
 export type StructureKind =
   | "wall" | "door" | "floor" | "bed" | "stove" | "farm" | "turret";
-export type WorkType = "gather" | "haul" | "build" | "cook" | "farm" | "fight"; // work-priority columns
+// work-priority columns
+export type WorkType = "gather" | "haul" | "build" | "cook" | "farm" | "fight";
 ```
 
 ```ts
@@ -67,7 +69,8 @@ export type WorkType = "gather" | "haul" | "build" | "cook" | "farm" | "fight"; 
 export interface Tile {
   x: number; y: number;               // tile coords (0..59, 0..43)
   terrain: TerrainKind;
-  node: ResourceNode | null;          // one node may sit on ground; blocks the tile until cleared
+  // one node may sit on ground; blocks the tile until cleared
+  node: ResourceNode | null;
   structure: Structure | null;        // one built structure; blocks per its kind
   designated: null | "chop" | "mine"; // active designation overlay on a node
   // Derived, recomputed by world.ts when the tile changes:
@@ -78,7 +81,8 @@ export interface Tile {
 
 export interface ResourceNode {
   kind: NodeKind;
-  hp: number;                          // work remaining (seconds of work * skill), counts down
+  // work remaining (seconds of work * skill), counts down
+  hp: number;
   maxHp: number;
   claimedBy: number | null;            // settler id currently working it (one worker only)
   workAnim: number;                    // seconds, drives the dust puff cadence
@@ -87,12 +91,14 @@ export interface ResourceNode {
 export interface Structure {
   kind: StructureKind;
   tx: number; ty: number;
-  hp: number; maxHp: number;           // turret/wall integrity (raiders damage turrets in base)
+  // turret/wall integrity (raiders damage turrets in base)
+  hp: number; maxHp: number;
   built: boolean;                      // false while a ghost/blueprint awaiting construction
   progress: number;                    // 0..1 construction progress
   costPaid: boolean;                   // material deducted at placement (see economy)
   // stove / farm / turret working state:
-  active: boolean;                     // stove cooking, turret has a target (drives on/off sprite)
+  // stove cooking, turret has a target (drives on/off sprite)
+  active: boolean;
   cropStage: 0 | 1 | 2;                // farm: 0 empty/sown, 1 growing, 2 ripe
   growth: number;                      // farm: 0..1 toward ripe (advances in daylight)
   cooldown: number;                    // turret: seconds to next shot
@@ -178,11 +184,15 @@ export type ResourceKind = "wood" | "ore" | "crops" | "meals";
 export interface Stock { wood: number; ore: number; crops: number; meals: number; }
 
 // A dropped resource pile on the ground (a gather result awaiting a haul).
-export interface Drop { id: number; tx: number; ty: number; res: ResourceKind; amount: number; }
+export interface Drop {
+  id: number; tx: number; ty: number; res: ResourceKind; amount: number;
+}
 
 // Combat is resolved on the tick; a shot is drawn as a brief tracer + muzzle/impact fx,
 // not a slow homing projectile (see §6). This records the tracer to draw for ~120 ms.
-export interface Tracer { x0: number; y0: number; x1: number; y1: number; life: number; hostile: boolean; }
+export interface Tracer {
+  x0: number; y0: number; x1: number; y1: number; life: number; hostile: boolean;
+}
 
 export type GameState = "title" | "howto" | "playing" | "paused" | "gameover";
 export type Phase = "day" | "dusk" | "night" | "dawn";     // time-of-day phase (§7)
@@ -194,7 +204,10 @@ export type Cue = "gunshot" | "hit" | "build" | "alarm";   // ambient + music ha
 // A milestone / event toast (non-blocking notification, §8).
 export interface Toast { text: string; life: number; }
 
-export interface Clickable { x: number; y: number; w: number; h: number; action: string; payload?: string; disabled?: boolean; }
+export interface Clickable {
+  x: number; y: number; w: number; h: number; action: string;
+  payload?: string; disabled?: boolean;
+}
 ```
 
 ### 2.4 Tool / build state and the mode config
@@ -205,7 +218,8 @@ export type Tool = "none" | "designate" | "cancel" | "build";
 export interface StartConfig {          // mode.ts exports MODE: StartConfig
   crew: number;                         // 3
   stock: Stock;                         // { wood:120, ore:0, crops:0, meals:8 }
-  mapSeed: number;                      // deterministic world gen seed for the reference map
+  // deterministic world gen seed for the reference map
+  mapSeed: number;
 }
 ```
 
@@ -382,19 +396,17 @@ set. Every file:
 | `hud.ts` | The **in-code HUD dashboard** (drawn by `render.ts`): the **top strip** (stock readouts with produced icons, colony state, day/time clock + speed, and the prominent threat/raid warning), the **bottom strip** (settler **roster** cards + **build palette / tool bar**), and the **work-priority grid** panel. Emits its `Clickable[]` regions. | `drawTopHud`, `drawBottomHud`, `drawWorkGrid`, `drawTooltip`. |
 | `screens.ts` | The menu/overlay **state screens**: title + main menu (`NEW COLONY`, `HOW TO PLAY`), how-to-play, the `Esc` pause overlay (Resume/Restart/Quit to menu), and the colony-lost screen (days survived + tally, RESTART/MENU). | `drawTitle`, `drawHowto`, `drawPause`, `drawGameOver`. |
 | `menus.ts` | The menu-item list per state (labels + actions) for keyboard/pointer selection. | `menuItems(state, game): MenuItem[]`. |
-| `main.ts` | Bootstrap: load assets, **fit** the 1280×720 stage (letterbox/center, crisp at any DPR, correct on load), wire input, run the fixed-timestep loop (accumulator scaled by speed, frozen when paused/off-play), drain `fxQueue`/`sndQueue`, route clicks/keys to `Game`, and expose the `window.__holdfast` debug hooks for the proof script (§9). Same shape as valence's `main.ts`. | `main()`. |
+| `main.ts` | Bootstrap: load assets, **fit** the 1280×720 stage (letterbox/center, crisp at any DPR, correct on load), wire input, run the fixed-timestep loop (accumulator scaled by speed, frozen when paused/off-play), drain `fxQueue`/`sndQueue`, route clicks/keys to `Game`, and expose the `window.__holdfast` debug hooks for deterministic dev driving. Same shape as valence's `main.ts`. | `main()`. |
 | `vite-env.d.ts` | Vite client types. | — |
 
 Supporting (mirrors valence, dev-only, excluded from the build):
 
 - `scripts/gen-assets.sh` — produces every asset in `ASSETS.md` with the on-`PATH` tools
   (resolving them from `PATH` or `/cargo-target/the-test-cabinet/release`). Re-runnable.
-- `scripts/proof.mjs` — captures the five `proof/` artifacts with project-local Playwright
-  via the `window.__holdfast` hooks (§9).
 - `sim/` — an optional headless deterministic **balance harness** (`npx tsx sim/run.ts`)
   asserting the survival goals: a do-nothing colony is overrun within a few raids; a
-  competent controller (gather → wall + turret + food chain → man the wall) survives past a
-  target day count. Same role as valence's `sim/`.
+  competent controller (gather → wall + turret + food chain → man the wall) survives
+  past a target day count. Same role as valence's `sim/`.
 - `vendor/particle-runtime/` — vendored prebuilt `@test-cabinet/particle-runtime` so a plain
   `npm ci` resolves it outside the monorepo (as valence does).
 
@@ -433,14 +445,14 @@ Supporting (mirrors valence, dev-only, excluded from the build):
   rotate. Designations show a corner-bracket overlay; ghosts a translucent sprite (red if
   illegal). The **day/night overlay** is a cooling blue multiply whose alpha follows `time`
   (never fully black); the colony's built lights and muzzle flashes read through it.
-- **Bottom strip** left: one **roster card** per living settler — name, four thin need bars
-  (hunger, rest, mood, health in the health color), current activity label, and standout
-  skills on hover/selection. Right: the **build palette / tool bar** — designate, cancel, and
-  each structure (produced glyph + name + cost, greyed if unaffordable) — plus a **WORK GRID**
-  button, the speed/pause controls, and mute.
-- **Work-priority grid** panel (opened from the bottom HUD): rows = settlers, columns =
-  `Gather · Haul · Build · Cook · Farm · Fight`; each cell cycles priority `0 (off) .. 4` on
-  click. Settlers pull jobs respecting it (§4 `jobs.ts`).
+- **Bottom strip** left: one **roster card** per living settler — name, four thin need
+  bars (hunger, rest, mood, health in the health color), current activity label, and
+  standout skills on hover/selection. Right: the **build palette / tool bar** —
+  designate, cancel, and each structure (produced glyph + name + cost, greyed if
+  unaffordable) — plus a **WORK GRID** button, the speed/pause controls, and mute.
+- **Work-priority grid** panel (opened from the bottom HUD): rows = settlers,
+  columns = `Gather · Haul · Build · Cook · Farm · Fight`; each cell cycles priority
+  `0 (off) .. 4` on click. Settlers pull jobs respecting it (§4 `jobs.ts`).
 
 **Game-state machine** (`GameState`):
 
@@ -510,43 +522,7 @@ population** — shown on the colony-lost screen. Not persisted between sessions
 
 ---
 
-## 9. Proof plan (`scripts/proof.mjs`, exact paths from `specs/proof.md`)
-
-`main.ts` exposes `window.__holdfast` for deterministic driving (inert in normal play), the
-analogue of valence's `window.__valence`:
-
-```ts
-window.__holdfast = {
-  game, audio,
-  startBase(),                       // enter playing on the base start
-  setState(s),                       // force a GameState
-  camTo(tx, ty),                     // center camera on a tile
-  designate(kind, tx0, ty0, tx1, ty1), // rectangle chop/mine designation
-  build(kind, tx, ty),               // place a ghost (and mark it prebuilt for setup)
-  grant(res, n),                     // add to a stock (setup)
-  setPriority(settlerId, work, p),   // poke the work grid
-  advance(seconds),                  // run N sim-seconds fast (setup fast-forward)
-  triggerRaid(n?),                   // announce + spawn a raid now
-  forcePhase("night"),               // jump the clock to a phase
-  hurtSettler(id, dmg), killAll(),   // drive toward the loss state
-};
-```
-
-| Proof path | What it drives / captures |
-| --- | --- |
-| `proof/title.png` | Load the built site; stay on `title`. Capture the full stage — title `HOLDFAST`, tagline, and the menu (`NEW COLONY`, `HOW TO PLAY`) all visible. |
-| `proof/gameplay.png` | `startBase()`, then set up a working colony: `advance()` a couple of days with a scripted controller (or `build(...)` a wall run, a stove, a farm, a turret, and `grant` modest stock), leave settlers mid-work, `camTo` the base. Capture the live in-colony frame — produced terrain/node/structure sprites, animated settlers, and the full HUD (top vitals + bottom roster & palette). |
-| `proof/game-over.png` | From a short-lived colony, `killAll()` (or `triggerRaid` an overwhelming wave and let it resolve) so the last settler dies; capture the colony-lost screen with **days survived** shown. |
-| `proof/colony.webm` | `recordVideo` ~6 s of the **economy**: `designate("chop", …)` and a `mine`, a settler walks to a node and works it (dust puffing), the node clears and drops wood/ore, a haul carries it to the stockpile, a build consumes it, and a farm/stove produces food. |
-| `proof/raid.webm` | `recordVideo` ~6 s of a **raid**: `forcePhase("night")` then `triggerRaid()` — the warning banner + `alarm`, raiders entering and advancing, settler/turret fire with produced **muzzle flash** and **impact/blood** particles, a settler taking **cover** behind a wall, and ideally a settler **downed** or the colony reaching its loss state. Let the produced audio play if it is captured. |
-
-Both clips are native `.webm` from Playwright `recordVideo`; screenshots are PNG of the
-full fitted `1280×720` stage, framed as the reference mockups are. Files land at exactly the
-paths above and are committed alongside the build (not served by it).
-
----
-
-## 10. Build & load rules (non-negotiable)
+## 9. Build & load rules (non-negotiable)
 
 - Node project, `package.json` at root, `package-lock.json` committed. `npm ci` then
   `npm run build` (`tsc --noEmit && vite build`) produces a self-contained static site into

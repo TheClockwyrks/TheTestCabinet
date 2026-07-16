@@ -34,9 +34,8 @@ const input = new Input();
 input.attach();
 const game = new Game(input);
 
-// Expose the live game instance for the Playwright proof-capture script (see
-// scripts/capture-proof.mjs). It is inert during normal play and does not affect
-// gameplay.
+// Expose the live game instance for headless/dev driving. It is inert during
+// normal play and does not affect gameplay.
 (window as unknown as { __carom?: Game }).__carom = game;
 
 let last = performance.now();

@@ -156,6 +156,7 @@ async function toTestCaseSummary(
         sequences: item.sequences ?? [],
         frames: item.frames ?? [],
         weight: item.weight,
+        graded: item.graded ?? false,
         domain: item.domain ?? null,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
@@ -445,18 +446,30 @@ export function useLiveGallery(
         reviews: stored.reviews ?? [],
       });
       try {
-        if (localIds.has(runId) && workerClient) {
-          return toDetail(await workerClient.readRun(runId));
-        }
-        if (backend) return toDetail(await backend.readRun(runId));
+        // Prefer the worker (execution) client whenever one is connected. In the
+        // consoles it reads the same backend store as `backend` (the same
+        // `GET /runs/{id}`) but additionally resolves a pre-publish run's
+        // root-relative playable-build link against the artifact service, so it is
+        // a strict superset. Gating that resolution on the produced worklist
+        // (`localIds`) was a race: a run reached by a cold deep-link — the Play tab
+        // opened straight into a new tab, that URL reloaded, or the tab duplicated
+        // — is read before the async worklist has loaded, so `localIds` is still
+        // empty and the run would fall to the non-resolving `backend` path. The
+        // detail chrome fetches the record only once (deps `[runId]`, read through
+        // a ref) and never re-fetches when the worklist later loads, so the Play
+        // tab would keep an unresolved link, which the console origin then serves
+        // as its own shell instead of the build. The static gallery has no worker
+        // and reads published runs — whose links are already absolute — from the
+        // backend.
         if (workerClient) return toDetail(await workerClient.readRun(runId));
+        if (backend) return toDetail(await backend.readRun(runId));
         return null;
       } catch (e) {
         if (e instanceof NotSupportedError) return null;
         return null;
       }
     },
-    [backend, workerClient, localIds],
+    [backend, workerClient],
   );
 
   return {

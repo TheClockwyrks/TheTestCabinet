@@ -3,10 +3,12 @@ import { Panel } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { useAuth } from "../../../client/auth";
 import { routes } from "../../routes";
+import { AccountTabs } from "./AccountTabs";
 import styles from "./AccountPages.module.scss";
 
-// The account view (`/account`): shows the signed-in user (display name +
-// username) and a sign-out control. A console-only page; a signed-out visitor is
+// The account view's Profile tab (`/account`): shows the signed-in user (display
+// name + username) and a sign-out control, under the account section's tab strip
+// (Profile / Coverage / Groups). A console-only page; a signed-out visitor is
 // redirected to the sign-in page. Signing out clears the stored token and returns
 // to the gallery home.
 export function AccountPage() {
@@ -15,6 +17,7 @@ export function AccountPage() {
   if (!account) return <Navigate to={routes.login()} replace />;
   return (
     <PageLayout>
+      <AccountTabs active="profile" />
       <div className={styles.page}>
         <Panel className={styles.card}>
           <h1 className={styles.title}>Account</h1>

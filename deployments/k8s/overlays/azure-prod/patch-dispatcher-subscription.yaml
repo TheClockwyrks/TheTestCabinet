@@ -6,7 +6,7 @@
 # every driver Job, so a run requested with subscription auth finds the sign-in files
 # the harness CLI expects. TCAB_DISPATCHER_DRIVER_AUTH_MODE is deliberately NOT set:
 # auth mode stays per-run, so OpenRouter API-key harnesses keep working alongside.
-# Refresh the credentials with scripts/upload-subscription-creds.sh as they expire.
+# Refresh the credentials with scripts/upload-subscription-creds.sh --env prod as they expire.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

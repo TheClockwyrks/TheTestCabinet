@@ -34,11 +34,12 @@ upgrade towers, so the matter always presses against a board that is still being
 
 - You start with the **integrity** set by the campaign start (`specs/mode.md`).
 - When a unit reaches the **collector** (`specs/board.md`) it **leaks**, costing its
-  **leak** value in integrity (`specs/matter.md`) and is removed. A regular **atom** costs
-  its **remaining electrons** (each layer is one integrity, so partial damage still helps);
-  a bonded cluster or an **isotope** costs a fixed value (a Polymer or an Isotope `2`–`3`),
-  and the boss `12`. Because matter fragments, a partly-broken unit still leaks its pieces —
-  an unopened molecule or an isotope that slips through un-decayed costs its whole leak.
+  **leak** value in integrity (`specs/matter.md`) and is removed. A regular **atom**
+  costs its **remaining electrons** (each layer is one integrity, so partial damage
+  still helps); a bonded cluster or an **isotope** costs a fixed value (a Polymer or an
+  Isotope `2`–`3`), and the boss `12`. Because matter fragments, a partly-broken unit
+  still leaks its pieces — an unopened molecule or an isotope that slips through
+  un-decayed costs its whole leak.
 - Integrity never regenerates. If integrity reaches **`0` or below**, containment fails
   and the game ends (Containment failed, below) — even mid-round.
 
@@ -194,8 +195,9 @@ The game must exhibit these behaviors. They are observable and make good test ta
   an Easy **single path**, a Medium **branching** fork of lanes, a Hard set of **multiple
   separate paths** (some maps curved, some straight/right-angle) — and plays the run on it
   (`specs/board.md`, `specs/flow.md`).
-- Matter enters at each **inlet**, is **distributed across the map's paths**, and leaks at a
-  **collector**; every path carries traffic and each must be defended (`specs/board.md`).
+- Matter enters at each **inlet**, is **distributed across the map's paths**, and leaks
+  at a **collector**; every path carries traffic and each must be defended
+  (`specs/board.md`).
 - Towers are **placed freely** on the board (off the paths, not overlapping — no grid),
   cover the paths within their **range**, and fire **automatically** at the valid in-range
   unit furthest along (`specs/board.md`, `specs/towers.md`).

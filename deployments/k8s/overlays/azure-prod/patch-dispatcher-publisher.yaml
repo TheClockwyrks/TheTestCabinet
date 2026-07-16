@@ -16,10 +16,11 @@
 # build_publish_job sets no ServiceAccount, so the Job runs under the namespace
 # `default` SA (explicitly NOT the pod-creating tcab-driver SA).
 #
-# TCAB_GITHUB_ORG / TCAB_PAGES_PROJECT are deliberately left UNSET: the publisher's
-# core::publish::PublishConfig::from_env defaults them to TheClockwyrks /
-# test-cabinet-runs. Set them here only to override those defaults (confirm the real
-# Cloudflare Pages project name with the operator first).
+# TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the prod publish targets, set explicitly.
+# core::publish::PublishConfig::from_env requires both (no compiled-in fallback), so
+# every environment — prod included — names its own org and Cloudflare Pages project
+# rather than relying on a default; staging sets its own values the same way. The
+# dispatcher forwards both into every publish Job (PUBLISHER_PASSTHROUGH_VARS).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,6 +33,10 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_PUBLISHER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-publisher:b3c2b32239a21aa9a324d58313a1d56361a25bcd"
+              value: "ghcr.io/theclockwyrks/tcab-publisher:c68566c5405b1f771763d12c178a3a45fbe666ed"
             - name: TCAB_DISPATCHER_PUBLISHER_SECRETS
               value: "tcab-publisher-secrets"
+            - name: TCAB_GITHUB_ORG
+              value: "TheClockwyrks"
+            - name: TCAB_PAGES_PROJECT
+              value: "test-cabinet-runs"

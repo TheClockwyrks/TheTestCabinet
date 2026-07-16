@@ -190,9 +190,47 @@ fn run_state_serializes_snake_case() {
         json!("timed_out")
     );
     assert_eq!(
+        serde_json::to_value(RunState::HarnessError).unwrap(),
+        json!("harness_error")
+    );
+    assert_eq!(
         serde_json::to_value(RunState::Infrastructure).unwrap(),
         json!("infrastructure")
     );
+}
+
+#[test]
+fn family_openrouter_arm_matches_routing() {
+    // The OpenRouter *family* must contain exactly the harnesses that route
+    // through OpenRouter — the two are the same partition of the harness set, so
+    // the run form's family filter and the pricing canonicalizer never disagree.
+    for harness in HarnessSlug::ALL {
+        assert_eq!(
+            harness.family() == HarnessFamily::Openrouter,
+            harness.routes_through_openrouter(),
+            "family/routing mismatch for {harness:?}",
+        );
+    }
+    // The three native harnesses map to their own distinct families.
+    assert_eq!(HarnessSlug::Claude.family(), HarnessFamily::Claude);
+    assert_eq!(HarnessSlug::Codex.family(), HarnessFamily::Codex);
+    assert_eq!(
+        HarnessSlug::Antigravity.family(),
+        HarnessFamily::Antigravity
+    );
+}
+
+#[test]
+fn harness_family_wire_round_trips() {
+    for family in HarnessFamily::ALL {
+        assert_eq!(HarnessFamily::from_wire(family.as_str()), Some(family));
+        // Serde and `as_str` agree on the wire form.
+        assert_eq!(
+            serde_json::to_value(family).unwrap(),
+            Value::from(family.as_str()),
+        );
+    }
+    assert_eq!(HarnessFamily::from_wire("nope"), None);
 }
 
 #[test]
@@ -200,12 +238,27 @@ fn run_state_publishability() {
     assert!(RunState::Completed.is_publishable());
     assert!(RunState::Catastrophic.is_publishable());
     assert!(RunState::TimedOut.is_publishable());
+    assert!(RunState::HarnessError.is_publishable());
     assert!(!RunState::Infrastructure.is_publishable());
 
     assert!(!RunState::Completed.is_publishable_failure());
     assert!(RunState::Catastrophic.is_publishable_failure());
     assert!(RunState::TimedOut.is_publishable_failure());
+    assert!(RunState::HarnessError.is_publishable_failure());
     assert!(!RunState::Infrastructure.is_publishable_failure());
+}
+
+#[test]
+fn run_state_publishes_artifacts() {
+    // The code-carrying states release their produced source (and a build when
+    // one exists) at publish.
+    assert!(RunState::Completed.publishes_artifacts());
+    assert!(RunState::Catastrophic.publishes_artifacts());
+    assert!(RunState::TimedOut.publishes_artifacts());
+    // A harness error is recorded only as a per-model statistic — nothing is
+    // released — and infrastructure failures never publish at all.
+    assert!(!RunState::HarnessError.publishes_artifacts());
+    assert!(!RunState::Infrastructure.publishes_artifacts());
 }
 
 #[test]
@@ -216,6 +269,15 @@ fn classify_failure_only_runtime_cap_is_a_timeout() {
             seconds: 1800,
         }),
         RunState::TimedOut
+    );
+    // The harness (or its orchestrator runner) exiting non-zero is a harness
+    // error — the model drove it to exit early — not an infrastructure fault.
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::HarnessInvocation {
+            slug: "claude".to_string(),
+            detail: "harness exited with code 1".to_string(),
+        }),
+        RunState::HarnessError
     );
     // A harness install timeout is the Test Cabinet's plumbing, not the model.
     assert_eq!(

@@ -25,7 +25,7 @@
 // is reported and skipped — that run simply has no servable media to recover.
 //
 // Runs INSIDE the cluster (it talks to the backend over localhost and the artifact
-// service over its in-cluster Service DNS); `scripts/backfill-run-media-prod.sh` is
+// service over its in-cluster Service DNS); `scripts/backfill-run-media.sh` is
 // the operator entrypoint that ships this file into the backend pod and runs it.
 //
 // Environment:

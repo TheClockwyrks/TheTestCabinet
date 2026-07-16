@@ -124,6 +124,108 @@ impl R2Client {
         Ok(())
     }
 
+    /// List every object key under `prefix`, following the bucket's pagination to
+    /// completion. `GET {endpoint}/{bucket}?list-type=2&prefix=…`, signed with SigV4.
+    ///
+    /// Used to learn which content-stable media objects (`media/runs/<id>/…`) are
+    /// already uploaded, so a snapshot refresh references them without re-reading or
+    /// re-uploading their bytes (see [`crate::snapshot`]). Returns an error when a
+    /// request cannot be sent or R2 responds non-2xx.
+    #[tracing::instrument(name = "r2.list_keys", skip(self), fields(r2.prefix = %prefix), err)]
+    pub async fn list_keys(&self, prefix: &str) -> Result<Vec<String>> {
+        let mut keys = Vec::new();
+        let mut continuation: Option<String> = None;
+        loop {
+            // The canonical query string is the params sorted by name, each name and
+            // value URI-encoded (slashes included). `list-type` sorts before `prefix`
+            // and (when present) `continuation-token` sorts before both.
+            let mut params: Vec<(String, String)> =
+                vec![("list-type".to_string(), "2".to_string())];
+            if let Some(token) = &continuation {
+                params.push(("continuation-token".to_string(), token.clone()));
+            }
+            params.push(("prefix".to_string(), prefix.to_string()));
+            params.sort_by(|a, b| a.0.cmp(&b.0));
+            let canonical_query = params
+                .iter()
+                .map(|(k, v)| format!("{}={}", uri_encode(k, true), uri_encode(v, true)))
+                .collect::<Vec<_>>()
+                .join("&");
+
+            let body = self.list_page(&canonical_query).await?;
+            for key in parse_list_keys(&body) {
+                keys.push(key);
+            }
+            match parse_next_continuation_token(&body) {
+                Some(token) => continuation = Some(token),
+                None => break,
+            }
+        }
+        Ok(keys)
+    }
+
+    /// Fetch one `ListObjectsV2` page for a pre-built canonical query string, signed
+    /// with SigV4, returning the XML response body.
+    async fn list_page(&self, canonical_query: &str) -> Result<String> {
+        let now = OffsetDateTime::now_utc();
+        let amz_date = now
+            .format(AMZ_DATE)
+            .map_err(|e| BackendError::Snapshot(format!("formatting amz-date: {e}")))?;
+        let scope_date = now
+            .format(SCOPE_DATE)
+            .map_err(|e| BackendError::Snapshot(format!("formatting scope-date: {e}")))?;
+
+        let endpoint = url::trim_scheme(&self.config.endpoint);
+        let host = endpoint.host.clone();
+        let canonical_uri = format!("/{}", uri_encode(&self.config.bucket, false));
+
+        // An empty-body GET: the payload hash is the hash of the empty string.
+        let payload_hash = hex::encode(Sha256::digest(b""));
+        let signed_headers = "host;x-amz-content-sha256;x-amz-date";
+        let canonical_headers =
+            format!("host:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n");
+        let canonical_request = format!(
+            "GET\n{canonical_uri}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
+        );
+        let canonical_request_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
+
+        let credential_scope =
+            format!("{scope_date}/{}/{SERVICE}/aws4_request", self.config.region);
+        let string_to_sign =
+            format!("AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{canonical_request_hash}");
+        let signature = self.sign(&scope_date, &string_to_sign)?;
+        let authorization = format!(
+            "AWS4-HMAC-SHA256 Credential={}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}",
+            self.config.access_key_id
+        );
+
+        let url = format!(
+            "{}{canonical_uri}?{canonical_query}",
+            scheme_prefix(&self.config.endpoint)
+        );
+        let response = self
+            .http
+            .get(&url)
+            .header("Host", host)
+            .header("x-amz-date", amz_date)
+            .header("x-amz-content-sha256", payload_hash)
+            .header("Authorization", authorization)
+            .send()
+            .await
+            .map_err(|e| BackendError::Snapshot(format!("R2 LIST failed: {e}")))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = response.text().await.unwrap_or_default();
+            return Err(BackendError::Snapshot(format!(
+                "R2 LIST returned {status}: {detail}"
+            )));
+        }
+        response
+            .text()
+            .await
+            .map_err(|e| BackendError::Snapshot(format!("reading R2 LIST body: {e}")))
+    }
+
     /// Compute the SigV4 signing key chain and sign the string-to-sign.
     fn sign(&self, scope_date: &str, string_to_sign: &str) -> Result<String> {
         let k_date = hmac(
@@ -136,6 +238,45 @@ impl R2Client {
         let signature = hmac(&k_signing, string_to_sign.as_bytes())?;
         Ok(hex::encode(signature))
     }
+}
+
+/// Extract every `<Key>…</Key>` value from a `ListObjectsV2` XML response body,
+/// decoding the handful of XML entities S3 escapes keys with. The keys this bucket
+/// holds are traversal-free ASCII paths, so this deliberately avoids pulling an XML
+/// parser for what is a flat scan of one repeated element.
+fn parse_list_keys(xml: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut rest = xml;
+    while let Some(open) = rest.find("<Key>") {
+        let after = &rest[open + "<Key>".len()..];
+        let Some(close) = after.find("</Key>") else {
+            break;
+        };
+        keys.push(xml_unescape(&after[..close]));
+        rest = &after[close + "</Key>".len()..];
+    }
+    keys
+}
+
+/// The `<NextContinuationToken>` of a truncated `ListObjectsV2` response, or `None`
+/// when the listing is complete (`<IsTruncated>false</IsTruncated>` / absent token).
+fn parse_next_continuation_token(xml: &str) -> Option<String> {
+    let open = xml.find("<NextContinuationToken>")?;
+    let after = &xml[open + "<NextContinuationToken>".len()..];
+    let close = after.find("</NextContinuationToken>")?;
+    let token = xml_unescape(&after[..close]);
+    (!token.is_empty()).then_some(token)
+}
+
+/// Decode the five predefined XML entities in an element's text. `&amp;` is decoded
+/// last so an escaped entity like `&amp;lt;` round-trips to the literal `&lt;` rather
+/// than being double-unescaped to `<`.
+fn xml_unescape(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 /// Compute one HMAC-SHA256 in the signing chain.

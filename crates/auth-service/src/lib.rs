@@ -42,8 +42,12 @@ pub struct AuthService {
 pub async fn build(config: Config) -> Result<AuthService, sea_orm::DbErr> {
     use sea_orm_migration::MigratorTrait;
 
-    let db = Db::connect(&config.database_url).await?;
-    migration::Migrator::up(db.connection(), None).await?;
+    let db = if config.db_azure_ad {
+        Db::connect_azure_ad(&config.database_url).await?
+    } else {
+        Db::connect(&config.database_url).await?
+    };
+    migration::Migrator::up(&db.connection(), None).await?;
     let bind = config.bind.clone();
     let state = AppState { db: Arc::new(db) };
     Ok(AuthService {

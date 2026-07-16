@@ -17,7 +17,6 @@ autotile
 autotiled
 autotiles
 deadzone
-defence
 despawn
 despawns
 keybinds
@@ -302,6 +301,7 @@ retunes
 retuned
 rebalances
 playtesting
+playtest
 impls
 inlines
 rects
@@ -323,7 +323,6 @@ ctrls
 Bloons
 stackable
 chippable
-travelling
 
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
 PRNG
@@ -332,9 +331,112 @@ STATN
 landvalue
 Menlo
 Consolas
-neighbour
-neighbours
-colour
-colouring
 tunables
 mult
+openrouter
+svgl
+uncurated
+scaffolder
+
+# Siege-rifle / siege-turret asset-gen briefs (firearm & 3D-modeling terms).
+unrigged
+handguard
+foregrip
+greebles
+
+# Full-stack reference-impl DESIGN/ASSETS/README (holdfast, hollowdeep, midway).
+# Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
+# splits out of words like **GEN**erator and **PRIO**rity.
+Sela
+supercover
+regen
+blitted
+unmuted
+erator
+prio
+rity
+pathable
+subemitter
+headlessly
+accum
+lerp
+
+# Arc Foundry electro-industrial GemTD test case.
+gemtd
+reskin
+reskinned
+serpentines
+criss
+tanky
+arcnode
+# Arc Foundry reference-mockup CSS identifiers (harness-side only).
+integ
+tchip
+targ
+abil
+slowhit
+burnhit
+# Deepcore (Motherload-style dig-and-build full-stack case): fiction + coined ore/material names.
+deepcore
+vhera
+motherload
+coreshell
+deepstone
+rockbed
+resonite
+cryenite
+pyronium
+ferron
+cuprite
+argenite
+voltite
+adamite
+verdite
+roselite
+aurite
+jetpack
+jetpacks
+jetpacking
+unminable
+diggable
+dropship
+knockback
+permadeath
+# Deepcore reference-mockup CSS identifiers (harness-side only).
+activatable
+bpanel
+retarget
+xtal
+# Arc Foundry redesign — combination-tower ids, abilities, terms.
+fusecluster
+staticweb
+slagdriver
+corroder
+ionprism
+forkarray
+nullcore
+rupturenode
+blightcoil
+reactorpile
+auroralance
+overcurrent
+multishot
+multishots
+multiset
+debuff
+crits
+hoverable
+transpiles
+
+# Locomotivation (Frogger-style rail-yard hauling full-stack case): title + coined/domain terms.
+locomotivation
+stardew
+frogger
+boardable
+beatability
+subfolders
+cutscenes
+teleporter
+teleporters
+triggerable
+pickupable

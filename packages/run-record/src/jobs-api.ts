@@ -236,6 +236,49 @@ export type LaunchAck = {
 };
 
 /**
+ * The body of `POST /jobs/batch`: many launch requests to enqueue in one call.
+ * Each entry is the same shape as a single `POST /jobs` body, so the two enqueue
+ * paths never drift on what a run request carries. The batch analogue of a single
+ * [`LaunchBody`] — used when a console fans a whole set of runs out at once (the
+ * coverage matrix's still-missing runs, the new-run form's combinations × runs).
+ */
+export type LaunchBatchBody = {
+  /**
+   * The runs to enqueue, in the order the caller wants them reported back.
+   */
+  runs: Array<LaunchBody>;
+};
+
+/**
+ * One entry in a batch launch's response, aligned by index to the request's
+ * `runs`. Carries the enqueued job id on success, or a human-readable reason for a
+ * run that could not be enqueued — a single rejected run (e.g. a malformed request)
+ * never aborts the rest of the batch, mirroring the per-item isolation the console
+ * had when it launched runs one request at a time.
+ */
+export type LaunchBatchItem = {
+  /**
+   * The enqueued job's id, present when this run was accepted.
+   */
+  jobId?: string;
+  /**
+   * Why this run was rejected, present when it was not enqueued.
+   */
+  error?: string;
+};
+
+/**
+ * The response to `POST /jobs/batch`: one [`LaunchBatchItem`] per requested run,
+ * in request order.
+ */
+export type LaunchBatchAck = {
+  /**
+   * One result per requested run, aligned by index to the request's `runs`.
+   */
+  jobs: Array<LaunchBatchItem>;
+};
+
+/**
  * Whether a finished run produced a record. `completed` carries a record id to
  * open; `failed` carries a reason.
  */

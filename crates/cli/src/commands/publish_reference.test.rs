@@ -1,10 +1,10 @@
 //! Unit tests for `tcab publish-reference` pure helpers.
 //!
-//! The build/deploy/record path drives real `sh`/`wrangler`/network and is
-//! exercised through the shared `core` seams (`deploy_pages_build`,
-//! `put_reference_build`) and their own tests; here we pin the pure logic this
-//! command adds — the branch-alias derivation — leaving the clap surface to
-//! `cli.test.rs`.
+//! The build/deploy path drives real `sh`/`wrangler`/network and is exercised
+//! through the shared `core` seam (`deploy_pages_build`) and its own tests, and the
+//! lockfile write is covered by `core`'s `reference_lock` tests; here we pin the
+//! pure logic this command adds — the Pages-project selection and the branch-alias
+//! derivation — leaving the clap surface to `cli.test.rs`.
 
 use super::*;
 
@@ -29,4 +29,18 @@ fn deploy_branch_joins_slug_version_and_variant() {
 #[test]
 fn deploy_branch_leaves_a_dotless_version_untouched() {
     assert_eq!(deploy_branch("pong", "v2", "base"), "pong-v2-base");
+}
+
+#[test]
+fn references_pages_project_selects_by_env() {
+    // The required `--env` picks the Pages project; prod and staging are distinct
+    // so a staging publish never lands in front of the public gallery.
+    assert_eq!(
+        references_pages_project(DeployEnv::Prod),
+        "test-cabinet-references"
+    );
+    assert_eq!(
+        references_pages_project(DeployEnv::Staging),
+        "test-cabinet-references-staging"
+    );
 }

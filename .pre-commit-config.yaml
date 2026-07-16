@@ -1,0 +1,79 @@
+# pre-commit configuration for The Test Cabinet.
+#
+# These are the fast, trivial gates that run on every `git commit`. Slow gates
+# (clippy, the test suite, the web/docs builds) intentionally live only in CI
+# (scripts/ci/*, driven by azure-pipelines.yml and .github/workflows/ci.yml) so
+# committing stays quick.
+#
+# Setup is a single idempotent command: `scripts/setup-hooks.sh` (also run
+# automatically when the devcontainer is created). If a hook ever blocks a commit
+# you know is fine, `git commit --no-verify` bypasses it; CI remains the backstop.
+#
+# Revisions are pinned; refresh them with `pre-commit autoupdate`.
+minimum_pre_commit_version: "4.6.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-illegal-windows-names
+      - id: check-json
+        # tsconfig, devcontainer.json, and VSCode's .json are JSON-with-comments
+        # (JSONC), which this strict JSON parser rejects; skip them.
+        exclude: '(^|/)tsconfig[^/]*\.json$|(^|/)devcontainer\.json$|(^|/)\.vscode/.*\.json$'
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+        # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
+        # which this hook mistakes for a shebang; opt them out entirely.
+        exclude: '\.rs$'
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-vcs-permalinks
+        # The VSCode workspace file documents where the settings schema lives
+        # with deliberate links to a vscode *release branch* (the line numbers
+        # track that release), not a commit — exempt it from the permalink rule.
+        exclude: '(^|/)[^/]*\.code-workspace$'
+      - id: check-xml
+      - id: check-yaml
+        # The Kubernetes manifests under deployments/ are multi-document YAML
+        # (several resources separated by `---`); allow that.
+        args: ["--allow-multiple-documents"]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        # The per-case reference implementations under */reference-impl/ are
+        # authored, frozen build artifacts (game-asset generators full of
+        # intentional word-splitting); CI never shellcheck-linted them, so keep
+        # them out of the commit gate. Maintained tooling is still checked.
+        exclude: '(^|/)reference-impl/'
+
+  # Repo-specific gates. Their logic lives in committed scripts / this committed
+  # config (never an untracked local file) so every clone runs the same checks.
+  - repo: local
+    hooks:
+      - id: rust-fmt
+        name: cargo fmt (--check)
+        description: Enforce rustfmt formatting across the workspace.
+        entry: scripts/hooks/rust-fmt.sh
+        language: script
+        # rustfmt operates on the whole workspace, not individual files; trigger
+        # whenever any Rust source is staged, but don't pass file paths.
+        files: '\.rs$'
+        pass_filenames: false
+
+      - id: cspell
+        name: cspell
+        description: Spell-check staged test-case specs (shares cspell.json + the project dictionary).
+        entry: cspell lint --no-progress --no-must-find-files
+        language: node
+        additional_dependencies: ["cspell@10.0.1"]
+        # CI only spell-checks the authored specs (scripts/ci/specs-lint.sh →
+        # cspell.json's `files`). Explicitly-passed files bypass that glob, so
+        # scope the hook here to the same test-cases extensions; ignorePaths in
+        # cspell.json still apply.
+        files: '^test-cases/.*\.(md|html|css|toml|hbs)$'

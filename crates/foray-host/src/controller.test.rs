@@ -103,7 +103,7 @@ fn test_setup() -> MatchSetup {
             width: 8,
             height: 6,
             seeds_per_half: 2,
-            large_seeds_per_half: 0,
+            large_seeds_per_half: 1,
             jelly_per_half: 1,
             wall_density_tenths: 2,
         },

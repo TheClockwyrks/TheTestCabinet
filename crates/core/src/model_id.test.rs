@@ -77,6 +77,60 @@ fn price_id_uses_canonical_for_openrouter_harnesses() {
     );
 }
 
+#[test]
+fn launch_id_prefixes_only_provider_routed_harnesses() {
+    // OpenCode and Kilo Code route their model through the OpenRouter provider, so
+    // the launched id — the one stored on the job and reported on the run, and thus
+    // the one coverage counts against — carries the `openrouter/` prefix.
+    for harness in [HarnessSlug::Opencode, HarnessSlug::Kilo] {
+        assert_eq!(
+            launch_model_id("anthropic/claude-opus-4.8", harness, None),
+            "openrouter/anthropic/claude-opus-4.8",
+            "{harness:?} should gain the openrouter/ launch prefix",
+        );
+        // Already prefixed: never double up.
+        assert_eq!(
+            launch_model_id("openrouter/anthropic/claude-opus-4.8", harness, None),
+            "openrouter/anthropic/claude-opus-4.8",
+        );
+    }
+
+    // Every other harness — provider-native or OpenRouter-authenticated-but-
+    // internally-routed — launches its id verbatim.
+    for harness in [
+        HarnessSlug::Claude,
+        HarnessSlug::Codex,
+        HarnessSlug::Antigravity,
+        HarnessSlug::Cline,
+        HarnessSlug::Goose,
+        HarnessSlug::Pi,
+    ] {
+        assert_eq!(
+            launch_model_id("anthropic/claude-opus-4.8", harness, None),
+            "anthropic/claude-opus-4.8",
+            "{harness:?} should launch its id unprefixed",
+        );
+    }
+}
+
+#[test]
+fn launch_id_defaults_absent_provider_to_openrouter() {
+    // A plan combination may pin no provider; it defaults to OpenRouter, so a
+    // provider-routed harness still prefixes.
+    assert_eq!(
+        launch_model_id("anthropic/claude-opus-4.8", HarnessSlug::Opencode, None),
+        "openrouter/anthropic/claude-opus-4.8",
+    );
+    assert_eq!(
+        launch_model_id(
+            "anthropic/claude-opus-4.8",
+            HarnessSlug::Opencode,
+            Some("openrouter")
+        ),
+        "openrouter/anthropic/claude-opus-4.8",
+    );
+}
+
 /// The OpenRouter classification must track the harness's actual API-key
 /// environment: a harness routes through OpenRouter exactly when it authenticates
 /// with `OPENROUTER_API_KEY`. Asserting it here keeps the two from drifting.

@@ -1,0 +1,362 @@
+slug = "locomotivation"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Locomotivation"
+
+# Test type. Locomotivation is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE the game's own assets DURING
+# the run, using the asset-generation binaries on the run image's `PATH`, and then build a
+# game that uses them. The `full-stack` type schedules the run onto the
+# `test-cabinet-full-stack-2d` image, which carries exactly six binaries on `PATH` —
+# `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no
+# others; every asset the game needs is produced with one of them (`specs/assets.md` is the
+# production contract). A root identity field, so it sits above the first table.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Locomotivation is
+# medium: it asks for a fixed-step, ¾-overhead (Stardew-style) grid game — a hapless yard worker hauling
+# color-matched freight across a rail interlocking where deterministic, telegraphed trains
+# of several kinds run live — with a carry-weight speed model, a recharging sprint, drop and
+# destructible-cargo rules, a per-level shift clock plus a three-life budget, three cargo
+# archetypes (unique fail-on-loss, replenishing dispenser quota, optional score), forced
+# bridge/refuge commitment sections, light junction switches, a derived optional last-train
+# bonus, and a six-level campaign — AND, on top of that, for the model to author every
+# sprite, animation, particle effect, and sound the game plays, with the produced ANIMATED
+# WORKER and the trains as the headline. The interacting simulation plus a full
+# asset-production pass make this a demanding medium case.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["trains", "arcade", "hauling", "2d", "frogger"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a file) so
+# it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A ¾-overhead rail-yard dash: a yard worker hauls color-matched freight across live tracks \
+where deterministic freight, commuter, and bullet trains run on schedule and any touch is \
+lethal, weighing risk against a load that slows you, a recharging sprint, forced bridge \
+crossings, a shift clock and three lives, and an optional last-train bonus — all while you \
+produce every sprite, animation, particle, and sound with the on-PATH tools."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT seeded into a
+# run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version folder), recording
+# what changed in THIS version — the first version simply reads "Introduced.". The site
+# aggregates every version's entry, newest first, into the case's changelog. Like
+# `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run (with the
+# seeded specs and the selected variant) and handed to the model as the build instruction.
+# Injects absolute in-container paths via template variables. The harness auto-prepends the
+# standing full-stack asset-quality preamble to the rendered prompt, so this template does
+# NOT restate a global quality directive.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is stopped.
+# Locomotivation is a large build — a fixed-step, deterministic top-down simulation with
+# continuous movement and grid collision, a carry-weight speed model and recharging sprint,
+# scheduled multi-kind trains with telegraphing and lethal contact, three cargo archetypes
+# with dispensers and color-matched delivery, forced bridge/refuge sections, junction
+# switches, a shift clock and lives, a derived optional last-train bonus, a six-level
+# campaign, and multiple states — plus a full asset-production pass through the six tools
+# with an animated character and the trains at its centre — so it gets eight hours:
+# comfortably more than a healthy build needs while still bounding a runaway session.
+max_runtime_hours = 8
+
+# Starter workspace seeded into the root of every run before the specs. It gives the model a
+# baseline project to build on: a `package.json` that pins `playwright` as a dev dependency
+# and declares the produced-effect runtime (`packages`, below) as a baked-in `file:`
+# dependency. The seeded files land at the run root (`workspaces/base/package.json` seeds to
+# `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded and before
+# the harness starts. `npm install` — NOT `npm ci` — because `packages` injects the
+# `@test-cabinet/particle-runtime` `file:` dependency this build plays its produced particle
+# systems with, so the lockfile is completed at seed time; the same command downloads the
+# Playwright Chromium build (the base image ships the OS libraries Chromium links against,
+# but not the browser binary), so the model can build and verify immediately against a
+# project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the whole point
+# of a full-stack case: the model PRODUCES the game's art, animation, and audio itself,
+# during the run, with the six binaries on the run image's `PATH` (see `type` above and
+# `specs/assets.md`).
+
+# Test Cabinet runtime libraries installed into the run so the build can play the particle
+# systems it produces. `@test-cabinet/particle-runtime` is the same library the review UI
+# plays a produced effect with; core bakes it into the run image and the seeded workspace
+# `package.json` depends on it via its baked-in `file:` path, so the build imports it (its
+# `/canvas` binding) like any other dependency and plays each produced `system.json` by
+# simulating it live. The VFX — cargo splintering under a train (required), the worker
+# squish, delivery bursts, dust, sparks, and the bonus-train departure — are all produced
+# `particle-2d` systems played this way; see `specs/assets.md`. (A root key, so it must sit
+# above the first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Locomotivation offers a single `base` variant (the full six-level campaign), declared in
+# its own file under `variants/`. This list is a root key, so it must sit above the first
+# `[table]` header below.
+variants = [
+  "variants/base.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced implementation
+# into a served static site. These run verbatim from the build's repository root. `npm ci` is
+# deliberate — it requires the build to commit a `package-lock.json`. Both commands are
+# required; there are no defaults. The build must be self-contained: it bundles the committed
+# produced assets without invoking the asset tools, which are on `PATH` only while the run is
+# live (`specs/assets.md`).
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run workspace. The
+# specification is decomposed by concern; all common specs are plain Markdown, seeded
+# verbatim. A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/world.md"
+
+[[spec]]
+source = "specs/character.md"
+
+[[spec]]
+source = "specs/cargo.md"
+
+[[spec]]
+source = "specs/trains.md"
+
+[[spec]]
+source = "specs/levels.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+# The asset-production contract: every asset the game needs, which of the six on-PATH
+# binaries produces it, where it lands in the workspace, and how it is wired into the build.
+# Seeded for every variant so the produced-asset review items and this spec stay in lockstep.
+# This is the defining spec of a full-stack case, and its animated-worker and train sections
+# are the headline of what this build is judged on.
+[[spec]]
+source = "specs/assets.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact paths the
+# `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]` entries
+# must match.
+[[spec]]
+source = "specs/proof.md"
+
+# NOTE: this version declares NO `[[reference]]` views yet. The reference screenshots for the
+# key screens are authored from the finished reference implementation (screenshots of the
+# real build), not hand-built HTML mockups, and are added — together with the matching
+# `[[reference]]` entries and any reference-similarity `[[check]]`s — after the reference
+# implementation has been played and the design finalized. `specs/overview.md` mentions them
+# as illustrative examples so the contract is stable; they are simply not seeded until they
+# exist.
+
+# Proof of implementation, requested for every variant. Each declares a `dest` path (relative
+# to the run workspace root) the build must write a screenshot or `.webm` clip to;
+# `specs/proof.md` instructs the build to produce them at exactly these paths. Validation
+# records whether each turned up (informational). The media kind is inferred from the
+# extension: `.png` is an image, `.webm` a video (the format Playwright records natively; the
+# public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "yard"
+name = "Live crossing"
+dest = "proof/yard.png"
+
+[[proof]]
+id = "bridge"
+name = "Bridge commitment"
+dest = "proof/bridge.png"
+
+[[proof]]
+id = "results"
+name = "Level result screen"
+dest = "proof/results.png"
+
+[[proof]]
+id = "haul"
+name = "Haul-and-deliver loop clip"
+dest = "proof/haul.webm"
+
+[[proof]]
+id = "last-train"
+name = "Last-train bonus clip"
+dest = "proof/last-train.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared yet — there are no
+# reference views this version (see the note above). The automated load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build, and the
+# run's overall rating is the WORST across them — a flawless hauling sim cannot mask a stiff,
+# un-produced worker or flat trains, and gorgeous art cannot mask a game whose trains do not
+# kill or whose levels cannot be beaten. Domains are case-level; an individual review item
+# rolls up to one through its optional `domain`, while a general item (states, window fit)
+# omits it.
+[[domain]]
+id = "simulation"
+name = "Yard & Hauling Systems"
+description = "The interacting systems: continuous four-direction movement on a tile grid rendered in a ¾ overhead (Stardew-style) view, with a carry-weight speed model (no penalty to ~50% of max carry weight, a gradual slow to ~80%, and a further slow with sprint DISABLED above it) and a fixed-duration recharging sprint; DETERMINISTIC, TELEGRAPHED trains of several kinds (a long slow freight, a medium commuter, a short fast bullet) running scheduled paths where ANY contact with any car — sides included — is instantly LETHAL; three cargo archetypes — a UNIQUE required package whose loss FAILS the level, a replenishing DISPENSER quota that self-heals so it can never soft-lock, and OPTIONAL score packages — carried MULTI-CARRY up to a weight cap and delivered only to their COLOR-MATCHED zone; DROP rules where cargo left on a track is destroyed by the next train (a particle burst) while cargo off-track is safe and retrievable, and dying on a track destroys everything carried in the same collision; forced BRIDGE/refuge-bay commitment sections and light junction SWITCHES; a per-level SHIFT CLOCK and a THREE-LIFE budget as the two fail axes alongside unique-loss; the six-level campaign whose difficulty ramps and each of which is beatable; and the OPTIONAL last-train BONUS whose spawn is derived from its path length and speed so its tail clears the map exactly as the clock expires, boarded only on its visually distinct flat-top cars."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Character Animation"
+description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED WORKER — the yard hand, drawn in the ¾ overhead view, animating a distinct cycle for idle, walk, sprint, and carry (visibly laden) in EACH of the four facings (down/up/left/right — not a mirrored left/right pair), plus drop and squish — and the TRAINS, each kind a distinct, readable silhouette drawn in the ¾ view as a chunky side-and-top body (long freight with flat-top and boxcar cars, sleek commuter, needle-nosed bullet) with the bonus train's rideable flat-top cars visually unmistakable from its lethal ones; plus the ground/track/bridge/refuge tileset, the color-coded packages, dispensers, and drop zones, the crossing signals and levers, the required particle VFX (cargo splintering under a train, the worker squish, delivery bursts, sparks, dust, and the bonus-train departure) played through @test-cabinet/particle-runtime, and the produced audio (footsteps, pickups, deliveries, horns and rumble that telegraph trains, the lethal impact, the low-clock alarm, and a driving yard music bed), all wired in, with the in-code HUD — shift clock, per-color quota, lives, the carried-load weight bar, and the sprint bar — reading the state at a glance."
+
+# Reviewer checklist items, common to every variant. The major, observable requirements a
+# reviewer must explicitly check by playing the build — the things validation cannot judge
+# and that are easy to miss. Reporter-side material: never seeded into a run, so the model
+# never sees the checklist; each restates a requirement the seeded specification already
+# states. Each item is worth `weight` points toward the run's score; the reviewer records a
+# pass/fail verdict for each before the run can be published. The per-domain ratings stay the
+# reviewer's call.
+
+# --- Yard & Hauling Systems -----------------------------------------------------
+[[review_item]]
+id = "move-and-weight"
+title = "Continuous movement, carry-weight speed model, recharging sprint"
+text = "The worker moves smoothly and continuously in the four cardinal directions (hold a direction) on the tile grid, fitting one tile. Carried weight slows it: no penalty up to ~50% of the max carry weight, a gradual slow from ~50% to ~80%, and a further slow above ~80% at which SPRINT is DISABLED. Sprint is a fixed-duration burst (a recharging bar) that multiplies current speed while held and charge remains, and — because a heavier load already moves slower — a loaded sprint covers less ground. Picking up one more package can tip the worker across the ~80% line and cost sprint outright."
+weight = 1
+domain = "simulation"
+proof = "haul"
+
+[[review_item]]
+id = "trains-lethal-telegraphed"
+title = "Deterministic, telegraphed, lethal trains of several kinds"
+text = "Trains run DETERMINISTIC scheduled paths on their tracks — a long slow FREIGHT, a medium COMMUTER, and a short fast BULLET, each visibly different in speed and length — and ANY contact between the worker and any car, SIDES INCLUDED, is instantly lethal (Frogger rules). Every train is TELEGRAPHED before it reaches a crossing: a flashing crossing signal, a horn, a headlight, and rising rumble on a fixed lead, so a death reads as the player's error, not a surprise. Between two adjacent tracks the gap tile is safe to wait in."
+weight = 1
+domain = "simulation"
+proof = "yard"
+
+[[review_item]]
+id = "cargo-archetypes"
+title = "Unique / dispenser / optional cargo and color-matched delivery"
+text = "Cargo comes in three archetypes: a UNIQUE required package (one exists; its loss FAILS the level), a DISPENSER quota (a source that emits a fresh package whenever its last is taken or destroyed, so a destroyed one costs only a walk-back and the level can NEVER soft-lock — deliver X to complete), and OPTIONAL packages (score only). Every package has a COLOR and is delivered only to its color-matched drop zone. The worker can MULTI-CARRY several packages up to a weight cap, so a loaded trip can clear more than one delivery."
+weight = 1
+domain = "simulation"
+proof = "haul"
+
+[[review_item]]
+id = "drop-and-destruction"
+title = "Drop rules, destructible cargo, and death-drop"
+text = "The player can DROP carried cargo. Cargo dropped OFF a track (ground, refuge, a drop-adjacent tile) is safe and retrievable; cargo dropped ON a track is DESTROYED by the next train that passes over it, firing the required splinter particle. Trains destroy cargo without slowing. Dying on a track destroys EVERYTHING the worker was carrying in that same collision (no phasing) — which is what makes carrying the unique package the white-knuckle haul, since dying with it fails the level regardless of lives remaining."
+weight = 1
+domain = "simulation"
+proof = "yard"
+
+[[review_item]]
+id = "commitment-and-switches"
+title = "Forced bridge/refuge commitment and junction switches"
+text = "At least one level forces the worker onto a BRIDGE (or single-track cut) where the track IS the only path across an impassable gap for an extended run, with REFUGE BAYS — safe pockets — spaced along it so the crossing is a leapfrog from bay to bay, not one blind sprint. Junction SWITCHES (levers the worker toggles) divert a train onto a different branch, changing which track in a corridor is live — present as a supporting tactic on the harder levels, never so central that the game becomes a puzzle."
+weight = 1
+domain = "simulation"
+proof = "bridge"
+
+[[review_item]]
+id = "clock-lives-fail-win"
+title = "Shift clock, three lives, and the win/fail conditions"
+text = "Each level runs a SHIFT CLOCK counting down and grants THREE LIVES. Death costs a life, destroys carried cargo, and respawns the worker at the single spawn point (banked deliveries persist). A level is WON when the full required quota (dispenser quota met AND every unique delivered) is delivered before the clock expires; it is FAILED when the clock reaches zero with the quota unmet, when lives are exhausted, or when a unique required package is destroyed. Optional deliveries change only score, never completion."
+weight = 1
+domain = "simulation"
+proof = "results"
+
+[[review_item]]
+id = "campaign-beatable-ramp"
+title = "A six-level campaign that ramps and is beatable"
+text = "The game presents the SIX levels of specs/levels.md in order, each with its own compact criss-cross layout, train roster and schedule, cargo, clock, and quota, and each BEATABLE by skilled play. Difficulty RAMPS — an early tutorial-grade shift with one gentle corridor up to a dense finale with all train types, tight timing, and multiple unique packages — with some levels clearly harder than others. Progress advances on a win; a fail offers retry."
+weight = 1
+domain = "simulation"
+proof = "results"
+
+[[review_item]]
+id = "last-train-bonus"
+title = "The optional derived last-train bonus"
+text = "On the levels that define one, an optional LAST TRAIN runs a fixed path and its spawn is DERIVED from that path's length and its speed so its tail clears the map exactly as the shift clock expires. The worker may board it — but only on its visually distinct FLAT-TOP cars (regular and half-length), while its engine and sealed cars are lethal like any train — and boarding ENDS the level for the worker (they ride off) while the simulation keeps running until the train fully leaves the screen. Missing it never fails the level; it only forfeits a large score bonus, and mistiming the board can kill."
+weight = 1
+domain = "simulation"
+proof = "last-train"
+
+# --- Presentation & Character Animation ------------------------------------------
+[[review_item]]
+id = "produced-worker-animation"
+title = "The produced, animated worker (the headline)"
+text = "The yard worker is drawn from sprite-sheet cycles the build PRODUCED with draw-sheet, in the ¾ overhead view, and it visibly ANIMATES a distinct cycle for each thing it does — idle, walk, sprint (a faster, leaning cycle), and carry (visibly laden, and heavier loads read as more laboured), authored for EACH of the four facings (facing down, up, left, and right — a real front/back/side character, not merely a mirrored left/right pair), plus drop and a sharp SQUISH on death, with a consistent silhouette across the set. This is half of what the build is judged on: a stiff, single-frame worker is a failed build, not a placeholder to excuse."
+weight = 1
+domain = "presentation"
+proof = "haul"
+
+[[review_item]]
+id = "produced-trains"
+title = "Produced, readable trains"
+text = "Each train kind is a produced sprite drawn in the ¾ overhead view as a chunky side-and-top body (not a flat top-down bar), with a distinct, readable silhouette: the long FREIGHT built from an engine plus a run of cars (including flat-tops and boxcars), the sleek medium COMMUTER, and the needle-nosed short BULLET, each moving at its own speed and length so a player reads which is coming at a glance, and each drawn for the orientation of the track it runs (a horizontal train shows its long flank; a vertical one its front/back). The bonus LAST TRAIN's rideable FLAT-TOP cars are unmistakably distinct from its lethal engine and sealed cars, and headlights/crossing signals read clearly. Not flat rectangles or a single recolored shape."
+weight = 1
+domain = "presentation"
+proof = "last-train"
+
+[[review_item]]
+id = "produced-environment"
+title = "Produced tiles, cargo, zones, and signals"
+text = "The ground, TRACK (rails and ties), BRIDGE, and REFUGE tiles, the color-coded PACKAGES, the DISPENSERS and color-matched DROP ZONES, the crossing SIGNALS, and the junction LEVERS are all drawn from sprites the build produced with draw/draw-sheet, in the palette — so safe ground vs a live track, a bridge vs the impassable gap beside it, a package's color vs its matching zone, and a signal's clear/warning state all read at a glance. Tiles that tile without an obvious single-texture repeat. Not flat rectangles or ad-hoc canvas fills."
+weight = 1
+domain = "presentation"
+proof = "yard"
+
+[[review_item]]
+id = "produced-vfx"
+title = "Produced particle VFX (cargo splinter required)"
+text = "The particle systems the build authored with particle-2d and plays live through @test-cabinet/particle-runtime include the REQUIRED cargo-splinter burst when a train destroys a package (and when the worker is squished carrying it), plus a delivery burst, footstep dust, signal sparks, and the bonus-train departure — simulated bursts fired at the moment and position of each event, VARYING shot to shot, not flat flashes or hand-coded loops. The cargo-destruction burst in particular must read as a produced, physical shatter."
+weight = 1
+domain = "presentation"
+proof = "yard"
+
+[[review_item]]
+id = "produced-audio"
+title = "Produced sound and music"
+text = "The yard has real audio the build produced with the audio tools: footsteps, a pickup, a delivery chime, train HORNS and RUMBLE that telegraph an approaching train (rising with proximity), the lethal impact/crunch, a purchase/complete confirm, the low-clock alarm, and the bonus-train departure (sfx-synth and/or sfx-sample), plus a driving industrial yard music bed (music), played via Web Audio on the matching events and looping the bed — not silence, and not a downloaded or hand-oscillated stand-in. Audio does not autostart before the player interacts, and a mute toggle is present."
+weight = 1
+domain = "presentation"
+proof = "haul"
+
+[[review_item]]
+id = "readable-hud"
+title = "Readable HUD"
+text = "A player can tell at a glance — the SHIFT CLOCK (turning to the alert color as it runs low), the per-color QUOTA progress (delivered/required for each required color, and the unique package's status), the LIVES remaining, the carried-LOAD weight bar (reading toward OVERWEIGHT as it fills, and showing sprint LOCKED past the threshold), and the SPRINT bar (draining and recharging) — plus which packages (and colors) are currently carried. The HUD, crossing telegraph cues, and menus are drawn in code in the palette; only their small icons may be produced sprites."
+weight = 1
+domain = "presentation"
+proof = "yard"
+
+# --- General (states, window fit) — no domain -----------------------------------
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu (PLAY, HOW TO PLAY), the level select / campaign progression, how-to-play, the live in-level state with its HUD, the Esc pause menu (resume/restart/quit to menu), the LEVEL COMPLETE summary (score breakdown, NEXT), the LEVEL FAILED screen (RETRY / quit), and the campaign VICTORY screen after the final level. Each result screen shows the run summary."
+weight = 1
+proof = "title"
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 stage — the top status bar and the full yard viewport, all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input. Each level's whole compact layout is visible at once with no scrolling."
+weight = 1

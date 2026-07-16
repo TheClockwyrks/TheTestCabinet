@@ -63,7 +63,7 @@ So at `H = 0` a shot does only **0.35x** base damage; the multiplier climbs
 quadratically to **3.5x** at `H = R`, and **stays at 3.5x** for all `H` from `R`
 to `100`. A cold tower is genuinely **feeble** — barely a third of its base
 damage — and a tower at or above its redline is three-and-a-half times the base
-value. A wall of never-firing cold towers is therefore not a defence: heat is
+value. A wall of never-firing cold towers is therefore not a defense: heat is
 where nearly all of a tower's damage lives, so you must funnel the surge past
 your guns (a maze) to keep them hot.
 

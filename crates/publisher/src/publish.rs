@@ -66,7 +66,9 @@ pub fn load_record(run_dir: &Path) -> Result<RunRecord, ReleaseError> {
 ///
 /// This is the testable core: [`release`] wraps it with the real
 /// [`SystemCommandRunner`]. A [`PublishConfig::from_env`] resolves the GitHub org +
-/// Pages project (the `TCAB_GITHUB_ORG`/`TCAB_PAGES_PROJECT` the Job forwards). The
+/// Pages project from the `TCAB_GITHUB_ORG`/`TCAB_PAGES_PROJECT` the Job forwards —
+/// both are required, so a publish Job that was not handed its targets fails here
+/// (as a [`ReleaseError::Publish`]) rather than releasing to a default org. The
 /// backend client is the type the publisher *must* supply to construct a
 /// [`BackendPublisher`], but `release_code`/`release_playable_build` never touch it,
 /// so a read-only [`HttpBackendClient`] (no token) satisfies the bound without being
@@ -91,7 +93,7 @@ pub async fn release_with_runner<R: CommandRunner>(
     };
 
     let publisher = BackendPublisher::new(
-        PublishConfig::from_env(),
+        PublishConfig::from_env().map_err(ReleaseError::Publish)?,
         runner,
         // Never exercised: the publisher reports via the publish-job token, not by
         // POSTing `/runs`. The base URL is irrelevant for that reason.

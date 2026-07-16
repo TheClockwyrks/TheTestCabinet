@@ -31,6 +31,18 @@
   @include h.halo;
 }
 
+// The test case name links to its detail page. It reads in the accent at rest so
+// it's legible as a link without the global underline-on-hover (which we drop
+// here); hover deepens the accent glow as the interactive affordance.
+.titleLink {
+  color: t.$color-accent;
+
+  &:hover {
+    text-decoration: none;
+    text-shadow: var(--ttc-glow);
+  }
+}
+
 .harness {
   font-size: t.$font-lg;
   color: t.$color-accent-2;
@@ -54,6 +66,18 @@
 .variant {
   color: t.$color-accent-2;
   text-shadow: var(--ttc-glow);
+}
+
+// The model name links to its detail page. It lifts out of the muted subject
+// line in the accent so it reads as a link, with no underline on hover — the
+// glow is the interactive affordance instead.
+.modelLink {
+  color: t.$color-accent;
+
+  &:hover {
+    text-decoration: none;
+    text-shadow: var(--ttc-glow);
+  }
 }
 
 .harnessVersion {
@@ -96,6 +120,10 @@
     &::-webkit-scrollbar {
       display: none;
     }
+
+    // Fade the trailing edge so the swipeable strip (here the eight-tab run
+    // page) reads as scrollable rather than clipping METADATA/EVENTS flush.
+    @include s.swipe-fade;
   }
 }
 

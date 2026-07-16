@@ -21,11 +21,11 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_core::model_id::canonical_model_id;
-use test_cabinet_core::run_record::HarnessSlug;
+use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug};
 use test_cabinet_entities::model_price;
 
 use crate::auth::AuthUser;
-use crate::db::{ModelConfigWrite, StoredModel};
+use crate::db::{AliasEntry, ModelConfigWrite, StoredModel};
 use crate::error::ApiError;
 
 use super::AppState;
@@ -65,8 +65,10 @@ pub struct ModelOut {
     /// The raw `subject.modelId` strings from runs this entry absorbs — what the
     /// console matches a run against.
     pub covered_model_ids: Vec<String>,
-    /// The canonical model ids this entry claims.
-    pub aliases: Vec<String>,
+    /// The canonical model ids this entry claims, each tagged with the harness
+    /// family it is usable with (so a run form can offer only the slugs the
+    /// selected harness can launch).
+    pub aliases: Vec<AliasOut>,
     /// The latest observed comparable price, or null when none is recorded.
     pub price: Option<ModelPricesOut>,
     /// The observed price history, ascending, consecutive-equal deduped.
@@ -75,6 +77,20 @@ pub struct ModelOut {
     pub context_length: Option<u64>,
     /// The latest observed release date (RFC 3339), or null.
     pub released_at: Option<String>,
+}
+
+/// One canonical model id a catalog entry claims, with the harness family it is
+/// usable with. The run form filters the models it offers a harness by matching
+/// the harness's family against these.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AliasOut {
+    /// The canonical model id (an OpenRouter id like `anthropic/claude-opus-4.8`,
+    /// or a provider-native id like `claude-opus-4-8`).
+    pub slug: String,
+    /// The harness family this slug is usable with.
+    pub harness_family: HarnessFamily,
 }
 
 /// A comparable per-token price triple.
@@ -96,6 +112,20 @@ pub struct PriceObservationOut {
     pub prices: ModelPricesOut,
 }
 
+/// One slug ↔ harness-family pairing in a config write. The operator supplies a
+/// slug and picks the harness family it belongs to; a model with slugs across
+/// several families carries one entry per (slug, family).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AliasInput {
+    /// The canonical model id (the `openrouter/` routing prefix is stripped on
+    /// write so it matches a run's canonical id).
+    pub slug: String,
+    /// The harness family this slug is usable with.
+    pub harness_family: HarnessFamily,
+}
+
 /// The `POST /models` / `PUT /models/{slug}` request body.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,8 +135,9 @@ pub struct ModelConfigInput {
     pub slug: String,
     pub name: String,
     pub provider: String,
-    /// The canonical model ids this model covers (at least one).
-    pub aliases: Vec<String>,
+    /// The canonical model ids this model covers, each paired with the harness
+    /// family it is usable with (at least one).
+    pub aliases: Vec<AliasInput>,
     pub openrouter_slug: Option<String>,
     pub description: Option<String>,
     /// The stored provider-logo SVG (already fetched via `POST /models/logo`).
@@ -126,8 +157,9 @@ pub struct ModelSeedOut {
     pub name: String,
     /// Provider guessed from the model id, possibly empty.
     pub provider: String,
-    /// Suggested aliases (the canonical and raw forms), deduped.
-    pub aliases: Vec<String>,
+    /// Suggested aliases (the canonical and raw forms), deduped, each tagged with
+    /// the family of the harness the seed run used.
+    pub aliases: Vec<AliasOut>,
     /// The canonical id as an OpenRouter slug, when it looks like one.
     pub openrouter_slug: Option<String>,
 }
@@ -216,6 +248,9 @@ async fn write_config(
             "model.aliases must include at least one id",
         ));
     }
+    // A slug is meaningless without a valid family; a run form can't offer it
+    // under any harness otherwise. `normalize_aliases` already drops blank slugs,
+    // so any surviving pair is a real (slug, family).
 
     // Fetch the logo now if a URL is given and no SVG was pre-fetched, so the
     // stored config is self-contained.
@@ -321,11 +356,21 @@ pub async fn seed(
     let harness = run.record.subject.harness_slug;
     let canonical = canonical_model_id(&raw, harness);
 
-    let mut aliases = vec![canonical.clone()];
+    // Every seeded id came from the same run, so it belongs to that harness's
+    // family — the operator can retag it in the form before saving.
+    let family = harness.family();
+    let mut slugs = vec![canonical.clone()];
     if raw != canonical {
-        aliases.push(raw);
+        slugs.push(raw);
     }
-    aliases.dedup();
+    slugs.dedup();
+    let aliases = slugs
+        .into_iter()
+        .map(|slug| AliasOut {
+            slug,
+            harness_family: family,
+        })
+        .collect();
 
     Ok(Json(ModelSeedOut {
         slug: canonical.clone(),
@@ -371,9 +416,17 @@ pub fn compose_catalog(
     // canonical id -> the raw model_id strings runs reported for it.
     let mut covered: std::collections::BTreeMap<String, Vec<String>> =
         std::collections::BTreeMap::new();
+    // canonical id -> the harness family that reported it (for a derived entry's
+    // alias tag). Native and OpenRouter ids canonicalize to disjoint forms, so a
+    // canonical id maps to a single family; the first run to name it wins.
+    let mut covered_family: std::collections::BTreeMap<String, HarnessFamily> =
+        std::collections::BTreeMap::new();
     for (model_id, harness_slug) in run_models {
         let harness = parse_harness(harness_slug);
         let canonical = canonical_model_id(model_id, harness);
+        covered_family
+            .entry(canonical.clone())
+            .or_insert_with(|| harness.family());
         let ids = covered.entry(canonical).or_default();
         if !ids.contains(model_id) {
             ids.push(model_id.clone());
@@ -385,11 +438,11 @@ pub fn compose_catalog(
     let mut out: Vec<ModelOut> = Vec::new();
 
     for stored in configs {
-        let alias_set: Vec<String> = stored.aliases.clone();
+        let alias_set = &stored.aliases;
         let mut covered_ids: Vec<String> = Vec::new();
-        for alias in &alias_set {
-            claimed.insert(alias.clone());
-            if let Some(ids) = covered.get(alias) {
+        for entry in alias_set {
+            claimed.insert(entry.alias.clone());
+            if let Some(ids) = covered.get(&entry.alias) {
                 for id in ids {
                     if !covered_ids.contains(id) {
                         covered_ids.push(id.clone());
@@ -400,7 +453,7 @@ pub fn compose_catalog(
         // Merge the histories of every alias into one series.
         let mut rows: Vec<&model_price::Model> = alias_set
             .iter()
-            .filter_map(|a| history.get(a.as_str()))
+            .filter_map(|a| history.get(a.alias.as_str()))
             .flatten()
             .copied()
             .collect();
@@ -417,7 +470,13 @@ pub fn compose_catalog(
             description: config.description_md.clone(),
             logo_svg: config.provider_logo_svg.clone(),
             covered_model_ids: covered_ids,
-            aliases: alias_set,
+            aliases: alias_set
+                .iter()
+                .map(|entry| AliasOut {
+                    slug: entry.alias.clone(),
+                    harness_family: entry.family,
+                })
+                .collect(),
             price,
             price_history: series,
             context_length,
@@ -434,6 +493,10 @@ pub fn compose_catalog(
             history.get(canonical.as_str()).cloned().unwrap_or_default();
         let series = observations(&rows);
         let (price, context_length, released_at) = latest_facts(&rows);
+        let family = covered_family
+            .get(canonical)
+            .copied()
+            .unwrap_or(HarnessFamily::Openrouter);
         out.push(ModelOut {
             slug: canonical.clone(),
             name: canonical.clone(),
@@ -443,7 +506,10 @@ pub fn compose_catalog(
             description: None,
             logo_svg: None,
             covered_model_ids: ids.clone(),
-            aliases: vec![canonical.clone()],
+            aliases: vec![AliasOut {
+                slug: canonical.clone(),
+                harness_family: family,
+            }],
             price,
             price_history: series,
             context_length,
@@ -494,15 +560,20 @@ fn latest_facts(
     }
 }
 
-/// Normalize the alias strings a config claims: trim, drop the `openrouter/`
-/// routing prefix (so it matches a run's canonical id), drop blanks, dedup.
-fn normalize_aliases(aliases: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for alias in aliases {
-        let trimmed = alias.trim();
+/// Normalize the (slug, family) pairs a config claims: trim the slug, drop the
+/// `openrouter/` routing prefix (so it matches a run's canonical id), drop blanks,
+/// and dedup by slug (first family wins, since a canonical id belongs to one
+/// family).
+fn normalize_aliases(aliases: &[AliasInput]) -> Vec<AliasEntry> {
+    let mut out: Vec<AliasEntry> = Vec::new();
+    for entry in aliases {
+        let trimmed = entry.slug.trim();
         let base = trimmed.strip_prefix("openrouter/").unwrap_or(trimmed);
-        if !base.is_empty() && !out.iter().any(|a| a == base) {
-            out.push(base.to_string());
+        if !base.is_empty() && !out.iter().any(|a| a.alias == base) {
+            out.push(AliasEntry {
+                alias: base.to_string(),
+                family: entry.harness_family,
+            });
         }
     }
     out

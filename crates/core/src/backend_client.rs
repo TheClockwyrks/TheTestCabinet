@@ -1313,59 +1313,6 @@ impl HttpBackendClient {
             bytes,
         })
     }
-
-    /// Record the deployed URL of a case variant's **reference implementation** —
-    /// the authored, correct static build of a test-case variant — against the
-    /// backend, upserting the `case_reference_build` row keyed by
-    /// `(slug, version, variant)`.
-    ///
-    /// This is the write half of `tcab publish-reference`: the CLI builds the
-    /// variant's `reference_impl` project with the case's own `[build]` commands,
-    /// deploys the static output to Cloudflare Pages, reads the served URL back
-    /// from wrangler, and then hands that URL here. It is authenticated (the
-    /// bearer token set via [`Self::with_token`] rides along on the request, as it
-    /// does for every mutating call), mirroring the backend's `PUT
-    /// /test-cases/{slug}/versions/{version}/reference-builds/{variant}` guard; a
-    /// missing or unaccepted token surfaces as the backend's error envelope
-    /// through [`error_for_status`]. The recorded URL flows back out to the site on
-    /// the variant's `referenceBuild` field (the snapshot and the live
-    /// `resolveVersion` response), which the Reference tab embeds.
-    #[instrument(
-        skip(self, url),
-        fields(
-            otel.kind = "client",
-            http.request.method = "PUT",
-            test_case.slug = %slug,
-            test_case.version = %version,
-            test_case.variant = %variant,
-        ),
-        err,
-    )]
-    pub async fn put_reference_build(
-        &self,
-        slug: &str,
-        version: &str,
-        variant: &str,
-        url: &str,
-    ) -> Result<()> {
-        let endpoint = self.url(&format!(
-            "/test-cases/{}/versions/{}/reference-builds/{}",
-            encode(slug),
-            encode(version),
-            encode(variant),
-        ));
-        let body = ReferenceBuildBody { url };
-        let response = self
-            .http
-            .put(&endpoint)
-            .headers(self.headers())
-            .json(&body)
-            .send()
-            .await
-            .map_err(|err| backend_err(&endpoint, err))?;
-        error_for_status(&endpoint, response).await?;
-        Ok(())
-    }
 }
 
 // --- Wire shapes (deserialized from the backend, §1.2–§1.4) -----------------
@@ -1659,6 +1606,7 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
         sequences: item.sequences,
         frames: item.frames,
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain,
         sub_items: item
             .sub_items
@@ -1889,6 +1837,8 @@ struct ReviewItemBody {
     frames: Vec<u32>,
     weight: u32,
     #[serde(default)]
+    graded: bool,
+    #[serde(default)]
     domain: Option<String>,
     #[serde(default)]
     sub_items: Vec<SubReviewItemBody>,
@@ -1938,14 +1888,6 @@ struct ReviewBody<'a> {
     writeup: &'a str,
     /// The reviewer's verdicts on the case's declared checklist items.
     checklist: &'a [crate::review::ReviewVerdict],
-}
-
-/// The body of `PUT /test-cases/{slug}/versions/{version}/reference-builds/{variant}`:
-/// the deployed URL of a variant's reference implementation, matching the
-/// backend's `ReferenceBuildBody` (a lone camelCase `url`).
-#[derive(serde::Serialize)]
-struct ReferenceBuildBody<'a> {
-    url: &'a str,
 }
 
 /// The body of the `202 Accepted` from `POST /runs/{id}/publish`: the enqueued

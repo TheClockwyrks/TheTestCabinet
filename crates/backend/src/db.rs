@@ -13,6 +13,7 @@
 //! (single-writer, WAL); PostgreSQL handles concurrency natively. The schema is
 //! owned by [`test_cabinet_migration`] and applied at startup, not here.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -25,14 +26,15 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::metrics::{Cost, TokenPrices};
+use test_cabinet_core::reference_lock::ReferenceBuildEntry;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
-use test_cabinet_core::run_record::{HarnessSlug, RunLinks, RunRecord};
+use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug, RunLinks, RunRecord};
 use test_cabinet_entities::{
-    case_reference_build, harness_config, job, model, model_alias, model_price, publish_job, review,
-    review_plan, run, run_link, snapshot_state, tournament,
+    case_reference_build, coverage_group, coverage_plan, harness_config, job, model, model_alias,
+    model_price, publish_job, review, review_plan, run, run_link, snapshot_state, tournament,
 };
 
-use crate::error::Result;
+use crate::error::{BackendError, Result};
 
 /// The non-terminal job states — a run the queue still owns, from enqueue through
 /// execution. A job in one of these is "in flight": it appears in the active-run
@@ -161,10 +163,30 @@ const SNAPSHOT_STATE_ID: i32 = 1;
 
 /// The SeaORM-backed store.
 pub struct Db {
-    conn: DatabaseConnection,
+    handle: ConnHandle,
+}
+
+/// How the store reaches its database: a fixed connection (SQLite, or a
+/// password-authenticated `postgres://` URL), or a Microsoft Entra
+/// managed-identity connection whose token — and therefore whose underlying pool —
+/// rotates in the background.
+enum ConnHandle {
+    /// A connection built once from the URL. Cheap to clone (an `Arc` to the pool).
+    Static(DatabaseConnection),
+    /// A passwordless Azure AD connection; the current pool is read per query.
+    AzureAd(std::sync::Arc<test_cabinet_db_auth::AzureAdDb>),
 }
 
 impl Db {
+    /// The current SeaORM connection, as a cheap clone. Every query and
+    /// transaction goes through this so that, under Azure AD auth, work runs on
+    /// the pool built with the freshest token.
+    fn conn(&self) -> DatabaseConnection {
+        match &self.handle {
+            ConnHandle::Static(conn) => conn.clone(),
+            ConnHandle::AzureAd(db) => db.connection(),
+        }
+    }
     /// Connect to the store at `url`, choosing the backend by URL scheme
     /// (`sqlite://…` or `postgres://…`). For a SQLite **file** URL the parent
     /// directory is created first (so a fresh deployment works) and WAL +
@@ -179,7 +201,23 @@ impl Db {
         }
         let conn = Database::connect(ConnectOptions::new(url.to_owned())).await?;
         Self::apply_sqlite_pragmas(&conn).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            handle: ConnHandle::Static(conn),
+        })
+    }
+
+    /// Connect to a managed-PostgreSQL store using Microsoft Entra managed-identity
+    /// (passwordless) authentication. `url` must name the Entra Postgres role as
+    /// its username and carry no password; the access token is minted from the
+    /// pod's Workload Identity and the connection pool is rebuilt as it rotates.
+    /// See [`test_cabinet_db_auth`].
+    pub async fn connect_azure_ad(url: &str) -> Result<Self> {
+        let db = test_cabinet_db_auth::AzureAdDb::connect(url)
+            .await
+            .map_err(|err| sea_orm::DbErr::Custom(format!("Azure AD Postgres auth: {err}")))?;
+        Ok(Self {
+            handle: ConnHandle::AzureAd(std::sync::Arc::new(db)),
+        })
     }
 
     /// Open an in-memory SQLite store with the schema migrated in (used by tests).
@@ -194,12 +232,16 @@ impl Db {
         let conn = Database::connect(opts).await?;
         Self::apply_sqlite_pragmas(&conn).await?;
         test_cabinet_migration::Migrator::up(&conn, None).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            handle: ConnHandle::Static(conn),
+        })
     }
 
     /// The underlying connection, for the startup migration in [`crate::build`].
-    pub fn connection(&self) -> &DatabaseConnection {
-        &self.conn
+    /// Returns a cheap clone of the current pool (owned, so it stays valid across a
+    /// background refresh under Azure AD auth).
+    pub fn connection(&self) -> DatabaseConnection {
+        self.conn()
     }
 
     /// Apply the SQLite-only pragmas. WAL is required by the Litestream backup
@@ -232,7 +274,7 @@ impl Db {
         record.links = links.clone();
         let record_json = serde_json::to_string(&record)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let existing = run::Entity::find_by_id(record.id.clone()).one(&txn).await?;
         let newly_pushed = existing.is_none();
@@ -337,7 +379,7 @@ impl Db {
         let ratings_json = serde_json::to_string(&review.ratings)?;
         let checklist_json = serde_json::to_string(&review.checklist)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -420,7 +462,7 @@ impl Db {
     /// stored. Idempotent: re-publishing an already-published run preserves its
     /// original `published_at`. Stamps `published_at` on the first publish.
     pub async fn publish(&self, run_id: &str, published_at: &str) -> Result<PublishRunOutcome> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -462,7 +504,7 @@ impl Db {
     /// with `run_id` is stored. Because only an unpublished run can be deleted, the
     /// run is not in the public snapshot and no refresh is needed.
     pub async fn delete_run(&self, run_id: &str) -> Result<()> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -501,7 +543,7 @@ impl Db {
     /// Fetch one stored run by id (published or pending).
     pub async fn get_run(&self, id: &str) -> Result<Option<StoredRun>> {
         let run = run::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?;
         let Some(run) = run else {
             return Ok(None);
@@ -526,7 +568,7 @@ impl Db {
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -555,19 +597,24 @@ impl Db {
         self.list_by_states(&["completed"], limit, before).await
     }
 
-    /// List the **publishable failure** runs — catastrophic and timed-out (pending
-    /// and published) — newest-first by `finished_at`, paginated by a `finished_at`
-    /// cursor. These have no review checklist, so they are kept out of the reviewer
-    /// worklist and surfaced in their own "publish failures" affordance, where each
-    /// can be published with a single click. Infrastructure failures are excluded:
-    /// they are retained for inspection but never publishable.
+    /// List the **publishable failure** runs — catastrophic, timed-out, and
+    /// harness-error (pending and published) — newest-first by `finished_at`,
+    /// paginated by a `finished_at` cursor. These have no review checklist, so they
+    /// are kept out of the reviewer worklist and surfaced in their own "publish
+    /// failures" affordance, where each can be published with a single click (a
+    /// harness error records only a per-model statistic). Infrastructure failures are
+    /// excluded: they are retained for inspection but never publishable.
     pub async fn list_publishable_failures(
         &self,
         limit: usize,
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
-        self.list_by_states(&["catastrophic", "timed_out"], limit, before)
-            .await
+        self.list_by_states(
+            &["catastrophic", "timed_out", "harness_error"],
+            limit,
+            before,
+        )
+        .await
     }
 
     /// List every **unpublished** run — pushed but not yet published, *whatever* its
@@ -594,7 +641,7 @@ impl Db {
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -631,7 +678,7 @@ impl Db {
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -674,7 +721,7 @@ impl Db {
     ) -> Result<(Vec<StoredRun>, usize)> {
         // The same predicate drives both the COUNT and the page; count first (no
         // limit/offset), then order + window the page.
-        let total = summary_query(filter).count(&self.conn).await? as usize;
+        let total = summary_query(filter).count(&self.conn()).await? as usize;
 
         let order = match dir {
             SortDir::Asc => Order::Asc,
@@ -686,7 +733,7 @@ impl Db {
             .order_by(run::Column::Id, order)
             .limit(limit as u64)
             .offset(offset as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let runs = self.assemble(rows).await?;
@@ -712,7 +759,7 @@ impl Db {
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut runs = self.assemble(rows).await?;
@@ -735,7 +782,7 @@ impl Db {
             .filter(run::Column::TestCaseSlug.eq(slug.to_string()))
             .order_by_desc(run::Column::FinishedAt)
             .order_by_desc(run::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         self.assemble(rows).await
     }
@@ -748,7 +795,7 @@ impl Db {
             .filter(run::Column::Published.eq(true))
             .order_by_desc(run::Column::PublishedAt)
             .order_by_desc(run::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         self.assemble(rows).await
     }
@@ -767,7 +814,7 @@ impl Db {
             .column(run::Column::TestCaseVersion)
             .distinct()
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         Ok(rows.into_iter().collect())
     }
@@ -776,7 +823,7 @@ impl Db {
     pub async fn run_count(&self) -> Result<i64> {
         Ok(run::Entity::find()
             .filter(run::Column::Published.eq(true))
-            .count(&self.conn)
+            .count(&self.conn())
             .await? as i64)
     }
 
@@ -792,7 +839,7 @@ impl Db {
         let mut link_map: std::collections::HashMap<String, run_link::Model> =
             run_link::Entity::find()
                 .filter(run_link::Column::RunId.is_in(ids.clone()))
-                .all(&self.conn)
+                .all(&self.conn())
                 .await?
                 .into_iter()
                 .map(|link| (link.run_id.clone(), link))
@@ -804,7 +851,7 @@ impl Db {
             .filter(review::Column::RunId.is_in(ids))
             .order_by_asc(review::Column::ReviewedAt)
             .order_by_asc(review::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         for review in reviews {
             let run_id = review.run_id.clone();
@@ -862,7 +909,7 @@ impl Db {
     ) -> Result<PublishOutcome> {
         let record_json = serde_json::to_string(record)?;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let existing_published_at = tournament::Entity::find_by_id(record.id.clone())
             .one(&txn)
             .await?
@@ -903,7 +950,7 @@ impl Db {
     /// Fetch one stored tournament by id.
     pub async fn get_tournament(&self, id: &str) -> Result<Option<StoredTournament>> {
         tournament::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .map(stored_tournament)
             .transpose()
@@ -925,7 +972,7 @@ impl Db {
             .order_by_desc(tournament::Column::PublishedAt)
             .order_by_desc(tournament::Column::Id)
             .limit(fetch as u64)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
 
         let mut tournaments = rows
@@ -945,7 +992,7 @@ impl Db {
     /// row has never been written.
     pub async fn snapshot_state(&self) -> Result<SnapshotState> {
         let state = snapshot_state::Entity::find_by_id(SNAPSHOT_STATE_ID)
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .map(|model| SnapshotState {
                 dirty: model.dirty,
@@ -963,7 +1010,7 @@ impl Db {
     /// Mark the snapshot dirty (a publish has landed). Coalescing reads this to
     /// decide whether a refresh is needed.
     pub async fn mark_dirty(&self) -> Result<()> {
-        set_dirty(&self.conn).await
+        set_dirty(&self.conn()).await
     }
 
     /// Record a successful upload: clear the dirty flag and stamp the upload time
@@ -984,7 +1031,7 @@ impl Db {
                 ])
                 .to_owned(),
         )
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1016,9 +1063,10 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
 /// Publishability is decided by the run's terminal state. Infrastructure failures
 /// are the Test Cabinet's fault, not a model result, and are never publishable.
 /// Completed runs publish through the review gate (≥1 review). The publishable
-/// failure tiers — catastrophic and timed-out — are real model signal: publishable,
-/// but with no review checklist to complete, so the review-count requirement is
-/// waived for them (they publish through the separate publish-failures path).
+/// failure tiers — catastrophic, timed-out, and harness-error — are real model
+/// signal: publishable, but with no review checklist to complete, so the
+/// review-count requirement is waived for them (they publish through the separate
+/// publish-failures path).
 async fn gate_publishable<C: ConnectionTrait>(
     conn: &C,
     run_id: &str,
@@ -1029,7 +1077,8 @@ async fn gate_publishable<C: ConnectionTrait>(
             "run `{run_id}` is an infrastructure failure and can never be published"
         )));
     }
-    let is_publishable_failure = matches!(run_state, "catastrophic" | "timed_out");
+    let is_publishable_failure =
+        matches!(run_state, "catastrophic" | "timed_out" | "harness_error");
     if !is_publishable_failure {
         let review_count = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
@@ -1114,100 +1163,396 @@ pub(crate) fn aggregate_review_rating(
 /// **global** — they tally every run/job for a cell regardless of who launched it,
 /// so two reviewers dividing the model space never redo each other's runs.
 impl Db {
-    /// Load a reviewer's saved coverage plan, or `None` when they have not saved
-    /// one yet. A malformed stored plan (corrupt JSON) surfaces as an error rather
-    /// than being silently dropped.
-    pub async fn get_review_plan(&self, user_id: &str) -> Result<Option<crate::api::ReviewPlan>> {
-        let Some(row) = review_plan::Entity::find_by_id(user_id.to_string())
-            .one(&self.conn)
+    /// Every coverage group the account owns, both kinds, ordered by display name.
+    pub async fn list_coverage_groups(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<crate::api::CoverageGroup>> {
+        coverage_group::Entity::find()
+            .filter(coverage_group::Column::UserId.eq(user_id))
+            .order_by_asc(coverage_group::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(coverage_group_from_row)
+            .collect()
+    }
+
+    /// One coverage group by id, scoped to the owning account (`None` when the id is
+    /// unknown or owned by someone else).
+    pub async fn get_coverage_group(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::CoverageGroup>> {
+        let Some(row) = coverage_group::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
         };
-        Ok(Some(crate::api::ReviewPlan {
-            runs_per_cell: row.runs_per_cell.max(0) as u32,
-            cases: serde_json::from_str(&row.cases_json)?,
-            combinations: serde_json::from_str(&row.combinations_json)?,
-        }))
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(coverage_group_from_row(row)?))
     }
 
-    /// Upsert a reviewer's coverage plan in place (one row per account, keyed by
-    /// `user_id`).
-    pub async fn put_review_plan(
+    /// Insert a new coverage group (id already minted by the handler).
+    pub async fn insert_coverage_group(
         &self,
         user_id: &str,
-        plan: &crate::api::ReviewPlan,
-        updated_at: &str,
+        group: &crate::api::CoverageGroup,
     ) -> Result<()> {
-        let cases_json = serde_json::to_string(&plan.cases)?;
-        let combinations_json = serde_json::to_string(&plan.combinations)?;
-        review_plan::Entity::insert(review_plan::ActiveModel {
+        coverage_group::ActiveModel {
+            id: Set(group.id.clone()),
             user_id: Set(user_id.to_string()),
-            runs_per_cell: Set(plan.runs_per_cell as i32),
-            cases_json: Set(cases_json),
-            combinations_json: Set(combinations_json),
-            updated_at: Set(updated_at.to_string()),
-        })
-        .on_conflict(
-            OnConflict::column(review_plan::Column::UserId)
-                .update_columns([
-                    review_plan::Column::RunsPerCell,
-                    review_plan::Column::CasesJson,
-                    review_plan::Column::CombinationsJson,
-                    review_plan::Column::UpdatedAt,
-                ])
-                .to_owned(),
-        )
-        .exec(&self.conn)
+            kind: Set(group.kind.as_str().to_string()),
+            name: Set(group.name.clone()),
+            members_json: Set(coverage_group_members_json(group)?),
+            updated_at: Set(group.updated_at.clone()),
+        }
+        .insert(&self.conn())
         .await?;
         Ok(())
     }
 
-    /// Count the **completed** runs for one coverage cell (an exact
-    /// case-version-variant × harness × model tuple). Only evaluable `completed`
-    /// runs count toward a cell's target; the failure tiers do not.
-    pub async fn count_completed_runs_for_cell(
+    /// Update a coverage group in place, scoped to the owning account. Returns
+    /// whether a row matched (false → unknown id or not the caller's).
+    pub async fn update_coverage_group(
         &self,
-        slug: &str,
-        version: &str,
-        variant: &str,
-        harness: &str,
-        model: &str,
-    ) -> Result<u64> {
-        Ok(run::Entity::find()
+        user_id: &str,
+        group: &crate::api::CoverageGroup,
+    ) -> Result<bool> {
+        let res = coverage_group::Entity::update_many()
+            .col_expr(
+                coverage_group::Column::Kind,
+                Expr::value(group.kind.as_str()),
+            )
+            .col_expr(
+                coverage_group::Column::Name,
+                Expr::value(group.name.clone()),
+            )
+            .col_expr(
+                coverage_group::Column::MembersJson,
+                Expr::value(coverage_group_members_json(group)?),
+            )
+            .col_expr(
+                coverage_group::Column::UpdatedAt,
+                Expr::value(group.updated_at.clone()),
+            )
+            .filter(coverage_group::Column::Id.eq(group.id.clone()))
+            .filter(coverage_group::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a coverage group, scoped to the owning account. Returns whether a row
+    /// was removed.
+    pub async fn delete_coverage_group(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = coverage_group::Entity::delete_many()
+            .filter(coverage_group::Column::Id.eq(id))
+            .filter(coverage_group::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Every coverage plan the account owns, ordered by display name.
+    pub async fn list_coverage_plans(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<crate::api::CoveragePlan>> {
+        coverage_plan::Entity::find()
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .order_by_asc(coverage_plan::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(coverage_plan_from_row)
+            .collect()
+    }
+
+    /// One coverage plan by id, scoped to the owning account.
+    pub async fn get_coverage_plan(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::CoveragePlan>> {
+        let Some(row) = coverage_plan::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(coverage_plan_from_row(row)?))
+    }
+
+    /// Insert a new coverage plan (id already minted by the handler).
+    pub async fn insert_coverage_plan(
+        &self,
+        user_id: &str,
+        plan: &crate::api::CoveragePlan,
+    ) -> Result<()> {
+        coverage_plan::ActiveModel {
+            id: Set(plan.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(plan.name.clone()),
+            runs_per_cell: Set(plan.runs_per_cell as i32),
+            combo_group_ids_json: Set(serde_json::to_string(&plan.combo_group_ids)?),
+            case_group_ids_json: Set(serde_json::to_string(&plan.case_group_ids)?),
+            combos_json: Set(serde_json::to_string(&plan.combos)?),
+            cases_json: Set(serde_json::to_string(&plan.cases)?),
+            updated_at: Set(plan.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a coverage plan in place, scoped to the owning account. Returns whether
+    /// a row matched.
+    pub async fn update_coverage_plan(
+        &self,
+        user_id: &str,
+        plan: &crate::api::CoveragePlan,
+    ) -> Result<bool> {
+        let res = coverage_plan::Entity::update_many()
+            .col_expr(coverage_plan::Column::Name, Expr::value(plan.name.clone()))
+            .col_expr(
+                coverage_plan::Column::RunsPerCell,
+                Expr::value(plan.runs_per_cell as i32),
+            )
+            .col_expr(
+                coverage_plan::Column::ComboGroupIdsJson,
+                Expr::value(serde_json::to_string(&plan.combo_group_ids)?),
+            )
+            .col_expr(
+                coverage_plan::Column::CaseGroupIdsJson,
+                Expr::value(serde_json::to_string(&plan.case_group_ids)?),
+            )
+            .col_expr(
+                coverage_plan::Column::CombosJson,
+                Expr::value(serde_json::to_string(&plan.combos)?),
+            )
+            .col_expr(
+                coverage_plan::Column::CasesJson,
+                Expr::value(serde_json::to_string(&plan.cases)?),
+            )
+            .col_expr(
+                coverage_plan::Column::UpdatedAt,
+                Expr::value(plan.updated_at.clone()),
+            )
+            .filter(coverage_plan::Column::Id.eq(plan.id.clone()))
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a coverage plan, scoped to the owning account. Returns whether a row
+    /// was removed.
+    pub async fn delete_coverage_plan(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = coverage_plan::Entity::delete_many()
+            .filter(coverage_plan::Column::Id.eq(id))
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// The legacy single-per-account plans that the startup backfill has not yet
+    /// copied into `coverage_plan` (`migrated = false`). Each is returned with its
+    /// parsed combinations and cases so the backfill can inline them as one-off
+    /// members of the migrated plan.
+    pub async fn unmigrated_review_plans(&self) -> Result<Vec<LegacyReviewPlan>> {
+        review_plan::Entity::find()
+            .filter(review_plan::Column::Migrated.eq(false))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| {
+                Ok(LegacyReviewPlan {
+                    user_id: row.user_id,
+                    runs_per_cell: row.runs_per_cell.max(0) as u32,
+                    combos: serde_json::from_str(&row.combinations_json)?,
+                    cases: serde_json::from_str(&row.cases_json)?,
+                })
+            })
+            .collect()
+    }
+
+    /// Mark a legacy plan as migrated so the backfill copies it exactly once.
+    pub async fn mark_review_plan_migrated(&self, user_id: &str) -> Result<()> {
+        review_plan::Entity::update_many()
+            .col_expr(review_plan::Column::Migrated, Expr::value(true))
+            .filter(review_plan::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Count the **completed** runs for every coverage cell whose case slug is in
+    /// `slugs`, in a single grouped query. The result is keyed by cell identity
+    /// `(slug, version, variant, harness, model)`; a cell with no completed runs
+    /// is simply absent. Only evaluable `completed` runs count toward a cell's
+    /// target; the failure tiers do not.
+    ///
+    /// This computes the whole coverage matrix's completed counts at once, so the
+    /// `coverage` handler does not fan out into a per-cell `COUNT(*)` — two queries
+    /// per cell, thousands of serial round-trips for a large plan.
+    pub async fn count_completed_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
+        if slugs.is_empty() {
+            return Ok(CellCounts::new());
+        }
+        let rows: Vec<(String, String, String, String, String, i64)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::TestCaseVersion)
+            .column(run::Column::Variant)
+            .column(run::Column::HarnessSlug)
+            .column(run::Column::ModelId)
+            .column_as(run::Column::Id.count(), "cnt")
             .filter(run::Column::RunState.eq("completed"))
-            .filter(run::Column::TestCaseSlug.eq(slug))
-            .filter(run::Column::TestCaseVersion.eq(version))
-            .filter(run::Column::Variant.eq(variant))
-            .filter(run::Column::HarnessSlug.eq(harness))
-            .filter(run::Column::ModelId.eq(model))
-            .count(&self.conn)
-            .await?)
+            .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
+            .group_by(run::Column::TestCaseSlug)
+            .group_by(run::Column::TestCaseVersion)
+            .group_by(run::Column::Variant)
+            .group_by(run::Column::HarnessSlug)
+            .group_by(run::Column::ModelId)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(cell_counts(rows))
     }
 
     /// Count the **in-flight** jobs — queued, pending, dispatched, starting, or
-    /// running — for one coverage cell. These count toward a cell's target alongside
-    /// completed runs, so triggering the missing runs immediately marks the cell
-    /// satisfied and the reviewer does not double-trigger while runs are still
-    /// executing (or waiting to).
-    pub async fn count_in_flight_jobs_for_cell(
-        &self,
-        slug: &str,
-        version: &str,
-        variant: &str,
-        harness: &str,
-        model: &str,
-    ) -> Result<u64> {
-        Ok(job::Entity::find()
+    /// running — for every coverage cell whose case slug is in `slugs`, in a single
+    /// grouped query (the companion to [`Self::count_completed_runs_by_cell`], keyed
+    /// the same way). In-flight jobs count toward a cell's target alongside completed
+    /// runs, so triggering the missing runs immediately marks the cell satisfied and
+    /// the reviewer does not double-trigger while runs are still executing (or
+    /// waiting to).
+    pub async fn count_in_flight_jobs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
+        if slugs.is_empty() {
+            return Ok(CellCounts::new());
+        }
+        let rows: Vec<(String, String, String, String, String, i64)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::TestCaseSlug)
+            .column(job::Column::TestCaseVersion)
+            .column(job::Column::Variant)
+            .column(job::Column::HarnessSlug)
+            .column(job::Column::ModelId)
+            .column_as(job::Column::Id.count(), "cnt")
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
-            .filter(job::Column::TestCaseSlug.eq(slug))
-            .filter(job::Column::TestCaseVersion.eq(version))
-            .filter(job::Column::Variant.eq(variant))
-            .filter(job::Column::HarnessSlug.eq(harness))
-            .filter(job::Column::ModelId.eq(model))
-            .count(&self.conn)
-            .await?)
+            .filter(job::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
+            .group_by(job::Column::TestCaseSlug)
+            .group_by(job::Column::TestCaseVersion)
+            .group_by(job::Column::Variant)
+            .group_by(job::Column::HarnessSlug)
+            .group_by(job::Column::ModelId)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(cell_counts(rows))
     }
+}
+
+/// A coverage cell's identity: `(slug, version, variant, harness, model)` — the
+/// key both grouped-count queries return their tallies under.
+pub type CellKey = (String, String, String, String, String);
+
+/// Per-cell counts from a grouped coverage query, keyed by [`CellKey`].
+pub type CellCounts = HashMap<CellKey, u32>;
+
+/// Fold the `(slug, version, variant, harness, model, count)` rows a grouped
+/// coverage query returns into a [`CellCounts`] map. The count is a SQL
+/// `COUNT(*)` so it is non-negative; the clamp is defensive.
+fn cell_counts(rows: Vec<(String, String, String, String, String, i64)>) -> CellCounts {
+    rows.into_iter()
+        .map(|(slug, version, variant, harness, model, count)| {
+            (
+                (slug, version, variant, harness, model),
+                count.max(0) as u32,
+            )
+        })
+        .collect()
+}
+
+/// A legacy single-per-account coverage plan awaiting backfill into `coverage_plan`
+/// (its combinations and cases already parsed), returned by
+/// [`Db::unmigrated_review_plans`].
+#[derive(Debug, Clone)]
+pub struct LegacyReviewPlan {
+    /// The owning account's id.
+    pub user_id: String,
+    /// The legacy plan's runs-per-cell target.
+    pub runs_per_cell: u32,
+    /// The legacy plan's harness+model combinations.
+    pub combos: Vec<crate::api::ReviewPlanCombo>,
+    /// The legacy plan's version-pinned cases.
+    pub cases: Vec<crate::api::ReviewPlanCase>,
+}
+
+/// Convert a stored coverage-group row into its contract shape, decoding the
+/// `members_json` into the array its `kind` selects. An unrecognized `kind` (a
+/// corrupt row) surfaces as an error rather than being silently dropped.
+fn coverage_group_from_row(row: coverage_group::Model) -> Result<crate::api::CoverageGroup> {
+    use crate::api::CoverageGroupKind;
+    let (kind, combos, cases) = match row.kind.as_str() {
+        "combo" => (
+            CoverageGroupKind::Combo,
+            serde_json::from_str(&row.members_json)?,
+            Vec::new(),
+        ),
+        "case" => (
+            CoverageGroupKind::Case,
+            Vec::new(),
+            serde_json::from_str(&row.members_json)?,
+        ),
+        other => {
+            return Err(BackendError::Internal(format!(
+                "unknown coverage group kind: {other}"
+            )));
+        }
+    };
+    Ok(crate::api::CoverageGroup {
+        id: row.id,
+        name: row.name,
+        kind,
+        combos,
+        cases,
+        updated_at: row.updated_at,
+    })
+}
+
+/// Serialize a coverage group's members (the array its `kind` selects) for the
+/// `members_json` column.
+fn coverage_group_members_json(group: &crate::api::CoverageGroup) -> Result<String> {
+    use crate::api::CoverageGroupKind;
+    Ok(match group.kind {
+        CoverageGroupKind::Combo => serde_json::to_string(&group.combos)?,
+        CoverageGroupKind::Case => serde_json::to_string(&group.cases)?,
+    })
+}
+
+/// Convert a stored coverage-plan row into its contract shape, decoding its JSON
+/// group-reference and one-off member arrays.
+fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::CoveragePlan> {
+    Ok(crate::api::CoveragePlan {
+        id: row.id,
+        name: row.name,
+        runs_per_cell: row.runs_per_cell.max(0) as u32,
+        combo_group_ids: serde_json::from_str(&row.combo_group_ids_json)?,
+        case_group_ids: serde_json::from_str(&row.case_group_ids_json)?,
+        combos: serde_json::from_str(&row.combos_json)?,
+        cases: serde_json::from_str(&row.cases_json)?,
+        updated_at: row.updated_at,
+    })
 }
 
 /// The lifted `run.rating` column value: the aggregate rating as its lowercase
@@ -1299,9 +1644,11 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
     query = match filter.state {
         SummaryState::Published => query.filter(run::Column::Published.eq(true)),
         SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
-        SummaryState::Failures => {
-            query.filter(run::Column::RunState.is_in(["catastrophic", "timed_out"]))
-        }
+        SummaryState::Failures => query.filter(run::Column::RunState.is_in([
+            "catastrophic",
+            "timed_out",
+            "harness_error",
+        ])),
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
@@ -1388,6 +1735,7 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
         RunState::Completed => "completed",
         RunState::Catastrophic => "catastrophic",
         RunState::TimedOut => "timed_out",
+        RunState::HarnessError => "harness_error",
         RunState::Infrastructure => "infrastructure",
     }
 }
@@ -1409,6 +1757,7 @@ fn sqlite_file_path(url: &str) -> Option<PathBuf> {
 
 /// A run to enqueue: the minted id and token, the verbatim launch request, and
 /// the identity columns lifted out of it for the active-run list.
+#[derive(Clone)]
 pub struct NewJob {
     /// The job id, minted by the backend at enqueue.
     pub id: String,
@@ -1433,6 +1782,28 @@ pub struct NewJob {
     pub created_at: String,
 }
 
+/// Build the `queued` `job` row for a run to enqueue. Shared by the single
+/// ([`Db::enqueue_job`]) and batch ([`Db::enqueue_jobs`]) insert paths so a job is
+/// materialized identically however it was submitted.
+fn new_job_model(new: NewJob) -> job::ActiveModel {
+    job::ActiveModel {
+        id: Set(new.id),
+        state: Set("queued".to_string()),
+        request_json: Set(new.request_json),
+        test_case_slug: Set(new.test_case_slug),
+        test_case_version: Set(new.test_case_version),
+        variant: Set(new.variant),
+        harness_slug: Set(new.harness_slug),
+        model_id: Set(new.model_id),
+        job_token: Set(new.job_token),
+        record_id: Set(None),
+        detail: Set(None),
+        attempt: Set(new.attempt),
+        created_at: Set(new.created_at.clone()),
+        updated_at: Set(new.created_at),
+    }
+}
+
 /// A publish job to enqueue: the minted id and token, and the run it releases. The
 /// publish path's analogue of [`NewJob`] — it references an existing run by id
 /// rather than carrying a launch request.
@@ -1453,24 +1824,25 @@ pub struct NewPublishJob {
 impl Db {
     /// Enqueue a run: insert it in the `queued` state for the dispatcher to claim.
     pub async fn enqueue_job(&self, new: NewJob) -> Result<()> {
-        job::Entity::insert(job::ActiveModel {
-            id: Set(new.id),
-            state: Set("queued".to_string()),
-            request_json: Set(new.request_json),
-            test_case_slug: Set(new.test_case_slug),
-            test_case_version: Set(new.test_case_version),
-            variant: Set(new.variant),
-            harness_slug: Set(new.harness_slug),
-            model_id: Set(new.model_id),
-            job_token: Set(new.job_token),
-            record_id: Set(None),
-            detail: Set(None),
-            attempt: Set(new.attempt),
-            created_at: Set(new.created_at.clone()),
-            updated_at: Set(new.created_at),
-        })
-        .exec(&self.conn)
-        .await?;
+        job::Entity::insert(new_job_model(new))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Enqueue many runs, all in the `queued` state, in as few statements as
+    /// possible — the batch analogue of [`Self::enqueue_job`] backing
+    /// `POST /jobs/batch`. Rows are inserted in bounded chunks so a large fan-out
+    /// (a whole coverage plan's missing runs) never exceeds the backing database's
+    /// bind-parameter ceiling. An empty batch is a no-op.
+    pub async fn enqueue_jobs(&self, jobs: Vec<NewJob>) -> Result<()> {
+        // Each row binds ~13 columns; a 1000-row chunk is ~13k parameters, well
+        // under both SQLite's (32766) and Postgres's (65535) per-statement limits.
+        const CHUNK: usize = 1000;
+        for chunk in jobs.chunks(CHUNK) {
+            let models = chunk.iter().cloned().map(new_job_model);
+            job::Entity::insert_many(models).exec(&self.conn()).await?;
+        }
         Ok(())
     }
 
@@ -1493,7 +1865,7 @@ impl Db {
     pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
         use std::collections::HashMap;
 
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         // The per-harness parallelism limits (harnesses with no configured limit are
         // absent → unlimited).
@@ -1517,8 +1889,7 @@ impl Db {
         // Is a harness under its configured cap right now, given `active` already in
         // flight? Absent from `caps` means unlimited.
         let under_cap = |harness: &str, active: i64| -> bool {
-            caps.get(harness)
-                .is_none_or(|&max| active < i64::from(max))
+            caps.get(harness).is_none_or(|&max| active < i64::from(max))
         };
 
         // Walk the waiting jobs oldest-first: claim the first whose harness is under
@@ -1542,7 +1913,9 @@ impl Db {
             if claimed.is_none() && has_room {
                 // Claim this one: it now occupies a slot for its harness, so bump the
                 // count for the reconcile of any later same-harness jobs.
-                *active_by_harness.entry(job.harness_slug.clone()).or_insert(0) += 1;
+                *active_by_harness
+                    .entry(job.harness_slug.clone())
+                    .or_insert(0) += 1;
                 let mut active_model = job.into_active_model();
                 active_model.state = Set("dispatched".to_string());
                 active_model.updated_at = Set(now.to_string());
@@ -1566,7 +1939,7 @@ impl Db {
 
     /// Every stored per-harness config row (harnesses with no overrides are absent).
     pub async fn list_harness_configs(&self) -> Result<Vec<harness_config::Model>> {
-        Ok(harness_config::Entity::find().all(&self.conn).await?)
+        Ok(harness_config::Entity::find().all(&self.conn()).await?)
     }
 
     /// Set (or clear, with `None`) a harness's maximum parallelism, upserting its
@@ -1591,7 +1964,7 @@ impl Db {
                 ])
                 .to_owned(),
         )
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1610,7 +1983,7 @@ impl Db {
         now: &str,
         detail: &str,
     ) -> Result<Option<job::Model>> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let candidate = job::Entity::find_by_id(id.to_string())
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .one(&txn)
@@ -1646,7 +2019,7 @@ impl Db {
     ) -> Result<Option<job::Model>> {
         let Some(model) = job::Entity::find_by_id(id.to_string())
             .filter(job::Column::State.ne("canceled"))
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
@@ -1660,13 +2033,13 @@ impl Db {
         if let Some(record_id) = record_id {
             active.record_id = Set(Some(record_id.to_string()));
         }
-        Ok(Some(active.update(&self.conn).await?))
+        Ok(Some(active.update(&self.conn()).await?))
     }
 
     /// Fetch one job by id.
     pub async fn get_job(&self, id: &str) -> Result<Option<job::Model>> {
         Ok(job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?)
     }
 
@@ -1687,7 +2060,7 @@ impl Db {
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(detail))
             .filter(job::Column::State.is_in(REAPABLE_STATES))
-            .exec(&self.conn)
+            .exec(&self.conn())
             .await?;
         Ok(result.rows_affected)
     }
@@ -1701,7 +2074,7 @@ impl Db {
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 }
@@ -1720,12 +2093,12 @@ impl Db {
     /// gate [`Db::publish`] does.
     pub async fn ensure_publishable(&self, run_id: &str) -> Result<()> {
         let run = run::Entity::find_by_id(run_id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .ok_or_else(|| {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
-        gate_publishable(&self.conn, run_id, &run.run_state).await
+        gate_publishable(&self.conn(), run_id, &run.run_state).await
     }
 
     /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to
@@ -1742,7 +2115,7 @@ impl Db {
             created_at: Set(new.created_at.clone()),
             updated_at: Set(new.created_at),
         })
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -1752,7 +2125,7 @@ impl Db {
     /// select-then-update runs in one transaction, exactly like
     /// [`Db::claim_next_job`], so two dispatchers cannot claim the same publish job.
     pub async fn claim_next_publish_job(&self, now: &str) -> Result<Option<publish_job::Model>> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
         let candidate = publish_job::Entity::find()
             .filter(publish_job::Column::State.eq("queued"))
             .order_by_asc(publish_job::Column::CreatedAt)
@@ -1774,7 +2147,7 @@ impl Db {
     /// Fetch one publish job by id.
     pub async fn get_publish_job(&self, id: &str) -> Result<Option<publish_job::Model>> {
         Ok(publish_job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?)
     }
 
@@ -1791,7 +2164,7 @@ impl Db {
         detail: Option<&str>,
     ) -> Result<Option<publish_job::Model>> {
         let Some(model) = publish_job::Entity::find_by_id(id.to_string())
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
@@ -1802,7 +2175,7 @@ impl Db {
         if let Some(detail) = detail {
             active.detail = Set(Some(detail.to_string()));
         }
-        Ok(Some(active.update(&self.conn).await?))
+        Ok(Some(active.update(&self.conn()).await?))
     }
 
     /// Finalize a **succeeded** publish: in one transaction, attach the links the
@@ -1825,7 +2198,7 @@ impl Db {
         playable_build: Option<&str>,
         now: &str,
     ) -> Result<PublishRunOutcome> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         let run = run::Entity::find_by_id(run_id.to_string())
             .one(&txn)
@@ -1892,13 +2265,25 @@ impl Db {
     }
 }
 
+/// One canonical model id a curated model claims, with the harness family it is
+/// usable with. The `alias` string is globally unique across all models; the
+/// `family` tags which harnesses can launch it (see [`HarnessFamily`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AliasEntry {
+    /// The canonical model id (globally unique).
+    pub alias: String,
+    /// The harness family this slug is usable with.
+    pub family: HarnessFamily,
+}
+
 /// A curated model configuration and the canonical run-record ids it covers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredModel {
     /// The curated `model` row.
     pub config: model::Model,
-    /// The canonical model ids this config claims, sorted.
-    pub aliases: Vec<String>,
+    /// The canonical model ids this config claims, each with its harness family,
+    /// sorted by id.
+    pub aliases: Vec<AliasEntry>,
 }
 
 /// The write payload for [`Db::upsert_model_config`].
@@ -1911,8 +2296,9 @@ pub struct ModelConfigWrite {
     pub provider_logo_svg: Option<String>,
     pub description_md: Option<String>,
     pub openrouter_slug: Option<String>,
-    /// The canonical model ids this config claims (at least one).
-    pub aliases: Vec<String>,
+    /// The canonical model ids this config claims, each with its harness family
+    /// (at least one).
+    pub aliases: Vec<AliasEntry>,
     /// RFC 3339 timestamp for the created/updated stamp.
     pub now: String,
 }
@@ -1929,27 +2315,40 @@ pub struct PriceWrite {
     pub released_at: Option<String>,
 }
 
+/// Project a stored `model_alias` row into an [`AliasEntry`], parsing its
+/// `harness_family` wire slug and falling back to [`HarnessFamily::Openrouter`]
+/// for an unrecognized value (the migration default, and the harmless choice for
+/// a slug the current build does not know a family for).
+fn alias_entry(row: model_alias::Model) -> AliasEntry {
+    let family = HarnessFamily::from_wire(&row.harness_family).unwrap_or(HarnessFamily::Openrouter);
+    AliasEntry {
+        alias: row.alias,
+        family,
+    }
+}
+
 /// The model catalog store: curated config, its aliases, and observed prices.
 impl Db {
     /// Every curated model config with its aliases, ordered by slug.
     pub async fn list_model_configs(&self) -> Result<Vec<StoredModel>> {
         let configs = model::Entity::find()
             .order_by_asc(model::Column::Slug)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
-        let mut alias_map: std::collections::HashMap<String, Vec<String>> =
+        let mut alias_map: std::collections::HashMap<String, Vec<AliasEntry>> =
             std::collections::HashMap::new();
-        for alias in model_alias::Entity::find().all(&self.conn).await? {
+        for alias in model_alias::Entity::find().all(&self.conn()).await? {
+            let model_slug = alias.model_slug.clone();
             alias_map
-                .entry(alias.model_slug)
+                .entry(model_slug)
                 .or_default()
-                .push(alias.alias);
+                .push(alias_entry(alias));
         }
         Ok(configs
             .into_iter()
             .map(|config| {
                 let mut aliases = alias_map.remove(&config.slug).unwrap_or_default();
-                aliases.sort();
+                aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
                 StoredModel { config, aliases }
             })
             .collect())
@@ -1957,17 +2356,17 @@ impl Db {
 
     /// A single curated model config with its aliases, or `None`.
     pub async fn get_model_config(&self, slug: &str) -> Result<Option<StoredModel>> {
-        let Some(config) = model::Entity::find_by_id(slug).one(&self.conn).await? else {
+        let Some(config) = model::Entity::find_by_id(slug).one(&self.conn()).await? else {
             return Ok(None);
         };
-        let mut aliases: Vec<String> = model_alias::Entity::find()
+        let mut aliases: Vec<AliasEntry> = model_alias::Entity::find()
             .filter(model_alias::Column::ModelSlug.eq(slug))
-            .all(&self.conn)
+            .all(&self.conn())
             .await?
             .into_iter()
-            .map(|alias| alias.alias)
+            .map(alias_entry)
             .collect();
-        aliases.sort();
+        aliases.sort_by(|a, b| a.alias.cmp(&b.alias));
         Ok(Some(StoredModel { config, aliases }))
     }
 
@@ -1976,21 +2375,21 @@ impl Db {
     /// [`BackendError::Conflict`](crate::error::BackendError::Conflict) when any
     /// alias is already claimed by a *different* curated model.
     pub async fn upsert_model_config(&self, write: ModelConfigWrite) -> Result<()> {
-        let txn = self.conn.begin().await?;
+        let txn = self.conn().begin().await?;
 
         // Reject an alias that another curated model already owns (the alias
         // column is globally unique; catch it before the constraint fires so the
         // caller gets a clean 409 naming the offending id).
-        for alias in &write.aliases {
+        for entry in &write.aliases {
             if let Some(existing) = model_alias::Entity::find()
-                .filter(model_alias::Column::Alias.eq(alias.clone()))
+                .filter(model_alias::Column::Alias.eq(entry.alias.clone()))
                 .one(&txn)
                 .await?
                 && existing.model_slug != write.slug
             {
                 return Err(crate::error::BackendError::Conflict(format!(
-                    "model id `{alias}` is already claimed by model `{}`",
-                    existing.model_slug
+                    "model id `{}` is already claimed by model `{}`",
+                    entry.alias, existing.model_slug
                 )));
             }
         }
@@ -2033,11 +2432,12 @@ impl Db {
             .filter(model_alias::Column::ModelSlug.eq(write.slug.clone()))
             .exec(&txn)
             .await?;
-        for alias in write.aliases {
+        for entry in write.aliases {
             model_alias::Entity::insert(model_alias::ActiveModel {
                 id: Set(uuid::Uuid::new_v4().to_string()),
                 model_slug: Set(write.slug.clone()),
-                alias: Set(alias),
+                alias: Set(entry.alias),
+                harness_family: Set(entry.family.as_str().to_string()),
             })
             .exec(&txn)
             .await?;
@@ -2051,7 +2451,7 @@ impl Db {
     /// was removed. The model's runs and price history are untouched, so it may
     /// reappear as a derived (uncurated) catalog entry.
     pub async fn delete_model_config(&self, slug: &str) -> Result<bool> {
-        let deleted = model::Entity::delete_by_id(slug).exec(&self.conn).await?;
+        let deleted = model::Entity::delete_by_id(slug).exec(&self.conn()).await?;
         Ok(deleted.rows_affected > 0)
     }
 
@@ -2064,7 +2464,7 @@ impl Db {
             .column(run::Column::HarnessSlug)
             .distinct()
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 
@@ -2078,7 +2478,7 @@ impl Db {
             .filter(run::Column::Published.eq(true))
             .distinct()
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 
@@ -2088,7 +2488,7 @@ impl Db {
             .filter(model_price::Column::ModelId.eq(model_id))
             .order_by_desc(model_price::Column::ObservedAt)
             .order_by_desc(model_price::Column::Id)
-            .one(&self.conn)
+            .one(&self.conn())
             .await?)
     }
 
@@ -2104,7 +2504,7 @@ impl Db {
             context_length: Set(write.context_length),
             released_at: Set(write.released_at),
         })
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -2116,7 +2516,7 @@ impl Db {
             .order_by_asc(model_price::Column::ModelId)
             .order_by_asc(model_price::Column::ObservedAt)
             .order_by_asc(model_price::Column::Id)
-            .all(&self.conn)
+            .all(&self.conn())
             .await?)
     }
 
@@ -2126,15 +2526,45 @@ impl Db {
     pub async fn openrouter_slug_for_alias(&self, alias: &str) -> Result<Option<String>> {
         let Some(row) = model_alias::Entity::find()
             .filter(model_alias::Column::Alias.eq(alias))
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
         else {
             return Ok(None);
         };
         Ok(model::Entity::find_by_id(row.model_slug)
-            .one(&self.conn)
+            .one(&self.conn())
             .await?
             .and_then(|m| m.openrouter_slug))
+    }
+
+    /// Every `(id, alias, harness_family)` triple across all curated models. Used
+    /// by the startup backfill that corrects the harness family of aliases created
+    /// before the `harness_family` column existed.
+    pub async fn all_alias_families(&self) -> Result<Vec<(String, String, HarnessFamily)>> {
+        Ok(model_alias::Entity::find()
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| {
+                let family = HarnessFamily::from_wire(&row.harness_family)
+                    .unwrap_or(HarnessFamily::Openrouter);
+                (row.id, row.alias, family)
+            })
+            .collect())
+    }
+
+    /// Set the harness family of a single alias row by its id. Used by the startup
+    /// backfill; a no-op set costs nothing because the caller only writes rows whose
+    /// family actually changed.
+    pub async fn set_alias_family(&self, id: &str, family: HarnessFamily) -> Result<()> {
+        model_alias::ActiveModel {
+            id: Set(id.to_string()),
+            harness_family: Set(family.as_str().to_string()),
+            ..Default::default()
+        }
+        .update(&self.conn())
+        .await?;
+        Ok(())
     }
 
     /// Whether any stored run is a candidate for `:free` normalization — an
@@ -2148,7 +2578,7 @@ impl Db {
             .column(run::Column::HarnessSlug)
             .filter(run::Column::ModelId.contains(":"))
             .into_tuple()
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         Ok(rows.iter().any(|(model_id, harness_slug)| {
             parse_harness_slug(harness_slug).routes_through_openrouter() && model_id.contains(':')
@@ -2167,7 +2597,7 @@ impl Db {
         &self,
         base_prices: &std::collections::HashMap<String, TokenPrices>,
     ) -> Result<usize> {
-        let rows = run::Entity::find().all(&self.conn).await?;
+        let rows = run::Entity::find().all(&self.conn()).await?;
         let mut rewritten = 0usize;
         for row in rows {
             let harness = parse_harness_slug(&row.harness_slug);
@@ -2199,7 +2629,7 @@ impl Db {
             // Keep the lifted cost column in step with the record's recomputed cost.
             active.cost_comparable = Set(comparable);
             active.record_json = Set(record_json);
-            active.update(&self.conn).await?;
+            active.update(&self.conn()).await?;
             rewritten += 1;
         }
         Ok(rewritten)
@@ -2221,7 +2651,7 @@ impl Db {
     pub async fn backfill_sort_columns(&self) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::TestType.eq(""))
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         if rows.is_empty() {
             return Ok(0);
@@ -2233,7 +2663,7 @@ impl Db {
             std::collections::HashMap::new();
         let reviews = review::Entity::find()
             .filter(review::Column::RunId.is_in(ids))
-            .all(&self.conn)
+            .all(&self.conn())
             .await?;
         for review in reviews {
             let run_id = review.run_id.clone();
@@ -2260,7 +2690,7 @@ impl Db {
             active.cost_comparable = Set(lifted.cost_comparable);
             active.rating = Set(rating);
             active.review_count = Set(review_count);
-            active.update(&self.conn).await?;
+            active.update(&self.conn()).await?;
             backfilled += 1;
         }
         Ok(backfilled)
@@ -2306,7 +2736,7 @@ impl Db {
             ])
             .to_owned(),
         )
-        .exec(&self.conn)
+        .exec(&self.conn())
         .await?;
         Ok(())
     }
@@ -2323,30 +2753,75 @@ impl Db {
         Ok(case_reference_build::Entity::find()
             .filter(case_reference_build::Column::Slug.eq(slug))
             .filter(case_reference_build::Column::Version.eq(version))
-            .all(&self.conn)
+            .all(&self.conn())
             .await?
             .into_iter()
             .map(|row| (row.variant, row.url))
             .collect())
     }
 
-    /// The reference-build URL of a single `(slug, version, variant)` triple, or
-    /// `None` when the variant has no reference implementation deployed. The
-    /// single-row lookup the record endpoint reads back.
-    pub async fn reference_build(
+    /// Reconcile the **entire** reference-build table to `desired` — the complete set
+    /// of deployed reference URLs for this backend's environment, read from the
+    /// committed reference-builds lockfile at ingest (see [`crate::api::ingest`]).
+    /// Every triple in `desired` is upserted; every stored triple absent from
+    /// `desired` is removed. The lockfile is the single source of truth, so this
+    /// makes the table match it exactly — the pull-model replacement for the former
+    /// per-variant write endpoint.
+    ///
+    /// Returns whether the table actually changed, so the caller can skip a redundant
+    /// snapshot refresh when a re-ingest finds the lockfile already in sync.
+    pub async fn sync_reference_builds(
         &self,
-        slug: &str,
-        version: &str,
-        variant: &str,
-    ) -> Result<Option<String>> {
-        Ok(case_reference_build::Entity::find_by_id((
-            slug.to_string(),
-            version.to_string(),
-            variant.to_string(),
-        ))
-        .one(&self.conn)
-        .await?
-        .map(|row| row.url))
+        desired: &[ReferenceBuildEntry],
+        now: &str,
+    ) -> Result<bool> {
+        // Snapshot the current rows so the table is touched only where it differs; an
+        // unchanged re-ingest then neither writes nor forces a snapshot rebuild.
+        let current: std::collections::HashMap<(String, String, String), String> =
+            case_reference_build::Entity::find()
+                .all(&self.conn())
+                .await?
+                .into_iter()
+                .map(|row| ((row.slug, row.version, row.variant), row.url))
+                .collect();
+        let desired_keys: std::collections::HashSet<(String, String, String)> = desired
+            .iter()
+            .map(|e| (e.slug.clone(), e.version.clone(), e.variant.clone()))
+            .collect();
+
+        let mut changed = false;
+
+        // Upsert triples that are new or whose served URL moved.
+        for entry in desired {
+            let key = (
+                entry.slug.clone(),
+                entry.version.clone(),
+                entry.variant.clone(),
+            );
+            if current.get(&key).map(String::as_str) != Some(entry.url.as_str()) {
+                self.upsert_reference_build(
+                    &entry.slug,
+                    &entry.version,
+                    &entry.variant,
+                    &entry.url,
+                    now,
+                )
+                .await?;
+                changed = true;
+            }
+        }
+
+        // Remove triples the lockfile no longer lists.
+        for key in current.keys() {
+            if !desired_keys.contains(key) {
+                case_reference_build::Entity::delete_by_id(key.clone())
+                    .exec(&self.conn())
+                    .await?;
+                changed = true;
+            }
+        }
+
+        Ok(changed)
     }
 }
 

@@ -56,8 +56,15 @@ export interface ReviewItemSummary {
   frames?: number[];
   /** Points this item is worth. Graded as a whole: a pass earns this weight, a
    * fail earns none. With sub-items: split evenly across them, so the item earns
-   * the fraction that passed. */
+   * the fraction that passed. A `graded` item (a game-jam category) is instead
+   * worth `weight × 10` points and earns the graded tier's points times its
+   * weight. */
   weight: number;
+  /** Whether the item is graded on the five-level scale (a game-jam category)
+   * rather than pass/fail. The verdict page and leaderboard score `weight × 10`
+   * points for it and render the grade emoji when true. Absent on a host that
+   * predates the field; treated as false. */
+  graded?: boolean;
   /** Scoring domain (by id) this item belongs to, or null for a general item. */
   domain?: string | null;
   /** Name-only sub-items this item is graded by, each an independently scored

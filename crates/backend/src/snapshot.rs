@@ -12,11 +12,14 @@
 //! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
 //! hook. The split lets the generation be unit-tested without R2.
 //!
-//! A run's proof/asset media is read from the local store (where the driver mirrors
-//! it at run time), falling back to the artifact service for anything missing — the
-//! store is an ephemeral volume in production, so this fallback lets a refresh
-//! re-export media to durable R2 even after a restart wiped it (see
-//! [`SnapshotBuilder::with_artifacts`]).
+//! A run's proof/asset media lives under the content-stable [`MEDIA_PREFIX`]
+//! (`media/runs/<id>/…`), outside any single snapshot's prefix, and is written once:
+//! a refresh that finds an object already there references it without touching the
+//! source bytes (see [`SnapshotBuilder::with_existing_media`]). Only media not yet in
+//! the bucket is read from the local store (where the driver mirrors it at run time),
+//! falling back to the artifact service for anything missing — the store is an
+//! ephemeral volume in production, so this fallback lets a refresh export new media to
+//! durable R2 even after a restart wiped it (see [`SnapshotBuilder::with_artifacts`]).
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -35,6 +38,18 @@ use crate::store::{DefinitionStore, StoredManifest};
 
 /// The schema version stamped into every snapshot document.
 const SCHEMA_VERSION: u32 = 1;
+
+/// The bucket prefix a run's proof/asset media is stored under, **outside** any
+/// single snapshot's `snapshots/<id>/` prefix. A published run's media is immutable,
+/// so it is keyed by the run id (not the snapshot id) and written **once**: every
+/// subsequent snapshot references the same `media/runs/<id>/<kind>/<file>` object
+/// rather than re-reading and re-uploading it. This is what stops each refresh from
+/// re-exporting (and, for a video, re-transcoding) every run's media — the growing
+/// cost as asset-generation runs accumulate — and lets a refresh keep a run's media
+/// even when the ephemeral store and the artifact service have both lost the bytes
+/// (as after a cluster recreate): if the object already exists here, the builder
+/// references it without needing the source bytes at all.
+const MEDIA_PREFIX: &str = "media/runs";
 
 /// One object to upload: its R2 key, bytes, and content type.
 #[derive(Debug, Clone, PartialEq)]
@@ -83,6 +98,13 @@ pub struct SnapshotBuilder {
     /// variant absent from its inner map, simply exports `referenceBuild: null`).
     reference_builds:
         std::collections::HashMap<(String, String), std::collections::HashMap<String, String>>,
+    /// The set of media object keys (`media/runs/<id>/<kind>/<file>`) already present
+    /// in the bucket, so the builder references an existing media object rather than
+    /// re-reading and re-uploading its bytes. Populated from the bucket before a real
+    /// refresh (see [`Self::with_existing_media`]); empty by default, which makes the
+    /// builder upload every run's media as it did before this optimization — the
+    /// correct behavior for the dev/single-box path (no R2) and the unit tests.
+    existing_media: std::collections::HashSet<String>,
 }
 
 impl SnapshotBuilder {
@@ -102,7 +124,22 @@ impl SnapshotBuilder {
             http: reqwest::Client::new(),
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
+            existing_media: std::collections::HashSet::new(),
         }
+    }
+
+    /// Supply the set of media object keys already present in the bucket (from
+    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over [`MEDIA_PREFIX`]).
+    /// For any run-media object whose stable key is in this set, the builder emits the
+    /// snapshot metadata pointing at it but does **not** read the source bytes or
+    /// re-upload it — so unchanged media is exported exactly once across all snapshots,
+    /// and a run keeps its media even when the source bytes are no longer available.
+    pub fn with_existing_media(
+        mut self,
+        existing_media: std::collections::HashSet<String>,
+    ) -> Self {
+        self.existing_media = existing_media;
+        self
     }
 
     /// Set the composed model catalog to export in this snapshot's `models.json`.
@@ -173,11 +210,12 @@ impl SnapshotBuilder {
 
         // runs/<id>.json — per-run record + review + links, plus the recorded
         // normalized event stream (when captured) so the site can serve the run's
-        // Events tab. Raw harness output is never published. The run's uploaded
-        // proof media is exported alongside under `runs/<id>/proof/` and named by
-        // snapshot-relative key in `proofMedia`; an asset-generation run's media
-        // (regenerated/preview image + action log) is exported under
-        // `runs/<id>/asset/` and named by snapshot-relative key in `assetMedia`.
+        // Events tab. Raw harness output is never published. The run's uploaded proof
+        // media is named by snapshot-relative key in `proofMedia`, and an
+        // asset-generation run's media (regenerated/preview image + action log) in
+        // `assetMedia`. That media lives under the content-stable `media/runs/<id>/…`
+        // prefix (NOT this snapshot's prefix), uploaded once and shared across
+        // snapshots — see [`MEDIA_PREFIX`] and [`SnapshotBuilder::with_existing_media`].
         for run in &self.runs {
             let events = run
                 .events_json
@@ -190,8 +228,8 @@ impl SnapshotBuilder {
                         run.record.id
                     ))
                 })?;
-            let (proof_media, proof_objects) = self.run_proofs(&run.record, &prefix).await;
-            let (asset_media, asset_objects) = self.run_assets(run, &prefix).await;
+            let (proof_media, proof_objects) = self.run_proofs(&run.record).await;
+            let (asset_media, asset_objects) = self.run_assets(run).await;
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
             // before it becomes a snapshot object bound for R2.
@@ -318,7 +356,10 @@ impl SnapshotBuilder {
 
         RunSummary {
             case_name,
-            rating: Some(aggregate_rating(&run.reviews)),
+            // The per-domain rating, or `None` for a game jam (it carries no
+            // domains — its badge is `score.overallGrade` instead). A domain-scored
+            // published run always has one.
+            rating: aggregate_rating_inner(&run.reviews),
             score,
             ..RunSummary::from_stored(run)
         }
@@ -395,11 +436,7 @@ impl SnapshotBuilder {
     /// capture, or a re-run snapshot) it is used as-is; only a raw `.webm` is
     /// transcoded, and a transcode that fails falls back to serving the webm so the
     /// proof still appears rather than vanishing.
-    async fn run_proofs(
-        &self,
-        record: &RunRecord,
-        prefix: &str,
-    ) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
+    async fn run_proofs(&self, record: &RunRecord) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
         let run_id = &record.id;
@@ -410,6 +447,18 @@ impl SnapshotBuilder {
             let published_ext =
                 test_cabinet_core::proof_published_extension(proof.kind, &proof.dest);
             let published_file = format!("{}.{}", proof.id, published_ext);
+            // The stable, snapshot-independent key this proof is published under. When
+            // it is already in the bucket, reference it without touching the source
+            // bytes — no store/artifact read, and (for a video) no re-transcode.
+            let published_key = format!("{MEDIA_PREFIX}/{run_id}/proof/{published_file}");
+            if self.existing_media.contains(&published_key) {
+                metas.push(RunProofOut {
+                    id: proof.id.clone(),
+                    kind: proof.kind,
+                    key: published_key,
+                });
+                continue;
+            }
 
             // Prefer a copy already at the published extension (an image, or a clip
             // that is already mp4); otherwise pull the raw webm and transcode it.
@@ -438,7 +487,9 @@ impl SnapshotBuilder {
                 continue;
             };
 
-            let key = format!("{prefix}/runs/{run_id}/proof/{file}");
+            // Key by the produced file name (the transcode-fallback path can publish
+            // the raw webm under its served name rather than the mp4 published name).
+            let key = format!("{MEDIA_PREFIX}/{run_id}/proof/{file}");
             objects.push(SnapshotObject {
                 key: key.clone(),
                 bytes,
@@ -472,11 +523,7 @@ impl SnapshotBuilder {
     /// Each named file is resolved through the store-then-artifact-service fallback
     /// ([`Self::read_media`]) and skipped if it is in neither. A run that is neither
     /// type contributes nothing.
-    async fn run_assets(
-        &self,
-        run: &StoredRun,
-        prefix: &str,
-    ) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
+    async fn run_assets(&self, run: &StoredRun) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
         let files: Vec<String> = if let Some(asset) = run.record.validation.asset.as_ref() {
@@ -577,6 +624,16 @@ impl SnapshotBuilder {
         let run_id = &run.record.id;
         for file in &files {
             let file = file.as_str();
+            let key = format!("{MEDIA_PREFIX}/{run_id}/asset/{file}");
+            // Already uploaded (immutable per run): reference it without reading the
+            // source bytes or re-uploading.
+            if self.existing_media.contains(&key) {
+                metas.push(RunAssetOut {
+                    file: file.to_string(),
+                    key,
+                });
+                continue;
+            }
             let Some(bytes) = self.read_media(run_id, "asset", file).await else {
                 continue;
             };
@@ -584,7 +641,6 @@ impl SnapshotBuilder {
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
-            let key = format!("{prefix}/runs/{run_id}/asset/{file}");
             objects.push(SnapshotObject {
                 key: key.clone(),
                 bytes,
@@ -865,6 +921,13 @@ pub struct RunScoreOut {
     pub total: u32,
     /// How many reviews the average is taken over.
     pub reviews: u32,
+    /// A [game jam](test_cabinet_core::test_case::TestType::GameJam) run's overall
+    /// game grade — the worst overall grade any reviewer gave (see
+    /// [`test_cabinet_core::review::aggregate_overall_grade`]). This is the jam's
+    /// rating badge, standing in for the per-domain `rating` a jam does not carry.
+    /// `None` for every non-jam run.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub overall_grade: Option<test_cabinet_core::review::VerdictStatus>,
 }
 
 impl RunSummary {
@@ -1176,6 +1239,10 @@ pub struct CaseReviewItemOut {
     pub sequences: Vec<String>,
     pub frames: Vec<u32>,
     pub weight: u32,
+    /// Whether the item is graded on the five-level scale (a game-jam category)
+    /// rather than pass/fail. The reviewer and verdict UIs render the graded
+    /// control and score `weight × 10` points for it when true.
+    pub graded: bool,
     pub domain: Option<String>,
     /// Name-only sub-items this item is graded by, each an independently scored
     /// pass/fail point. Empty for an item graded as a whole.
@@ -1273,6 +1340,7 @@ fn case_metadata(
                 v.description.as_deref(),
                 &spec_dests,
                 manifest.test_type,
+                manifest.max_runtime_seconds,
                 // The variant's own volume overrides the case's for its prompt.
                 v.voxel.as_ref().or(manifest.voxel.as_ref()),
             )
@@ -1362,6 +1430,7 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
         sequences: item.sequences.clone(),
         frames: item.frames.clone(),
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain.clone(),
         sub_items: item
             .sub_items
@@ -1380,13 +1449,6 @@ fn links_out(links: &test_cabinet_core::RunLinks) -> LinksOut {
         source_repo: links.source_repo.clone(),
         playable_build: links.playable_build.clone(),
     }
-}
-
-/// The run's overall rating — the worst rating any reviewer gave any domain.
-/// Falls back to [`Rating::Broken`] for the (publish-gated, so unreachable) case
-/// of no reviews, so the runs index always carries a tier.
-fn aggregate_rating(reviews: &[crate::db::StoredReview]) -> test_cabinet_core::review::Rating {
-    aggregate_rating_inner(reviews).unwrap_or(test_cabinet_core::review::Rating::Broken)
 }
 
 /// The aggregate rating, or `None` when the run carries no reviews. Delegates to
@@ -1419,10 +1481,14 @@ pub(crate) fn run_summary_score(
         .iter()
         .map(|review| test_cabinet_core::review::score_checklist(&items, &review.checklist))
         .collect();
+    let overall_grade = test_cabinet_core::review::aggregate_overall_grade(
+        reviews.iter().map(|review| review.checklist.as_slice()),
+    );
     test_cabinet_core::review::aggregate_score(&scores).map(|score| RunScoreOut {
         earned: score.earned,
         total: score.total,
         reviews: score.reviews,
+        overall_grade,
     })
 }
 
@@ -1464,6 +1530,7 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
         sequences: item.sequences.clone(),
         frames: item.frames.clone(),
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain.clone(),
         sub_items: item
             .sub_items
