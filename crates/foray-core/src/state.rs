@@ -11,7 +11,7 @@
 //! Storing the role would let it drift from position; deriving it makes the
 //! "roles flip at the border" rule unfalsifiable.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -39,9 +39,14 @@ pub struct Agent {
     pub team: Team,
     /// Current tile.
     pub pos: Pos,
-    /// Seeds picked up and not yet banked. Drives carry-weight cadence and is the
-    /// amount lost on a tag.
+    /// **Ordinary** seeds picked up and not yet banked.
     pub carrying: u32,
+    /// **Large** seeds picked up and not yet banked. Kept apart from `carrying`
+    /// because a large seed is an object, not a quantity: on a tag it drops back
+    /// onto the board whole (still worth `large_seed_value`) rather than shattering
+    /// into that many ordinary caches. The two are combined into one figure by
+    /// [`load`](Agent::load), which is what carry-weight and banking actually read.
+    pub carrying_large: u32,
     /// Remaining tag-immunity ticks from royal jelly. While `> 0` the agent
     /// cannot be tagged; decremented once per tick.
     pub immune_ticks: u32,
@@ -55,6 +60,15 @@ pub struct Agent {
 }
 
 impl Agent {
+    /// This agent's total load in seed-equivalents: ordinary seeds plus each large
+    /// seed counted as `large_seed_value`. This one figure is both what the agent
+    /// *banks* and what it *weighs* — value and weight are deliberately the same
+    /// number, which is what makes "carry only the big seed" a light load that still
+    /// out-runs a soldier, and "the big seed plus one more" a load that does not.
+    pub fn load(&self, rules: &Rules) -> u32 {
+        self.carrying + rules.large_seed_value * self.carrying_large
+    }
+
     /// The role this agent has *right now*, from its position and the border.
     pub fn role(&self, board: &Board) -> Role {
         if board.team_of_column(self.pos.x) == self.team {
@@ -77,7 +91,7 @@ impl Agent {
             // only raiders carry.
             Role::Soldier => rules.soldier_speed,
             Role::Raider => {
-                let over = self.carrying.saturating_sub(rules.light_load);
+                let over = self.load(rules).saturating_sub(rules.light_load);
                 let penalty = rules.move_resolution.saturating_sub(rules.soldier_speed) * over;
                 rules
                     .move_resolution
@@ -187,6 +201,50 @@ impl Kills {
     }
 }
 
+/// One large seed: an *object* on the board, not a tile in a set.
+///
+/// It is worth [`large_seed_value`](crate::config::Rules::large_seed_value) ordinary
+/// seeds and it **moves**: every `large_seed_drift_ticks` it walks one tile toward
+/// the border, whether or not anyone is standing on it. That last clause is the whole
+/// anti-camping property — a defender cannot squat a large seed the way it can squat
+/// an ordinary cache, because the seed simply walks out from under it. To hold one
+/// back a defender must *recall* it, which costs a walk out, a stand, and a walk home.
+#[derive(Debug, Clone)]
+pub struct LargeSeed {
+    /// Whose larder this seed belongs to — the half it sits on, raided by the other
+    /// colony. Its own colony can recall it; the enemy can eat it.
+    pub half: Team,
+    /// The spawn tile, and where a recall puts it back.
+    pub home: Pos,
+    /// Current tile. Meaningless while `carried_by` is set.
+    pub pos: Pos,
+    /// The tile this seed drifts toward — its own **lane**, on the stop column. Each
+    /// seed of a half gets a distinct one, so the two do not funnel down the same
+    /// tunnel and come to rest side by side. `None` only if walls cut the stop column
+    /// off from this seed's spawn, in which case it simply never drifts.
+    pub target: Option<Pos>,
+    /// Maze distance from [`home`](LargeSeed::home) to every reachable tile of its
+    /// half, so the recall guard is an O(1) lookup rather than a per-tick search.
+    pub home_dist: BTreeMap<Pos, u32>,
+    /// Ticks banked toward the next drift step.
+    pub drift_accum: u32,
+    /// *Consecutive* ticks an own-side ant has stood on it. Resets the moment none
+    /// does, so a recall must be seen through in one stint.
+    pub recall_accum: u32,
+    /// The index into [`MatchState::agents`] of the raider carrying it, if any.
+    pub carried_by: Option<usize>,
+    /// Set once it has been banked — it is out of play for the rest of the match,
+    /// exactly like an eaten ordinary cache.
+    pub banked: bool,
+}
+
+impl LargeSeed {
+    /// Whether this seed is on the board right now: not carried, not banked.
+    pub fn on_board(&self) -> bool {
+        !self.banked && self.carried_by.is_none()
+    }
+}
+
 /// Everything mutable in a match.
 #[derive(Debug, Clone)]
 pub struct MatchState {
@@ -204,6 +262,18 @@ pub struct MatchState {
     pub red_jelly: BTreeSet<Pos>,
     /// Active royal-jelly nodes on Blue's half.
     pub blue_jelly: BTreeSet<Pos>,
+    /// Consumed jelly nodes on Red's half regrowing at their own tile, with the
+    /// ticks left before they do. A node is in exactly one of `red_jelly` (active)
+    /// or here (regrowing), never both — so the *active* sets stay the single
+    /// source of truth for what a raider can eat and what the board draws.
+    pub red_jelly_regrowing: BTreeMap<Pos, u32>,
+    /// Consumed jelly nodes on Blue's half regrowing at their own tile.
+    pub blue_jelly_regrowing: BTreeMap<Pos, u32>,
+    /// Every large seed in the match, both halves, in a fixed order (Red's then
+    /// Blue's). One flat list rather than a pair, because an agent references the
+    /// seed it carries by index and a raider is by definition holding a seed from
+    /// the *other* half.
+    pub large_seeds: Vec<LargeSeed>,
     /// Banked score.
     pub score: Score,
     /// Tags inflicted per colony so far — the running kill count, carried into
@@ -222,8 +292,8 @@ pub struct MatchState {
 
 impl MatchState {
     /// Build the initial state for a board: three agents per team at their nest,
-    /// all caches and jelly live, zero score.
-    pub fn new(board: &Board) -> MatchState {
+    /// all caches, large seeds, and jelly live, zero score.
+    pub fn new(board: &Board, rules: &Rules) -> MatchState {
         let agents = [Team::Red, Team::Blue]
             .into_iter()
             .flat_map(|team| {
@@ -233,6 +303,7 @@ impl MatchState {
                     team,
                     pos: nest,
                     carrying: 0,
+                    carrying_large: 0,
                     immune_ticks: 0,
                     move_accum: 0,
                 })
@@ -242,15 +313,53 @@ impl MatchState {
         let red_caches: BTreeSet<Pos> = board.initial_seeds(Team::Red).iter().copied().collect();
         let blue_caches: BTreeSet<Pos> = board.initial_seeds(Team::Blue).iter().copied().collect();
 
+        // Red's large seeds first, then Blue's, so the flat list has a fixed order.
+        // Lanes are handed out per half, each seed claiming a stop-column tile no
+        // other seed of that half has taken — otherwise the two converge and rest on
+        // top of each other, and two objectives become one.
+        let mut large_seeds: Vec<LargeSeed> = Vec::new();
+        for half in [Team::Red, Team::Blue] {
+            let mut lanes_taken: Vec<Pos> = Vec::new();
+            for home in board.initial_large_seeds(half) {
+                let target = board.drift_target(*home, half, &lanes_taken);
+                if let Some(lane) = target {
+                    lanes_taken.push(lane);
+                }
+                large_seeds.push(LargeSeed {
+                    half,
+                    home: *home,
+                    pos: *home,
+                    target,
+                    home_dist: board.home_distances(*home, half),
+                    drift_accum: 0,
+                    recall_accum: 0,
+                    carried_by: None,
+                    banked: false,
+                });
+            }
+        }
+
+        // The sweep denominator is a half's total *value*, not its number of objects:
+        // a large seed is worth `large_seed_value` toward it, exactly as it is worth
+        // that much when banked. Counting objects here would make a sweep unreachable
+        // (you could bank every seed on the half and still fall short of the bar).
+        let large_value = |half: Team| {
+            large_seeds.iter().filter(|seed| seed.half == half).count() as u32
+                * rules.large_seed_value
+        };
+
         MatchState {
             tick: 0,
             agents,
-            red_seeds_total: red_caches.len() as u32,
-            blue_seeds_total: blue_caches.len() as u32,
+            red_seeds_total: red_caches.len() as u32 + large_value(Team::Red),
+            blue_seeds_total: blue_caches.len() as u32 + large_value(Team::Blue),
+            large_seeds,
             red_caches,
             blue_caches,
             red_jelly: board.initial_jelly(Team::Red).iter().copied().collect(),
             blue_jelly: board.initial_jelly(Team::Blue).iter().copied().collect(),
+            red_jelly_regrowing: BTreeMap::new(),
+            blue_jelly_regrowing: BTreeMap::new(),
             score: Score::default(),
             kills: Kills::default(),
             result: None,
@@ -286,6 +395,14 @@ impl MatchState {
         match team {
             Team::Red => &mut self.red_jelly,
             Team::Blue => &mut self.blue_jelly,
+        }
+    }
+
+    /// Mutable access to the regrowing (consumed) jelly nodes on `team`'s half.
+    pub fn jelly_regrowing_mut(&mut self, team: Team) -> &mut BTreeMap<Pos, u32> {
+        match team {
+            Team::Red => &mut self.red_jelly_regrowing,
+            Team::Blue => &mut self.blue_jelly_regrowing,
         }
     }
 

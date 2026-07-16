@@ -1,5 +1,4 @@
 slug = "foray"
-experimental = true
 # The Test Cabinet test case manifest — Foray.
 #
 # This is an ADVERSARIAL case: the model writes a wasm controller that drives one
@@ -14,9 +13,9 @@ name = "Foray"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Foray asks the
 # model to write a classical-AI controller that reasons about role allocation,
-# carry-weight banking, and royal-jelly timing under hard per-tick fuel/memory
-# limits, and to BEAT a non-trivial baseline — a meaningfully harder ask than a
-# single playable build.
+# carry-weight banking, royal-jelly timing, and the drifting large seeds — under
+# hard per-tick fuel/memory limits, and to BEAT a non-trivial baseline: a
+# meaningfully harder ask than a single playable build.
 difficulty = "hard"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
@@ -27,7 +26,8 @@ tags = ["ctf", "wasm", "ai", "2d"]
 summary = """
 Write the controller for one ant colony in a territorial maze-raid: every agent \
 is a defender at home and a raider abroad, a heavy load slows you to an easy tag, \
-and royal jelly buys a run home — beat the baseline head to head."""
+royal jelly makes you untouchable and lethal, and the big seeds drift toward the \
+enemy while you argue about it — beat the baseline head to head."""
 
 # Site-facing prose introducing the case, relative to this version folder. NOT
 # seeded into a run; it exists only to describe the case on the site.
@@ -157,8 +157,9 @@ name = "Play"
 description = """
 How the controller actually played the match — whether it balanced offense and \
 defense across its three agents, banked loads before they got too heavy to run \
-home, used or ignored royal jelly, and beat the baseline on the merits rather than \
-by a fluke of the seed."""
+home, used or ignored royal jelly, contested the drifting large seeds instead of \
+conceding them on the seam, and beat the baseline on the merits rather than by a \
+fluke of the seed."""
 
 # Reviewer checklist items, surfaced to a human reviewing a published run. NOT
 # seeded into the run, so the model never sees them; each restates an observable
@@ -190,21 +191,37 @@ domain = "play"
 id = "manages-carry-weight"
 title = "Manages carry weight"
 text = """
-Raiders bank loads before carry weight strands them — the replay does not show \
-heavy raiders repeatedly crawling home and getting tagged with a full load (the \
-greedy-raider failure). When to break off and bank reads as a deliberate \
-decision."""
+Raiders bank before carry weight strands them — the replay does not show heavy \
+raiders repeatedly crawling home and getting tagged with a full load (the \
+greedy-raider failure). When to break off and bank reads as a deliberate decision. \
+Note the figure that matters is `load`, not the number of objects held: a large \
+seed weighs 3, so a raider carrying one and nothing else is still light and fast, \
+while one ordinary seed on top of it drops it to soldier speed."""
+weight = 1
+domain = "play"
+
+[[review_item]]
+id = "contests-large-seeds"
+title = "Contests the large seeds"
+text = """
+The large seeds are 30% of a half's value in two objects that walk toward the \
+enemy on their own. The replay shows the controller treating them as objectives: \
+it goes and takes the enemy's, and it does not simply let its own drift onto the \
+seam and get scooped for free. Either recalling a seed or defending it on the way \
+out counts; ignoring both while the opponent banks 6 free points does not."""
 weight = 1
 domain = "play"
 
 [[review_item]]
 id = "uses-jelly-correctly"
-title = "Treats royal jelly correctly"
+title = "Uses royal jelly on both sides of the ball"
 text = """
-If the controller uses royal jelly, it uses it as tag-IMMUNITY for its own laden \
-raiders (the correct, inverted semantics) — it does NOT chase enemy defenders \
-expecting them to be made edible, the Berkeley-capsule mistake the case is \
-designed to punish."""
+The controller treats jelly as the renewable weapon it is, not a panic button. It \
+runs a laden raider home behind immunity AND uses an immune ant offensively — to \
+kill a defender parked on a seed it wants, or to take a contested large seed — \
+rather than only ever eating jelly when already in trouble. Bonus signal: it plans \
+around the respawn cycle (a spent node returns to the same tile) instead of \
+treating the nodes as two one-shot charges."""
 weight = 1
 domain = "play"
 
