@@ -101,7 +101,9 @@ impl CoverageGroupKind {
         match s {
             "combo" => Ok(CoverageGroupKind::Combo),
             "case" => Ok(CoverageGroupKind::Case),
-            other => Err(ApiError::internal(format!("unknown coverage group kind: {other}"))),
+            other => Err(ApiError::internal(format!(
+                "unknown coverage group kind: {other}"
+            ))),
         }
     }
 }
@@ -606,7 +608,11 @@ impl MatrixCtx {
         let mut cells_satisfied = 0u32;
         let mut runs_missing = 0u32;
         for case in cases {
-            let latest_version = self.latest_by_slug.get(&case.slug).cloned().unwrap_or_default();
+            let latest_version = self
+                .latest_by_slug
+                .get(&case.slug)
+                .cloned()
+                .unwrap_or_default();
             let stale = !latest_version.is_empty() && latest_version != case.version;
             for combo in combos {
                 let (completed, in_flight) = self.counts_for(case, combo);
@@ -822,13 +828,17 @@ mod tests {
 
     #[test]
     fn resolve_dedupes_a_one_off_that_repeats_a_group_member() {
-        let groups: HashMap<String, CoverageGroup> =
-            [combo_group("g1", vec![combo("opus")])]
-                .into_iter()
-                .map(|g| (g.id.clone(), g))
-                .collect();
+        let groups: HashMap<String, CoverageGroup> = [combo_group("g1", vec![combo("opus")])]
+            .into_iter()
+            .map(|g| (g.id.clone(), g))
+            .collect();
         // The one-off `opus` duplicates the group's member and must not double it.
-        let p = plan(vec!["g1"], vec![], vec![combo("opus"), combo("sonnet")], vec![]);
+        let p = plan(
+            vec!["g1"],
+            vec![],
+            vec![combo("opus"), combo("sonnet")],
+            vec![],
+        );
 
         let (combos, _) = resolve_members(&p, &groups);
         assert_eq!(
@@ -839,11 +849,10 @@ mod tests {
 
     #[test]
     fn resolve_skips_a_dangling_group_reference() {
-        let groups: HashMap<String, CoverageGroup> =
-            [combo_group("g1", vec![combo("opus")])]
-                .into_iter()
-                .map(|g| (g.id.clone(), g))
-                .collect();
+        let groups: HashMap<String, CoverageGroup> = [combo_group("g1", vec![combo("opus")])]
+            .into_iter()
+            .map(|g| (g.id.clone(), g))
+            .collect();
         // `gX` no longer names a group (deleted); it is silently skipped, not an error.
         let p = plan(vec!["g1", "gX"], vec!["cX"], vec![], vec![case("pong")]);
 

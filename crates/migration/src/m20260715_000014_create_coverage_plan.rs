@@ -33,7 +33,11 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(CoveragePlan::UserId).string().not_null())
                     .col(ColumnDef::new(CoveragePlan::Name).string().not_null())
-                    .col(ColumnDef::new(CoveragePlan::RunsPerCell).integer().not_null())
+                    .col(
+                        ColumnDef::new(CoveragePlan::RunsPerCell)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CoveragePlan::ComboGroupIdsJson)
                             .text()

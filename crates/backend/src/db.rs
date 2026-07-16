@@ -1228,7 +1228,10 @@ impl Db {
                 coverage_group::Column::Kind,
                 Expr::value(group.kind.as_str()),
             )
-            .col_expr(coverage_group::Column::Name, Expr::value(group.name.clone()))
+            .col_expr(
+                coverage_group::Column::Name,
+                Expr::value(group.name.clone()),
+            )
             .col_expr(
                 coverage_group::Column::MembersJson,
                 Expr::value(coverage_group_members_json(group)?),
