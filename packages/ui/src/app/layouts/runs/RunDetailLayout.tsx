@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { NavLink, useParams } from "react-router";
+import { Link, NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
@@ -8,7 +8,12 @@ import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
-import { type ParsedWriteup, parseWriteup, worstRating } from "../../data/ratings";
+import { useFindModel } from "../../data/useModels";
+import {
+  type ParsedWriteup,
+  parseWriteup,
+  worstRating,
+} from "../../data/ratings";
 import { frameReviews } from "../../data/frameReview";
 import { describeRunState, hasPlayableOutcome } from "../../data/runState";
 import { routes } from "../../routes";
@@ -56,9 +61,14 @@ export function RunDetailLayout({
   children,
 }: RunDetailLayoutProps) {
   const { runId } = useParams<{ runId: string }>();
-  const { fetchRun, localIds, writeups: localWriteups, canExecute } =
-    useGalleryData();
+  const {
+    fetchRun,
+    localIds,
+    writeups: localWriteups,
+    canExecute,
+  } = useGalleryData();
   const testCaseName = useTestCaseName();
+  const findModel = useFindModel();
 
   // A summary-first gallery no longer holds every full record in memory, so the
   // detail chrome resolves just the one run it needs, lazily by id, through the
@@ -105,6 +115,10 @@ export function RunDetailLayout({
   }
 
   const { subject } = run;
+  // Resolve the run's opaque model id to its catalog entry so the subject line
+  // can link to the model page. `routes.modelDetail` keys on the model's slug,
+  // and an id with no catalog match falls back to the plain canonical id text.
+  const model = findModel(subject.modelId, subject.harnessSlug);
   const isLocal = localIds.has(run.id);
   // The run's per-reviewer breakdown, fetched with the record — the detail layer's
   // source of truth for reviews (the console's global reviews map is no longer
@@ -153,7 +167,12 @@ export function RunDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>
-            {testCaseName(subject.testCaseSlug)}
+            <Link
+              className={styles.titleLink}
+              to={routes.testCaseDetail(subject.testCaseSlug)}
+            >
+              {testCaseName(subject.testCaseSlug)}
+            </Link>
             {overallRating && <RatingBadge rating={overallRating} />}
             {isLocal && <UnpublishedTag />}
           </h2>
@@ -161,8 +180,17 @@ export function RunDetailLayout({
         </div>
         <div className={styles.subjectRow}>
           <span className={styles.subject}>
-            {canonicalModelId(subject.modelId)} &middot; test case{" "}
-            {subject.testCaseVersion} &middot;{" "}
+            {model ? (
+              <Link
+                className={styles.modelLink}
+                to={routes.modelDetail(model.slug)}
+              >
+                {model.name}
+              </Link>
+            ) : (
+              canonicalModelId(subject.modelId)
+            )}{" "}
+            &middot; test case {subject.testCaseVersion} &middot;{" "}
             <span className={styles.variant}>{subject.variant}</span> variant
           </span>
           {subject.harnessVersion && (
