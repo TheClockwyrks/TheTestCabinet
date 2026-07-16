@@ -42,6 +42,22 @@ use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
 /// for [`TestType::AssetGeneration`]; every other test type renders unchanged.
 const ASSET_QUALITY_PREAMBLE: &str = "You are producing a finished, high-quality asset — treat this as work you would be proud to ship, not a rough draft. The brief below is the floor, not the goal: satisfying it is only the minimum for a passing result, and a plain asset that merely ticks its boxes is a weak one. Aim for the best-looking, most convincing result you can make within the brief's constraints — a clean, readable silhouette, believable proportions and form, and deliberate, purposeful use of the palette — and make every operation you spend count toward that. Push for the genuine ceiling of what you can produce here, not the least that passes.";
 
+/// A standing directive prepended to every game-jam case's rendered prompt.
+///
+/// A game jam hands the model only a **theme** — no spec and no reference mockups —
+/// and asks it to design and build an entire game of any genre that is *playable*
+/// and *enjoyable*, producing its own assets exactly as a full-stack build does. It
+/// therefore carries the same self-contained-build and real-assets bar as
+/// [`FULL_STACK_PREAMBLE`], plus the jam framing: freedom of genre and the two
+/// things that must hold above all (playable, enjoyable). Unlike the asset and
+/// full-stack preambles — which by design avoid any ranking or benchmark framing — a
+/// jam is genuinely *competitive*, so this preamble tells the model its entry is
+/// judged alongside other models' entries on the same theme and scored on
+/// presentation, polish, theme, audio, and creativity too, and to make it as
+/// presentable as its time allows. Prepended only for [`TestType::GameJam`]; every
+/// other test type renders unchanged.
+const GAME_JAM_PREAMBLE: &str = "This is a GAME JAM. You are given only a theme — no specification and no reference designs — and your job is to conceive and build a complete game of ANY genre that fits it. There is no single right answer: the design is yours to invent. Two things are judged above all else: the game must be PLAYABLE — it loads, runs, and can be played from start to finish without breaking — and it must be ENJOYABLE — genuinely fun, not a tech demo that merely runs. Those two are the floor, not the ceiling: this is a jam, so your entry is judged alongside other models' entries built to the same theme, and scored not only on those essentials but on its PRESENTATION, polish, theme reading, audio, and creativity — so within the time you have, make it as finished and presentable as you can, and aim for a game that stands out rather than one that merely works. Interpret the theme deliberately so it shapes the design rather than decorating it, and scope the idea so you can finish and polish it rather than leaving it half-built. Like a full-stack build you must also produce the game's own assets — its art, animation, particle effects, and sound — with the asset-generation binaries on your PATH (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help`), or any other way you prefer; shipping placeholders (flat rectangles, runtime-drawn stand-ins, or silence) counts as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live, so generate assets once into committed files and make `npm run build` simply bundle them — it must NOT invoke `draw` or the other binaries. Hold every part — the idea, the play, the art, motion, effects, and sound — to the highest bar you can reach.";
+
 /// A standing directive prepended to every full-stack case's rendered prompt.
 ///
 /// A full-stack case asks the model to do two jobs at once: build a working
@@ -55,17 +71,6 @@ const ASSET_QUALITY_PREAMBLE: &str = "You are producing a finished, high-quality
 /// itself. It is deliberately generic — no per-subject or per-asset detail, and no
 /// comparison, ranking, or benchmark framing. Prepended only for
 /// [`TestType::FullStack`]; every other test type renders unchanged.
-/// A standing directive prepended to every game-jam case's rendered prompt.
-///
-/// A game jam hands the model only a **theme** — no spec and no reference mockups —
-/// and asks it to design and build an entire game of any genre that is *playable*
-/// and *enjoyable*, producing its own assets exactly as a full-stack build does. It
-/// therefore carries the same self-contained-build and real-assets bar as
-/// [`FULL_STACK_PREAMBLE`], plus the jam framing: freedom of genre, and the two
-/// things that are actually judged. Prepended only for [`TestType::GameJam`]; every
-/// other test type renders unchanged.
-const GAME_JAM_PREAMBLE: &str = "This is a GAME JAM. You are given only a theme — no specification and no reference designs — and your job is to conceive and build a complete game of ANY genre that fits it. There is no single right answer: the design is yours to invent. Two things are judged above all else: the game must be PLAYABLE — it loads, runs, and can be played from start to finish without breaking — and it must be ENJOYABLE — genuinely fun, not a tech demo that merely runs. Interpret the theme deliberately so it shapes the design rather than decorating it, and scope the idea so you can finish and polish it rather than leaving it half-built. Like a full-stack build you must also produce the game's own assets — its art, animation, particle effects, and sound — with the asset-generation binaries on your PATH (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help`), or any other way you prefer; shipping placeholders (flat rectangles, runtime-drawn stand-ins, or silence) counts as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live, so generate assets once into committed files and make `npm run build` simply bundle them — it must NOT invoke `draw` or the other binaries. Hold every part — the idea, the play, the art, motion, effects, and sound — to the highest bar you can reach.";
-
 const FULL_STACK_PREAMBLE: &str = "This is a full-stack build: you must deliver a complete, working program AND the genuine assets it ships — its art, animation, particle effects, and sound — and both are judged. The run image puts asset-generation binaries on your PATH to help you make them (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help` to learn its operations); use them, or produce the assets any other way you prefer. What is not acceptable is shipping placeholders in place of real assets — flat colored rectangles, stand-ins drawn on the fly at runtime, or silence — which count as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live — not when your build is re-run to validate it, nor when the project is rebuilt from its published source — so treat asset generation as a one-time step that writes committed files into the repository, and make your build (the `npm run build` the harness runs) simply bundle those committed files. It must NOT invoke `draw` or the other generation binaries; a build that shells out to them fails everywhere they are absent. Hold the assets to the same ceiling as the code: the brief is the floor, and both the program and the art, motion, effects, and sound it ships should be the best you can make within the brief's constraints.";
 
 /// The Handlebars context exposed to a test case's `prompt.hbs`.
