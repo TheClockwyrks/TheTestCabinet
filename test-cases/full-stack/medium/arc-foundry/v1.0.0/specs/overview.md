@@ -17,13 +17,15 @@ funds more stamps.
 The twist that defines the game is what happens at the press. You do **not** buy a
 component you choose — you place a **rock** that **rolls a random component type at a
 random quality tier the instant it lands**, weighted low. Each level you place **five**
-such rocks and **keep exactly one** as a firing tower; every rock you do not keep
-hardens into an inert **blocker** that walls the yard but never fires. You climb the
-quality ladder by **combining** matched rolls, and spend kill income on **UPGRADE
-QUALITY** to bias the press toward stronger gems. Every rock is a wall no matter what,
-so the **which-single-roll-to-keep decision, the maze you wall from the rest, and the
-climb — is the strategic heart of the game** (`specs/build.md`). This is a faithful
-reskin of Gem Tower Defense.
+such rocks and **keep exactly one** as a firing tower; every rock you do not keep or
+combine hardens into an inert **blocker** that walls the yard but never fires. To keep
+the value of more than one roll, you **combine** — an immediate action, done at will (even
+mid-wave), that folds matched rolls up the quality ladder or a whole recipe into a
+**combination tower**. You also spend scarce kill income on **UPGRADE QUALITY** to bias the
+press toward stronger gems and on **upgrading** your combos. Every rock is a wall no matter
+what, so the **which-roll-to-keep decision, the combines you fold from the rest, the maze
+you wall, and the climb — is the heart of the game** (`specs/build.md`). This is a
+faithful reskin of Gem Tower Defense.
 
 Components come in **eight** base **types**, each an electrical part with a distinct
 firing identity and signature VFX: the **Capacitor** (a crisp single-target bolt), the
@@ -34,9 +36,9 @@ unit it strikes), the **Rectifier** (a hit that sets an overcurrent **burn**, a
 damage-over-time), and the **Regulator** (a **non-firing** support node that projects an
 **aura**, buffing every firing tower around it). Beyond the base types, matched
 ingredients can be assembled by **recipe** into roughly a dozen unique **combination
-towers** — terminal, single-grade turrets with their own stat blocks and abilities
-(slow, burn, crit, multishot, aura) that are the payoff of climbing the board
-(`specs/towers.md`, `specs/build.md`). Cutting across the base types is a five-rung
+towers** — upgradeable turrets with their own stat blocks and abilities (slow, burn, crit,
+multishot, aura) that are the payoff of climbing the board; each lands weak and is upgraded
+with Charge (`specs/towers.md`, `specs/build.md`). Cutting across the base types is a five-rung
 **quality ladder** — **Scrap → Tuned → Charged → Primed → Tesla-Prime** — that is the game's
 power axis: a component's damage and range climb steeply with its tier, and the only
 way up the ladder is to **combine** two matching components (same type and same
@@ -92,12 +94,13 @@ start; they cross-reference each other by name and form one specification.
   rule. **Read this carefully.**
 - `specs/build.md` — the **scrap-press build loop**: the fixed 5-stamp allowance, the
   stamp cost and the on-placement random type/quality roll odds, the **keep exactly one
-  per level** rule and inert **blockers**, the **combine recipe**, and the **UPGRADE
-  QUALITY** Refinement track.
-- `specs/flow.md` — the economy (Charge, bounties, wave-clear bonus, interest, the
-  UPGRADE QUALITY sink), Grid Integrity and leaks, the wave campaign and
-  victory/overload, milestone waves and the Dynamo, scoring, the game state machine, the
-  required menus, the HUD, and what is out of scope.
+  per level** rule and inert **blockers**, **immediate combining** (quality and recipe),
+  **downgrading**, **combo upgrades**, and the **UPGRADE QUALITY** Refinement track.
+- `specs/flow.md` — the economy (Charge, thin bounties, the small wave-clear bonus, **no
+  interest**, the Charge sinks), Grid Integrity and leaks, the wave campaign and
+  victory/overload, milestone waves and the Dynamo, the **post-final maze-rating boss**
+  (the run's only score), the game state machine, the required menus, the HUD, and what is
+  out of scope.
 - `specs/modes.md` — the **difficulty** system as an in-game menu (Easy/Medium/Hard
   change only the wave count and enemy toughness; money and builds are constant),
   and the **map-select** and **difficulty-select** menu content and navigation.
@@ -122,11 +125,12 @@ Produce a complete, polished, **playable** game that runs entirely in a browser.
 This is a substantial front-end task: a fixed-step real-time simulation of the Load
 pathfinding an ordered-waypoint maze (with 4-tile waypoint platforms) across three maps
 with live re-pathing, a random scrap-press build with the place-and-reveal stamp, the
-keep-one-per-level rule, inert blockers, a combine climb and an UPGRADE QUALITY track
-over a five-rung quality ladder, eight base component types (plus recipe-assembled
-combination towers) with automatic targeting and traveling electrical projectiles, an
-economy of Charge and interest and Grid Integrity,
-an escalating wave campaign that ends in a Dynamo boss, multiple game states and menus,
+keep-one-per-level rule, inert blockers, immediate combining, downgrading, and an UPGRADE
+QUALITY track over a five-rung quality ladder, eight base component types (plus
+recipe-assembled, upgradeable combination towers) with automatic targeting and traveling
+electrical projectiles, a scarce economy of Charge (no interest) and Grid Integrity,
+an escalating wave campaign that ends in a Dynamo boss and a post-final maze-rating finale,
+multiple game states and menus,
 and a HUD
 — **and** a full pass of producing the game's art, effects, and audio with the
 on-`PATH` tools. Aim for a build a person would actually want to play — tense,

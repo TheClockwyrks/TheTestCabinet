@@ -1,7 +1,7 @@
 # Flow — economy, integrity, the campaign, states, and HUD
 
 This file defines the economy (Charge), Grid Integrity and leaks, the wave
-campaign and victory/overload, scoring, the game's state machine, the required
+campaign and victory/overload, the post-final maze rating, the game's state machine, the required
 menus, the HUD's meaning, the behaviors that make good test targets, and what is
 out of scope. It refers to the yard and its regions (`specs/board.md`), the Load
 (`specs/enemies.md`), the components (`specs/towers.md`), the scrap-press build
@@ -15,30 +15,34 @@ wave count and enemy toughness change.
 
 ## Charge and the economy
 
-**Charge** is the currency — scavenged power spent to place rocks at the scrap-press
-and to UPGRADE QUALITY, and recovered from kill bounties, the wave-clear bonus, and
-interest, so the Load always presses against a maze that is still being built up.
+**Charge** is the currency — scavenged power spent to place rocks at the scrap-press,
+to UPGRADE QUALITY, and to upgrade combination towers, and recovered from kill
+bounties and the wave-clear bonus. Charge is deliberately **scarce** (GemTD-style):
+bounties are thin, there is **no interest**, and the wave-clear bonus is small, so
+every stamp and upgrade is a real decision and the board can never be flooded.
 
 - **Starting Charge** is `130` — enough to open with a few stamps and a starter
   maze, not a full board.
 - **Kill bounty.** Killing a Load unit pays its **bounty** (`specs/enemies.md`)
-  the moment it is removed.
-- **Wave-clear bonus.** Clearing a wave (its last unit dies or leaks) pays a flat
-  `20` plus `5 × waveNumber`.
-- **Interest.** At the start of each **between-wave build phase** you earn `8%` of
-  your current Charge, rounded down and **capped at `+40`** per build phase — a
-  gentle reward for banking rather than over-spending. (The opening phase before
-  Wave 1 earns no interest.)
-- **Spending.** Charge is spent on two things: **placing rocks** and **UPGRADE
-  QUALITY**. Placing a rock costs `10` Charge and rolls one component where it lands,
-  up to the `5`-per-level allowance (`specs/build.md`); Charge never goes below `0`,
-  so the press is disabled when you cannot afford `10`. **UPGRADE QUALITY** buys the
-  next Refinement level for its fixed cost (`60 / 130 / 240 / 400 / 620` up the R1–R5
-  track, `specs/build.md`). **Combining costs nothing.** There is **no selling** — nothing
-  you place is ever refunded for Charge, so the only Charge sinks are stamps and
-  refinement. You may **dismantle** a misplaced structure between waves as a correction,
-  but it **returns nothing** — no Charge and no stamp, ever (a refund would let you re-roll
-  the press for free, `specs/towers.md`).
+  the moment it is removed. Bounties are on the GemTD scale — a basic unit pays `1`
+  Charge — so kill income is thin.
+- **Wave-clear bonus.** Clearing a wave (its last unit dies or leaks) pays a small
+  flat bonus that starts at about `10` Charge on Wave 1 and grows only gently with
+  the wave number (the reference build pays `8 + 2 × waveNumber`).
+- **No interest.** Charge does **not** accrue interest — banking is not rewarded, so
+  the only income is kill bounties and the wave-clear bonus.
+- **Spending.** Charge is spent on three things: **placing rocks**, **UPGRADE
+  QUALITY**, and **upgrading combination towers**. Placing a rock costs `10` Charge
+  and rolls one component where it lands, up to the `5`-per-level allowance
+  (`specs/build.md`); Charge never goes below `0`, so the press is disabled when you
+  cannot afford `10`. **UPGRADE QUALITY** buys the next Refinement level for its fixed
+  cost (`60 / 130 / 240 / 400 / 620` up the R1–R5 track, `specs/build.md`). **Upgrading
+  a combination tower** raises its level for a Charge cost that scales with the combo's
+  strength (`specs/towers.md`). **Combining and downgrading cost nothing.** There is
+  **no selling** — nothing you place is ever refunded for Charge, so the only Charge
+  sinks are stamps, refinement, and combo upgrades. You may **dismantle** a misplaced
+  structure between waves as a correction, but it **returns nothing** — no Charge and no
+  stamp, ever (a refund would let you re-roll the press for free, `specs/towers.md`).
 
 ## Grid Integrity and leaks
 
@@ -57,16 +61,15 @@ interest, so the Load always presses against a maze that is still being built up
   (`specs/modes.md`); the reference **Medium** run is `50`. Waves are numbered
   `WAVE 1` … `WAVE N`.
 - Between waves there is an **untimed build phase**, during which the Load is not
-  spawning and you place rocks, keep, combine, and upgrade quality (`specs/build.md`).
-  It shows **no countdown** and never starts on its own; interest is paid at its
-  start. The player re-shapes the maze at leisure and presses **SEND** (the wave
-  control, `specs/controls.md`) to resolve the level — the level's single **harvest**
-  lands (a **KEEP** of one rolled candidate, a **quality-combine** a tier up the
-  ladder, or a **combination-tower recipe**, `specs/build.md`, `specs/towers.md`) and
-  every other rock hardens into a blocker — and start the next wave.
-- **The opening build phase — before Wave 1 — is also untimed**, reads **START**
-  instead of SEND, and pays no interest (interest is paid only at the start of the
-  between-wave phases). The `130` opening Charge lays the first partial maze, not a
+  spawning and you place rocks, keep, combine, downgrade, and upgrade quality
+  (`specs/build.md`). It shows **no countdown** and never starts on its own. The
+  player re-shapes the maze at leisure and presses **SEND** (the wave control,
+  `specs/controls.md`) to resolve the level's single **KEEP** — one rolled candidate
+  becomes a permanent firing component and every other rock hardens into a blocker —
+  and start the next wave. **Combining** is not tied to SEND: it is an immediate action
+  taken at will during the build phase (and even during a live wave), `specs/build.md`.
+- **The opening build phase — before Wave 1 — is also untimed** and reads **START**
+  instead of SEND. The `130` opening Charge lays the first partial maze, not a
   finished board.
 - Building is allowed **only during the build phase**, never during a live wave,
   subject to the fixed allowance of **`5` rock stamps per level** (`specs/build.md`).
@@ -85,20 +88,32 @@ interest, so the Load always presses against a maze that is still being built up
   bounties, and leak values do not scale, and every component stat is unchanged
   across waves — only the Load grows.
 - **Victory.** Clearing the **final wave** (Wave `N`) with **Grid Integrity
-  remaining** wins the game (the Victory state, below).
+  remaining** wins the game. Before the Victory screen, the **post-final maze-rating
+  finale** runs (below): the game already counts the run as won, and the finale only
+  measures how good the maze is.
 - **Overload (defeat).** Grid Integrity reaching `0` ends the game (the Overload
   state, below), even mid-wave.
 
-## Scoring
+## The post-final maze rating (the run's only score)
 
-A **score** accumulates across the run and shows in the HUD and end screens:
+The run keeps **no running score**. Grid Integrity only decides **win/lose** — it is
+never scored. The run's one end-of-run number is the **Maze Rating**, and it is
+produced by a short finale after the final wave is cleared:
 
-- `+ bounty` for each unit killed (the same value the Charge bounty pays).
-- `+ 100 × waveNumber` for each wave cleared.
-- `+ 250 × integrityRemaining` awarded at Victory.
-
-Score is for the end-screen result and bragging rights only; it does not affect
-play and is **not persisted** between sessions.
+- When Wave `N` is cleared, a single **Overload Dynamo** — an **invincible** boss
+  (`specs/enemies.md`) — spawns at the Entry and **walks the maze once**, from the
+  Entry through the ordered waypoint chain to the Collector, exactly like any ground
+  unit (it takes the shortest open route around your walls).
+- It **cannot be killed**: every shot's full damage is **tallied into the Maze
+  Rating** instead of removing HP, and it still takes slow and burn (which keep it
+  under fire longer). When it grounds out at the Collector it costs **no** integrity —
+  the run is already won — and the game advances to the **Victory** screen.
+- The **Maze Rating** is that total damage: a direct measure of how much damage the
+  player's maze can deal. A longer maze holds the boss under fire longer, and a
+  stronger, better-placed firing line deals more per second, so the rating rewards
+  both **firepower and maze length**. It shows on the Victory screen and is **not
+  persisted** between sessions. A **defeat** never reaches the finale, so it has **no
+  Maze Rating**.
 
 ## Game states
 
@@ -141,12 +156,13 @@ The game is a small state machine. Each state has a clear screen and controls
    menu. This is separate from the in-place pause of state 5: the menu freezes the
    game *and* covers it, whereas the in-place pause freezes the game but keeps it
    playable.
-7. **Victory.** Shown when the final wave is cleared with Grid Integrity remaining.
-   Displays the final **score**, **waves survived** (all `N`), and **Grid Integrity
-   remaining**, with **PLAY AGAIN** and **MENU**.
-8. **Overload.** Shown when Grid Integrity reaches `0`. Displays the final
-   **score** and the **wave reached**, with **PLAY AGAIN** (or **TRY AGAIN**) and
-   **MENU**.
+7. **Victory.** Shown after the final wave is cleared and the post-final maze-rating
+   finale has run (above). Displays the **Maze Rating** (the total damage the maze
+   dealt to the invincible Overload Dynamo), **waves survived** (all `N`), and **Grid
+   Integrity remaining**, with **PLAY AGAIN** and **MENU**.
+8. **Overload.** Shown when Grid Integrity reaches `0`. Displays the **wave reached**
+   — there is **no Maze Rating**, since the finale is never reached — with **PLAY
+   AGAIN** (or **TRY AGAIN**) and **MENU**.
 
 ## Required menus
 
@@ -189,20 +205,23 @@ fully visible:
 - **Status bar** (`y` in `[0, 56]`): **Charge**, **Grid Integrity** (turning to the
   alert color as it runs low), the **wave indicator** `WAVE n / N` with the current
   wave's progress or a **BUILD** read between waves (the phase is untimed), and the
-  **speed**, **pause**, and **mute** controls. A clear `PAUSED` read shows while paused
-  in place.
+  **speed**, **pause**, and **mute** controls. There is **no score readout** — the run
+  keeps no running score. A clear `PAUSED` read shows while paused in place; during the
+  post-final finale the bar reads **OVERLOAD** and shows the **Maze Rating** accruing
+  live on the invincible boss.
 - **Build panel** (`x` in `[1000, 1280]`): the **scrap-press** control (STAMP, showing
   its `10` cost and the remaining stamps of the `5`-per-level allowance); the **UPGRADE
   QUALITY** control (the current Refinement level `R` and the next level's cost,
   `specs/build.md`); the **selected candidate/component inspector** (its type, quality
   tier, live stats — damage, range, fire rate, targeting; a **combination tower**
-  instead reads its recipe and abilities, and a **Regulator** reads an **aura**
-  radius/bonus readout since it does not fire, `specs/towers.md`) and the **KEEP /
-  COMBINE** and **targeting** controls, with KEEP/COMBINE on candidates during the
-  build phase and COMBINE shown only when a match exists (a quality match **or** a
-  combination-tower recipe), `specs/build.md`); the **next-wave preview**
-  (the coming wave's types, shown when nothing is selected); and the **wave control**
-  (START / SEND) with the speed toggle.
+  instead reads its **upgrade level** and abilities, and a **Regulator** reads an
+  **aura** radius/bonus readout since it does not fire, `specs/towers.md`) and its
+  action controls: **KEEP** (a candidate, build phase), **COMBINE** (a quality match
+  **or** a reachable combination-tower recipe — immediate, any time), **DOWNGRADE** (a
+  base component/candidate one tier, build phase), **UPGRADE** (a selected combination
+  tower's level, build phase), and **targeting** (`specs/build.md`, `specs/controls.md`);
+  the **next-wave preview** (the coming wave's types, shown when nothing is selected);
+  and the **wave control** (START / SEND) with the speed toggle.
 
 On the board, each unit carries a **health bar** (`specs/enemies.md`), each component
 and candidate reads as its **type** and **quality tier** (its finish and VFX escalate
@@ -231,21 +250,28 @@ targets:
   **refused**, and the floor **re-paths live** as walls change (`specs/board.md`).
 - The **scrap-press** places a rock that **rolls a random component type at a random
   quality on placement** (biased upward by Refinement); you **keep exactly one** roll
-  per level as a firing component, every other rock hardens into an inert **blocker**,
-  and **combining** — either a quality match (same type + quality → one tier higher)
-  or a **combination-tower recipe** — is the level's alternative harvest
-  (`specs/build.md`, `specs/towers.md`).
+  per level as a firing component and every other un-harvested rock hardens into an
+  inert **blocker**. **Combining** — a quality match (same type + quality → one tier
+  higher) or a **combination-tower recipe** — is a separate, **immediate** action taken
+  at will (build phase **and** during a live wave), so it is how a player keeps more
+  than one tower off a level; you may also **downgrade** a base component and **upgrade**
+  a combination tower (`specs/build.md`, `specs/towers.md`).
 - Components **fire automatically** at valid in-range units with selectable targeting,
   throwing visible traveling arcs that carry the hit — the **Regulator** is the one
   exception, a **non-firing** support type that projects a buff aura instead
   (`specs/towers.md`); **flyers** (every fourth wave) ignore the maze but can still be
   hit in range (`specs/towers.md`, `specs/enemies.md`).
-- The **economy** runs on kill bounties, the wave-clear bonus, and interest, spent on
-  stamps and **UPGRADE QUALITY** (no selling); a **leak** costs Grid Integrity; **`0`**
-  integrity overloads and ends the game; clearing the **final wave** with integrity left
-  wins it (this file).
+- The **economy** runs on thin kill bounties and a small wave-clear bonus — **no
+  interest** — spent on stamps, **UPGRADE QUALITY**, and **combo upgrades** (no
+  selling); a **leak** costs Grid Integrity; **`0`** integrity overloads and ends the
+  game; clearing the **final wave** with integrity left wins it (this file).
+- **There is no running score.** After the final wave, an **invincible Overload
+  Dynamo** walks the maze once and the total damage dealt to it is the run's **Maze
+  Rating**, shown at Victory; a defeat has no rating, and Grid Integrity only gates
+  win/lose (this file).
 - A **Dynamo** boss anchors the milestone waves (`round(N / 2)` and Wave `N`), seething
-  and bursting into a big discharge on death (`specs/enemies.md`, `specs/assets.md`).
+  and bursting into a big discharge on death; a final **invincible** Overload Dynamo
+  runs the post-final maze-rating finale (`specs/enemies.md`, `specs/assets.md`).
 - The game can be **paused in place** (status-bar pause or the pause hotkey during a
   wave): ticks freeze so you can read the frozen board, with no menu shown. **`Esc`**
   instead opens the pause **menu**, which also freezes the game (`specs/controls.md`).

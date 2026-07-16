@@ -21,13 +21,17 @@ many ticks pass per real second; it must change only how fast the game plays, ne
 but differ in what else they do — an **in-place pause** and the **pause menu**, both
 described under *Waves, speed, and pause* below.
 
-## Building happens only in the build phase
+## What is build-phase-only, and what is not
 
-All building — pulling the press, placing rocks, keeping, combining, and upgrading
-quality — happens **only during a build phase** (`specs/flow.md`), never during a live
-wave. While a wave is running the build controls are disabled; you may still **select a
-component** to read its stats and **change its targeting**, but you cannot stamp, keep,
-combine, or upgrade until the wave clears and the next build phase opens.
+Most building — pulling the press, placing rocks, **keeping**, **downgrading**, **upgrading
+quality**, **upgrading a combo**, and **dismantling** — happens **only during a
+build phase** (`specs/flow.md`). While a wave is running those controls are disabled.
+
+Two things are **not** restricted to the build phase and may be done at any time, including
+during a live wave: **changing a component's targeting**, and **combining** (a quality-climb
+or a combination-tower recipe). Combining is an immediate action decoupled from the build
+loop, so a player can fold towers together mid-wave as the situation demands
+(`specs/build.md`).
 
 ## Stamping and placing a rock (the scrap-press)
 
@@ -70,57 +74,63 @@ Show the same odds while a blank rock is held.
 ## Selecting and inspecting a candidate or component
 
 - **Select.** Left-click a placed candidate, component, or blocker (when not holding a
-  rock) to select it. The selection shows its **range ring** on the yard (firing
-  components and candidates only), and the **inspector** in the build panel
-  (`specs/board.md`) shows its **type** — one of the **eight** base component types
+  rock) to select it as the **primary** selection. The selection shows its **range ring**
+  on the yard (firing components and candidates only), and the **inspector** in the build
+  panel (`specs/board.md`) shows its **type** — one of the **eight** base component types
   (Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, Choke, Rectifier, Regulator) or a
-  **combination tower** (`specs/towers.md`) — its **quality tier** (base types only;
-  combos are single-grade), a short **description** of what the component does, live
-  stats (damage, range, fire rate, targeting), and its action controls. For a **firing
-  component** it also shows a per-component performance tally — its **kills** and **total
-  damage dealt** — so the player can read which towers are carrying. A **Regulator**, and
-  any other non-firing support piece, shows its **aura** (radius and damage bonus) in
-  place of damage/rate and **has no targeting control** (below). A blocker reads as inert
-  (no range, no targeting) and offers only a **DISMANTLE** action (below).
+  **combination tower** (`specs/towers.md`) — its **quality tier** (base types only; a
+  combo shows its **upgrade level** instead), a short **description** of what the component
+  does, live stats (damage, range, fire rate, targeting), and its action controls. For a
+  **firing component** it also shows a per-component performance tally — its **kills** and
+  **total damage dealt**. A **Regulator**, and any other non-firing support piece, shows its
+  **aura** (radius and damage bonus) in place of damage/rate and **has no targeting control**
+  (below). A blocker reads as inert (no range, no targeting) and offers only a **DISMANTLE**
+  action (below).
+- **Multi-select (for combining).** **Shift-click** additional base structures (candidates
+  or base components) to add them to an explicit **combine set** alongside the primary; the
+  set's members pulse on the board. Combining then folds **exactly** that set (a matched
+  pair, or a recipe multiset), so a player can choose precisely which duplicate copies to
+  merge. A plain (non-shift) click clears the set back to a single selection.
 - **Keep.** With a **candidate** selected during the build phase, click **KEEP** or
   press **`K`** to mark it as this level's kept roll (`specs/build.md`). Only one
   candidate is ever the kept one; keeping another moves the choice. The keep is
   reversible until you send the wave, when the kept candidate becomes a permanent firing
   component and every other candidate hardens into a blocker.
-- **Combine — two kinds.** With a **candidate** selected in the build phase, the
-  inspector may offer up to two distinct combine actions, each of which — if committed —
-  becomes this level's single harvest (the alternative to a plain keep). Both are
-  reversible until you send the wave, both cost **no Charge**, and both fire a **combine
-  flash** VFX (`specs/assets.md`); committing either **replaces** a keep or the other
-  combine, since only one harvest is ever set (`specs/build.md`). While a candidate is
-  selected — and, once a combine is committed, until the wave is sent — the pieces that
-  will **fold together** must be marked on the yard with a **pulsing highlight** (a glow /
-  ring) so the player can see exactly what merges: the eligible partners a selection *could*
-  combine with, and, once committed, the exact partner(s) the harvest *will* consume.
-  - **Quality-combine.** A **COMBINE** (quality) action appears **only** when the
-    selected candidate has a matching **candidate or component** of the same type **and**
-    same quality on the board (`specs/build.md`). Clicking it, or pressing **`C`**, sets
-    the harvest to that pair; the inspector **previews what it produces** (the component's
-    type at the next higher tier). It resolves at wave start, producing one component one
-    tier higher at the candidate's footprint and consuming the partner — whose footprint
-    **hardens into a blocker** so the maze is unchanged. A **Tesla-Prime** candidate
+- **Combine — two kinds, immediate.** With a **base structure** (a candidate **or** a base
+  component) selected, the inspector may offer combine actions. A combine resolves **the
+  instant you commit it** — it is **not** the level's harvest, does not consume your keep,
+  may be done **any number of times** per level, and is allowed **during a live wave**. Each
+  costs **no Charge** and fires a **combine flash** VFX (`specs/assets.md`). The result lands
+  at the **primary** (initiating) piece's footprint, so a combine can **replace a standing
+  tower**. While a piece is selected, the pieces that would **fold together** are marked on
+  the yard with a **pulsing highlight** so the player sees exactly what merges. With an
+  explicit **shift-multi-select**, the exact chosen copies fold; otherwise the game resolves
+  the ingredients itself (`specs/build.md`).
+  - **Quality-combine.** A **COMBINE** action appears when the selected piece has a matching
+    **candidate or base component** of the same type **and** same quality on the board
+    (`specs/build.md`). Clicking it, or pressing **`C`**, immediately produces one component
+    a tier higher at the initiating piece's footprint and consumes the partner — whose
+    footprint **hardens into a blocker** so the maze is unchanged. A **Tesla-Prime** piece
     offers no quality-combine.
-  - **Recipe-combine.** When the board (candidates **and/or** existing components),
-    together with the selected candidate, holds the exact multiset of `(type, quality)`
-    ingredients a **combination recipe** needs (`specs/towers.md`), the inspector shows
-    each reachable recipe and a **COMBINE → `<combo name>`** action naming the combination
-    tower it would build. Clicking that action sets the harvest to that recipe; the
-    inspector previews the resulting combo and its stats. If more than one recipe is
-    within reach, each is offered as its own **COMBINE → `<combo name>`** entry so the
-    player chooses which combo to assemble. It resolves at wave start: the combination
-    tower lands at the selected (initiating) candidate's footprint, and **every consumed
+  - **Recipe-combine.** When the board (candidates **and/or** existing base components),
+    together with the selected initiator, holds the exact multiset of `(type, quality)`
+    ingredients a **combination recipe** needs (`specs/towers.md`), the inspector shows each
+    reachable recipe and a **COMBINE → `<combo name>`** action naming the combination tower
+    it would build. Clicking that action immediately assembles it: the combination tower
+    lands at the initiator's footprint (landing at **upgrade level 0**), and **every consumed
     ingredient footprint hardens into a blocker** — wall-neutral, never opening a hole
-    (`specs/build.md`, `specs/board.md`). A combination tower is single-grade and
-    terminal, so it never itself offers a COMBINE.
-- **Upgrade quality.** The build panel's **UPGRADE QUALITY** control — or **`U`** —
-  spends Charge to buy the next **Refinement** level, biasing future rolls toward higher
-  qualities (`specs/build.md`). It is disabled at **R5** or when you cannot afford the
-  next cost.
+    (`specs/build.md`, `specs/board.md`). A combo is not a base structure, so it never
+    itself offers a COMBINE.
+- **Downgrade.** With a **base structure** at Tuned (T2) or above selected in the build
+  phase, the inspector shows a **DOWNGRADE** control — or press **`G`** — that drops it one
+  quality tier in place, for **no Charge** and no refund (`specs/build.md`). It is a
+  recipe-flexibility correction; a combination tower and a blocker cannot be downgraded.
+- **Upgrade quality / upgrade combo.** The **`U`** key and the build-panel controls are
+  contextual: with a **combination tower** selected, **UPGRADE** raises that combo's level
+  for Charge (build phase, up to level 3, `specs/towers.md`); otherwise **UPGRADE QUALITY**
+  buys the next **Refinement** level, biasing future rolls toward higher qualities
+  (`specs/build.md`). Refinement is disabled at **R5** or when you cannot afford the next
+  cost; a combo upgrade is disabled at level 3 or when you cannot afford it.
 - **Targeting.** With a **firing component** selected, the inspector shows a
   **targeting** control that **cycles** its priority — `first` → `last` → `nearest` →
   `strongest` → `weakest` and back — on each click or press of **`T`**. The priority
@@ -203,15 +213,18 @@ operable with the **mouse alone**, with these keyboard accelerators as an altern
 
 The mouse path above is the primary pointing device; the shortcuts below are
 **required** alongside it, and a held key must not auto-repeat an action meant to fire
-once per press (pulling the press, keeping, combining, upgrading quality, sending a
+once per press (pulling the press, keeping, combining, downgrading, upgrading, sending a
 wave, toggling speed, pausing, cycling targeting):
 
 - **Pull the scrap-press (STAMP):** `B`
 - **Keep selected candidate:** `K`
-- **Quality-combine selected candidate (when a same-type/quality match exists):** `C`
-  (recipe-combines are committed with the mouse via the named **COMBINE → `<combo name>`**
-  action, since a candidate may have several within reach)
-- **Upgrade quality (Refinement):** `U`
+- **Combine the current selection:** `C` — folds a matching quality pair or a recipe
+  multiset, immediately, in the build phase or a live wave. With a shift-multi-select it
+  folds that exact set; otherwise it auto-resolves. A specific recipe (when several are in
+  reach) is committed with the mouse via the named **COMBINE → `<combo name>`** action.
+- **Shift-click:** add / remove a base structure from the explicit combine set.
+- **Downgrade selected base component one tier (build phase):** `G`
+- **Upgrade — the selected combo's level, else UPGRADE QUALITY (Refinement):** `U`
 - **Cycle targeting priority (component selected):** `T`
 - **Cancel held rock / deselect / back:** `Esc`
 - **Send wave; in-place pause once live:** `Space`

@@ -49,6 +49,7 @@ import {
   retarget,
   rollTier,
   rollType,
+  upgradeCombos,
   weakestBaseComponents,
   type BuildCtx,
   type ComboType,
@@ -275,6 +276,11 @@ function playBuild(cfg: Play, cur: Cursors, g: Game, ctx: BuildCtx): void {
   // leftover rocks still clump (no route fold). n rocks placed: 1 is the harvest focus.
   const blk = cfg.maze === "none" ? 0 : n - 1;
   for (let b = 0; b < blk; b++) layBlocker(g, nextBlocker());
+
+  // Pump spare Charge into UPGRADING the standing combination towers (specs/towers.md) — combos
+  // land weak at level 0, so a competent player climbs them with kill income (the gold sink).
+  // Keep this level's stamp spend in reserve so upgrading never starves the maze.
+  if (cfg.combo) upgradeCombos(g, n * 10);
 
   debitStamps(g, n);
   retarget(g);

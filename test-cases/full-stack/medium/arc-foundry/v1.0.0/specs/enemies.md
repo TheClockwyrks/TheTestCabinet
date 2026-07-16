@@ -49,41 +49,51 @@ scales across waves.
 
 ## The Load roster
 
+Bounties are on the **GemTD scale** — a basic unit pays `1` Charge — so kill income is thin
+(`specs/flow.md`); they are integer values and do **not** scale with the wave.
+
 | Type | Trait | Base HP | Speed | Flies? | Bounty | Leak |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Mote** | baseline charge unit | 44 | 60 | no | 3 | 1 |
-| **Spark** | fast, fragile | 27 | 120 | no | 3 | 1 |
-| **Slug** | slow, capacitive tank | 180 | 38 | no | 7 | 2 |
-| **Cluster** | tiny, arrives in dense packs | 16 | 72 | no | 2 | 1 |
-| **Filament** | **flyer** — ignores the maze | 74 | 85 | **yes** | 6 | 1 |
-| **Dynamo** | **boss** — overload core | 1500 | 30 | no | 90 | 5 |
+| **Mote** | baseline charge unit | 44 | 60 | no | 1 | 1 |
+| **Spark** | fast, fragile | 27 | 120 | no | 1 | 1 |
+| **Slug** | slow, capacitive tank | 180 | 38 | no | 3 | 2 |
+| **Cluster** | tiny, arrives in dense packs | 16 | 72 | no | 1 | 1 |
+| **Filament** | **flyer** — ignores the maze | 74 | 85 | **yes** | 2 | 1 |
+| **Dynamo** | **boss** — overload core | 1500 | 30 | no | 40 | 5 |
 
-- **Mote** — the standard unit; everything else is a variation on it. The bulk of
-  the early waves.
-- **Spark** — half a Mote's HP at double its speed. Sparks blow through a long maze
-  fast, so they punish a defense with no coverage near the Entry — a line that only
-  catches units at the far end of the maze leaks them.
-- **Slug** — a slow wall of HP that soaks fire and leaks **2** Grid Integrity if it
-  grounds out. Slugs reward concentrated single-hit damage — a **Discharge Rig**'s
-  heavy bolt or a climbed, high-quality line — not a spread of weak Scrap.
-- **Cluster** — very low HP but arrives in tight packs (many at once), so a single
-  Cluster pack floods a chokepoint. **Arc-Node** splash and **Coil** chain
-  (`specs/towers.md`) are the natural answers.
+- **Mote** — the standard unit, with average HP and speed; everything else is a
+  variation on it.
+- **Spark** — about half a Mote's HP at double its speed.
+- **Slug** — a slow unit with a huge HP pool that costs **2** Grid Integrity if it
+  grounds out.
+- **Cluster** — very low HP, but arrives in tight packs (many at once).
 - **Filament** — the **flyer**. It appears **only on every fourth wave** (waves `4`,
   `8`, `12`, … — see *Wave composition* below) and does **not** walk the maze: it flies
   in a straight line from the Entry through each waypoint in order to the Collector, over
   every component and wall (`specs/board.md`). The maze cannot slow or redirect it, but
-  any component in range can still fire at it while it is over the yard. Because it
-  bypasses the maze its **exposure window is short**, so it is dangerous not for being
-  tough but for demanding coverage sitting near the straight-line waypoint path — a
-  defense with none starts leaking Filaments. Because the first air wave is Wave 4, a
-  player is never punished for lacking anti-air on the opening waves.
-- **Dynamo** — the **boss**: a massive HP pool that leaks **5** Grid Integrity if it
+  any component in range can still fire at it while it is over the yard. Its exposure
+  window over the yard is short.
+- **Dynamo** — the **boss**: a massive HP pool that costs **5** Grid Integrity if it
   grounds out. It seethes with instability (an unstable-overload wobble, and a big
   EMP-style discharge on death — `specs/flow.md`) and anchors the **milestone
-  waves** (`specs/flow.md`, `specs/modes.md`). It is the trial of whether your
-  climbed, combined line can output enough damage to break it before it crosses the
-  yard.
+  waves** (`specs/flow.md`, `specs/modes.md`).
+
+## The post-final Overload Dynamo (invincible; the maze rating)
+
+After the **final wave** is cleared, one special boss runs the **maze-rating finale**
+(`specs/flow.md`): an **Overload Dynamo** — a single **invincible** unit that walks the
+maze once so the game can measure how much damage the player's maze deals.
+
+- It spawns at the **Entry** and walks the ordered waypoint chain to the **Collector**
+  exactly like any ground unit, taking the shortest open route around the walls, at a
+  brisk pace (faster than the campaign Dynamo, so the finale is a short single pass).
+- It **cannot be killed**: it has no depleting health bar, and every shot's full damage
+  (and every burn tick) is **tallied into the run's Maze Rating** instead of removing HP.
+  It still takes **slow** and **burn** (which keep it under fire longer, raising the
+  rating), but its HP never falls.
+- When it grounds out at the Collector it costs **no** Grid Integrity — the run is already
+  won — and the game shows the **Victory** screen with the final Maze Rating
+  (`specs/flow.md`). It reads on the board as an oversized, roiling overload core.
 
 ## Per-wave HP scaling
 

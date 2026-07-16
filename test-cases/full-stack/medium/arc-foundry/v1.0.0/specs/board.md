@@ -355,6 +355,6 @@ its type and **quality tier** (finish and VFX escalate by tier — `specs/towers
 shows its **range ring**. The yard itself never shows persistent UI chrome over the play
 area beyond the grid, the components/candidates/blockers, the Load, projectiles and VFX,
 and small per-unit health bars; all panels and controls live in the build panel. The
-HUD's meaning — Charge, Grid Integrity, waves, scoring — is defined in `specs/flow.md`;
+HUD's meaning — Charge, Grid Integrity, waves, the maze rating — is defined in `specs/flow.md`;
 this file fixes only where
 it sits.
