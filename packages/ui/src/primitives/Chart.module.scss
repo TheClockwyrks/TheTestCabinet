@@ -12,15 +12,4 @@
     max-width: 100%;
     height: auto;
   }
-
-  // Bar hover affordance: lighten the bar (or stacked segment) under the cursor
-  // so it's clear which one the tooltip refers to. Scoped to bar marks (Plot
-  // labels the group `bar`) so axis and frame rects are untouched. The tip layer
-  // is `pointer-events: none`, so it never steals these hovers.
-  :global(svg g[aria-label="bar"] rect) {
-    transition: filter 0.12s ease;
-  }
-  :global(svg g[aria-label="bar"] rect:hover) {
-    filter: brightness(1.25);
-  }
 }
