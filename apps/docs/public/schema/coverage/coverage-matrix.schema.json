@@ -35,10 +35,7 @@
         },
         "provider": {
           "description": "The provider for a provider-routed harness, or null.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "remaining": {
           "description": "How many more runs to trigger: `max(0, desired - (completed + in_flight))`.",
@@ -109,12 +106,7 @@
       "type": "integer"
     }
   },
-  "required": [
-    "cells",
-    "cellsSatisfied",
-    "cellsTotal",
-    "runsMissing"
-  ],
+  "required": ["cells", "cellsSatisfied", "cellsTotal", "runsMissing"],
   "title": "CoverageMatrix",
   "type": "object"
 }

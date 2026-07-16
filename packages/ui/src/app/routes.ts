@@ -150,9 +150,30 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/metadata`,
   runEvents: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/events`,
-  // Tournament routes (consoles only; the static site never links to them). The
-  // arena persists tournaments and lists them here, each revisitable by id.
-  tournaments: (): string => "/tournaments",
+  // The "Other" section (consoles only): a tabbed list page collecting the
+  // surfaces that don't belong on the Test Cases page — Game Jams and
+  // Tournaments. The bare `/other` redirects to the first tab (Game Jams). Each
+  // tab is its own route so the selection survives a reload and is linkable.
+  other: (): string => "/other",
+  otherGameJams: (): string => "/other/game-jams",
+  otherTournaments: (): string => "/other/tournaments",
+  // A game jam's detail page and its reduced tab set (Overview / Inputs / Runs /
+  // Leaderboard / Metrics — a jam has no changelog, reference, or arena). Lives at
+  // its own top-level `/game-jams/:slug`, a sibling of the `/other/game-jams`
+  // list tab.
+  gameJamDetail: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}`,
+  gameJamInputs: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}/inputs`,
+  gameJamRuns: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}/runs`,
+  gameJamLeaderboard: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}/leaderboard`,
+  gameJamMetrics: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}/metrics`,
+  // A tournament's standings + matches (consoles only). The Tournaments list now
+  // lives under Other (`/other/tournaments`), but each tournament keeps its own
+  // revisitable detail route.
   tournamentDetail: (id: string): string =>
     `/tournaments/${encodeURIComponent(id)}`,
 } as const;
@@ -224,6 +245,17 @@ export const routePatterns = {
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
   runEvents: "/runs/:runId/events",
-  tournaments: "/tournaments",
+  // The Other section: the tabbed list (Game Jams / Tournaments) and the game-jam
+  // detail routes. The tab slugs are literal siblings under `/other`; the
+  // game-jam detail's sub-tabs mirror the test-case detail's, one route each so a
+  // tab (and the variant carried in the query string) is linkable.
+  other: "/other",
+  otherGameJams: "/other/game-jams",
+  otherTournaments: "/other/tournaments",
+  gameJamDetail: "/game-jams/:slug",
+  gameJamInputs: "/game-jams/:slug/inputs",
+  gameJamRuns: "/game-jams/:slug/runs",
+  gameJamLeaderboard: "/game-jams/:slug/leaderboard",
+  gameJamMetrics: "/game-jams/:slug/metrics",
   tournamentDetail: "/tournaments/:id",
 } as const;

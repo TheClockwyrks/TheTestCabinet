@@ -1606,6 +1606,7 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
         sequences: item.sequences,
         frames: item.frames,
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain,
         sub_items: item
             .sub_items
@@ -1835,6 +1836,8 @@ struct ReviewItemBody {
     #[serde(default)]
     frames: Vec<u32>,
     weight: u32,
+    #[serde(default)]
+    graded: bool,
     #[serde(default)]
     domain: Option<String>,
     #[serde(default)]

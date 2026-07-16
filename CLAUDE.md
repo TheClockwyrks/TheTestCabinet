@@ -123,6 +123,13 @@ Task-oriented walkthroughs:
   [end-to-end](apps/docs/src/content/docs/testing/end-to-end/) type, whose
   manifest format is at
   [`testing/end-to-end/manifests.md`](apps/docs/src/content/docs/testing/end-to-end/manifests.md).
+- **Game jams:** [`game-jams/`](game-jams/) — a sibling top-level folder (laid out
+  `game-jams/<slug>/<version>/`, no type/difficulty grouping) holding
+  [game-jam](apps/docs/src/content/docs/testing/game-jam/overview.md) cases:
+  full-stack builds given only a **theme** (no spec, no reference mockups) and
+  reviewed on a **graded** category scale (💩→💎) rather than pass/fail. Discovery
+  folds this folder into the same catalog as `test-cases/`, and they surface on the
+  console's **Other → Game Jams** section, not the Test Cases page.
 - **Models:** the model catalog is **owned by the backend** (SeaORM `model` /
   `model_alias` / `model_price` tables), served at `GET /models`, and baked into
   the public R2 snapshot as `models.json`. There is no `models/` directory. Any

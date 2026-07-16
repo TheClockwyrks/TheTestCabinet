@@ -113,7 +113,10 @@ export function TestCaseMetricsPage() {
   );
 }
 
-function MetricsContent({
+// The metrics body, given the resolved case and variant. Exported so the
+// game-jam detail's Metrics tab renders the identical distributions under its own
+// layout — run metrics (tokens, cost) are review-model-independent.
+export function MetricsContent({
   testCase,
   variant,
 }: {

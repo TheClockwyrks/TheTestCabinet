@@ -29,7 +29,11 @@ export function TestCaseRunsPage() {
   );
 }
 
-function RunsContent({
+// The run log body, given the resolved case and variant. Exported so the
+// game-jam detail's Runs tab renders the identical log under its own layout — the
+// per-run badge (a jam's overall grade, a test case's rating) is resolved by the
+// shared run columns, so nothing here is case-type-specific.
+export function RunsContent({
   testCase,
   variant,
 }: {

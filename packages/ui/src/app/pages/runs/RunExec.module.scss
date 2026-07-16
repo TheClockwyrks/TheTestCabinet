@@ -571,6 +571,30 @@
   }
 }
 
+// A graded (game-jam) option: an emoji tier button. Unselected tiers read back
+// (dimmed + desaturated) so the chosen grade stands out; the selected one lights
+// up with an accent ring and tint rather than the positive/negative fill the
+// Pass/Fail options use (a grade is a tier, not a yes/no).
+.gradeOption {
+  font-size: t.$font-lg;
+  line-height: 1;
+  padding: t.$space-xs t.$space-sm;
+  opacity: 0.65;
+  filter: grayscale(0.5);
+
+  &:hover {
+    opacity: 1;
+    filter: none;
+  }
+
+  &.verdictOptionActive {
+    opacity: 1;
+    filter: none;
+    border-color: t.$color-accent;
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+  }
+}
+
 .connList {
   list-style: none;
   margin: 0 0 t.$space-md;

@@ -156,6 +156,7 @@ async function toTestCaseSummary(
         sequences: item.sequences ?? [],
         frames: item.frames ?? [],
         weight: item.weight,
+        graded: item.graded ?? false,
         domain: item.domain ?? null,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,

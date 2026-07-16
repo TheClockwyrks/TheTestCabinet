@@ -520,6 +520,15 @@ export default defineConfig({
               ],
             },
             {
+              label: "Game Jam",
+              collapsed: true,
+              items: [
+                "testing/game-jam/overview",
+                "testing/game-jam/manifests",
+                "testing/game-jam/evaluation",
+              ],
+            },
+            {
               label: "Adversarial",
               collapsed: true,
               items: [

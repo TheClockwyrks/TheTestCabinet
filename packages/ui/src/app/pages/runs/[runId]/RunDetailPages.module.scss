@@ -317,6 +317,15 @@ $verdict-gutter: 3.5rem;
   }
 }
 
+// A graded (game-jam) category row: the status gutter holds the tier emoji, which
+// carries its own color, so it is sized up a touch rather than tinted.
+.verdictGraded {
+  .verdictStatus {
+    font-size: t.$font-md;
+    line-height: 1;
+  }
+}
+
 // The headline row: the overall rating badge beside the numeric score.
 .verdictHeader {
   display: flex;

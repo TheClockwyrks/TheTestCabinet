@@ -17,7 +17,7 @@ import type {
   RunState,
   TestType,
 } from "./index";
-import type { Rating, Review } from "./review";
+import type { Rating, Review, VerdictStatus } from "./review";
 
 /**
  * The top-level snapshot pointer (`index.json`): where the runs index, per-run
@@ -118,6 +118,14 @@ export type RunScoreOut = {
    * How many reviews the average is taken over.
    */
   reviews: number;
+  /**
+   * A [game jam](test_cabinet_core::test_case::TestType::GameJam) run's overall
+   * game grade — the worst overall grade any reviewer gave (see
+   * [`test_cabinet_core::review::aggregate_overall_grade`]). This is the jam's
+   * rating badge, standing in for the per-domain `rating` a jam does not carry.
+   * `None` for every non-jam run.
+   */
+  overallGrade?: VerdictStatus | null;
 };
 
 /**
@@ -215,6 +223,12 @@ export type CaseReviewItemOut = {
   sequences: Array<string>;
   frames: Array<number>;
   weight: number;
+  /**
+   * Whether the item is graded on the five-level scale (a game-jam category)
+   * rather than pass/fail. The reviewer and verdict UIs render the graded
+   * control and score `weight × 10` points for it when true.
+   */
+  graded: boolean;
   domain: string | null;
   /**
    * Name-only sub-items this item is graded by, each an independently scored

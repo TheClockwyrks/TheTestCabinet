@@ -133,6 +133,7 @@ export type RunTooling = {
 export type TestType =
   | "end-to-end"
   | "full-stack"
+  | "game-jam"
   | "asset-generation"
   | "adversarial"
   | "performance";

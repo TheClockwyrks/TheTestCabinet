@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Panel, RatingBadge } from "@test-cabinet/ui";
+import { GradeBadge, Panel, RatingBadge } from "@test-cabinet/ui";
 import { routes } from "../../../routes";
 import { useBackend, useWorkers } from "../../../../client/context";
 import { useAuth } from "../../../../client/auth";
@@ -17,15 +17,22 @@ import { useGalleryData } from "../../../data/galleryContext";
 import { MediaView } from "../../../components/MediaView";
 import { ReviewItemAssets } from "./AssetResultSection";
 import {
+  GRADE_LEVELS,
+  GRADE_META,
+  GRADE_MAX_POINTS,
+  OVERALL_VERDICT_ID,
   RATINGS,
   RATING_META,
   VERDICT_META,
+  aggregateOverallGrade,
   aggregateRating,
   aggregateScore,
+  isGrade,
   isRating,
   scoreChecklist,
   subItemVerdictId,
   verdictIdsForItem,
+  type GradeStatus,
   type Rating,
 } from "../../../data/ratings";
 import { ReviewList } from "./ReviewList";
@@ -48,6 +55,74 @@ const RATING_CRITERIA = RATINGS.map(
 /** Format a point weight as `1 pt` / `2 pts`. */
 function pts(weight: number): string {
   return `${weight} ${weight === 1 ? "pt" : "pts"}`;
+}
+
+/**
+ * The points label for a checklist item: a binary item shows its flat weight
+ * (`2 pts`); a graded game-jam category shows what it earned over its available
+ * `weight × 10` (`5 / 10 pts`), 0 when not yet graded.
+ */
+function itemPoints(
+  item: { weight: number; graded?: boolean },
+  status: VerdictStatus | "" | undefined,
+): string {
+  if (!item.graded) return pts(item.weight);
+  const available = item.weight * GRADE_MAX_POINTS;
+  const earned =
+    status && isGrade(status) ? GRADE_META[status].points * item.weight : 0;
+  return `${earned} / ${available} pts`;
+}
+
+// A five-button emoji grade picker (💩🙁😐😀💎), the graded analogue of the
+// Pass/Fail verdict control: radio-like buttons with a roving tabindex + arrow
+// keys, and clicking the selected option clearing it back to unset. Used for a
+// game jam's category grades and its single whole-game overall grade.
+function GradeChoice({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: GradeStatus | "";
+  onChange: (next: GradeStatus | "") => void;
+  ariaLabel: string;
+}) {
+  return (
+    <div className={styles.verdictChoice} role="radiogroup" aria-label={ariaLabel}>
+      {GRADE_LEVELS.map((g, i) => {
+        const selected = value === g;
+        const meta = GRADE_META[g];
+        return (
+          <button
+            key={g}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-label={`${meta.label} (${meta.points} ${meta.points === 1 ? "pt" : "pts"})`}
+            title={`${meta.label} — ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
+            tabIndex={selected || (!value && i === 0) ? 0 : -1}
+            className={`${styles.verdictOption} ${styles.gradeOption}${
+              selected ? ` ${styles.verdictOptionActive}` : ""
+            }`}
+            onClick={() => onChange(selected ? "" : g)}
+            onKeyDown={(e) => {
+              const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
+              const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+              if (!forward && !back) return;
+              e.preventDefault();
+              const nextIndex =
+                (i + (forward ? 1 : GRADE_LEVELS.length - 1)) %
+                GRADE_LEVELS.length;
+              onChange(GRADE_LEVELS[nextIndex]!);
+              const group = e.currentTarget.parentElement;
+              (group?.children[nextIndex] as HTMLElement | undefined)?.focus();
+            }}
+          >
+            <span aria-hidden="true">{meta.emoji}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // The editable Verdict mode for a produced run the active worker owns: rate it,
@@ -114,6 +189,10 @@ export function RunReviewEditor({
   const [writeup, setWriteup] = useState(ownReview?.writeup ?? "");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [verdicts, setVerdicts] = useState<Record<string, VerdictDraft>>({});
+  // A game jam's whole-game overall grade (the reserved OVERALL_VERDICT_ID verdict),
+  // held apart from the item-keyed `verdicts` because it is not a declared item. ""
+  // until the reviewer picks a grade. Empty for a non-jam review.
+  const [overall, setOverall] = useState<GradeStatus | "">("");
   const [current, setCurrent] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -227,13 +306,33 @@ export function RunReviewEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.id]);
 
+  // Seed the whole-game overall grade (a game-jam review) from the account's own
+  // prior review's reserved OVERALL_VERDICT_ID verdict, re-seeding when the account
+  // resolves. Empty when the prior review recorded no (valid) overall grade.
+  useEffect(() => {
+    const prior = (ownReview?.checklist ?? []).find(
+      (v) => v.id === OVERALL_VERDICT_ID,
+    );
+    setOverall(prior && isGrade(prior.status) ? prior.status : "");
+    // Seed when the account changes; `ownReview` is the initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id]);
+
   // An item is fully addressed once every one of its verdict ids (its own, or one
   // per sub-item) carries a status. The publish gate and the rail's progress count
   // both require every item to be addressed.
+  // A game jam grades its review categories on the five-level emoji scale and has
+  // no scoring domains; every category carries `graded`, so the presence of a
+  // graded item makes this a jam review. The two scales never mix within a case.
+  const jam = items.some((it) => it.graded);
   const itemAddressed = (item: ReviewItem) =>
     verdictIdsForItem(item).every((vid) => verdicts[vid]?.status);
   const allAddressed = items.every(itemAddressed);
-  const allRated = domains.every((domain) => ratings[domain.id]);
+  // A jam is fully rated once the whole-game overall grade is picked (it has no
+  // domains); a domain-scored case once every domain carries a rating.
+  const allRated = jam
+    ? overall !== ""
+    : domains.every((domain) => ratings[domain.id]);
   const answeredCount = items.filter(itemAddressed).length;
 
   function setVerdict(id: string, patch: Partial<VerdictDraft>) {
@@ -310,6 +409,27 @@ export function RunReviewEditor({
     );
   }
 
+  // The graded (game-jam) counterpart of {@link renderVerdict}: the five-emoji
+  // grade picker plus the same optional note, keyed by the item's verdict id.
+  function renderGradeVerdict(verdictId: string) {
+    const d = verdicts[verdictId] ?? { status: "", note: "" };
+    return (
+      <div className={styles.checklistControls}>
+        <GradeChoice
+          value={isGrade(d.status) ? d.status : ""}
+          onChange={(next) => setVerdict(verdictId, { status: next })}
+          ariaLabel="Grade"
+        />
+        <input
+          className={styles.input}
+          value={d.note}
+          onChange={(e) => setVerdict(verdictId, { note: e.target.value })}
+          placeholder="note (optional)"
+        />
+      </div>
+    );
+  }
+
   // Shortcut for a run that does not launch at all: fail every checklist item and
   // rate every domain the worst tier, so an unplayable run can be submitted in one
   // step without walking each question. Purely local state — it flows through the
@@ -318,31 +438,40 @@ export function RunReviewEditor({
   function markUnplayable() {
     if (
       !window.confirm(
-        "Mark this run unplayable? Every checklist item will be set to Fail and every rating to Broken.",
+        jam
+          ? "Mark this run unplayable? Every category and the overall grade will be set to 💩 Broken."
+          : "Mark this run unplayable? Every checklist item will be set to Fail and every rating to Broken.",
       )
     )
       return;
+    // A jam grades every category (and the overall) as the worst tier, `broken`; a
+    // domain-scored case fails every item and rates every domain the worst tier.
+    const worst: VerdictStatus = jam ? "broken" : "fail";
     setVerdicts((prev) => {
       const next: Record<string, VerdictDraft> = {};
       for (const it of items) {
         for (const vid of verdictIdsForItem(it)) {
           const base = prev[vid] ?? { status: "", note: "" };
-          next[vid] = { ...base, status: "fail" };
+          next[vid] = { ...base, status: worst };
         }
       }
       return next;
     });
-    setRatings(() => {
-      const next: Record<string, Rating> = {};
-      for (const domain of domains) next[domain.id] = "broken";
-      return next;
-    });
+    if (jam) {
+      setOverall("broken");
+    } else {
+      setRatings(() => {
+        const next: Record<string, Rating> = {};
+        for (const domain of domains) next[domain.id] = "broken";
+        return next;
+      });
+    }
   }
 
   function buildChecklist(): ReviewVerdict[] {
     // One verdict per verdict id: the item's own when graded as a whole, or one
     // per sub-item (keyed by the `<item>.<sub>` composite) when it has sub-items.
-    return items.flatMap((item) =>
+    const verdictList = items.flatMap((item) =>
       verdictIdsForItem(item).map((vid) => {
         const draft = verdicts[vid] ?? { status: "", note: "" };
         const note = draft.note.trim();
@@ -353,15 +482,25 @@ export function RunReviewEditor({
         };
       }),
     );
+    // A jam rides its whole-game overall grade in the same checklist, under the
+    // reserved OVERALL_VERDICT_ID (excluded from the point score by the scorer).
+    if (jam && overall) {
+      verdictList.push({ id: OVERALL_VERDICT_ID, status: overall });
+    }
+    return verdictList;
   }
 
-  // The reviewer's input as the worker contract carries it.
+  // The reviewer's input as the worker contract carries it. A jam has no scoring
+  // domains, so it submits no per-domain ratings — its graded categories, overall
+  // grade, and writeup are the whole review.
   function buildReview() {
     return {
-      ratings: domains.map((domain) => ({
-        domain: domain.id,
-        rating: ratings[domain.id] ?? "great",
-      })),
+      ratings: jam
+        ? []
+        : domains.map((domain) => ({
+            domain: domain.id,
+            rating: ratings[domain.id] ?? "great",
+          })),
       writeup,
       checklist: buildChecklist(),
     };
@@ -492,8 +631,16 @@ export function RunReviewEditor({
                   className={styles.unplayable}
                   onClick={markUnplayable}
                   disabled={busy}
-                  title="Mark the whole run unplayable — set every checklist item to Fail and every rating to Broken"
-                  aria-label="Mark the whole run unplayable: every checklist item fails and every rating is broken"
+                  title={
+                    jam
+                      ? "Mark the whole run unplayable — grade every category and the overall as Broken"
+                      : "Mark the whole run unplayable — set every checklist item to Fail and every rating to Broken"
+                  }
+                  aria-label={
+                    jam
+                      ? "Mark the whole run unplayable: every category and the overall grade are Broken"
+                      : "Mark the whole run unplayable: every checklist item fails and every rating is broken"
+                  }
                 >
                   Mark unplayable
                 </button>
@@ -507,12 +654,16 @@ export function RunReviewEditor({
                       (vid) => verdicts[vid]?.status ?? "",
                     );
                     const answered = statuses.every(Boolean);
+                    // A graded (jam) category has no "fail"; it reads as addressed
+                    // (✓) once graded, its emoji shown in the question itself.
                     const anyFail = statuses.some((s) => s === "fail");
                     const isCurrent = index === current;
                     const mark = !answered ? index + 1 : anyFail ? "✕" : "✓";
-                    const title = answered
-                      ? `${it.title} — ${anyFail ? "some Fail" : "all Pass"}`
-                      : undefined;
+                    const title = !answered
+                      ? undefined
+                      : jam
+                        ? it.title
+                        : `${it.title} — ${anyFail ? "some Fail" : "all Pass"}`;
                     return (
                       <li key={it.id}>
                         <button
@@ -535,7 +686,8 @@ export function RunReviewEditor({
                             {mark}
                           </span>
                           <span className={styles.itemNavTitle}>
-                            {it.title} ({pts(it.weight)})
+                            {it.title} (
+                            {itemPoints(it, verdicts[it.id]?.status)})
                           </span>
                         </button>
                       </li>
@@ -549,7 +701,7 @@ export function RunReviewEditor({
               <div className={styles.questionPanel}>
                 <span className={styles.checklistTitle}>
                   <span className={styles.checklistNumber}>{current + 1}.</span>{" "}
-                  {item.title} ({pts(item.weight)})
+                  {item.title} ({itemPoints(item, verdicts[item.id]?.status)})
                 </span>
                 <span className={styles.checklistText}>{item.text}</span>
 
@@ -615,11 +767,14 @@ export function RunReviewEditor({
                   </div>
                 )}
 
-                {/* Record a verdict. An item graded as a whole gets one Pass/Fail
+                {/* Record a verdict. A game-jam category is graded on the five-emoji
+                scale. Otherwise: an item graded as a whole gets one Pass/Fail
                 control; an item with sub-items is graded per sub-item, each a
                 name-only row (lettered a, b, c…) with its own control, so its
                 weight is split across independently scored points. */}
-                {item.subItems && item.subItems.length > 0 ? (
+                {item.graded ? (
+                  renderGradeVerdict(item.id)
+                ) : item.subItems && item.subItems.length > 0 ? (
                   <ol className={styles.subItemList}>
                     {item.subItems.map((sub, i) => (
                       <li key={sub.id} className={styles.subItem}>
@@ -672,21 +827,43 @@ export function RunReviewEditor({
             />
           </label>
 
-          {/* One rating per scoring domain — the reviewer rates each independently and
-          the run's overall rating is the worst across them. */}
-          <fieldset className={styles.ratings}>
-            <legend className={styles.fieldLabel}>
-              Ratings
-              <span
-                className={styles.help}
-                role="img"
-                aria-label="Rating criteria"
-                title={RATING_CRITERIA}
-              >
-                ?
-              </span>
-            </legend>
-            {domains.map((domain) => (
+          {/* A game jam has no scoring domains: instead of per-domain ratings, the
+          reviewer gives one whole-game overall grade on the five-emoji scale, which
+          becomes the run's rating badge. Required for the review to be complete. */}
+          {jam ? (
+            <fieldset className={styles.ratings}>
+              <legend className={styles.fieldLabel}>Overall grade</legend>
+              <p className={styles.notice}>
+                Your grade for the whole game — how good is this entry overall?
+                Required.
+              </p>
+              <GradeChoice
+                value={overall}
+                onChange={setOverall}
+                ariaLabel="Overall game grade"
+              />
+              {overall && (
+                <span className={styles.muted}>
+                  {GRADE_META[overall].emoji} {GRADE_META[overall].label}
+                </span>
+              )}
+            </fieldset>
+          ) : (
+            /* One rating per scoring domain — the reviewer rates each independently
+            and the run's overall rating is the worst across them. */
+            <fieldset className={styles.ratings}>
+              <legend className={styles.fieldLabel}>
+                Ratings
+                <span
+                  className={styles.help}
+                  role="img"
+                  aria-label="Rating criteria"
+                  title={RATING_CRITERIA}
+                >
+                  ?
+                </span>
+              </legend>
+              {domains.map((domain) => (
               <label
                 key={domain.id}
                 className={`${styles.field} ${styles.fieldStacked}`}
@@ -712,8 +889,9 @@ export function RunReviewEditor({
                   ))}
                 </select>
               </label>
-            ))}
-          </fieldset>
+              ))}
+            </fieldset>
+          )}
         </>
       )}
 
@@ -721,7 +899,9 @@ export function RunReviewEditor({
         const reviewReady = writeup.trim() !== "" && allAddressed && allRated;
         const reviewTitle = reviewReady
           ? undefined
-          : "Write a review, rate every domain, and give every checklist item a verdict first";
+          : jam
+            ? "Write a review, grade the whole game, and grade every category first"
+            : "Write a review, rate every domain, and give every checklist item a verdict first";
         const needAccount = !account || !token;
         // The solo desktop path offers a single Publish that saves the review and
         // publishes in one step. The web flow splits into submit review and publish
@@ -798,7 +978,13 @@ function ExistingReviews({
 }) {
   if (reviews.length === 0) return null;
 
-  const aggRating = aggregateRating(reviews.map((r) => r.ratings));
+  // A jam's rating badge is the aggregate overall grade (worst across reviews) in
+  // place of the per-domain aggregate rating a domain-scored case shows.
+  const jam = items.some((it) => it.graded);
+  const aggRating = jam ? null : aggregateRating(reviews.map((r) => r.ratings));
+  const aggGrade = jam
+    ? aggregateOverallGrade(reviews.map((r) => r.checklist))
+    : null;
   const aggScore =
     items.length > 0
       ? aggregateScore(reviews.map((r) => scoreChecklist(items, r.checklist)))
@@ -813,6 +999,11 @@ function ExistingReviews({
           {aggRating && (
             <span title="Aggregate rating (worst across all reviews)">
               <RatingBadge rating={aggRating} />
+            </span>
+          )}
+          {aggGrade && (
+            <span title="Aggregate overall grade (worst across all reviews)">
+              <GradeBadge status={aggGrade} />
             </span>
           )}
           {aggScore && (

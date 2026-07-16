@@ -16,11 +16,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "slug",
-        "version",
-        "variant"
-      ],
+      "required": ["slug", "version", "variant"],
       "type": "object"
     },
     "ReviewPlanCombo": {
@@ -36,16 +32,10 @@
         },
         "provider": {
           "description": "The provider for a provider-routed harness, or null.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       },
-      "required": [
-        "harness",
-        "model"
-      ],
+      "required": ["harness", "model"],
       "type": "object"
     }
   },

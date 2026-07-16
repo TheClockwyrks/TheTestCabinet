@@ -36,8 +36,12 @@ fn every_catalog_case_and_variant_resolves() {
                 case.slug,
                 version
             );
+            // A game jam has no scoring domains — it is graded on categories plus a
+            // whole-game overall grade — so the domain assertions apply only to the
+            // spec-driven types.
+            let is_game_jam = resolved.test_type == test_cabinet_core::TestType::GameJam;
             assert!(
-                !resolved.domains.is_empty(),
+                is_game_jam || !resolved.domains.is_empty(),
                 "{}@{} declares no common domains",
                 case.slug,
                 version
@@ -50,9 +54,10 @@ fn every_catalog_case_and_variant_resolves() {
                     )
                 });
                 // Every variant's effective domain set (common ∪ its own) is what a
-                // reviewer rates, so it must be non-empty.
+                // reviewer rates, so it must be non-empty — except a game jam, which
+                // has no domains at all.
                 assert!(
-                    !resolved.domains_for(variant).is_empty(),
+                    is_game_jam || !resolved.domains_for(variant).is_empty(),
                     "{}@{} variant {} has no effective domains",
                     case.slug,
                     version,
@@ -61,6 +66,39 @@ fn every_catalog_case_and_variant_resolves() {
             }
         }
     }
+}
+
+#[test]
+fn resolves_trains_and_tension_game_jam() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+    let resolved = catalog
+        .resolve("trains-and-tension", "v1.0.0")
+        .expect("resolve the trains-and-tension jam");
+
+    // A game jam: full-stack-style build, no domains, and the generic graded
+    // checklist injected because the manifest declares no categories of its own.
+    assert_eq!(resolved.test_type, test_cabinet_core::TestType::GameJam);
+    assert!(
+        resolved.domains.is_empty(),
+        "a game jam declares no scoring domains"
+    );
+    assert!(
+        !resolved.common_review_items.is_empty(),
+        "a game jam with no authored categories gets the generic checklist"
+    );
+    assert!(
+        resolved.common_review_items.iter().all(|item| item.graded),
+        "every game-jam review category is graded"
+    );
+    // The reserved `overall` id is never a declared category — it carries the
+    // reviewer's whole-game grade separately.
+    assert!(
+        !resolved
+            .common_review_items
+            .iter()
+            .any(|item| item.id == test_cabinet_core::review::OVERALL_VERDICT_ID),
+        "the `overall` id is reserved for the whole-game grade, not a category"
+    );
 }
 
 #[test]

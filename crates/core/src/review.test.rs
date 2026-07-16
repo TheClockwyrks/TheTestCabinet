@@ -16,8 +16,26 @@ fn item(id: &str, weight: u32) -> ReviewItem {
         sequences: Vec::new(),
         frames: Vec::new(),
         weight,
+        graded: false,
         domain: None,
         sub_items: Vec::new(),
+    }
+}
+
+/// A game-jam category: a graded review item with the given id and weight.
+fn graded_item(id: &str, weight: u32) -> ReviewItem {
+    ReviewItem {
+        graded: true,
+        ..item(id, weight)
+    }
+}
+
+/// A graded verdict for the checklist id.
+fn grade(id: &str, status: VerdictStatus) -> ReviewVerdict {
+    ReviewVerdict {
+        id: id.to_string(),
+        status,
+        note: None,
     }
 }
 
@@ -491,4 +509,68 @@ fn aggregate_rating_is_the_worst_across_every_review_and_domain() {
 fn aggregate_rating_is_none_without_ratings() {
     let empty: [&[DomainRating]; 0] = [];
     assert_eq!(aggregate_rating(empty), None);
+}
+
+#[test]
+fn graded_item_scores_by_tier_points_times_weight() {
+    // A graded item is worth `weight × 10`; it earns the tier's points × weight.
+    let items = [graded_item("fun", 1), graded_item("theme", 2)];
+    let checklist = [
+        grade("fun", VerdictStatus::Great),         // 5 × 1 = 5, of 10
+        grade("theme", VerdictStatus::Incredible),  // 10 × 2 = 20, of 20
+    ];
+    let score = score_checklist(&items, &checklist);
+    assert_eq!(score.total, 30);
+    assert_eq!(score.earned, 25.0);
+}
+
+#[test]
+fn graded_item_unjudged_earns_nothing_but_counts_its_max() {
+    let items = [graded_item("fun", 1)];
+    let score = score_checklist(&items, &[]);
+    assert_eq!(score.total, 10);
+    assert_eq!(score.earned, 0.0);
+}
+
+#[test]
+fn broken_grade_earns_zero() {
+    let items = [graded_item("fun", 1)];
+    let score = score_checklist(&items, &[grade("fun", VerdictStatus::Broken)]);
+    assert_eq!(score.total, 10);
+    assert_eq!(score.earned, 0.0);
+}
+
+#[test]
+fn grade_points_match_the_five_tiers() {
+    assert_eq!(VerdictStatus::Broken.grade_points(), Some(0));
+    assert_eq!(VerdictStatus::Poor.grade_points(), Some(1));
+    assert_eq!(VerdictStatus::Neutral.grade_points(), Some(3));
+    assert_eq!(VerdictStatus::Great.grade_points(), Some(5));
+    assert_eq!(VerdictStatus::Incredible.grade_points(), Some(10));
+    assert_eq!(VerdictStatus::Pass.grade_points(), None);
+    assert_eq!(VerdictStatus::Fail.grade_points(), None);
+}
+
+#[test]
+fn aggregate_overall_grade_is_the_worst_across_reviews() {
+    let generous = [grade(OVERALL_VERDICT_ID, VerdictStatus::Incredible)];
+    let harsh = [grade(OVERALL_VERDICT_ID, VerdictStatus::Neutral)];
+    let reviews = [generous.as_slice(), harsh.as_slice()];
+    assert_eq!(
+        aggregate_overall_grade(reviews.iter().copied()),
+        Some(VerdictStatus::Neutral)
+    );
+    let none: [&[ReviewVerdict]; 0] = [];
+    assert_eq!(aggregate_overall_grade(none), None);
+}
+
+#[test]
+fn writeup_with_only_graded_verdicts_parses() {
+    // A game-jam writeup has no `rating.<domain>` lines — only graded categories
+    // and the overall mark — and must still parse.
+    let raw = "---\nreview.fun: great\nreview.overall: incredible\n---\n\nGreat jam entry.\n";
+    let writeup = parse_writeup(raw).expect("jam writeup parses");
+    assert!(writeup.ratings.is_empty());
+    assert_eq!(writeup.overall_grade(), Some(VerdictStatus::Incredible));
+    assert_eq!(writeup.checklist.len(), 2);
 }

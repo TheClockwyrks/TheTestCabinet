@@ -1347,6 +1347,11 @@
           "type": "string"
         },
         {
+          "const": "game-jam",
+          "description": "Build an **entire game of any genre from a theme alone** — no spec, no\nreference mockups — that must be *playable* and *enjoyable*. Like\n[`Self::FullStack`] the model also **produces its own assets** during the\nrun (it selects the same full-stack run image), releases a source repo, has\na `[build]` table, and may declare `packages`; unlike it, a game jam seeds\nno `[[spec]]`/`[[reference]]` and is reviewed on a **graded** scale over\ngeneral categories (see [`crate::review::VerdictStatus::GRADES`]) rather\nthan pass/fail against a spec. See `docs/testing/game-jam/`.",
+          "type": "string"
+        },
+        {
           "const": "asset-generation",
           "description": "Produce a graphical asset by driving a drawing tool one operation at a\ntime; the recorded operations are the authoritative output.",
           "type": "string"

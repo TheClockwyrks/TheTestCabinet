@@ -1,5 +1,11 @@
 import type { ReviewDocument, StoredReview } from "../../client/types";
-import { worstRating, type DomainRating, type Rating } from "../../ratings";
+import {
+  worstGrade,
+  worstRating,
+  type DomainRating,
+  type Rating,
+  type VerdictStatus,
+} from "../../ratings";
 
 // Reconstruct a writeup's `---\nrating.<domain>: …\n---\n\n<body>` framing from a
 // structured review, so a live host (web/desktop) can feed the gallery the same
@@ -45,8 +51,11 @@ export function frameReviews(reviews: readonly StoredReview[]): string | null {
     if (worst) ratings.push({ domain, rating: worst });
   }
 
-  // A checklist item passes only when every reviewer who judged it passed it.
-  const statusesByItem = new Map<string, ("pass" | "fail")[]>();
+  // A binary checklist item passes only when every reviewer who judged it passed
+  // it; a graded item (a game jam's category, and its whole-game `overall` mark)
+  // takes the worst grade any reviewer gave — the strictest reading, matching the
+  // worst-wins aggregate rating.
+  const statusesByItem = new Map<string, VerdictStatus[]>();
   for (const review of reviews) {
     for (const v of review.checklist ?? []) {
       const list = statusesByItem.get(v.id) ?? [];
@@ -57,7 +66,10 @@ export function frameReviews(reviews: readonly StoredReview[]): string | null {
   const ratingLines = ratings.map((r) => `rating.${r.domain}: ${r.rating}`);
   const verdictLines: string[] = [];
   for (const [id, statuses] of statusesByItem) {
-    const status = statuses.every((s) => s === "pass") ? "pass" : "fail";
+    // `worstGrade` is null unless the statuses are graded tiers, so a binary item
+    // falls through to the unchanged all-must-pass reading.
+    const status =
+      worstGrade(statuses) ?? (statuses.every((s) => s === "pass") ? "pass" : "fail");
     verdictLines.push(`review.${id}: ${status}`);
   }
 

@@ -507,8 +507,13 @@ pub struct StoredReviewItem {
     #[serde(default)]
     pub frames: Vec<u32>,
     /// How many points the item is worth toward the run's score. Always greater
-    /// than zero. Split evenly across `sub_items` when the item has any.
+    /// than zero. Split evenly across `sub_items` when the item has any; a graded
+    /// item is worth `weight × 10`.
     pub weight: u32,
+    /// Whether the item is graded on the five-level scale (a game-jam category)
+    /// rather than pass/fail. False for every other test type.
+    #[serde(default)]
+    pub graded: bool,
     /// The scoring domain (by id) the item belongs to, or `None` for a general
     /// item that belongs to no single domain.
     #[serde(default)]

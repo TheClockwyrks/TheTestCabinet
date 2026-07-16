@@ -2399,8 +2399,10 @@ impl Validator for DispatchValidator {
         match test_case.test_type {
             // A full-stack run builds a program just like an end-to-end run — it
             // additionally produces its own assets, but those are build inputs, not a
-            // separately-scored output — so it routes to the same build validator.
-            TestType::EndToEnd | TestType::FullStack => self
+            // separately-scored output — so it routes to the same build validator. A
+            // game jam is the same build-and-load validation from a theme instead of
+            // a spec, so it routes there too.
+            TestType::EndToEnd | TestType::FullStack | TestType::GameJam => self
                 .build
                 .validate(test_case, variant, artifacts, references, proofs),
             // Each asset kind routes to the validator for the data it emits: the
