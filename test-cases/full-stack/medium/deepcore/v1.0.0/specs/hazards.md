@@ -18,8 +18,9 @@ gas, appearing from the **rockbed** band down and denser with depth.
   the miner back** a short distance (a hard shove away from the blast). The tile itself
   is cleared to tunnel by the blast.
 - **Gas damage scales with depth.** The raw hit is `~20` hull where gas first appears
-  (rockbed, `125 m`) and rises to `~119` at the Core (`480 m`) — the formula is
-  `max(20, 20 + 0.28 × (depth_m − 125))`. The **radiator** (`specs/upgrades.md`) then
+  (rockbed top, `630 m`) and rises to `~120` at the Core (`2500 m`) — the formula is
+  `max(20, 20 + 0.0535 × (depth_m − 630))`, its slope `(120 − 20) / (2500 − 630) ≈
+  0.0535` hull/m. The **radiator** (`specs/upgrades.md`) then
   cuts it by its effectiveness (`0%`–`80%`). So a rockbed pocket is a survivable tax on
   a starting hull, but a coreshell pocket near the Core is **near-lethal without hull
   and radiator investment** — the deep gas is what forces those tiers before the core
@@ -83,7 +84,7 @@ dust VFX (`specs/assets.md`).
 
 ## The unstable Core Sample
 
-At the bottom of the mine, in the **Core chamber** (`row 96`, `specs/world.md`), sits
+At the bottom of the mine, in the **Core chamber** (`row 500`, `specs/world.md`), sits
 the **Core Sample** — the last material the rocket needs (`specs/rocket.md`) and the
 game's climax. Reaching it means drilling all the way through the coreshell's lava
 gauntlet; the chamber itself is a small bedrock-walled pocket around the glowing core.

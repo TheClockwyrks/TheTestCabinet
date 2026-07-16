@@ -9,7 +9,7 @@
 // World (specs/world.md)
 // ---------------------------------------------------------------------------
 
-/** The four depth bands (the Core chamber is handled separately as row 96). */
+/** The four depth bands (the Core chamber is handled separately as row 500). */
 export type Band = "topsoil" | "rockbed" | "deepstone" | "coreshell";
 
 /**

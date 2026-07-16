@@ -1,12 +1,12 @@
 // Deepcore — the mine: per-game generation and the tile/coordinate helpers.
 //
-// Implements specs/world.md exactly: a 32×97 grid (cols 0..31, rows 0..96), bedrock
+// Implements specs/world.md exactly: a 32×501 grid (cols 0..31, rows 0..500), bedrock
 // border columns 0/31 and the mine floor, the four depth bands + the Core chamber, ore
-// veins at each band's mix, gas from the rockbed down and lava from the deepstone down,
-// unbreakable STONE obstacles from the topsoil down (all denser with depth), and —
-// GUARANTEED — at least three Resonite nodes in the rockbed and three Cryenite nodes in
-// the deepstone at random positions. A final connectivity repair guarantees a run is
-// always winnable: every material node and the Core are reachable from the surface
+// veins at each band's mix (never in the first three dirt rows), gas from the rockbed down
+// and lava from the deepstone down, unbreakable STONE obstacles from the rockbed down (all
+// denser with depth), and — GUARANTEED — exactly one Resonite node in the rockbed and one
+// Cryenite node in the deepstone at random positions. A final connectivity repair guarantees
+// a run is always winnable: every material node and the Core are reachable from the surface
 // through minable rock (lava/stone never seal the only route).
 
 import {
@@ -14,7 +14,8 @@ import {
   BAND_ORDER,
   CORE_ROW,
   GRID_MARGIN_X,
-  MIN_MATERIAL_NODES,
+  MATERIAL_NODES_PER_BAND,
+  ORE_FREE_TOP_ROWS,
   PLAYABLE_COL_MAX,
   PLAYABLE_COL_MIN,
   SURFACE_ROW,
@@ -102,18 +103,19 @@ const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone
 const LAVA_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0, deepstone: 0.1, coreshell: 0.2 };
 /**
  * Unbreakable-stone density per band — scattered obstacles that DENSIFY with depth so the
- * deep bands are more of a maze (specs/world.md). Kept modest, and never allowed to seal a
+ * deep bands are more of a maze (specs/world.md). None in the topsoil (the first stratum
+ * stays clean, easy dirt); from the rockbed down. Kept modest, and never allowed to seal a
  * route: the connectivity repair below carves stone (like lava) off any path it would block.
  */
-const STONE_DENSITY: Record<Band, number> = { topsoil: 0.03, rockbed: 0.05, deepstone: 0.07, coreshell: 0.09 };
+const STONE_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.07, coreshell: 0.09 };
 
 // ---------------------------------------------------------------------------
-// The Core chamber pocket (specs/world.md — row 96)
+// The Core chamber pocket (specs/world.md — row 500)
 // ---------------------------------------------------------------------------
 
 /** The Core tile column at the bottom pocket (roughly centered in the 32-col world). */
 export const CORE_COL = 15;
-/** Columns of the open Core-chamber pocket (drill down into these from row 95). */
+/** Columns of the open Core-chamber pocket (drill down into these from row 499). */
 const CORE_POCKET_COLS = [13, 14, 15, 16, 17, 18];
 
 // ---------------------------------------------------------------------------
@@ -170,10 +172,12 @@ export function generateWorld(seed: number): World {
     grid.push(line);
   }
 
-  // Scatter ore, gas, and lava through the minable rows (1..95).
+  // Scatter ore, gas, and lava through the minable rows (1..499).
   for (let row = BANDS.topsoil.rowMin; row <= BANDS.coreshell.rowMax; row++) {
     const band = bandForRow(row);
     const mix = ORE_MIX[band];
+    // Ore never spawns in the first three dirt rows just below the surface (specs/world.md).
+    const oreAllowed = row > ORE_FREE_TOP_ROWS;
     for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
       const tile = grid[row]![col]!;
       if (tile.kind !== "rock") continue;
@@ -185,7 +189,7 @@ export function generateWorld(seed: number): World {
         tile.kind = "lava";
       } else if (GAS_DENSITY[band] > 0 && rng.chance(GAS_DENSITY[band])) {
         tile.kind = "gas";
-      } else if (rng.chance(mix.density)) {
+      } else if (oreAllowed && rng.chance(mix.density)) {
         tile.kind = "ore";
         tile.ore = rng.weighted(mix.ores, mix.weights);
       }
@@ -237,7 +241,7 @@ function placeMaterialNodes(
   rowMin: number,
   rowMax: number,
 ): void {
-  const count = MIN_MATERIAL_NODES + rng.int(1, 2); // 4..5 — surplus so a missed dig is not fatal
+  const count = MATERIAL_NODES_PER_BAND; // exactly one — the scanner is what makes it findable
   let placed = 0;
   let guard = 0;
   while (placed < count && guard < 2000) {
