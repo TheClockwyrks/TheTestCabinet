@@ -1,9 +1,9 @@
 // Deepcore — single-use FIELD SUPPLIES and the Core Sample jettison / ground item
 // (specs/items.md).
 //
-// Six consumable items are bought with Credits at the Upgrade Shop "Field Supplies"
-// section (the fourth Credits sink, specs/flow.md) and carried as a count per type; each
-// use consumes one. This module owns buying (the economy.ts spend pattern), using (the
+// Six consumable items are bought with Credits at the Supply Depot building (the fourth
+// Credits sink, specs/flow.md) and carried as a count per type; each use consumes one.
+// This module owns buying (the economy.ts spend pattern), using (the
 // hotkeys 1–6 and the inventory USE buttons both route here), and the location-aware
 // expiry of the Core Sample timer once it has been jettisoned as a ground item. The
 // explosives reuse hazards.ts's blast/gas-chain; the ground detonation reuses the core
@@ -59,7 +59,7 @@ export function itemForHotkey(n: number): ItemId | null {
 }
 
 // ---------------------------------------------------------------------------
-// Buying (Upgrade Shop → Field Supplies) — the fourth Credits sink (specs/flow.md)
+// Buying (Supply Depot) — the fourth Credits sink (specs/flow.md)
 // ---------------------------------------------------------------------------
 
 /** Buy one of `id` if affordable, deducting its price and incrementing the count. */

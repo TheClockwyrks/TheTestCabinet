@@ -107,7 +107,7 @@ spare.
 | --- | --- | --- |
 | **Resonite** | **Rockbed** band material node (`specs/world.md`) | drill the node |
 | **Cryenite** | **Deepstone** band material node | drill the node |
-| **Core Sample** | **Core chamber** at the bottom (`specs/hazards.md`) | extract it — **unstable** |
+| **Core Sample** | **Core chamber** at the bottom (`specs/hazards.md`) | drill the Core — **unstable**, and the Core is **inexhaustible** |
 
 - **Resonite** and **Cryenite** are each buried in **exactly one material node** at a
   random position **within their band**, but **guaranteed to exist and to be reachable**
@@ -115,15 +115,18 @@ spare.
   needed to win** (`specs/rocket.md`), so there is no spare — with a single node per band,
   the scanner is what makes the material findable and the run winnable. Drilling the node
   collects the material and banks it in the satchel.
-- The **Core Sample** is different: it is **extracted** from the Core chamber and is
+- The **Core Sample** is different: it is **drilled** from the Core at the bottom and is
   **unstable**, starting a **destabilization timer** the moment you take it — you must
   install it at the launch pad before it **detonates** (`specs/hazards.md`,
-  `specs/rocket.md`). It, too, rides in the satchel (not cargo), but if you **die**
-  while carrying it, it is **destroyed** — a failed core run always means going back
-  down for a fresh one (`specs/modes.md`). It can also be **jettisoned** onto the ground
-  as a ground item and **re-collected** by walking back over it (`specs/items.md`), the
-  timer running throughout. Saving stays **blocked** while its timer runs, carried or
-  jettisoned (`specs/flow.md`, `specs/items.md`).
+  `specs/rocket.md`). It rides in the satchel (not cargo). Unlike the material nodes, the
+  **Core is inexhaustible**: drilling it never uses it up, so you can go back down and take
+  **another Core Sample** whenever you don't currently hold a live one (one is "live" while
+  carried or while ticking on the ground). So a **death** that destroys the carried Sample,
+  or a **jettison** you can't recover, just means another trip to the Core — never a
+  soft-lock (`specs/modes.md`). It can be **jettisoned** onto the ground as a ground item to
+  flee its blast, but a jettisoned Sample is a **one-way discard — it cannot be re-collected**
+  (`specs/items.md`); the timer keeps running on it wherever it lands. Saving stays
+  **blocked** while its timer runs, carried or jettisoned (`specs/flow.md`, `specs/items.md`).
 
 ## The scanner
 

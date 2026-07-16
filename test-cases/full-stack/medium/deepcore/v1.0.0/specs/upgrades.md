@@ -10,11 +10,11 @@ survive (`specs/character.md`, `specs/mining.md`). The numeric values here are
 The seven tracks are **fuel tank**, **drill**, **cargo bay**, **hull**, **jetpack**,
 **radiator**, and **scanner**.
 
-The Upgrade Shop panel **also** hosts a **Field Supplies** section (below the seven
-tracks) that sells the six single-use **field supply** items (`specs/items.md`). Those are
-**single-use consumables** — bought with Credits and carried as a count, not permanent
-tiers — so they are specified in full in `specs/items.md`, not here; this file remains the
-authority for the seven upgrade **tracks**.
+The Upgrade Shop sells **only** these seven tracks. The six single-use **field supply**
+items are sold at a **separate** building, the **Supply Depot** (`specs/items.md`,
+`specs/world.md`) — they are **single-use consumables** (bought with Credits and carried as
+a count, not permanent tiers), specified in full in `specs/items.md`, not here. This file
+remains the authority for the seven upgrade **tracks**.
 
 Each track has **five tiers**; you start at **tier 1** on every track and buy the next
 tier in order (you cannot skip). The shop shows, per track, the current tier, what the

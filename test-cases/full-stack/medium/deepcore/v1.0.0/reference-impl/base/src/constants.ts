@@ -341,8 +341,8 @@ export const CORE_GROUND_BLAST_TILES = 3;
 // Field supplies — the six single-use items (specs/items.md)
 // ---------------------------------------------------------------------------
 //
-// Items are bought with Credits at the Upgrade Shop "Field Supplies" section (the FOURTH
-// Credits sink, alongside fuel/repair, upgrades, and the rocket — specs/flow.md) and
+// Items are bought with Credits at the SUPPLY DEPOT building (the FOURTH Credits sink,
+// alongside fuel/repair, upgrades, and the rocket — specs/flow.md, specs/world.md) and
 // carried as a count per type; each use consumes one. Prices are pinned in the rescaled
 // economy (upgrade tiers cost 300–4100, ore values 28–1900): cheap consumables (150–500)
 // with a premium guaranteed escape (Matter Transmitter 2000, far above the risky Quantum
@@ -376,7 +376,7 @@ export interface ItemDef {
   /** The number-key hotkey (1..6) that uses this item during live in-mine play. */
   readonly hotkey: number;
   readonly label: string;
-  /** Credits to buy one at the Upgrade Shop Field Supplies section. */
+  /** Credits to buy one at the Supply Depot. */
   readonly price: number;
   /** One-line description shown in the shop / inventory (no strategy advice). */
   readonly blurb: string;

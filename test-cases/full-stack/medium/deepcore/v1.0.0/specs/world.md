@@ -2,7 +2,7 @@
 
 This file defines the tiled world the game plays in: the grid and coordinate system,
 the camera, the four **depth bands** and the Core chamber, every **tile kind**, how
-ore, materials, and hazards are placed, and the **surface** and its five buildings.
+ore, materials, and hazards are placed, and the **surface** and its six buildings.
 It is referenced by `specs/character.md` (movement and drilling), `specs/mining.md`
 (ore and materials), `specs/hazards.md` (gas, lava, the core), `specs/upgrades.md`
 and `specs/rocket.md` (the surface buildings), and `specs/flow.md` (the loop). The
@@ -138,9 +138,9 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
   Motherload (`specs/assets.md`).
 
 A tile may also hold a **ground item** sitting on top of it — today only a **jettisoned
-Core Sample** (`specs/items.md`), rendered on its tile with its countdown, which the miner
-can walk back over to re-collect. Ground items are not a tile kind; they ride on top of the
-open tunnel.
+Core Sample** (`specs/items.md`), rendered on its tile with its countdown, ticking down to a
+**location-aware detonation**. It is a one-way discard — it **cannot** be re-collected.
+Ground items are not a tile kind; they ride on top of the open tunnel.
 
 ## Placing ore, materials, and hazards
 
@@ -187,13 +187,13 @@ but every rule below is fixed. Generation must obey them so a run is always winn
 
 `Row 0` is the **surface camp**: a strip of scrapped ground under a dim dusk sky
 (`specs/overview.md` palette), where the miner **spawns** and returns to between
-digs, and where the four **buildings** stand. A shallow **cave mouth** in the camp
+digs, and where the six **buildings** stand. A shallow **cave mouth** in the camp
 floor is the way down into `row 1`. The surface is open space the miner walks and
 hovers across; there is no digging up here.
 
-Five buildings sit on the surface, each a produced sprite (`specs/assets.md`) the
-miner activates by standing at it and which opens an **overlay panel**
-(`specs/controls.md`, `specs/flow.md`):
+Six buildings sit on the surface, each a produced sprite (`specs/assets.md`) the miner
+activates by standing at it. Most open an **overlay panel** (`specs/controls.md`,
+`specs/flow.md`); the **Save Pad** has no menu — activating it saves on the spot:
 
 - **Fuel Depot** — where you **buy** fuel and hull repair. Nothing refills on its own;
   at the depot you spend **Credits** to add **fuel** (per unit) and to **repair hull**
@@ -204,10 +204,14 @@ miner activates by standing at it and which opens an **overlay panel**
 - **Ore Market** — **sells** the ore in your cargo for Credits at the listed values
   (`specs/mining.md`, `specs/flow.md`), emptying the cargo.
 - **Save Pad** — the checkpoint pad where you **save** the expedition to its single save
-  slot; the **only** way to save (`specs/flow.md`, `specs/modes.md`).
+  slot; the **only** way to save. It has **no menu**: activating the pad (key or click)
+  banks progress on the spot, with a note either way (`specs/flow.md`, `specs/modes.md`).
 - **Upgrade Shop** — buys the next tier on any of the seven **upgrade tracks** — fuel
   tank, drill, cargo bay, hull, jetpack, radiator, scanner — for Credits
-  (`specs/upgrades.md`).
+  (`specs/upgrades.md`). It sells **only** upgrades, not consumables.
+- **Supply Depot** — buys the six single-use **field supplies** (explosives, teleporters,
+  nanobots, emergency fuel) for Credits (`specs/items.md`). Its own building, separate from
+  the Upgrade Shop.
 - **Launch Pad** — the **escape rocket** under construction: the component checklist,
   **fabricating** the next component (Credits, plus its exotic material if it needs
   one), and, once all five are installed, **LAUNCH** (`specs/rocket.md`). The rocket

@@ -124,7 +124,9 @@ async function main(): Promise<void> {
         menuIndex = 0;
         break;
       case "save":
-        game.saveExpedition();
+        // The Save Pad has no menu — activating it (key or click) banks directly with a
+        // note either way (specs/flow.md).
+        game.trySave();
         break;
       case "resume":
         game.phase = "in-mine";

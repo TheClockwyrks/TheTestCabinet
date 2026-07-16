@@ -1,6 +1,6 @@
 // Deepcore — the game state machine and the owner of all mutable state (specs/flow.md).
 //
-// A small state machine — title, mode-select, how-to-play, in-mine (with the four surface
+// A small state machine — title, mode-select, how-to-play, in-mine (with the surface
 // building panels), paused, victory, hardcore game-over — wrapped around the live mine
 // simulation. `fixedStep` advances the deterministic 60 Hz sim: it drills, moves the miner
 // under physics, bills fuel/hull, applies hazards and the Core Sample timer, retrieves a
@@ -61,6 +61,7 @@ import type { MaterialNode } from "./world";
 import type { Cue, LoopCue } from "./audio";
 import type { FxEvent } from "./particles";
 import type {
+  BuildingId,
   Cargo,
   DeathCause,
   GamePhase,
@@ -79,19 +80,21 @@ import type {
 } from "./types";
 
 export interface Building {
-  panel: Exclude<OpenPanel, null>;
+  id: BuildingId;
   col: number;
   label: string;
 }
 
-/** The five surface buildings, spread across the wider camp (specs/world.md). The Save Pad
- *  sits near the spawn/cave mouth so a surfacing miner can bank progress right away. */
+/** The six surface buildings, spread across the wider camp (specs/world.md). The Save Pad
+ *  sits near the spawn/cave mouth so a surfacing miner can bank progress right away; the
+ *  Supply Depot (single-use field supplies) sits alongside the Upgrade Shop. */
 export const SURFACE_BUILDINGS: Building[] = [
-  { panel: "fuel-depot", col: 5, label: "Fuel Depot" },
-  { panel: "ore-market", col: 11, label: "Ore Market" },
-  { panel: "save-pad", col: 17, label: "Save Pad" },
-  { panel: "upgrade-shop", col: 21, label: "Upgrade Shop" },
-  { panel: "launch-pad", col: 27, label: "Launch Pad" },
+  { id: "fuel-depot", col: 3, label: "Fuel Depot" },
+  { id: "ore-market", col: 8, label: "Ore Market" },
+  { id: "save-pad", col: 13, label: "Save Pad" },
+  { id: "upgrade-shop", col: 18, label: "Upgrade Shop" },
+  { id: "supply-depot", col: 23, label: "Supply Depot" },
+  { id: "launch-pad", col: 28, label: "Launch Pad" },
 ];
 
 /** How close (in tiles) the miner must stand to a building to activate it with a key. */
@@ -321,7 +324,7 @@ export class Game {
       this.thrustFxCd -= dt;
       if (this.thrustFxCd <= 0) {
         this.thrustFxCd = 0.12;
-        const b = SURFACE_BUILDINGS.find((x) => x.panel === "launch-pad")!;
+        const b = SURFACE_BUILDINGS.find((x) => x.id === "launch-pad")!;
         const rx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2;
         game_pushLaunchFx(this, rx);
       }
@@ -397,9 +400,6 @@ export class Game {
     // Depot (specs/character.md, specs/flow.md). Nothing refills automatically here.
 
     if (minerRow(this.miner) > this.deepestRow) this.deepestRow = minerRow(this.miner);
-
-    // Walk back over a jettisoned Core Sample to re-collect it (specs/items.md).
-    this.updateGroundItems();
 
     this.updateCamera(dt);
     this.scan = computeScan(this);
@@ -525,10 +525,22 @@ export class Game {
     this.panel = panel;
   }
 
-  /** Activate the building the miner is standing at (the E / Enter key). */
+  /** Activate the building the miner is standing at (the E / Enter key). The Save Pad has no
+   *  menu — it banks the expedition on the spot (specs/flow.md); every other building opens
+   *  its overlay panel. */
   activateNearbyBuilding(): void {
     const b = this.nearbyBuilding();
-    if (b) this.openPanel(b.panel);
+    if (!b) return;
+    if (b.id === "save-pad") this.trySave();
+    else this.openPanel(b.id);
+  }
+
+  /** Bank the expedition from the Save Pad (key or click), with a note either way — there is
+   *  no separate save menu (specs/flow.md). A no-op away from the surface. */
+  trySave(): void {
+    if (this.phase !== "in-mine" || !this.atSurface() || this.dying || this.launchAnim !== null) return;
+    if (this.canSave()) this.saveExpedition();
+    else this.note("CAN'T SAVE — UNSTABLE CORE SAMPLE ACTIVE");
   }
 
   closePanel(): void {
@@ -557,8 +569,9 @@ export class Game {
    * Jettison the carried Core Sample onto the miner's current tile as a ground item
    * (specs/items.md). The destabilization timer keeps running on the dropped Sample (it
    * belongs to the ground item now, not the satchel), so the player can drop it and flee
-   * before it detonates. A no-op if not carrying it. `armed` starts false so standing on
-   * the drop tile does not instantly re-collect it.
+   * before it detonates. This is a ONE-WAY discard — the Sample cannot be picked back up;
+   * another must be drilled from the (inexhaustible) Core (specs/mining.md). A no-op if not
+   * carrying it.
    */
   jettisonCoreSample(): void {
     if (this.phase !== "in-mine" || this.dying || this.launchAnim !== null) return;
@@ -566,29 +579,10 @@ export class Game {
     const col = minerCol(this.miner);
     const row = minerRow(this.miner);
     this.satchel.coreSample = false;
-    this.groundItems.push({ kind: "core-sample", col, row, armed: false });
+    this.groundItems.push({ kind: "core-sample", col, row });
     this.fxQueue.push({ kind: "core-extract", x: minerCenterX(this.miner), y: minerCenterY(this.miner) });
     this.sndQueue.push("impact");
     this.note("CORE SAMPLE JETTISONED — CLEAR THE BLAST");
-  }
-
-  /**
-   * Per-tick ground-item update (live play): arm a just-dropped Core Sample once the miner
-   * steps off its tile, then re-collect it when the miner walks back over it — the timer
-   * continues from where it is (specs/items.md).
-   */
-  private updateGroundItems(): void {
-    const g = this.coreGround();
-    if (!g) return;
-    const onTile = minerCol(this.miner) === g.col && minerRow(this.miner) === g.row;
-    if (!onTile) {
-      g.armed = true;
-    } else if (g.armed) {
-      this.satchel.coreSample = true;
-      this.groundItems = this.groundItems.filter((x) => x !== g);
-      this.sndQueue.push("material-chime");
-      this.note("CORE SAMPLE RECOVERED");
-    }
   }
 
   // ---- Save / continue (single slot, specs/flow.md, specs/modes.md, save.ts) ----

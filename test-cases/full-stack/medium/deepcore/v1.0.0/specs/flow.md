@@ -21,8 +21,9 @@ hazards (`specs/hazards.md`), the modes (`specs/modes.md`), and the controls
 - **Sink — upgrades.** Buying tiers on the seven upgrade tracks (fuel tank, drill, cargo
   bay, hull, jetpack, radiator, scanner) at the **Upgrade Shop** (`specs/upgrades.md`).
 - **Sink — field supplies.** Buying the six single-use **field supply** items (explosives,
-  teleporters, nanobots, emergency fuel) in the **Field Supplies** section of the **Upgrade
-  Shop** (`specs/items.md`). Each is bought with Credits and carried as a count.
+  teleporters, nanobots, emergency fuel) at the **Supply Depot** — their own surface
+  building, separate from the Upgrade Shop (`specs/items.md`, `specs/world.md`). Each is
+  bought with Credits and carried as a count.
 - **Sink — the rocket.** Fabricating the five rocket components at the **Launch Pad**
   (`specs/rocket.md`).
 
@@ -39,8 +40,9 @@ surface:
   climbed out of the mine with (`specs/character.md`, `specs/world.md`). The surface is
   where you can **pay to restore them**, not where they restore for free.
 - lets you **sell** (Ore Market), **buy fuel and hull repair** (Fuel Depot), **upgrade**
-  (Upgrade Shop), and **fabricate rocket parts** (Launch Pad) via each building's
-  overlay panel (`specs/controls.md`).
+  (Upgrade Shop), **buy field supplies** (Supply Depot), and **fabricate rocket parts**
+  (Launch Pad) via each building's overlay panel, and **save** (Save Pad) on the spot
+  (`specs/controls.md`).
 
 The rhythm of the game is: descend and fill cargo (and hunt a material, or make the
 core run), climb back before fuel or hull runs out, sell, **pay to refuel and repair**,
@@ -53,8 +55,10 @@ The expedition can be **saved** so a session can be resumed later. Saving is **e
 and **restricted**:
 
 - **Only at the Save Pad.** The surface **Save Pad** building (`specs/world.md`) is the
-  **only** way to save — there is no autosave and no saving underground. Activating it and
-  choosing **SAVE** writes the save.
+  **only** way to save — there is no autosave and no saving underground. The pad has **no
+  menu**: **activating it** (the activate key or a click) writes the save **directly**, with
+  a note confirming it (or explaining why it's blocked — e.g. the Core Sample is live). A
+  dedicated save *menu* whose only action is "save" would be pointless UX.
 - **One save at a time.** There is a **single save slot**; saving **overwrites** it.
   Starting a **NEW EXPEDITION** abandons any existing save.
 - **CONTINUE.** When a save exists, the main menu shows a **CONTINUE** entry that resumes
@@ -94,8 +98,9 @@ The game is a small state machine. Each state has a clear screen and controls
    the exotic materials and the scanner, and the two modes. Returns to the main menu.
 4. **In mine.** The live game: the tiled world through the vertical camera, the miner
    digging and falling and thrusting, the ore and materials, the hazards, and — when
-   the miner is at the surface — the **five buildings** and their overlay panels (Fuel
-   Depot, Ore Market, **Save Pad**, Upgrade Shop, Launch Pad). The **inventory** overlay
+   the miner is at the surface — the **six buildings** (Fuel Depot, Ore Market, **Save
+   Pad**, Upgrade Shop, **Supply Depot**, Launch Pad); all but the Save Pad open an overlay
+   panel, while the Save Pad saves directly. The **inventory** overlay
    (`specs/mining.md`) can also be opened here, at the surface or mid-dig. This one state
    covers both the surface and the whole descent; the camera and the open panels are what
    change.
@@ -133,15 +138,15 @@ and type of `specs/overview.md`. The expedition start's menu entry is in
 - **How to play** — the goal, the controls, the dig loop, the fuel/climb tension, the
   cargo (slots + weight and the inventory drop), the hazards, the materials and scanner,
   saving, and the two modes; a way back to the main menu.
-- **Building panels** — the five surface overlays: **Fuel Depot** (buy fuel and hull
+- **Building panels** — the surface overlays: **Fuel Depot** (buy fuel and hull
   repair for Credits — a fixed increment or fill/repair-to-full, paying only for the
   missing amount, `specs/character.md`), **Ore Market** (the cargo breakdown and
-  **SELL**), **Save Pad** (**SAVE** the expedition, `specs/modes.md`), **Upgrade Shop**
-  (the seven tracks with current tier, next-tier effect, and price, plus a **Field
-  Supplies** section selling the six single-use items, `specs/upgrades.md`, `specs/items.md`),
-  and **Launch Pad** (the five-component rocket checklist and **FABRICATE** / **LAUNCH**,
-  `specs/rocket.md`). Each opens when the miner activates the building and closes back to
-  the mine.
+  **SELL**), **Upgrade Shop** (the seven tracks with current tier, next-tier effect, and
+  price, `specs/upgrades.md`), **Supply Depot** (the six single-use field supplies with
+  icon, price, and held count, and a **BUY** each, `specs/items.md`), and **Launch Pad**
+  (the five-component rocket checklist and **FABRICATE** / **LAUNCH**, `specs/rocket.md`).
+  Each opens when the miner activates the building and closes back to the mine. The **Save
+  Pad** is **not** a panel — activating it saves directly (`specs/modes.md`).
 - **Inventory overlay** — the cargo hold (`specs/mining.md`): the held ore with counts and
   weights, the slots/load readout, a **drop** control per ore, and a **Field Supplies**
   section with each held item's count and a **USE** control (plus the Core Sample
