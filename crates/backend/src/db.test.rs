@@ -2124,32 +2124,35 @@ async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
         .await
         .unwrap();
 
-    let completed = db
-        .count_completed_runs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
-        .await
-        .unwrap();
-    assert_eq!(completed, 1, "the one completed run counts");
+    let slugs = vec!["pong".to_string()];
+    let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
+    let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
+    // A cell key `(slug, version, variant, harness, model)`.
+    let cell = |version: &str, model: &str| {
+        (
+            "pong".to_string(),
+            version.to_string(),
+            "base".to_string(),
+            "claude".to_string(),
+            model.to_string(),
+        )
+    };
 
-    let in_flight = db
-        .count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
-        .await
-        .unwrap();
-    assert_eq!(in_flight, 1, "the queued job counts as in-flight");
+    assert_eq!(
+        completed.get(&cell("v1.0.0", "claude-sonnet-4-5")).copied(),
+        Some(1),
+        "the one completed run counts"
+    );
+    assert_eq!(
+        in_flight.get(&cell("v1.0.0", "claude-sonnet-4-5")).copied(),
+        Some(1),
+        "the queued job counts as in-flight"
+    );
 
     // A different model shares nothing: neither count sees it.
-    assert_eq!(
-        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "claude", "other-model")
-            .await
-            .unwrap(),
-        0
-    );
+    assert_eq!(completed.get(&cell("v1.0.0", "other-model")), None);
     // A different pinned version is a different cell.
-    assert_eq!(
-        db.count_completed_runs_for_cell("pong", "v2.0.0", "base", "claude", "claude-sonnet-4-5")
-            .await
-            .unwrap(),
-        0
-    );
+    assert_eq!(completed.get(&cell("v2.0.0", "claude-sonnet-4-5")), None);
 }
 
 #[tokio::test]
@@ -2158,20 +2161,32 @@ async fn a_claimed_job_no_longer_counts_toward_a_cell() {
     db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
         .await
         .unwrap();
+    let slugs = vec!["pong".to_string()];
+    let key = (
+        "pong".to_string(),
+        "v1.0.0".to_string(),
+        "base".to_string(),
+        "claude".to_string(),
+        "claude-sonnet-4-5".to_string(),
+    );
     assert_eq!(
-        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+        db.count_in_flight_jobs_by_cell(&slugs)
             .await
-            .unwrap(),
-        1,
+            .unwrap()
+            .get(&key)
+            .copied(),
+        Some(1),
         "queued counts"
     );
     // Claiming moves it to `dispatched` — still in-flight.
     db.claim_next_job("2026-06-23T00:00:05Z").await.unwrap();
     assert_eq!(
-        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "claude", "claude-sonnet-4-5")
+        db.count_in_flight_jobs_by_cell(&slugs)
             .await
-            .unwrap(),
-        1,
+            .unwrap()
+            .get(&key)
+            .copied(),
+        Some(1),
         "dispatched still counts"
     );
 }
@@ -2214,36 +2229,41 @@ async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
     .await
     .unwrap();
 
-    // Matching against the plan's bare canonical id — the pre-fix behavior — misses
-    // both, because the stored ids carry the prefix.
+    let slugs = vec!["pong".to_string()];
+    let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
+    let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
+    let cell = |model: &str| {
+        (
+            "pong".to_string(),
+            "v1.0.0".to_string(),
+            "base".to_string(),
+            "opencode".to_string(),
+            model.to_string(),
+        )
+    };
+
+    // The plan's bare canonical id — the pre-fix behavior — matches neither the
+    // completed run nor the queued job, because the stored ids carry the prefix.
     assert_eq!(
-        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "opencode", canonical)
-            .await
-            .unwrap(),
-        0,
+        completed.get(&cell(canonical)),
+        None,
         "the bare canonical id does not match the prefixed stored run",
     );
     assert_eq!(
-        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "opencode", canonical)
-            .await
-            .unwrap(),
-        0,
+        in_flight.get(&cell(canonical)),
+        None,
         "the bare canonical id does not match the prefixed queued job",
     );
 
     // Matching against the launched id — what `coverage` now does — counts both.
     assert_eq!(
-        db.count_completed_runs_for_cell("pong", "v1.0.0", "base", "opencode", &launched)
-            .await
-            .unwrap(),
-        1,
+        completed.get(&cell(&launched)).copied(),
+        Some(1),
         "the launched id counts the completed run",
     );
     assert_eq!(
-        db.count_in_flight_jobs_for_cell("pong", "v1.0.0", "base", "opencode", &launched)
-            .await
-            .unwrap(),
-        1,
+        in_flight.get(&cell(&launched)).copied(),
+        Some(1),
         "the launched id counts the in-flight job",
     );
 }
