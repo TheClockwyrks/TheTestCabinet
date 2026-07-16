@@ -2197,7 +2197,11 @@ async fn coverage_groups_round_trip_and_scope_to_account() {
         "a non-owner update matches no row"
     );
     assert_eq!(
-        db.get_coverage_group("u1", "g1").await.unwrap().unwrap().name,
+        db.get_coverage_group("u1", "g1")
+            .await
+            .unwrap()
+            .unwrap()
+            .name,
         "Anthropic (all)"
     );
 
@@ -2274,7 +2278,12 @@ async fn backfill_migrates_each_legacy_plan_exactly_once() {
 
     // First run migrates the legacy plan into one coverage plan with its members
     // inlined as one-offs (referencing no groups).
-    assert_eq!(crate::bootstrap::backfill_coverage_plans(&db).await.unwrap(), 1);
+    assert_eq!(
+        crate::bootstrap::backfill_coverage_plans(&db)
+            .await
+            .unwrap(),
+        1
+    );
     let plans = db.list_coverage_plans("u1").await.unwrap();
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].name, "My coverage plan");
@@ -2284,13 +2293,23 @@ async fn backfill_migrates_each_legacy_plan_exactly_once() {
     assert!(plans[0].combo_group_ids.is_empty());
 
     // Re-running is a no-op: the migrated flag guards against a duplicate.
-    assert_eq!(crate::bootstrap::backfill_coverage_plans(&db).await.unwrap(), 0);
+    assert_eq!(
+        crate::bootstrap::backfill_coverage_plans(&db)
+            .await
+            .unwrap(),
+        0
+    );
     assert_eq!(db.list_coverage_plans("u1").await.unwrap().len(), 1);
 
     // A migrated plan the reviewer deletes is not recreated on the next startup.
     let id = plans[0].id.clone();
     assert!(db.delete_coverage_plan("u1", &id).await.unwrap());
-    assert_eq!(crate::bootstrap::backfill_coverage_plans(&db).await.unwrap(), 0);
+    assert_eq!(
+        crate::bootstrap::backfill_coverage_plans(&db)
+            .await
+            .unwrap(),
+        0
+    );
     assert!(db.list_coverage_plans("u1").await.unwrap().is_empty());
 }
 
