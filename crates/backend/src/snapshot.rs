@@ -356,7 +356,10 @@ impl SnapshotBuilder {
 
         RunSummary {
             case_name,
-            rating: Some(aggregate_rating(&run.reviews)),
+            // The per-domain rating, or `None` for a game jam (it carries no
+            // domains — its badge is `score.overallGrade` instead). A domain-scored
+            // published run always has one.
+            rating: aggregate_rating_inner(&run.reviews),
             score,
             ..RunSummary::from_stored(run)
         }
@@ -918,6 +921,13 @@ pub struct RunScoreOut {
     pub total: u32,
     /// How many reviews the average is taken over.
     pub reviews: u32,
+    /// A [game jam](test_cabinet_core::test_case::TestType::GameJam) run's overall
+    /// game grade — the worst overall grade any reviewer gave (see
+    /// [`test_cabinet_core::review::aggregate_overall_grade`]). This is the jam's
+    /// rating badge, standing in for the per-domain `rating` a jam does not carry.
+    /// `None` for every non-jam run.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub overall_grade: Option<test_cabinet_core::review::VerdictStatus>,
 }
 
 impl RunSummary {
@@ -1229,6 +1239,10 @@ pub struct CaseReviewItemOut {
     pub sequences: Vec<String>,
     pub frames: Vec<u32>,
     pub weight: u32,
+    /// Whether the item is graded on the five-level scale (a game-jam category)
+    /// rather than pass/fail. The reviewer and verdict UIs render the graded
+    /// control and score `weight × 10` points for it when true.
+    pub graded: bool,
     pub domain: Option<String>,
     /// Name-only sub-items this item is graded by, each an independently scored
     /// pass/fail point. Empty for an item graded as a whole.
@@ -1415,6 +1429,7 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
         sequences: item.sequences.clone(),
         frames: item.frames.clone(),
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain.clone(),
         sub_items: item
             .sub_items
@@ -1433,13 +1448,6 @@ fn links_out(links: &test_cabinet_core::RunLinks) -> LinksOut {
         source_repo: links.source_repo.clone(),
         playable_build: links.playable_build.clone(),
     }
-}
-
-/// The run's overall rating — the worst rating any reviewer gave any domain.
-/// Falls back to [`Rating::Broken`] for the (publish-gated, so unreachable) case
-/// of no reviews, so the runs index always carries a tier.
-fn aggregate_rating(reviews: &[crate::db::StoredReview]) -> test_cabinet_core::review::Rating {
-    aggregate_rating_inner(reviews).unwrap_or(test_cabinet_core::review::Rating::Broken)
 }
 
 /// The aggregate rating, or `None` when the run carries no reviews. Delegates to
@@ -1472,10 +1480,14 @@ pub(crate) fn run_summary_score(
         .iter()
         .map(|review| test_cabinet_core::review::score_checklist(&items, &review.checklist))
         .collect();
+    let overall_grade = test_cabinet_core::review::aggregate_overall_grade(
+        reviews.iter().map(|review| review.checklist.as_slice()),
+    );
     test_cabinet_core::review::aggregate_score(&scores).map(|score| RunScoreOut {
         earned: score.earned,
         total: score.total,
         reviews: score.reviews,
+        overall_grade,
     })
 }
 
@@ -1517,6 +1529,7 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
         sequences: item.sequences.clone(),
         frames: item.frames.clone(),
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain.clone(),
         sub_items: item
             .sub_items

@@ -247,7 +247,9 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
             name: BASE_WASM_IMAGE_NAME,
             override_env: BASE_WASM_IMAGE_OVERRIDE_ENV,
         },
-        TestType::FullStack => ImageSpec {
+        // A game jam produces its own 2D assets and builds a browser game, exactly
+        // like a full-stack run, so it uses the same full-stack-2d image.
+        TestType::FullStack | TestType::GameJam => ImageSpec {
             name: FULL_STACK_2D_IMAGE_NAME,
             override_env: FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
         },

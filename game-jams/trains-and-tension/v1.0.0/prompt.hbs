@@ -1,0 +1,70 @@
+This is a GAME JAM. The theme is:
+
+# 🚂 Trains & Tension
+
+Build a complete game — of **any genre you like** — that is built around this
+theme. There is no specification and no reference design: the concept, the
+mechanics, the look, and the feel are entirely yours to invent. Interpret "trains"
+and "tension" however you find most interesting — a railway, a subway, a runaway
+locomotive, a train of thought, a chain reaction, a taut line about to snap — and
+let that reading genuinely shape the design rather than decorate it.
+
+Two things are judged above all else:
+
+- **Playable** — it loads, runs, and can be played from start to finish without
+  breaking. Controls respond, the core loop works, and there is a clear way to win
+  or lose.
+- **Enjoyable** — it is genuinely fun to play, with a satisfying core mechanic and a
+  reason to keep playing. A tech demo that merely runs is not enough.
+
+Scope the idea so you can **finish and polish** it in the time you have — a small,
+complete, well-made game beats an ambitious half-built one.
+
+Your project root is `{{workspace}}`. Build the game there.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins **Playwright** as a dev dependency, with its dependencies already installed
+(`node_modules/` is populated and headless **Chromium** is downloaded), so you can
+build and verify right away. Build on this project — keep the `package.json`, add
+your framework, bundler, and a `build` script on top of it, and keep the lockfile
+in sync.
+
+## The fixed build/serve interface
+
+The project stays a **Node project** built with only Node.js and npm-installed
+dependencies. Extend the provided `package.json` and **commit a
+`package-lock.json`** (run `npm install` after changing dependencies so the
+lockfile matches). `npm ci` then `npm run build` must produce the static site —
+with no other manual step — into one of `dist/`, `build/`, or `out/` at the project
+root, with an `index.html` at the root of that directory. Serving that directory
+as-is must run the game, and it must work **at any base path** (it is played back
+from a per-run sub-path, so every URL the build constructs at runtime — including
+every produced asset — must be page-relative, never a leading `/`; for a bundler,
+set a relative base such as `base: './'`).
+
+## Verify before you finish
+
+Your project has **Playwright** and a headless **Chromium** installed as project
+dependencies, plus network access — use them to verify your build, do not just
+assume it works. Before you consider the task complete, produce the **static
+production build**, serve it locally, open it in Chromium with Playwright, and
+confirm it **loads with no console errors**. Then **actually play it** — start a
+round, exercise the core loop, and reach a win or loss — and fix anything that is
+broken, unclear, or unfun before finishing. Launch Chromium with the
+`--no-sandbox` argument (this container has no Chromium sandbox).
+
+Use the project's own Playwright (import it from your project, e.g.
+`import { chromium } from "playwright"`, or run `npx playwright`); there is no
+global Playwright on `PATH`.
+
+## Commit your work
+
+Your project root is a **git repository**, initialized before you started. Your
+finished implementation is published directly from this repository's commits, so
+uncommitted work is **not** published. When the game is complete and verified, run
+`git add -A` then `git commit`, and confirm `git status` reports a clean working
+tree. A `.gitignore` already excludes `node_modules/` and the build output — a
+clean tree means committing your source, your `package-lock.json`, a short
+`README.md`, and the **produced assets** the game ships.

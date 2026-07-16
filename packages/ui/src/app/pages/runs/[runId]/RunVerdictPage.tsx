@@ -1,12 +1,17 @@
-import { Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
+import { GradeBadge, Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
 import {
+  GRADE_META,
+  GRADE_MAX_POINTS,
   RATING_META,
   VERDICT_META,
   formatPoints,
+  isGrade,
+  overallGradeOf,
   scoreChecklist,
   subItemVerdictId,
   worstRating,
   type ParsedWriteup,
+  type VerdictStatus,
 } from "../../../data/ratings";
 import type { ReviewItemSummary } from "../../../data/testCases";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
@@ -135,7 +140,14 @@ export function PublishedVerdict({
   model: ReviewModel;
   showOverall?: boolean;
 }) {
-  const overall = worstRating(review.ratings.map((r) => r.rating));
+  // A game jam grades its categories on the five-emoji scale and has no scoring
+  // domains: its rating badge is the reviewer's whole-game overall grade, standing
+  // in for the worst-across-domains rating a domain-scored case shows.
+  const jam = model.items.some((it) => it.graded);
+  const overallRating = jam
+    ? null
+    : worstRating(review.ratings.map((r) => r.rating));
+  const overallGrade = jam ? overallGradeOf(review.checklist) : null;
   const haveModel = model.items.length > 0;
   const score = haveModel
     ? scoreChecklist(model.items, review.checklist)
@@ -177,14 +189,21 @@ export function PublishedVerdict({
           the reviewer's name with that rating and score. */}
       {showOverall && (
         <div className={styles.verdictHeader}>
-          {overall && (
-            <p className={styles.verdict}>
-              <RatingBadge rating={overall} />
-              <span className={styles.verdictLabel}>
-                {RATING_META[overall].description}
-              </span>
-            </p>
-          )}
+          {jam
+            ? overallGrade && (
+                <p className={styles.verdict}>
+                  <GradeBadge status={overallGrade} />
+                  <span className={styles.verdictLabel}>Overall game grade</span>
+                </p>
+              )
+            : overallRating && (
+                <p className={styles.verdict}>
+                  <RatingBadge rating={overallRating} />
+                  <span className={styles.verdictLabel}>
+                    {RATING_META[overallRating].description}
+                  </span>
+                </p>
+              )}
           {score && (
             <p className={styles.score}>
               <span className={styles.scoreValue}>
@@ -261,6 +280,7 @@ export function PublishedVerdict({
                         number={number}
                         title={item ? item.title : itemId}
                         weight={item ? item.weight : undefined}
+                        graded={item?.graded}
                         verdict={verdictById.get(itemId)}
                       />
                     );
@@ -303,14 +323,15 @@ function ChecklistItemGroup({
 }: {
   number: number;
   item: ReviewItemSummary;
-  verdictById: Map<string, { status: "pass" | "fail"; note?: string }>;
+  verdictById: Map<string, { status: VerdictStatus; note?: string }>;
 }) {
   const subItems = item.subItems ?? [];
   // Only sub-items the reviewer actually graded render a row; the tally counts
-  // over exactly those so it matches the rows shown.
+  // over exactly those so it matches the rows shown. Sub-items are always
+  // pass/fail (a graded game-jam category has no sub-items).
   const graded = subItems
     .map((sub) => verdictById.get(subItemVerdictId(item.id, sub.id)))
-    .filter((v): v is { status: "pass" | "fail"; note?: string } => !!v);
+    .filter((v): v is { status: VerdictStatus; note?: string } => !!v);
   if (graded.length === 0) return null;
   const passed = graded.filter((v) => v.status === "pass").length;
   return (
@@ -337,36 +358,50 @@ function ChecklistItemGroup({
   );
 }
 
-// One pass/fail line: the marker in the fixed status gutter beside the item text.
-// `number`, on a top-level whole-item, prefixes the title (sub-item rows are
-// lettered in their `title` instead and pass none). `weight`, when given, trails
-// the title dimmed as its point value; a reviewer's note stacks beneath the title
-// on its own line.
+// One checklist line: the marker in the fixed status gutter beside the item text.
+// A binary item shows its Pass/Fail label tinted by the verdict; a graded game-jam
+// category shows the grade emoji instead. `number`, on a top-level whole-item,
+// prefixes the title (sub-item rows are lettered in their `title` instead and pass
+// none). `weight`, when given, trails the title dimmed as its point value — a flat
+// weight for a binary item, `earned / available` for a graded one; a reviewer's
+// note stacks beneath the title on its own line.
 function ChecklistRow({
   number,
   title,
   weight,
+  graded,
   verdict,
 }: {
   number?: number;
   title: string;
   weight?: number;
-  verdict: { status: "pass" | "fail"; note?: string } | undefined;
+  graded?: boolean;
+  verdict: { status: VerdictStatus; note?: string } | undefined;
 }) {
   if (!verdict) return null;
+  const status = verdict.status;
+  const grade = isGrade(status) ? GRADE_META[status] : null;
+  const rowClass = grade
+    ? styles.verdictGraded
+    : VERDICT_CLASS[status as "pass" | "fail"];
+  const marker = grade ? grade.emoji : VERDICT_META[status].label;
+  const pointsLabel =
+    weight === undefined
+      ? null
+      : graded
+        ? `${grade ? grade.points * weight : 0} / ${weight * GRADE_MAX_POINTS} pts`
+        : pts(weight);
   return (
-    <li className={`${styles.verdictRow} ${VERDICT_CLASS[verdict.status]}`}>
-      <span className={styles.verdictStatus}>
-        {VERDICT_META[verdict.status].label}
-      </span>
+    <li className={`${styles.verdictRow} ${rowClass}`}>
+      <span className={styles.verdictStatus}>{marker}</span>
       <span className={styles.verdictItem}>
         <span className={styles.verdictItemTitle}>
           {number !== undefined && `${number}. `}
           {title}
-          {weight !== undefined && (
+          {pointsLabel && (
             <>
               {" "}
-              <span className={styles.verdictWeight}>({pts(weight)})</span>
+              <span className={styles.verdictWeight}>({pointsLabel})</span>
             </>
           )}
         </span>

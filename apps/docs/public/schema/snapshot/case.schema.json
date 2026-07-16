@@ -200,6 +200,10 @@
           },
           "type": "array"
         },
+        "graded": {
+          "description": "Whether the item is graded on the five-level scale (a game-jam category)\nrather than pass/fail. The reviewer and verdict UIs render the graded\ncontrol and score `weight × 10` points for it when true.",
+          "type": "boolean"
+        },
         "id": {
           "type": "string"
         },
@@ -241,6 +245,7 @@
         "sequences",
         "frames",
         "weight",
+        "graded",
         "subItems"
       ],
       "type": "object"

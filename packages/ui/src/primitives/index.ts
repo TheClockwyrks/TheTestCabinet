@@ -2,6 +2,7 @@
 // `--tcab-*` token contract (styles/tokens.css) so each app themes them.
 export { Markdown } from "./Markdown";
 export { RatingBadge } from "./RatingBadge";
+export { GradeBadge } from "./GradeBadge";
 export { Panel } from "./Panel";
 export { Pagination } from "./Pagination";
 export { ProgressBar } from "./ProgressBar";

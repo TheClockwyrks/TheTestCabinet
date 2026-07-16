@@ -35,6 +35,11 @@ export const CATALOG_TABS: ReadonlyArray<{ tab: CatalogTab; label: string }> = [
 // kinds, plus a case with no asset kind, which defaults to `sprite`). The other
 // tabs map straight to a test type.
 export function inTab(testCase: TestCaseSummary, tab: CatalogTab): boolean {
+  // Game jams share the catalog pipeline but are presented on their own pages
+  // (Other → Game Jams), never on the Test Cases catalog — so no tab ever claims
+  // one. (They also match none of the type/asset checks below; this guard makes
+  // the exclusion explicit and independent of the tab set.)
+  if (testCase.testType === "game-jam") return false;
   switch (tab) {
     case "2d":
       return (

@@ -820,7 +820,7 @@ where
         if orchestrator_requested
             && !matches!(
                 test_case.test_type,
-                TestType::EndToEnd | TestType::FullStack
+                TestType::EndToEnd | TestType::FullStack | TestType::GameJam
             )
         {
             return Err(Error::OrchestratorUnsupportedForTestType {
@@ -1008,8 +1008,8 @@ where
 /// and its validation summary.
 ///
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
-/// (end-to-end, full-stack, asset-generation) an output that never loaded leaves
-/// nothing to review — the model's output is broken — so the run is
+/// (end-to-end, full-stack, game-jam, asset-generation) an output that never loaded
+/// leaves nothing to review — the model's output is broken — so the run is
 /// [`RunState::Catastrophic`] rather than [`RunState::Completed`]. The
 /// **auto-scored** types (adversarial, performance) carry their authoritative
 /// result in the validation summary even when `loaded` is false (a forfeit or an
@@ -1017,7 +1017,7 @@ where
 /// [`RunState::Completed`]; a per-type catastrophic tier for them is deferred.
 fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
     match test_type {
-        TestType::EndToEnd | TestType::FullStack | TestType::AssetGeneration
+        TestType::EndToEnd | TestType::FullStack | TestType::GameJam | TestType::AssetGeneration
             if !validation.loaded =>
         {
             RunState::Catastrophic

@@ -1,15 +1,26 @@
 import { describe, expect, it } from "vitest";
-import type { ReviewVerdict } from "@test-cabinet/run-record/review";
+import type {
+  ReviewVerdict,
+  VerdictStatus,
+} from "@test-cabinet/run-record/review";
 import {
+  OVERALL_VERDICT_ID,
+  aggregateOverallGrade,
   formatPoints,
+  gradePoints,
   scoreChecklist,
   subItemVerdictId,
   verdictIdsForItem,
+  worstGrade,
   type WeightedItem,
 } from "./ratings";
 
 const pass = (id: string): ReviewVerdict => ({ id, status: "pass" });
 const fail = (id: string): ReviewVerdict => ({ id, status: "fail" });
+const grade = (id: string, status: VerdictStatus): ReviewVerdict => ({
+  id,
+  status,
+});
 
 // These mirror the Rust core's review scoring tests (crates/core/src/review.test.rs);
 // keeping the two in lockstep is what lets the site score runs the same way the
@@ -56,6 +67,70 @@ describe("scoreChecklist with sub-items", () => {
     expect(
       scoreChecklist(items, [pass("q.a"), fail("q.b"), fail("q.c")]).earned,
     ).toBeCloseTo(1 / 3);
+  });
+});
+
+// Mirror the Rust core's graded (game-jam) scoring and aggregation tests; the
+// point values and worst-wins overall grade must match the backend.
+describe("graded (game-jam) scoring", () => {
+  it("maps each graded tier to its point value", () => {
+    expect(gradePoints("broken")).toBe(0);
+    expect(gradePoints("poor")).toBe(1);
+    expect(gradePoints("neutral")).toBe(3);
+    expect(gradePoints("great")).toBe(5);
+    expect(gradePoints("incredible")).toBe(10);
+    // Binary statuses are not graded.
+    expect(gradePoints("pass")).toBeUndefined();
+    expect(gradePoints("fail")).toBeUndefined();
+  });
+
+  it("scores a graded item as weight × 10 available, earning tier points × weight", () => {
+    const items: WeightedItem[] = [
+      { id: "gfx", weight: 2, graded: true },
+      { id: "fun", weight: 1, graded: true },
+    ];
+    // gfx: great (5) × 2 = 10 earned of 20 available; fun: incredible (10) × 1 = 10
+    // of 10. Total 30 available, 20 earned.
+    const score = scoreChecklist(items, [
+      grade("gfx", "great"),
+      grade("fun", "incredible"),
+    ]);
+    expect(score).toEqual({ earned: 20, total: 30 });
+  });
+
+  it("earns nothing for an unjudged graded item but still counts its total", () => {
+    const items: WeightedItem[] = [{ id: "gfx", weight: 1, graded: true }];
+    expect(scoreChecklist(items, [])).toEqual({ earned: 0, total: 10 });
+  });
+
+  it("excludes the reserved overall verdict from the score", () => {
+    const items: WeightedItem[] = [{ id: "gfx", weight: 1, graded: true }];
+    // The overall grade is not a declared item, so it does not add to the total.
+    const score = scoreChecklist(items, [
+      grade("gfx", "neutral"),
+      grade(OVERALL_VERDICT_ID, "incredible"),
+    ]);
+    expect(score).toEqual({ earned: 3, total: 10 });
+  });
+});
+
+describe("overall grade aggregation", () => {
+  it("takes the worst (lowest-point) grade, ignoring binary statuses", () => {
+    expect(worstGrade(["great", "poor", "incredible"])).toBe("poor");
+    expect(worstGrade(["pass", "fail"])).toBeNull();
+    expect(worstGrade([])).toBeNull();
+  });
+
+  it("aggregates the worst overall grade across reviews", () => {
+    const reviews = [
+      [grade("gfx", "great"), grade(OVERALL_VERDICT_ID, "incredible")],
+      [grade("gfx", "poor"), grade(OVERALL_VERDICT_ID, "neutral")],
+    ];
+    expect(aggregateOverallGrade(reviews)).toBe("neutral");
+  });
+
+  it("is null when no review carries an overall grade", () => {
+    expect(aggregateOverallGrade([[pass("a")], []])).toBeNull();
   });
 });
 

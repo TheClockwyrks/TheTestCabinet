@@ -1,9 +1,11 @@
 import { Link } from "react-router";
-import { RatingBadge } from "@test-cabinet/ui";
+import { GradeBadge, RatingBadge } from "@test-cabinet/ui";
 import {
   formatPoints,
+  overallGradeOf,
   scoreChecklist,
   worstRating,
+  type GradeStatus,
   type Rating,
   type Score,
   type WeightedItem,
@@ -29,10 +31,17 @@ export function ReviewList({
   items: readonly WeightedItem[];
   runId: string;
 }) {
+  // A game jam's card badge is the reviewer's whole-game overall grade (its
+  // categories are graded, and it has no scoring domains), in place of the
+  // worst-across-domains rating a domain-scored case shows.
+  const jam = items.some((it) => it.graded);
   return (
     <ul className={styles.reviewList}>
       {reviews.map((review) => {
-        const overall = worstRating(review.ratings.map((r) => r.rating));
+        const overall = jam
+          ? null
+          : worstRating(review.ratings.map((r) => r.rating));
+        const grade = jam ? overallGradeOf(review.checklist) : null;
         const score =
           items.length > 0 ? scoreChecklist(items, review.checklist) : null;
         // The leading lines of the writeup as a preview, clamped to a few lines
@@ -48,6 +57,7 @@ export function ReviewList({
                 <ReviewHeader
                   reviewer={review.reviewer}
                   rating={overall}
+                  grade={grade}
                   reviewedAt={review.reviewedAt}
                   score={score}
                 />
@@ -71,11 +81,16 @@ export function ReviewList({
 export function ReviewHeader({
   reviewer,
   rating,
+  grade,
   reviewedAt,
   score,
 }: {
   reviewer: string;
   rating: Rating | null;
+  // A game-jam review's whole-game overall grade, shown as the badge in place of
+  // the per-domain `rating` a jam does not carry. Null/absent for a domain-scored
+  // review.
+  grade?: GradeStatus | null;
   reviewedAt?: string | null;
   score: Score | null;
 }) {
@@ -83,7 +98,11 @@ export function ReviewHeader({
     <div className={styles.reviewHeader}>
       <div className={styles.reviewHeaderRow}>
         <span className={styles.reviewAuthor}>{reviewer}</span>
-        {rating && <RatingBadge rating={rating} />}
+        {grade ? (
+          <GradeBadge status={grade} />
+        ) : (
+          rating && <RatingBadge rating={rating} />
+        )}
       </div>
       {(reviewedAt || score) && (
         <div className={styles.reviewHeaderRow}>

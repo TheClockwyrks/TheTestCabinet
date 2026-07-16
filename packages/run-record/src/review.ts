@@ -20,10 +20,27 @@ export type Rating = "flawless" | "great" | "scuffed" | "broken";
  * A reviewer's verdict on one declared checklist item.
  *
  * A test case declares the checklist (see [`crate::test_case::ReviewItem`]); the
- * reviewer records one of these per item while judging the build. Ordered by
- * neither severity nor preference — it simply states what the reviewer found.
+ * reviewer records one of these per item while judging the build.
+ *
+ * Most case types grade an item **binary** — [`Pass`](VerdictStatus::Pass) or
+ * [`Fail`](VerdictStatus::Fail) — and the item earns all its weight or none. A
+ * [game jam](crate::test_case::TestType::GameJam) instead grades each of its
+ * review categories on a five-level **graded** scale worth a fixed number of
+ * points ([`Broken`](VerdictStatus::Broken) 0 → [`Incredible`](VerdictStatus::Incredible)
+ * 10); the same graded scale carries the reviewer's whole-game
+ * [`OVERALL_VERDICT_ID`] mark. Which scale an item uses is declared on the item
+ * ([`crate::test_case::ReviewItem::graded`]); the two never mix within a case.
+ * Keep the tiers and their point values in lockstep with the TypeScript
+ * `VERDICT_META` in `packages/ui/src/ratings.ts`.
  */
-export type VerdictStatus = "pass" | "fail";
+export type VerdictStatus =
+  | "pass"
+  | "fail"
+  | "broken"
+  | "poor"
+  | "neutral"
+  | "great"
+  | "incredible";
 
 /**
  * A reviewer's recorded verdict on one declared checklist item.

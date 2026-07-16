@@ -1645,7 +1645,7 @@ fn packages_are_end_to_end_only() {
         .resolve("sprite", "v1.0.0")
         .expect_err("`packages` on an asset-generation case is rejected");
     assert!(
-        format!("{err}").contains("only valid for an end-to-end or full-stack case"),
+        format!("{err}").contains("only valid for an end-to-end, full-stack, or game-jam case"),
         "got: {err}"
     );
 }

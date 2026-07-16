@@ -33,6 +33,7 @@ describe("resolveRunScore", () => {
       earned: 4,
       total: 5,
       rating: "great",
+      grade: null,
     });
   });
 
@@ -50,6 +51,7 @@ describe("resolveRunScore", () => {
       earned: 3,
       total: 5,
       rating: "scuffed",
+      grade: null,
     });
   });
 
@@ -62,5 +64,44 @@ describe("resolveRunScore", () => {
     const run = summary({ score: null, rating: null });
     const writeup: ParsedWriteup = { ratings: [], checklist: [], body: "" };
     expect(resolveRunScore(run, variant, () => writeup, {})).toBeNull();
+  });
+
+  // A game jam grades its categories (and a whole-game overall mark) rather than
+  // rating domains, so it carries a grade in place of a rating.
+  const jamVariant = {
+    reviewItems: [{ id: "fun", title: "Fun", weight: 1, graded: true }],
+  } as unknown as VariantSummary;
+
+  it("reads a published jam summary's overall grade in place of a rating", () => {
+    const run = summary({
+      score: { earned: 5, total: 10, reviews: 1, overallGrade: "great" },
+      rating: null,
+    });
+    expect(resolveRunScore(run, jamVariant, () => undefined, {})).toEqual({
+      earned: 5,
+      total: 10,
+      rating: null,
+      grade: "great",
+    });
+  });
+
+  it("scores a local jam preview off the graded checklist and overall grade", () => {
+    const run = summary({ score: null, rating: null });
+    const writeup: ParsedWriteup = {
+      ratings: [],
+      // The category "fun" earned a `great` (5 pts × weight 1) and the reserved
+      // overall verdict is the run's grade badge.
+      checklist: [
+        { id: "fun", status: "great" },
+        { id: "overall", status: "neutral" },
+      ],
+      body: "",
+    };
+    expect(resolveRunScore(run, jamVariant, () => writeup, {})).toEqual({
+      earned: 5,
+      total: 10,
+      rating: null,
+      grade: "neutral",
+    });
   });
 });

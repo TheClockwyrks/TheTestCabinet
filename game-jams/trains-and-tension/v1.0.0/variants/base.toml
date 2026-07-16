@@ -1,0 +1,7 @@
+# The single default variant for the Trains & Tension jam. A game-jam variant is a
+# bare theme selector: it seeds no specs and declares no references, domains, or
+# reference implementation (resolution rejects those on a jam). It carries only its
+# identity. Additional variants could offer sub-themes of the same jam.
+slug = "base"
+name = "Base"
+description = "The Trains & Tension theme, open genre."

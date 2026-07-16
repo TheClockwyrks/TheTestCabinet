@@ -573,6 +573,7 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
         sequences: item.sequences.clone(),
         frames: item.frames.clone(),
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain.clone(),
         sub_items: item
             .sub_items
