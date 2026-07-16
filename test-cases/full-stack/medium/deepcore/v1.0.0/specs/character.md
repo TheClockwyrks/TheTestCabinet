@@ -43,15 +43,15 @@ collision is against the tile grid.
   border, or lava; it rests on top of solid tiles and is stopped by walls. It fits in
   a single tile, so a one-tile-wide tunnel is passable.
 
-Movement speeds (logical px/s): **walk / lateral** `250`, **fall terminal** `1000`.
-Gravity `1500 px/s^2`. (These are scaled to the `80 px` tile so the *feel in
-tiles-per-second* — how many tiles a walk or a fall covers per second — matches the
-reference; tune within a natural range.) The **climb** speed is not a single number: it
+Movement speeds (logical px/s, on the game's `80 px` tile): **walk / lateral** `250`,
+**fall terminal** `1000`. Gravity `1500 px/s^2`. (These set the *feel in
+tiles-per-second* — how many tiles a walk or a fall covers each second; tune within a
+natural range.) The **climb** speed is not a single number: it
 is capped per **jetpack tier** when **empty** (`420` at tier 1 rising to `540` at tier 5,
 `specs/upgrades.md`) and,
 more importantly, throttled down by the **load** (**Weight and lift**, below) — a heavy
-haul is held to a much slower climb than an empty miner on the same jetpack. These are the
-reference feel; tune within a natural range but keep falling faster than climbing so
+haul is held to a much slower climb than an empty miner on the same jetpack. These are
+target feel values; tune within a natural range but keep falling faster than climbing so
 depth is easy to gain and expensive to undo. Terminal is high enough that a fall keeps
 accelerating over several tiles before it caps, so **landing speed genuinely separates a
 short hop from a full-depth plunge** — which is what makes fall impact (`specs/hazards.md`)
