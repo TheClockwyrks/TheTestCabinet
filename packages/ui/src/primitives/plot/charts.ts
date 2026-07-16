@@ -70,17 +70,20 @@ function rotatedBottomMargin(
   );
 }
 
-// Hover-tooltip options shared by the bar charts.
-//
-// - `pointer: "x"` triggers the tip from the bar's *column* rather than Plot's
-//   2D default (which only fires within ~40px of the bar's top-center). Paired
-//   with a wide `maxRadius`, the tip shows when the pointer is anywhere over the
-//   bar — snapping to the nearest column — instead of only near its top.
-// - `fill`/`stroke` theme the box: Plot's tip defaults to a white box
-//   (`var(--plot-background)`), but our chart text is `currentColor` — the light
-//   themed `palette.text` — so a default box renders light-on-white and
-//   unreadable. Filling it with the dark surface lets the light text read; the
-//   text color is left as the ambient `currentColor`.
+// Both the tooltip and the hover highlight select the bar under the pointer by
+// column (`pointer: "x"` / `pointerX`), rather than Plot's 2D default that only
+// fires within ~40px of the bar's top-center. This wide radius means the whole
+// width — and full height — of a bar responds: the selection snaps to the
+// nearest column wherever the pointer is over it, and both affordances read from
+// the same selection so they always agree.
+const POINTER_RADIUS = 1000;
+
+// Hover-tooltip box options shared by the bar charts. Plot's tip defaults to a
+// white box (`var(--plot-background)`), but our chart text is `currentColor` —
+// the light themed `palette.text` — so a default box renders light-on-white and
+// unreadable. Filling it with the dark surface lets the light text read; the
+// text color is left as the ambient `currentColor`. See `POINTER_RADIUS` for the
+// column-pointer behavior.
 function tipBox(palette: ChartPalette): {
   pointer: "x";
   maxRadius: number;
@@ -89,10 +92,22 @@ function tipBox(palette: ChartPalette): {
 } {
   return {
     pointer: "x",
-    maxRadius: 1000,
+    maxRadius: POINTER_RADIUS,
     fill: palette.surface,
     stroke: palette.border,
   };
+}
+
+// A translucent light wash drawn over the pointer-selected bar (or stacked
+// segment), lightening it so the bar visibly reacts wherever the tooltip appears.
+// Rendered via `pointerX` with the same radius as the tip, so it selects the same
+// bar the tip is describing — including tracking the nearest segment by height
+// within a stacked column.
+function highlightWash(palette: ChartPalette): {
+  fill: string;
+  fillOpacity: number;
+} {
+  return { fill: palette.text, fillOpacity: 0.18 };
 }
 
 // A simple vertical bar chart. Each bar takes its own `color` when set (e.g. a
@@ -138,6 +153,22 @@ export function barChart(
           : {}),
       }),
       Plot.ruleY([0], { stroke: palette.border }),
+      // The hover highlight: a wash over the pointer-selected bar, matching the
+      // tip's column selection (renders nothing until the pointer is near).
+      ...(hasTips
+        ? [
+            Plot.barY(
+              data as BarPoint[],
+              Plot.pointerX({
+                x: "label",
+                y: "value",
+                rx: 2,
+                maxRadius: POINTER_RADIUS,
+                ...highlightWash(palette),
+              }),
+            ),
+          ]
+        : []),
     ],
   };
 }
@@ -217,6 +248,26 @@ export function stackedBarChart(
           : {}),
       }),
       Plot.ruleY([0], { stroke: palette.border }),
+      // The hover highlight: a wash over the pointer-selected segment. `z` +
+      // `order` reproduce the base stack so the wash lands on the right segment,
+      // and `pointerX` selects the same one the tip anchors to (the nearest by
+      // height within the hovered column). Renders nothing until hovered.
+      ...(hasTips
+        ? [
+            Plot.barY(
+              data as StackedBarSegment[],
+              Plot.pointerX({
+                x: "group",
+                y: "value",
+                z: "series",
+                order,
+                rx: 1,
+                maxRadius: POINTER_RADIUS,
+                ...highlightWash(palette),
+              }),
+            ),
+          ]
+        : []),
     ],
   };
 }

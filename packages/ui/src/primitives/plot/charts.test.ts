@@ -54,6 +54,9 @@ describe("barChart", () => {
     // rather than light-on-white.
     expect(tip!.getAttribute("fill")).toBe(palette.surface);
     expect(tip!.getAttribute("stroke")).toBe(palette.border);
+    // The hover-highlight overlay is present (a translucent wash keyed to the same
+    // pointer as the tip), so the bar reacts wherever the tooltip appears.
+    expect(node.querySelector('[fill-opacity="0.18"]')).not.toBeNull();
   });
 });
 
@@ -97,5 +100,7 @@ describe("stackedBarChart", () => {
       ),
     );
     expect(node.querySelector('[aria-label="tip"]')).not.toBeNull();
+    // The hover-highlight overlay for the pointed segment is present too.
+    expect(node.querySelector('[fill-opacity="0.18"]')).not.toBeNull();
   });
 });
